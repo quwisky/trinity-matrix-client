@@ -1,65 +1,116 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import {
+  IonSplitPane,
+  IonMenu,
+  IonMenuButton,
   IonHeader,
   IonToolbar,
   IonTitle,
   IonButtons,
-  IonButton,
-  IonContent,
-  IonText,
+  MenuController,
 } from '@ionic/angular/standalone';
-import { MatrixClientService, AuthService } from '@trinity/core';
+import { AuthService, MatrixClientService, RoomsService } from '@trinity/core';
+import { ServerRailComponent } from './server-rail.component';
+import { ChannelSidebarComponent } from './channel-sidebar.component';
+import { MemberListComponent } from './member-list.component';
 
 /**
- * Placeholder authenticated landing for Milestone 2. Confirms the session is live
- * (user id + sync state) and offers logout. The real room list arrives in Milestone 4.
+ * Discord-style authenticated shell: server rail + channel sidebar (in a
+ * responsive `ion-split-pane`/`ion-menu`), a main column, and a member list.
+ * Wired to live synced rooms via `RoomsService`; the timeline is a later milestone.
  */
 @Component({
   selector: 'app-rooms',
-  template: `
-    <ion-header>
-      <ion-toolbar>
-        <ion-title>Rooms</ion-title>
-        <ion-buttons slot="end">
-          <ion-button [disabled]="busy()" (click)="logout()">Logout</ion-button>
-        </ion-buttons>
-      </ion-toolbar>
-    </ion-header>
-
-    <ion-content class="ion-padding">
-      <p>
-        Signed in as <strong>{{ userId() }}</strong>
-      </p>
-      <p>
-        <ion-text color="medium"
-          >Sync state: {{ matrix.syncState() ?? 'starting…' }}</ion-text
-        >
-      </p>
-    </ion-content>
-  `,
+  templateUrl: 'rooms.page.html',
+  styleUrls: ['rooms.page.scss'],
   imports: [
+    IonSplitPane,
+    IonMenu,
+    IonMenuButton,
     IonHeader,
     IonToolbar,
     IonTitle,
     IonButtons,
-    IonButton,
-    IonContent,
-    IonText,
+    ServerRailComponent,
+    ChannelSidebarComponent,
+    MemberListComponent,
   ],
 })
-export class RoomsPage {
-  readonly matrix = inject(MatrixClientService);
+export class RoomsPage implements OnInit {
+  readonly rooms = inject(RoomsService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly menu = inject(MenuController);
 
-  readonly busy = signal(false);
-  readonly userId = signal(
-    this.matrix.isInitialized ? this.matrix.instance.getUserId() : null,
+  readonly activeSpaceId = signal<string | null>(null);
+  readonly activeRoomId = signal<string | null>(null);
+
+  readonly visibleRooms = computed(() =>
+    this.rooms.roomsForSpace(this.activeSpaceId()),
   );
 
+  readonly activeSpaceName = computed(() => {
+    const id = this.activeSpaceId();
+    if (!id) {
+      return 'Home';
+    }
+    return this.rooms.spaces().find((s) => s.id === id)?.name ?? 'Home';
+  });
+
+  readonly activeRoom = computed(() => {
+    const id = this.activeRoomId();
+    return id ? (this.rooms.rooms().find((r) => r.id === id) ?? null) : null;
+  });
+
+  readonly members = computed(() => {
+    this.rooms.revision();
+    return this.rooms.membersOf(this.activeRoomId());
+  });
+
+  readonly userId = signal(
+    this.matrix.isInitialized ? (this.matrix.instance.getUserId() ?? '') : '',
+  );
+
+  readonly userName = computed(() => {
+    const uid = this.userId();
+    if (!uid || !this.matrix.isInitialized) {
+      return uid;
+    }
+    return this.matrix.instance.getUser(uid)?.displayName ?? uid;
+  });
+
+  readonly userInitial = computed(() => {
+    const name = this.userName().replace(/^[@#!]+/, '');
+    return (name[0] ?? '?').toUpperCase();
+  });
+
+  readonly syncLabel = computed(() => {
+    const state = String(this.matrix.syncState() ?? '');
+    if (state === 'PREPARED' || state === 'SYNCING') {
+      return 'Welcome to Trinity';
+    }
+    if (state === 'ERROR' || state === 'RECONNECTING') {
+      return 'Reconnecting…';
+    }
+    return 'Connecting…';
+  });
+
+  ngOnInit(): void {
+    this.rooms.connect();
+  }
+
+  onSelectSpace(id: string | null): void {
+    this.activeSpaceId.set(id);
+  }
+
+  async onSelectRoom(id: string): Promise<void> {
+    this.activeRoomId.set(id);
+    await this.menu.close(); // collapse the drawer on mobile
+  }
+
   async logout(): Promise<void> {
-    this.busy.set(true);
     await this.auth.logout();
     await this.router.navigateByUrl('/login', { replaceUrl: true });
   }

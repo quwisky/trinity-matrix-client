@@ -1,0 +1,109 @@
+@use './styles/mixins' as *;
+
+.sidebar {
+  @include column(var(--trinity-sidebar));
+
+  width: 240px;
+}
+
+.sidebar__header {
+  height: 48px;
+  flex: 0 0 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-weight: 600;
+  color: var(--trinity-text-bright);
+  background: var(--trinity-sidebar-header);
+  box-shadow: 0 1px 0 rgb(0 0 0 / 20%);
+}
+
+.sidebar__scroll {
+  @include scrollable;
+
+  flex: 1;
+  padding: 12px 8px;
+}
+
+.category {
+  @include category-label;
+
+  padding: 12px 8px 4px;
+}
+
+.channel {
+  @include interactive-row;
+
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  margin-top: 1px;
+  font-size: 15px;
+  text-align: left;
+
+  &.active {
+    background: var(--trinity-active);
+    color: var(--trinity-text-bright);
+  }
+}
+
+.channel__hash {
+  color: var(--trinity-text-muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.channel__name {
+  @include ellipsis;
+}
+
+.empty {
+  color: var(--trinity-text-muted);
+  font-size: 13px;
+  padding: 8px;
+}
+
+.userbar {
+  height: 52px;
+  flex: 0 0 52px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  background: var(--trinity-sidebar-header);
+}
+
+.userbar__id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.userbar__name {
+  @include ellipsis;
+
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--trinity-text-bright);
+}
+
+.userbar__handle {
+  @include ellipsis;
+
+  font-size: 11px;
+  color: var(--trinity-text-muted);
+}
+
+.userbar__logout {
+  @include interactive-row;
+
+  font-size: 18px;
+  padding: 6px;
+
+  &:hover {
+    color: var(--trinity-text-bright);
+  }
+}

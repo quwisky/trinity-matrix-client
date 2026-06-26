@@ -1,0 +1,62 @@
+// Shared Discord-style SCSS mixins for the rooms feature components.
+// Color tokens are global CSS custom properties — see
+// apps/trinity/src/theme/variables.scss.
+
+/// Truncate a single line of text with an ellipsis.
+@mixin ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/// Small uppercase section label (e.g. "Text Channels", "Members — 3").
+@mixin category-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--trinity-text-muted);
+}
+
+/// Full-height vertical column surface.
+@mixin column($background) {
+  height: 100%;
+  background: $background;
+  display: flex;
+  flex-direction: column;
+  color: var(--trinity-text);
+}
+
+/// Clickable list row with the Discord hover treatment.
+@mixin interactive-row {
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--trinity-text-muted);
+
+  &:hover {
+    background: var(--trinity-hover);
+    color: var(--trinity-text);
+  }
+}
+
+/// Thin Discord-style scrollbar on an overflowing element.
+@mixin scrollable {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--trinity-rail) transparent;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--trinity-rail);
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

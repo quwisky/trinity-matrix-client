@@ -1,0 +1,70 @@
+<ion-split-pane contentId="main-content" when="md">
+  <ion-menu contentId="main-content" type="overlay">
+    <div class="shell-side">
+      <app-server-rail
+        [spaces]="rooms.spaces()"
+        [activeSpaceId]="activeSpaceId()"
+        (selectSpace)="onSelectSpace($event)"
+      />
+      <app-channel-sidebar
+        [spaceName]="activeSpaceName()"
+        [rooms]="visibleRooms()"
+        [activeRoomId]="activeRoomId()"
+        [userName]="userName()"
+        [userId]="userId()"
+        [userInitial]="userInitial()"
+        (selectRoom)="onSelectRoom($event)"
+        (logout)="logout()"
+      />
+    </div>
+  </ion-menu>
+
+  <div class="main" id="main-content">
+    <ion-header>
+      <ion-toolbar class="chat-toolbar">
+        <ion-buttons slot="start">
+          <ion-menu-button></ion-menu-button>
+        </ion-buttons>
+        <ion-title>
+          @if (activeRoom(); as room) {
+            <span class="title-hash">#</span>{{ room.name }}
+          } @else {
+            Trinity
+          }
+        </ion-title>
+      </ion-toolbar>
+    </ion-header>
+
+    <div class="chat-body">
+      <main class="chat-main">
+        @if (activeRoom(); as room) {
+          <div class="hero">
+            <div class="hero__badge">#</div>
+            <h1 class="hero__title">Welcome to #{{ room.name }}</h1>
+            @if (room.topic) {
+              <p class="hero__topic">{{ room.topic }}</p>
+            }
+            <p class="hero__meta">
+              {{ room.memberCount }} member{{
+                room.memberCount === 1 ? '' : 's'
+              }}
+              · timeline coming soon
+            </p>
+          </div>
+        } @else {
+          <div class="hero">
+            <div class="hero__badge">#</div>
+            <h1 class="hero__title">{{ syncLabel() }}</h1>
+            <p class="hero__meta">
+              Select a channel on the left to get started.
+            </p>
+          </div>
+        }
+      </main>
+
+      @if (activeRoom()) {
+        <app-member-list class="chat-members" [members]="members()" />
+      }
+    </div>
+  </div>
+</ion-split-pane>

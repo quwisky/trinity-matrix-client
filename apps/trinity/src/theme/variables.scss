@@ -1,2 +1,40 @@
-// For information on how to create your own theme, please refer to:
+// Trinity theme — Discord-inspired dark palette.
 // https://ionicframework.com/docs/theming/
+
+:root {
+  // Discord surface ramp (darkest → lightest).
+  --trinity-rail: #1e1f22; // server rail
+  --trinity-sidebar: #2b2d31; // channel + member columns
+  --trinity-sidebar-header: #232428;
+  --trinity-chat: #313338; // main content
+  --trinity-members: #2b2d31;
+  --trinity-hover: #35373c; // row hover
+  --trinity-active: #404249; // selected row
+  --trinity-divider: #1f2023;
+
+  // Text.
+  --trinity-text: #dbdee1;
+  --trinity-text-muted: #949ba4;
+  --trinity-text-bright: #f2f3f5;
+
+  // Brand.
+  --trinity-accent: #5865f2; // blurple
+  --trinity-accent-hover: #4752c4;
+  --trinity-green: #23a55a;
+  --trinity-radius: 8px;
+
+  // Map Ionic primary onto blurple so buttons/spinners match.
+  --ion-color-primary: #5865f2;
+  --ion-color-primary-rgb: 88, 101, 242;
+  --ion-color-primary-shade: #4d59d5;
+  --ion-color-primary-tint: #6974f3;
+  --ion-color-primary-contrast: #fff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+
+  // App background + text defaults.
+  --ion-background-color: #313338;
+  --ion-background-color-rgb: 49, 51, 56;
+  --ion-text-color: #dbdee1;
+  --ion-text-color-rgb: 219, 222, 225;
+  --ion-font-family: 'gg sans', 'Helvetica Neue', helvetica, arial, sans-serif;
+}

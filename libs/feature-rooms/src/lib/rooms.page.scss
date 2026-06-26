@@ -1,0 +1,108 @@
+@use './styles/mixins' as *;
+
+// Pin the desktop side pane to exactly rail (72) + sidebar (240) so it matches
+// the content width — otherwise the split-pane reserves --side-max-width (28%)
+// and the surplus shows as a gap. --width below applies to the mobile drawer.
+ion-split-pane {
+  --side-min-width: 312px;
+  --side-max-width: 312px;
+  --side-width: 312px;
+  --border: none;
+}
+
+ion-menu {
+  --width: 312px;
+  --max-width: 312px;
+  --background: var(--trinity-rail);
+}
+
+.shell-side {
+  display: flex;
+  height: 100%;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.chat-toolbar {
+  --background: var(--trinity-chat);
+  --color: var(--trinity-text-bright);
+  --border-color: var(--trinity-divider);
+
+  font-weight: 600;
+}
+
+.title-hash {
+  color: var(--trinity-text-muted);
+  margin-right: 4px;
+}
+
+.chat-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  background: var(--trinity-chat);
+}
+
+.chat-main {
+  @include scrollable;
+
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.hero {
+  text-align: center;
+  max-width: 420px;
+  color: var(--trinity-text);
+}
+
+.hero__badge {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: var(--trinity-sidebar);
+  color: var(--trinity-text-muted);
+  font-size: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+
+.hero__title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--trinity-text-bright);
+  margin: 0 0 8px;
+}
+
+.hero__topic {
+  color: var(--trinity-text);
+  margin: 0 0 8px;
+}
+
+.hero__meta {
+  color: var(--trinity-text-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.chat-members {
+  flex: 0 0 240px;
+}
+
+// Hide the member list on narrower viewports (Discord collapses it too).
+@media (max-width: 1100px) {
+  .chat-members {
+    display: none;
+  }
+}

@@ -1,0 +1,185 @@
+import { Injectable, inject, signal } from '@angular/core';
+import {
+  ClientEvent,
+  RoomEvent,
+  type MatrixClient,
+  type Room,
+  type RoomMember,
+} from 'matrix-js-sdk';
+import { MatrixClientService } from './matrix-client.service';
+
+/** A joinable room shown in the channel sidebar. */
+export interface RoomSummary {
+  id: string;
+  name: string;
+  initial: string;
+  avatarUrl: string | null;
+  topic: string;
+  memberCount: number;
+}
+
+/** A Matrix Space shown as a pill in the server rail. */
+export interface SpaceSummary {
+  id: string;
+  name: string;
+  initial: string;
+  avatarUrl: string | null;
+  /** Room ids referenced by this space's `m.space.child` state. */
+  childRoomIds: string[];
+}
+
+/** A joined member shown in the member list. */
+export interface MemberSummary {
+  userId: string;
+  name: string;
+  initial: string;
+  avatarUrl: string | null;
+}
+
+const AVATAR_PX = 64;
+
+/**
+ * Read model over the synced `MatrixClient`: exposes Spaces, joined rooms, and
+ * members as plain view models (components never touch `matrix-js-sdk` directly).
+ * Signals are recomputed as the client syncs; `connect()` wires the listeners.
+ */
+@Injectable({ providedIn: 'root' })
+export class RoomsService {
+  private readonly matrix = inject(MatrixClientService);
+  private connected = false;
+
+  readonly spaces = signal<SpaceSummary[]>([]);
+  readonly rooms = signal<RoomSummary[]>([]);
+  /** Bumped on every refresh so member queries can stay reactive. */
+  readonly revision = signal(0);
+
+  /** Attach sync listeners and do the first read. Idempotent; call once the
+   * client is live (e.g. the shell's `ngOnInit`). */
+  connect(): void {
+    if (this.connected || !this.matrix.isInitialized) {
+      return;
+    }
+    this.connected = true;
+    const client = this.matrix.instance;
+    const refresh = () => this.refresh();
+    client.on(ClientEvent.Sync, refresh);
+    client.on(ClientEvent.Room, refresh);
+    client.on(RoomEvent.Name, refresh);
+    client.on(RoomEvent.MyMembership, refresh);
+    this.refresh();
+  }
+
+  /** Joined rooms belonging to a space (or all joined rooms for `null` = Home). */
+  roomsForSpace(spaceId: string | null): RoomSummary[] {
+    const all = this.rooms();
+    if (!spaceId) {
+      return all;
+    }
+    const space = this.spaces().find((s) => s.id === spaceId);
+    if (!space) {
+      return all;
+    }
+    const children = new Set(space.childRoomIds);
+    return all.filter((r) => children.has(r.id));
+  }
+
+  /** Joined members of a room (empty if the room is unknown). */
+  membersOf(roomId: string | null): MemberSummary[] {
+    if (!roomId || !this.matrix.isInitialized) {
+      return [];
+    }
+    const room = this.matrix.instance.getRoom(roomId);
+    if (!room) {
+      return [];
+    }
+    return room
+      .getJoinedMembers()
+      .map((m) => this.toMember(m))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private refresh(): void {
+    if (!this.matrix.isInitialized) {
+      return;
+    }
+    const client = this.matrix.instance;
+    const all = client.getRooms();
+
+    this.spaces.set(
+      all
+        .filter((r) => r.isSpaceRoom())
+        .map((r) => this.toSpace(client, r))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+    this.rooms.set(
+      all
+        .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
+        .map((r) => this.toRoom(client, r))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+    this.revision.update((n) => n + 1);
+  }
+
+  private toSpace(client: MatrixClient, room: Room): SpaceSummary {
+    const name = room.name || room.roomId;
+    return {
+      id: room.roomId,
+      name,
+      initial: initialOf(name),
+      avatarUrl: room.getAvatarUrl(
+        client.baseUrl,
+        AVATAR_PX,
+        AVATAR_PX,
+        'crop',
+        false,
+      ),
+      childRoomIds: room.currentState
+        .getStateEvents('m.space.child')
+        .map((e) => e.getStateKey())
+        .filter((k): k is string => !!k),
+    };
+  }
+
+  private toRoom(client: MatrixClient, room: Room): RoomSummary {
+    const name = room.name || room.roomId;
+    const topicEvent = room.currentState.getStateEvents('m.room.topic', '');
+    return {
+      id: room.roomId,
+      name,
+      initial: initialOf(name),
+      avatarUrl: room.getAvatarUrl(
+        client.baseUrl,
+        AVATAR_PX,
+        AVATAR_PX,
+        'crop',
+        false,
+      ),
+      topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
+      memberCount: room.getJoinedMemberCount(),
+    };
+  }
+
+  private toMember(member: RoomMember): MemberSummary {
+    const client = this.matrix.instance;
+    const name = member.name || member.userId;
+    return {
+      userId: member.userId,
+      name,
+      initial: initialOf(name),
+      avatarUrl: member.getAvatarUrl(
+        client.baseUrl,
+        AVATAR_PX,
+        AVATAR_PX,
+        'crop',
+        false,
+        false,
+      ),
+    };
+  }
+}
+
+/** First visible character (sans leading `#`/`@`), uppercased, for fallback avatars. */
+function initialOf(name: string): string {
+  const stripped = name.replace(/^[#@!]+/, '').trim();
+  return (stripped[0] ?? '?').toUpperCase();
+}
