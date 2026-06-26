@@ -1,0 +1,35 @@
+<div class="toolbar" role="toolbar">
+  <button
+    type="button"
+    class="toolbar__btn"
+    title="Copy text"
+    aria-label="Copy text"
+    (click)="copyMessage.emit()"
+  >
+    <ion-icon name="copy-outline" aria-hidden="true" />
+  </button>
+
+  @if (canEdit()) {
+    <button
+      type="button"
+      class="toolbar__btn"
+      title="Edit"
+      aria-label="Edit message"
+      (click)="editMessage.emit()"
+    >
+      <ion-icon name="pencil-outline" aria-hidden="true" />
+    </button>
+  }
+
+  @if (canDelete()) {
+    <button
+      type="button"
+      class="toolbar__btn toolbar__btn--danger"
+      title="Delete"
+      aria-label="Delete message"
+      (click)="deleteMessage.emit()"
+    >
+      <ion-icon name="trash-outline" aria-hidden="true" />
+    </button>
+  }
+</div>

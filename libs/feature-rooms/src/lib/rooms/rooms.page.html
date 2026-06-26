@@ -46,6 +46,7 @@
           (send)="onSend($event)"
           (retry)="timeline.retry($event)"
           (editMessage)="onEdit($event)"
+          (deleteMessage)="onDelete($event)"
         />
         <app-member-list class="chat-members" [members]="members()" />
       } @else {

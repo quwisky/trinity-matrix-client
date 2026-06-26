@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { AvatarComponent } from '../avatar/avatar.component';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
+import { MessageToolbarComponent } from '../message-toolbar/message-toolbar.component';
 import type { MessageView } from '@trinity/core';
 
 interface MessageRow extends MessageView {
@@ -25,7 +26,12 @@ const AUTO_LOAD_THRESHOLD_PX = 150;
 @Component({
   selector: 'app-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, DatePipe, MessageComposerComponent],
+  imports: [
+    AvatarComponent,
+    DatePipe,
+    MessageComposerComponent,
+    MessageToolbarComponent,
+  ],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
 })
@@ -38,6 +44,7 @@ export class MessageListComponent {
   readonly send = output<string>();
   readonly retry = output<string>();
   readonly editMessage = output<{ id: string; body: string }>();
+  readonly deleteMessage = output<string>();
 
   readonly editingId = signal<string | null>(null);
   readonly editingDraft = computed(
@@ -150,6 +157,16 @@ export class MessageListComponent {
 
   startEdit(row: MessageRow): void {
     this.editingId.set(row.id);
+  }
+
+  onCopy(row: MessageRow): void {
+    void navigator.clipboard?.writeText(row.body);
+  }
+
+  onDelete(row: MessageRow): void {
+    if (window.confirm('Delete this message?')) {
+      this.deleteMessage.emit(row.id);
+    }
   }
 
   /** Composer submit — routes to an edit when one is in progress, else a new send. */

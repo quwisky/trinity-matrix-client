@@ -54,14 +54,15 @@
         </button>
       }
 
-      @if (row.isOwn && !row.status && !row.decryptionFailed) {
-        <button
-          class="msg__edit"
-          (click)="startEdit(row)"
-          aria-label="Edit message"
-        >
-          Edit
-        </button>
+      @if (!row.decryptionFailed && row.kind !== 'redacted') {
+        <app-message-toolbar
+          class="msg__toolbar"
+          [canEdit]="row.isOwn && !row.status && !row.decryptionFailed"
+          [canDelete]="row.isOwn && !row.status"
+          (copyMessage)="onCopy(row)"
+          (editMessage)="startEdit(row)"
+          (deleteMessage)="onDelete(row)"
+        />
       }
     </div>
   } @empty {

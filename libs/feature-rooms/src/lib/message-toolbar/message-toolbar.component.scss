@@ -1,0 +1,34 @@
+:host {
+  display: inline-flex;
+}
+
+.toolbar {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--trinity-divider);
+  border-radius: 8px;
+  background: var(--trinity-sidebar);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+}
+
+.toolbar__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  color: var(--trinity-text-muted);
+  font-size: 18px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--trinity-hover);
+    color: var(--trinity-text-bright);
+  }
+}
+
+.toolbar__btn--danger:hover {
+  color: #ed4245;
+}
