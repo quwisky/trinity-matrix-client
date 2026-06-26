@@ -4,7 +4,7 @@ import type { MemberSummary } from '@trinity/core';
 
 /** Discord member list (right column): joined members of the active room. */
 @Component({
-  selector: 'app-member-list',
+  selector: 'trn-member-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AvatarComponent],
   template: `
@@ -12,7 +12,7 @@ import type { MemberSummary } from '@trinity/core';
       <div class="category">Members — {{ members().length }}</div>
       @for (member of members(); track member.userId) {
         <div class="member" [title]="member.userId">
-          <app-avatar
+          <trn-avatar
             [url]="member.avatarUrl"
             [initial]="member.initial"
             [name]="member.name"

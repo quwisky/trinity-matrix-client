@@ -3,7 +3,7 @@
   "name": "core",
   "projectType": "library",
   "sourceRoot": "libs/core/src",
-  "prefix": "app",
+  "prefix": "trn",
   "tags": ["type:core", "scope:trinity"],
   "targets": {
     "test": {

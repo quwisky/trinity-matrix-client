@@ -25,7 +25,7 @@ import {
 import { AuthService } from '@trinity/core';
 
 @Component({
-  selector: 'app-login',
+  selector: 'trn-login',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'login.page.html',
   imports: [

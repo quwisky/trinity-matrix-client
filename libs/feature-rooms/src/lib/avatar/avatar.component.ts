@@ -9,7 +9,7 @@ import {
 
 /** Discord-style avatar: best-effort image with a colored initials fallback. */
 @Component({
-  selector: 'app-avatar',
+  selector: 'trn-avatar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (url() && !failed()) {

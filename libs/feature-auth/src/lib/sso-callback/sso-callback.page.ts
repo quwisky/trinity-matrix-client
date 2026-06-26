@@ -22,7 +22,7 @@ import { AuthService } from '@trinity/core';
  * then routes into the app. Native deep-link delivery of the token is a follow-up.
  */
 @Component({
-  selector: 'app-sso-callback',
+  selector: 'trn-sso-callback',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <ion-content class="ion-padding ion-text-center">

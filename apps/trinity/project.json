@@ -3,7 +3,7 @@
   "name": "trinity",
   "projectType": "application",
   "sourceRoot": "apps/trinity/src",
-  "prefix": "app",
+  "prefix": "trn",
   "tags": ["type:app", "scope:trinity"],
   "targets": {
     "build": {

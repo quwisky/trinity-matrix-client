@@ -37,7 +37,7 @@ import { MessageListComponent } from '../message-list/message-list.component';
  * Wired to live synced rooms via `RoomsService` + `TimelineService`.
  */
 @Component({
-  selector: 'app-rooms',
+  selector: 'trn-rooms',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],

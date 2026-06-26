@@ -13,7 +13,7 @@ import { copyOutline, pencilOutline, trashOutline } from 'ionicons/icons';
  * Copy is always available; edit and delete are gated to the user's own messages.
  */
 @Component({
-  selector: 'app-message-toolbar',
+  selector: 'trn-message-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IonIcon],
   templateUrl: './message-toolbar.component.html',

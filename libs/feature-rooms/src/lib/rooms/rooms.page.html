@@ -1,12 +1,12 @@
 <ion-split-pane contentId="main-content" when="md">
   <ion-menu contentId="main-content" type="overlay">
     <div class="shell-side">
-      <app-server-rail
+      <trn-server-rail
         [spaces]="rooms.spaces()"
         [activeSpaceId]="activeSpaceId()"
         (selectSpace)="onSelectSpace($event)"
       />
-      <app-channel-sidebar
+      <trn-channel-sidebar
         [spaceName]="activeSpaceName()"
         [rooms]="visibleRooms()"
         [activeRoomId]="activeRoomId()"
@@ -37,7 +37,7 @@
 
     <div class="chat-body">
       @if (activeRoom(); as room) {
-        <app-message-list
+        <trn-message-list
           [messages]="timeline.messages()"
           [loadingOlder]="timeline.loadingOlder()"
           [canLoadOlder]="timeline.canLoadOlder()"
@@ -48,7 +48,7 @@
           (editMessage)="onEdit($event)"
           (deleteMessage)="onDelete($event)"
         />
-        <app-member-list class="chat-members" [members]="members()" />
+        <trn-member-list class="chat-members" [members]="members()" />
       } @else {
         <main class="chat-empty">
           <div class="hero">

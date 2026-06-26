@@ -24,7 +24,7 @@ const AUTO_LOAD_THRESHOLD_PX = 150;
 
 /** Discord-style message list for the active room (read-only timeline). */
 @Component({
-  selector: 'app-message-list',
+  selector: 'trn-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarComponent,

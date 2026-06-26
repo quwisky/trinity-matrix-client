@@ -9,7 +9,7 @@ import type { RoomSummary } from '@trinity/core';
 
 /** Discord channel sidebar: space header, room list, and the user panel. */
 @Component({
-  selector: 'app-channel-sidebar',
+  selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AvatarComponent],
   template: `
@@ -42,7 +42,7 @@ import type { RoomSummary } from '@trinity/core';
       </div>
 
       <footer class="userbar">
-        <app-avatar
+        <trn-avatar
           [url]="userAvatarUrl()"
           [initial]="userInitial()"
           [name]="userName()"

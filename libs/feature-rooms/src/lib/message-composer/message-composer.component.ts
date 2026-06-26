@@ -16,7 +16,7 @@ const MAX_HEIGHT_PX = 200;
  * it is prefilled with the message draft and Esc cancels.
  */
 @Component({
-  selector: 'app-message-composer',
+  selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',

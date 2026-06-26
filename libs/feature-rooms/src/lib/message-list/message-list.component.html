@@ -12,7 +12,7 @@
       [class.msg--sendfailed]="row.status === 'failed'"
     >
       @if (row.showHeader) {
-        <app-avatar
+        <trn-avatar
           class="msg__avatar"
           [url]="row.senderAvatarUrl"
           [initial]="row.senderInitial"
@@ -55,7 +55,7 @@
       }
 
       @if (!row.decryptionFailed && row.kind !== 'redacted') {
-        <app-message-toolbar
+        <trn-message-toolbar
           class="msg__toolbar"
           [canEdit]="row.isOwn && !row.status && !row.decryptionFailed"
           [canDelete]="row.isOwn && !row.status"
@@ -70,7 +70,7 @@
   }
 </div>
 
-<app-message-composer
+<trn-message-composer
   [roomName]="roomName()"
   [editing]="editingId() !== null"
   [draft]="editingDraft()"

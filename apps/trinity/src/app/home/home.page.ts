@@ -18,7 +18,7 @@ import { finalize } from 'rxjs';
 import { CryptoSpikeService, CryptoSpikeResult } from '@trinity/core';
 
 @Component({
-  selector: 'app-home',
+  selector: 'trn-home',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'home.page.html',
   styleUrls: ['home.page.scss'],

@@ -3,7 +3,7 @@
   "name": "feature-rooms",
   "projectType": "library",
   "sourceRoot": "libs/feature-rooms/src",
-  "prefix": "app",
+  "prefix": "trn",
   "tags": ["type:feature", "scope:trinity"],
   "targets": {
     "test": {

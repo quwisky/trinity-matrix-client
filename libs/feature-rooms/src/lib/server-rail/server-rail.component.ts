@@ -9,7 +9,7 @@ import type { SpaceSummary } from '@trinity/core';
 
 /** Discord server rail: Home + one pill per Matrix Space. */
 @Component({
-  selector: 'app-server-rail',
+  selector: 'trn-server-rail',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AvatarComponent],
   template: `
@@ -38,7 +38,7 @@ import type { SpaceSummary } from '@trinity/core';
             [attr.aria-label]="space.name"
             [title]="space.name"
           >
-            <app-avatar
+            <trn-avatar
               [url]="space.avatarUrl"
               [initial]="space.initial"
               [name]="space.name"
