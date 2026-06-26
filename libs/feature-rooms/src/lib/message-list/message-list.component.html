@@ -32,20 +32,34 @@
           } @else {
             <p class="msg__text">{{ row.body }}</p>
           }
+          @if (row.reactions.length) {
+            <trn-message-reactions
+              [reactions]="row.reactions"
+              (toggleReaction)="react.emit({ id: row.id, key: $event })"
+            />
+          }
         </div>
       } @else {
         <span class="msg__gutter">{{ row.timestamp | date: 'shortTime' }}</span>
-        @if (row.html) {
-          <div
-            class="msg__text msg__text--cont msg__text--html"
-            [innerHTML]="row.html"
-          ></div>
-        } @else {
-          <p class="msg__text msg__text--cont">{{ row.body }}</p>
-        }
-        @if (row.edited) {
-          <span class="msg__edited">(edited)</span>
-        }
+        <div class="msg__body">
+          @if (row.html) {
+            <div
+              class="msg__text msg__text--cont msg__text--html"
+              [innerHTML]="row.html"
+            ></div>
+          } @else {
+            <p class="msg__text msg__text--cont">{{ row.body }}</p>
+          }
+          @if (row.edited) {
+            <span class="msg__edited">(edited)</span>
+          }
+          @if (row.reactions.length) {
+            <trn-message-reactions
+              [reactions]="row.reactions"
+              (toggleReaction)="react.emit({ id: row.id, key: $event })"
+            />
+          }
+        </div>
       }
 
       @if (row.status === 'failed') {
@@ -59,6 +73,7 @@
           class="msg__toolbar"
           [canEdit]="row.isOwn && !row.status && !row.decryptionFailed"
           [canDelete]="row.isOwn && !row.status"
+          (react)="react.emit({ id: row.id, key: $event })"
           (copyMessage)="onCopy(row)"
           (editMessage)="startEdit(row)"
           (deleteMessage)="onDelete(row)"

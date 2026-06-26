@@ -1,4 +1,30 @@
+@if (pickerOpen()) {
+  <div class="toolbar__picker">
+    @for (emoji of quickEmojis; track emoji) {
+      <button
+        type="button"
+        class="toolbar__emoji"
+        [title]="emoji"
+        (click)="pick(emoji)"
+      >
+        {{ emoji }}
+      </button>
+    }
+  </div>
+}
+
 <div class="toolbar" role="toolbar">
+  <button
+    type="button"
+    class="toolbar__btn"
+    title="Add reaction"
+    aria-label="Add reaction"
+    [attr.aria-expanded]="pickerOpen()"
+    (click)="pickerOpen.set(!pickerOpen())"
+  >
+    <ion-icon name="happy-outline" aria-hidden="true" />
+  </button>
+
   <button
     type="button"
     class="toolbar__btn"

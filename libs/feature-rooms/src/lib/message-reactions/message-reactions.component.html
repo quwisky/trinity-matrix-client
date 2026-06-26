@@ -1,0 +1,15 @@
+<div class="reactions">
+  @for (r of reactions(); track r.key) {
+    <button
+      type="button"
+      class="reaction"
+      [class.reaction--mine]="r.reacted"
+      [attr.aria-pressed]="r.reacted"
+      [title]="r.key"
+      (click)="toggleReaction.emit(r.key)"
+    >
+      <span class="reaction__key">{{ r.key }}</span>
+      <span class="reaction__count">{{ r.count }}</span>
+    </button>
+  }
+</div>

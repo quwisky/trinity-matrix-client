@@ -1,0 +1,38 @@
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--trinity-divider);
+  border-radius: 10px;
+  background: var(--trinity-sidebar);
+  color: var(--trinity-text);
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--trinity-text-muted);
+  }
+}
+
+.reaction--mine {
+  border-color: var(--trinity-accent);
+  background: var(--trinity-active);
+}
+
+.reaction__count {
+  color: var(--trinity-text-muted);
+  font-size: 12px;
+}
+
+.reaction--mine .reaction__count {
+  color: var(--trinity-text-bright);
+}

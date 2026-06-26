@@ -7,12 +7,12 @@ describe('MessageToolbarComponent', () => {
     TestBed.configureTestingModule({ imports: [MessageToolbarComponent] }),
   );
 
-  it('shows only the copy action by default', () => {
+  it('shows only react + copy by default', () => {
     const fixture = TestBed.createComponent(MessageToolbarComponent);
     fixture.detectChanges();
 
     const buttons = fixture.nativeElement.querySelectorAll('.toolbar__btn');
-    expect(buttons.length).toBe(1);
+    expect(buttons.length).toBe(2); // react + copy, no edit/delete
   });
 
   it('reveals edit and delete when permitted and emits on click', () => {
@@ -30,11 +30,34 @@ describe('MessageToolbarComponent', () => {
     cmp.deleteMessage.subscribe(() => (deleted = true));
 
     const buttons = fixture.nativeElement.querySelectorAll('.toolbar__btn');
-    expect(buttons.length).toBe(3);
+    expect(buttons.length).toBe(4); // react + copy + edit + delete
     buttons.forEach((b: HTMLButtonElement) => b.click());
 
     expect(copied).toBe(true);
     expect(edited).toBe(true);
     expect(deleted).toBe(true);
+  });
+
+  it('opens the quick-reaction picker and emits the chosen emoji', () => {
+    const fixture = TestBed.createComponent(MessageToolbarComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    expect(fixture.nativeElement.querySelector('.toolbar__picker')).toBeNull();
+
+    let reacted = '';
+    cmp.react.subscribe((k) => (reacted = k));
+    cmp.pickerOpen.set(true);
+    fixture.detectChanges();
+
+    const emojis =
+      fixture.nativeElement.querySelectorAll<HTMLButtonElement>(
+        '.toolbar__emoji',
+      );
+    expect(emojis.length).toBe(cmp.quickEmojis.length);
+    emojis[0].click();
+
+    expect(reacted).toBe(cmp.quickEmojis[0]);
+    expect(cmp.pickerOpen()).toBe(false); // closes after picking
   });
 });

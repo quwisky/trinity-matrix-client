@@ -54,6 +54,7 @@
           (retry)="timeline.retry($event)"
           (editMessage)="onEdit($event)"
           (deleteMessage)="onDelete($event)"
+          (react)="onReact($event)"
         />
         <trn-member-list class="chat-members" [members]="members()" />
       } @else {

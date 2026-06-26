@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { AvatarComponent } from '../avatar/avatar.component';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
+import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MessageToolbarComponent } from '../message-toolbar/message-toolbar.component';
 import type { MessageView } from '@trinity/core';
 
@@ -30,6 +31,7 @@ const AUTO_LOAD_THRESHOLD_PX = 150;
     AvatarComponent,
     DatePipe,
     MessageComposerComponent,
+    MessageReactionsComponent,
     MessageToolbarComponent,
   ],
   templateUrl: './message-list.component.html',
@@ -45,6 +47,7 @@ export class MessageListComponent {
   readonly retry = output<string>();
   readonly editMessage = output<{ id: string; body: string }>();
   readonly deleteMessage = output<string>();
+  readonly react = output<{ id: string; key: string }>();
 
   readonly editingId = signal<string | null>(null);
   readonly editingDraft = computed(

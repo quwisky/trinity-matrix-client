@@ -172,6 +172,13 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
+  onReact(reaction: { id: string; key: string }): void {
+    this.timeline
+      .toggleReaction(reaction.id, reaction.key)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
   logout(): void {
     this.auth
       .logout()
