@@ -10,6 +10,9 @@ function fakeRoom(opts: {
   space?: boolean;
   membership?: string;
   children?: string[];
+  unread?: number;
+  highlight?: number;
+  activity?: number;
 }) {
   return {
     roomId: opts.roomId,
@@ -19,6 +22,9 @@ function fakeRoom(opts: {
     getAvatarUrl: () => null,
     getJoinedMemberCount: () => 0,
     getJoinedMembers: () => [],
+    getUnreadNotificationCount: (type?: string) =>
+      type === 'highlight' ? (opts.highlight ?? 0) : (opts.unread ?? 0),
+    getLastActiveTimestamp: () => opts.activity ?? 0,
     currentState: {
       getStateEvents: (type: string, stateKey?: string) => {
         if (type === 'm.space.child' && stateKey === undefined) {
@@ -86,6 +92,33 @@ describe('RoomsService', () => {
       '!b:hs',
     ]);
     expect(svc.roomsForSpace('!s:hs').map((r) => r.id)).toEqual(['!a:hs']);
+  });
+
+  it('orders rooms by recent activity and maps unread counts', () => {
+    const svc = setup([
+      fakeRoom({ roomId: '!old:hs', name: 'old', activity: 100 }),
+      fakeRoom({
+        roomId: '!new:hs',
+        name: 'new',
+        activity: 300,
+        unread: 3,
+        highlight: 1,
+      }),
+      fakeRoom({ roomId: '!mid:hs', name: 'mid', activity: 200 }),
+    ]);
+
+    expect(svc.rooms().map((r) => r.id)).toEqual([
+      '!new:hs',
+      '!mid:hs',
+      '!old:hs',
+    ]);
+    const [newest, mid] = svc.rooms();
+    expect(newest).toMatchObject({
+      unreadCount: 3,
+      highlightCount: 1,
+      hasUnread: true,
+    });
+    expect(mid.hasUnread).toBe(false);
   });
 
   it('derives an uppercase initial without the leading sigil', () => {

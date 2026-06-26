@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import {
   ClientEvent,
+  NotificationCountType,
   RoomEvent,
   type MatrixClient,
   type Room,
@@ -16,6 +17,14 @@ export interface RoomSummary {
   avatarUrl: string | null;
   topic: string;
   memberCount: number;
+  /** Total unread notifications (drives the unread highlight). */
+  unreadCount: number;
+  /** Unread mentions/highlights (drives the red badge). */
+  highlightCount: number;
+  /** Convenience flag: there are unread notifications. */
+  hasUnread: boolean;
+  /** Last-activity timestamp (ms), used to order the list by recency. */
+  activityTs: number;
 }
 
 /** A Matrix Space shown as a pill in the server rail. */
@@ -71,6 +80,9 @@ export class RoomsService {
     client.on(ClientEvent.Room, refresh);
     client.on(RoomEvent.Name, refresh);
     client.on(RoomEvent.MyMembership, refresh);
+    // Keep unread badges live: new-message increments arrive via Sync above;
+    // Receipt fires when a room is read and its unread count clears.
+    client.on(RoomEvent.Receipt, refresh);
     this.refresh();
   }
 
@@ -120,7 +132,10 @@ export class RoomsService {
       all
         .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
         .map((r) => this.toRoom(client, r))
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        // Most recently active first; fall back to name for quiet rooms.
+        .sort(
+          (a, b) => b.activityTs - a.activityTs || a.name.localeCompare(b.name),
+        ),
     );
     this._revision.update((n) => n + 1);
   }
@@ -148,6 +163,12 @@ export class RoomsService {
   private toRoom(client: MatrixClient, room: Room): RoomSummary {
     const name = room.name || room.roomId;
     const topicEvent = room.currentState.getStateEvents('m.room.topic', '');
+    const unreadCount = room.getUnreadNotificationCount(
+      NotificationCountType.Total,
+    );
+    const highlightCount = room.getUnreadNotificationCount(
+      NotificationCountType.Highlight,
+    );
     return {
       id: room.roomId,
       name,
@@ -161,6 +182,10 @@ export class RoomsService {
       ),
       topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
       memberCount: room.getJoinedMemberCount(),
+      unreadCount,
+      highlightCount,
+      hasUnread: unreadCount > 0,
+      activityTs: room.getLastActiveTimestamp(),
     };
   }
 
