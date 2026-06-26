@@ -22,7 +22,8 @@ are unchanged. `pnpm exec nx graph` opens the dependency graph.
 ## Prerequisites
 
 - **Node 22+** (matrix-js-sdk requirement; repo developed on Node 25) and **pnpm**
-  (`corepack enable` installs the version pinned in `package.json`).
+  (`corepack enable` installs the version pinned in `package.json`). This project is
+  **pnpm-only** — a `preinstall` guard aborts `npm install` / `yarn install`.
 - **iOS builds:** macOS with **Xcode** installed and selected
   (`sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`). Capacitor 8
   uses Swift Package Manager — CocoaPods not required.
@@ -73,13 +74,13 @@ faster `pnpm exec cap copy` when only web assets changed) to push it into the sh
 Run a target on a project with `pnpm exec nx <target> <project>`; the top-level
 `pnpm` scripts wrap the common ones for the `trinity` app:
 
-| Command       | Underlying         | Purpose                       |
-| ------------- | ------------------ | ----------------------------- |
-| `pnpm start`  | `nx serve trinity` | dev server, hot reload        |
-| `pnpm build`  | `nx build trinity` | production build → `www/`     |
-| `pnpm test`   | `nx test trinity`  | Vitest unit tests (run once)  |
-| `pnpm lint`   | `nx lint trinity`  | ESLint for the app            |
-| `pnpm format` | `nx format:write`  | Prettier-format the workspace |
+| Command       | Underlying              | Purpose                                  |
+| ------------- | ----------------------- | ---------------------------------------- |
+| `pnpm start`  | `nx serve trinity`      | dev server, hot reload                   |
+| `pnpm build`  | `nx build trinity`      | production build → `www/`                |
+| `pnpm test`   | `nx run-many -t test`   | Vitest unit tests, all projects (once)   |
+| `pnpm lint`   | `nx run-many -t lint`   | ESLint + module boundaries, all projects |
+| `pnpm format` | `nx format:write --all` | Prettier-format the workspace            |
 
 Other useful Nx commands:
 
@@ -99,7 +100,7 @@ Nx caches `build`/`test`/`lint`; a second run on unchanged inputs is instant.
 `vite.config.ts` with `src/test-setup.ts`:
 
 ```bash
-pnpm test                                 # nx test trinity (once)
+pnpm test                                 # nx run-many -t test (once)
 pnpm exec nx test trinity --configuration=watch
 ```
 

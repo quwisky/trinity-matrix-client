@@ -34,6 +34,10 @@ log.txt
 npm-debug.log
 yarn-error.log
 
+# This project is pnpm-only — never commit npm/yarn lockfiles
+package-lock.json
+yarn.lock
+
 # IDEs and editors
 .idea/
 .project

@@ -4,14 +4,15 @@
   "author": "Ionic Framework",
   "homepage": "https://ionicframework.com/",
   "scripts": {
+    "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project — run: corepack enable && pnpm install'); process.exit(1); }\"",
     "prepare": "husky",
-    "format": "nx format:write",
-    "format:check": "nx format:check",
+    "format": "nx format:write --all",
+    "format:check": "nx format:check --all",
     "start": "nx serve trinity",
     "build": "nx build trinity",
     "watch": "nx build trinity --watch --configuration development",
-    "test": "nx test trinity",
-    "lint": "nx lint trinity",
+    "test": "nx run-many -t test",
+    "lint": "nx run-many -t lint",
     "stylelint": "stylelint \"{apps,libs}/**/*.scss\"",
     "spike:chromium": "nx build trinity && node e2e/crypto-spike.mjs chromium",
     "spike:webkit": "nx build trinity && node e2e/crypto-spike.mjs webkit",
@@ -19,6 +20,10 @@
   },
   "private": true,
   "packageManager": "pnpm@10.26.2",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
   "pnpm": {
     "onlyBuiltDependencies": [
       "@parcel/watcher",
