@@ -48,10 +48,15 @@ export class RoomsService {
   private readonly matrix = inject(MatrixClientService);
   private connected = false;
 
-  readonly spaces = signal<SpaceSummary[]>([]);
-  readonly rooms = signal<RoomSummary[]>([]);
+  private readonly _spaces = signal<SpaceSummary[]>([]);
+  readonly spaces = this._spaces.asReadonly();
+
+  private readonly _rooms = signal<RoomSummary[]>([]);
+  readonly rooms = this._rooms.asReadonly();
+
   /** Bumped on every refresh so member queries can stay reactive. */
-  readonly revision = signal(0);
+  private readonly _revision = signal(0);
+  readonly revision = this._revision.asReadonly();
 
   /** Attach sync listeners and do the first read. Idempotent; call once the
    * client is live (e.g. the shell's `ngOnInit`). */
@@ -105,19 +110,19 @@ export class RoomsService {
     const client = this.matrix.instance;
     const all = client.getRooms();
 
-    this.spaces.set(
+    this._spaces.set(
       all
         .filter((r) => r.isSpaceRoom())
         .map((r) => this.toSpace(client, r))
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
-    this.rooms.set(
+    this._rooms.set(
       all
         .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
         .map((r) => this.toRoom(client, r))
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
-    this.revision.update((n) => n + 1);
+    this._revision.update((n) => n + 1);
   }
 
   private toSpace(client: MatrixClient, room: Room): SpaceSummary {

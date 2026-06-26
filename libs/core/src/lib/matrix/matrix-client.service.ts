@@ -26,7 +26,8 @@ export class MatrixClientService {
   private client: MatrixClient | null = null;
 
   /** Coarse sync state for the UI (null until the first sync transition). */
-  readonly syncState = signal<SyncState | null>(null);
+  private readonly _syncState = signal<SyncState | null>(null);
+  readonly syncState = this._syncState.asReadonly();
 
   get instance(): MatrixClient {
     if (!this.client) {
@@ -58,7 +59,9 @@ export class MatrixClientService {
     }).pipe(
       switchMap(() => from(this.client!.initRustCrypto())),
       tap(() =>
-        this.client!.on(ClientEvent.Sync, (state) => this.syncState.set(state)),
+        this.client!.on(ClientEvent.Sync, (state) =>
+          this._syncState.set(state),
+        ),
       ),
       switchMap(() => from(this.client!.startClient({ initialSyncLimit: 20 }))),
       map(() => void 0),
@@ -81,7 +84,7 @@ export class MatrixClientService {
     return defer(() => {
       this.client?.stopClient();
       this.client = null;
-      this.syncState.set(null);
+      this._syncState.set(null);
       return of(void 0);
     });
   }
