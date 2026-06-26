@@ -27,6 +27,7 @@ export class MessageComposerComponent {
   readonly draft = input('');
   readonly submitText = output<string>();
   readonly cancelEdit = output<void>();
+  readonly editLast = output<void>();
 
   readonly text = signal('');
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
@@ -39,7 +40,9 @@ export class MessageComposerComponent {
       if (editing && !this.wasEditing) {
         this.text.set(this.draft());
         queueMicrotask(() => {
-          this.textarea()?.nativeElement.focus();
+          const el = this.textarea()?.nativeElement;
+          el?.focus();
+          el?.setSelectionRange(el.value.length, el.value.length);
           this.autoGrow();
         });
       } else if (!editing && this.wasEditing) {
@@ -77,6 +80,16 @@ export class MessageComposerComponent {
     if (this.editing()) {
       this.cancelEdit.emit();
     }
+  }
+
+  onArrowUp(event: Event): void {
+    // Empty composer + Up arrow → edit the last message (Discord-style).
+    // Otherwise let the key move the cursor normally.
+    if (this.editing() || this.text().length > 0) {
+      return;
+    }
+    event.preventDefault();
+    this.editLast.emit();
   }
 
   private autoGrow(): void {

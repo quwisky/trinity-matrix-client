@@ -63,6 +63,36 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('new text');
   });
 
+  it('emits editLast on Up arrow only when empty and not editing', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let count = 0;
+    cmp.editLast.subscribe(() => count++);
+
+    cmp.onArrowUp(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+    expect(count).toBe(1); // empty → edit last
+
+    cmp.text.set('typing');
+    cmp.onArrowUp(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+    expect(count).toBe(1); // has text → cursor movement, no emit
+  });
+
+  it('does not emit editLast while already editing', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('editing', true);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let count = 0;
+    cmp.editLast.subscribe(() => count++);
+    cmp.text.set('');
+    cmp.onArrowUp(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+
+    expect(count).toBe(0);
+  });
+
   it('emits cancel on Escape in edit mode', () => {
     const fixture = TestBed.createComponent(MessageComposerComponent);
     fixture.componentRef.setInput('editing', true);

@@ -159,6 +159,23 @@ export class MessageListComponent {
     this.editingId.set(row.id);
   }
 
+  /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
+  editLastOwn(): void {
+    const msgs = this.messages();
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (
+        m.isOwn &&
+        !m.status &&
+        !m.decryptionFailed &&
+        m.kind !== 'redacted'
+      ) {
+        this.editingId.set(m.id);
+        return;
+      }
+    }
+  }
+
   onCopy(row: MessageRow): void {
     void navigator.clipboard?.writeText(row.body);
   }

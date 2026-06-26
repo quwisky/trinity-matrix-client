@@ -67,6 +67,25 @@ describe('MessageListComponent', () => {
     expect(el.querySelector('strong')?.textContent).toBe('bold');
   });
 
+  it('editLastOwn selects the most recent editable own message', () => {
+    const fixture = TestBed.createComponent(MessageListComponent);
+    fixture.componentRef.setInput('messages', [
+      { ...msg('$1', '@me:hs', 'Me', 1000), isOwn: true },
+      { ...msg('$2', '@b:hs', 'Bob', 2000) }, // not own → skip
+      { ...msg('$3', '@me:hs', 'Me', 3000), isOwn: true }, // latest editable own
+      {
+        ...msg('$4', '@me:hs', 'Me', 4000),
+        isOwn: true,
+        kind: 'redacted' as const,
+      },
+    ]);
+    fixture.detectChanges();
+
+    const cmp = fixture.componentInstance;
+    cmp.editLastOwn();
+    expect(cmp.editingId()).toBe('$3');
+  });
+
   it('emits loadOlder when scrolled near the top (and history remains)', () => {
     const fixture = TestBed.createComponent(MessageListComponent);
     fixture.componentRef.setInput('canLoadOlder', true);
