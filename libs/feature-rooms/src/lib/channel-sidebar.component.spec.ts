@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ChannelSidebarComponent } from './channel-sidebar.component';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 describe('ChannelSidebarComponent', () => {
   beforeEach(() =>

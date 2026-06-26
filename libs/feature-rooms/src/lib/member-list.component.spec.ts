@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MemberListComponent } from './member-list.component';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 describe('MemberListComponent', () => {
   beforeEach(() =>

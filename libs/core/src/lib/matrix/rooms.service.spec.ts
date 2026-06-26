@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { RoomsService } from './rooms.service';
 import { MatrixClientService } from './matrix-client.service';
+import { describe, expect, it } from 'vitest';
 
 // Minimal fakes shaped like the bits of matrix-js-sdk that RoomsService reads.
 function fakeRoom(opts: {
