@@ -16,6 +16,8 @@ function fakeEvent(o: {
   redacted?: boolean;
   decryptFail?: boolean;
   status?: string;
+  edited?: boolean;
+  editRelation?: boolean;
 }) {
   return {
     getId: () => o.id,
@@ -31,6 +33,10 @@ function fakeEvent(o: {
     }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
+    isRelation: (relType?: string) =>
+      o.editRelation === true &&
+      (relType === undefined || relType === 'm.replace'),
+    replacingEvent: () => (o.edited ? {} : null),
     status: o.status ?? null,
   };
 }
@@ -63,6 +69,10 @@ function setup(events: ReturnType<typeof fakeEvent>[], sent: unknown[][] = []) {
     },
     sendHtmlMessage: (_rid: string, body: string, html: string) => {
       sent.push(['html', body, html]);
+      return Promise.resolve({});
+    },
+    sendMessage: (_rid: string, content: unknown) => {
+      sent.push(['message', content]);
       return Promise.resolve({});
     },
   };
@@ -130,6 +140,42 @@ describe('TimelineService', () => {
     expect(sent[1][0]).toBe('html');
     expect(sent[1][1]).toBe('**bold**');
     expect(sent[1][2]).toContain('<strong>bold</strong>');
+  });
+
+  it('edits a message as an m.replace with new content', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(svc.edit('$orig', 'fixed **text**'));
+
+    expect(sent[0][0]).toBe('message');
+    const content = sent[0][1] as Record<string, unknown>;
+    expect(content['m.relates_to']).toEqual({
+      rel_type: 'm.replace',
+      event_id: '$orig',
+    });
+    expect(content['body']).toBe('* fixed **text**');
+    const newContent = content['m.new_content'] as Record<string, unknown>;
+    expect(newContent['body']).toBe('fixed **text**');
+    expect(newContent['formatted_body']).toContain('<strong>text</strong>');
+  });
+
+  it('marks edited messages and hides the edit events', () => {
+    const svc = setup([
+      fakeEvent({ id: '$1', sender: '@a:hs', body: 'orig', edited: true }),
+      fakeEvent({
+        id: '$e',
+        sender: '@a:hs',
+        body: '* new',
+        editRelation: true,
+      }),
+      fakeEvent({ id: '$2', sender: '@a:hs', body: 'plain' }),
+    ]);
+
+    const msgs = svc.messages();
+    expect(msgs.map((m) => m.id)).toEqual(['$1', '$2']); // edit event hidden
+    expect(msgs[0].edited).toBe(true);
+    expect(msgs[1].edited).toBe(false);
   });
 
   it('maps local-echo status', () => {

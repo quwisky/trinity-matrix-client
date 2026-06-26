@@ -6,6 +6,7 @@ import {
   EventType,
   MatrixEventEvent,
   MsgType,
+  RelationType,
   RoomEvent,
   type MatrixClient,
   type MatrixEvent,
@@ -36,6 +37,8 @@ export interface MessageView {
   timestamp: number;
   isOwn: boolean;
   decryptionFailed: boolean;
+  /** True once the message has been edited (m.replace). */
+  edited: boolean;
   /** Local-echo send state: 'sending' / 'failed', or null once confirmed. */
   status: 'sending' | 'failed' | null;
   kind: MessageKind;
@@ -146,15 +149,48 @@ export class TimelineService {
     }
     const client = this.matrix.instance;
     return defer(() => {
-      const rendered = marked.parse(text, { async: false }) as string;
-      const html =
-        this.sanitizer.sanitize(SecurityContext.HTML, rendered) ?? '';
-      const formatted = htmlToText(html).trim() !== text;
+      const { formatted, html } = this.renderMarkdown(text);
       return from(
         formatted
           ? client.sendHtmlMessage(room.roomId, text, html)
           : client.sendTextMessage(room.roomId, text),
       );
+    }).pipe(map(() => void 0));
+  }
+
+  /** Edit a previously-sent message via an `m.replace` relation. */
+  edit(messageId: string, newBody: string): Observable<void> {
+    const room = this.room;
+    const text = newBody.trim();
+    if (!room || !text || !this.matrix.isInitialized) {
+      return of(void 0);
+    }
+    const client = this.matrix.instance;
+    return defer(() => {
+      const { formatted, html } = this.renderMarkdown(text);
+      const newContent = formatted
+        ? {
+            msgtype: MsgType.Text,
+            body: text,
+            format: 'org.matrix.custom.html',
+            formatted_body: html,
+          }
+        : { msgtype: MsgType.Text, body: text };
+      const content = {
+        msgtype: MsgType.Text,
+        body: `* ${text}`,
+        ...(formatted
+          ? { format: 'org.matrix.custom.html', formatted_body: `* ${html}` }
+          : {}),
+        'm.new_content': newContent,
+        'm.relates_to': {
+          rel_type: RelationType.Replace,
+          event_id: messageId,
+        },
+      };
+      // `content` is a valid m.replace payload; the SDK's content union doesn't
+      // model it, so assert past it.
+      return from(client.sendMessage(room.roomId, content as never));
     }).pipe(map(() => void 0));
   }
 
@@ -183,7 +219,12 @@ export class TimelineService {
     this._messages.set(
       liveTimeline
         .getEvents()
-        .filter((e) => e.getType() === EventType.RoomMessage)
+        // Edit events (m.replace) are aggregated onto their target, so hide them.
+        .filter(
+          (e) =>
+            e.getType() === EventType.RoomMessage &&
+            !e.isRelation(RelationType.Replace),
+        )
         .map((e) => this.toMessage(client, room, e)),
     );
     this._canLoadOlder.set(
@@ -220,9 +261,16 @@ export class TimelineService {
       timestamp: event.getTs(),
       isOwn: senderId === client.getUserId(),
       decryptionFailed,
+      edited: event.replacingEvent() !== null,
       status: mapStatus(event.status),
       kind,
     };
+  }
+
+  private renderMarkdown(text: string): { formatted: boolean; html: string } {
+    const rendered = marked.parse(text, { async: false }) as string;
+    const html = this.sanitizer.sanitize(SecurityContext.HTML, rendered) ?? '';
+    return { formatted: htmlToText(html).trim() !== text, html };
   }
 }
 
