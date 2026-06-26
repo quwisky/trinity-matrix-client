@@ -14,7 +14,11 @@ roadmap see [../PLAN.md](../PLAN.md); for dependency specifics see [../STACK.md]
    (project `tags` in each `project.json`).
 3. **Reactive state is exposed as Angular signals.** SDK `EventEmitter` streams are
    bridged into signals inside the core services, so components stay zone-friendly
-   and change detection is cheap.
+   and change detection is cheap. Services expose state as read-only signals
+   (`asReadonly()`); components are `OnPush`.
+4. **Async operations are RxJS Observables.** Service methods that wrap SDK/Capacitor
+   promises return cold Observables (`defer`/`from` + operators); components subscribe
+   with `takeUntilDestroyed`. Signals are for state, Observables for one-shot actions.
 
 ```
 feature-* libs (pages)     shared libs (ui, pipes)
@@ -28,13 +32,14 @@ feature-* libs (pages)     shared libs (ui, pipes)
 
 ## @trinity/core — matrix
 
-| File                                                                             | Responsibility                                                                                                                             |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| [matrix-client.service.ts](../libs/core/src/lib/matrix/matrix-client.service.ts) | Owns the single `MatrixClient`. Lifecycle: `createClient → preload WASM → initRustCrypto → startClient`. Exposes `syncState` signal.       |
-| [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts)                   | Homeserver discovery (`.well-known`), password login, SSO URL + token exchange, logout. Persists session and starts the client on success. |
-| [crypto-wasm-loader.ts](../libs/core/src/lib/matrix/crypto-wasm-loader.ts)       | Preloads the Rust crypto WASM from a served asset path (see [WASM loading](#e2ee-wasm-loading)). Memoized.                                 |
-| [crypto-spike.service.ts](../libs/core/src/lib/matrix/crypto-spike.service.ts)   | Dev smoke test that proves crypto initializes in the current runtime.                                                                      |
-| [session.model.ts](../libs/core/src/lib/matrix/session.model.ts)                 | `MatrixSession` shape (baseUrl, userId, deviceId, accessToken).                                                                            |
+| File                                                                             | Responsibility                                                                                                                                                                 |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [matrix-client.service.ts](../libs/core/src/lib/matrix/matrix-client.service.ts) | Owns the single `MatrixClient`. Lifecycle: `createClient → preload WASM → initRustCrypto → startClient`. Exposes `syncState` signal.                                           |
+| [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts)                   | Homeserver discovery (`.well-known`), password login, SSO URL + token exchange, logout. Persists session and starts the client on success.                                     |
+| [rooms.service.ts](../libs/core/src/lib/matrix/rooms.service.ts)                 | Read model over the synced client: Spaces / joined rooms / members as plain view models, exposed as read-only signals (recomputed on sync events). Powers the room-list shell. |
+| [crypto-wasm-loader.ts](../libs/core/src/lib/matrix/crypto-wasm-loader.ts)       | Preloads the Rust crypto WASM from a served asset path (see [WASM loading](#e2ee-wasm-loading)). Memoized.                                                                     |
+| [crypto-spike.service.ts](../libs/core/src/lib/matrix/crypto-spike.service.ts)   | Dev smoke test that proves crypto initializes in the current runtime.                                                                                                          |
+| [session.model.ts](../libs/core/src/lib/matrix/session.model.ts)                 | `MatrixSession` shape (baseUrl, userId, deviceId, accessToken).                                                                                                                |
 
 ## @trinity/core — storage & guards
 
@@ -49,12 +54,12 @@ feature-* libs (pages)     shared libs (ui, pipes)
 
 Defined in [app.routes.ts](../apps/trinity/src/app/app.routes.ts), all lazy-loaded standalone:
 
-| Path            | Page                            | Guard       |
-| --------------- | ------------------------------- | ----------- |
-| `/login`        | login                           | —           |
-| `/sso-callback` | SSO token exchange              | —           |
-| `/rooms`        | authenticated landing (default) | `authGuard` |
-| `/spike`        | dev E2EE crypto spike           | —           |
+| Path            | Page                               | Guard       |
+| --------------- | ---------------------------------- | ----------- |
+| `/login`        | login                              | —           |
+| `/sso-callback` | SSO token exchange                 | —           |
+| `/rooms`        | Discord-style room shell (default) | `authGuard` |
+| `/spike`        | dev E2EE crypto spike              | —           |
 
 ## Authentication flow
 

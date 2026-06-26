@@ -5,7 +5,8 @@ running from a single codebase on **Web (PWA), iOS, Android, and Desktop (Electr
 End-to-end encryption is a first-class, in-MVP feature.
 
 > Status: **early development.** Scaffold, native platforms, the E2EE crypto spike,
-> and authentication are done. See [Project status](#project-status) below.
+> authentication, and a Discord-style room-list shell are done. See
+> [Project status](#project-status) below.
 
 ## Documentation
 
@@ -24,7 +25,10 @@ End-to-end encryption is a first-class, in-MVP feature.
 - **Native:** Capacitor 8 (iOS via SPM, Android) + Electron (planned) for desktop
 - **Protocol:** `matrix-js-sdk` 41
 - **E2EE:** `@matrix-org/matrix-sdk-crypto-wasm` (Rust crypto / Vodozemac)
+- **State:** Angular signals (UI state) + RxJS Observables (async service APIs)
 - **Testing:** Vitest (unit) + Playwright-driven headless checks
+- **Quality gates:** ESLint (+ module boundaries), Prettier, Stylelint, and Husky
+  hooks (lint-staged + commitlint / Angular commit convention)
 
 Exact versions and gotchas live in [STACK.md](STACK.md).
 
@@ -49,6 +53,10 @@ For native and full testing details see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.m
 | ----------------------------------- | ------------------------------------------------------------- |
 | `pnpm start`                        | Web dev server (hot reload) at `:4200`                        |
 | `pnpm build`                        | Production web build into `www/`                              |
+| `pnpm test`                         | Vitest unit tests (`nx run-many -t test` for all projects)    |
+| `pnpm lint`                         | ESLint + Nx module boundaries                                 |
+| `pnpm stylelint`                    | Stylelint (SCSS)                                              |
+| `pnpm format`                       | Prettier-format the workspace                                 |
 | `pnpm smoke:login`                  | Headless: redirect→login + real matrix.org discovery          |
 | `pnpm spike:chromium`               | Headless E2EE WASM check (Blink → Android WebView / Electron) |
 | `pnpm spike:webkit`                 | Headless E2EE WASM check (WebKit → iOS WKWebView)             |
@@ -68,10 +76,13 @@ apps/trinity/
   project.json        build/serve/test targets (Angular esbuild builder)
   vite.config.ts      Vitest setup (Analog Angular plugin)
 libs/
-  core/               @trinity/core  — MatrixClient lifecycle, auth, crypto
-                      loader, session model, storage, authGuard  [type:core]
+  core/               @trinity/core  — MatrixClient lifecycle, auth, RoomsService
+                      read model, crypto loader, session model, storage, authGuard
+                      [type:core]
   feature-auth/       @trinity/feature-auth — login + SSO callback  [type:feature]
-  feature-rooms/      @trinity/feature-rooms — authenticated landing [type:feature]
+  feature-rooms/      @trinity/feature-rooms — Discord-style shell (server rail =
+                      Spaces, channel list, members) wired to synced rooms
+                      [type:feature]
 e2e/                  headless validation harnesses (serve www/)
 android/ ios/         Capacitor native projects (webDir: www)
 www/                  web build output
@@ -79,7 +90,9 @@ www/                  web build output
 
 Boundaries: features may depend on `core`; `core` depends on nothing; the app
 may depend on anything. New shared UI / chat / settings become libs when first
-needed. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the rationale and data flow.
+needed. Each component/page lives in its own directory
+(`name/name.component.ts` + `.html`/`.scss`/`.spec.ts`). See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the rationale and data flow.
 
 ## Project status
 
@@ -88,7 +101,7 @@ needed. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the rationale and d
 | 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md)) |
 | 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                |
 | 3 — Crypto bootstrap (cross-signing, key backup) | ⬜ Next                                                           |
-| 4 — Sync & room list                             | ⬜                                                                |
+| 4 — Sync & room list                             | 🚧 Room-list shell wired to live sync; ordering/unread TBD        |
 | 5 — Timeline (read)                              | ⬜                                                                |
 | 6 — Compose (send)                               | ⬜                                                                |
 | 7 — Device verification UI                       | ⬜                                                                |

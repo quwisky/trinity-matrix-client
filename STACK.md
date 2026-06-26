@@ -7,7 +7,7 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
 | Package                              | Version | Notes                                                             |
 | ------------------------------------ | ------- | ----------------------------------------------------------------- |
-| `@angular/core`                      | 22.0.3  | Standalone + signals; Ionic 8 supports Angular 16+                |
+| `@angular/core`                      | 20.3.25 | Standalone + signals; Ionic 8 supports Angular 16+                |
 | `@ionic/angular`                     | 8.8.12  | 8.8 is the final Ionic 8 minor; Ionic 9 in development            |
 | `@capacitor/core`                    | 8.4.1   | Capacitor 8: SPM default on iOS, edge-to-edge Android             |
 | `@capacitor-community/electron`      | 5.0.1   | Community-maintained desktop target (less stable than core)       |
@@ -15,7 +15,23 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1  | Rust crypto WASM bindings; E2EE backend                           |
 
 > Versions moved since the original plan draft: Capacitor is on **8** (not 6),
-> Ionic on **8.8**, Angular on **22**. Use these.
+> Ionic on **8.8**. Angular is pinned at **20.3** (the Ionic 8 scaffold targets 20,
+> not the newer npm-latest line).
+
+## Dev tooling & quality gates
+
+| Package                                           | Version      | Notes                                                        |
+| ------------------------------------------------- | ------------ | ------------------------------------------------------------ |
+| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.0.1       | Monorepo task graph, caching, module boundaries              |
+| `vitest` + `@analogjs/*`                          | 3 / 2.6.2    | Unit tests; the Analog plugin compiles Angular for Vite      |
+| `vite`, `vite-tsconfig-paths`, `jsdom`            | 6 / 6 / 25   | Vitest runtime + `@trinity/*` alias resolution + DOM env     |
+| `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 20.7 / 8 | Flat config (`eslint.config.mjs`) + module boundaries        |
+| `prettier`                                        | 3.8          | `singleQuote`; Angular parser forced for `*.page.html`       |
+| `stylelint` + `stylelint-config-standard-scss`    | 17 / 17      | SCSS lint                                                    |
+| `@commitlint/{cli,config-angular}`                | 21           | `commit-msg` hook; Angular commit convention                 |
+| `husky` + `lint-staged`                           | 9 / 17       | `pre-commit` (lint/format staged) + `commit-msg` hooks       |
+| `typescript`                                      | 5.9          | `moduleResolution: bundler`; aliases in `tsconfig.base.json` |
+| `@types/node`                                     | 22           | Node globals for `vite.config.ts` + the spec tsconfigs       |
 
 ## Ionic + Angular (standalone)
 

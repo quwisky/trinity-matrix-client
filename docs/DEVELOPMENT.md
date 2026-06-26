@@ -9,12 +9,12 @@ Trinity is an **Nx integrated monorepo** (pnpm). The deployable app lives in
 `apps/`, reusable code in `libs/` (imported via `@trinity/*` path aliases and
 guarded by Nx module boundaries). Projects:
 
-| Project         | Path                 | Notes                                             |
-| --------------- | -------------------- | ------------------------------------------------- |
-| `trinity`       | `apps/trinity`       | the Ionic/Angular app (build, serve, test)        |
-| `core`          | `libs/core`          | `@trinity/core` — Matrix services, storage, guard |
-| `feature-auth`  | `libs/feature-auth`  | `@trinity/feature-auth` — login + SSO callback    |
-| `feature-rooms` | `libs/feature-rooms` | `@trinity/feature-rooms` — authenticated landing  |
+| Project         | Path                 | Notes                                               |
+| --------------- | -------------------- | --------------------------------------------------- |
+| `trinity`       | `apps/trinity`       | the Ionic/Angular app (build, serve, test)          |
+| `core`          | `libs/core`          | `@trinity/core` — Matrix services, storage, guard   |
+| `feature-auth`  | `libs/feature-auth`  | `@trinity/feature-auth` — login + SSO callback      |
+| `feature-rooms` | `libs/feature-rooms` | `@trinity/feature-rooms` — Discord-style room shell |
 
 The web build still emits to root `www/`, so Capacitor and the native projects
 are unchanged. `pnpm exec nx graph` opens the dependency graph.
@@ -140,11 +140,19 @@ static server.
 - **Prettier** — [`.prettierrc.json`](../.prettierrc.json) (`singleQuote`, with the
   Angular parser forced for `*.page.html` templates). `pnpm format` writes,
   `pnpm format:check` verifies.
+- **Stylelint** — [`.stylelintrc.json`](../.stylelintrc.json)
+  (`stylelint-config-standard-scss`) lints SCSS. Run `pnpm stylelint`.
 - **Husky + lint-staged** — `pnpm install` activates a **pre-commit** hook
-  (`.husky/pre-commit` → `lint-staged`) that, on staged files, runs `eslint --fix` +
-  `prettier --write` on `apps`/`libs` TypeScript and `prettier --write` on everything
-  else (see [`.lintstagedrc.json`](../.lintstagedrc.json)). A module-boundary
-  violation fails the commit.
+  (`.husky/pre-commit` → `lint-staged`): staged `apps`/`libs` TypeScript gets
+  `eslint --fix` + `prettier --write`, staged SCSS gets `stylelint --fix` +
+  `prettier --write`, and everything else gets `prettier --write` (see
+  [`.lintstagedrc.json`](../.lintstagedrc.json)). A module-boundary violation fails
+  the commit.
+- **Commitlint** — a **commit-msg** hook validates the message against the Angular
+  convention ([`.commitlintrc.json`](../.commitlintrc.json) →
+  `@commitlint/config-angular`): `type(scope): subject`, where `type` is one of
+  `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
+  (note: **no** `chore`).
 
 ## Troubleshooting
 
@@ -161,9 +169,16 @@ static server.
 
 ## Conventions
 
-- Standalone Angular components; import Ionic from `@ionic/angular/standalone`.
-- State via **signals**; async UI actions go through a shared busy/error helper.
+- Standalone Angular components with `ChangeDetectionStrategy.OnPush`; import Ionic
+  from `@ionic/angular/standalone`. Each component/page lives in its own directory
+  (`name/name.component.ts` + `.html`/`.scss`/`.spec.ts`).
+- **State via signals** — services keep state in private signals exposed as
+  `asReadonly()`. **Async service APIs return RxJS Observables** (`defer`/`from` +
+  `switchMap`/`map`/`catchError`); components subscribe with `takeUntilDestroyed`
+  (see the `angular-rxjs-patterns` skill). The login page wraps its calls in a
+  shared `withBusy()` helper for busy/error handling.
 - New SDK interaction belongs in `@trinity/core` (`libs/core`), not in a component;
   feature pages live in `@trinity/feature-*` libs. Respect the module boundaries.
 - Cross-lib imports use the `@trinity/*` aliases; imports within a lib stay relative.
+- Component SCSS shares mixins from `libs/feature-rooms/src/lib/styles/_mixins.scss`.
 - Keep `data-testid` hooks on interactive elements that the headless scripts drive.
