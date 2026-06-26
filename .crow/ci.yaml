@@ -1,0 +1,45 @@
+# Crow CI workflow (https://crowci.dev). The node:22 image has no pnpm by default;
+# Corepack (bundled with Node) provides it — `corepack enable` activates the version
+# pinned in package.json's `packageManager` field, and COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+# keeps Corepack's first download non-interactive (it would otherwise prompt and hang
+# CI). Steps share the cloned workspace, so node_modules from `install` is reused.
+when:
+  - event: push
+  - event: pull_request
+
+steps:
+  install:
+    image: node:22
+    commands:
+      - corepack enable
+      - COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm install --frozen-lockfile
+
+  lint:
+    image: node:22
+    commands:
+      - corepack enable
+      - COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm lint
+
+  stylelint:
+    image: node:22
+    commands:
+      - corepack enable
+      - COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm stylelint
+
+  format:
+    image: node:22
+    commands:
+      - corepack enable
+      - COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm format:check
+
+  test:
+    image: node:22
+    commands:
+      - corepack enable
+      - COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm test
+
+  build:
+    image: node:22
+    commands:
+      - corepack enable
+      - COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm build

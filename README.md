@@ -1,5 +1,7 @@
 # Trinity
 
+[![status-badge](https://crow.qwky.eu/api/v1/badges/2/status.svg)](https://crow.qwky.eu/repos/2)
+
 A multiplatform [Matrix](https://matrix.org) client built with **Ionic + Angular**,
 running from a single codebase on **Web (PWA), iOS, Android, and Desktop (Electron)**.
 End-to-end encryption is a first-class, in-MVP feature.
