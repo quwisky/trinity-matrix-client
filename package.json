@@ -70,6 +70,7 @@
     "@nx/eslint-plugin": "23.0.1",
     "@nx/js": "23.0.1",
     "@nx/vite": "23.0.1",
+    "@types/node": "^22.20.0",
     "angular-eslint": "20.7.0",
     "eslint": "^9.16.0",
     "eslint-plugin-import": "^2.29.1",
