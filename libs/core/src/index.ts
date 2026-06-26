@@ -1,6 +1,7 @@
 export * from './lib/matrix/session.model';
 export * from './lib/matrix/matrix-client.service';
 export * from './lib/matrix/rooms.service';
+export * from './lib/matrix/timeline.service';
 export * from './lib/matrix/auth.service';
 export * from './lib/matrix/crypto-spike.service';
 export * from './lib/matrix/crypto-wasm-loader';
