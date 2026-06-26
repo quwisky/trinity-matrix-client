@@ -71,6 +71,28 @@ describe('MessageListComponent', () => {
     expect(el.querySelector('strong')?.textContent).toBe('bold');
   });
 
+  it('renders a reply preview above a reply message', () => {
+    const fixture = TestBed.createComponent(MessageListComponent);
+    fixture.componentRef.setInput('messages', [
+      {
+        ...msg('$1', '@a:hs', 'Alice', 1000),
+        replyTo: {
+          id: '$orig',
+          senderName: 'Bob',
+          senderInitial: 'B',
+          senderAvatarUrl: null,
+          body: 'original message',
+        },
+      },
+    ]);
+    fixture.detectChanges();
+
+    const reply = fixture.nativeElement.querySelector('.msg__reply');
+    expect(reply).toBeTruthy();
+    expect(reply.textContent).toContain('Bob');
+    expect(reply.textContent).toContain('original message');
+  });
+
   it('editLastOwn selects the most recent editable own message', () => {
     const fixture = TestBed.createComponent(MessageListComponent);
     fixture.componentRef.setInput('messages', [

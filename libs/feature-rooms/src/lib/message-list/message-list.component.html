@@ -10,7 +10,26 @@
       [class.msg--failed]="row.decryptionFailed"
       [class.msg--sending]="row.status === 'sending'"
       [class.msg--sendfailed]="row.status === 'failed'"
+      [attr.data-mid]="row.id"
     >
+      @if (row.replyTo) {
+        <button
+          type="button"
+          class="msg__reply"
+          [attr.aria-label]="'Replying to ' + row.replyTo.senderName"
+          (click)="jumpTo(row.replyTo.id)"
+        >
+          <trn-avatar
+            class="msg__reply-avatar"
+            [url]="row.replyTo.senderAvatarUrl"
+            [initial]="row.replyTo.senderInitial"
+            [name]="row.replyTo.senderName"
+            [size]="16"
+          />
+          <span class="msg__reply-author">{{ row.replyTo.senderName }}</span>
+          <span class="msg__reply-body">{{ row.replyTo.body }}</span>
+        </button>
+      }
       @if (row.showHeader) {
         <trn-avatar
           class="msg__avatar"
@@ -20,14 +39,6 @@
           [size]="40"
         />
         <div class="msg__body">
-          @if (row.replyTo) {
-            <div class="msg__reply">
-              <span class="msg__reply-author">{{
-                row.replyTo.senderName
-              }}</span>
-              <span class="msg__reply-body">{{ row.replyTo.body }}</span>
-            </div>
-          }
           <div class="msg__head">
             <span class="msg__author">{{ row.senderName }}</span>
             <span class="msg__time">{{ row.timestamp | date: 'short' }}</span>
@@ -50,14 +61,6 @@
       } @else {
         <span class="msg__gutter">{{ row.timestamp | date: 'shortTime' }}</span>
         <div class="msg__body">
-          @if (row.replyTo) {
-            <div class="msg__reply">
-              <span class="msg__reply-author">{{
-                row.replyTo.senderName
-              }}</span>
-              <span class="msg__reply-body">{{ row.replyTo.body }}</span>
-            </div>
-          }
           @if (row.html) {
             <div
               class="msg__text msg__text--cont msg__text--html"

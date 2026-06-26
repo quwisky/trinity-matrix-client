@@ -176,6 +176,13 @@ export class MessageListComponent {
     this.replyingToId.set(row.id);
   }
 
+  /** Scroll the original message into view when its reply preview is clicked. */
+  jumpTo(messageId: string): void {
+    this.scrollEl()
+      ?.nativeElement.querySelector(`[data-mid="${messageId}"]`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
   editLastOwn(): void {
     const msgs = this.messages();
