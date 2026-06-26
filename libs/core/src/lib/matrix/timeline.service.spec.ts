@@ -282,6 +282,8 @@ describe('TimelineService', () => {
     expect(reply?.replyTo).toEqual({
       id: '$orig',
       senderName: 'Alice',
+      senderInitial: 'A',
+      senderAvatarUrl: null,
       body: 'original text',
     });
   });

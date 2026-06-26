@@ -37,6 +37,8 @@ export interface ReactionView {
 export interface ReplyPreview {
   id: string;
   senderName: string;
+  senderInitial: string;
+  senderAvatarUrl: string | null;
   body: string;
 }
 
@@ -387,7 +389,7 @@ export class TimelineService {
       edited: event.replacingEvent() !== null,
       reactions: this.reactionsFor(client, room, event),
       replyTo: event.replyEventId
-        ? this.replyPreview(room, event.replyEventId)
+        ? this.replyPreview(client, room, event.replyEventId)
         : null,
       status: mapStatus(event.status),
       kind,
@@ -395,19 +397,34 @@ export class TimelineService {
   }
 
   /** Build a short preview of a replied-to message, or null if it isn't loaded. */
-  private replyPreview(room: Room, eventId: string): ReplyPreview | null {
+  private replyPreview(
+    client: MatrixClient,
+    room: Room,
+    eventId: string,
+  ): ReplyPreview | null {
     const target = room.findEventById(eventId);
     if (!target) {
       return null;
     }
     const sender = target.getSender() ?? '';
     const member = room.getMember(sender);
+    const senderName = member?.name ?? sender;
     const raw = target.isRedacted()
       ? '(message deleted)'
       : stripReplyFallbackText((target.getContent()['body'] as string) ?? '');
     return {
       id: eventId,
-      senderName: member?.name ?? sender,
+      senderName,
+      senderInitial: initialOf(senderName),
+      senderAvatarUrl:
+        member?.getAvatarUrl(
+          client.baseUrl,
+          AVATAR_PX,
+          AVATAR_PX,
+          'crop',
+          false,
+          false,
+        ) ?? null,
       body: raw.replace(/\s+/g, ' ').trim() || '…',
     };
   }
