@@ -23,6 +23,16 @@ export type MessageKind =
   | 'redacted'
   | 'unsupported';
 
+/** An aggregated reaction (`m.annotation`) on a message. */
+export interface ReactionView {
+  /** The reaction key (usually an emoji). */
+  key: string;
+  /** How many users reacted with this key. */
+  count: number;
+  /** Whether the current user is among them (their reaction can be toggled off). */
+  reacted: boolean;
+}
+
 /** A single rendered timeline message (plain view model — no SDK types leak out). */
 export interface MessageView {
   id: string;
@@ -39,6 +49,8 @@ export interface MessageView {
   decryptionFailed: boolean;
   /** True once the message has been edited (m.replace). */
   edited: boolean;
+  /** Aggregated reactions, ordered by the SDK (count then first-seen). */
+  reactions: ReactionView[];
   /** Local-echo send state: 'sending' / 'failed', or null once confirmed. */
   status: 'sending' | 'failed' | null;
   kind: MessageKind;
@@ -221,6 +233,59 @@ export class TimelineService {
     );
   }
 
+  /**
+   * Toggle the current user's reaction to a message: add the `m.annotation` if it
+   * isn't there yet, otherwise redact their existing one.
+   */
+  toggleReaction(messageId: string, key: string): Observable<void> {
+    const room = this.room;
+    if (!room || !this.matrix.isInitialized) {
+      return of(void 0);
+    }
+    const client = this.matrix.instance;
+    return defer(() => {
+      const mine = this.myReactionId(client, room, messageId, key);
+      if (mine) {
+        return from(client.redactEvent(room.roomId, mine));
+      }
+      const content = {
+        'm.relates_to': {
+          rel_type: RelationType.Annotation,
+          event_id: messageId,
+          key,
+        },
+      };
+      return from(
+        client.sendEvent(room.roomId, EventType.Reaction, content as never),
+      );
+    }).pipe(map(() => void 0));
+  }
+
+  /** The id of the current user's own reaction event for a key, if any. */
+  private myReactionId(
+    client: MatrixClient,
+    room: Room,
+    messageId: string,
+    key: string,
+  ): string | null {
+    const annotations = room.relations
+      .getChildEventsForEvent(
+        messageId,
+        RelationType.Annotation,
+        EventType.Reaction,
+      )
+      ?.getSortedAnnotationsByKey();
+    const match = annotations?.find(([k]) => k === key);
+    if (!match) {
+      return null;
+    }
+    const myId = client.getUserId();
+    const mine = [...match[1]].find(
+      (e) => !e.isRedacted() && e.getSender() === myId,
+    );
+    return mine?.getId() ?? null;
+  }
+
   private refresh(): void {
     const room = this.room;
     if (!room) {
@@ -274,9 +339,42 @@ export class TimelineService {
       isOwn: senderId === client.getUserId(),
       decryptionFailed,
       edited: event.replacingEvent() !== null,
+      reactions: this.reactionsFor(client, room, event),
       status: mapStatus(event.status),
       kind,
     };
+  }
+
+  /** Read aggregated reactions for an event from the room's relations. */
+  private reactionsFor(
+    client: MatrixClient,
+    room: Room,
+    event: MatrixEvent,
+  ): ReactionView[] {
+    const id = event.getId();
+    if (!id) {
+      return [];
+    }
+    const annotations = room.relations
+      .getChildEventsForEvent(id, RelationType.Annotation, EventType.Reaction)
+      ?.getSortedAnnotationsByKey();
+    if (!annotations) {
+      return [];
+    }
+    const myId = client.getUserId();
+    const views: ReactionView[] = [];
+    for (const [key, set] of annotations) {
+      const events = [...set].filter((e) => !e.isRedacted());
+      if (events.length === 0) {
+        continue;
+      }
+      views.push({
+        key,
+        count: events.length,
+        reacted: events.some((e) => e.getSender() === myId),
+      });
+    }
+    return views;
   }
 
   private renderMarkdown(text: string): { formatted: boolean; html: string } {
