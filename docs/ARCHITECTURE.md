@@ -50,6 +50,33 @@ feature-* libs (pages)     shared libs (ui, pipes)
   routes through only when a client is live, attempting a one-time session **restore**
   first, otherwise redirecting to `/login`.
 
+## State management
+
+**Decision:** lightweight **signal-store services** (`providedIn: 'root'`) — _not_ a
+Redux-style library (NgRx / Elf / Akita).
+
+**Why:** `matrix-js-sdk` already _is_ the state store — it owns rooms, members,
+timelines, sync, and crypto state in memory + IndexedDB and emits events as the
+source of truth. A separate global store would continuously mirror SDK state into a
+second tree (duplicated state, sync bugs, boilerplate) for little gain. The core
+services instead **project** SDK state into read-only signals — the `angular-signals`
+"Service State Pattern" (private writable signal → `asReadonly()` → `computed`) — and
+expose async actions as Observables. The SDK stays the single source of truth.
+
+**Current strain (clean up as we grow):**
+
+- `RoomsService.revision` is a bump-counter used to force member recomputation; a
+  proper entity store removes it.
+- Selection state (`activeSpaceId` / `activeRoomId`) lives in the rooms shell
+  component — once rooms are deep-linkable or persisted it belongs in the route or a
+  store.
+
+**When to revisit:** at optimistic sends (Milestone 6) or cross-feature / persisted
+selection, adopt **`@ngrx/signals` (SignalStore)** for those slices only
+(`withState` / `withComputed` / `withMethods` / `withEntities`). It's a signal-native
+evolution of the current pattern — no Redux ceremony — and the SDK remains the source
+of truth; the store holds the projected view plus UI / selection / optimistic state.
+
 ## Routing
 
 Defined in [app.routes.ts](../apps/trinity/src/app/app.routes.ts), all lazy-loaded standalone:

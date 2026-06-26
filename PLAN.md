@@ -9,6 +9,9 @@ iOS, Android, and Desktop (Electron) from a single Angular codebase.
 - **E2EE:** In MVP — WASM crypto spike moves into scaffold; crypto store + device
   verification are first-class MVP milestones (not phase 2).
 - **Testing:** Vitest (unit) + Playwright (e2e).
+- **State management:** signal-store services (no NgRx) — `matrix-js-sdk` is the
+  source of truth. Revisit `@ngrx/signals` (SignalStore) for optimistic sends /
+  persisted selection. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#state-management).
 
 ## 1. Goals & Scope
 
