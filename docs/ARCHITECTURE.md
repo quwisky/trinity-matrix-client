@@ -32,14 +32,15 @@ feature-* libs (pages)     shared libs (ui, pipes)
 
 ## @trinity/core — matrix
 
-| File                                                                             | Responsibility                                                                                                                                                                 |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [matrix-client.service.ts](../libs/core/src/lib/matrix/matrix-client.service.ts) | Owns the single `MatrixClient`. Lifecycle: `createClient → preload WASM → initRustCrypto → startClient`. Exposes `syncState` signal.                                           |
-| [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts)                   | Homeserver discovery (`.well-known`), password login, SSO URL + token exchange, logout. Persists session and starts the client on success.                                     |
-| [rooms.service.ts](../libs/core/src/lib/matrix/rooms.service.ts)                 | Read model over the synced client: Spaces / joined rooms / members as plain view models, exposed as read-only signals (recomputed on sync events). Powers the room-list shell. |
-| [crypto-wasm-loader.ts](../libs/core/src/lib/matrix/crypto-wasm-loader.ts)       | Preloads the Rust crypto WASM from a served asset path (see [WASM loading](#e2ee-wasm-loading)). Memoized.                                                                     |
-| [crypto-spike.service.ts](../libs/core/src/lib/matrix/crypto-spike.service.ts)   | Dev smoke test that proves crypto initializes in the current runtime.                                                                                                          |
-| [session.model.ts](../libs/core/src/lib/matrix/session.model.ts)                 | `MatrixSession` shape (baseUrl, userId, deviceId, accessToken).                                                                                                                |
+| File                                                                             | Responsibility                                                                                                                                                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [matrix-client.service.ts](../libs/core/src/lib/matrix/matrix-client.service.ts) | Owns the single `MatrixClient`. Lifecycle: `createClient → preload WASM → initRustCrypto → startClient`. Exposes `syncState` signal.                                                                                                                                                                                                                   |
+| [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts)                   | Homeserver discovery (`.well-known`), password login, SSO URL + token exchange, logout. Persists session and starts the client on success.                                                                                                                                                                                                             |
+| [rooms.service.ts](../libs/core/src/lib/matrix/rooms.service.ts)                 | Read model over the synced client: Spaces / joined rooms / members as plain view models, exposed as read-only signals (recomputed on sync events). Powers the room-list shell.                                                                                                                                                                         |
+| [timeline.service.ts](../libs/core/src/lib/matrix/timeline.service.ts)           | Per-room timeline read model + actions. `open`/`close` attach to one room; `messages`/`loadingOlder`/`canLoadOlder` signals; `loadOlder` (scrollback), `send`, `edit` (`m.replace`), `redact`, `retry`. Maps SDK events to `MessageView` (markdown HTML, edited/redacted/decryption-failed, local-echo status). See [Messaging](#messaging--timeline). |
+| [crypto-wasm-loader.ts](../libs/core/src/lib/matrix/crypto-wasm-loader.ts)       | Preloads the Rust crypto WASM from a served asset path (see [WASM loading](#e2ee-wasm-loading)). Memoized.                                                                                                                                                                                                                                             |
+| [crypto-spike.service.ts](../libs/core/src/lib/matrix/crypto-spike.service.ts)   | Dev smoke test that proves crypto initializes in the current runtime.                                                                                                                                                                                                                                                                                  |
+| [session.model.ts](../libs/core/src/lib/matrix/session.model.ts)                 | `MatrixSession` shape (baseUrl, userId, deviceId, accessToken).                                                                                                                                                                                                                                                                                        |
 
 ## @trinity/core — storage & guards
 
@@ -71,11 +72,42 @@ expose async actions as Observables. The SDK stays the single source of truth.
   component — once rooms are deep-linkable or persisted it belongs in the route or a
   store.
 
-**When to revisit:** at optimistic sends (Milestone 6) or cross-feature / persisted
-selection, adopt **`@ngrx/signals` (SignalStore)** for those slices only
-(`withState` / `withComputed` / `withMethods` / `withEntities`). It's a signal-native
-evolution of the current pattern — no Redux ceremony — and the SDK remains the source
-of truth; the store holds the projected view plus UI / selection / optimistic state.
+**When to revisit:** optimistic sends (Milestone 6) shipped without a store — local
+echo and retry are SDK-native (see [Messaging](#messaging--timeline)). The next
+trigger is cross-feature / persisted / deep-linkable selection, where adopting
+**`@ngrx/signals` (SignalStore)** for those slices only (`withState` / `withComputed`
+/ `withMethods` / `withEntities`) makes sense. It's a signal-native evolution of the
+current pattern — no Redux ceremony — and the SDK remains the source of truth; the
+store would hold the projected view plus UI / selection state.
+
+## Messaging / timeline
+
+The chat surface follows the same read-model-as-signals pattern. **`TimelineService`**
+attaches to one room at a time (`open`/`close`), listens to the SDK's
+`RoomEvent.Timeline`, `RoomEvent.LocalEchoUpdated`, and `MatrixEventEvent.Decrypted`,
+and projects the live timeline into a `MessageView[]` signal. Edit events
+(`m.replace`) are filtered out — the SDK aggregates each edit onto its target, so
+`getContent()` already returns the edited content and `replacingEvent()` drives the
+`(edited)` marker. It also sends read receipts on open.
+
+- **Pagination** — `loadOlder()` wraps `scrollback`; `canLoadOlder` reflects the
+  pagination token. The list also **auto-backfills** until the viewport is full so a
+  short timeline can still scroll.
+- **Send / edit / delete** — `send` chooses plain vs HTML; `edit` builds an
+  `m.replace` with `m.new_content`; `redact` deletes. **Local echo and retry are
+  SDK-native** (pending events + `EventStatus` → a `sending`/`failed` status on the
+  view model), so there's no separate optimistic store.
+- **Markdown** — incoming `org.matrix.custom.html` `formatted_body` renders via
+  Angular `[innerHTML]` (auto-sanitized). Outgoing markdown is rendered with `marked`
+  then run through `DomSanitizer` — **never `bypassSecurityTrust`** — and the
+  formatted body is only sent when markdown actually adds formatting.
+
+The UI lives in `@trinity/feature-rooms`: **message-list** (sender-grouped rows,
+scroll-anchored pagination, hover row-highlight + floating toolbar), **message-composer**
+(Enter sends / Shift+Enter newline; edit mode is prefilled and Esc cancels; an empty
+composer + Up arrow edits your last message), and **message-toolbar** (copy / edit /
+delete, gated to own messages). `RoomsPage` owns room selection and forwards composer
+actions to `TimelineService`.
 
 ## Routing
 

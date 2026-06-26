@@ -9,12 +9,12 @@ Trinity is an **Nx integrated monorepo** (pnpm). The deployable app lives in
 `apps/`, reusable code in `libs/` (imported via `@trinity/*` path aliases and
 guarded by Nx module boundaries). Projects:
 
-| Project         | Path                 | Notes                                               |
-| --------------- | -------------------- | --------------------------------------------------- |
-| `trinity`       | `apps/trinity`       | the Ionic/Angular app (build, serve, test)          |
-| `core`          | `libs/core`          | `@trinity/core` — Matrix services, storage, guard   |
-| `feature-auth`  | `libs/feature-auth`  | `@trinity/feature-auth` — login + SSO callback      |
-| `feature-rooms` | `libs/feature-rooms` | `@trinity/feature-rooms` — Discord-style room shell |
+| Project         | Path                 | Notes                                                    |
+| --------------- | -------------------- | -------------------------------------------------------- |
+| `trinity`       | `apps/trinity`       | the Ionic/Angular app (build, serve, test)               |
+| `core`          | `libs/core`          | `@trinity/core` — Matrix services, storage, guard        |
+| `feature-auth`  | `libs/feature-auth`  | `@trinity/feature-auth` — login + SSO callback           |
+| `feature-rooms` | `libs/feature-rooms` | `@trinity/feature-rooms` — room shell + message timeline |
 
 The web build still emits to root `www/`, so Capacitor and the native projects
 are unchanged. `pnpm exec nx graph` opens the dependency graph.
@@ -156,16 +156,17 @@ static server.
 
 ## Troubleshooting
 
-| Symptom                                                     | Cause / fix                                                                                                                                                                                          |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `WebAssembly … HTTP status is not ok` / crypto 404          | The WASM asset isn't served. Ensure the build target (`apps/trinity/project.json`) copies it to `assets/crypto/` and you ran `pnpm build`. See [ARCHITECTURE.md](ARCHITECTURE.md#e2ee-wasm-loading). |
-| Crypto fails only on device                                 | Check Capacitor serves `.wasm` as `application/wasm`; if a CSP is set, allow `wasm-unsafe-eval`.                                                                                                     |
-| `xcodebuild requires Xcode`                                 | Command Line Tools are selected, not Xcode. Run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.                                                                                   |
-| Android: "Unable to infer default Android SDK"              | Export `ANDROID_HOME` and confirm `android/local.properties` `sdk.dir`.                                                                                                                              |
-| Build warns about non-ESM modules (`loglevel`, `events`, …) | Harmless CommonJS-interop notices from matrix-js-sdk deps.                                                                                                                                           |
-| `Cannot find module '@trinity/…'`                           | Path aliases live in `tsconfig.base.json`; the Vite/Vitest side resolves them via `vite-tsconfig-paths`. Run `pnpm exec nx reset` if the graph looks stale.                                          |
-| Stale Nx task results                                       | `pnpm exec nx reset` clears the cache.                                                                                                                                                               |
-| Stuck "logged in" / weird crypto state                      | Clear localStorage + IndexedDB (web) or reinstall the app (device).                                                                                                                                  |
+| Symptom                                                                   | Cause / fix                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `WebAssembly … HTTP status is not ok` / crypto 404                        | The WASM asset isn't served. Ensure the build target (`apps/trinity/project.json`) copies it to `assets/crypto/` and you ran `pnpm build`. See [ARCHITECTURE.md](ARCHITECTURE.md#e2ee-wasm-loading).         |
+| Crypto fails only on device                                               | Check Capacitor serves `.wasm` as `application/wasm`; if a CSP is set, allow `wasm-unsafe-eval`.                                                                                                             |
+| `xcodebuild requires Xcode`                                               | Command Line Tools are selected, not Xcode. Run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.                                                                                           |
+| Android: "Unable to infer default Android SDK"                            | Export `ANDROID_HOME` and confirm `android/local.properties` `sdk.dir`.                                                                                                                                      |
+| Build warns about non-ESM modules (`loglevel`, `events`, …)               | Harmless CommonJS-interop notices from matrix-js-sdk deps.                                                                                                                                                   |
+| Vitest: `Cannot use import statement outside a module` from `@ionic/core` | A spec renders an Ionic web component (e.g. `ion-icon`). `@ionic/core` ships ESM in a CJS package — inline it for Vitest: `test.server.deps.inline` in the project's `vite.config.ts` (see `feature-rooms`). |
+| `Cannot find module '@trinity/…'`                                         | Path aliases live in `tsconfig.base.json`; the Vite/Vitest side resolves them via `vite-tsconfig-paths`. Run `pnpm exec nx reset` if the graph looks stale.                                                  |
+| Stale Nx task results                                                     | `pnpm exec nx reset` clears the cache.                                                                                                                                                                       |
+| Stuck "logged in" / weird crypto state                                    | Clear localStorage + IndexedDB (web) or reinstall the app (device).                                                                                                                                          |
 
 ## Conventions
 

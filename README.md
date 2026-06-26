@@ -5,8 +5,9 @@ running from a single codebase on **Web (PWA), iOS, Android, and Desktop (Electr
 End-to-end encryption is a first-class, in-MVP feature.
 
 > Status: **early development.** Scaffold, native platforms, the E2EE crypto spike,
-> authentication, and a Discord-style room-list shell are done. See
-> [Project status](#project-status) below.
+> authentication, a Discord-style room shell, and a working **timeline — read,
+> send, edit, and delete messages with markdown** — are done. Crypto bootstrap and
+> device verification are next. See [Project status](#project-status) below.
 
 ## Documentation
 
@@ -81,7 +82,8 @@ libs/
                       [type:core]
   feature-auth/       @trinity/feature-auth — login + SSO callback  [type:feature]
   feature-rooms/      @trinity/feature-rooms — Discord-style shell (server rail =
-                      Spaces, channel list, members) wired to synced rooms
+                      Spaces, channel list, members) + message timeline
+                      (list, composer, hover toolbar) wired to synced rooms
                       [type:feature]
 e2e/                  headless validation harnesses (serve www/)
 android/ ios/         Capacitor native projects (webDir: www)
@@ -102,8 +104,8 @@ needed. Each component/page lives in its own directory
 | 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                |
 | 3 — Crypto bootstrap (cross-signing, key backup) | ⬜ Next                                                           |
 | 4 — Sync & room list                             | 🚧 Room-list shell wired to live sync; ordering/unread TBD        |
-| 5 — Timeline (read)                              | ⬜                                                                |
-| 6 — Compose (send)                               | ⬜                                                                |
+| 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history   |
+| 6 — Compose (send)                               | ✅ Done — send/edit/delete, local echo + retry, hover toolbar     |
 | 7 — Device verification UI                       | ⬜                                                                |
 | 8 — Media                                        | ⬜                                                                |
 | 9 — MVP polish                                   | ⬜                                                                |
