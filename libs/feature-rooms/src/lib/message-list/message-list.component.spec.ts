@@ -10,6 +10,7 @@ function msg(id: string, senderId: string, senderName: string, ts: number) {
     senderInitial: senderName[0],
     senderAvatarUrl: null,
     body: `body ${id}`,
+    html: null,
     timestamp: ts,
     isOwn: false,
     decryptionFailed: false,
@@ -36,6 +37,30 @@ describe('MessageListComponent', () => {
     expect(el.querySelectorAll('.msg__avatar').length).toBe(2); // Alice + Bob headers
     expect(el.querySelectorAll('.msg--cont').length).toBe(1); // Alice's second line
     expect(el.textContent).toContain('body $2');
+  });
+
+  it('renders formatted markdown via innerHTML', () => {
+    const fixture = TestBed.createComponent(MessageListComponent);
+    fixture.componentRef.setInput('messages', [
+      {
+        id: '$1',
+        senderId: '@a:hs',
+        senderName: 'Alice',
+        senderInitial: 'A',
+        senderAvatarUrl: null,
+        body: '**bold**',
+        html: '<strong>bold</strong>',
+        timestamp: 1,
+        isOwn: false,
+        decryptionFailed: false,
+        kind: 'text' as const,
+      },
+    ]);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement.querySelector('.msg__text--html');
+    expect(el).toBeTruthy();
+    expect(el.querySelector('strong')?.textContent).toBe('bold');
   });
 
   it('emits loadOlder when scrolled near the top (and history remains)', () => {

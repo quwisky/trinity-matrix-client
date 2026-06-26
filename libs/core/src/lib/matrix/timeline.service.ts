@@ -26,7 +26,10 @@ export interface MessageView {
   senderName: string;
   senderInitial: string;
   senderAvatarUrl: string | null;
+  /** Plain-text fallback. */
   body: string;
+  /** Sanitized-on-render HTML from `formatted_body` (markdown), or null for plain. */
+  html: string | null;
   timestamp: number;
   isOwn: boolean;
   decryptionFailed: boolean;
@@ -148,7 +151,7 @@ export class TimelineService {
     const member = room.getMember(senderId);
     const senderName = member?.name ?? senderId;
     const decryptionFailed = event.isDecryptionFailure();
-    const { body, kind } = renderBody(event, decryptionFailed);
+    const { body, html, kind } = renderBody(event, decryptionFailed);
     return {
       id: event.getId() ?? '',
       senderId,
@@ -164,6 +167,7 @@ export class TimelineService {
           false,
         ) ?? null,
       body,
+      html,
       timestamp: event.getTs(),
       isOwn: senderId === client.getUserId(),
       decryptionFailed,
@@ -172,35 +176,56 @@ export class TimelineService {
   }
 }
 
+interface RenderedBody {
+  body: string;
+  html: string | null;
+  kind: MessageKind;
+}
+
 function renderBody(
   event: MatrixEvent,
   decryptionFailed: boolean,
-): { body: string; kind: MessageKind } {
+): RenderedBody {
   if (decryptionFailed) {
-    return { body: '⚠️ Unable to decrypt this message', kind: 'unsupported' };
+    return {
+      body: '⚠️ Unable to decrypt this message',
+      html: null,
+      kind: 'unsupported',
+    };
   }
   if (event.isRedacted()) {
-    return { body: '(message deleted)', kind: 'redacted' };
+    return { body: '(message deleted)', html: null, kind: 'redacted' };
   }
   const content = event.getContent();
   const text = (content['body'] as string) ?? '';
+  // Markdown is delivered as HTML in `formatted_body` (format = custom HTML).
+  const html =
+    content['format'] === 'org.matrix.custom.html' &&
+    typeof content['formatted_body'] === 'string'
+      ? (content['formatted_body'] as string)
+      : null;
+
   switch (content.msgtype) {
     case MsgType.Text:
-      return { body: text, kind: 'text' };
+      return { body: text, html, kind: 'text' };
     case MsgType.Emote:
-      return { body: text, kind: 'emote' };
+      return { body: text, html, kind: 'emote' };
     case MsgType.Notice:
-      return { body: text, kind: 'notice' };
+      return { body: text, html, kind: 'notice' };
     case MsgType.Image:
-      return { body: '[image]', kind: 'unsupported' };
+      return { body: '[image]', html: null, kind: 'unsupported' };
     case MsgType.File:
-      return { body: '[file]', kind: 'unsupported' };
+      return { body: '[file]', html: null, kind: 'unsupported' };
     case MsgType.Audio:
-      return { body: '[audio]', kind: 'unsupported' };
+      return { body: '[audio]', html: null, kind: 'unsupported' };
     case MsgType.Video:
-      return { body: '[video]', kind: 'unsupported' };
+      return { body: '[video]', html: null, kind: 'unsupported' };
     default:
-      return { body: text || '[unsupported message]', kind: 'unsupported' };
+      return {
+        body: text || '[unsupported message]',
+        html: null,
+        kind: 'unsupported',
+      };
   }
 }
 

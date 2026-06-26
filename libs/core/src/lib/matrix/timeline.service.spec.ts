@@ -9,6 +9,8 @@ function fakeEvent(o: {
   type?: string;
   body?: string;
   msgtype?: string;
+  format?: string;
+  formattedBody?: string;
   ts?: number;
   redacted?: boolean;
   decryptFail?: boolean;
@@ -19,7 +21,12 @@ function fakeEvent(o: {
     getRoomId: () => '!r:hs',
     getType: () => o.type ?? 'm.room.message',
     getTs: () => o.ts ?? 0,
-    getContent: () => ({ body: o.body ?? '', msgtype: o.msgtype ?? 'm.text' }),
+    getContent: () => ({
+      body: o.body ?? '',
+      msgtype: o.msgtype ?? 'm.text',
+      format: o.format,
+      formatted_body: o.formattedBody,
+    }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
   };
@@ -80,6 +87,24 @@ describe('TimelineService', () => {
       kind: 'text',
     });
     expect(msgs[1].isOwn).toBe(true);
+  });
+
+  it('exposes formatted_body HTML for markdown messages', () => {
+    const svc = setup([
+      fakeEvent({
+        id: '$md',
+        sender: '@a:hs',
+        body: '**hi**',
+        format: 'org.matrix.custom.html',
+        formattedBody: '<strong>hi</strong>',
+      }),
+      fakeEvent({ id: '$plain', sender: '@a:hs', body: 'plain' }),
+    ]);
+
+    const [formatted, plain] = svc.messages();
+    expect(formatted.html).toBe('<strong>hi</strong>');
+    expect(formatted.body).toBe('**hi**');
+    expect(plain.html).toBeNull();
   });
 
   it('flags redacted and decryption-failed messages', () => {

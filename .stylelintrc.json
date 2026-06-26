@@ -7,6 +7,10 @@
     "no-descending-specificity": null,
     "no-empty-source": null,
     "media-feature-range-notation": "prefix",
+    "selector-pseudo-element-no-unknown": [
+      true,
+      { "ignorePseudoElements": ["ng-deep"] }
+    ],
     "scss/dollar-variable-pattern": null
   }
 }
