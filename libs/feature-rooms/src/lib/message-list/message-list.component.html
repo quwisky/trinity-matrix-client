@@ -1,0 +1,44 @@
+<div class="scroll" #scroll (scroll)="onScroll()">
+  @if (loadingOlder()) {
+    <div class="load-older">Loading older messages…</div>
+  }
+
+  @for (row of rows(); track row.id) {
+    <div
+      class="msg"
+      [class.msg--cont]="!row.showHeader"
+      [class.msg--failed]="row.decryptionFailed"
+    >
+      @if (row.showHeader) {
+        <app-avatar
+          class="msg__avatar"
+          [url]="row.senderAvatarUrl"
+          [initial]="row.senderInitial"
+          [name]="row.senderName"
+          [size]="40"
+        />
+        <div class="msg__body">
+          <div class="msg__head">
+            <span class="msg__author">{{ row.senderName }}</span>
+            <span class="msg__time">{{ row.timestamp | date: 'short' }}</span>
+          </div>
+          <p class="msg__text">{{ row.body }}</p>
+        </div>
+      } @else {
+        <span class="msg__gutter">{{ row.timestamp | date: 'shortTime' }}</span>
+        <p class="msg__text msg__text--cont">{{ row.body }}</p>
+      }
+    </div>
+  } @empty {
+    <div class="empty">No messages yet.</div>
+  }
+</div>
+
+<footer class="composer">
+  <input
+    class="composer__input"
+    type="text"
+    [placeholder]="'Message #' + roomName() + ' — sending arrives in M6'"
+    disabled
+  />
+</footer>

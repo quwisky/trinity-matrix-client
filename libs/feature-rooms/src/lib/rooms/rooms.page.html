@@ -36,22 +36,17 @@
     </ion-header>
 
     <div class="chat-body">
-      <main class="chat-main">
-        @if (activeRoom(); as room) {
-          <div class="hero">
-            <div class="hero__badge">#</div>
-            <h1 class="hero__title">Welcome to #{{ room.name }}</h1>
-            @if (room.topic) {
-              <p class="hero__topic">{{ room.topic }}</p>
-            }
-            <p class="hero__meta">
-              {{ room.memberCount }} member{{
-                room.memberCount === 1 ? '' : 's'
-              }}
-              · timeline coming soon
-            </p>
-          </div>
-        } @else {
+      @if (activeRoom(); as room) {
+        <app-message-list
+          [messages]="timeline.messages()"
+          [loadingOlder]="timeline.loadingOlder()"
+          [canLoadOlder]="timeline.canLoadOlder()"
+          [roomName]="room.name"
+          (loadOlder)="loadOlder()"
+        />
+        <app-member-list class="chat-members" [members]="members()" />
+      } @else {
+        <main class="chat-empty">
           <div class="hero">
             <div class="hero__badge">#</div>
             <h1 class="hero__title">{{ syncLabel() }}</h1>
@@ -59,11 +54,7 @@
               Select a channel on the left to get started.
             </p>
           </div>
-        }
-      </main>
-
-      @if (activeRoom()) {
-        <app-member-list class="chat-members" [members]="members()" />
+        </main>
       }
     </div>
   </div>

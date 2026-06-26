@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  OnDestroy,
   OnInit,
   computed,
   inject,
@@ -19,15 +20,21 @@ import {
   IonButtons,
   MenuController,
 } from '@ionic/angular/standalone';
-import { AuthService, MatrixClientService, RoomsService } from '@trinity/core';
+import {
+  AuthService,
+  MatrixClientService,
+  RoomsService,
+  TimelineService,
+} from '@trinity/core';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
+import { MessageListComponent } from '../message-list/message-list.component';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
- * responsive `ion-split-pane`/`ion-menu`), a main column, and a member list.
- * Wired to live synced rooms via `RoomsService`; the timeline is a later milestone.
+ * responsive `ion-split-pane`/`ion-menu`), the read timeline, and a member list.
+ * Wired to live synced rooms via `RoomsService` + `TimelineService`.
  */
 @Component({
   selector: 'app-rooms',
@@ -45,10 +52,12 @@ import { MemberListComponent } from '../member-list/member-list.component';
     ServerRailComponent,
     ChannelSidebarComponent,
     MemberListComponent,
+    MessageListComponent,
   ],
 })
-export class RoomsPage implements OnInit {
+export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);
+  readonly timeline = inject(TimelineService);
   private readonly matrix = inject(MatrixClientService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
@@ -112,13 +121,25 @@ export class RoomsPage implements OnInit {
     this.rooms.connect();
   }
 
+  ngOnDestroy(): void {
+    this.timeline.close();
+  }
+
   onSelectSpace(id: string | null): void {
     this.activeSpaceId.set(id);
   }
 
   onSelectRoom(id: string): void {
     this.activeRoomId.set(id);
+    this.timeline.open(id);
     void this.menu.close(); // collapse the drawer on mobile (fire-and-forget)
+  }
+
+  loadOlder(): void {
+    this.timeline
+      .loadOlder()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   logout(): void {
