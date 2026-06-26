@@ -1,0 +1,7 @@
+{
+  "name": "trinity",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular-standalone"
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Trinity</string>
+    <string name="title_activity_main">Trinity</string>
+    <string name="package_name">eu.qwky.trinity</string>
+    <string name="custom_url_scheme">eu.qwky.trinity</string>
+</resources>
