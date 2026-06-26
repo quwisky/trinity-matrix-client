@@ -48,10 +48,18 @@ export class MessageListComponent {
   readonly editMessage = output<{ id: string; body: string }>();
   readonly deleteMessage = output<string>();
   readonly react = output<{ id: string; key: string }>();
+  readonly reply = output<{ id: string; body: string }>();
 
   readonly editingId = signal<string | null>(null);
   readonly editingDraft = computed(
     () => this.messages().find((m) => m.id === this.editingId())?.body ?? '',
+  );
+
+  readonly replyingToId = signal<string | null>(null);
+  readonly replyingToName = computed(
+    () =>
+      this.messages().find((m) => m.id === this.replyingToId())?.senderName ??
+      '',
   );
 
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
@@ -159,7 +167,13 @@ export class MessageListComponent {
   }
 
   startEdit(row: MessageRow): void {
+    this.replyingToId.set(null);
     this.editingId.set(row.id);
+  }
+
+  startReply(row: MessageRow): void {
+    this.editingId.set(null);
+    this.replyingToId.set(row.id);
   }
 
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
@@ -189,12 +203,16 @@ export class MessageListComponent {
     }
   }
 
-  /** Composer submit — routes to an edit when one is in progress, else a new send. */
+  /** Composer submit — routes to an edit or reply when active, else a new send. */
   onSubmit(text: string): void {
-    const id = this.editingId();
-    if (id) {
-      this.editMessage.emit({ id, body: text });
+    const editId = this.editingId();
+    const replyId = this.replyingToId();
+    if (editId) {
+      this.editMessage.emit({ id: editId, body: text });
       this.editingId.set(null);
+    } else if (replyId) {
+      this.reply.emit({ id: replyId, body: text });
+      this.replyingToId.set(null);
     } else {
       this.send.emit(text);
     }

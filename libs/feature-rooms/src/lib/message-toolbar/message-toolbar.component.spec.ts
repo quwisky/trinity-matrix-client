@@ -7,12 +7,20 @@ describe('MessageToolbarComponent', () => {
     TestBed.configureTestingModule({ imports: [MessageToolbarComponent] }),
   );
 
-  it('shows only react + copy by default', () => {
+  it('shows react + reply + copy by default and emits reply', () => {
     const fixture = TestBed.createComponent(MessageToolbarComponent);
     fixture.detectChanges();
+    const cmp = fixture.componentInstance;
 
     const buttons = fixture.nativeElement.querySelectorAll('.toolbar__btn');
-    expect(buttons.length).toBe(2); // react + copy, no edit/delete
+    expect(buttons.length).toBe(3); // react + reply + copy, no edit/delete
+
+    let replied = false;
+    cmp.replyMessage.subscribe(() => (replied = true));
+    fixture.nativeElement
+      .querySelector<HTMLButtonElement>('[aria-label="Reply"]')
+      .click();
+    expect(replied).toBe(true);
   });
 
   it('reveals edit and delete when permitted and emits on click', () => {
@@ -30,7 +38,7 @@ describe('MessageToolbarComponent', () => {
     cmp.deleteMessage.subscribe(() => (deleted = true));
 
     const buttons = fixture.nativeElement.querySelectorAll('.toolbar__btn');
-    expect(buttons.length).toBe(4); // react + copy + edit + delete
+    expect(buttons.length).toBe(5); // react + reply + copy + edit + delete
     buttons.forEach((b: HTMLButtonElement) => b.click());
 
     expect(copied).toBe(true);

@@ -1,5 +1,17 @@
 @if (editing()) {
   <div class="composer__banner">Editing message — <kbd>Esc</kbd> to cancel</div>
+} @else if (replyingTo()) {
+  <div class="composer__banner">
+    Replying to <strong>{{ replyingTo() }}</strong>
+    <button
+      type="button"
+      class="composer__cancel"
+      aria-label="Cancel reply"
+      (click)="cancelReply.emit()"
+    >
+      ✕
+    </button>
+  </div>
 }
 
 <div class="composer">

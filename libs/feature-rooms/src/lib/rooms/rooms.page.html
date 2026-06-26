@@ -55,6 +55,7 @@
           (editMessage)="onEdit($event)"
           (deleteMessage)="onDelete($event)"
           (react)="onReact($event)"
+          (reply)="onReply($event)"
         />
         <trn-member-list class="chat-members" [members]="members()" />
       } @else {

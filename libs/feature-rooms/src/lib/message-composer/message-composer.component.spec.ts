@@ -125,6 +125,21 @@ describe('MessageComposerComponent', () => {
     expect(cmp.pickerOpen()).toBe(false);
   });
 
+  it('shows a reply banner and cancels the reply on Escape', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('replyingTo', 'Alice');
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    expect(fixture.nativeElement.textContent).toContain('Replying to');
+    expect(fixture.nativeElement.textContent).toContain('Alice');
+
+    let cancelled = false;
+    cmp.cancelReply.subscribe(() => (cancelled = true));
+    cmp.onEscape();
+    expect(cancelled).toBe(true);
+  });
+
   it('toggles the emoji picker from the button', () => {
     const fixture = TestBed.createComponent(MessageComposerComponent);
     fixture.detectChanges();

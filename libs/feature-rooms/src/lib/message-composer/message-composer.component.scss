@@ -10,6 +10,23 @@
     font-family: inherit;
     font-size: 11px;
   }
+
+  strong {
+    color: var(--trinity-text-bright);
+  }
+}
+
+.composer__cancel {
+  margin-left: 6px;
+  border: none;
+  background: none;
+  color: var(--trinity-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--trinity-text-bright);
+  }
 }
 
 .composer {

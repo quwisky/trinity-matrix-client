@@ -8,6 +8,7 @@ import {
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
+  arrowUndoOutline,
   copyOutline,
   happyOutline,
   pencilOutline,
@@ -33,6 +34,7 @@ export class MessageToolbarComponent {
   readonly canEdit = input(false);
   readonly canDelete = input(false);
   readonly react = output<string>();
+  readonly replyMessage = output<void>();
   readonly copyMessage = output<void>();
   readonly editMessage = output<void>();
   readonly deleteMessage = output<void>();
@@ -41,7 +43,13 @@ export class MessageToolbarComponent {
   readonly pickerOpen = signal(false);
 
   constructor() {
-    addIcons({ copyOutline, happyOutline, pencilOutline, trashOutline });
+    addIcons({
+      arrowUndoOutline,
+      copyOutline,
+      happyOutline,
+      pencilOutline,
+      trashOutline,
+    });
   }
 
   pick(emoji: string): void {

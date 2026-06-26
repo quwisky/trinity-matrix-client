@@ -28,6 +28,16 @@
   <button
     type="button"
     class="toolbar__btn"
+    title="Reply"
+    aria-label="Reply"
+    (click)="replyMessage.emit()"
+  >
+    <ion-icon name="arrow-undo-outline" aria-hidden="true" />
+  </button>
+
+  <button
+    type="button"
+    class="toolbar__btn"
     title="Copy text"
     aria-label="Copy text"
     (click)="copyMessage.emit()"

@@ -89,6 +89,27 @@
   flex: 1;
 }
 
+.msg__reply {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin-bottom: 2px;
+  font-size: 13px;
+  color: var(--trinity-text-muted);
+}
+
+.msg__reply-author {
+  flex: 0 0 auto;
+  color: var(--trinity-text-bright);
+  font-weight: 500;
+}
+
+.msg__reply-body {
+  @include ellipsis;
+
+  min-width: 0;
+}
+
 .msg__head {
   display: flex;
   align-items: baseline;

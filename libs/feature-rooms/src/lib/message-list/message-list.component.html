@@ -20,6 +20,14 @@
           [size]="40"
         />
         <div class="msg__body">
+          @if (row.replyTo) {
+            <div class="msg__reply">
+              <span class="msg__reply-author">{{
+                row.replyTo.senderName
+              }}</span>
+              <span class="msg__reply-body">{{ row.replyTo.body }}</span>
+            </div>
+          }
           <div class="msg__head">
             <span class="msg__author">{{ row.senderName }}</span>
             <span class="msg__time">{{ row.timestamp | date: 'short' }}</span>
@@ -42,6 +50,14 @@
       } @else {
         <span class="msg__gutter">{{ row.timestamp | date: 'shortTime' }}</span>
         <div class="msg__body">
+          @if (row.replyTo) {
+            <div class="msg__reply">
+              <span class="msg__reply-author">{{
+                row.replyTo.senderName
+              }}</span>
+              <span class="msg__reply-body">{{ row.replyTo.body }}</span>
+            </div>
+          }
           @if (row.html) {
             <div
               class="msg__text msg__text--cont msg__text--html"
@@ -74,6 +90,7 @@
           [canEdit]="row.isOwn && !row.status && !row.decryptionFailed"
           [canDelete]="row.isOwn && !row.status"
           (react)="react.emit({ id: row.id, key: $event })"
+          (replyMessage)="startReply(row)"
           (copyMessage)="onCopy(row)"
           (editMessage)="startEdit(row)"
           (deleteMessage)="onDelete(row)"
@@ -89,7 +106,9 @@
   [roomName]="roomName()"
   [editing]="editingId() !== null"
   [draft]="editingDraft()"
+  [replyingTo]="replyingToName()"
   (submitText)="onSubmit($event)"
   (cancelEdit)="editingId.set(null)"
+  (cancelReply)="replyingToId.set(null)"
   (editLast)="editLastOwn()"
 />

@@ -31,17 +31,29 @@ export class MessageComposerComponent {
   readonly roomName = input('');
   readonly editing = input(false);
   readonly draft = input('');
+  /** Sender name of the message being replied to, or '' when not replying. */
+  readonly replyingTo = input('');
   readonly submitText = output<string>();
   readonly cancelEdit = output<void>();
+  readonly cancelReply = output<void>();
   readonly editLast = output<void>();
 
   readonly text = signal('');
   readonly pickerOpen = signal(false);
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
   private wasEditing = false;
+  private wasReplying = false;
 
   constructor() {
     addIcons({ happyOutline });
+    // Focus the input when a reply is started.
+    effect(() => {
+      const replying = !!this.replyingTo();
+      if (replying && !this.wasReplying) {
+        queueMicrotask(() => this.textarea()?.nativeElement.focus());
+      }
+      this.wasReplying = replying;
+    });
     // Prefill on entering edit mode; clear on leaving it.
     effect(() => {
       const editing = this.editing();
@@ -87,6 +99,10 @@ export class MessageComposerComponent {
   onEscape(): void {
     if (this.pickerOpen()) {
       this.pickerOpen.set(false);
+      return;
+    }
+    if (this.replyingTo()) {
+      this.cancelReply.emit();
       return;
     }
     if (this.editing()) {

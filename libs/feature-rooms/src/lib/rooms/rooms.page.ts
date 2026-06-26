@@ -179,6 +179,13 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
+  onReply(reply: { id: string; body: string }): void {
+    this.timeline
+      .reply(reply.id, reply.body)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
   logout(): void {
     this.auth
       .logout()

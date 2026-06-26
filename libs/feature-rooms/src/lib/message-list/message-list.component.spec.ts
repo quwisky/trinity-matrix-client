@@ -16,6 +16,7 @@ function msg(id: string, senderId: string, senderName: string, ts: number) {
     decryptionFailed: false,
     edited: false,
     reactions: [],
+    replyTo: null,
     status: null,
     kind: 'text' as const,
   };
@@ -58,6 +59,7 @@ describe('MessageListComponent', () => {
         decryptionFailed: false,
         edited: false,
         reactions: [],
+        replyTo: null,
         status: null,
         kind: 'text' as const,
       },
