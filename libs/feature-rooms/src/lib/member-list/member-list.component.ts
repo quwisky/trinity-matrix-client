@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { AvatarComponent } from './avatar.component';
+import { AvatarComponent } from '../avatar/avatar.component';
 import type { MemberSummary } from '@trinity/core';
 
 /** Discord member list (right column): joined members of the active room. */

@@ -1,1 +1,1 @@
-export * from './lib/rooms.page';
+export * from './lib/rooms/rooms.page';

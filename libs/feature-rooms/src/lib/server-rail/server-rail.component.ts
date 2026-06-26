@@ -4,7 +4,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import { AvatarComponent } from './avatar.component';
+import { AvatarComponent } from '../avatar/avatar.component';
 import type { SpaceSummary } from '@trinity/core';
 
 /** Discord server rail: Home + one pill per Matrix Space. */

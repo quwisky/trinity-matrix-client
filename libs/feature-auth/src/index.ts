@@ -1,2 +1,2 @@
-export * from './lib/login.page';
-export * from './lib/sso-callback.page';
+export * from './lib/login/login.page';
+export * from './lib/sso-callback/sso-callback.page';

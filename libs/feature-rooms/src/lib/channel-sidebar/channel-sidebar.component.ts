@@ -4,7 +4,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import { AvatarComponent } from './avatar.component';
+import { AvatarComponent } from '../avatar/avatar.component';
 import type { RoomSummary } from '@trinity/core';
 
 /** Discord channel sidebar: space header, room list, and the user panel. */

@@ -1,4 +1,4 @@
-@use './styles/mixins' as *;
+@use '../styles/mixins' as *;
 
 // Pin the desktop side pane to exactly rail (72) + sidebar (240) so it matches
 // the content width — otherwise the split-pane reserves --side-max-width (28%)

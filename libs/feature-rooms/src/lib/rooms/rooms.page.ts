@@ -20,9 +20,9 @@ import {
   MenuController,
 } from '@ionic/angular/standalone';
 import { AuthService, MatrixClientService, RoomsService } from '@trinity/core';
-import { ServerRailComponent } from './server-rail.component';
-import { ChannelSidebarComponent } from './channel-sidebar.component';
-import { MemberListComponent } from './member-list.component';
+import { ServerRailComponent } from '../server-rail/server-rail.component';
+import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
+import { MemberListComponent } from '../member-list/member-list.component';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
