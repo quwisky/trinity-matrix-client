@@ -142,6 +142,14 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
+  onSend(text: string): void {
+    // The local echo (and its failed/retry state) surfaces the result.
+    this.timeline
+      .send(text)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
   logout(): void {
     this.auth
       .logout()

@@ -10,6 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { AvatarComponent } from '../avatar/avatar.component';
+import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import type { MessageView } from '@trinity/core';
 
 interface MessageRow extends MessageView {
@@ -23,7 +24,7 @@ const AUTO_LOAD_THRESHOLD_PX = 150;
 @Component({
   selector: 'app-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, DatePipe],
+  imports: [AvatarComponent, DatePipe, MessageComposerComponent],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
 })
@@ -33,6 +34,8 @@ export class MessageListComponent {
   readonly canLoadOlder = input(false);
   readonly roomName = input('');
   readonly loadOlder = output<void>();
+  readonly send = output<string>();
+  readonly retry = output<string>();
 
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
   private lastId = '';

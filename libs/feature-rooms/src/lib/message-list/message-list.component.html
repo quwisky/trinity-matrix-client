@@ -8,6 +8,8 @@
       class="msg"
       [class.msg--cont]="!row.showHeader"
       [class.msg--failed]="row.decryptionFailed"
+      [class.msg--sending]="row.status === 'sending'"
+      [class.msg--sendfailed]="row.status === 'failed'"
     >
       @if (row.showHeader) {
         <app-avatar
@@ -39,17 +41,16 @@
           <p class="msg__text msg__text--cont">{{ row.body }}</p>
         }
       }
+
+      @if (row.status === 'failed') {
+        <button class="msg__retry" (click)="retry.emit(row.id)">
+          Failed to send — retry
+        </button>
+      }
     </div>
   } @empty {
     <div class="empty">No messages yet.</div>
   }
 </div>
 
-<footer class="composer">
-  <input
-    class="composer__input"
-    type="text"
-    [placeholder]="'Message #' + roomName() + ' — sending arrives in M6'"
-    disabled
-  />
-</footer>
+<app-message-composer [roomName]="roomName()" (send)="send.emit($event)" />

@@ -1,0 +1,11 @@
+<div class="composer">
+  <textarea
+    #ta
+    class="composer__input"
+    rows="1"
+    [value]="text()"
+    [placeholder]="'Message #' + roomName()"
+    (input)="onInput($event)"
+    (keydown.enter)="onEnter($event)"
+  ></textarea>
+</div>

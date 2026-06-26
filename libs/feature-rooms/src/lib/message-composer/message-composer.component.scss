@@ -1,0 +1,26 @@
+.composer {
+  padding: 8px 16px 16px;
+}
+
+.composer__input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  max-height: 200px;
+  padding: 11px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--trinity-sidebar);
+  color: var(--trinity-text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+
+  &::placeholder {
+    color: var(--trinity-text-muted);
+  }
+
+  &:focus {
+    outline: none;
+  }
+}

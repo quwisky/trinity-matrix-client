@@ -43,6 +43,8 @@
           [canLoadOlder]="timeline.canLoadOlder()"
           [roomName]="room.name"
           (loadOlder)="loadOlder()"
+          (send)="onSend($event)"
+          (retry)="timeline.retry($event)"
         />
         <app-member-list class="chat-members" [members]="members()" />
       } @else {
