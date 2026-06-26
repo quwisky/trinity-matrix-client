@@ -209,6 +209,18 @@ export class TimelineService {
     }
   }
 
+  /** Delete (redact) a message. */
+  redact(messageId: string): Observable<void> {
+    const room = this.room;
+    if (!room || !this.matrix.isInitialized) {
+      return of(void 0);
+    }
+    const client = this.matrix.instance;
+    return defer(() => from(client.redactEvent(room.roomId, messageId))).pipe(
+      map(() => void 0),
+    );
+  }
+
   private refresh(): void {
     const room = this.room;
     if (!room) {

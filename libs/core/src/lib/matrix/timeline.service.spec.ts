@@ -75,6 +75,10 @@ function setup(events: ReturnType<typeof fakeEvent>[], sent: unknown[][] = []) {
       sent.push(['message', content]);
       return Promise.resolve({});
     },
+    redactEvent: (_rid: string, eventId: string) => {
+      sent.push(['redact', eventId]);
+      return Promise.resolve({});
+    },
   };
   const matrix = {
     isInitialized: true,
@@ -158,6 +162,15 @@ describe('TimelineService', () => {
     const newContent = content['m.new_content'] as Record<string, unknown>;
     expect(newContent['body']).toBe('fixed **text**');
     expect(newContent['formatted_body']).toContain('<strong>text</strong>');
+  });
+
+  it('redacts a message', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(svc.redact('$x'));
+
+    expect(sent[0]).toEqual(['redact', '$x']);
   });
 
   it('marks edited messages and hides the edit events', () => {
