@@ -17,6 +17,8 @@ export interface RoomSummary {
   avatarUrl: string | null;
   topic: string;
   memberCount: number;
+  /** Whether the room has encryption enabled (`m.room.encryption`). */
+  encrypted: boolean;
   /** Total unread notifications (drives the unread highlight). */
   unreadCount: number;
   /** Unread mentions/highlights (drives the red badge). */
@@ -182,6 +184,7 @@ export class RoomsService {
       ),
       topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
       memberCount: room.getJoinedMemberCount(),
+      encrypted: room.hasEncryptionStateEvent(),
       unreadCount,
       highlightCount,
       hasUnread: unreadCount > 0,

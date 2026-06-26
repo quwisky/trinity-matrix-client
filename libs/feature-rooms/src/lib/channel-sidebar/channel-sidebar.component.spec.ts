@@ -11,6 +11,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     avatarUrl: null,
     topic: '',
     memberCount: 0,
+    encrypted: false,
     unreadCount: 0,
     highlightCount: 0,
     hasUnread: false,

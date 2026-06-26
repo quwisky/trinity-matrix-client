@@ -13,6 +13,7 @@ function fakeRoom(opts: {
   unread?: number;
   highlight?: number;
   activity?: number;
+  encrypted?: boolean;
 }) {
   return {
     roomId: opts.roomId,
@@ -22,6 +23,7 @@ function fakeRoom(opts: {
     getAvatarUrl: () => null,
     getJoinedMemberCount: () => 0,
     getJoinedMembers: () => [],
+    hasEncryptionStateEvent: () => opts.encrypted ?? false,
     getUnreadNotificationCount: (type?: string) =>
       type === 'highlight' ? (opts.highlight ?? 0) : (opts.unread ?? 0),
     getLastActiveTimestamp: () => opts.activity ?? 0,
@@ -124,5 +126,17 @@ describe('RoomsService', () => {
   it('derives an uppercase initial without the leading sigil', () => {
     const svc = setup([fakeRoom({ roomId: '!a:hs', name: '#general' })]);
     expect(svc.rooms()[0].initial).toBe('G');
+  });
+
+  it('flags rooms with encryption enabled', () => {
+    const svc = setup([
+      fakeRoom({ roomId: '!e:hs', name: 'secret', encrypted: true }),
+      fakeRoom({ roomId: '!p:hs', name: 'public' }),
+    ]);
+    const byId = Object.fromEntries(
+      svc.rooms().map((r) => [r.id, r.encrypted]),
+    );
+    expect(byId['!e:hs']).toBe(true);
+    expect(byId['!p:hs']).toBe(false);
   });
 });
