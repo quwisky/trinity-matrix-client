@@ -1,0 +1,8 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "feature-auth",
+  "projectType": "library",
+  "sourceRoot": "libs/feature-auth/src",
+  "prefix": "app",
+  "tags": ["type:feature", "scope:trinity"]
+}

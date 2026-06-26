@@ -1,0 +1,37 @@
+/* Workspace-wide TypeScript options + path aliases. Projects extend this. */
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "baseUrl": ".",
+    "outDir": "./dist/out-tsc",
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "sourceMap": true,
+    "declaration": false,
+    "experimentalDecorators": true,
+    "moduleResolution": "bundler",
+    "importHelpers": true,
+    "target": "es2022",
+    "module": "es2020",
+    "lib": ["es2018", "dom"],
+    "skipLibCheck": true,
+    "useDefineForClassFields": false,
+    "paths": {
+      "@trinity/core": ["libs/core/src/index.ts"],
+      "@trinity/feature-auth": ["libs/feature-auth/src/index.ts"],
+      "@trinity/feature-rooms": ["libs/feature-rooms/src/index.ts"]
+    }
+  },
+  "angularCompilerOptions": {
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": true
+  }
+}

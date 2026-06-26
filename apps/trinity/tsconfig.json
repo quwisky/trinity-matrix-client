@@ -1,0 +1,11 @@
+/* Editor/lint view of the Trinity app. Build uses tsconfig.app.json,
+   Vitest uses tsconfig.spec.json. */
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../dist/out-tsc",
+    "types": []
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts", "src/test-setup.ts"]
+}

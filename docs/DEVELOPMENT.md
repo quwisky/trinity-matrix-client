@@ -3,7 +3,24 @@
 Setup, running, testing, and troubleshooting. Architecture is in
 [ARCHITECTURE.md](ARCHITECTURE.md); roadmap in [../PLAN.md](../PLAN.md).
 
+## Workspace layout
+
+Trinity is an **Nx integrated monorepo** (pnpm). The deployable app lives in
+`apps/`, reusable code in `libs/` (imported via `@trinity/*` path aliases and
+guarded by Nx module boundaries). Projects:
+
+| Project         | Path                 | Notes                                             |
+| --------------- | -------------------- | ------------------------------------------------- |
+| `trinity`       | `apps/trinity`       | the Ionic/Angular app (build, serve, test)        |
+| `core`          | `libs/core`          | `@trinity/core` — Matrix services, storage, guard |
+| `feature-auth`  | `libs/feature-auth`  | `@trinity/feature-auth` — login + SSO callback    |
+| `feature-rooms` | `libs/feature-rooms` | `@trinity/feature-rooms` — authenticated landing  |
+
+The web build still emits to root `www/`, so Capacitor and the native projects
+are unchanged. `pnpm exec nx graph` opens the dependency graph.
+
 ## Prerequisites
+
 - **Node 22+** (matrix-js-sdk requirement; repo developed on Node 25) and **pnpm**
   (`corepack enable` installs the version pinned in `package.json`).
 - **iOS builds:** macOS with **Xcode** installed and selected
@@ -18,13 +35,17 @@ pnpm install
 ```
 
 > pnpm blocks dependency build scripts by default. The ones this project needs
-> (`esbuild`, `@parcel/watcher`, `lmdb`, `msgpackr-extract`) are allowlisted under
-> `pnpm.onlyBuiltDependencies` in `package.json`, so they build on install.
+> (`esbuild`, `@parcel/watcher`, `lmdb`, `msgpackr-extract`, `@swc/core`, `nx`) are
+> allowlisted under `pnpm.onlyBuiltDependencies` in `package.json`, so they build on
+> install. Installing also runs the `prepare` script, which activates the Husky git
+> hooks (see [Code quality](#code-quality--git-hooks)).
 
 ## Running on the web
+
 ```bash
-pnpm start         # ng serve → http://localhost:4200, hot reload
+pnpm start         # nx serve trinity → http://localhost:4200, hot reload
 ```
+
 - Unauthenticated, you land on `/login`. Enter a homeserver (`matrix.org`), then sign
   in with a real account.
 - E2EE spike UI: `http://localhost:4200/spike` → "Run crypto spike".
@@ -32,6 +53,7 @@ pnpm start         # ng serve → http://localhost:4200, hot reload
   then reload. (Session lives in Preferences/localStorage; crypto store in IndexedDB.)
 
 ## Running on device / simulator
+
 ```bash
 export ANDROID_HOME="$HOME/Library/Android/sdk"   # Android only
 pnpm build && pnpm exec cap sync
@@ -42,42 +64,106 @@ pnpm exec cap run android      # choose an emulator/device
 pnpm exec cap open ios         # Xcode
 pnpm exec cap open android     # Android Studio
 ```
+
 After **every** web-code change, re-run `pnpm build && pnpm exec cap sync` (or the
 faster `pnpm exec cap copy` when only web assets changed) to push it into the shells.
 
-## Testing
-Today's checks are headless Playwright drivers that build, serve `www/`, and assert
-real behavior. (The Vitest + Playwright suite proper is a later milestone.)
+## Nx tasks
+
+Run a target on a project with `pnpm exec nx <target> <project>`; the top-level
+`pnpm` scripts wrap the common ones for the `trinity` app:
+
+| Command       | Underlying         | Purpose                       |
+| ------------- | ------------------ | ----------------------------- |
+| `pnpm start`  | `nx serve trinity` | dev server, hot reload        |
+| `pnpm build`  | `nx build trinity` | production build → `www/`     |
+| `pnpm test`   | `nx test trinity`  | Vitest unit tests (run once)  |
+| `pnpm lint`   | `nx lint trinity`  | ESLint for the app            |
+| `pnpm format` | `nx format:write`  | Prettier-format the workspace |
+
+Other useful Nx commands:
 
 ```bash
-pnpm build            # production build + full typecheck
+pnpm exec nx run-many -t lint test        # all projects
+pnpm exec nx affected -t lint test        # only what changed vs. the base branch
+pnpm exec nx test trinity --configuration=watch   # Vitest watch mode
+pnpm exec nx graph                        # interactive dependency graph
+pnpm exec nx reset                        # clear the Nx cache if results look stale
+```
+
+Nx caches `build`/`test`/`lint`; a second run on unchanged inputs is instant.
+
+## Testing
+
+**Unit tests — Vitest** (via the Analog Angular plugin), configured per project in
+`vite.config.ts` with `src/test-setup.ts`:
+
+```bash
+pnpm test                                 # nx test trinity (once)
+pnpm exec nx test trinity --configuration=watch
+```
+
+**End-to-end harnesses** — headless Playwright drivers in [`e2e/`](../e2e/) that
+build, serve `www/`, and assert real behavior (including live `.well-known`
+discovery against matrix.org):
+
+```bash
 pnpm smoke:login      # redirect→login + real .well-known discovery
 pnpm spike:chromium   # E2EE WASM in Blink  (Android WebView / Electron proxy)
 pnpm spike:webkit     # E2EE WASM in WebKit (iOS WKWebView proxy)
 ```
-All should print `RESULT: PASS`. The spike scripts require the Playwright browsers:
+
+All should print `RESULT: PASS`. The spike/smoke harnesses require the Playwright
+browsers:
+
 ```bash
 pnpm exec playwright install chromium webkit
 ```
 
+`e2e/` holds `smoke-login.mjs`, `crypto-spike.mjs`, and a shared `support/serve.mjs`
+static server.
+
 ### What is NOT covered yet
+
 - A **credentialed** login → sync → logout cycle (no test account wired in). With a
-  throwaway account this becomes a straightforward addition to `smoke-login.mjs`.
+  throwaway account this becomes a straightforward addition to `e2e/smoke-login.mjs`.
 - On-device WebView runtime (the Playwright engine runs are faithful proxies, but a
   simulator/emulator run is the real thing — see [../SPIKE.md](../SPIKE.md)).
 
+## Code quality & git hooks
+
+- **ESLint** — flat config in [`eslint.config.mjs`](../eslint.config.mjs)
+  (`angular-eslint` + `typescript-eslint`). `@nx/enforce-module-boundaries` enforces
+  the layering via project `tags`: `feature-*` may depend on `core`; `core` depends on
+  nothing; the app may depend on anything. Run with `pnpm lint` /
+  `pnpm exec nx run-many -t lint`.
+- **Prettier** — [`.prettierrc.json`](../.prettierrc.json) (`singleQuote`, with the
+  Angular parser forced for `*.page.html` templates). `pnpm format` writes,
+  `pnpm format:check` verifies.
+- **Husky + lint-staged** — `pnpm install` activates a **pre-commit** hook
+  (`.husky/pre-commit` → `lint-staged`) that, on staged files, runs `eslint --fix` +
+  `prettier --write` on `apps`/`libs` TypeScript and `prettier --write` on everything
+  else (see [`.lintstagedrc.json`](../.lintstagedrc.json)). A module-boundary
+  violation fails the commit.
+
 ## Troubleshooting
-| Symptom | Cause / fix |
-|---|---|
-| `WebAssembly … HTTP status is not ok` / crypto 404 | The WASM asset isn't served. Ensure `angular.json` copies it to `assets/crypto/` and you ran `pnpm build`. See [ARCHITECTURE.md](ARCHITECTURE.md#e2ee-wasm-loading). |
-| Crypto fails only on device | Check Capacitor serves `.wasm` as `application/wasm`; if a CSP is set, allow `wasm-unsafe-eval`. |
-| `xcodebuild requires Xcode` | Command Line Tools are selected, not Xcode. Run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. |
-| Android: "Unable to infer default Android SDK" | Export `ANDROID_HOME` and confirm `android/local.properties` `sdk.dir`. |
-| Build warns about non-ESM modules (`loglevel`, `events`, …) | Harmless CommonJS-interop notices from matrix-js-sdk deps. Silence via `allowedCommonJsDependencies` in `angular.json` if desired. |
-| Stuck "logged in" / weird crypto state | Clear localStorage + IndexedDB (web) or reinstall the app (device). |
+
+| Symptom                                                     | Cause / fix                                                                                                                                                                                          |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WebAssembly … HTTP status is not ok` / crypto 404          | The WASM asset isn't served. Ensure the build target (`apps/trinity/project.json`) copies it to `assets/crypto/` and you ran `pnpm build`. See [ARCHITECTURE.md](ARCHITECTURE.md#e2ee-wasm-loading). |
+| Crypto fails only on device                                 | Check Capacitor serves `.wasm` as `application/wasm`; if a CSP is set, allow `wasm-unsafe-eval`.                                                                                                     |
+| `xcodebuild requires Xcode`                                 | Command Line Tools are selected, not Xcode. Run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.                                                                                   |
+| Android: "Unable to infer default Android SDK"              | Export `ANDROID_HOME` and confirm `android/local.properties` `sdk.dir`.                                                                                                                              |
+| Build warns about non-ESM modules (`loglevel`, `events`, …) | Harmless CommonJS-interop notices from matrix-js-sdk deps.                                                                                                                                           |
+| `Cannot find module '@trinity/…'`                           | Path aliases live in `tsconfig.base.json`; the Vite/Vitest side resolves them via `vite-tsconfig-paths`. Run `pnpm exec nx reset` if the graph looks stale.                                          |
+| Stale Nx task results                                       | `pnpm exec nx reset` clears the cache.                                                                                                                                                               |
+| Stuck "logged in" / weird crypto state                      | Clear localStorage + IndexedDB (web) or reinstall the app (device).                                                                                                                                  |
 
 ## Conventions
+
 - Standalone Angular components; import Ionic from `@ionic/angular/standalone`.
 - State via **signals**; async UI actions go through a shared busy/error helper.
-- New SDK interaction belongs in a `core/matrix` service, not in a component.
+- New SDK interaction belongs in `@trinity/core` (`libs/core`), not in a component;
+  feature pages live in `@trinity/feature-*` libs. Respect the module boundaries.
+- Cross-lib imports use the `@trinity/*` aliases; imports within a lib stay relative.
 - Keep `data-testid` hooks on interactive elements that the headless scripts drive.

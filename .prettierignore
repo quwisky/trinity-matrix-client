@@ -1,0 +1,17 @@
+# Dependencies
+node_modules
+
+# Build output
+www
+dist
+.nx
+.angular
+coverage
+
+# Capacitor native projects (managed by native toolchains)
+android
+ios
+
+# Generated / binary
+pnpm-lock.yaml
+*.wasm
