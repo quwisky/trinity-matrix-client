@@ -8,16 +8,22 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { IonIcon } from '@ionic/angular/standalone';
+import { addIcons } from 'ionicons';
+import { happyOutline } from 'ionicons/icons';
+import { EmojiPickerComponent } from '../emoji-picker/emoji-picker.component';
 
 const MAX_HEIGHT_PX = 200;
 
 /**
  * Discord-style composer: Enter sends, Shift+Enter inserts a newline. In edit mode
- * it is prefilled with the message draft and Esc cancels.
+ * it is prefilled with the message draft and Esc cancels. An emoji button opens a
+ * picker that inserts at the cursor.
  */
 @Component({
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [IonIcon, EmojiPickerComponent],
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
 })
@@ -30,10 +36,12 @@ export class MessageComposerComponent {
   readonly editLast = output<void>();
 
   readonly text = signal('');
+  readonly pickerOpen = signal(false);
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
   private wasEditing = false;
 
   constructor() {
+    addIcons({ happyOutline });
     // Prefill on entering edit mode; clear on leaving it.
     effect(() => {
       const editing = this.editing();
@@ -77,9 +85,29 @@ export class MessageComposerComponent {
   }
 
   onEscape(): void {
+    if (this.pickerOpen()) {
+      this.pickerOpen.set(false);
+      return;
+    }
     if (this.editing()) {
       this.cancelEdit.emit();
     }
+  }
+
+  /** Insert an emoji at the cursor (or append), then keep the textarea focused. */
+  insertEmoji(emoji: string): void {
+    const el = this.textarea()?.nativeElement;
+    const value = this.text();
+    const start = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? value.length;
+    this.text.set(value.slice(0, start) + emoji + value.slice(end));
+    this.pickerOpen.set(false);
+    queueMicrotask(() => {
+      const pos = start + emoji.length;
+      el?.focus();
+      el?.setSelectionRange(pos, pos);
+      this.autoGrow();
+    });
   }
 
   onArrowUp(event: Event): void {

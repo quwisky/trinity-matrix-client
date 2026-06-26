@@ -3,6 +3,9 @@
 }
 
 <div class="composer">
+  @if (pickerOpen()) {
+    <trn-emoji-picker class="composer__picker" (pick)="insertEmoji($event)" />
+  }
   <textarea
     #ta
     class="composer__input"
@@ -14,4 +17,14 @@
     (keydown.escape)="onEscape()"
     (keydown.arrowUp)="onArrowUp($event)"
   ></textarea>
+  <button
+    type="button"
+    class="composer__emoji"
+    title="Emoji"
+    aria-label="Insert emoji"
+    [attr.aria-expanded]="pickerOpen()"
+    (click)="pickerOpen.set(!pickerOpen())"
+  >
+    <ion-icon name="happy-outline" aria-hidden="true" />
+  </button>
 </div>

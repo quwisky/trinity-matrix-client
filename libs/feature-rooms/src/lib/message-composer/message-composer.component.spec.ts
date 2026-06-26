@@ -105,4 +105,38 @@ describe('MessageComposerComponent', () => {
 
     expect(cancelled).toBe(true);
   });
+
+  it('inserts an emoji at the cursor and closes the picker', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    const ta = fixture.nativeElement.querySelector(
+      'textarea',
+    ) as HTMLTextAreaElement;
+
+    cmp.text.set('ab');
+    fixture.detectChanges();
+    ta.selectionStart = ta.selectionEnd = 1; // cursor between a and b
+    cmp.pickerOpen.set(true);
+
+    cmp.insertEmoji('😀');
+
+    expect(cmp.text()).toBe('a😀b');
+    expect(cmp.pickerOpen()).toBe(false);
+  });
+
+  it('toggles the emoji picker from the button', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    expect(fixture.nativeElement.querySelector('trn-emoji-picker')).toBeNull();
+
+    cmp.pickerOpen.set(true);
+    fixture.detectChanges();
+
+    expect(
+      fixture.nativeElement.querySelector('trn-emoji-picker'),
+    ).not.toBeNull();
+  });
 });

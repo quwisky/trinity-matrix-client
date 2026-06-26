@@ -13,7 +13,36 @@
 }
 
 .composer {
+  position: relative;
   padding: 8px 16px 16px;
+}
+
+.composer__picker {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  z-index: 10;
+}
+
+.composer__emoji {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--trinity-text-muted);
+  font-size: 20px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--trinity-text-bright);
+  }
 }
 
 .composer__input {
@@ -21,7 +50,7 @@
   box-sizing: border-box;
   resize: none;
   max-height: 200px;
-  padding: 11px 14px;
+  padding: 11px 44px 11px 14px;
   border: none;
   border-radius: 8px;
   background: var(--trinity-sidebar);
