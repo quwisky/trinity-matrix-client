@@ -18,10 +18,12 @@ function fakeEvent(o: {
   status?: string;
   edited?: boolean;
   editRelation?: boolean;
+  replyTo?: string;
 }) {
   return {
     getId: () => o.id,
     getSender: () => o.sender,
+    replyEventId: o.replyTo,
     getRoomId: () => '!r:hs',
     getType: () => o.type ?? 'm.room.message',
     getTs: () => o.ts ?? 0,
@@ -66,6 +68,7 @@ function setup(
       getEvents: () => events,
       getPaginationToken: () => null,
     }),
+    findEventById: (id: string) => events.find((e) => e.getId() === id),
     getMember: (id: string) => ({
       name: id === '@me:hs' ? 'Me' : 'Alice',
       getAvatarUrl: () => null,
@@ -240,6 +243,47 @@ describe('TimelineService', () => {
     await firstValueFrom(svc.toggleReaction('$m', '👍'));
 
     expect(sent[0]).toEqual(['redact', '$mine']);
+  });
+
+  it('sends a reply with an in_reply_to relation and a quote fallback', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup(
+      [fakeEvent({ id: '$orig', sender: '@a:hs', body: 'hello world' })],
+      sent,
+    );
+
+    await firstValueFrom(svc.reply('$orig', 'hi back'));
+
+    expect(sent[0][0]).toBe('message');
+    const content = sent[0][1] as Record<string, unknown>;
+    expect(content['m.relates_to']).toEqual({
+      'm.in_reply_to': { event_id: '$orig' },
+    });
+    expect(content['body']).toBe('> <@a:hs> hello world\n\nhi back');
+    // Rich-reply HTML fallback so other clients render (and strip) it correctly.
+    expect(content['format']).toBe('org.matrix.custom.html');
+    expect(content['formatted_body']).toContain('<mx-reply>');
+    expect(content['formatted_body']).toContain('</mx-reply>hi back');
+  });
+
+  it('maps a reply preview and strips the quote fallback from the body', () => {
+    const svc = setup([
+      fakeEvent({ id: '$orig', sender: '@a:hs', body: 'original text' }),
+      fakeEvent({
+        id: '$reply',
+        sender: '@me:hs',
+        body: '> <@a:hs> original text\n\nmy reply',
+        replyTo: '$orig',
+      }),
+    ]);
+
+    const reply = svc.messages().find((m) => m.id === '$reply');
+    expect(reply?.body).toBe('my reply'); // fallback stripped
+    expect(reply?.replyTo).toEqual({
+      id: '$orig',
+      senderName: 'Alice',
+      body: 'original text',
+    });
   });
 
   it('marks edited messages and hides the edit events', () => {

@@ -33,6 +33,13 @@ export interface ReactionView {
   reacted: boolean;
 }
 
+/** A compact preview of the message a reply points at. */
+export interface ReplyPreview {
+  id: string;
+  senderName: string;
+  body: string;
+}
+
 /** A single rendered timeline message (plain view model — no SDK types leak out). */
 export interface MessageView {
   id: string;
@@ -51,6 +58,8 @@ export interface MessageView {
   edited: boolean;
   /** Aggregated reactions, ordered by the SDK (count then first-seen). */
   reactions: ReactionView[];
+  /** The message this one replies to (`m.in_reply_to`), if loaded. */
+  replyTo: ReplyPreview | null;
   /** Local-echo send state: 'sending' / 'failed', or null once confirmed. */
   status: 'sending' | 'failed' | null;
   kind: MessageKind;
@@ -221,6 +230,43 @@ export class TimelineService {
     }
   }
 
+  /** Send a reply to a message (`m.in_reply_to`), with a plain-text quote fallback. */
+  reply(messageId: string, body: string): Observable<void> {
+    const room = this.room;
+    const text = body.trim();
+    if (!room || !text || !this.matrix.isInitialized) {
+      return of(void 0);
+    }
+    const client = this.matrix.instance;
+    return defer(() => {
+      const target = room.findEventById(messageId);
+      const sender = target?.getSender() ?? '';
+      const origBody = stripReplyFallbackText(
+        (target?.getContent()['body'] as string) ?? '',
+      );
+      const firstLine = origBody.split('\n')[0] ?? '';
+      const { formatted, html } = this.renderMarkdown(text);
+      const replyHtml = formatted ? html : escapeHtml(text);
+      // Full rich-reply fallback so every client renders it correctly: a plain
+      // `> …` quote in `body` and an `<mx-reply>` block in `formatted_body`.
+      const roomLink = `https://matrix.to/#/${room.roomId}/${messageId}`;
+      const userLink = `https://matrix.to/#/${sender}`;
+      const mxReply =
+        `<mx-reply><blockquote>` +
+        `<a href="${roomLink}">In reply to</a> ` +
+        `<a href="${userLink}">${escapeHtml(sender)}</a><br>` +
+        `${escapeHtml(firstLine)}</blockquote></mx-reply>`;
+      const content = {
+        msgtype: MsgType.Text,
+        body: `> <${sender}> ${firstLine}\n\n${text}`,
+        format: 'org.matrix.custom.html',
+        formatted_body: `${mxReply}${replyHtml}`,
+        'm.relates_to': { 'm.in_reply_to': { event_id: messageId } },
+      };
+      return from(client.sendMessage(room.roomId, content as never));
+    }).pipe(map(() => void 0));
+  }
+
   /** Delete (redact) a message. */
   redact(messageId: string): Observable<void> {
     const room = this.room;
@@ -340,8 +386,29 @@ export class TimelineService {
       decryptionFailed,
       edited: event.replacingEvent() !== null,
       reactions: this.reactionsFor(client, room, event),
+      replyTo: event.replyEventId
+        ? this.replyPreview(room, event.replyEventId)
+        : null,
       status: mapStatus(event.status),
       kind,
+    };
+  }
+
+  /** Build a short preview of a replied-to message, or null if it isn't loaded. */
+  private replyPreview(room: Room, eventId: string): ReplyPreview | null {
+    const target = room.findEventById(eventId);
+    if (!target) {
+      return null;
+    }
+    const sender = target.getSender() ?? '';
+    const member = room.getMember(sender);
+    const raw = target.isRedacted()
+      ? '(message deleted)'
+      : stripReplyFallbackText((target.getContent()['body'] as string) ?? '');
+    return {
+      id: eventId,
+      senderName: member?.name ?? sender,
+      body: raw.replace(/\s+/g, ' ').trim() || '…',
     };
   }
 
@@ -422,13 +489,16 @@ function renderBody(
     return { body: '(message deleted)', html: null, kind: 'redacted' };
   }
   const content = event.getContent();
-  const text = (content['body'] as string) ?? '';
+  const isReply = !!event.replyEventId;
+  const raw = (content['body'] as string) ?? '';
+  const text = isReply ? stripReplyFallbackText(raw) : raw;
   // Markdown is delivered as HTML in `formatted_body` (format = custom HTML).
-  const html =
+  const rawHtml =
     content['format'] === 'org.matrix.custom.html' &&
     typeof content['formatted_body'] === 'string'
       ? (content['formatted_body'] as string)
       : null;
+  const html = isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
 
   switch (content.msgtype) {
     case MsgType.Text:
@@ -452,6 +522,39 @@ function renderBody(
         kind: 'unsupported',
       };
   }
+}
+
+/**
+ * Strip the rich-reply fallback from a body: the leading `> …` quote lines and
+ * the blank line that separates them from the actual reply text.
+ */
+function stripReplyFallbackText(body: string): string {
+  if (!body.startsWith('>')) {
+    return body;
+  }
+  const lines = body.split('\n');
+  let i = 0;
+  while (i < lines.length && lines[i].startsWith('>')) {
+    i++;
+  }
+  if (i < lines.length && lines[i].trim() === '') {
+    i++;
+  }
+  return lines.slice(i).join('\n');
+}
+
+/** Strip the `<mx-reply>…</mx-reply>` fallback block from formatted (HTML) replies. */
+function stripReplyFallbackHtml(html: string): string {
+  return html.replace(/<mx-reply>[\s\S]*?<\/mx-reply>/i, '');
+}
+
+/** Escape text for safe interpolation into the `<mx-reply>` HTML fallback. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /** First visible character (sans leading sigil), uppercased, for fallback avatars. */
