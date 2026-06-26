@@ -1,5 +1,6 @@
 {
   "{apps,libs}/**/*.ts": ["eslint --fix --no-warn-ignored", "prettier --write"],
-  "*.{js,cjs,mjs,json,scss,css,md,yaml,yml,html}": "prettier --write",
+  "*.scss": ["stylelint --fix", "prettier --write"],
+  "*.{js,cjs,mjs,json,css,md,yaml,yml,html}": "prettier --write",
   "capacitor.config.ts": "prettier --write"
 }
