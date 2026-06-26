@@ -5,6 +5,7 @@ import {
   ClientEvent,
   SyncState,
 } from 'matrix-js-sdk';
+import { Observable, defer, from, map, of, switchMap, tap } from 'rxjs';
 import { SessionStorageService } from '../storage/session-storage.service';
 import { MatrixSession } from './session.model';
 import { preloadCryptoWasm } from './crypto-wasm-loader';
@@ -41,39 +42,47 @@ export class MatrixClientService {
   /**
    * Build the client from a session, bootstrap E2EE, and start syncing.
    * E2EE is enabled in MVP, so initRustCrypto() runs before startClient().
+   * Cold: the work runs when the returned Observable is subscribed.
    */
-  async init(session: MatrixSession): Promise<void> {
-    this.client = createClient({
-      baseUrl: session.baseUrl,
-      accessToken: session.accessToken,
-      userId: session.userId,
-      deviceId: session.deviceId,
-    });
-
-    // Preload the WASM from the served asset path, then init the crypto store
-    // (IndexedDB inside browsers/WebViews by default).
-    await preloadCryptoWasm();
-    await this.client.initRustCrypto();
-
-    this.client.on(ClientEvent.Sync, (state) => this.syncState.set(state));
-
-    await this.client.startClient({ initialSyncLimit: 20 });
+  init(session: MatrixSession): Observable<void> {
+    return defer(() => {
+      this.client = createClient({
+        baseUrl: session.baseUrl,
+        accessToken: session.accessToken,
+        userId: session.userId,
+        deviceId: session.deviceId,
+      });
+      // Preload the WASM from the served asset path, then init the crypto store
+      // (IndexedDB inside browsers/WebViews by default).
+      return preloadCryptoWasm();
+    }).pipe(
+      switchMap(() => from(this.client!.initRustCrypto())),
+      tap(() =>
+        this.client!.on(ClientEvent.Sync, (state) => this.syncState.set(state)),
+      ),
+      switchMap(() => from(this.client!.startClient({ initialSyncLimit: 20 }))),
+      map(() => void 0),
+    );
   }
 
   /** Restore a persisted session on app start, if one exists. */
-  async restore(): Promise<boolean> {
-    const session = await this.storage.load();
-    if (!session) {
-      return false;
-    }
-    await this.init(session);
-    return true;
+  restore(): Observable<boolean> {
+    return this.storage
+      .load()
+      .pipe(
+        switchMap((session) =>
+          session ? this.init(session).pipe(map(() => true)) : of(false),
+        ),
+      );
   }
 
   /** Stop syncing and tear down the client (without clearing the session). */
-  async stop(): Promise<void> {
-    this.client?.stopClient();
-    this.client = null;
-    this.syncState.set(null);
+  stop(): Observable<void> {
+    return defer(() => {
+      this.client?.stopClient();
+      this.client = null;
+      this.syncState.set(null);
+      return of(void 0);
+    });
   }
 }

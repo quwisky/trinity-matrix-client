@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { AutoDiscovery, createClient } from 'matrix-js-sdk';
+import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 import { SessionStorageService } from '../storage/session-storage.service';
 import { MatrixSession } from './session.model';
@@ -11,7 +12,8 @@ const DEVICE_DISPLAY_NAME = 'Trinity (Ionic)';
  * SSO URL construction, and logout. On success it persists the session and hands
  * the live client to MatrixClientService.
  *
- * Components talk to this service, never to matrix-js-sdk directly.
+ * Components talk to this service, never to matrix-js-sdk directly. Async APIs are
+ * cold Observables.
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -23,53 +25,48 @@ export class AuthService {
    * or "@me:example.org" -> "example.org") via .well-known auto-discovery.
    * Falls back to https://<domain> when discovery is silent.
    */
-  async discoverHomeserver(input: string): Promise<string> {
+  discoverHomeserver(input: string): Observable<string> {
     const domain = this.extractDomain(input);
-    const config = await AutoDiscovery.findClientConfig(domain);
-    const hs = config['m.homeserver'];
-
-    if (
-      hs.state === AutoDiscovery.FAIL_PROMPT ||
-      hs.state === AutoDiscovery.FAIL_ERROR
-    ) {
-      const reason = typeof hs.error === 'string' ? hs.error : null;
-      throw new Error(
-        reason ?? `Could not discover a homeserver for "${domain}".`,
-      );
-    }
-    const baseUrl = hs.base_url ?? `https://${domain}`;
-    return baseUrl.replace(/\/$/, '');
+    return defer(() => from(AutoDiscovery.findClientConfig(domain))).pipe(
+      map((config) => {
+        const hs = config['m.homeserver'];
+        if (
+          hs.state === AutoDiscovery.FAIL_PROMPT ||
+          hs.state === AutoDiscovery.FAIL_ERROR
+        ) {
+          const reason = typeof hs.error === 'string' ? hs.error : null;
+          throw new Error(
+            reason ?? `Could not discover a homeserver for "${domain}".`,
+          );
+        }
+        const baseUrl = hs.base_url ?? `https://${domain}`;
+        return baseUrl.replace(/\/$/, '');
+      }),
+    );
   }
 
   /** Which login flows the homeserver supports (e.g. 'm.login.password', 'm.login.sso'). */
-  async getSupportedFlows(baseUrl: string): Promise<string[]> {
-    const tmp = createClient({ baseUrl });
-    const res = await tmp.loginFlows();
-    return res.flows.map((f) => f.type);
+  getSupportedFlows(baseUrl: string): Observable<string[]> {
+    return defer(() => from(createClient({ baseUrl }).loginFlows())).pipe(
+      map((res) => res.flows.map((f) => f.type)),
+    );
   }
 
   /** Log in with username + password, persist the session, and start the client. */
-  async loginWithPassword(
+  loginWithPassword(
     baseUrl: string,
     user: string,
     password: string,
-  ): Promise<void> {
-    const tmp = createClient({ baseUrl });
-    const res = await tmp.login('m.login.password', {
-      identifier: { type: 'm.id.user', user: this.localpart(user) },
-      password,
-      initial_device_display_name: DEVICE_DISPLAY_NAME,
-    });
-
-    const session: MatrixSession = {
-      baseUrl,
-      userId: res.user_id,
-      deviceId: res.device_id,
-      accessToken: res.access_token,
-    };
-
-    await this.storage.save(session);
-    await this.matrix.init(session);
+  ): Observable<void> {
+    return defer(() =>
+      from(
+        createClient({ baseUrl }).login('m.login.password', {
+          identifier: { type: 'm.id.user', user: this.localpart(user) },
+          password,
+          initial_device_display_name: DEVICE_DISPLAY_NAME,
+        }),
+      ),
+    ).pipe(switchMap((res) => this.persistAndStart(baseUrl, res)));
   }
 
   /** Build the SSO redirect URL the browser/WebView should navigate to. */
@@ -81,35 +78,46 @@ export class AuthService {
    * Complete an SSO/CAS login by exchanging the returned `loginToken` for a session.
    * Called from the SSO callback route after the homeserver redirects back.
    */
-  async completeSsoLogin(baseUrl: string, loginToken: string): Promise<void> {
-    const tmp = createClient({ baseUrl });
-    const res = await tmp.login('m.login.token', {
-      token: loginToken,
-      initial_device_display_name: DEVICE_DISPLAY_NAME,
-    });
+  completeSsoLogin(baseUrl: string, loginToken: string): Observable<void> {
+    return defer(() =>
+      from(
+        createClient({ baseUrl }).login('m.login.token', {
+          token: loginToken,
+          initial_device_display_name: DEVICE_DISPLAY_NAME,
+        }),
+      ),
+    ).pipe(switchMap((res) => this.persistAndStart(baseUrl, res)));
+  }
 
+  /** Invalidate the server-side device, stop the client, and clear local state. */
+  logout(): Observable<void> {
+    const serverLogout = this.matrix.isInitialized
+      ? from(this.matrix.instance.logout(true)).pipe(
+          // Even if the server call fails, clear locally so the user isn't stuck.
+          catchError(() => of(void 0)),
+        )
+      : of(void 0);
+
+    return serverLogout.pipe(
+      switchMap(() => this.matrix.stop()),
+      switchMap(() => this.storage.clear()),
+    );
+  }
+
+  /** Persist the session from a login response and start the live client. */
+  private persistAndStart(
+    baseUrl: string,
+    res: { user_id: string; device_id: string; access_token: string },
+  ): Observable<void> {
     const session: MatrixSession = {
       baseUrl,
       userId: res.user_id,
       deviceId: res.device_id,
       accessToken: res.access_token,
     };
-
-    await this.storage.save(session);
-    await this.matrix.init(session);
-  }
-
-  /** Invalidate the server-side device, stop the client, and clear local state. */
-  async logout(): Promise<void> {
-    if (this.matrix.isInitialized) {
-      try {
-        await this.matrix.instance.logout(true);
-      } catch {
-        // Even if the server call fails, clear locally so the user isn't stuck.
-      }
-    }
-    await this.matrix.stop();
-    await this.storage.clear();
+    return this.storage
+      .save(session)
+      .pipe(switchMap(() => this.matrix.init(session)));
   }
 
   /** Accept "@user:server.org", "user:server.org", or a bare "server.org". */

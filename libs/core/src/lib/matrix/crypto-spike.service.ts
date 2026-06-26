@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { createClient } from 'matrix-js-sdk';
+import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
 import { preloadCryptoWasm } from './crypto-wasm-loader';
 
 export interface CryptoSpikeResult {
@@ -23,11 +24,11 @@ export interface CryptoSpikeResult {
  */
 @Injectable({ providedIn: 'root' })
 export class CryptoSpikeService {
-  async run(): Promise<CryptoSpikeResult> {
-    const start = performance.now();
-    const hasIndexedDB = typeof indexedDB !== 'undefined';
+  run(): Observable<CryptoSpikeResult> {
+    return defer(() => {
+      const start = performance.now();
+      const hasIndexedDB = typeof indexedDB !== 'undefined';
 
-    try {
       const client = createClient({
         baseUrl: 'https://matrix.org',
         // Dummy identity: enough for crypto store init, no login performed.
@@ -36,39 +37,43 @@ export class CryptoSpikeService {
         accessToken: 'spike-no-network',
       });
 
-      // Preload the WASM from the served asset path (see crypto-wasm-loader).
-      await preloadCryptoWasm();
-
-      // The gating call: loads the WASM module and opens the crypto store.
-      await client.initRustCrypto();
-
-      const crypto = client.getCrypto();
-      if (!crypto) {
-        throw new Error(
-          'getCrypto() returned undefined after initRustCrypto()',
-        );
-      }
-
-      const cryptoVersion = crypto.getVersion();
-      const ownKeys = await crypto.getOwnDeviceKeys();
-
-      client.stopClient();
-
-      return {
-        ok: true,
-        cryptoVersion,
-        deviceEd25519: ownKeys?.ed25519 ?? null,
-        hasIndexedDB,
-        durationMs: Math.round(performance.now() - start),
-      };
-    } catch (err) {
-      return {
-        ok: false,
-        hasIndexedDB,
-        durationMs: Math.round(performance.now() - start),
-        error:
-          err instanceof Error ? `${err.name}: ${err.message}` : String(err),
-      };
-    }
+      // Preload the WASM from the served asset path (see crypto-wasm-loader),
+      // then the gating call that opens the crypto store.
+      return preloadCryptoWasm().pipe(
+        switchMap(() => from(client.initRustCrypto())),
+        switchMap(() => {
+          const crypto = client.getCrypto();
+          if (!crypto) {
+            throw new Error(
+              'getCrypto() returned undefined after initRustCrypto()',
+            );
+          }
+          const cryptoVersion = crypto.getVersion();
+          return from(crypto.getOwnDeviceKeys()).pipe(
+            map((ownKeys): CryptoSpikeResult => {
+              client.stopClient();
+              return {
+                ok: true,
+                cryptoVersion,
+                deviceEd25519: ownKeys?.ed25519 ?? null,
+                hasIndexedDB,
+                durationMs: Math.round(performance.now() - start),
+              };
+            }),
+          );
+        }),
+        catchError((err) =>
+          of<CryptoSpikeResult>({
+            ok: false,
+            hasIndexedDB,
+            durationMs: Math.round(performance.now() - start),
+            error:
+              err instanceof Error
+                ? `${err.name}: ${err.message}`
+                : String(err),
+          }),
+        ),
+      );
+    });
   }
 }
