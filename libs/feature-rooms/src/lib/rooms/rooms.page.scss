@@ -42,6 +42,13 @@ ion-menu {
   margin-right: 4px;
 }
 
+.title-lock {
+  margin-left: 6px;
+  color: var(--trinity-text-muted);
+  font-size: 14px;
+  vertical-align: middle;
+}
+
 .chat-body {
   flex: 1;
   display: flex;

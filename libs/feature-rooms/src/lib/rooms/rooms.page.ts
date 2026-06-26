@@ -18,8 +18,11 @@ import {
   IonToolbar,
   IonTitle,
   IonButtons,
+  IonIcon,
   MenuController,
 } from '@ionic/angular/standalone';
+import { addIcons } from 'ionicons';
+import { lockClosed } from 'ionicons/icons';
 import {
   AuthService,
   MatrixClientService,
@@ -49,6 +52,7 @@ import { MessageListComponent } from '../message-list/message-list.component';
     IonToolbar,
     IonTitle,
     IonButtons,
+    IonIcon,
     ServerRailComponent,
     ChannelSidebarComponent,
     MemberListComponent,
@@ -116,6 +120,10 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
     return 'Connecting…';
   });
+
+  constructor() {
+    addIcons({ lockClosed });
+  }
 
   ngOnInit(): void {
     this.rooms.connect();

@@ -28,6 +28,13 @@
         <ion-title>
           @if (activeRoom(); as room) {
             <span class="title-hash">#</span>{{ room.name }}
+            @if (room.encrypted) {
+              <ion-icon
+                class="title-lock"
+                name="lock-closed"
+                aria-label="Encrypted room"
+              />
+            }
           } @else {
             Trinity
           }
