@@ -155,6 +155,31 @@ static server.
   `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
   (note: **no** `chore`).
 
+## Continuous integration
+
+[Crow CI](https://crowci.dev) runs the same gates on the server, on every **push**
+and **pull request** (config: [`.crow/ci.yaml`](../.crow/ci.yaml); status badge in the
+[README](../README.md)). The `node:22` image has no pnpm, so each step runs
+`corepack enable` first — Corepack (bundled with Node) activates the version pinned in
+`package.json`'s `packageManager` field; `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` keeps its
+first download non-interactive so CI doesn't hang on a prompt.
+
+| Step        | Command                          | Mirrors locally  |
+| ----------- | -------------------------------- | ---------------- |
+| `install`   | `pnpm install --frozen-lockfile` | `pnpm install`   |
+| `lint`      | `pnpm lint`                      | `pnpm lint`      |
+| `stylelint` | `pnpm stylelint`                 | `pnpm stylelint` |
+| `format`    | `pnpm format:check`              | `pnpm format`    |
+| `test`      | `pnpm test`                      | `pnpm test`      |
+| `build`     | `pnpm build`                     | `pnpm build`     |
+
+Steps share the cloned workspace, so the `node_modules` from `install` is reused by the
+rest. `--frozen-lockfile` makes CI fail if `pnpm-lock.yaml` is out of sync with
+`package.json` — commit lockfile changes alongside dependency edits. To reproduce a CI
+failure locally, run the corresponding command from the **Mirrors locally** column; note
+CI uses `format:check` (verifies, non-zero exit on drift) where you'd run `pnpm format`
+to fix.
+
 ## Troubleshooting
 
 | Symptom                                                                   | Cause / fix                                                                                                                                                                                                  |

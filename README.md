@@ -31,7 +31,8 @@ End-to-end encryption is a first-class, in-MVP feature.
 - **State:** Angular signals (UI state) + RxJS Observables (async service APIs)
 - **Testing:** Vitest (unit) + Playwright-driven headless checks
 - **Quality gates:** ESLint (+ module boundaries), Prettier, Stylelint, and Husky
-  hooks (lint-staged + commitlint / Angular commit convention)
+  hooks (lint-staged + commitlint / Angular commit convention), re-run on every
+  push/PR by **Crow CI** (the badge above; see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#continuous-integration))
 
 Exact versions and gotchas live in [STACK.md](STACK.md).
 
