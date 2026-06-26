@@ -15,3 +15,9 @@ ios
 # Generated / binary
 pnpm-lock.yaml
 *.wasm
+
+# Agent skills + tool-managed config (vendored / generated — don't reformat)
+.agents
+.claude
+CLAUDE.md
+skills-lock.json
