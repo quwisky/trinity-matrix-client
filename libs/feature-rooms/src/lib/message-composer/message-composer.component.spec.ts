@@ -17,7 +17,7 @@ describe('MessageComposerComponent', () => {
     const cmp = fixture.componentInstance;
 
     let sent: string | undefined;
-    cmp.send.subscribe((t) => (sent = t));
+    cmp.submitText.subscribe((t) => (sent = t));
 
     cmp.text.set('  hello  ');
     cmp.onEnter(enter());
@@ -26,21 +26,53 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('');
   });
 
-  it('does not send on Shift+Enter or when empty', () => {
+  it('does not submit on Shift+Enter or when empty', () => {
     const fixture = TestBed.createComponent(MessageComposerComponent);
     fixture.detectChanges();
     const cmp = fixture.componentInstance;
 
     let count = 0;
-    cmp.send.subscribe(() => count++);
+    cmp.submitText.subscribe(() => count++);
 
     cmp.text.set('keep typing');
-    cmp.onEnter(enter(true)); // Shift+Enter → newline, no send
+    cmp.onEnter(enter(true)); // Shift+Enter → newline, no submit
 
     cmp.text.set('   '); // whitespace only
     cmp.onEnter(enter());
 
     expect(count).toBe(0);
     expect(cmp.text()).toBe('   ');
+  });
+
+  it('prefills the draft in edit mode and keeps the text after submit', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('editing', true);
+    fixture.componentRef.setInput('draft', 'old text');
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    expect(cmp.text()).toBe('old text');
+
+    let submitted: string | undefined;
+    cmp.submitText.subscribe((t) => (submitted = t));
+    cmp.text.set('new text');
+    cmp.onEnter(enter());
+
+    expect(submitted).toBe('new text');
+    // The parent ends edit mode (clears via editing → false); composer keeps text.
+    expect(cmp.text()).toBe('new text');
+  });
+
+  it('emits cancel on Escape in edit mode', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('editing', true);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let cancelled = false;
+    cmp.cancelEdit.subscribe(() => (cancelled = true));
+    cmp.onEscape();
+
+    expect(cancelled).toBe(true);
   });
 });

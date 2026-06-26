@@ -23,6 +23,9 @@
           <div class="msg__head">
             <span class="msg__author">{{ row.senderName }}</span>
             <span class="msg__time">{{ row.timestamp | date: 'short' }}</span>
+            @if (row.edited) {
+              <span class="msg__edited">(edited)</span>
+            }
           </div>
           @if (row.html) {
             <div class="msg__text msg__text--html" [innerHTML]="row.html"></div>
@@ -40,11 +43,24 @@
         } @else {
           <p class="msg__text msg__text--cont">{{ row.body }}</p>
         }
+        @if (row.edited) {
+          <span class="msg__edited">(edited)</span>
+        }
       }
 
       @if (row.status === 'failed') {
         <button class="msg__retry" (click)="retry.emit(row.id)">
           Failed to send — retry
+        </button>
+      }
+
+      @if (row.isOwn && !row.status && !row.decryptionFailed) {
+        <button
+          class="msg__edit"
+          (click)="startEdit(row)"
+          aria-label="Edit message"
+        >
+          Edit
         </button>
       }
     </div>
@@ -53,4 +69,10 @@
   }
 </div>
 
-<app-message-composer [roomName]="roomName()" (send)="send.emit($event)" />
+<app-message-composer
+  [roomName]="roomName()"
+  [editing]="editingId() !== null"
+  [draft]="editingDraft()"
+  (submitText)="onSubmit($event)"
+  (cancelEdit)="editingId.set(null)"
+/>

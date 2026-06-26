@@ -1,11 +1,16 @@
+@if (editing()) {
+  <div class="composer__banner">Editing message — <kbd>Esc</kbd> to cancel</div>
+}
+
 <div class="composer">
   <textarea
     #ta
     class="composer__input"
     rows="1"
     [value]="text()"
-    [placeholder]="'Message #' + roomName()"
+    [placeholder]="editing() ? 'Edit message…' : 'Message #' + roomName()"
     (input)="onInput($event)"
     (keydown.enter)="onEnter($event)"
+    (keydown.escape)="onEscape()"
   ></textarea>
 </div>

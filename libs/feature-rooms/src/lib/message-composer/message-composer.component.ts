@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  effect,
   input,
   output,
   signal,
@@ -10,7 +11,10 @@ import {
 
 const MAX_HEIGHT_PX = 200;
 
-/** Discord-style composer: Enter sends, Shift+Enter inserts a newline. */
+/**
+ * Discord-style composer: Enter sends, Shift+Enter inserts a newline. In edit mode
+ * it is prefilled with the message draft and Esc cancels.
+ */
 @Component({
   selector: 'app-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -19,10 +23,32 @@ const MAX_HEIGHT_PX = 200;
 })
 export class MessageComposerComponent {
   readonly roomName = input('');
-  readonly send = output<string>();
+  readonly editing = input(false);
+  readonly draft = input('');
+  readonly submitText = output<string>();
+  readonly cancelEdit = output<void>();
 
   readonly text = signal('');
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
+  private wasEditing = false;
+
+  constructor() {
+    // Prefill on entering edit mode; clear on leaving it.
+    effect(() => {
+      const editing = this.editing();
+      if (editing && !this.wasEditing) {
+        this.text.set(this.draft());
+        queueMicrotask(() => {
+          this.textarea()?.nativeElement.focus();
+          this.autoGrow();
+        });
+      } else if (!editing && this.wasEditing) {
+        this.text.set('');
+        queueMicrotask(() => this.autoGrow());
+      }
+      this.wasEditing = editing;
+    });
+  }
 
   onInput(event: Event): void {
     this.text.set((event.target as HTMLTextAreaElement).value);
@@ -39,9 +65,18 @@ export class MessageComposerComponent {
     if (!value) {
       return;
     }
-    this.send.emit(value);
-    this.text.set('');
-    queueMicrotask(() => this.autoGrow());
+    this.submitText.emit(value);
+    if (!this.editing()) {
+      // Edits clear via editing → false; new messages clear here.
+      this.text.set('');
+      queueMicrotask(() => this.autoGrow());
+    }
+  }
+
+  onEscape(): void {
+    if (this.editing()) {
+      this.cancelEdit.emit();
+    }
   }
 
   private autoGrow(): void {

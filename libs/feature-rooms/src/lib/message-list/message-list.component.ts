@@ -7,6 +7,7 @@ import {
   effect,
   input,
   output,
+  signal,
   viewChild,
 } from '@angular/core';
 import { AvatarComponent } from '../avatar/avatar.component';
@@ -36,6 +37,12 @@ export class MessageListComponent {
   readonly loadOlder = output<void>();
   readonly send = output<string>();
   readonly retry = output<string>();
+  readonly editMessage = output<{ id: string; body: string }>();
+
+  readonly editingId = signal<string | null>(null);
+  readonly editingDraft = computed(
+    () => this.messages().find((m) => m.id === this.editingId())?.body ?? '',
+  );
 
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
   private lastId = '';
@@ -138,6 +145,21 @@ export class MessageListComponent {
       this.prevScrollTop = el.scrollTop;
       this.pendingPrepend = true;
       this.loadOlder.emit();
+    }
+  }
+
+  startEdit(row: MessageRow): void {
+    this.editingId.set(row.id);
+  }
+
+  /** Composer submit — routes to an edit when one is in progress, else a new send. */
+  onSubmit(text: string): void {
+    const id = this.editingId();
+    if (id) {
+      this.editMessage.emit({ id, body: text });
+      this.editingId.set(null);
+    } else {
+      this.send.emit(text);
     }
   }
 }

@@ -150,6 +150,13 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
+  onEdit(edit: { id: string; body: string }): void {
+    this.timeline
+      .edit(edit.id, edit.body)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
   logout(): void {
     this.auth
       .logout()

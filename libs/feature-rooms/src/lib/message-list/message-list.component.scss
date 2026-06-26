@@ -27,6 +27,7 @@
 }
 
 .msg {
+  position: relative;
   display: flex;
   gap: 12px;
   padding: 2px 0;
@@ -34,6 +35,34 @@
 
 .msg--cont {
   padding-top: 0;
+}
+
+.msg__edited {
+  margin-left: 4px;
+  color: var(--trinity-text-muted);
+  font-size: 10px;
+}
+
+.msg__edit {
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--trinity-divider);
+  border-radius: 4px;
+  background: var(--trinity-sidebar);
+  color: var(--trinity-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+
+  &:hover {
+    color: var(--trinity-text);
+  }
+}
+
+.msg:hover .msg__edit {
+  opacity: 1;
 }
 
 .msg__avatar {

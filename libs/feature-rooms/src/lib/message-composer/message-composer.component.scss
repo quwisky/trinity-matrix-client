@@ -1,3 +1,17 @@
+.composer__banner {
+  padding: 4px 16px;
+  font-size: 12px;
+  color: var(--trinity-text-muted);
+
+  kbd {
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--trinity-rail);
+    font-family: inherit;
+    font-size: 11px;
+  }
+}
+
 .composer {
   padding: 8px 16px 16px;
 }
