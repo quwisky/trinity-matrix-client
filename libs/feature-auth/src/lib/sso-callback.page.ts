@@ -1,4 +1,11 @@
-import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  OnInit,
+  inject,
+  signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -16,6 +23,7 @@ import { AuthService } from '@trinity/core';
  */
 @Component({
   selector: 'app-sso-callback',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <ion-content class="ion-padding ion-text-center">
       @if (error(); as e) {

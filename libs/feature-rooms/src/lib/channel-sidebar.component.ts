@@ -1,10 +1,16 @@
-import { Component, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+  output,
+} from '@angular/core';
 import { AvatarComponent } from './avatar.component';
 import type { RoomSummary } from '@trinity/core';
 
 /** Discord channel sidebar: space header, room list, and the user panel. */
 @Component({
   selector: 'app-channel-sidebar',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AvatarComponent],
   template: `
     <div class="sidebar">
@@ -38,7 +44,12 @@ import type { RoomSummary } from '@trinity/core';
           <span class="userbar__name">{{ userName() }}</span>
           <span class="userbar__handle">{{ userId() }}</span>
         </div>
-        <button class="userbar__logout" (click)="logout.emit()" title="Log out">
+        <button
+          class="userbar__logout"
+          (click)="logout.emit()"
+          aria-label="Log out"
+          title="Log out"
+        >
           ⏻
         </button>
       </footer>

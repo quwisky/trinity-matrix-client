@@ -1,10 +1,11 @@
-import { Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { AvatarComponent } from './avatar.component';
 import type { MemberSummary } from '@trinity/core';
 
 /** Discord member list (right column): joined members of the active room. */
 @Component({
   selector: 'app-member-list',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AvatarComponent],
   template: `
     <aside class="members">

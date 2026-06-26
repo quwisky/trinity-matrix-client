@@ -1,4 +1,5 @@
 import {
+  ChangeDetectionStrategy,
   Component,
   DestroyRef,
   OnInit,
@@ -30,6 +31,7 @@ import { MemberListComponent } from './member-list.component';
  */
 @Component({
   selector: 'app-rooms',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
   imports: [

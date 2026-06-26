@@ -1,8 +1,16 @@
-import { Component, computed, effect, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  input,
+  signal,
+} from '@angular/core';
 
 /** Discord-style avatar: best-effort image with a colored initials fallback. */
 @Component({
   selector: 'app-avatar',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (url() && !failed()) {
       <img

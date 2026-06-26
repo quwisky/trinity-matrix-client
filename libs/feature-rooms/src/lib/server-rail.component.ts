@@ -1,10 +1,16 @@
-import { Component, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+  output,
+} from '@angular/core';
 import { AvatarComponent } from './avatar.component';
 import type { SpaceSummary } from '@trinity/core';
 
 /** Discord server rail: Home + one pill per Matrix Space. */
 @Component({
   selector: 'app-server-rail',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AvatarComponent],
   template: `
     <nav class="rail">
@@ -14,6 +20,7 @@ import type { SpaceSummary } from '@trinity/core';
           class="pill home"
           [class.round]="activeSpaceId() === null"
           (click)="selectSpace.emit(null)"
+          aria-label="Home"
           title="Home"
         >
           T
@@ -28,6 +35,7 @@ import type { SpaceSummary } from '@trinity/core';
           <button
             class="pill"
             (click)="selectSpace.emit(space.id)"
+            [attr.aria-label]="space.name"
             [title]="space.name"
           >
             <app-avatar
@@ -43,7 +51,12 @@ import type { SpaceSummary } from '@trinity/core';
 
       <div class="item">
         <span class="indicator"></span>
-        <button class="pill add" title="Add a space (coming soon)" disabled>
+        <button
+          class="pill add"
+          aria-label="Add a space"
+          title="Add a space (coming soon)"
+          disabled
+        >
           +
         </button>
       </div>
