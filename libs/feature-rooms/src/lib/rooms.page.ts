@@ -1,4 +1,12 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  OnInit,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import {
   IonSplitPane,
@@ -43,6 +51,7 @@ export class RoomsPage implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly menu = inject(MenuController);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly activeSpaceId = signal<string | null>(null);
   readonly activeRoomId = signal<string | null>(null);
@@ -105,13 +114,17 @@ export class RoomsPage implements OnInit {
     this.activeSpaceId.set(id);
   }
 
-  async onSelectRoom(id: string): Promise<void> {
+  onSelectRoom(id: string): void {
     this.activeRoomId.set(id);
-    await this.menu.close(); // collapse the drawer on mobile
+    void this.menu.close(); // collapse the drawer on mobile (fire-and-forget)
   }
 
-  async logout(): Promise<void> {
-    await this.auth.logout();
-    await this.router.navigateByUrl('/login', { replaceUrl: true });
+  logout(): void {
+    this.auth
+      .logout()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        void this.router.navigateByUrl('/login', { replaceUrl: true });
+      });
   }
 }

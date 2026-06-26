@@ -1,7 +1,9 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
+import { EMPTY, Observable, catchError, finalize, map, switchMap } from 'rxjs';
 import {
   IonHeader,
   IonToolbar,
@@ -36,6 +38,7 @@ import { AuthService } from '@trinity/core';
 export class LoginPage {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   // Form state.
   readonly homeserverInput = signal('matrix.org');
@@ -51,12 +54,18 @@ export class LoginPage {
   readonly error = signal<string | null>(null);
 
   /** Step 1: resolve the homeserver and discover its login flows. */
-  async discover(): Promise<void> {
-    this.run(async () => {
-      const baseUrl = await this.auth.discoverHomeserver(
-        this.homeserverInput(),
-      );
-      const flows = await this.auth.getSupportedFlows(baseUrl);
+  discover(): void {
+    this.withBusy(
+      this.auth
+        .discoverHomeserver(this.homeserverInput())
+        .pipe(
+          switchMap((baseUrl) =>
+            this.auth
+              .getSupportedFlows(baseUrl)
+              .pipe(map((flows) => ({ baseUrl, flows }))),
+          ),
+        ),
+    ).subscribe(({ baseUrl, flows }) => {
       this.baseUrl.set(baseUrl);
       this.passwordSupported.set(flows.includes('m.login.password'));
       this.ssoSupported.set(flows.includes('m.login.sso'));
@@ -64,16 +73,13 @@ export class LoginPage {
   }
 
   /** Step 2a: password login. */
-  async loginPassword(): Promise<void> {
+  loginPassword(): void {
     const baseUrl = this.baseUrl();
     if (!baseUrl) return;
-    this.run(async () => {
-      await this.auth.loginWithPassword(
-        baseUrl,
-        this.username(),
-        this.password(),
-      );
-      await this.router.navigateByUrl('/rooms', { replaceUrl: true });
+    this.withBusy(
+      this.auth.loginWithPassword(baseUrl, this.username(), this.password()),
+    ).subscribe(() => {
+      void this.router.navigateByUrl('/rooms', { replaceUrl: true });
     });
   }
 
@@ -90,16 +96,17 @@ export class LoginPage {
     window.location.href = this.auth.getSsoUrl(baseUrl, redirect);
   }
 
-  /** Run an async action with shared busy/error handling. */
-  private async run(action: () => Promise<void>): Promise<void> {
+  /** Wrap a one-shot action with shared busy/error handling. */
+  private withBusy<T>(source: Observable<T>): Observable<T> {
     this.busy.set(true);
     this.error.set(null);
-    try {
-      await action();
-    } catch (err) {
-      this.error.set(err instanceof Error ? err.message : String(err));
-    } finally {
-      this.busy.set(false);
-    }
+    return source.pipe(
+      takeUntilDestroyed(this.destroyRef),
+      catchError((err) => {
+        this.error.set(err instanceof Error ? err.message : String(err));
+        return EMPTY;
+      }),
+      finalize(() => this.busy.set(false)),
+    );
   }
 }

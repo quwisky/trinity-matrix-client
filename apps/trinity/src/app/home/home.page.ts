@@ -1,4 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   IonHeader,
   IonToolbar,
@@ -7,6 +8,7 @@ import {
   IonButton,
   IonText,
 } from '@ionic/angular/standalone';
+import { finalize } from 'rxjs';
 import { CryptoSpikeService, CryptoSpikeResult } from '@trinity/core';
 
 @Component({
@@ -17,14 +19,20 @@ import { CryptoSpikeService, CryptoSpikeResult } from '@trinity/core';
 })
 export class HomePage {
   private readonly spike = inject(CryptoSpikeService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly running = signal(false);
   readonly result = signal<CryptoSpikeResult | null>(null);
 
-  async runSpike(): Promise<void> {
+  runSpike(): void {
     this.running.set(true);
     this.result.set(null);
-    this.result.set(await this.spike.run());
-    this.running.set(false);
+    this.spike
+      .run()
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.running.set(false)),
+      )
+      .subscribe((result) => this.result.set(result));
   }
 }

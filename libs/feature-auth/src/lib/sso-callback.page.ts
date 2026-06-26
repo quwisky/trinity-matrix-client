@@ -1,4 +1,5 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonContent,
@@ -34,10 +35,11 @@ export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly error = signal<string | null>(null);
 
-  async ngOnInit(): Promise<void> {
+  ngOnInit(): void {
     const loginToken = this.route.snapshot.queryParamMap.get('loginToken');
     const baseUrl = sessionStorage.getItem('sso.baseUrl');
 
@@ -48,13 +50,17 @@ export class SsoCallbackPage implements OnInit {
       return;
     }
 
-    try {
-      await this.auth.completeSsoLogin(baseUrl, loginToken);
-      sessionStorage.removeItem('sso.baseUrl');
-      await this.router.navigateByUrl('/rooms', { replaceUrl: true });
-    } catch (err) {
-      this.error.set(err instanceof Error ? err.message : String(err));
-    }
+    this.auth
+      .completeSsoLogin(baseUrl, loginToken)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          sessionStorage.removeItem('sso.baseUrl');
+          void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+        },
+        error: (err) =>
+          this.error.set(err instanceof Error ? err.message : String(err)),
+      });
   }
 
   back(): void {
