@@ -98,17 +98,17 @@ needed. Each component/page lives in its own directory
 
 ## Project status
 
-| Milestone                                        | State                                                             |
-| ------------------------------------------------ | ----------------------------------------------------------------- |
-| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md)) |
-| 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                |
-| 3 — Crypto bootstrap (cross-signing, key backup) | ⬜ Next                                                           |
-| 4 — Sync & room list                             | 🚧 Room-list shell wired to live sync; ordering/unread TBD        |
-| 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history   |
-| 6 — Compose (send)                               | ✅ Done — send/edit/delete, local echo + retry, hover toolbar     |
-| 7 — Device verification UI                       | ⬜                                                                |
-| 8 — Media                                        | ⬜                                                                |
-| 9 — MVP polish                                   | ⬜                                                                |
+| Milestone                                        | State                                                                      |
+| ------------------------------------------------ | -------------------------------------------------------------------------- |
+| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md))          |
+| 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                         |
+| 3 — Crypto bootstrap (cross-signing, key backup) | ⬜ Next                                                                    |
+| 4 — Sync & room list                             | 🚧 Live rooms, recency ordering + unread badges; encryption indicators TBD |
+| 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history            |
+| 6 — Compose (send)                               | ✅ Done — send/edit/delete, local echo + retry, hover toolbar              |
+| 7 — Device verification UI                       | ⬜                                                                         |
+| 8 — Media                                        | ⬜                                                                         |
+| 9 — MVP polish                                   | ⬜                                                                         |
 
 Full breakdown in [PLAN.md](PLAN.md).
 

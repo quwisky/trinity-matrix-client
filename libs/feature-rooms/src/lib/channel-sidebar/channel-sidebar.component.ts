@@ -22,11 +22,19 @@ import type { RoomSummary } from '@trinity/core';
           <button
             class="channel"
             [class.active]="activeRoomId() === room.id"
+            [class.unread]="room.hasUnread"
             (click)="selectRoom.emit(room.id)"
             [title]="room.name"
           >
             <span class="channel__hash">#</span>
             <span class="channel__name">{{ room.name }}</span>
+            @if (room.highlightCount > 0) {
+              <span class="channel__badge" aria-label="Unread mentions">{{
+                room.highlightCount
+              }}</span>
+            } @else if (room.hasUnread) {
+              <span class="channel__dot" aria-label="Unread"></span>
+            }
           </button>
         } @empty {
           <p class="empty">No channels here yet.</p>
