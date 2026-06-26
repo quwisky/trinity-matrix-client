@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -14,6 +15,7 @@ function fakeEvent(o: {
   ts?: number;
   redacted?: boolean;
   decryptFail?: boolean;
+  status?: string;
 }) {
   return {
     getId: () => o.id,
@@ -29,11 +31,13 @@ function fakeEvent(o: {
     }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
+    status: o.status ?? null,
   };
 }
 
-function setup(events: ReturnType<typeof fakeEvent>[]) {
+function setup(events: ReturnType<typeof fakeEvent>[], sent: unknown[][] = []) {
   const room = {
+    roomId: '!r:hs',
     getLiveTimeline: () => ({
       getEvents: () => events,
       getPaginationToken: () => null,
@@ -53,6 +57,14 @@ function setup(events: ReturnType<typeof fakeEvent>[]) {
     off: () => {},
     sendReadReceipt: () => Promise.resolve({}),
     scrollback: () => Promise.resolve(room),
+    sendTextMessage: (_rid: string, body: string) => {
+      sent.push(['text', body]);
+      return Promise.resolve({});
+    },
+    sendHtmlMessage: (_rid: string, body: string, html: string) => {
+      sent.push(['html', body, html]);
+      return Promise.resolve({});
+    },
   };
   const matrix = {
     isInitialized: true,
@@ -105,6 +117,31 @@ describe('TimelineService', () => {
     expect(formatted.html).toBe('<strong>hi</strong>');
     expect(formatted.body).toBe('**hi**');
     expect(plain.html).toBeNull();
+  });
+
+  it('sends plain text as-is and markdown as formatted HTML', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(svc.send('hello there'));
+    await firstValueFrom(svc.send('**bold**'));
+
+    expect(sent[0]).toEqual(['text', 'hello there']);
+    expect(sent[1][0]).toBe('html');
+    expect(sent[1][1]).toBe('**bold**');
+    expect(sent[1][2]).toContain('<strong>bold</strong>');
+  });
+
+  it('maps local-echo status', () => {
+    const svc = setup([
+      fakeEvent({ id: '$s', sender: '@me:hs', body: 'x', status: 'sending' }),
+      fakeEvent({ id: '$f', sender: '@me:hs', body: 'y', status: 'not_sent' }),
+      fakeEvent({ id: '$ok', sender: '@me:hs', body: 'z' }),
+    ]);
+    const [sending, failed, ok] = svc.messages();
+    expect(sending.status).toBe('sending');
+    expect(failed.status).toBe('failed');
+    expect(ok.status).toBeNull();
   });
 
   it('flags redacted and decryption-failed messages', () => {

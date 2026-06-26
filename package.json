@@ -49,6 +49,7 @@
     "@ionic/angular": "^8.0.0",
     "@matrix-org/matrix-sdk-crypto-wasm": "^18.3.1",
     "ionicons": "^7.0.0",
+    "marked": "^18.0.5",
     "matrix-js-sdk": "^41.8.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",

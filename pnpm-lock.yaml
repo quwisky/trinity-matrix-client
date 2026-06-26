@@ -65,6 +65,9 @@ importers:
       ionicons:
         specifier: ^7.0.0
         version: 7.4.0
+      marked:
+        specifier: ^18.0.5
+        version: 18.0.5
       matrix-js-sdk:
         specifier: ^41.8.0
         version: 41.8.0
@@ -5757,6 +5760,11 @@ packages:
   make-fetch-happen@15.0.6:
     resolution: {integrity: sha512-Je0fLJ0F5atA7F+eIlLzk+Wkcl57JDf4kf+EW8xiP5E31xOQxkIxTbgf1Oi1Lw9tRI9UEMRdI5Vz2xTzoNU1Jw==}
     engines: {node: ^20.17.0 || >=22.9.0}
+
+  marked@18.0.5:
+    resolution: {integrity: sha512-S6GcvALHg6K4ohtu4E7x0a1AqhAjp6cV8KhLSyN9qVapnzJkusVBxZRcIU9AeYsbe6P1hKDusSbEOzGyyuce6w==}
+    engines: {node: '>= 20'}
+    hasBin: true
 
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
@@ -14634,6 +14642,8 @@ snapshots:
       ssri: 13.0.1
     transitivePeerDependencies:
       - supports-color
+
+  marked@18.0.5: {}
 
   math-intrinsics@1.1.0: {}
 

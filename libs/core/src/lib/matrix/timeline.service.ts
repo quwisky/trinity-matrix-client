@@ -1,6 +1,8 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, SecurityContext, inject, signal } from '@angular/core';
+import { DomSanitizer } from '@angular/platform-browser';
 import {
   Direction,
+  EventStatus,
   EventType,
   MatrixEventEvent,
   MsgType,
@@ -9,6 +11,7 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
+import { marked } from 'marked';
 import { Observable, defer, from, map, of, tap } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 
@@ -33,6 +36,8 @@ export interface MessageView {
   timestamp: number;
   isOwn: boolean;
   decryptionFailed: boolean;
+  /** Local-echo send state: 'sending' / 'failed', or null once confirmed. */
+  status: 'sending' | 'failed' | null;
   kind: MessageKind;
 }
 
@@ -47,6 +52,7 @@ const SCROLLBACK = 30;
 @Injectable({ providedIn: 'root' })
 export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly sanitizer = inject(DomSanitizer);
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();
@@ -61,6 +67,7 @@ export class TimelineService {
   private room: Room | null = null;
 
   private readonly onTimeline = (): void => this.refresh();
+  private readonly onLocalEcho = (): void => this.refresh();
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.roomId) {
       this.refresh();
@@ -83,6 +90,7 @@ export class TimelineService {
     this.roomId = roomId;
     this.room = room;
     room.on(RoomEvent.Timeline, this.onTimeline);
+    room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     this.refresh();
 
@@ -97,6 +105,7 @@ export class TimelineService {
   /** Detach listeners and clear the timeline. */
   close(): void {
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
+    this.room?.off(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);
     }
@@ -122,6 +131,46 @@ export class TimelineService {
       }),
       map(() => void 0),
     );
+  }
+
+  /**
+   * Send a message to the active room. Markdown is rendered to HTML, sanitized,
+   * and sent as `formatted_body` — but only when it actually adds formatting; plain
+   * text is sent as-is. The local echo appears via the timeline listener.
+   */
+  send(body: string): Observable<void> {
+    const room = this.room;
+    const text = body.trim();
+    if (!room || !text || !this.matrix.isInitialized) {
+      return of(void 0);
+    }
+    const client = this.matrix.instance;
+    return defer(() => {
+      const rendered = marked.parse(text, { async: false }) as string;
+      const html =
+        this.sanitizer.sanitize(SecurityContext.HTML, rendered) ?? '';
+      const formatted = htmlToText(html).trim() !== text;
+      return from(
+        formatted
+          ? client.sendHtmlMessage(room.roomId, text, html)
+          : client.sendTextMessage(room.roomId, text),
+      );
+    }).pipe(map(() => void 0));
+  }
+
+  /** Resend a message that failed to send. */
+  retry(messageId: string): void {
+    const room = this.room;
+    if (!room || !this.matrix.isInitialized) {
+      return;
+    }
+    const event = room
+      .getLiveTimeline()
+      .getEvents()
+      .find((e) => e.getId() === messageId);
+    if (event) {
+      void this.matrix.instance.resendEvent(event, room);
+    }
   }
 
   private refresh(): void {
@@ -171,9 +220,27 @@ export class TimelineService {
       timestamp: event.getTs(),
       isOwn: senderId === client.getUserId(),
       decryptionFailed,
+      status: mapStatus(event.status),
       kind,
     };
   }
+}
+
+function mapStatus(status: EventStatus | null): 'sending' | 'failed' | null {
+  if (status === EventStatus.SENDING || status === EventStatus.QUEUED) {
+    return 'sending';
+  }
+  if (status === EventStatus.NOT_SENT) {
+    return 'failed';
+  }
+  return null;
+}
+
+/** Plain-text content of an HTML string (to detect whether markdown added formatting). */
+function htmlToText(html: string): string {
+  return (
+    new DOMParser().parseFromString(html, 'text/html').body.textContent ?? ''
+  );
 }
 
 interface RenderedBody {
