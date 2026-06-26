@@ -20,7 +20,8 @@ iOS, Android, and Desktop (Electron) from a single Angular codebase.
 - Login (password + SSO), session persistence, logout
 - Room list with unread badges, sync loop
 - Timeline view: text messages, send/receive, pagination (lazy load history)
-- Message composer with markdown; edit + delete (redact) own messages
+- Message composer with markdown + emoji picker; edit, delete (redact), reactions,
+  and replies
 - Member list & room info
 - Media: image/file upload & display
 - End-to-end encryption with device verification (emoji SAS / QR)
@@ -28,7 +29,7 @@ iOS, Android, and Desktop (Electron) from a single Angular codebase.
 **Phase 2 (post-MVP):**
 
 - Push notifications (FCM/APNs via Capacitor; sygnal / UnifiedPush)
-- Replies, reactions, threads (edits + redactions landed early, in MVP)
+- Threads (edits, redactions, reactions, and replies landed early, in MVP)
 - Voice/video calls (WebRTC / Element Call style)
 - Spaces, room creation/invites, search
 
@@ -101,14 +102,14 @@ src/app/
    (names/avatars/unread), live updates, encryption indicators.
 5. **Timeline (read)** — ✅ render decrypted messages (markdown), backward pagination
    with auto-backfill, read receipts, "unable to decrypt" fallback UI.
-6. **Compose (send)** — ✅ send text/markdown with optimistic local echo + retry;
-   edit (`m.replace`) and delete (redact) own messages via a hover toolbar /
-   Up-arrow shortcut.
+6. **Compose (send)** — ✅ send text/markdown (+ emoji picker) with optimistic local
+   echo + retry; edit (`m.replace`), delete (redact), reactions (`m.annotation`), and
+   replies (`m.in_reply_to`) via a hover toolbar / Up-arrow shortcut.
 7. **Device verification UI** — emoji SAS / QR verification flows.
 8. **Media** — encrypted media upload/display (Capacitor Camera/Filesystem).
 9. **MVP polish** — dark mode, offline cache, settings/profile, device management.
 
-Phase 2: push notifications, reactions/replies/threads, calls, spaces.
+Phase 2: push notifications, threads, calls, spaces.
 
 ## 5. Key Risks (front-loaded)
 
