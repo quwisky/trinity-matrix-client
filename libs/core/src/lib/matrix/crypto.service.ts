@@ -1,5 +1,10 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { MatrixError, type AuthDict, type UIAuthCallback } from 'matrix-js-sdk';
+import {
+  MatrixError,
+  type AuthDict,
+  type MatrixClient,
+  type UIAuthCallback,
+} from 'matrix-js-sdk';
 import {
   CryptoEvent,
   decodeRecoveryKey,
@@ -47,7 +52,16 @@ export type PasswordPrompt = () => Promise<string | null>;
 export class CryptoService {
   private readonly matrix = inject(MatrixClientService);
   private readonly secretStorageKeys = inject(SecretStorageKeyService);
-  private connected = false;
+
+  /**
+   * The client we currently have crypto listeners on. Keyed to the instance (not
+   * a boolean) so a logout→login rewires onto the new client instead of leaving
+   * the status signals frozen on the discarded one.
+   */
+  private connectedClient: MatrixClient | null = null;
+
+  /** Stable listener ref so {@link connect}/{@link disconnect} can add and remove it. */
+  private readonly onCryptoEvent = (): void => void this.computeStatus();
 
   private readonly _status = signal<CryptoStatus>('unknown');
   /** Primary signal that drives the encryption banner / setup vs unlock UI. */
@@ -66,17 +80,36 @@ export class CryptoService {
    * the client is live (alongside `RoomsService.connect()`).
    */
   connect(): void {
-    if (this.connected || !this.matrix.isInitialized) {
+    if (!this.matrix.isInitialized) {
       return;
     }
-    this.connected = true;
     const client = this.matrix.instance;
-    const refresh = (): void => void this.computeStatus();
-    client.on(CryptoEvent.KeysChanged, refresh);
-    client.on(CryptoEvent.UserTrustStatusChanged, refresh);
-    client.on(CryptoEvent.KeyBackupStatus, refresh);
-    client.on(CryptoEvent.DevicesUpdated, refresh);
+    if (this.connectedClient === client) {
+      return; // already wired to this client
+    }
+    this.disconnect(); // drop listeners from any previous client
+    this.connectedClient = client;
+    client.on(CryptoEvent.KeysChanged, this.onCryptoEvent);
+    client.on(CryptoEvent.UserTrustStatusChanged, this.onCryptoEvent);
+    client.on(CryptoEvent.KeyBackupStatus, this.onCryptoEvent);
+    client.on(CryptoEvent.DevicesUpdated, this.onCryptoEvent);
     void this.computeStatus();
+  }
+
+  /** Detach crypto listeners from the current client and reset status signals. */
+  disconnect(): void {
+    const client = this.connectedClient;
+    if (!client) {
+      return;
+    }
+    client.off(CryptoEvent.KeysChanged, this.onCryptoEvent);
+    client.off(CryptoEvent.UserTrustStatusChanged, this.onCryptoEvent);
+    client.off(CryptoEvent.KeyBackupStatus, this.onCryptoEvent);
+    client.off(CryptoEvent.DevicesUpdated, this.onCryptoEvent);
+    this.connectedClient = null;
+    this._status.set('unknown');
+    this._keyBackupActive.set(false);
+    this._thisDeviceVerified.set(false);
   }
 
   /** Re-evaluate the status signals against the current crypto state. */

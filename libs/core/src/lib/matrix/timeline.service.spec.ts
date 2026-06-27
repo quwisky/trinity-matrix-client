@@ -329,4 +329,93 @@ describe('TimelineService', () => {
     expect(failed.decryptionFailed).toBe(true);
     expect(failed.body).toContain('Unable to decrypt');
   });
+
+  it('resets loadingOlder after a failed scrollback so pagination can retry', async () => {
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => [],
+        getPaginationToken: () => 'tok',
+      }),
+      getMember: () => ({ name: 'A', getAvatarUrl: () => null }),
+      relations: { getChildEventsForEvent: () => undefined },
+      on: () => {},
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: () => Promise.resolve({}),
+      scrollback: () => Promise.reject(new Error('network')),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    await expect(firstValueFrom(svc.loadOlder())).rejects.toThrow('network');
+    expect(svc.loadingOlder()).toBe(false); // finalize cleared it; not stuck
+  });
+
+  it('sends the read receipt to the latest confirmed event, skipping pending echoes', () => {
+    const received: { getId: () => string }[] = [];
+    const events = [
+      fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' }), // confirmed
+      fakeEvent({
+        id: '$pending',
+        sender: '@me:hs',
+        body: 'echo',
+        status: 'sending',
+      }),
+    ];
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+      }),
+      getMember: () => ({ name: 'A', getAvatarUrl: () => null }),
+      relations: { getChildEventsForEvent: () => undefined },
+      on: () => {},
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: (e: { getId: () => string }) => {
+        received.push(e);
+        return Promise.resolve({});
+      },
+      scrollback: () => Promise.resolve(room),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    expect(received).toHaveLength(1);
+    expect(received[0].getId()).toBe('$a'); // not the pending echo
+  });
 });

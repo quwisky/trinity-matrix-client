@@ -37,7 +37,7 @@ rest are reviewer findings worth confirming during the fix.
 
 ## 🔴 Critical
 
-- [ ] **`connect()` goes permanently stale after logout→login** _(verified)_ —
+- [x] **`connect()` goes permanently stale after logout→login** _(verified; fixed)_ —
       [rooms.service.ts:78](../libs/core/src/lib/matrix/rooms.service.ts#L78),
       [crypto.service.ts:72](../libs/core/src/lib/matrix/crypto.service.ts#L72). The
       `connected` flag lives on the root singleton and is never reset; listeners are
@@ -75,7 +75,7 @@ rest are reviewer findings worth confirming during the fix.
       user-chosen homeserver `connect-src`, and `wasm-unsafe-eval` for the crypto WASM);
       add a lint guard forbidding sanitizer bypass on message HTML.
 
-- [ ] **Two timeline reliability bugs** _(verified)_ —
+- [x] **Two timeline reliability bugs** _(verified; fixed)_ —
       (a) [timeline.service.ts:150-159](../libs/core/src/lib/matrix/timeline.service.ts#L150-L159):
       `_loadingOlder` resets only on success, so one failed `scrollback` permanently
       disables pagination for that room — wrap in `finalize`.

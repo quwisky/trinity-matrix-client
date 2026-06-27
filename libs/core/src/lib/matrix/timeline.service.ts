@@ -13,7 +13,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { marked } from 'marked';
-import { Observable, defer, from, map, of, tap } from 'rxjs';
+import { Observable, defer, finalize, from, map, of, tap } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 
 export type MessageKind =
@@ -120,11 +120,13 @@ export class TimelineService {
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     this.refresh();
 
-    // Best-effort read receipt for the most recent event.
+    // Best-effort read receipt for the most recent *confirmed* event. Pending
+    // local echoes are skipped (the SDK rejects a receipt on an unsent event),
+    // and the call is fire-and-forget but its rejection is swallowed.
     const events = room.getLiveTimeline().getEvents();
-    const last = events[events.length - 1];
+    const last = [...events].reverse().find((e) => !e.status);
     if (last) {
-      void client.sendReadReceipt(last);
+      client.sendReadReceipt(last).catch(() => undefined);
     }
   }
 
@@ -151,10 +153,10 @@ export class TimelineService {
       this._loadingOlder.set(true);
       return from(this.matrix.instance.scrollback(room, SCROLLBACK));
     }).pipe(
-      tap(() => {
-        this.refresh();
-        this._loadingOlder.set(false);
-      }),
+      tap(() => this.refresh()),
+      // Reset the flag on success *or* error — otherwise a failed scrollback
+      // would leave it stuck true and permanently disable pagination.
+      finalize(() => this._loadingOlder.set(false)),
       map(() => void 0),
     );
   }
@@ -228,7 +230,7 @@ export class TimelineService {
       .getEvents()
       .find((e) => e.getId() === messageId);
     if (event) {
-      void this.matrix.instance.resendEvent(event, room);
+      this.matrix.instance.resendEvent(event, room).catch(() => undefined);
     }
   }
 

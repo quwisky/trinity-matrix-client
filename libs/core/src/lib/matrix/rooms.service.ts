@@ -57,7 +57,17 @@ const AVATAR_PX = 64;
 @Injectable({ providedIn: 'root' })
 export class RoomsService {
   private readonly matrix = inject(MatrixClientService);
-  private connected = false;
+
+  /**
+   * The client we currently have listeners on. The client is recreated on every
+   * (re-)login, so connection is keyed to the instance, not a boolean — otherwise
+   * a logout→login would leave the listeners on the discarded client and the read
+   * model frozen.
+   */
+  private connectedClient: MatrixClient | null = null;
+
+  /** Stable listener ref so {@link connect}/{@link disconnect} can add and remove it. */
+  private readonly onClientEvent = (): void => this.refresh();
 
   private readonly _spaces = signal<SpaceSummary[]>([]);
   readonly spaces = this._spaces.asReadonly();
@@ -69,23 +79,44 @@ export class RoomsService {
   private readonly _revision = signal(0);
   readonly revision = this._revision.asReadonly();
 
-  /** Attach sync listeners and do the first read. Idempotent; call once the
-   * client is live (e.g. the shell's `ngOnInit`). */
+  /**
+   * Attach sync listeners and do the first read. Idempotent per client (e.g. the
+   * shell's `ngOnInit`); re-running after a re-login rewires onto the new client.
+   */
   connect(): void {
-    if (this.connected || !this.matrix.isInitialized) {
+    if (!this.matrix.isInitialized) {
       return;
     }
-    this.connected = true;
     const client = this.matrix.instance;
-    const refresh = () => this.refresh();
-    client.on(ClientEvent.Sync, refresh);
-    client.on(ClientEvent.Room, refresh);
-    client.on(RoomEvent.Name, refresh);
-    client.on(RoomEvent.MyMembership, refresh);
+    if (this.connectedClient === client) {
+      return; // already wired to this client
+    }
+    this.disconnect(); // drop listeners from any previous client
+    this.connectedClient = client;
+    client.on(ClientEvent.Sync, this.onClientEvent);
+    client.on(ClientEvent.Room, this.onClientEvent);
+    client.on(RoomEvent.Name, this.onClientEvent);
+    client.on(RoomEvent.MyMembership, this.onClientEvent);
     // Keep unread badges live: new-message increments arrive via Sync above;
     // Receipt fires when a room is read and its unread count clears.
-    client.on(RoomEvent.Receipt, refresh);
+    client.on(RoomEvent.Receipt, this.onClientEvent);
     this.refresh();
+  }
+
+  /** Detach listeners from the current client and reset the read model. */
+  disconnect(): void {
+    const client = this.connectedClient;
+    if (!client) {
+      return;
+    }
+    client.off(ClientEvent.Sync, this.onClientEvent);
+    client.off(ClientEvent.Room, this.onClientEvent);
+    client.off(RoomEvent.Name, this.onClientEvent);
+    client.off(RoomEvent.MyMembership, this.onClientEvent);
+    client.off(RoomEvent.Receipt, this.onClientEvent);
+    this.connectedClient = null;
+    this._spaces.set([]);
+    this._rooms.set([]);
   }
 
   /** Joined rooms belonging to a space (or all joined rooms for `null` = Home). */

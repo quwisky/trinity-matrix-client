@@ -56,11 +56,9 @@ function setup(opts: CryptoOpts = {}) {
     getActiveSessionBackupVersion: vi
       .fn()
       .mockResolvedValue(opts.backupVersion ?? null),
-    getDeviceVerificationStatus: vi
-      .fn()
-      .mockResolvedValue({
-        crossSigningVerified: opts.deviceVerified ?? false,
-      }),
+    getDeviceVerificationStatus: vi.fn().mockResolvedValue({
+      crossSigningVerified: opts.deviceVerified ?? false,
+    }),
     createRecoveryKeyFromPassphrase: vi.fn().mockResolvedValue(
       opts.recoveryKey ?? {
         encodedPrivateKey: 'EsTRecoveryKey',
@@ -122,6 +120,7 @@ function setup(opts: CryptoOpts = {}) {
     crypto,
     secretStorage,
     client,
+    matrix,
   };
 }
 
@@ -332,6 +331,39 @@ describe('CryptoService', () => {
       svc.connect();
       svc.connect();
       expect(client.on).toHaveBeenCalledTimes(4);
+    });
+
+    it('rewires onto a new client after re-login and recomputes status', async () => {
+      const { svc, client, matrix } = setup({ defaultKeyId: null }); // A: needs-setup
+      svc.connect();
+      await firstValueFrom(svc.refresh());
+      expect(svc.status()).toBe('needs-setup');
+
+      // Client B reports an existing 4S key → needs-recovery.
+      const cryptoB = {
+        isCrossSigningReady: vi.fn().mockResolvedValue(false),
+        isSecretStorageReady: vi.fn().mockResolvedValue(false),
+        getActiveSessionBackupVersion: vi.fn().mockResolvedValue(null),
+        getDeviceVerificationStatus: vi
+          .fn()
+          .mockResolvedValue({ crossSigningVerified: false }),
+      };
+      const clientB = {
+        getCrypto: () => cryptoB,
+        secretStorage: { getDefaultKeyId: vi.fn().mockResolvedValue('k') },
+        getDeviceId: () => 'DEV',
+        getUserId: () => '@me:hs',
+        on: vi.fn(),
+        off: vi.fn(),
+      };
+      (matrix as unknown as { instance: unknown }).instance = clientB;
+
+      svc.connect();
+      await firstValueFrom(svc.refresh());
+
+      expect(client.off).toHaveBeenCalled(); // old listeners detached
+      expect(clientB.on).toHaveBeenCalled(); // new client wired
+      expect(svc.status()).toBe('needs-recovery'); // not frozen on A
     });
   });
 
