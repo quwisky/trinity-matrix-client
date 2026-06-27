@@ -7,11 +7,12 @@ running from a single codebase on **Web (PWA), iOS, Android, and Desktop (Electr
 End-to-end encryption is a first-class, in-MVP feature.
 
 > Status: **early development.** Scaffold, native platforms, the E2EE crypto spike,
-> authentication, a Discord-style room shell, and a working **timeline — read, send,
-> edit, delete, react, reply, markdown, and emoji** — are done. **Crypto bootstrap**
-> (cross-signing, key backup, recovery) is now complete end to end — core services plus
-> the setup/recovery UI and a non-blocking `/rooms` encryption banner. Device-to-device
-> verification (emoji SAS / QR) is next. See [Project status](#project-status) below.
+> authentication (password + SSO, incl. native deep-link), a Discord-style room shell,
+> and a working **timeline — read, send, edit, delete, react, reply, markdown, and
+> emoji** — are done. **End-to-end encryption** is complete through device trust:
+> crypto bootstrap (cross-signing, key backup, recovery) and **device verification**
+> (emoji-SAS, with an incoming-request prompt). **Encrypted media** (M8) is next.
+> See [Project status](#project-status) below.
 
 ## Documentation
 
@@ -67,6 +68,7 @@ For native and full testing details see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.m
 | `pnpm smoke:login`                  | Headless: redirect→login + real matrix.org discovery          |
 | `pnpm spike:chromium`               | Headless E2EE WASM check (Blink → Android WebView / Electron) |
 | `pnpm spike:webkit`                 | Headless E2EE WASM check (WebKit → iOS WKWebView)             |
+| `pnpm e2e:verify`                   | Two-client emoji-SAS device verification (needs Docker)       |
 | `pnpm exec cap run ios` / `android` | Build + launch on simulator/emulator                          |
 
 ## Project structure

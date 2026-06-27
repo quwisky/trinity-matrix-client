@@ -13,6 +13,10 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | `@capacitor-community/electron`      | 5.0.1   | Community-maintained desktop target (less stable than core)       |
 | `matrix-js-sdk`                      | 41.8.0  | Requires **Node.js 22+**; browser entry auto-configures IndexedDB |
 | `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1  | Rust crypto WASM bindings; E2EE backend                           |
+| `@capacitor/app`                     | 8.1.0   | App URL-open events — native SSO deep-link callback               |
+| `@capacitor/browser`                 | 8.0.3   | System browser for native SSO (keeps the app webview alive)       |
+| `marked`                             | 18.0.5  | Markdown → HTML for the composer/timeline                         |
+| `dompurify`                          | 3.4.11  | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)        |
 
 > Versions moved since the original plan draft: Capacitor is on **8** (not 6),
 > Ionic on **8.8**. Angular is pinned at **20.3** (the Ionic 8 scaffold targets 20,
@@ -62,9 +66,14 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
   returns the `CryptoApi` (main E2EE entry point) after `initRustCrypto()`.
 - Crypto bootstrap sequence: init rust crypto -> cross-signing setup
   (`bootstrapCrossSigning`) -> key backup (`bootstrapSecretStorage` / key backup APIs).
-- Device verification: emoji SAS and QR flows via the verification request APIs.
+  **Implemented (M3)** in `@trinity/core` `CryptoService` + `@trinity/feature-crypto`.
+- Device verification via the `VerificationRequest`/`Verifier` APIs. **Implemented (M7):**
+  emoji-SAS self-verification (`requestOwnUserVerification`) in `VerificationService` +
+  `@trinity/feature-crypto`. QR and cross-user verification are deferred.
 - WASM packaging "just works" for web-like environments (separate Node vs web entry
-  points); the web entry reads the `.wasm` over fetch.
+  points); the web entry reads the `.wasm` over fetch. A strict CSP ships in
+  `apps/trinity/src/index.html`; it includes `wasm-unsafe-eval` for the Rust crypto WASM
+  and scopes `connect-src`/`img-src` to `https:`/`wss:` (the homeserver is user-chosen).
 
 ### ⚠️ Gating risk to validate FIRST (Milestone 1 spike)
 
@@ -94,8 +103,10 @@ the architecture changes — find out before building UI on top.
   is an Nx workspace with `project.json`, not `angular.json`.)
 - **Component/browser tests (later):** Vitest Browser Mode with the Playwright provider
   (`@vitest/browser` + `playwright`).
-- **End-to-end:** Playwright standalone for full flows (login, send message); the
-  headless harnesses in `e2e/` are the seed of this.
+- **End-to-end:** Playwright **standalone** (`playwright`, not `@playwright/test`) —
+  `e2e/*.mjs` scripts that serve `www/` and drive Chromium/WebKit. Today: `smoke-login`,
+  the `crypto-spike` (per engine), and the two-client emoji-SAS `verify-sas` (with a
+  disposable Synapse harness, env-gated on a homeserver). See [e2e/README.md](e2e/README.md).
 - Vitest shares the Vite config and runs in parallel by default.
 
 ## Open setup decisions / reminders

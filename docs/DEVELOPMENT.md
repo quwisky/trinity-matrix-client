@@ -9,12 +9,14 @@ Trinity is an **Nx integrated monorepo** (pnpm). The deployable app lives in
 `apps/`, reusable code in `libs/` (imported via `@trinity/*` path aliases and
 guarded by Nx module boundaries). Projects:
 
-| Project         | Path                 | Notes                                                    |
-| --------------- | -------------------- | -------------------------------------------------------- |
-| `trinity`       | `apps/trinity`       | the Ionic/Angular app (build, serve, test)               |
-| `core`          | `libs/core`          | `@trinity/core` — Matrix services, storage, guard        |
-| `feature-auth`  | `libs/feature-auth`  | `@trinity/feature-auth` — login + SSO callback           |
-| `feature-rooms` | `libs/feature-rooms` | `@trinity/feature-rooms` — room shell + message timeline |
+| Project          | Path                  | Notes                                                                                                                  |
+| ---------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `trinity`        | `apps/trinity`        | the Ionic/Angular app (build, serve, test) `[type:app]`                                                                |
+| `core`           | `libs/core`           | `@trinity/core` — Matrix services, storage, guard `[type:core]`                                                        |
+| `feature-auth`   | `libs/feature-auth`   | `@trinity/feature-auth` — login + SSO callback `[type:feature]`                                                        |
+| `feature-rooms`  | `libs/feature-rooms`  | `@trinity/feature-rooms` — room shell + message timeline `[type:feature]`                                              |
+| `feature-crypto` | `libs/feature-crypto` | `@trinity/feature-crypto` — encryption setup/recovery + device verification `[type:feature]`                           |
+| `ui`             | `libs/ui`             | `@trinity/ui` — reusable presentational components (avatar, emoji picker, message toolbar) + `runWithBusy` `[type:ui]` |
 
 The web build still emits to root `www/`, so Capacitor and the native projects
 are unchanged. `pnpm exec nx graph` opens the dependency graph.
@@ -112,6 +114,7 @@ discovery against matrix.org):
 pnpm smoke:login      # redirect→login + real .well-known discovery
 pnpm spike:chromium   # E2EE WASM in Blink  (Android WebView / Electron proxy)
 pnpm spike:webkit     # E2EE WASM in WebKit (iOS WKWebView proxy)
+pnpm e2e:verify       # two-client emoji-SAS device verification (needs Docker; see e2e/README)
 ```
 
 All should print `RESULT: PASS`. The spike/smoke harnesses require the Playwright
@@ -121,15 +124,24 @@ browsers:
 pnpm exec playwright install chromium webkit
 ```
 
-`e2e/` holds `smoke-login.mjs`, `crypto-spike.mjs`, and a shared `support/serve.mjs`
-static server.
+`e2e/` holds `smoke-login.mjs`, `crypto-spike.mjs`, the two-client
+`verify-sas.mjs` (+ its `verify-sas-run.mjs` orchestrator, `verify-sas-selfcheck.mjs`,
+and a disposable `synapse/` Synapse+Caddy harness), and a shared `support/serve.mjs`
+static server. See [e2e/README.md](../e2e/README.md) for the verification flow and how
+to point it at your own homeserver. The verification harness needs a homeserver over
+**https** because the app CSP only allows `https:`/`wss:` for `connect-src`.
 
 ### What is NOT covered yet
 
-- A **credentialed** login → sync → logout cycle (no test account wired in). With a
-  throwaway account this becomes a straightforward addition to `e2e/smoke-login.mjs`.
+- A **credentialed** plain login → sync → logout cycle in CI (no throwaway account
+  wired into the smoke). `e2e/verify-sas.mjs` already does credentialed login (twice)
+  but is gated on a reachable homeserver.
+- The **live** `e2e:verify` SAS round-trip in CI — it needs Docker registry access to
+  pull the Synapse/Caddy images (or an external https homeserver via `TRINITY_HS`).
 - On-device WebView runtime (the Playwright engine runs are faithful proxies, but a
   simulator/emulator run is the real thing — see [../SPIKE.md](../SPIKE.md)).
+- The **native SSO deep link** (`eu.qwky.trinity://sso-callback`) — wired with a state
+  nonce, but the round-trip needs on-device validation (`cap sync` then a real SSO).
 
 ## Code quality & git hooks
 
