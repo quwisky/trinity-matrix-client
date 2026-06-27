@@ -1,0 +1,97 @@
+import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
+import { AuthService } from '@trinity/core';
+import { of, throwError } from 'rxjs';
+import { describe, expect, it, vi } from 'vitest';
+import { LoginPage } from './login.page';
+
+function configure(
+  auth: Partial<AuthService>,
+  navigateByUrl = vi.fn(),
+): { navigateByUrl: ReturnType<typeof vi.fn> } {
+  TestBed.configureTestingModule({
+    imports: [LoginPage],
+    providers: [
+      { provide: AuthService, useValue: auth },
+      { provide: Router, useValue: { navigateByUrl } },
+    ],
+  });
+  return { navigateByUrl };
+}
+
+describe('LoginPage', () => {
+  it('discovers the homeserver and surfaces its login flows', () => {
+    configure({
+      discoverHomeserver: vi.fn(() => of('https://hs.example')),
+      getSupportedFlows: vi.fn(() => of(['m.login.password', 'm.login.sso'])),
+    } as unknown as AuthService);
+    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+
+    cmp.discover();
+
+    expect(cmp.baseUrl()).toBe('https://hs.example');
+    expect(cmp.passwordSupported()).toBe(true);
+    expect(cmp.ssoSupported()).toBe(true);
+  });
+
+  it('hides password/SSO when the homeserver does not offer them', () => {
+    configure({
+      discoverHomeserver: vi.fn(() => of('https://hs.example')),
+      getSupportedFlows: vi.fn(() => of([])),
+    } as unknown as AuthService);
+    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+
+    cmp.discover();
+
+    expect(cmp.passwordSupported()).toBe(false);
+    expect(cmp.ssoSupported()).toBe(false);
+  });
+
+  it('surfaces a discovery error and stays on step 1', () => {
+    configure({
+      discoverHomeserver: vi.fn(() =>
+        throwError(() => new Error('no .well-known')),
+      ),
+      getSupportedFlows: vi.fn(),
+    } as unknown as AuthService);
+    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+
+    cmp.discover();
+
+    expect(cmp.error()).toBe('no .well-known');
+    expect(cmp.baseUrl()).toBeNull();
+  });
+
+  it('logs in with a password and navigates to rooms', () => {
+    const loginWithPassword = vi.fn(() => of(undefined));
+    const { navigateByUrl } = configure({
+      loginWithPassword,
+    } as unknown as AuthService);
+    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+    cmp.baseUrl.set('https://hs.example');
+    cmp.username.set('alice');
+    cmp.password.set('hunter2');
+
+    cmp.loginPassword();
+
+    expect(loginWithPassword).toHaveBeenCalledWith(
+      'https://hs.example',
+      'alice',
+      'hunter2',
+    );
+    expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });
+  });
+
+  it('surfaces a password-login error without navigating', () => {
+    const { navigateByUrl } = configure({
+      loginWithPassword: vi.fn(() => throwError(() => new Error('bad creds'))),
+    } as unknown as AuthService);
+    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.loginPassword();
+
+    expect(cmp.error()).toBe('bad creds');
+    expect(navigateByUrl).not.toHaveBeenCalled();
+  });
+});

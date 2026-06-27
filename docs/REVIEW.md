@@ -101,7 +101,7 @@ rest are reviewer findings worth confirming during the fix.
 
 ## 🟡 Medium
 
-- [ ] **feature-auth has zero tests** — the riskiest flow (discovery, SSO callback
+- [x] **feature-auth has zero tests** _(fixed: added the Vitest harness + login/sso-callback specs, 9 tests)_ — the riskiest flow (discovery, SSO callback
       handshake, login→persist→init) is the only lib without a test target. Add the Vitest
       triad (`vite.config.ts` + `test-setup.ts` + `tsconfig.spec.json` + test target) and
       cover the discover→flows state machine and the SSO callback completion.
