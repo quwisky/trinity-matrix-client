@@ -21,3 +21,26 @@
 - The `nx-generate` skill handles generator discovery internally - don't call nx_docs just to look up generator syntax
 
 <!-- nx configuration end-->
+
+## Agent delegation rules
+
+### Plan (before building) — read-only
+- Before building a new frontend feature or restructuring existing UI,
+  delegate to frontend-architect to produce a plan first; present it for
+  approval before writing code.
+
+### Test (after implementing)
+- After implementing or changing any frontend component, delegate to
+  vitest-tester to add or update unit coverage.
+- For end-to-end coverage of user flows, delegate to playwright-tester.
+
+### Review (after implementing) — read-only, can run in parallel
+- After changing code that handles authentication, user input, rendered
+  user content, tokens/secrets, or external requests, delegate to
+  frontend-security-auditor to audit the diff.
+- For UI/UX, visual, or accessibility review, delegate to ui-ux-designer.
+
+### Scope
+- Do not invoke frontend-architect, ui-ux-designer, or
+  frontend-security-auditor for routine bug fixes or trivial changes.
+- Scope the security auditor to risk-relevant diffs, not every commit.
