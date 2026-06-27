@@ -120,7 +120,7 @@ rest are reviewer findings worth confirming during the fix.
       Strip it on entry (covers the error path) and set a `no-referrer` policy. Separately:
       the native deep-link path (`eu.qwky.trinity://`) needs state/nonce + baseUrl
       verification and App/Universal Links before it's wired (latent login-CSRF/fixation).
-- [x] **Crypto IndexedDB store not cleared on logout** _(fixed: logout now calls a new MatrixClientService.reset() that clearStores() the sync + crypto IndexedDB; a matrix-client lifecycle spec remains a follow-up)_ —
+- [x] **Crypto IndexedDB store not cleared on logout** _(fixed: logout now calls a new MatrixClientService.reset() that clearStores() the sync + crypto IndexedDB; covered by the new matrix-client.service lifecycle spec)_ —
       [matrix-client.service.ts](../libs/core/src/lib/matrix/matrix-client.service.ts) /
       [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts). Prior account's key
       material persists on disk; clear it on `logout` (not plain `stop`).

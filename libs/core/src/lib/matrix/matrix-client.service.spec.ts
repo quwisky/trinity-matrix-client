@@ -1,0 +1,169 @@
+import { TestBed } from '@angular/core/testing';
+import { createClient } from 'matrix-js-sdk';
+import { firstValueFrom, of } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MatrixClientService } from './matrix-client.service';
+import { SessionStorageService } from '../storage/session-storage.service';
+import { SecretStorageKeyService } from './secret-storage-key.service';
+
+// Keep the real enums (ClientEvent/SyncState) but stub the client factory.
+vi.mock('matrix-js-sdk', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('matrix-js-sdk')>();
+  return { ...actual, createClient: vi.fn() };
+});
+
+// The WASM preload is a no-op in tests (no real crypto engine).
+vi.mock('./crypto-wasm-loader', async () => {
+  const { of: rxOf } = await import('rxjs');
+  return { preloadCryptoWasm: () => rxOf(undefined) };
+});
+
+const SESSION = {
+  baseUrl: 'https://hs.example',
+  userId: '@me:hs',
+  deviceId: 'DEV',
+  accessToken: 'tok',
+};
+
+function fakeClient() {
+  return {
+    on: vi.fn(),
+    off: vi.fn(),
+    initRustCrypto: vi.fn().mockResolvedValue(undefined),
+    startClient: vi.fn().mockResolvedValue(undefined),
+    stopClient: vi.fn(),
+    clearStores: vi.fn().mockResolvedValue(undefined),
+    getCrypto: vi.fn().mockReturnValue(undefined),
+  };
+}
+
+function setup() {
+  const storage = {
+    load: vi.fn(() => of(null)),
+    save: vi.fn(() => of(undefined)),
+    clear: vi.fn(() => of(undefined)),
+  };
+  const keys = {
+    clear: vi.fn(),
+    getSecretStorageKey: vi.fn(),
+    cacheSecretStorageKey: vi.fn(),
+  };
+  TestBed.configureTestingModule({
+    providers: [
+      MatrixClientService,
+      { provide: SessionStorageService, useValue: storage },
+      { provide: SecretStorageKeyService, useValue: keys },
+    ],
+  });
+  return { svc: TestBed.inject(MatrixClientService), storage, keys };
+}
+
+describe('MatrixClientService', () => {
+  beforeEach(() => vi.mocked(createClient).mockReset());
+
+  it('creates the client, inits crypto, starts, and publishes on success', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+
+    await firstValueFrom(svc.init(SESSION));
+
+    expect(createClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseUrl: 'https://hs.example',
+        accessToken: 'tok',
+        userId: '@me:hs',
+        deviceId: 'DEV',
+      }),
+    );
+    expect(client.initRustCrypto).toHaveBeenCalledOnce();
+    expect(client.startClient).toHaveBeenCalledOnce();
+    expect(svc.isInitialized).toBe(true);
+    expect(svc.instance).toBe(client);
+  });
+
+  it('does not publish the client until startClient resolves', async () => {
+    const client = fakeClient();
+    client.startClient.mockRejectedValue(new Error('sync failed'));
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc, keys } = setup();
+
+    await expect(firstValueFrom(svc.init(SESSION))).rejects.toThrow(
+      'sync failed',
+    );
+    // Rolled back: client stopped, 4S key cleared, nothing left half-initialized.
+    expect(client.stopClient).toHaveBeenCalled();
+    expect(keys.clear).toHaveBeenCalled();
+    expect(svc.isInitialized).toBe(false);
+  });
+
+  it('tears down a prior client when re-initialized', async () => {
+    const a = fakeClient();
+    const b = fakeClient();
+    vi.mocked(createClient)
+      .mockReturnValueOnce(a as never)
+      .mockReturnValueOnce(b as never);
+    const { svc } = setup();
+
+    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(svc.init(SESSION));
+
+    expect(a.stopClient).toHaveBeenCalled(); // old client torn down
+    expect(svc.instance).toBe(b);
+  });
+
+  it('bridges sync state into the signal', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(SESSION));
+
+    // Grab the ClientEvent.Sync handler the service registered and fire it.
+    const syncCall = client.on.mock.calls.find(([evt]) => evt === 'sync');
+    expect(syncCall).toBeTruthy();
+    syncCall![1]('SYNCING');
+    expect(svc.syncState()).toBe('SYNCING');
+  });
+
+  it('stop() tears down without clearing the stores', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(SESSION));
+
+    await firstValueFrom(svc.stop());
+
+    expect(client.stopClient).toHaveBeenCalled();
+    expect(client.clearStores).not.toHaveBeenCalled();
+    expect(svc.isInitialized).toBe(false);
+  });
+
+  it('reset() stops the client and wipes the stores + 4S key', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc, keys } = setup();
+    await firstValueFrom(svc.init(SESSION));
+    keys.clear.mockClear();
+
+    await firstValueFrom(svc.reset());
+
+    expect(client.stopClient).toHaveBeenCalled();
+    expect(client.clearStores).toHaveBeenCalledOnce();
+    expect(keys.clear).toHaveBeenCalled();
+    expect(svc.isInitialized).toBe(false);
+  });
+
+  it('restore() inits from a stored session, else resolves false', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc, storage } = setup();
+
+    storage.load.mockReturnValue(of(SESSION));
+    await expect(firstValueFrom(svc.restore())).resolves.toBe(true);
+    expect(svc.isInitialized).toBe(true);
+
+    await firstValueFrom(svc.stop());
+    storage.load.mockReturnValue(of(null));
+    await expect(firstValueFrom(svc.restore())).resolves.toBe(false);
+  });
+});
