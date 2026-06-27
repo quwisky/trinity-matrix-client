@@ -1,8 +1,38 @@
 # Milestone 3 — Crypto Bootstrap: Implementation Plan
 
-> Status: **planned.** Scope and sequencing for [PLAN.md](../PLAN.md) Milestone 3
-> ("Crypto bootstrap"). Device-to-device verification UI (emoji SAS / QR) is
-> Milestone 7 and out of scope here.
+> Status: **core landed; UI in progress.** The `@trinity/core` services
+> (`SecretStorageKeyService` + `CryptoService`, with the `cryptoCallbacks` wired into
+> the client lifecycle) are implemented and tested; the setup/recovery UI and the
+> `/rooms` encryption banner are still to build. Device-to-device verification UI
+> (emoji SAS / QR) is Milestone 7 and out of scope here.
+
+## Implementation status
+
+| Part                                                  | State                              |
+| ----------------------------------------------------- | ---------------------------------- |
+| `getSecretStorageKey` callback + in-memory key holder | ✅ `secret-storage-key.service.ts` |
+| `CryptoService` — status signals, setup, recovery     | ✅ `crypto.service.ts`             |
+| `feature-crypto` UI — setup + recovery pages          | ⬜ next                            |
+| Encryption banner on `/rooms`                         | ⬜                                 |
+
+**Decisions made during implementation (deviations from the draft below):**
+
+- **Recovery skips the bulk `restoreKeyBackup()`** — it loads the backup key and
+  enables backup so history decrypts lazily, avoiding the SDK's multi-hour bulk
+  download. A missing/stale backup key degrades gracefully (the device is already
+  trusted) instead of failing the recovery.
+- **UIA handles the password stage only** — probe unauthenticated, then retry with the
+  password, re-prompting (bounded) on a rejected one. SSO-only accounts surface the UIA
+  error; SSO-driven UIA is a follow-up.
+- **Recovery key is generated randomly** (no passphrase), so Trinity-onboarded accounts
+  recover via the key, not a passphrase; `recoverWithPassphrase` still serves accounts
+  provisioned with a passphrase elsewhere.
+- **`matrix-js-sdk/lib/crypto-api` is imported deeply** — those types/values aren't
+  re-exported from the package root in 41.x.
+- **Naming:** the key holder is `SecretStorageKeyService` (the repo's `*Service`
+  convention), not `*Store`.
+- **Deferred:** `connect()` doesn't re-bind after logout→login (shared
+  permanent-`connected` pattern with `RoomsService`; a separate reconnect refactor).
 
 ## What's already done vs. what this milestone adds
 

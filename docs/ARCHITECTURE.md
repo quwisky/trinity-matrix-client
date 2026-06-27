@@ -32,15 +32,17 @@ feature-* libs (pages)     shared libs (ui, pipes)
 
 ## @trinity/core — matrix
 
-| File                                                                             | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [matrix-client.service.ts](../libs/core/src/lib/matrix/matrix-client.service.ts) | Owns the single `MatrixClient`. Lifecycle: `createClient → preload WASM → initRustCrypto → startClient`. Exposes `syncState` signal.                                                                                                                                                                                                                                                                                                           |
-| [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts)                   | Homeserver discovery (`.well-known`), password login, SSO URL + token exchange, logout. Persists session and starts the client on success.                                                                                                                                                                                                                                                                                                     |
-| [rooms.service.ts](../libs/core/src/lib/matrix/rooms.service.ts)                 | Read model over the synced client: Spaces / joined rooms / members as plain view models, exposed as read-only signals (recomputed on sync events). Powers the room-list shell.                                                                                                                                                                                                                                                                 |
-| [timeline.service.ts](../libs/core/src/lib/matrix/timeline.service.ts)           | Per-room timeline read model + actions. `open`/`close` attach to one room; `messages`/`loadingOlder`/`canLoadOlder` signals; `loadOlder` (scrollback), `send`, `edit` (`m.replace`), `redact`, `retry`, `toggleReaction` (`m.annotation`), `reply` (`m.in_reply_to`). Maps SDK events to `MessageView` (markdown HTML, edited/redacted/decryption-failed, reactions, reply preview, local-echo status). See [Messaging](#messaging--timeline). |
-| [crypto-wasm-loader.ts](../libs/core/src/lib/matrix/crypto-wasm-loader.ts)       | Preloads the Rust crypto WASM from a served asset path (see [WASM loading](#e2ee-wasm-loading)). Memoized.                                                                                                                                                                                                                                                                                                                                     |
-| [crypto-spike.service.ts](../libs/core/src/lib/matrix/crypto-spike.service.ts)   | Dev smoke test that proves crypto initializes in the current runtime.                                                                                                                                                                                                                                                                                                                                                                          |
-| [session.model.ts](../libs/core/src/lib/matrix/session.model.ts)                 | `MatrixSession` shape (baseUrl, userId, deviceId, accessToken).                                                                                                                                                                                                                                                                                                                                                                                |
+| File                                                                                       | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [matrix-client.service.ts](../libs/core/src/lib/matrix/matrix-client.service.ts)           | Owns the single `MatrixClient`. Lifecycle: `createClient → preload WASM → initRustCrypto → startClient`, wiring the 4S `cryptoCallbacks`. Idempotent: re-`init`/`stop` tears down the prior client and clears its recovery key, and a failed bootstrap rolls back rather than leaving `isInitialized` lying. Exposes `syncState` signal.                                                                                                       |
+| [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts)                             | Homeserver discovery (`.well-known`), password login, SSO URL + token exchange, logout. Persists session and starts the client on success.                                                                                                                                                                                                                                                                                                     |
+| [rooms.service.ts](../libs/core/src/lib/matrix/rooms.service.ts)                           | Read model over the synced client: Spaces / joined rooms / members as plain view models, exposed as read-only signals (recomputed on sync events). Powers the room-list shell.                                                                                                                                                                                                                                                                 |
+| [timeline.service.ts](../libs/core/src/lib/matrix/timeline.service.ts)                     | Per-room timeline read model + actions. `open`/`close` attach to one room; `messages`/`loadingOlder`/`canLoadOlder` signals; `loadOlder` (scrollback), `send`, `edit` (`m.replace`), `redact`, `retry`, `toggleReaction` (`m.annotation`), `reply` (`m.in_reply_to`). Maps SDK events to `MessageView` (markdown HTML, edited/redacted/decryption-failed, reactions, reply preview, local-echo status). See [Messaging](#messaging--timeline). |
+| [crypto.service.ts](../libs/core/src/lib/matrix/crypto.service.ts)                         | E2EE secret layer over `getCrypto()`: bootstraps cross-signing + secret storage (4S) + key backup and recovers later devices. `status` signal (`unknown` / `ready` / `needs-setup` / `needs-recovery`), `keyBackupActive`, `thisDeviceVerified`; `setUp` / `recoverWithKey` / `recoverWithPassphrase`. See [Crypto bootstrap](#crypto-bootstrap--e2ee-secret-layer).                                                                           |
+| [secret-storage-key.service.ts](../libs/core/src/lib/matrix/secret-storage-key.service.ts) | In-memory holder for the unlocked 4S key; backs the `getSecretStorageKey` / `cacheSecretStorageKey` `cryptoCallbacks`. Never persisted; zeroed on teardown.                                                                                                                                                                                                                                                                                    |
+| [crypto-wasm-loader.ts](../libs/core/src/lib/matrix/crypto-wasm-loader.ts)                 | Preloads the Rust crypto WASM from a served asset path (see [WASM loading](#e2ee-wasm-loading)). Memoized.                                                                                                                                                                                                                                                                                                                                     |
+| [crypto-spike.service.ts](../libs/core/src/lib/matrix/crypto-spike.service.ts)             | Dev smoke test that proves crypto initializes in the current runtime.                                                                                                                                                                                                                                                                                                                                                                          |
+| [session.model.ts](../libs/core/src/lib/matrix/session.model.ts)                           | `MatrixSession` shape (baseUrl, userId, deviceId, accessToken).                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## @trinity/core — storage & guards
 
@@ -155,6 +157,48 @@ The single most important platform detail (full story in [../SPIKE.md](../SPIKE.
   `initAsync(url)` against that path **before** `initRustCrypto()`. The loader memoizes
   its module promise, so the SDK's own internal `initAsync()` reuses our instance.
 - Validated headless on **Blink** (Android WebView / Electron) and **WebKit** (iOS).
+
+## Crypto bootstrap / E2EE secret layer
+
+`initRustCrypto()` (above) gives every session a device identity + IndexedDB crypto
+store. On top of that, two core services manage the **account-level** secrets that make
+messaging trustworthy — cross-signing, secret storage (4S), and key backup.
+
+- **`SecretStorageKeyService`** holds the unlocked 4S private key in memory and backs
+  the `getSecretStorageKey` / `cacheSecretStorageKey` callbacks wired into `createClient`.
+  That key is effectively the account recovery key, so it is **never written to disk**,
+  and `clear()` zeroes the bytes on logout/teardown.
+- **`CryptoService`** wraps `client.getCrypto()`. `connect()` bridges
+  `CryptoEvent.{KeysChanged,UserTrustStatusChanged,KeyBackupStatus,DevicesUpdated}` into a
+  `status` signal — `ready` / `needs-setup` (no 4S yet) / `needs-recovery` (4S exists but
+  this device isn't trusted) / `unknown` — plus `keyBackupActive` and `thisDeviceVerified`.
+  Status recomputation is race-guarded (a superseded run drops its write) and never throws.
+
+Two flows:
+
+- **Setup (first device)** — `setUp(promptPassword)`: generate a random recovery key,
+  `bootstrapCrossSigning` (uploads device-signing keys; the UIA password stage is handled
+  by probing unauthenticated, then retrying with the password and re-prompting on a
+  rejected one), then `bootstrapSecretStorage({ setupNewKeyBackup: true })`. Returns the
+  encoded recovery key for **one-time** display — it is never persisted.
+- **Recovery (later device)** — `recoverWithKey` / `recoverWithPassphrase`: verify the
+  entered key against 4S (`checkKey`), cache it, `bootstrapCrossSigning({})` to import
+  cross-signing from 4S so this device becomes trusted, then enable key backup.
+
+Decisions:
+
+- **Lazy history** — recovery enables backup but skips the bulk `restoreKeyBackup()`
+  (which can take hours); room history decrypts on demand from the backup. A
+  missing/stale backup key degrades gracefully — the device is already trusted.
+- **Password-stage UIA only** — SSO-only accounts surface the UIA error; SSO-driven UIA
+  is a follow-up.
+- **`matrix-js-sdk/lib/crypto-api` is a deep import** — the crypto-api types/values
+  (`CryptoApi`, `CryptoEvent`, `decodeRecoveryKey`, …) are not re-exported from the
+  package root in 41.x.
+
+> The setup/recovery **UI** (a `feature-crypto` lib + an encryption banner on `/rooms`)
+> is still to come; these services are the layer it drives. See
+> [CRYPTO-BOOTSTRAP-PLAN.md](CRYPTO-BOOTSTRAP-PLAN.md).
 
 ## Native shells
 

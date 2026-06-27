@@ -96,8 +96,10 @@ src/app/
    Android WebView, and Electron _before_ proceeding. Surface platform failures now.
 2. **Auth** — `.well-known` discovery, password + SSO login (deep-link callback on
    native), session + token persistence, auth guard, logout.
-3. **Crypto bootstrap** — initialize Rust crypto, IndexedDB crypto store,
+3. **Crypto bootstrap** — 🚧 initialize Rust crypto, IndexedDB crypto store,
    cross-signing setup, key backup. Establishes the device identity messaging depends on.
+   Core services done (`CryptoService` + the 4S key callback); setup/recovery UI pending.
+   See [docs/CRYPTO-BOOTSTRAP-PLAN.md](docs/CRYPTO-BOOTSTRAP-PLAN.md).
 4. **Sync & room list** — start client with crypto enabled, render rooms
    (names/avatars/unread), live updates, encryption indicators.
 5. **Timeline (read)** — ✅ render decrypted messages (markdown), backward pagination

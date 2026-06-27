@@ -8,8 +8,9 @@ End-to-end encryption is a first-class, in-MVP feature.
 
 > Status: **early development.** Scaffold, native platforms, the E2EE crypto spike,
 > authentication, a Discord-style room shell, and a working **timeline — read, send,
-> edit, delete, react, reply, markdown, and emoji** — are done. Crypto bootstrap and
-> device verification are next. See [Project status](#project-status) below.
+> edit, delete, react, reply, markdown, and emoji** — are done. **Crypto-bootstrap
+> services** (cross-signing, key backup, recovery) are now in place; the setup/recovery
+> UI and device verification are next. See [Project status](#project-status) below.
 
 ## Documentation
 
@@ -105,7 +106,7 @@ needed. Each component/page lives in its own directory
 | ------------------------------------------------ | ------------------------------------------------------------------------- |
 | 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md))         |
 | 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                        |
-| 3 — Crypto bootstrap (cross-signing, key backup) | ⬜ Next                                                                   |
+| 3 — Crypto bootstrap (cross-signing, key backup) | 🚧 Core services done (bootstrap + recovery); setup/recovery UI next      |
 | 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock    |
 | 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history           |
 | 6 — Compose (send)                               | ✅ Done — send/edit/delete, reactions, replies, emoji, local echo + retry |
