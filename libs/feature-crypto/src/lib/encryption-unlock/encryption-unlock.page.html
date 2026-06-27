@@ -40,7 +40,11 @@
   </ion-button>
 
   @if (busy()) {
-    <div class="ion-text-center ion-padding-top">
+    <div
+      class="ion-text-center ion-padding-top"
+      role="status"
+      aria-live="polite"
+    >
       <ion-spinner></ion-spinner>
       <p class="progress">Unlocking your encrypted messages…</p>
     </div>

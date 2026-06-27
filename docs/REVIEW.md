@@ -144,8 +144,9 @@ rest are reviewer findings worth confirming during the fix.
 
 - [ ] No `<h1>` / heading hierarchy on login and the active-chat view (crypto pages do
       it right).
-- [ ] Busy/loading states not announced (`aria-live`); new incoming messages not
-      announced.
+- [x] Busy/loading states not announced (`aria-live`) _(fixed for login + crypto
+      pages via `role="status"`; announcing new incoming messages in the timeline
+      remains a follow-up)_.
 - [ ] Decryption-failure & redacted messages need a clearer, labeled accessible
       treatment (reuse the `.warning` pattern); link decryption failures to
       `/encryption/unlock`.

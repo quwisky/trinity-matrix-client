@@ -72,13 +72,18 @@
     }
   }
   @if (busy()) {
-    <div class="ion-text-center ion-padding-top">
+    <div
+      class="ion-text-center ion-padding-top"
+      role="status"
+      aria-live="polite"
+    >
       <ion-spinner></ion-spinner>
+      <p><ion-text color="medium">Working…</ion-text></p>
     </div>
   }
   @if (error(); as message) {
     <ion-text color="danger">
-      <p>{{ message }}</p>
+      <p role="alert">{{ message }}</p>
     </ion-text>
   }
 </ion-content>

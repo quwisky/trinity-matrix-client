@@ -54,8 +54,13 @@
   }
 
   @if (busy()) {
-    <div class="ion-text-center ion-padding-top">
+    <div
+      class="ion-text-center ion-padding-top"
+      role="status"
+      aria-live="polite"
+    >
       <ion-spinner></ion-spinner>
+      <p><ion-text color="medium">Setting up encryption…</ion-text></p>
     </div>
   }
   @if (error(); as message) {
