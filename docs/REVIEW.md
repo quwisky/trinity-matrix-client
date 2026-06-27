@@ -84,7 +84,7 @@ rest are reviewer findings worth confirming during the fix.
       event is a pending local echo — skip pending events and add `.catch()`. Apply the
       same `.catch()` discipline to `resendEvent` in `retry()`.
 
-- [ ] **Silent failure of edit / delete / react / reply** —
+- [x] **Silent failure of edit / delete / react / reply** _(fixed)_ —
       [rooms.page.ts:161-187](../libs/feature-rooms/src/lib/rooms/rooms.page.ts#L161-L187).
       These `.subscribe()` with no error handler and (unlike `send`) no optimistic echo, so
       a failed delete/reaction looks like a no-op. **Fix:** surface errors (Ionic

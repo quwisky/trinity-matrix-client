@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
+import { Observable } from 'rxjs';
 import {
   IonSplitPane,
   IonMenu,
@@ -20,6 +21,7 @@ import {
   IonButtons,
   IonIcon,
   MenuController,
+  ToastController,
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { lockClosed } from 'ionicons/icons';
@@ -70,6 +72,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly menu = inject(MenuController);
+  private readonly toast = inject(ToastController);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly activeSpaceId = signal<string | null>(null);
@@ -163,25 +166,27 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
+  // Edit/delete/react have no visible local echo, so a failure would otherwise be
+  // silent — surface it as a toast. (Send/reply produce an echo with a retry.)
   onEdit(edit: { id: string; body: string }): void {
-    this.timeline
-      .edit(edit.id, edit.body)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+    this.runAction(
+      this.timeline.edit(edit.id, edit.body),
+      'Could not edit the message.',
+    );
   }
 
   onDelete(messageId: string): void {
-    this.timeline
-      .redact(messageId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+    this.runAction(
+      this.timeline.redact(messageId),
+      'Could not delete the message.',
+    );
   }
 
   onReact(reaction: { id: string; key: string }): void {
-    this.timeline
-      .toggleReaction(reaction.id, reaction.key)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+    this.runAction(
+      this.timeline.toggleReaction(reaction.id, reaction.key),
+      'Could not update the reaction.',
+    );
   }
 
   onReply(reply: { id: string; body: string }): void {
@@ -189,6 +194,23 @@ export class RoomsPage implements OnInit, OnDestroy {
       .reply(reply.id, reply.body)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+
+  /** Run a fire-and-forget timeline action, surfacing a failure as a toast. */
+  private runAction(action: Observable<void>, failureMessage: string): void {
+    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      error: () => void this.showError(failureMessage),
+    });
+  }
+
+  private async showError(message: string): Promise<void> {
+    const toast = await this.toast.create({
+      message,
+      duration: 4000,
+      color: 'danger',
+      position: 'bottom',
+    });
+    await toast.present();
   }
 
   logout(): void {
