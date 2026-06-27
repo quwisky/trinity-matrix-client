@@ -16,13 +16,15 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { Observable, defer, finalize, from, map, of, tap } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
+import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 
 export type MessageKind =
   | 'text'
   | 'emote'
   | 'notice'
   | 'redacted'
-  | 'unsupported';
+  | 'unsupported'
+  | MediaKind;
 
 /** An aggregated reaction (`m.annotation`) on a message. */
 export interface ReactionView {
@@ -66,6 +68,8 @@ export interface MessageView {
   /** Local-echo send state: 'sending' / 'failed', or null once confirmed. */
   status: 'sending' | 'failed' | null;
   kind: MessageKind;
+  /** Media attachment for image/file/video/audio messages, else null. */
+  media: MediaPayload | null;
 }
 
 const AVATAR_PX = 64;
@@ -369,7 +373,7 @@ export class TimelineService {
     const member = room.getMember(senderId);
     const senderName = member?.name ?? senderId;
     const decryptionFailed = event.isDecryptionFailure();
-    const { body, html, kind } = renderBody(event, decryptionFailed);
+    const { body, html, kind, media } = renderBody(event, decryptionFailed);
     return {
       id: event.getId() ?? '',
       senderId,
@@ -396,6 +400,7 @@ export class TimelineService {
         : null,
       status: mapStatus(event.status),
       kind,
+      media,
     };
   }
 
@@ -569,6 +574,7 @@ interface RenderedBody {
   body: string;
   html: string | null;
   kind: MessageKind;
+  media: MediaPayload | null;
 }
 
 function renderBody(
@@ -580,10 +586,16 @@ function renderBody(
       body: '⚠️ Unable to decrypt this message',
       html: null,
       kind: 'unsupported',
+      media: null,
     };
   }
   if (event.isRedacted()) {
-    return { body: '(message deleted)', html: null, kind: 'redacted' };
+    return {
+      body: '(message deleted)',
+      html: null,
+      kind: 'redacted',
+      media: null,
+    };
   }
   const content = event.getContent();
   const isReply = !!event.replyEventId;
@@ -601,26 +613,121 @@ function renderBody(
 
   switch (content.msgtype) {
     case MsgType.Text:
-      return { body: text, html, kind: 'text' };
+      return { body: text, html, kind: 'text', media: null };
     case MsgType.Emote:
-      return { body: text, html, kind: 'emote' };
+      return { body: text, html, kind: 'emote', media: null };
     case MsgType.Notice:
-      return { body: text, html, kind: 'notice' };
+      return { body: text, html, kind: 'notice', media: null };
     case MsgType.Image:
-      return { body: '[image]', html: null, kind: 'unsupported' };
     case MsgType.File:
-      return { body: '[file]', html: null, kind: 'unsupported' };
     case MsgType.Audio:
-      return { body: '[audio]', html: null, kind: 'unsupported' };
-    case MsgType.Video:
-      return { body: '[video]', html: null, kind: 'unsupported' };
+    case MsgType.Video: {
+      const media = buildMediaPayload(content, content.msgtype);
+      // A malformed media event (no url/file) falls back to a plain label.
+      if (!media) {
+        return {
+          body: text || `[${String(content.msgtype).replace(/^m\./, '')}]`,
+          html: null,
+          kind: 'unsupported',
+          media: null,
+        };
+      }
+      return { body: media.filename, html: null, kind: media.kind, media };
+    }
     default:
       return {
         body: text || '[unsupported message]',
         html: null,
         kind: 'unsupported',
+        media: null,
       };
   }
+}
+
+/** MIME types we never render inline (script-bearing), forced to download-only. */
+const UNSAFE_INLINE_MIME = /^(?:image\/svg\+xml|text\/html)$/i;
+
+/**
+ * Project an `m.image`/`m.file`/`m.video`/`m.audio` content block into a
+ * {@link MediaPayload}, or null when it lacks a source (`url`/`file`). The kind is
+ * derived from the msgtype, then downgraded to `'file'` (download-only) for unknown
+ * or script-bearing MIME types so nothing scriptable is rendered inline.
+ */
+function buildMediaPayload(
+  content: Record<string, unknown>,
+  msgtype: string,
+): MediaPayload | null {
+  const mxc =
+    typeof content['url'] === 'string' ? (content['url'] as string) : null;
+  const file = asEncryptedFile(content['file']);
+  if (!mxc && !file) {
+    return null;
+  }
+  const info = (content['info'] ?? {}) as Record<string, unknown>;
+  const mimeType =
+    typeof info['mimetype'] === 'string'
+      ? (info['mimetype'] as string)
+      : 'application/octet-stream';
+
+  let kind: MediaKind =
+    msgtype === MsgType.Image
+      ? 'image'
+      : msgtype === MsgType.Video
+        ? 'video'
+        : msgtype === MsgType.Audio
+          ? 'audio'
+          : 'file';
+  // Inline rendering requires a MIME that matches its category and isn't scriptable.
+  const category = kind === 'file' ? null : kind;
+  if (
+    UNSAFE_INLINE_MIME.test(mimeType) ||
+    (category && !mimeType.toLowerCase().startsWith(`${category}/`))
+  ) {
+    kind = 'file';
+  }
+
+  const filename =
+    (typeof content['filename'] === 'string' && content['filename']) ||
+    (typeof content['body'] === 'string' && content['body']) ||
+    'attachment';
+
+  const thumbInfo = (info['thumbnail_info'] ?? {}) as Record<string, unknown>;
+  return {
+    kind,
+    mxc,
+    file,
+    filename: filename as string,
+    mimeType,
+    size:
+      typeof info['size'] === 'number' ? (info['size'] as number) : undefined,
+    width: typeof info['w'] === 'number' ? (info['w'] as number) : undefined,
+    height: typeof info['h'] === 'number' ? (info['h'] as number) : undefined,
+    durationMs:
+      typeof info['duration'] === 'number'
+        ? (info['duration'] as number)
+        : undefined,
+    thumbnailMxc:
+      typeof info['thumbnail_url'] === 'string'
+        ? (info['thumbnail_url'] as string)
+        : null,
+    thumbnailFile: asEncryptedFile(info['thumbnail_file']),
+    thumbnailMimeType:
+      typeof thumbInfo['mimetype'] === 'string'
+        ? (thumbInfo['mimetype'] as string)
+        : undefined,
+  };
+}
+
+/** Narrow an untyped `content.file`/`thumbnail_file` to {@link EncryptedFileInfo}. */
+function asEncryptedFile(value: unknown): EncryptedFileInfo | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const f = value as Record<string, unknown>;
+  if (typeof f['url'] === 'string' && typeof f['iv'] === 'string' && f['key']) {
+    return f as unknown as EncryptedFileInfo;
+  }
+  return null;
 }
 
 /**

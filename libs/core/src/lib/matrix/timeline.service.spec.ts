@@ -19,6 +19,10 @@ function fakeEvent(o: {
   edited?: boolean;
   editRelation?: boolean;
   replyTo?: string;
+  url?: string;
+  filename?: string;
+  file?: unknown;
+  info?: Record<string, unknown>;
 }) {
   return {
     getId: () => o.id,
@@ -32,6 +36,12 @@ function fakeEvent(o: {
       msgtype: o.msgtype ?? 'm.text',
       format: o.format,
       formatted_body: o.formattedBody,
+      // Media fields are only included when supplied, so non-media events keep
+      // their previous content shape exactly.
+      ...(o.url !== undefined ? { url: o.url } : {}),
+      ...(o.filename !== undefined ? { filename: o.filename } : {}),
+      ...(o.file !== undefined ? { file: o.file } : {}),
+      ...(o.info !== undefined ? { info: o.info } : {}),
     }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
@@ -455,5 +465,92 @@ describe('TimelineService', () => {
 
     expect(received).toHaveLength(1);
     expect(received[0].getId()).toBe('$a'); // not the pending echo
+  });
+
+  describe('media messages', () => {
+    it('projects an m.image event to an image MediaPayload', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$img',
+          sender: '@a:hs',
+          msgtype: 'm.image',
+          body: 'pic.png',
+          url: 'mxc://hs/abc',
+          info: { mimetype: 'image/png', w: 800, h: 600, size: 1234 },
+        }),
+      ]);
+
+      const m = svc.messages()[0];
+      expect(m.kind).toBe('image');
+      expect(m.body).toBe('pic.png'); // body falls back to the filename
+      expect(m.media).toMatchObject({
+        kind: 'image',
+        mxc: 'mxc://hs/abc',
+        file: null,
+        mimeType: 'image/png',
+        width: 800,
+        height: 600,
+        size: 1234,
+        filename: 'pic.png',
+      });
+    });
+
+    it('projects an m.file event to a file MediaPayload', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$file',
+          sender: '@a:hs',
+          msgtype: 'm.file',
+          body: 'report.pdf',
+          url: 'mxc://hs/doc',
+          info: { mimetype: 'application/pdf', size: 9000 },
+        }),
+      ]);
+
+      const m = svc.messages()[0];
+      expect(m.kind).toBe('file');
+      expect(m.media).toMatchObject({
+        kind: 'file',
+        mxc: 'mxc://hs/doc',
+        mimeType: 'application/pdf',
+        size: 9000,
+        filename: 'report.pdf',
+      });
+    });
+
+    it('downgrades a script-bearing image MIME (svg) to a download-only file', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$svg',
+          sender: '@a:hs',
+          msgtype: 'm.image',
+          body: 'logo.svg',
+          url: 'mxc://hs/svg',
+          info: { mimetype: 'image/svg+xml', w: 10, h: 10 },
+        }),
+      ]);
+
+      const m = svc.messages()[0];
+      expect(m.kind).toBe('file'); // not rendered inline
+      expect(m.media?.kind).toBe('file');
+      expect(m.media?.mimeType).toBe('image/svg+xml'); // MIME preserved on the payload
+    });
+
+    it('falls back to unsupported with no media when a media event has neither url nor file', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$bad',
+          sender: '@a:hs',
+          msgtype: 'm.image',
+          body: '',
+          info: { mimetype: 'image/png' },
+        }),
+      ]);
+
+      const m = svc.messages()[0];
+      expect(m.kind).toBe('unsupported');
+      expect(m.media).toBeNull();
+      expect(m.body).toBe('[image]'); // label fallback when body is empty too
+    });
   });
 });
