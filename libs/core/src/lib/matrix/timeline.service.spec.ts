@@ -161,6 +161,44 @@ describe('TimelineService', () => {
     expect(plain.html).toBeNull();
   });
 
+  it('sanitizes hostile formatted_body (drops scripts and event handlers)', () => {
+    const svc = setup([
+      fakeEvent({
+        id: '$x',
+        sender: '@a:hs',
+        body: 'hi',
+        format: 'org.matrix.custom.html',
+        formattedBody:
+          '<img src="https://x.test/a.png" onerror="alert(1)">' +
+          '<script>alert(2)</script><strong>ok</strong>',
+      }),
+    ]);
+
+    const html = svc.messages()[0].html ?? '';
+    expect(html).not.toContain('onerror');
+    expect(html).not.toContain('<script');
+    expect(html).toContain('<strong>ok</strong>');
+  });
+
+  it('neutralizes javascript: links and strips the new-tab target', () => {
+    const svc = setup([
+      fakeEvent({
+        id: '$l',
+        sender: '@a:hs',
+        body: 'link',
+        format: 'org.matrix.custom.html',
+        formattedBody:
+          '<a href="javascript:alert(1)" target="_blank">x</a>' +
+          '<a href="https://ok.test">ok</a>',
+      }),
+    ]);
+
+    const html = svc.messages()[0].html ?? '';
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toContain('target'); // no reverse-tabnabbing surface
+    expect(html).toContain('https://ok.test'); // safe link preserved
+  });
+
   it('sends plain text as-is and markdown as formatted HTML', async () => {
     const sent: unknown[][] = [];
     const svc = setup([], sent);

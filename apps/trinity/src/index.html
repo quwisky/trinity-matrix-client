@@ -4,6 +4,20 @@
     <meta charset="utf-8" />
     <title>Ionic App</title>
 
+    <!--
+      Content-Security-Policy backstop behind the explicit message-HTML
+      sanitization. The homeserver is user-chosen at login, so img/media/connect
+      can't be pinned to a fixed host — they're scoped to https/wss (not *), which
+      still blocks http:/data: exfiltration. 'wasm-unsafe-eval' is required by the
+      Rust crypto WASM; 'unsafe-inline' style is required by Ionic's runtime
+      styles. Clickjacking (frame-ancestors) must be set as a real response header
+      at the host — it is ignored in a <meta> CSP.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-src 'none'"
+    />
+
     <base href="/" />
 
     <meta name="color-scheme" content="light dark" />

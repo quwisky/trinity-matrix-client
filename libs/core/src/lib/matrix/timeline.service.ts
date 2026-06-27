@@ -13,6 +13,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { Observable, defer, finalize, from, map, of, tap } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 
@@ -487,6 +488,83 @@ function htmlToText(html: string): string {
   );
 }
 
+// Tags/attributes permitted in Matrix `org.matrix.custom.html` message bodies
+// (the spec allowlist). Anything outside this set is stripped.
+const MATRIX_ALLOWED_TAGS = [
+  'a',
+  'b',
+  'blockquote',
+  'br',
+  'caption',
+  'code',
+  'del',
+  'div',
+  'em',
+  'font',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'hr',
+  'i',
+  'img',
+  'li',
+  'ol',
+  'p',
+  'pre',
+  'span',
+  'strike',
+  'strong',
+  'sub',
+  'sup',
+  'table',
+  'tbody',
+  'td',
+  'th',
+  'thead',
+  'tr',
+  'u',
+  'ul',
+  'details',
+  'summary',
+];
+// `target` is intentionally omitted: dropping it avoids reverse-tabnabbing
+// without needing a post-sanitize rel hook. (Opening message links in a new tab
+// safely is a separate follow-up via a click handler.)
+const MATRIX_ALLOWED_ATTR = [
+  'href',
+  'name',
+  'alt',
+  'title',
+  'width',
+  'height',
+  'src',
+  'start',
+  'color',
+  'class',
+  'data-mx-bg-color',
+  'data-mx-color',
+  'data-mx-spoiler',
+];
+
+/**
+ * Sanitize sender-provided HTML (`formatted_body`) against the Matrix allowlist.
+ * Federated, end-to-end-encrypted content is untrusted and can't be scanned
+ * server-side, so it is scrubbed here *explicitly* rather than relying on
+ * Angular's implicit `[innerHTML]` sanitization at the render leaf. Never wrap
+ * the result in `bypassSecurityTrust*`.
+ */
+function sanitizeMatrixHtml(html: string): string {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: MATRIX_ALLOWED_TAGS,
+    ALLOWED_ATTR: MATRIX_ALLOWED_ATTR,
+    // Only safe URL schemes on href/src (DOMPurify also blocks javascript:).
+    ALLOWED_URI_REGEXP: /^(?:https?|ftp|mailto|magnet|mxc):/i,
+  });
+}
+
 interface RenderedBody {
   body: string;
   html: string | null;
@@ -517,7 +595,9 @@ function renderBody(
     typeof content['formatted_body'] === 'string'
       ? (content['formatted_body'] as string)
       : null;
-  const html = isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
+  const strippedHtml =
+    isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
+  const html = strippedHtml === null ? null : sanitizeMatrixHtml(strippedHtml);
 
   switch (content.msgtype) {
     case MsgType.Text:

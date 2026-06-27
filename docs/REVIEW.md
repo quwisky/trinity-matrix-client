@@ -62,7 +62,7 @@ rest are reviewer findings worth confirming during the fix.
 
 ## 🟠 High
 
-- [ ] **Inbound Matrix HTML: defended but only implicitly, and no CSP** —
+- [x] **Inbound Matrix HTML: defended but only implicitly, and no CSP** _(fixed)_ —
       [timeline.service.ts:513](../libs/core/src/lib/matrix/timeline.service.ts#L513) →
       [message-list.component.html:50](../libs/feature-rooms/src/lib/message-list/message-list.component.html#L50).
       Federated `formatted_body` renders via `[innerHTML]`. **Not currently exploitable**

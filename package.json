@@ -53,6 +53,7 @@
     "@capacitor/status-bar": "8.0.2",
     "@ionic/angular": "^8.0.0",
     "@matrix-org/matrix-sdk-crypto-wasm": "^18.3.1",
+    "dompurify": "^3.4.11",
     "ionicons": "^7.0.0",
     "marked": "^18.0.5",
     "matrix-js-sdk": "^41.8.0",
@@ -61,9 +62,9 @@
     "zone.js": "~0.15.0"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "20.3.28",
     "@analogjs/vite-plugin-angular": "2.6.2",
     "@analogjs/vitest-angular": "2.6.2",
+    "@angular-devkit/build-angular": "20.3.28",
     "@angular/cli": "20.3.28",
     "@angular/compiler-cli": "20.3.25",
     "@angular/language-service": "20.3.25",
