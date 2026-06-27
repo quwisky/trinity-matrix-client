@@ -6,7 +6,13 @@ import tsconfigPaths from 'vite-tsconfig-paths';
 export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/libs/core',
-  plugins: [angular(), tsconfigPaths({ root: '../../' })],
+  // Point at tsconfig.base.json explicitly so workspace path aliases (e.g.
+  // @trinity/core) resolve in spec files too — kept consistent with the feature
+  // libs so these configs are copy-safe.
+  plugins: [
+    angular(),
+    tsconfigPaths({ root: '../../', projects: ['tsconfig.base.json'] }),
+  ],
   test: {
     globals: true,
     environment: 'jsdom',

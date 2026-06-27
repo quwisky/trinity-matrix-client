@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from '@trinity/core';
+import { environment } from '../environments/environment';
 
 export const routes: Routes = [
   {
@@ -30,11 +31,17 @@ export const routes: Routes = [
     loadComponent: () =>
       import('@trinity/feature-crypto').then((m) => m.EncryptionUnlockPage),
   },
-  {
-    // Dev-only E2EE crypto spike (Milestone 1 harness).
-    path: 'spike',
-    loadComponent: () => import('./home/home.page').then((m) => m.HomePage),
-  },
+  // Dev-only E2EE crypto spike (Milestone 1 harness) — excluded from prod builds,
+  // so the harness page and CryptoSpikeService tree-shake out of the production bundle.
+  ...(environment.production
+    ? []
+    : [
+        {
+          path: 'spike',
+          loadComponent: () =>
+            import('./home/home.page').then((m) => m.HomePage),
+        },
+      ]),
   {
     path: '',
     redirectTo: 'rooms',

@@ -14,9 +14,9 @@
     "test": "nx run-many -t test",
     "lint": "nx run-many -t lint",
     "stylelint": "stylelint \"{apps,libs}/**/*.scss\"",
-    "spike:chromium": "nx build trinity && node e2e/crypto-spike.mjs chromium",
-    "spike:webkit": "nx build trinity && node e2e/crypto-spike.mjs webkit",
-    "smoke:login": "nx build trinity && node e2e/smoke-login.mjs"
+    "spike:chromium": "nx build trinity --configuration=development && node e2e/crypto-spike.mjs chromium",
+    "spike:webkit": "nx build trinity --configuration=development && node e2e/crypto-spike.mjs webkit",
+    "smoke:login": "nx build trinity --configuration=development && node e2e/smoke-login.mjs"
   },
   "private": true,
   "packageManager": "pnpm@10.26.2",

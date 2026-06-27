@@ -4,7 +4,6 @@ export * from './lib/matrix/rooms.service';
 export * from './lib/matrix/timeline.service';
 export * from './lib/matrix/auth.service';
 export * from './lib/matrix/crypto-spike.service';
-export * from './lib/matrix/crypto-wasm-loader';
 export * from './lib/matrix/secret-storage-key.service';
 export * from './lib/matrix/crypto.service';
 export * from './lib/storage/session-storage.service';

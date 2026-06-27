@@ -105,7 +105,7 @@ rest are reviewer findings worth confirming during the fix.
       handshake, login→persist→init) is the only lib without a test target. Add the Vitest
       triad (`vite.config.ts` + `test-setup.ts` + `tsconfig.spec.json` + test target) and
       cover the discover→flows state machine and the SSO callback completion.
-- [ ] **Dev `/spike` route + `CryptoSpikeService` ship in production** —
+- [x] **Dev `/spike` route + `CryptoSpikeService` ship in production** _(fixed: route gated to non-prod; spike/smoke scripts build `--configuration=development`; `crypto-wasm-loader` dropped from the barrel)_ —
       [app.routes.ts:34](../apps/trinity/src/app/app.routes.ts#L34) (unguarded) and exported
       from the core barrel ([index.ts](../libs/core/src/index.ts)). Gate behind
       `environment.production` (the app already has fileReplacements) or remove now that
@@ -130,7 +130,7 @@ rest are reviewer findings worth confirming during the fix.
 - [ ] **`encryption-setup` focus `effect()` fires on any dependency change** —
       [encryption-setup.page.ts:73-77](../libs/feature-crypto/src/lib/encryption-setup/encryption-setup.page.ts#L73-L77).
       Guard to a one-shot so it can't steal focus mid-interaction.
-- [ ] **vite-tsconfig-paths drift** — core's
+- [x] **vite-tsconfig-paths drift** _(fixed)_ — core's
       [vite.config.ts](../libs/core/vite.config.ts) omits `projects: ['tsconfig.base.json']`
       (correct only by accident today). Make all three configs identical to prevent a silent
       future spec-resolution failure.
