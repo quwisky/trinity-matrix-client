@@ -134,11 +134,12 @@ rest are reviewer findings worth confirming during the fix.
       [vite.config.ts](../libs/core/vite.config.ts) omits `projects: ['tsconfig.base.json']`
       (correct only by accident today). Make all three configs identical to prevent a silent
       future spec-resolution failure.
-- [ ] **Access token in `localStorage` on web** —
+- [x] **Access token in `localStorage` on web** _(accepted tradeoff, now contained)_ —
       [session-storage.service.ts:19](../libs/core/src/lib/storage/session-storage.service.ts#L19).
-      Inherent Capacitor tradeoff (native uses OS storage); contain via the CSP +
-      sanitization above rather than re-architecting. Document, and consider refresh-token /
-      at-rest encryption only if the threat model warrants.
+      Inherent Capacitor tradeoff (native uses OS storage). It's only reachable given a
+      script-execution flaw, which the explicit message-HTML sanitization + CSP above now
+      guard against. Refresh-token / at-rest encryption stay backlog options if the threat
+      model warrants — not changed here.
 
 ## 🟢 Low / polish
 
@@ -163,7 +164,7 @@ rest are reviewer findings worth confirming during the fix.
 - [x] No composer send button (Enter-only) — poor mobile discoverability. _(fixed: touch-only send button)_
 - [x] `withBusy()` duplicated across login + both crypto pages _(fixed: extracted
       `runWithBusy` into `@trinity/ui`; pages keep a one-line adapter)_.
-- [ ] Editable-message predicate duplicated 3× in message-list — extract `isEditable(m)`.
+- [x] Editable-message predicate duplicated in message-list — extracted `isEditable(m)`. _(fixed)_
 - [x] ~~No Nx caching on `test` targets~~ _(non-issue: `nx.json` `targetDefaults`
       already caches `test`/`build`/`lint` with inputs — the per-project targets
       inherit it)_.

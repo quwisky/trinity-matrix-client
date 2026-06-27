@@ -90,7 +90,7 @@
       @if (!row.decryptionFailed && row.kind !== 'redacted') {
         <trn-message-toolbar
           class="msg__toolbar"
-          [canEdit]="row.isOwn && !row.status && !row.decryptionFailed"
+          [canEdit]="isEditable(row)"
           [canDelete]="row.isOwn && !row.status"
           (react)="react.emit({ id: row.id, key: $event })"
           (replyMessage)="startReply(row)"

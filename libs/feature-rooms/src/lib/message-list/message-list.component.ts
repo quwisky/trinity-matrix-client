@@ -201,18 +201,17 @@ export class MessageListComponent {
       ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  /** A message the current user can still edit (own, confirmed, not redacted/failed). */
+  isEditable(m: MessageView): boolean {
+    return m.isOwn && !m.status && !m.decryptionFailed && m.kind !== 'redacted';
+  }
+
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
   editLastOwn(): void {
     const msgs = this.messages();
     for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i];
-      if (
-        m.isOwn &&
-        !m.status &&
-        !m.decryptionFailed &&
-        m.kind !== 'redacted'
-      ) {
-        this.editingId.set(m.id);
+      if (this.isEditable(msgs[i])) {
+        this.editingId.set(msgs[i].id);
         return;
       }
     }
