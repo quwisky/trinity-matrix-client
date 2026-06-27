@@ -23,6 +23,13 @@ interface MessageRow extends MessageView {
 /** Trigger older-history loading when the scroll top gets within this many px. */
 const AUTO_LOAD_THRESHOLD_PX = 150;
 
+/**
+ * Safety cap on consecutive auto-backfill rounds for one fill sequence, so the
+ * effect can never spin even if the "did older history arrive?" check is fooled.
+ * Each round pulls ~SCROLLBACK events, so this is far more than any viewport needs.
+ */
+const MAX_BACKFILL_ROUNDS = 20;
+
 /** Discord-style message list for the active room (read-only timeline). */
 @Component({
   selector: 'trn-message-list',
@@ -72,8 +79,12 @@ export class MessageListComponent {
 
   // Backfill state: keep loading older history until the viewport is full so the
   // user has room to scroll (otherwise a short timeline can never paginate).
+  // Progress is tracked by the *oldest* message id — a backfill that prepends
+  // nothing leaves it unchanged — rather than the message count, which a
+  // same-length redaction/dedup could fool into stopping early or spinning.
   private backfilling = false;
-  private backfillCount = -1;
+  private lastBackfillOldestId = '';
+  private backfillRounds = 0;
 
   /** Group consecutive messages from the same sender (Discord-style). */
   readonly rows = computed<MessageRow[]>(() => {
@@ -114,8 +125,8 @@ export class MessageListComponent {
       const newestChanged = !!newest && newest !== this.lastId;
       this.lastId = newest || this.lastId;
       if (newestChanged) {
-        // New room or live message — restart the backfill stall guard.
-        this.backfillCount = -1;
+        // New room or live message — grant a fresh backfill budget.
+        this.backfillRounds = 0;
       }
       // Keep the newest message in view on open, on live messages, and while
       // backfilling older history.
@@ -128,17 +139,22 @@ export class MessageListComponent {
 
         // If the timeline doesn't fill the viewport, pull in older history so
         // there's something to scroll. Stop once it's scrollable, history runs
-        // out, or a load adds nothing (stall guard via backfillCount).
+        // out, the last load prepended nothing (oldest id unchanged), or the
+        // round cap is hit.
         const notFull = el.scrollHeight <= el.clientHeight + 1;
+        const oldestId = msgs[0]?.id ?? '';
+        const prependedOlder = oldestId !== this.lastBackfillOldestId;
         if (
           notFull &&
           this.canLoadOlder() &&
           !this.loadingOlder() &&
           !this.pendingPrepend &&
-          msgs.length !== this.backfillCount
+          prependedOlder &&
+          this.backfillRounds < MAX_BACKFILL_ROUNDS
         ) {
           this.backfilling = true;
-          this.backfillCount = msgs.length;
+          this.lastBackfillOldestId = oldestId;
+          this.backfillRounds++;
           this.loadOlder.emit();
         } else {
           this.backfilling = false;

@@ -50,7 +50,7 @@ rest are reviewer findings worth confirming during the fix.
       connection lifecycle follows the client; or add a `disconnect()` that `.off()`s and
       resets the flag — which requires stable handler refs, not inline closures.
 
-- [ ] **Message-list backfill stall-guard is fragile** —
+- [x] **Message-list backfill stall-guard is fragile** _(fixed)_ —
       [message-list.component.ts:92-148](../libs/feature-rooms/src/lib/message-list/message-list.component.ts#L92-L148).
       The scroll `effect()` reads and (via `loadOlder.emit()`) triggers writes to
       `messages`/`loadingOlder`; the only thing preventing an infinite `/messages` loop is

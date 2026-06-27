@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, expect, it, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
 import { MessageListComponent } from './message-list.component';
 
 function msg(id: string, senderId: string, senderName: string, ts: number) {
@@ -139,5 +139,55 @@ describe('MessageListComponent', () => {
       .dispatchEvent(new Event('scroll'));
 
     expect(fired).toBe(false);
+  });
+
+  describe('backfill stall guard', () => {
+    // jsdom has no layout (scrollHeight/clientHeight are 0), so the viewport
+    // always reads as "not full" and the backfill effect engages. Run rAF
+    // synchronously so the effect's deferred work happens within detectChanges.
+    beforeEach(() =>
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        cb(0);
+        return 0;
+      }),
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('keeps backfilling while older history arrives, even if the count stays equal, then stops', () => {
+      const fixture = TestBed.createComponent(MessageListComponent);
+      fixture.componentRef.setInput('canLoadOlder', true);
+      fixture.detectChanges(); // resolve the scroll viewchild
+
+      let emits = 0;
+      fixture.componentInstance.loadOlder.subscribe(() => emits++);
+
+      // Round 1: a short, unscrollable timeline → request older history.
+      fixture.componentRef.setInput('messages', [
+        msg('$b', '@a:hs', 'A', 2000),
+        msg('$c', '@a:hs', 'A', 3000),
+      ]);
+      fixture.detectChanges();
+      expect(emits).toBe(1);
+
+      // The load prepended $a but a redaction dropped $b — SAME length (2),
+      // newest unchanged ($c). The old count-based guard would stop here; the
+      // id-based guard sees the oldest move $b→$a and keeps going.
+      fixture.componentRef.setInput('messages', [
+        msg('$a', '@a:hs', 'A', 1000),
+        msg('$c', '@a:hs', 'A', 3000),
+      ]);
+      fixture.detectChanges();
+      expect(emits).toBe(2);
+
+      // A live message arrives ($d) but no older history was prepended (oldest
+      // stays $a) → backfill stops instead of spinning.
+      fixture.componentRef.setInput('messages', [
+        msg('$a', '@a:hs', 'A', 1000),
+        msg('$c', '@a:hs', 'A', 3000),
+        msg('$d', '@a:hs', 'A', 4000),
+      ]);
+      fixture.detectChanges();
+      expect(emits).toBe(2);
+    });
   });
 });
