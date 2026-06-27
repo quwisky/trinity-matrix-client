@@ -34,13 +34,19 @@ import type { SasEmoji } from '@trinity/core';
     </p>
 
     <div class="actions">
-      <ion-button expand="block" [disabled]="busy()" (click)="match.emit()">
+      <ion-button
+        expand="block"
+        data-testid="sas-match"
+        [disabled]="busy()"
+        (click)="match.emit()"
+      >
         They match
       </ion-button>
       <ion-button
         expand="block"
         fill="outline"
         color="danger"
+        data-testid="sas-mismatch"
         [disabled]="busy()"
         (click)="mismatch.emit()"
       >

@@ -9,7 +9,11 @@
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
+<ion-content
+  class="ion-padding"
+  data-testid="verify-page"
+  [attr.data-stage]="active()?.stage ?? 'idle'"
+>
   @if (active(); as v) {
     @switch (v.stage) {
       @case ('requested') {
@@ -25,7 +29,12 @@
               . Accept to compare a set of emoji.
             </p>
           </ion-text>
-          <ion-button expand="block" [disabled]="busy()" (click)="accept()">
+          <ion-button
+            expand="block"
+            data-testid="verify-accept"
+            [disabled]="busy()"
+            (click)="accept()"
+          >
             Accept
           </ion-button>
           <ion-button
@@ -49,7 +58,12 @@
         <ion-text color="medium">
           <p>Both sessions are ready. Begin comparing emoji.</p>
         </ion-text>
-        <ion-button expand="block" [disabled]="busy()" (click)="startSas()">
+        <ion-button
+          expand="block"
+          data-testid="verify-start-sas"
+          [disabled]="busy()"
+          (click)="startSas()"
+        >
           Start emoji verification
         </ion-button>
       }
@@ -102,7 +116,12 @@
         session that's already signed in — an alternative to your recovery key.
       </p>
     </ion-text>
-    <ion-button expand="block" [disabled]="busy()" (click)="start()">
+    <ion-button
+      expand="block"
+      data-testid="verify-start"
+      [disabled]="busy()"
+      (click)="start()"
+    >
       Start verification
     </ion-button>
   }
