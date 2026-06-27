@@ -1,0 +1,76 @@
+import { Injectable } from '@angular/core';
+import type { CryptoCallbacks } from 'matrix-js-sdk/lib/crypto-api';
+
+/**
+ * In-memory holder for the unlocked secret-storage (4S) private key.
+ *
+ * The Rust crypto stack asks for the secret-storage key whenever it reads or
+ * writes 4S — cross-signing setup, key backup, and recovering a fresh device.
+ * We keep the unlocked key in memory for the session ONLY: it is effectively the
+ * account's recovery key, so it is never written to disk. It is handed back to the
+ * SDK through the `getSecretStorageKey` callback wired into the MatrixClient at
+ * creation (see MatrixClientService).
+ *
+ * CryptoService populates this during the setup/recovery flows; logout / client
+ * teardown clears it.
+ */
+@Injectable({ providedIn: 'root' })
+export class SecretStorageKeyService {
+  private keyId: string | null = null;
+  private privateKey: Uint8Array<ArrayBuffer> | null = null;
+
+  /** Cache the unlocked key for a key id (after generate or unlock). */
+  set(keyId: string, privateKey: Uint8Array<ArrayBuffer>): void {
+    this.keyId = keyId;
+    this.privateKey = privateKey;
+  }
+
+  /**
+   * Forget the key (on logout / client teardown). Zeroes the bytes first as
+   * best-effort defense-in-depth — the GC reclaims the buffer on its own
+   * schedule and the SDK keeps its own copy, but we wipe the one we control.
+   * Safe here because teardown happens after the client has stopped, so no crypto
+   * operation is still reading the reference returned by {@link getSecretStorageKey}.
+   */
+  clear(): void {
+    this.privateKey?.fill(0);
+    this.keyId = null;
+    this.privateKey = null;
+  }
+
+  /** Whether a key is currently held in memory. */
+  get hasKey(): boolean {
+    return this.privateKey !== null;
+  }
+
+  /**
+   * `cryptoCallbacks.getSecretStorageKey`: return the cached `[keyId, privateKey]`
+   * when the requested key id matches the one we hold, otherwise `null` so the
+   * SDK operation fails fast and the setup/recovery flow can prompt the user.
+   *
+   * We deliberately hold a single key at a time (the one the user just generated
+   * or unlocked), so matching on `this.keyId in keys` is sufficient and the SDK's
+   * suggested `getDefaultKeyId()` lookup is unnecessary here.
+   *
+   * An arrow class field so `this` stays bound when passed to `createClient`.
+   */
+  readonly getSecretStorageKey: NonNullable<
+    CryptoCallbacks['getSecretStorageKey']
+  > = async ({ keys }) => {
+    if (!this.keyId || !this.privateKey || !(this.keyId in keys)) {
+      return null;
+    }
+    return [this.keyId, this.privateKey];
+  };
+
+  /**
+   * `cryptoCallbacks.cacheSecretStorageKey`: the SDK calls this when a new default
+   * key is created during bootstrap, so we cache it for the immediately-following
+   * reads without prompting the user again.
+   */
+  readonly cacheSecretStorageKey: NonNullable<
+    CryptoCallbacks['cacheSecretStorageKey']
+  > = (keyId, _keyInfo, key) => {
+    this.set(keyId, key);
+  };
+}
