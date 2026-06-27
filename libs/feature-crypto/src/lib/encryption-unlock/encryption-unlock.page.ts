@@ -5,10 +5,9 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { EMPTY, Observable, catchError, finalize } from 'rxjs';
+import { Observable } from 'rxjs';
 import {
   IonHeader,
   IonToolbar,
@@ -22,6 +21,7 @@ import {
   IonSpinner,
 } from '@ionic/angular/standalone';
 import { CryptoService } from '@trinity/core';
+import { runWithBusy } from '@trinity/ui';
 
 /**
  * New-device unlock (flow B). The account already has secret storage; the user
@@ -69,17 +69,12 @@ export class EncryptionUnlockPage {
     });
   }
 
-  /** Wrap a one-shot action with shared busy/error handling (mirrors LoginPage). */
+  /** Wrap a one-shot action with shared busy/error handling. */
   private withBusy<T>(source: Observable<T>): Observable<T> {
-    this.busy.set(true);
-    this.error.set(null);
-    return source.pipe(
-      takeUntilDestroyed(this.destroyRef),
-      catchError((err) => {
-        this.error.set(err instanceof Error ? err.message : String(err));
-        return EMPTY;
-      }),
-      finalize(() => this.busy.set(false)),
-    );
+    return runWithBusy(source, {
+      busy: this.busy,
+      error: this.error,
+      destroyRef: this.destroyRef,
+    });
   }
 }

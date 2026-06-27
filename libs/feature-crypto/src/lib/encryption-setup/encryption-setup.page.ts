@@ -8,10 +8,9 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { EMPTY, Observable, catchError, finalize } from 'rxjs';
+import { Observable } from 'rxjs';
 import {
   IonHeader,
   IonToolbar,
@@ -24,6 +23,7 @@ import {
   AlertController,
 } from '@ionic/angular/standalone';
 import { CryptoService, type PasswordPrompt } from '@trinity/core';
+import { runWithBusy } from '@trinity/ui';
 import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
 
 /**
@@ -130,17 +130,12 @@ export class EncryptionSetupPage {
         .then((alert) => alert.present());
     });
 
-  /** Wrap a one-shot action with shared busy/error handling (mirrors LoginPage). */
+  /** Wrap a one-shot action with shared busy/error handling. */
   private withBusy<T>(source: Observable<T>): Observable<T> {
-    this.busy.set(true);
-    this.error.set(null);
-    return source.pipe(
-      takeUntilDestroyed(this.destroyRef),
-      catchError((err) => {
-        this.error.set(err instanceof Error ? err.message : String(err));
-        return EMPTY;
-      }),
-      finalize(() => this.busy.set(false)),
-    );
+    return runWithBusy(source, {
+      busy: this.busy,
+      error: this.error,
+      destroyRef: this.destroyRef,
+    });
   }
 }

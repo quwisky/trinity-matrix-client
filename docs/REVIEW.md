@@ -161,7 +161,8 @@ rest are reviewer findings worth confirming during the fix.
       ([message-list.component.scss:121](../libs/feature-rooms/src/lib/message-list/message-list.component.scss#L121)).
 - [x] No `prefers-reduced-motion` handling (smooth-scroll + transitions). _(fixed)_
 - [x] No composer send button (Enter-only) — poor mobile discoverability. _(fixed: touch-only send button)_
-- [ ] `withBusy()` duplicated across login + both crypto pages — extract.
+- [x] `withBusy()` duplicated across login + both crypto pages _(fixed: extracted
+      `runWithBusy` into `@trinity/ui`; pages keep a one-line adapter)_.
 - [ ] Editable-message predicate duplicated 3× in message-list — extract `isEditable(m)`.
 - [x] ~~No Nx caching on `test` targets~~ _(non-issue: `nx.json` `targetDefaults`
       already caches `test`/`build`/`lint` with inputs — the per-project targets
