@@ -14,8 +14,18 @@ import {
 } from 'matrix-js-sdk';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { Observable, defer, finalize, from, map, of, tap } from 'rxjs';
+import {
+  Observable,
+  defer,
+  finalize,
+  from,
+  map,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
+import { MediaService } from './media.service';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 
 export type MessageKind =
@@ -84,6 +94,7 @@ const SCROLLBACK = 30;
 export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly mediaSvc = inject(MediaService);
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();
@@ -186,6 +197,38 @@ export class TimelineService {
           : client.sendTextMessage(room.roomId, text),
       );
     }).pipe(map(() => void 0));
+  }
+
+  /**
+   * Upload a picked file and send it as an `m.image`/`m.file`/`m.video`/`m.audio`
+   * message — encrypting the bytes first when the room is E2EE. The upload phase has
+   * no echo (failures surface via this Observable); once `sendMessage` runs the SDK
+   * creates a local echo that renders through the existing media bubble, with the
+   * usual failed/retry handling. `progress` reports an upload fraction in [0, 1].
+   */
+  sendMedia(
+    file: File,
+    progress?: (fraction: number) => void,
+  ): Observable<void> {
+    const room = this.room;
+    if (!room || !this.matrix.isInitialized || !file || file.size === 0) {
+      return of(void 0);
+    }
+    const client = this.matrix.instance;
+    const encrypt = room.hasEncryptionStateEvent();
+    return defer(() => this.mediaSvc.uploadMedia(file, encrypt, progress)).pipe(
+      switchMap((media) => {
+        const content = {
+          msgtype: media.msgtype,
+          body: media.body,
+          info: media.info,
+          ...(media.file ? { file: media.file } : { url: media.mxc }),
+        };
+        // A valid media payload; the SDK's content union doesn't model it.
+        return from(client.sendMessage(room.roomId, content as never));
+      }),
+      map(() => void 0),
+    );
   }
 
   /** Edit a previously-sent message via an `m.replace` relation. */

@@ -115,6 +115,7 @@ pnpm smoke:login      # redirect→login + real .well-known discovery
 pnpm spike:chromium   # E2EE WASM in Blink  (Android WebView / Electron proxy)
 pnpm spike:webkit     # E2EE WASM in WebKit (iOS WKWebView proxy)
 pnpm e2e:verify       # two-client emoji-SAS device verification (needs Docker; see e2e/README)
+pnpm e2e:media        # note-to-self encrypted media send round-trip (needs Docker; see e2e/README)
 ```
 
 All should print `RESULT: PASS`. The spike/smoke harnesses require the Playwright

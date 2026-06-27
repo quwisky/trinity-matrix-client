@@ -111,7 +111,14 @@ src/app/
 7. **Device verification UI** — ✅ emoji SAS self-verification (verify your own
    other devices). `VerificationService` (core) + `feature-crypto` SAS UI + an
    app-level host for incoming requests. QR and cross-user verification deferred.
-8. **Media** — encrypted media upload/display (Capacitor Camera/Filesystem).
+8. **Media** — 🚧 encrypted media display + send (image/file/video/audio). Attachment
+   crypto (AES-CTR-256 + SHA-256) is inlined in `@trinity/core` (`attachment-crypto.ts`,
+   replacing the unmaintained `matrix-encrypt-attachment`); the upload path encrypts for
+   E2EE rooms. Picking uses Capacitor **Camera** on native with a web `<input type="file">`
+   fallback (works on web and inside WebViews). **Follow-ups:** client-side thumbnail
+   generation, video/audio duration, an upload-progress UI, native Filesystem/Share, and
+   on-device verification of the native picker (iOS `Info.plist` keys + Android perms
+   added; `cap sync` done for Android, iOS needs a Mac).
 9. **MVP polish** — dark mode, offline cache, settings/profile, device management.
 
 Phase 2: push notifications, threads, calls, spaces.

@@ -119,6 +119,7 @@
   [draft]="editingDraft()"
   [replyingTo]="replyingToName()"
   (submitText)="onSubmit($event)"
+  (submitMedia)="sendMedia.emit($event)"
   (cancelEdit)="editingId.set(null)"
   (cancelReply)="replyingToId.set(null)"
   (editLast)="editLastOwn()"

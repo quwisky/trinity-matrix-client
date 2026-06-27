@@ -12,20 +12,26 @@ import {
 import { MediaService } from './media.service';
 import { MatrixClientService } from './matrix-client.service';
 import type { MediaPayload } from './media.model';
-import { decryptAttachment } from './attachment-crypto';
+import { decryptAttachment, encryptAttachment } from './attachment-crypto';
 
-// Stub attachment-crypto: exercise MediaService's fetch→decrypt→blob wiring
-// without a real WebCrypto `subtle` backend (absent under jsdom). The default
-// returns fixed plaintext; individual tests override it (e.g. mockRejectedValueOnce).
-// (The crypto itself is round-tripped for real in attachment-crypto.spec.ts.)
+// Stub attachment-crypto: exercise MediaService's fetch→decrypt→blob and
+// encrypt→upload wiring without a real WebCrypto `subtle` backend (absent under
+// jsdom). The crypto itself is round-tripped for real in attachment-crypto.spec.ts.
 vi.mock('./attachment-crypto', () => ({
   decryptAttachment: vi.fn(() =>
     Promise.resolve(new Uint8Array([7, 7, 7]).buffer),
   ),
+  encryptAttachment: vi.fn(() =>
+    Promise.resolve({
+      data: new Uint8Array([9, 9, 9, 9]).buffer,
+      info: { url: '', v: 'v2', key: {}, iv: 'iv', hashes: { sha256: 'h' } },
+    }),
+  ),
 }));
 
-/** The mocked decrypt fn, typed for call assertions / per-test overrides. */
+/** The mocked crypto fns, typed for call assertions / per-test overrides. */
 const decryptMock = decryptAttachment as unknown as Mock;
+const encryptMock = encryptAttachment as unknown as Mock;
 
 /** Mirrors the (non-exported) CACHE_LIMIT in media.service.ts. */
 const CACHE_LIMIT = 64;
@@ -81,6 +87,7 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
   return {
     isVersionSupported: vi.fn().mockResolvedValue(true),
     getAccessToken: vi.fn(() => 'tok'),
+    uploadContent: vi.fn().mockResolvedValue({ content_uri: 'mxc://hs/up' }),
     // Echo enough of the mxc back so distinct sources yield distinct URLs.
     mxcUrlToHttp: vi.fn(
       (mxc: string, w?: number, _h?: number) =>
@@ -129,9 +136,10 @@ describe('MediaService', () => {
       createObjectURL as unknown as typeof URL.createObjectURL;
     URL.revokeObjectURL =
       revokeObjectURL as unknown as typeof URL.revokeObjectURL;
-    // The decrypt stub is module-level (created once); reset its call log so
-    // per-test counts start clean. Its default implementation is preserved.
+    // The crypto stubs are module-level (created once); reset their call logs so
+    // per-test counts start clean. Their default implementations are preserved.
     decryptMock.mockClear();
+    encryptMock.mockClear();
   });
 
   afterEach(() => {
@@ -347,5 +355,87 @@ describe('MediaService', () => {
     expect(blob).toBeInstanceOf(Blob);
     expect(filename).toBe('pic.png');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  describe('uploadMedia', () => {
+    const pngFile = () => {
+      const bytes = new Uint8Array([1, 2, 3, 4]);
+      const file = new File([bytes], 'pic.png', { type: 'image/png' });
+      // jsdom's File lacks arrayBuffer() (real browsers/WebViews have it).
+      if (typeof file.arrayBuffer !== 'function') {
+        Object.defineProperty(file, 'arrayBuffer', {
+          value: () => Promise.resolve(bytes.buffer),
+        });
+      }
+      return file;
+    };
+
+    it('uploads a plaintext file and returns a url descriptor', async () => {
+      const { svc, client } = setup();
+
+      const res = await firstValueFrom(svc.uploadMedia(pngFile(), false));
+
+      expect(client.uploadContent).toHaveBeenCalledTimes(1);
+      const [body, opts] = client.uploadContent.mock.calls[0];
+      expect(body).toBeInstanceOf(File);
+      expect(opts.name).toBe('pic.png');
+      expect(opts.type).toBe('image/png');
+      expect(encryptMock).not.toHaveBeenCalled();
+      expect(res).toMatchObject({
+        msgtype: 'm.image',
+        body: 'pic.png',
+        mxc: 'mxc://hs/up',
+        file: null,
+        info: { mimetype: 'image/png', size: 4 },
+      });
+    });
+
+    it('encrypts then uploads ciphertext for an E2EE room, filling file.url', async () => {
+      const { svc, client } = setup();
+
+      const res = await firstValueFrom(svc.uploadMedia(pngFile(), true));
+
+      expect(encryptMock).toHaveBeenCalledTimes(1);
+      const [body, opts] = client.uploadContent.mock.calls[0];
+      expect(body).toBeInstanceOf(Blob);
+      // Encrypted uploads must not leak the filename/MIME.
+      expect(opts.includeFilename).toBe(false);
+      expect(opts.type).toBe('application/octet-stream');
+      expect(res.mxc).toBeNull();
+      expect(res.file).toMatchObject({ url: 'mxc://hs/up', v: 'v2' });
+      // size is the ciphertext length (mock returns 4 bytes), not the original.
+      expect(res.info).toMatchObject({ mimetype: 'image/png', size: 4 });
+    });
+
+    it('derives the msgtype from the MIME type', async () => {
+      const { svc } = setup();
+      const kindFor = async (type: string) =>
+        (
+          await firstValueFrom(
+            svc.uploadMedia(
+              new File([new Uint8Array([0])], 'f', { type }),
+              false,
+            ),
+          )
+        ).msgtype;
+
+      expect(await kindFor('image/png')).toBe('m.image');
+      expect(await kindFor('video/mp4')).toBe('m.video');
+      expect(await kindFor('audio/ogg')).toBe('m.audio');
+      expect(await kindFor('application/pdf')).toBe('m.file');
+    });
+
+    it('forwards upload progress as a fraction in [0, 1]', async () => {
+      const { svc, client } = setup();
+      const seen: number[] = [];
+
+      await firstValueFrom(
+        svc.uploadMedia(pngFile(), false, (f) => seen.push(f)),
+      );
+
+      const opts = client.uploadContent.mock.calls[0][1];
+      opts.progressHandler({ loaded: 5, total: 10 });
+      expect(seen).toEqual([0.5]);
+    });
   });
 });

@@ -112,6 +112,18 @@ and projects the live timeline into a `MessageView[]` signal. Edit events
   Angular `[innerHTML]` (auto-sanitized). Outgoing markdown is rendered with `marked`
   then run through `DomSanitizer` — **never `bypassSecurityTrust`** — and the
   formatted body is only sent when markdown actually adds formatting.
+- **Media (M8)** — _receive:_ `MediaService` (core) resolves an `mxc`/encrypted
+  `content.file` into a `blob:` URL — decrypting in-memory via the in-tree
+  `attachment-crypto` (AES-CTR-256 + SHA-256, ported from the unmaintained
+  `matrix-encrypt-attachment`) — behind a pinned, bounded object-URL cache that
+  cancels in-flight work on room close; `media-attachment` (feature) feeds the
+  presentational `media-bubble` (ui). _Send:_ the composer's attach button picks a
+  file (Capacitor **Camera** on native, a hidden `<input type="file">` on web/WebView),
+  relaying `submitMedia` → message-list `sendMedia` → `RoomsPage.onSendMedia` →
+  `TimelineService.sendMedia`. That calls `MediaService.uploadMedia` (encrypting the
+  bytes first in E2EE rooms, then `uploadContent`) and sends an
+  `m.image`/`m.file`/`m.video`/`m.audio` event; the SDK local echo renders through the
+  same media bubble. All SDK/crypto stays in `@trinity/core`.
 
 The UI lives in `@trinity/feature-rooms`: **message-list** (sender-grouped rows,
 scroll-anchored pagination, hover row-highlight, Discord-style reply previews + reaction

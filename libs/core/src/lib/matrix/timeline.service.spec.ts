@@ -1,8 +1,39 @@
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from './matrix-client.service';
+import { MediaService, type UploadedMedia } from './media.service';
+
+/** A MediaService stub whose uploadMedia echoes a descriptor for the room's mode. */
+function fakeMediaService() {
+  return {
+    uploadMedia: (_file: File, encrypt: boolean) =>
+      of<UploadedMedia>(
+        encrypt
+          ? {
+              msgtype: 'm.image' as UploadedMedia['msgtype'],
+              body: 'pic.png',
+              mxc: null,
+              file: {
+                url: 'mxc://hs/enc',
+                v: 'v2',
+                key: {} as JsonWebKey,
+                iv: 'iv',
+                hashes: { sha256: 'h' },
+              },
+              info: { mimetype: 'image/png', size: 4 },
+            }
+          : {
+              msgtype: 'm.image' as UploadedMedia['msgtype'],
+              body: 'pic.png',
+              mxc: 'mxc://hs/up',
+              file: null,
+              info: { mimetype: 'image/png', size: 4 },
+            },
+      ),
+  } as unknown as MediaService;
+}
 
 function fakeEvent(o: {
   id: string;
@@ -71,6 +102,7 @@ function setup(
   events: ReturnType<typeof fakeEvent>[],
   sent: unknown[][] = [],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
+  encrypted = false,
 ) {
   const room = {
     roomId: '!r:hs',
@@ -86,6 +118,7 @@ function setup(
     relations: {
       getChildEventsForEvent: (id: string) => reactions[id],
     },
+    hasEncryptionStateEvent: () => encrypted,
     on: () => {},
     off: () => {},
   };
@@ -127,6 +160,7 @@ function setup(
     providers: [
       TimelineService,
       { provide: MatrixClientService, useValue: matrix },
+      { provide: MediaService, useValue: fakeMediaService() },
     ],
   });
   const svc = TestBed.inject(TimelineService);
@@ -551,6 +585,51 @@ describe('TimelineService', () => {
       expect(m.kind).toBe('unsupported');
       expect(m.media).toBeNull();
       expect(m.body).toBe('[image]'); // label fallback when body is empty too
+    });
+  });
+
+  describe('sendMedia', () => {
+    const png = () =>
+      new File([new Uint8Array([1, 2, 3, 4])], 'pic.png', {
+        type: 'image/png',
+      });
+
+    it('sends a plaintext url media event in an unencrypted room', async () => {
+      const sent: unknown[][] = [];
+      const svc = setup([], sent); // encrypted = false
+
+      await firstValueFrom(svc.sendMedia(png()));
+
+      expect(sent[0][0]).toBe('message');
+      const content = sent[0][1] as Record<string, unknown>;
+      expect(content['msgtype']).toBe('m.image');
+      expect(content['url']).toBe('mxc://hs/up');
+      expect(content['file']).toBeUndefined();
+      expect(content['info']).toMatchObject({ mimetype: 'image/png' });
+    });
+
+    it('sends an encrypted file media event in an E2EE room', async () => {
+      const sent: unknown[][] = [];
+      const svc = setup([], sent, {}, true); // encrypted = true
+
+      await firstValueFrom(svc.sendMedia(png()));
+
+      const content = sent[0][1] as Record<string, unknown>;
+      expect(content['url']).toBeUndefined();
+      expect(content['file']).toMatchObject({ url: 'mxc://hs/enc', v: 'v2' });
+    });
+
+    it('is a no-op for an empty file', async () => {
+      const sent: unknown[][] = [];
+      const svc = setup([], sent);
+
+      await firstValueFrom(
+        svc.sendMedia(
+          new File([], 'empty.bin', { type: 'application/octet-stream' }),
+        ),
+      );
+
+      expect(sent).toHaveLength(0);
     });
   });
 });

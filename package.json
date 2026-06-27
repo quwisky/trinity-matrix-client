@@ -19,7 +19,8 @@
     "smoke:login": "nx build trinity --configuration=development && node e2e/smoke-login.mjs",
     "e2e:verify": "nx build trinity --configuration=development && node e2e/verify-sas-run.mjs",
     "e2e:verify:up": "node e2e/synapse/start.mjs",
-    "e2e:verify:down": "node e2e/synapse/stop.mjs"
+    "e2e:verify:down": "node e2e/synapse/stop.mjs",
+    "e2e:media": "nx build trinity --configuration=development && node e2e/send-media-run.mjs"
   },
   "private": true,
   "packageManager": "pnpm@10.26.2",
@@ -49,6 +50,7 @@
     "@capacitor/android": "^8.4.1",
     "@capacitor/app": "8.1.0",
     "@capacitor/browser": "^8.0.3",
+    "@capacitor/camera": "^8.2.0",
     "@capacitor/core": "8.4.1",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/ios": "^8.4.1",

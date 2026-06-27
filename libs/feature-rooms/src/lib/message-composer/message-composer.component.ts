@@ -1,17 +1,21 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   effect,
+  inject,
   input,
   output,
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
-import { happyOutline, send } from 'ionicons/icons';
+import { addOutline, happyOutline, send } from 'ionicons/icons';
 import { EmojiPickerComponent } from '@trinity/ui';
+import { MediaPickerService } from '../media-picker/media-picker.service';
 
 const MAX_HEIGHT_PX = 200;
 
@@ -34,6 +38,7 @@ export class MessageComposerComponent {
   /** Sender name of the message being replied to, or '' when not replying. */
   readonly replyingTo = input('');
   readonly submitText = output<string>();
+  readonly submitMedia = output<File>();
   readonly cancelEdit = output<void>();
   readonly cancelReply = output<void>();
   readonly editLast = output<void>();
@@ -41,11 +46,15 @@ export class MessageComposerComponent {
   readonly text = signal('');
   readonly pickerOpen = signal(false);
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
+  private readonly fileInput =
+    viewChild<ElementRef<HTMLInputElement>>('fileInput');
+  private readonly picker = inject(MediaPickerService);
+  private readonly destroyRef = inject(DestroyRef);
   private wasEditing = false;
   private wasReplying = false;
 
   constructor() {
-    addIcons({ happyOutline, send });
+    addIcons({ addOutline, happyOutline, send });
     // Focus the input when a reply is started.
     effect(() => {
       const replying = !!this.replyingTo();
@@ -99,6 +108,32 @@ export class MessageComposerComponent {
       this.text.set('');
       queueMicrotask(() => this.autoGrow());
     }
+  }
+
+  /** Attach button: native gallery picker on device, else the hidden file input. */
+  onAttach(): void {
+    if (this.picker.available) {
+      this.picker
+        .pickImage()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((file) => {
+          if (file) {
+            this.submitMedia.emit(file);
+          }
+        });
+    } else {
+      this.fileInput()?.nativeElement.click();
+    }
+  }
+
+  /** Hidden file input change → emit the picked file, then reset for re-picking. */
+  onFilePicked(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) {
+      this.submitMedia.emit(file);
+    }
+    input.value = ''; // let the same file be picked again
   }
 
   onEscape(): void {

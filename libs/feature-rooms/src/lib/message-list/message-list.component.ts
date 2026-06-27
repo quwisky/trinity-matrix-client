@@ -54,6 +54,7 @@ export class MessageListComponent {
   readonly roomName = input('');
   readonly loadOlder = output<void>();
   readonly send = output<string>();
+  readonly sendMedia = output<File>();
   readonly retry = output<string>();
   readonly editMessage = output<{ id: string; body: string }>();
   readonly deleteMessage = output<string>();

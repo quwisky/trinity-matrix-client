@@ -58,5 +58,11 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Trinity needs camera access to attach photos to your messages.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Trinity needs photo library access to attach images to your messages.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Trinity needs permission to save images you receive to your photo library.</string>
 </dict>
 </plist>

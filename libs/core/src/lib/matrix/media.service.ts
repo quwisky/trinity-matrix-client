@@ -13,12 +13,30 @@ import {
   takeUntil,
   throwError,
 } from 'rxjs';
-import { decryptAttachment } from './attachment-crypto';
+import { MsgType } from 'matrix-js-sdk';
+import { decryptAttachment, encryptAttachment } from './attachment-crypto';
 import { MatrixClientService } from './matrix-client.service';
 import type { EncryptedFileInfo, MediaPayload } from './media.model';
 
 /** Which rendition of an attachment to resolve. */
 export type MediaVariant = 'thumbnail' | 'full';
+
+/**
+ * Everything {@link TimelineService} needs to build an outgoing media event from a
+ * just-uploaded attachment. `mxc` is set for plaintext, `file` for encrypted (its
+ * `url` already filled with the upload's `mxc://`); the `MsgType` stays inside core.
+ */
+export interface UploadedMedia {
+  msgtype: MsgType;
+  /** Filename / caption fallback (`content.body`). */
+  body: string;
+  /** `content.url` for plaintext uploads, else null. */
+  mxc: string | null;
+  /** `content.file` (encrypted, `url` filled) for E2EE uploads, else null. */
+  file: EncryptedFileInfo | null;
+  /** `content.info`. */
+  info: { mimetype: string; size: number; w?: number; h?: number };
+}
 
 /** Max edge (px) for a server-generated thumbnail when the event ships none. */
 const THUMBNAIL_PX = 480;
@@ -109,6 +127,66 @@ export class MediaService {
     return defer(() => this.fetchBlob(source)).pipe(
       map((blob) => ({ blob, filename: media.filename })),
     );
+  }
+
+  /**
+   * Upload a picked file to the media repo, encrypting it first for E2EE rooms,
+   * and return the descriptor {@link TimelineService} turns into an event. In an
+   * encrypted room the ciphertext is uploaded with no filename/MIME (those leak),
+   * and `info.url` is filled with the resulting `mxc://`; otherwise the original
+   * file is uploaded as-is. `progress` reports an upload fraction in [0, 1].
+   */
+  uploadMedia(
+    file: File,
+    encrypt: boolean,
+    progress?: (fraction: number) => void,
+  ): Observable<UploadedMedia> {
+    return defer(() => from(this.doUpload(file, encrypt, progress)));
+  }
+
+  private async doUpload(
+    file: File,
+    encrypt: boolean,
+    progress?: (fraction: number) => void,
+  ): Promise<UploadedMedia> {
+    const client = this.matrix.instance;
+    const msgtype = msgTypeFor(file.type);
+    const dims = await imageDimensions(file);
+    const onProgress = progress
+      ? (p: { loaded: number; total: number }) =>
+          progress(p.total ? p.loaded / p.total : 0)
+      : undefined;
+
+    if (encrypt) {
+      const { data, info } = await encryptAttachment(await file.arrayBuffer());
+      const res = await client.uploadContent(new Blob([data]), {
+        // Don't leak the plaintext filename/MIME on an encrypted upload.
+        includeFilename: false,
+        type: 'application/octet-stream',
+        progressHandler: onProgress,
+      });
+      info.url = res.content_uri;
+      return {
+        msgtype,
+        body: file.name || 'attachment',
+        mxc: null,
+        file: info,
+        info: mediaInfo(file, data.byteLength, dims),
+      };
+    }
+
+    const res = await client.uploadContent(file, {
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      progressHandler: onProgress,
+    });
+    return {
+      msgtype,
+      body: file.name || 'attachment',
+      mxc: res.content_uri,
+      file: null,
+      info: mediaInfo(file, file.size, dims),
+    };
   }
 
   /** Mark an object URL as on screen so it is exempt from cache eviction. */
@@ -320,5 +398,52 @@ export class MediaService {
         break; // everything left is pinned (on screen)
       }
     }
+  }
+}
+
+/** Map a MIME type to the Matrix message type for an attachment. */
+function msgTypeFor(mime: string): MsgType {
+  if (mime.startsWith('image/')) {
+    return MsgType.Image;
+  }
+  if (mime.startsWith('video/')) {
+    return MsgType.Video;
+  }
+  if (mime.startsWith('audio/')) {
+    return MsgType.Audio;
+  }
+  return MsgType.File;
+}
+
+/** Build the `content.info` block (mimetype/size, plus w/h for images). */
+function mediaInfo(
+  file: File,
+  size: number,
+  dims: { w: number; h: number } | null,
+): UploadedMedia['info'] {
+  return {
+    mimetype: file.type || 'application/octet-stream',
+    size,
+    ...(dims ?? {}),
+  };
+}
+
+/** Read an image's intrinsic dimensions (best-effort; null for non-images). */
+async function imageDimensions(
+  file: File,
+): Promise<{ w: number; h: number } | null> {
+  if (
+    !file.type.startsWith('image/') ||
+    typeof createImageBitmap !== 'function'
+  ) {
+    return null;
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    const dims = { w: bitmap.width, h: bitmap.height };
+    bitmap.close();
+    return dims;
+  } catch {
+    return null; // undecodable image — omit dimensions rather than fail the send
   }
 }

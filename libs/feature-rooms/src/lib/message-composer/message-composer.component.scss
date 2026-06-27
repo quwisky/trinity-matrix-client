@@ -41,7 +41,8 @@
   z-index: 10;
 }
 
-.composer__emoji {
+.composer__emoji,
+.composer__attach {
   position: absolute;
   right: 24px;
   bottom: 24px;
@@ -62,6 +63,11 @@
   }
 }
 
+// Attach sits just left of the emoji button.
+.composer__attach {
+  right: 52px;
+}
+
 // Explicit send affordance for touch devices (Enter-to-send is unreliable on
 // mobile keyboards). Hidden on pointer devices, where Enter sends.
 .composer__send {
@@ -71,7 +77,7 @@
 @media (hover: none) {
   .composer__send {
     position: absolute;
-    right: 52px;
+    right: 80px;
     bottom: 24px;
     display: flex;
     align-items: center;

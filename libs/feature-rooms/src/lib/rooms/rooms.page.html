@@ -55,6 +55,7 @@
           [roomName]="room.name"
           (loadOlder)="loadOlder()"
           (send)="onSend($event)"
+          (sendMedia)="onSendMedia($event)"
           (retry)="timeline.retry($event)"
           (editMessage)="onEdit($event)"
           (deleteMessage)="onDelete($event)"

@@ -11,7 +11,8 @@ End-to-end encryption is a first-class, in-MVP feature.
 > and a working **timeline — read, send, edit, delete, react, reply, markdown, and
 > emoji** — are done. **End-to-end encryption** is complete through device trust:
 > crypto bootstrap (cross-signing, key backup, recovery) and **device verification**
-> (emoji-SAS, with an incoming-request prompt). **Encrypted media** (M8) is next.
+> (emoji-SAS, with an incoming-request prompt). **Encrypted media** (M8) — sending
+> and displaying images/files/video/audio, with attachment encryption — is in progress.
 > See [Project status](#project-status) below.
 
 ## Documentation
@@ -110,17 +111,17 @@ New shared chat / settings libs are added when first needed. Each component/page
 
 ## Project status
 
-| Milestone                                        | State                                                                          |
-| ------------------------------------------------ | ------------------------------------------------------------------------------ |
-| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md))              |
-| 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                             |
-| 3 — Crypto bootstrap (cross-signing, key backup) | ✅ Done — core services + setup/recovery UI and a non-blocking `/rooms` banner |
-| 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock         |
-| 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history                |
-| 6 — Compose (send)                               | ✅ Done — send/edit/delete, reactions, replies, emoji, local echo + retry      |
-| 7 — Device verification UI                       | ✅ Done — emoji SAS self-verification (QR / cross-user deferred)               |
-| 8 — Media                                        | ⬜                                                                             |
-| 9 — MVP polish                                   | ⬜                                                                             |
+| Milestone                                        | State                                                                                                                                                                       |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md))                                                                                                           |
+| 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                                                                                                                          |
+| 3 — Crypto bootstrap (cross-signing, key backup) | ✅ Done — core services + setup/recovery UI and a non-blocking `/rooms` banner                                                                                              |
+| 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock                                                                                                      |
+| 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history                                                                                                             |
+| 6 — Compose (send)                               | ✅ Done — send/edit/delete, reactions, replies, emoji, local echo + retry                                                                                                   |
+| 7 — Device verification UI                       | ✅ Done — emoji SAS self-verification (QR / cross-user deferred)                                                                                                            |
+| 8 — Media                                        | 🚧 In progress — display + send (image/file/video/audio), AES-CTR attachment crypto in-tree, native Camera picker (web `<input>` fallback). Thumbnails + e2e are follow-ups |
+| 9 — MVP polish                                   | ⬜                                                                                                                                                                          |
 
 Full breakdown in [PLAN.md](PLAN.md).
 

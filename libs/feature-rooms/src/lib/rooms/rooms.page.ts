@@ -171,6 +171,15 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
+  onSendMedia(file: File): void {
+    // The upload phase has no echo, so surface its failure as a toast. Once the
+    // event is sent the SDK echo + retry path takes over (like onSend).
+    this.runAction(
+      this.timeline.sendMedia(file),
+      'Could not upload the attachment.',
+    );
+  }
+
   // Edit/delete/react have no visible local echo, so a failure would otherwise be
   // silent — surface it as a toast. (Send/reply produce an echo with a retry.)
   onEdit(edit: { id: string; body: string }): void {

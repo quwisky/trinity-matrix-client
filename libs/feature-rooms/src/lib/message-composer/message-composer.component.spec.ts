@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageComposerComponent } from './message-composer.component';
 
 describe('MessageComposerComponent', () => {
@@ -138,6 +138,46 @@ describe('MessageComposerComponent', () => {
     cmp.cancelReply.subscribe(() => (cancelled = true));
     cmp.onEscape();
     expect(cancelled).toBe(true);
+  });
+
+  it('emits submitMedia with the picked file and resets the input for re-picking', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let emitted: File | undefined;
+    cmp.submitMedia.subscribe((f) => (emitted = f));
+
+    const file = new File([new Uint8Array([1])], 'pic.png', {
+      type: 'image/png',
+    });
+    const input = fixture.nativeElement.querySelector(
+      '[data-testid=composer-file-input]',
+    ) as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      value: [file],
+      configurable: true,
+    });
+    input.dispatchEvent(new Event('change'));
+
+    expect(emitted).toBe(file);
+    expect(input.value).toBe('');
+  });
+
+  it('opens the hidden file input on attach (web fallback)', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    const input = fixture.nativeElement.querySelector(
+      '[data-testid=composer-file-input]',
+    ) as HTMLInputElement;
+    const clickSpy = vi
+      .spyOn(input, 'click')
+      .mockImplementation(() => undefined);
+
+    cmp.onAttach(); // picker.available is false under jsdom → uses the input
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
   it('toggles the emoji picker from the button', () => {

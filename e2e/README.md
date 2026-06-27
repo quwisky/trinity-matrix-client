@@ -12,7 +12,20 @@ which the `pnpm` wrappers below do for you.
 | `pnpm smoke:login`                            | Unauthenticated → `/login`, real `.well-known` discovery for matrix.org.                      |
 | `pnpm spike:chromium` / `pnpm spike:webkit`   | In-app E2EE crypto spike.                                                                     |
 | `pnpm e2e:verify`                             | **Two-client device verification (emoji SAS)** — full live flow against a disposable Synapse. |
+| `pnpm e2e:media`                              | **Note-to-self encrypted media send** — pick a file → encrypt → upload → decrypt own echo.    |
 | `pnpm e2e:verify:up` / `pnpm e2e:verify:down` | Bring the Synapse+Caddy harness up / tear it down by hand.                                    |
+
+## `e2e:media` — encrypted media send round-trip
+
+`send-media.mjs` creates an **E2EE room** via the CS API, logs into the app as that
+user, sets up encryption, opens the room, and picks a 1×1 PNG through the composer's
+hidden `<input type="file">` (`[data-testid=composer-file-input]`, driven with
+Playwright `setInputFiles` — no native dialog). It then asserts the app renders its
+**own** sent attachment: `[data-testid=media-bubble]` reaches `data-media-state="ready"`,
+which only happens once the client has uploaded the ciphertext and **downloaded +
+decrypted it back** into an `<img>`. One context suffices — a device decrypts the media
+it sent itself. `send-media-run.mjs` (run by `pnpm e2e:media`) brings the bundled Synapse
+harness up, runs it, and tears it down.
 
 ## `e2e:verify` — two-client emoji SAS
 
@@ -114,9 +127,10 @@ Docker. Both contexts logged in, Device A bootstrapped encryption, the two devic
 showed the **same seven emoji** (asserted identical across both contexts), both
 confirmed the match and reached `data-stage="done"`, and the harness tore itself
 down. The other harnesses also pass in the same 2026-06-27 environment (each run on
-its own) — `smoke:login`, `spike:chromium`, `spike:webkit`, and the homeserver-free
-`verify-sas-selfcheck` each print `RESULT: PASS` — and `pnpm test` (Vitest) is green
-across all projects.
+its own) — `smoke:login`, `spike:chromium`, `spike:webkit`, the homeserver-free
+`verify-sas-selfcheck`, and **`e2e:media`** (the encrypted media send round-trip:
+upload → decrypt own echo) each print `RESULT: PASS` — and `pnpm test` (Vitest) is
+green across all projects.
 
 `e2e:verify` **requires Docker** able to run those images. Where Docker or registry
 access is unavailable, fall back to the homeserver-free self-check
