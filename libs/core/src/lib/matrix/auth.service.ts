@@ -99,7 +99,9 @@ export class AuthService {
       : of(void 0);
 
     return serverLogout.pipe(
-      switchMap(() => this.matrix.stop()),
+      // reset() (not stop()) wipes the local sync + crypto stores so the prior
+      // account's keys/cache don't linger on a shared device after logout.
+      switchMap(() => this.matrix.reset()),
       switchMap(() => this.storage.clear()),
     );
   }

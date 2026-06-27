@@ -9,6 +9,7 @@ import {
   Observable,
   catchError,
   defer,
+  finalize,
   from,
   map,
   of,
@@ -119,6 +120,34 @@ export class MatrixClientService {
     return defer(() => {
       this.teardown();
       return of(void 0);
+    });
+  }
+
+  /**
+   * Stop the client and DELETE its persistent stores (sync + crypto IndexedDB),
+   * then drop the reference and forget the 4S key. For logout — unlike {@link stop}
+   * it wipes local account data so a different user on the device can't read the
+   * prior account's keys/cache. Best-effort: a store-clear failure still tears down.
+   */
+  reset(): Observable<void> {
+    return defer(() => {
+      const client = this.client;
+      if (!client) {
+        this._syncState.set(null);
+        this.secretStorageKeys.clear();
+        return of(void 0);
+      }
+      client.off(ClientEvent.Sync, this.onSync);
+      client.stopClient(); // clearStores must run with the client stopped
+      return from(client.clearStores()).pipe(
+        catchError(() => of(void 0)),
+        finalize(() => {
+          this.client = null;
+          this._syncState.set(null);
+          this.secretStorageKeys.clear();
+        }),
+        map(() => void 0),
+      );
     });
   }
 
