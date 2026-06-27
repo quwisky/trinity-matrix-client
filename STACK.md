@@ -106,7 +106,8 @@ the architecture changes — find out before building UI on top.
 - **End-to-end:** Playwright **standalone** (`playwright`, not `@playwright/test`) —
   `e2e/*.mjs` scripts that serve `www/` and drive Chromium/WebKit. Today: `smoke-login`,
   the `crypto-spike` (per engine), and the two-client emoji-SAS `verify-sas` (with a
-  disposable Synapse harness, env-gated on a homeserver). See [e2e/README.md](e2e/README.md).
+  disposable Synapse harness, env-gated on a homeserver; full round-trip run to PASS
+  2026-06-27). See [e2e/README.md](e2e/README.md).
 - Vitest shares the Vite config and runs in parallel by default.
 
 ## Open setup decisions / reminders

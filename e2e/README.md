@@ -106,12 +106,20 @@ fetches `https://<domain>/.well-known/matrix/client`. The contexts launch with
 
 `e2e/synapse/data/` and `e2e/.artifacts/` (failure screenshots) are git-ignored.
 
-## Known environment blocker
+## Verification status
 
-The live `e2e:verify` round-trip was **not run to PASS in the authoring sandbox**:
-pulling the `matrixdotorg/synapse` / `caddy` Docker images was denied there, so no
-homeserver could be stood up. Everything that does not need the homeserver was
-verified headlessly (`verify-sas-selfcheck.mjs` → `RESULT: PASS`): the dev build
-serves, the SPA boots, `/login` + discovery + the password form work, and the
-`/encryption/verify` route resolves. Run `pnpm e2e:verify` in an environment with
-Docker registry access to exercise the full SAS round-trip.
+The full live `e2e:verify` round-trip has been **run to PASS** (2026-06-27) against
+the bundled harness — `matrixdotorg/synapse:v1.119.0` + `caddy:2.8-alpine` under
+Docker. Both contexts logged in, Device A bootstrapped encryption, the two devices
+showed the **same seven emoji** (asserted identical across both contexts), both
+confirmed the match and reached `data-stage="done"`, and the harness tore itself
+down. The other harnesses also pass in the same 2026-06-27 environment (each run on
+its own) — `smoke:login`, `spike:chromium`, `spike:webkit`, and the homeserver-free
+`verify-sas-selfcheck` each print `RESULT: PASS` — and `pnpm test` (Vitest) is green
+across all projects.
+
+`e2e:verify` **requires Docker** able to run those images. Where Docker or registry
+access is unavailable, fall back to the homeserver-free self-check
+(`node e2e/verify-sas-selfcheck.mjs` → `RESULT: PASS`), which still covers the dev
+build serving, the SPA booting, `/login` + discovery + the password form, and the
+guarded `/encryption/verify` route — everything except the live SAS exchange.

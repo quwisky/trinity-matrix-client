@@ -126,7 +126,10 @@ Full breakdown in [PLAN.md](PLAN.md).
 
 ## Known limitations (current)
 
-- No credentialed end-to-end login test yet (needs a test account).
+- No credentialed login test against a _public_ homeserver yet (the matrix.org
+  `smoke:login` check is unauthenticated). The credentialed path is covered end-to-end
+  by `e2e:verify` against a disposable local Synapse (live SAS round-trip verified
+  2026-06-27); it is not yet wired into CI.
 - Native SSO deep link (`eu.qwky.trinity://sso-callback`) is stubbed, not implemented.
 - Session token stored via Preferences, not yet hardware-backed secure storage.
 

@@ -133,11 +133,16 @@ to point it at your own homeserver. The verification harness needs a homeserver 
 
 ### What is NOT covered yet
 
-- A **credentialed** plain login → sync → logout cycle in CI (no throwaway account
-  wired into the smoke). `e2e/verify-sas.mjs` already does credentialed login (twice)
-  but is gated on a reachable homeserver.
-- The **live** `e2e:verify` SAS round-trip in CI — it needs Docker registry access to
-  pull the Synapse/Caddy images (or an external https homeserver via `TRINITY_HS`).
+- These e2e harnesses **in CI**. The full `e2e:verify` SAS round-trip has been run to
+  PASS **locally** (2026-06-27, against the bundled Synapse `v1.119.0` + Caddy Docker
+  harness), but CI (`.crow/ci.yaml`) runs only lint/stylelint/format/`test`/build —
+  there is no e2e step yet. Wiring one in needs Docker registry access on the runner
+  (or an external https homeserver via `TRINITY_HS`).
+- A **credentialed** plain login → sync → logout cycle against the _public_ homeserver
+  (the matrix.org `smoke:login` is unauthenticated; no throwaway account is wired in).
+  `e2e/verify-sas.mjs` already does credentialed login (twice) against the disposable
+  Synapse, so the credentialed path itself is exercised end-to-end — just not against
+  matrix.org.
 - On-device WebView runtime (the Playwright engine runs are faithful proxies, but a
   simulator/emulator run is the real thing — see [../SPIKE.md](../SPIKE.md)).
 - The **native SSO deep link** (`eu.qwky.trinity://sso-callback`) — wired with a state

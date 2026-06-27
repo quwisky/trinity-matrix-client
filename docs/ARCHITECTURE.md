@@ -266,7 +266,16 @@ iOS uses Swift Package Manager (Capacitor 8 default); Android needs `ANDROID_HOM
 
 ## Testing harnesses
 
-[e2e/](../e2e/) holds headless Playwright drivers used as smoke/regression
-checks: `crypto-spike.mjs` (parametrized by engine) and `smoke-login.mjs`. They
-serve the production build and assert real behavior, including live network calls to
-matrix.org for discovery. These are the seed of the eventual Vitest + Playwright suite.
+Unit tests are **Vitest** (via the Analog Angular plugin), one suite per project, run
+through Nx (`pnpm test`). [e2e/](../e2e/) holds standalone headless **Playwright**
+drivers (raw `playwright`, not `@playwright/test`) that serve the production build and
+assert real behavior:
+
+- `crypto-spike.mjs` (parametrized by engine) and `smoke-login.mjs` — smoke checks;
+  `smoke-login` makes live `.well-known` discovery calls to matrix.org.
+- `verify-sas.mjs` — a two-client emoji-SAS **device-verification round-trip**, driven
+  by `verify-sas-run.mjs` against a disposable bundled Synapse (`v1.119.0`) + Caddy
+  Docker harness (`e2e/synapse/`), with a homeserver-free `verify-sas-selfcheck.mjs`
+  fallback. The full SAS round-trip was run to PASS (2026-06-27).
+
+See [e2e/README.md](../e2e/README.md) for the verification flow.
