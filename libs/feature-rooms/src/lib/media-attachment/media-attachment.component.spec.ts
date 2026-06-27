@@ -91,6 +91,23 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.src()).toBeNull();
   });
 
+  it('does not resolve a thumbnail for a file attachment (download-only card)', () => {
+    const media: MediaPayload = {
+      ...imageMedia(),
+      kind: 'file',
+      filename: 'report.pdf',
+      mimeType: 'application/pdf',
+    };
+    const fixture = TestBed.createComponent(MediaAttachmentComponent);
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+
+    // A file card never binds src — resolving (and decrypting) it would be wasted.
+    expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.src()).toBeNull();
+    expect(fixture.componentInstance.loading()).toBe(false);
+  });
+
   it('download() requests the full bytes via downloadMedia', () => {
     const media = imageMedia();
     const fixture = TestBed.createComponent(MediaAttachmentComponent);

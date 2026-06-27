@@ -96,6 +96,13 @@ export class MediaAttachmentComponent {
       this.src.set(null);
       this.errorMsg.set(null);
       this.repin(null);
+      // A file card is a pure download affordance — it never binds `src`. Skip
+      // thumbnail resolution for it: otherwise an encrypted file would be fetched
+      // and fully AES-decrypted into pinned memory on every render, just to be
+      // discarded (an OOM/privacy hazard when scrolling a room of attachments).
+      if (media.kind === 'file') {
+        return;
+      }
       this.thumbnailSub = runWithBusy(
         this.mediaService.resolveMedia(media, 'thumbnail'),
         {
