@@ -131,6 +131,7 @@ Defined in [app.routes.ts](../apps/trinity/src/app/app.routes.ts), all lazy-load
 | `/rooms`             | Discord-style room shell (default) | `authGuard` |
 | `/encryption/setup`  | first-device encryption setup      | `authGuard` |
 | `/encryption/unlock` | new-device recovery / unlock       | `authGuard` |
+| `/encryption/verify` | device verification (emoji SAS)    | `authGuard` |
 | `/spike`             | dev E2EE crypto spike              | —           |
 
 ## Authentication flow
@@ -229,9 +230,32 @@ The `@trinity/feature-crypto` lib drives the two flows above:
 
 The **encryption banner** lives in `feature-rooms` (not `feature-crypto`) because the Nx
 module boundary forbids feature→feature deps; it reads `CryptoService.status` from
-`@trinity/core` and links to setup/unlock. It's non-blocking — login/SSO still land on
-`/rooms`, and the banner only nudges when crypto isn't `ready`. See
-[CRYPTO-BOOTSTRAP-PLAN.md](CRYPTO-BOOTSTRAP-PLAN.md).
+`@trinity/core` and links to setup/unlock (and, for `needs-recovery`, also to device
+verification). It's non-blocking — login/SSO still land on `/rooms`, and the banner only
+nudges when crypto isn't `ready`. See [CRYPTO-BOOTSTRAP-PLAN.md](CRYPTO-BOOTSTRAP-PLAN.md).
+
+## Device verification (Milestone 7)
+
+The _other_ way a fresh device gets trusted (besides the recovery key): an interactive
+**emoji-SAS** comparison with another signed-in session.
+
+- **`VerificationService`** ([verification.service.ts](../libs/core/src/lib/matrix/verification.service.ts))
+  wraps the SDK's `VerificationRequest`/`Verifier` so the UI never touches matrix-js-sdk.
+  Instance-keyed `connect()/disconnect()` (like `CryptoService`) listen for
+  `CryptoEvent.VerificationRequestReceived` and adopt any in-flight request. A single
+  `active` signal exposes a plain `VerificationView` (stage, other device, the seven SAS
+  emoji when shown); cold Observables drive the actions — `startSelfVerification`, `accept`,
+  `startSas`, `confirmSas`, `mismatchSas`, `cancel`, `dismiss`. One verification at a time.
+- **UI** in `@trinity/feature-crypto`: `SasCompareComponent` (presentational emoji grid,
+  match/mismatch — each emoji announced by its **name**, the glyph `aria-hidden`) and
+  `DeviceVerificationPage`, which renders every stage and works both as a route
+  (`/encryption/verify`, self-initiated) and as modal content (incoming).
+- **`VerificationHostComponent`** ([verification-host.component.ts](../apps/trinity/src/app/verification-host.component.ts))
+  is mounted app-level in `app.component.html` (not a lib), so incoming requests are caught
+  on **any** route. It owns `connect()` (once the client is live) and lazily presents the
+  verification modal for incoming requests — keeping `feature-crypto` out of the main bundle.
+
+MVP scope is self-verification over SAS; QR and cross-user verification are deferred.
 
 ## Native shells
 

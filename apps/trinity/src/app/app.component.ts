@@ -9,12 +9,13 @@ import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
+import { VerificationHostComponent } from './verification-host.component';
 
 @Component({
   selector: 'trn-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'app.component.html',
-  imports: [IonApp, IonRouterOutlet],
+  imports: [IonApp, IonRouterOutlet, VerificationHostComponent],
 })
 export class AppComponent implements OnInit {
   private readonly router = inject(Router);

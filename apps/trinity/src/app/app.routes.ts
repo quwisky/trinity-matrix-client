@@ -31,6 +31,12 @@ export const routes: Routes = [
     loadComponent: () =>
       import('@trinity/feature-crypto').then((m) => m.EncryptionUnlockPage),
   },
+  {
+    path: 'encryption/verify',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('@trinity/feature-crypto').then((m) => m.DeviceVerificationPage),
+  },
   // Dev-only E2EE crypto spike (Milestone 1 harness) — excluded from prod builds,
   // so the harness page and CryptoSpikeService tree-shake out of the production bundle.
   ...(environment.production

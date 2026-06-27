@@ -31,27 +31,29 @@ describe('EncryptionBannerComponent', () => {
     expect(fixture.nativeElement.querySelector('.banner')).toBeNull();
   });
 
-  it('prompts setup and routes to /encryption/setup for needs-setup', () => {
+  it('offers a single setup action for needs-setup', () => {
     status.set('needs-setup');
     const fixture = TestBed.createComponent(EncryptionBannerComponent);
     fixture.detectChanges();
 
-    expect(
-      fixture.nativeElement.querySelector('.banner').textContent,
-    ).toContain('Set up encryption');
-    fixture.componentInstance.act();
+    const buttons = fixture.nativeElement.querySelectorAll('ion-button');
+    expect(buttons.length).toBe(1);
+    expect(fixture.nativeElement.textContent).toContain('Set up encryption');
+    fixture.componentInstance.go('/encryption/setup');
     expect(navigateByUrl).toHaveBeenCalledWith('/encryption/setup');
   });
 
-  it('prompts verify and routes to /encryption/unlock for needs-recovery', () => {
+  it('offers both recovery-key and verify actions for needs-recovery', () => {
     status.set('needs-recovery');
     const fixture = TestBed.createComponent(EncryptionBannerComponent);
     fixture.detectChanges();
 
-    expect(
-      fixture.nativeElement.querySelector('.banner').textContent,
-    ).toContain('Verify this device');
-    fixture.componentInstance.act();
-    expect(navigateByUrl).toHaveBeenCalledWith('/encryption/unlock');
+    const labels = [
+      ...fixture.nativeElement.querySelectorAll('ion-button'),
+    ].map((b: HTMLElement) => b.textContent?.trim());
+    expect(labels).toEqual(['Use recovery key', 'Verify another device']);
+
+    fixture.componentInstance.go('/encryption/verify');
+    expect(navigateByUrl).toHaveBeenCalledWith('/encryption/verify');
   });
 });

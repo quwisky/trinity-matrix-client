@@ -1,5 +1,8 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
+import { ModalController } from '@ionic/angular/standalone';
+import { MatrixClientService, VerificationService } from '@trinity/core';
 import { describe, expect, it, vi } from 'vitest';
 import { AppComponent } from './app.component';
 
@@ -7,11 +10,21 @@ vi.mock('@capacitor/browser', () => ({
   Browser: { close: vi.fn().mockResolvedValue(undefined), open: vi.fn() },
 }));
 
+// AppComponent's template mounts <trn-verification-host>, which injects these.
+const hostProviders = [
+  { provide: ModalController, useValue: { create: vi.fn() } },
+  { provide: MatrixClientService, useValue: { syncState: signal(null) } },
+  {
+    provide: VerificationService,
+    useValue: { active: signal(null), connect: vi.fn() },
+  },
+];
+
 describe('AppComponent', () => {
   it('should create the app', async () => {
     await TestBed.configureTestingModule({
       imports: [AppComponent],
-      providers: [provideRouter([])],
+      providers: [provideRouter([]), ...hostProviders],
     }).compileComponents();
 
     const fixture = TestBed.createComponent(AppComponent);
@@ -23,7 +36,7 @@ describe('AppComponent', () => {
     async function create() {
       await TestBed.configureTestingModule({
         imports: [AppComponent],
-        providers: [provideRouter([])], // also supplies ActivatedRoute for IonRouterOutlet
+        providers: [provideRouter([]), ...hostProviders], // ActivatedRoute for IonRouterOutlet + host deps
       }).compileComponents();
       const cmp = TestBed.createComponent(AppComponent).componentInstance;
       const navigate = vi

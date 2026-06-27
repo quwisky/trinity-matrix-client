@@ -10,10 +10,17 @@ import { addIcons } from 'ionicons';
 import { lockClosed } from 'ionicons/icons';
 import { CryptoService } from '@trinity/core';
 
+/** A banner call-to-action: a label and the route it navigates to. */
+interface BannerAction {
+  label: string;
+  path: string;
+}
+
 /**
  * Non-blocking prompt shown in the rooms shell when this device's encryption
- * isn't ready. Reads {@link CryptoService.status} and links to the right flow:
- * setup (first device) or unlock (a later device). Renders nothing when crypto is
+ * isn't ready. Reads {@link CryptoService.status}: `needs-setup` offers first-time
+ * setup; `needs-recovery` offers both ways to trust this device — the recovery key
+ * or verifying with another signed-in session. Renders nothing when crypto is
  * `ready` or still `unknown`. Lives in feature-rooms (not feature-crypto) because
  * the module boundary forbids feature→feature dependencies; it depends only on
  * `@trinity/core`.
@@ -27,17 +34,21 @@ import { CryptoService } from '@trinity/core';
     @if (visible()) {
       <div class="banner">
         <ion-icon class="banner__icon" name="lock-closed" aria-hidden="true" />
-        <!-- Live region scoped to the message so the action button isn't read
+        <!-- Live region scoped to the message so the action buttons aren't read
              as part of the polite announcement. -->
         <span class="banner__text" role="status">{{ message() }}</span>
-        <ion-button
-          class="banner__action"
-          size="small"
-          fill="solid"
-          (click)="act()"
-        >
-          {{ cta() }}
-        </ion-button>
+        <span class="banner__actions">
+          @for (action of actions(); track action.path) {
+            <ion-button
+              class="banner__action"
+              size="small"
+              fill="solid"
+              (click)="go(action.path)"
+            >
+              {{ action.label }}
+            </ion-button>
+          }
+        </span>
       </div>
     }
   `,
@@ -56,24 +67,29 @@ export class EncryptionBannerComponent {
 
   readonly message = computed(() =>
     this.status() === 'needs-recovery'
-      ? 'Verify this device to read your encrypted messages.'
+      ? "This device isn't verified yet — unlock your encrypted messages."
       : 'Set up encryption to secure your messages.',
   );
 
-  readonly cta = computed(() =>
-    this.status() === 'needs-recovery' ? 'Verify' : 'Set up',
-  );
+  readonly actions = computed<BannerAction[]>(() => {
+    switch (this.status()) {
+      case 'needs-setup':
+        return [{ label: 'Set up', path: '/encryption/setup' }];
+      case 'needs-recovery':
+        return [
+          { label: 'Use recovery key', path: '/encryption/unlock' },
+          { label: 'Verify another device', path: '/encryption/verify' },
+        ];
+      default:
+        return [];
+    }
+  });
 
   constructor() {
     addIcons({ lockClosed });
   }
 
-  /** Navigate to the flow matching the current status. */
-  act(): void {
-    const path =
-      this.status() === 'needs-recovery'
-        ? '/encryption/unlock'
-        : '/encryption/setup';
+  go(path: string): void {
     void this.router.navigateByUrl(path);
   }
 }

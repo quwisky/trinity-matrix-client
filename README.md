@@ -116,7 +116,7 @@ New shared chat / settings libs are added when first needed. Each component/page
 | 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock         |
 | 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history                |
 | 6 — Compose (send)                               | ✅ Done — send/edit/delete, reactions, replies, emoji, local echo + retry      |
-| 7 — Device verification UI                       | ⬜                                                                             |
+| 7 — Device verification UI                       | ✅ Done — emoji SAS self-verification (QR / cross-user deferred)               |
 | 8 — Media                                        | ⬜                                                                             |
 | 9 — MVP polish                                   | ⬜                                                                             |
 

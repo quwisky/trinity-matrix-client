@@ -108,7 +108,9 @@ src/app/
 6. **Compose (send)** — ✅ send text/markdown (+ emoji picker) with optimistic local
    echo + retry; edit (`m.replace`), delete (redact), reactions (`m.annotation`), and
    replies (`m.in_reply_to`) via a hover toolbar / Up-arrow shortcut.
-7. **Device verification UI** — emoji SAS / QR verification flows.
+7. **Device verification UI** — ✅ emoji SAS self-verification (verify your own
+   other devices). `VerificationService` (core) + `feature-crypto` SAS UI + an
+   app-level host for incoming requests. QR and cross-user verification deferred.
 8. **Media** — encrypted media upload/display (Capacitor Camera/Filesystem).
 9. **MVP polish** — dark mode, offline cache, settings/profile, device management.
 

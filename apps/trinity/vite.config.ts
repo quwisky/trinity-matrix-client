@@ -6,9 +6,12 @@ import tsconfigPaths from 'vite-tsconfig-paths';
 export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/apps/trinity',
-  // `root` points at the workspace so the @trinity/* aliases from
-  // tsconfig.base.json are picked up.
-  plugins: [angular(), tsconfigPaths({ root: '../../' })],
+  // Point at tsconfig.base.json explicitly so @trinity/* aliases resolve in spec
+  // files too (spec tsconfigs aren't crawled by default) — consistent with the libs.
+  plugins: [
+    angular(),
+    tsconfigPaths({ root: '../../', projects: ['tsconfig.base.json'] }),
+  ],
   test: {
     globals: true,
     environment: 'jsdom',

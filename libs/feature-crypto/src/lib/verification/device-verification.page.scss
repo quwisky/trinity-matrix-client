@@ -1,0 +1,35 @@
+.heading {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--trinity-text-bright);
+  margin: 0 0 8px;
+}
+
+.center {
+  text-align: center;
+  padding: 12px 0;
+
+  p {
+    margin: 8px 0 16px;
+  }
+}
+
+.result {
+  width: 64px;
+  height: 64px;
+  margin: 8px auto 12px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: #fff;
+}
+
+.result--ok {
+  background: var(--trinity-green);
+}
+
+.result--bad {
+  background: var(--trinity-sidebar);
+}
