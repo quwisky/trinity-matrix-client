@@ -1,0 +1,27 @@
+.heading {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--trinity-text-bright);
+  margin: 0 0 8px;
+}
+
+.warning {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--trinity-accent);
+  border-radius: var(--trinity-radius);
+  background: var(--trinity-sidebar);
+  color: var(--trinity-text-bright);
+  font-weight: 600;
+}
+
+.confirm {
+  display: block;
+  margin: 20px 0;
+  color: var(--trinity-text);
+}
+
+.heading:focus-visible {
+  outline: 2px solid var(--trinity-accent);
+  outline-offset: 4px;
+}

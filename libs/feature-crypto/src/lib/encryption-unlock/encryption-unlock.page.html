@@ -1,0 +1,53 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Verify this device</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  <h1 class="heading">Enter your recovery key</h1>
+  <ion-text color="medium">
+    <p>
+      This device isn't trusted yet. Enter the recovery key you saved when you
+      set up encryption to unlock your encrypted messages here.
+    </p>
+  </ion-text>
+
+  <ion-list>
+    <ion-item>
+      <ion-input
+        label="Recovery key"
+        labelPlacement="stacked"
+        autocapitalize="off"
+        autocorrect="off"
+        autocomplete="off"
+        placeholder="EsTx xxxx xxxx …"
+        helperText="Paste the key you saved during setup. Spaces don't matter."
+        [disabled]="busy()"
+        [ngModel]="recoveryKey()"
+        (ngModelChange)="recoveryKey.set($event)"
+        (keyup.enter)="unlock()"
+      ></ion-input>
+    </ion-item>
+  </ion-list>
+
+  <ion-button
+    expand="block"
+    [disabled]="busy() || !recoveryKey().trim()"
+    (click)="unlock()"
+  >
+    Unlock
+  </ion-button>
+
+  @if (busy()) {
+    <div class="ion-text-center ion-padding-top">
+      <ion-spinner></ion-spinner>
+      <p class="progress">Unlocking your encrypted messages…</p>
+    </div>
+  }
+  @if (error(); as message) {
+    <ion-text color="danger">
+      <p role="alert">{{ message }}</p>
+    </ion-text>
+  }
+</ion-content>

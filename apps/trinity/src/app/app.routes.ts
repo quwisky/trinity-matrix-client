@@ -19,6 +19,18 @@ export const routes: Routes = [
       import('@trinity/feature-rooms').then((m) => m.RoomsPage),
   },
   {
+    path: 'encryption/setup',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('@trinity/feature-crypto').then((m) => m.EncryptionSetupPage),
+  },
+  {
+    path: 'encryption/unlock',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('@trinity/feature-crypto').then((m) => m.EncryptionUnlockPage),
+  },
+  {
     // Dev-only E2EE crypto spike (Milestone 1 harness).
     path: 'spike',
     loadComponent: () => import('./home/home.page').then((m) => m.HomePage),

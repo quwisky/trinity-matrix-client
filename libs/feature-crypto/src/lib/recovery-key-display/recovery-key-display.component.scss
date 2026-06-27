@@ -1,0 +1,43 @@
+:host {
+  display: block;
+}
+
+.key {
+  display: block;
+  padding: 14px 16px;
+  border: 1px solid var(--trinity-divider);
+  border-radius: var(--trinity-radius);
+  background: var(--trinity-rail);
+  color: var(--trinity-text-bright);
+  font-family: SFMono-Regular, 'Roboto Mono', menlo, consolas, monospace;
+  font-size: 15px;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.copy-hint {
+  margin: 8px 0 0;
+  color: var(--ion-color-danger, #eb445a);
+  font-size: 13px;
+}
+
+// Visually hidden but available to screen readers (live-region announcements).
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
