@@ -1,0 +1,31 @@
+# TLS front for the e2e Synapse.
+#
+# Listens on https://localhost:8448 with Caddy's internal (self-signed) CA — the
+# Playwright contexts launch with ignoreHTTPSErrors so the untrusted cert is fine.
+#
+#  - /.well-known/matrix/client is served inline so matrix-js-sdk AutoDiscovery
+#    (https://localhost:8448/.well-known/matrix/client) resolves the homeserver to
+#    THIS origin. base_url must be the externally reachable https URL, not the
+#    container's http://synapse:8008.
+#  - Everything else proxies to the Synapse HTTP listener.
+{
+	# Quieter logs; internal CA so no ACME/public DNS needed.
+	auto_https disable_redirects
+}
+
+https://localhost:8448 {
+	tls internal
+
+	header /.well-known/matrix/* Content-Type application/json
+	header /.well-known/matrix/* Access-Control-Allow-Origin *
+
+	respond /.well-known/matrix/client 200 {
+		body `{"m.homeserver":{"base_url":"https://localhost:8448"}}`
+	}
+
+	respond /.well-known/matrix/server 200 {
+		body `{"m.server":"localhost:8448"}`
+	}
+
+	reverse_proxy synapse:8008
+}

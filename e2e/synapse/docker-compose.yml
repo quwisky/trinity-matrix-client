@@ -1,0 +1,50 @@
+# Disposable Synapse + Caddy stack for the SAS verification e2e.
+#
+# Why two services:
+#  - Synapse speaks plain HTTP on :8008 (no TLS config needed inside the container).
+#  - The Trinity app's CSP only allows https:/wss: for connect-src, and matrix-js-sdk
+#    AutoDiscovery fetches https://<domain>/.well-known/matrix/client. So Caddy
+#    terminates TLS on :8448 with an internal (self-signed) cert, serves the client
+#    well-known pointing back at itself, and reverse-proxies the Matrix API to Synapse.
+#
+# Everything here is throwaway: `homeserver.yaml`, the signing key, and the sqlite
+# DB are generated into ./data on first run and removed by stop.sh.
+services:
+  synapse:
+    image: matrixdotorg/synapse:v1.119.0
+    container_name: trinity-e2e-synapse
+    restart: 'no'
+    environment:
+      SYNAPSE_SERVER_NAME: localhost
+      SYNAPSE_REPORT_STATS: 'no'
+    volumes:
+      - ./data:/data
+    # Bind Synapse's HTTP listener to the host too, so register_new_matrix_user
+    # (run from stop/setup scripts on the host) can reach it directly.
+    ports:
+      - '127.0.0.1:8008:8008'
+    networks:
+      - trinity-e2e
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: trinity-e2e-caddy
+    restart: 'no'
+    depends_on:
+      - synapse
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - '127.0.0.1:8448:8448'
+    networks:
+      - trinity-e2e
+
+networks:
+  trinity-e2e:
+    name: trinity-e2e
+
+volumes:
+  caddy-data:
+  caddy-config:

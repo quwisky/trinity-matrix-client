@@ -16,7 +16,10 @@
     "stylelint": "stylelint \"{apps,libs}/**/*.scss\"",
     "spike:chromium": "nx build trinity --configuration=development && node e2e/crypto-spike.mjs chromium",
     "spike:webkit": "nx build trinity --configuration=development && node e2e/crypto-spike.mjs webkit",
-    "smoke:login": "nx build trinity --configuration=development && node e2e/smoke-login.mjs"
+    "smoke:login": "nx build trinity --configuration=development && node e2e/smoke-login.mjs",
+    "e2e:verify": "nx build trinity --configuration=development && node e2e/verify-sas-run.mjs",
+    "e2e:verify:up": "node e2e/synapse/start.mjs",
+    "e2e:verify:down": "node e2e/synapse/stop.mjs"
   },
   "private": true,
   "packageManager": "pnpm@10.26.2",
