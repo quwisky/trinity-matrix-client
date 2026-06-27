@@ -39,6 +39,11 @@
     background: var(--trinity-hover);
     color: var(--trinity-text);
   }
+
+  &:focus-visible {
+    outline: 2px solid var(--trinity-accent);
+    outline-offset: 2px;
+  }
 }
 
 /// Thin Discord-style scrollbar on an overflowing element.

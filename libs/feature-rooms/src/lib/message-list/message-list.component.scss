@@ -67,6 +67,15 @@
   pointer-events: auto;
 }
 
+// Touch devices have no hover, so the actions would be unreachable — keep them
+// visible there. (Keyboard users still reveal them via :focus-within above.)
+@media (hover: none) {
+  .msg__toolbar {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .msg__avatar {
   flex: 0 0 auto;
   margin-top: 2px;

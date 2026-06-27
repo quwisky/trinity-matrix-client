@@ -90,7 +90,7 @@ rest are reviewer findings worth confirming during the fix.
       a failed delete/reaction looks like a no-op. **Fix:** surface errors (Ionic
       `ToastController` / inline).
 
-- [ ] **Keyboard & touch accessibility largely absent app-wide** — no `:focus-visible`
+- [x] **Keyboard & touch accessibility largely absent app-wide** _(fixed)_ — no `:focus-visible`
       on any custom control (the `interactive-row` mixin defines only `:hover`;
       `.composer__input` does `outline: none`), and the message toolbar
       (reply/edit/delete/react) is hover-only with `pointer-events: none`
@@ -157,7 +157,7 @@ rest are reviewer findings worth confirming during the fix.
       mirror the setup page.
 - [ ] Reply-preview connector uses literal `gray`, not a token
       ([message-list.component.scss:121](../libs/feature-rooms/src/lib/message-list/message-list.component.scss#L121)).
-- [ ] No `prefers-reduced-motion` handling (smooth-scroll + transitions).
+- [x] No `prefers-reduced-motion` handling (smooth-scroll + transitions). _(fixed)_
 - [ ] No composer send button (Enter-only) — poor mobile discoverability.
 - [ ] `withBusy()` duplicated across login + both crypto pages — extract.
 - [ ] Editable-message predicate duplicated 3× in message-list — extract `isEditable(m)`.

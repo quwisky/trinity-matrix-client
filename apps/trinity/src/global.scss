@@ -34,3 +34,28 @@
 
 /* Trinity ships a Discord-style always-dark UI. */
 @import '@ionic/angular/css/palettes/dark.always.css';
+
+/*
+ * Keyboard-focus baseline. The custom Discord-style controls strip native
+ * outlines for the look, so guarantee a visible focus ring for keyboard users.
+ * Scoped to native focusable elements — Ionic web components manage their own
+ * focus inside shadow DOM and are unaffected.
+ */
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--trinity-accent);
+  outline-offset: 2px;
+}
+
+/* Respect users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
