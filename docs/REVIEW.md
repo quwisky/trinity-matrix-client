@@ -124,7 +124,7 @@ rest are reviewer findings worth confirming during the fix.
       [matrix-client.service.ts](../libs/core/src/lib/matrix/matrix-client.service.ts) /
       [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts). Prior account's key
       material persists on disk; clear it on `logout` (not plain `stop`).
-- [ ] **`window.confirm` for delete** —
+- [x] **`window.confirm` for delete** _(fixed)_ —
       [message-list.component.ts:208](../libs/feature-rooms/src/lib/message-list/message-list.component.ts#L208).
       Use Ionic `AlertController` for theme/consistency (the codebase already does elsewhere).
 - [x] **`encryption-setup` focus `effect()` fires on any dependency change** _(fixed)_ —
@@ -155,10 +155,10 @@ rest are reviewer findings worth confirming during the fix.
 - [x] Unlock recovery-key signal not cleared after success _(fixed)_
       ([encryption-unlock.page.ts](../libs/feature-crypto/src/lib/encryption-unlock/encryption-unlock.page.ts)) —
       mirror the setup page.
-- [ ] Reply-preview connector uses literal `gray`, not a token
+- [x] Reply-preview connector uses literal `gray`, not a token _(fixed)_
       ([message-list.component.scss:121](../libs/feature-rooms/src/lib/message-list/message-list.component.scss#L121)).
 - [x] No `prefers-reduced-motion` handling (smooth-scroll + transitions). _(fixed)_
-- [ ] No composer send button (Enter-only) — poor mobile discoverability.
+- [x] No composer send button (Enter-only) — poor mobile discoverability. _(fixed: touch-only send button)_
 - [ ] `withBusy()` duplicated across login + both crypto pages — extract.
 - [ ] Editable-message predicate duplicated 3× in message-list — extract `isEditable(m)`.
 - [ ] No Nx caching on `test` targets (`nx:run-commands`, no inputs/outputs).

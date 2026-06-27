@@ -62,6 +62,41 @@
   }
 }
 
+// Explicit send affordance for touch devices (Enter-to-send is unreliable on
+// mobile keyboards). Hidden on pointer devices, where Enter sends.
+.composer__send {
+  display: none;
+}
+
+@media (hover: none) {
+  .composer__send {
+    position: absolute;
+    right: 52px;
+    bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--trinity-accent);
+    font-size: 20px;
+    cursor: pointer;
+
+    &:disabled {
+      color: var(--trinity-text-muted);
+      cursor: default;
+    }
+  }
+
+  // Reserve room for both buttons so text never slides under them.
+  .composer__input {
+    padding-right: 84px;
+  }
+}
+
 .composer__input {
   width: 100%;
   box-sizing: border-box;

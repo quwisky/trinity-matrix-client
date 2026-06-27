@@ -39,4 +39,16 @@
   >
     <ion-icon name="happy-outline" aria-hidden="true" />
   </button>
+  <!-- Touch devices have no reliable Enter-to-send, so surface an explicit send
+       button there (hidden on pointer devices via CSS). -->
+  <button
+    type="button"
+    class="composer__send"
+    title="Send"
+    aria-label="Send message"
+    [disabled]="!text().trim()"
+    (click)="submit()"
+  >
+    <ion-icon name="send" aria-hidden="true" />
+  </button>
 </div>

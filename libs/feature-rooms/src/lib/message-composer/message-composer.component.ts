@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
-import { happyOutline } from 'ionicons/icons';
+import { happyOutline, send } from 'ionicons/icons';
 import { EmojiPickerComponent } from '../emoji-picker/emoji-picker.component';
 
 const MAX_HEIGHT_PX = 200;
@@ -45,7 +45,7 @@ export class MessageComposerComponent {
   private wasReplying = false;
 
   constructor() {
-    addIcons({ happyOutline });
+    addIcons({ happyOutline, send });
     // Focus the input when a reply is started.
     effect(() => {
       const replying = !!this.replyingTo();
@@ -84,6 +84,11 @@ export class MessageComposerComponent {
       return; // Shift+Enter → newline (default textarea behavior)
     }
     keyEvent.preventDefault();
+    this.submit();
+  }
+
+  /** Emit the current text (shared by Enter and the send button). */
+  submit(): void {
     const value = this.text().trim();
     if (!value) {
       return;

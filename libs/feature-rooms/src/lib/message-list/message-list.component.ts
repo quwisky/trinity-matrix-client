@@ -5,11 +5,13 @@ import {
   ElementRef,
   computed,
   effect,
+  inject,
   input,
   output,
   signal,
   viewChild,
 } from '@angular/core';
+import { AlertController } from '@ionic/angular/standalone';
 import { AvatarComponent } from '../avatar/avatar.component';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
@@ -69,6 +71,7 @@ export class MessageListComponent {
       '',
   );
 
+  private readonly alertCtrl = inject(AlertController);
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
   private lastId = '';
 
@@ -220,10 +223,20 @@ export class MessageListComponent {
     void navigator.clipboard?.writeText(row.body);
   }
 
-  onDelete(row: MessageRow): void {
-    if (window.confirm('Delete this message?')) {
-      this.deleteMessage.emit(row.id);
-    }
+  async onDelete(row: MessageRow): Promise<void> {
+    const alert = await this.alertCtrl.create({
+      header: 'Delete message',
+      message: 'Delete this message? This cannot be undone.',
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        {
+          text: 'Delete',
+          role: 'destructive',
+          handler: () => this.deleteMessage.emit(row.id),
+        },
+      ],
+    });
+    await alert.present();
   }
 
   /** Composer submit — routes to an edit or reply when active, else a new send. */
