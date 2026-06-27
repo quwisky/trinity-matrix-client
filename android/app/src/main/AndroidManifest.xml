@@ -22,6 +22,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- SSO deep link: eu.qwky.trinity://sso-callback?loginToken=… -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="eu.qwky.trinity" android:host="sso-callback" />
+            </intent-filter>
+
         </activity>
 
         <provider

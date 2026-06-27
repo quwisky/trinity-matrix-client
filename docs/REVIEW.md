@@ -115,7 +115,7 @@ rest are reviewer findings worth confirming during the fix.
       (device verification) and M8 (media) add more cross-feature UI, extract presentational
       pieces (avatar, emoji-picker, a dumb banner shell) into a `type:ui` lib and split
       container vs presentational components.
-- [x] **SSO `loginToken` left in the callback URL** _(fixed: stripped from the URL on entry via Location.replaceState. The state/nonce hardening is deliberately deferred to the native deep-link work: the web callback is already gated by the same-origin `sso.baseUrl` sessionStorage handshake an attacker can't write, and a homeserver round-trip nonce can't be validated headlessly without risking a login-path regression — so it lands when the native callback (the actual any-app-can-invoke vector) is wired)_ —
+- [x] **SSO `loginToken` left in the callback URL** _(fixed: stripped from the URL via Location.replaceState. The native deep-link callback is now wired (Capacitor `appUrlOpen` + system browser + iOS/Android scheme registration) and a single-use `sso_state` nonce is generated at `startSso` and verified on the callback — defending login CSRF / token injection on both web and native. Needs on-device validation for the native round-trip.)_ —
       [sso-callback.page.ts:51](../libs/feature-auth/src/lib/sso-callback/sso-callback.page.ts#L51).
       Strip it on entry (covers the error path) and set a `no-referrer` policy. Separately:
       the native deep-link path (`eu.qwky.trinity://`) needs state/nonce + baseUrl

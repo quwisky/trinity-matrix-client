@@ -9,6 +9,7 @@ import { SsoCallbackPage } from './sso-callback.page';
 function configure(opts: {
   auth: Partial<AuthService>;
   token: string | null;
+  state?: string | null;
   navigateByUrl?: ReturnType<typeof vi.fn>;
   replaceState?: ReturnType<typeof vi.fn>;
 }): {
@@ -28,7 +29,12 @@ function configure(opts: {
         useValue: {
           snapshot: {
             queryParamMap: {
-              get: (k: string) => (k === 'loginToken' ? opts.token : null),
+              get: (k: string) =>
+                k === 'loginToken'
+                  ? opts.token
+                  : k === 'sso_state'
+                    ? (opts.state ?? null)
+                    : null,
             },
           },
         },
@@ -41,12 +47,14 @@ function configure(opts: {
 describe('SsoCallbackPage', () => {
   beforeEach(() => sessionStorage.clear());
 
-  it('completes login, clears the token from storage + URL, and navigates', () => {
+  it('completes login when the state matches, clearing storage + URL', () => {
     sessionStorage.setItem('sso.baseUrl', 'https://hs.example');
+    sessionStorage.setItem('sso.state', 'NONCE');
     const completeSsoLogin = vi.fn(() => of({}));
     const { navigateByUrl, replaceState } = configure({
       auth: { completeSsoLogin } as unknown as AuthService,
       token: 'TOKEN',
+      state: 'NONCE',
     });
     const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
 
@@ -58,7 +66,42 @@ describe('SsoCallbackPage', () => {
       'TOKEN',
     );
     expect(sessionStorage.getItem('sso.baseUrl')).toBeNull();
+    expect(sessionStorage.getItem('sso.state')).toBeNull();
     expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });
+  });
+
+  it('rejects a callback whose state does not match the stored one', () => {
+    sessionStorage.setItem('sso.baseUrl', 'https://hs.example');
+    sessionStorage.setItem('sso.state', 'EXPECTED');
+    const completeSsoLogin = vi.fn();
+    configure({
+      auth: { completeSsoLogin } as unknown as AuthService,
+      token: 'TOKEN',
+      state: 'FORGED',
+    });
+    const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
+
+    cmp.ngOnInit();
+
+    expect(completeSsoLogin).not.toHaveBeenCalled();
+    expect(cmp.error()).toMatch(/could not be verified/i);
+    expect(sessionStorage.getItem('sso.state')).toBeNull(); // cleared on reject
+  });
+
+  it('rejects when no state was stored for this session', () => {
+    sessionStorage.setItem('sso.baseUrl', 'https://hs.example');
+    const completeSsoLogin = vi.fn();
+    configure({
+      auth: { completeSsoLogin } as unknown as AuthService,
+      token: 'TOKEN',
+      state: 'WHATEVER',
+    });
+    const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
+
+    cmp.ngOnInit();
+
+    expect(completeSsoLogin).not.toHaveBeenCalled();
+    expect(cmp.error()).toMatch(/could not be verified/i);
   });
 
   it('errors when the login token is missing', () => {
@@ -90,6 +133,7 @@ describe('SsoCallbackPage', () => {
 
   it('surfaces a completion error', () => {
     sessionStorage.setItem('sso.baseUrl', 'https://hs.example');
+    sessionStorage.setItem('sso.state', 'NONCE');
     const { navigateByUrl } = configure({
       auth: {
         completeSsoLogin: vi.fn(() =>
@@ -97,6 +141,7 @@ describe('SsoCallbackPage', () => {
         ),
       } as unknown as AuthService,
       token: 'TOKEN',
+      state: 'NONCE',
     });
     const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
 

@@ -141,9 +141,23 @@ LoginPage
   ─ getSupportedFlows(baseUrl) ─► loginFlows()           (show password / SSO)
   ─ loginWithPassword() ────────► client.login('m.login.password')
         └─ SessionStorage.save() ─► MatrixClientService.init() ─► /rooms
-  ─ startSso() ─► stash baseUrl in sessionStorage ─► redirect to homeserver SSO
-        └─ returns to /sso-callback?loginToken=… ─► completeSsoLogin() ─► /rooms
+  ─ startSso() ─► stash baseUrl + a single-use `sso.state` in sessionStorage ─►
+        open the homeserver SSO page (web: full-page redirect; native: the system
+        browser via @capacitor/browser, so the app's webview stays alive)
+        └─ homeserver returns to the redirectUrl with ?loginToken=…&sso_state=…
+           • web:    /sso-callback (Angular route)
+           • native: eu.qwky.trinity://sso-callback — the OS hands it to the running
+                     app; AppComponent's `appUrlOpen` listener parses it and routes
+                     to /sso-callback
+        └─ SsoCallbackPage verifies `sso_state` round-tripped, strips the token from
+           the URL, then completeSsoLogin() ─► /rooms
 ```
+
+> Native SSO uses a custom URL scheme registered in `ios/.../Info.plist`
+> (`CFBundleURLTypes`) and `android/.../AndroidManifest.xml` (a `VIEW` intent-filter).
+> The `sso.state` nonce defends against login CSRF / token injection — important on
+> native, where any app can invoke the `eu.qwky.trinity://` scheme. **Needs on-device
+> validation** (the round-trip can't be exercised headlessly).
 
 On app launch, `authGuard` calls `MatrixClientService.restore()`, which reloads the
 persisted session and re-runs the client lifecycle (including crypto).

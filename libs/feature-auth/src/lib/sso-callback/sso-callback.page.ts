@@ -51,12 +51,15 @@ export class SsoCallbackPage implements OnInit {
   readonly error = signal<string | null>(null);
 
   ngOnInit(): void {
-    const loginToken = this.route.snapshot.queryParamMap.get('loginToken');
+    const params = this.route.snapshot.queryParamMap;
+    const loginToken = params.get('loginToken');
+    const returnedState = params.get('sso_state');
     const baseUrl = sessionStorage.getItem('sso.baseUrl');
+    const expectedState = sessionStorage.getItem('sso.state');
 
-    // Strip the single-use token from the URL/history immediately so it can't
-    // leak via the address bar, browser history, or a Referer header — including
-    // on the error path below.
+    // Strip the single-use token + state from the URL/history immediately so they
+    // can't leak via the address bar, browser history, or a Referer header —
+    // including on the error paths below.
     if (loginToken) {
       this.location.replaceState('/sso-callback');
     }
@@ -68,17 +71,32 @@ export class SsoCallbackPage implements OnInit {
       return;
     }
 
+    // Verify the state we generated round-trips — rejects a forged/injected
+    // callback (login CSRF / token injection), notably via the native deep link.
+    if (!expectedState || returnedState !== expectedState) {
+      this.clearSsoSession();
+      this.error.set(
+        'This sign-in could not be verified. Please sign in again.',
+      );
+      return;
+    }
+
     this.auth
       .completeSsoLogin(baseUrl, loginToken)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
-          sessionStorage.removeItem('sso.baseUrl');
+          this.clearSsoSession();
           void this.router.navigateByUrl('/rooms', { replaceUrl: true });
         },
         error: (err) =>
           this.error.set(err instanceof Error ? err.message : String(err)),
       });
+  }
+
+  private clearSsoSession(): void {
+    sessionStorage.removeItem('sso.baseUrl');
+    sessionStorage.removeItem('sso.state');
   }
 
   back(): void {

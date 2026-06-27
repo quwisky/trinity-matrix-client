@@ -8,6 +8,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { Observable, map, switchMap } from 'rxjs';
 import {
   IonHeader,
@@ -94,13 +95,35 @@ export class LoginPage {
   startSso(): void {
     const baseUrl = this.baseUrl();
     if (!baseUrl) return;
-    // Stash the homeserver so the callback (a fresh app load) can complete login.
+    // Single-use state bound to this session; verified on the callback to prevent
+    // login CSRF / token injection (esp. on the native deep-link, which any app
+    // can invoke). Stashed alongside the homeserver for the returning callback.
+    const state = this.generateState();
     sessionStorage.setItem('sso.baseUrl', baseUrl);
-    // On web we return to /sso-callback; native deep-link wiring is a follow-up.
-    const redirect = Capacitor.isNativePlatform()
+    sessionStorage.setItem('sso.state', state);
+
+    const native = Capacitor.isNativePlatform();
+    const base = native
       ? 'eu.qwky.trinity://sso-callback'
       : `${window.location.origin}/sso-callback`;
-    window.location.href = this.auth.getSsoUrl(baseUrl, redirect);
+    const redirect = `${base}?sso_state=${encodeURIComponent(state)}`;
+    const ssoUrl = this.auth.getSsoUrl(baseUrl, redirect);
+
+    if (native) {
+      // Open the system browser so the app's webview — and the appUrlOpen
+      // listener in AppComponent — stay alive; the homeserver redirects back via
+      // the eu.qwky.trinity:// scheme, which the OS hands to the running app.
+      void Browser.open({ url: ssoUrl });
+    } else {
+      window.location.href = ssoUrl;
+    }
+  }
+
+  /** A random, single-use SSO state token (hex). */
+  private generateState(): string {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   }
 
   /** Wrap a one-shot action with shared busy/error handling. */

@@ -94,4 +94,24 @@ describe('LoginPage', () => {
     expect(cmp.error()).toBe('bad creds');
     expect(navigateByUrl).not.toHaveBeenCalled();
   });
+
+  it('starts SSO with a state nonce stashed and bound to the callback redirect', () => {
+    sessionStorage.clear();
+    const getSsoUrl = vi.fn(
+      () => 'https://hs.example/_matrix/sso?redirectUrl=x',
+    );
+    configure({ getSsoUrl } as unknown as AuthService);
+    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.startSso();
+
+    const state = sessionStorage.getItem('sso.state');
+    expect(sessionStorage.getItem('sso.baseUrl')).toBe('https://hs.example');
+    expect(state).toBeTruthy();
+    // The state round-trips via the redirect URL handed to the homeserver.
+    const redirect = getSsoUrl.mock.calls[0][1] as string;
+    expect(redirect).toContain('/sso-callback?sso_state=');
+    expect(redirect).toContain(state!);
+  });
 });
