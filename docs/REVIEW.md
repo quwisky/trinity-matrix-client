@@ -115,7 +115,7 @@ rest are reviewer findings worth confirming during the fix.
       (device verification) and M8 (media) add more cross-feature UI, extract presentational
       pieces (avatar, emoji-picker, a dumb banner shell) into a `type:ui` lib and split
       container vs presentational components.
-- [ ] **SSO `loginToken` left in the callback URL** —
+- [x] **SSO `loginToken` left in the callback URL** _(fixed: stripped from the URL on entry via Location.replaceState; native deep-link state/nonce hardening remains a follow-up, latent until that path is wired)_ —
       [sso-callback.page.ts:51](../libs/feature-auth/src/lib/sso-callback/sso-callback.page.ts#L51).
       Strip it on entry (covers the error path) and set a `no-referrer` policy. Separately:
       the native deep-link path (`eu.qwky.trinity://`) needs state/nonce + baseUrl
@@ -149,7 +149,7 @@ rest are reviewer findings worth confirming during the fix.
 - [ ] Decryption-failure & redacted messages need a clearer, labeled accessible
       treatment (reuse the `.warning` pattern); link decryption failures to
       `/encryption/unlock`.
-- [ ] `escapeHtml` doesn't escape single quotes
+- [x] `escapeHtml` doesn't escape single quotes _(fixed)_
       ([timeline.service.ts:569](../libs/core/src/lib/matrix/timeline.service.ts#L569)) —
       harmless today (double-quoted attrs) but add for robustness.
 - [x] Unlock recovery-key signal not cleared after success _(fixed)_

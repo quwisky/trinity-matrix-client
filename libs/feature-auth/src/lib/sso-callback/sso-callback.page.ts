@@ -6,6 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { Location } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -43,6 +44,7 @@ export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly location = inject(Location);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly error = signal<string | null>(null);
@@ -50,6 +52,13 @@ export class SsoCallbackPage implements OnInit {
   ngOnInit(): void {
     const loginToken = this.route.snapshot.queryParamMap.get('loginToken');
     const baseUrl = sessionStorage.getItem('sso.baseUrl');
+
+    // Strip the single-use token from the URL/history immediately so it can't
+    // leak via the address bar, browser history, or a Referer header — including
+    // on the error path below.
+    if (loginToken) {
+      this.location.replaceState('/sso-callback');
+    }
 
     if (!loginToken || !baseUrl) {
       this.error.set(
