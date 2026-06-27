@@ -15,6 +15,7 @@ import { AlertController } from '@ionic/angular/standalone';
 import { AvatarComponent, MessageToolbarComponent } from '@trinity/ui';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
+import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
 import type { MessageView } from '@trinity/core';
 
 interface MessageRow extends MessageView {
@@ -38,6 +39,7 @@ const MAX_BACKFILL_ROUNDS = 20;
   imports: [
     AvatarComponent,
     DatePipe,
+    MediaAttachmentComponent,
     MessageComposerComponent,
     MessageReactionsComponent,
     MessageToolbarComponent,
@@ -217,9 +219,15 @@ export class MessageListComponent {
       ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
-  /** A message the current user can still edit (own, confirmed, not redacted/failed). */
+  /** A message the current user can still edit (own, confirmed, text — not media). */
   isEditable(m: MessageView): boolean {
-    return m.isOwn && !m.status && !m.decryptionFailed && m.kind !== 'redacted';
+    return (
+      m.isOwn &&
+      !m.status &&
+      !m.decryptionFailed &&
+      m.kind !== 'redacted' &&
+      !m.media
+    );
   }
 
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */

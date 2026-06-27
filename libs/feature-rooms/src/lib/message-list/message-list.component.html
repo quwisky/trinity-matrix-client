@@ -50,7 +50,9 @@
               <span class="msg__edited">(edited)</span>
             }
           </div>
-          @if (row.html) {
+          @if (row.media) {
+            <trn-media-attachment class="msg__media" [media]="row.media" />
+          } @else if (row.html) {
             <div class="msg__text msg__text--html" [innerHTML]="row.html"></div>
           } @else {
             <p class="msg__text">{{ row.body }}</p>
@@ -65,7 +67,9 @@
       } @else {
         <span class="msg__gutter">{{ row.timestamp | date: 'shortTime' }}</span>
         <div class="msg__body">
-          @if (row.html) {
+          @if (row.media) {
+            <trn-media-attachment class="msg__media" [media]="row.media" />
+          } @else if (row.html) {
             <div
               class="msg__text msg__text--cont msg__text--html"
               [innerHTML]="row.html"

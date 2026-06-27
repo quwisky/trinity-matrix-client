@@ -29,6 +29,7 @@ import {
   AuthService,
   CryptoService,
   MatrixClientService,
+  MediaService,
   RoomsService,
   TimelineService,
 } from '@trinity/core';
@@ -67,6 +68,7 @@ import { EncryptionBannerComponent } from '../encryption-banner/encryption-banne
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);
   readonly timeline = inject(TimelineService);
+  private readonly media = inject(MediaService);
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
   private readonly auth = inject(AuthService);
@@ -139,6 +141,7 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.timeline.close();
+    this.media.releaseAll();
   }
 
   onSelectSpace(id: string | null): void {
@@ -146,6 +149,8 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   onSelectRoom(id: string): void {
+    // Drop the previous room's resolved media URLs before switching timelines.
+    this.media.releaseAll();
     this.activeRoomId.set(id);
     this.timeline.open(id);
     void this.menu.close(); // collapse the drawer on mobile (fire-and-forget)
