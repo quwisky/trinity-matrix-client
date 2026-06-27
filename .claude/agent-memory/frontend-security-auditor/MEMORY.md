@@ -1,0 +1,2 @@
+- [Secret & token storage patterns](secret-token-storage.md) — where session tokens and 4S recovery keys live and how they're zeroed
+- [Crypto bootstrap UI trust model](crypto-bootstrap-ui.md) — recovery-key/password lifetime conventions in feature-crypto + authGuard scope

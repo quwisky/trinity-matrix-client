@@ -1,0 +1,1 @@
+- [Architecture Overview](architecture_overview.md) — Nx + Angular 20 + Ionic 8 standalone; core-service signals/Observables pattern, feature-lib conventions, Vitest+TestBed, theming tokens
