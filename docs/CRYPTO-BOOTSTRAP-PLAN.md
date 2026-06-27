@@ -1,19 +1,20 @@
 # Milestone 3 — Crypto Bootstrap: Implementation Plan
 
-> Status: **core landed; UI in progress.** The `@trinity/core` services
-> (`SecretStorageKeyService` + `CryptoService`, with the `cryptoCallbacks` wired into
-> the client lifecycle) are implemented and tested; the setup/recovery UI and the
-> `/rooms` encryption banner are still to build. Device-to-device verification UI
-> (emoji SAS / QR) is Milestone 7 and out of scope here.
+> Status: **complete.** The `@trinity/core` services (`SecretStorageKeyService` +
+> `CryptoService`, with the `cryptoCallbacks` wired into the client lifecycle) and the
+> `@trinity/feature-crypto` setup/recovery UI + `/rooms` encryption banner are all
+> implemented and tested. Device-to-device verification UI (emoji SAS / QR) is
+> Milestone 7 and out of scope here.
 
 ## Implementation status
 
-| Part                                                  | State                              |
-| ----------------------------------------------------- | ---------------------------------- |
-| `getSecretStorageKey` callback + in-memory key holder | ✅ `secret-storage-key.service.ts` |
-| `CryptoService` — status signals, setup, recovery     | ✅ `crypto.service.ts`             |
-| `feature-crypto` UI — setup + recovery pages          | ⬜ next                            |
-| Encryption banner on `/rooms`                         | ⬜                                 |
+| Part                                                  | State                                                  |
+| ----------------------------------------------------- | ------------------------------------------------------ |
+| `getSecretStorageKey` callback + in-memory key holder | ✅ `secret-storage-key.service.ts`                     |
+| `CryptoService` — status signals, setup, recovery     | ✅ `crypto.service.ts`                                 |
+| `feature-crypto` UI — setup + recovery pages          | ✅ `encryption-{setup,unlock}.page.ts`                 |
+| Recovery-key display (copy / download)                | ✅ `recovery-key-display.component.ts`                 |
+| Encryption banner on `/rooms`                         | ✅ `encryption-banner.component.ts` (in feature-rooms) |
 
 **Decisions made during implementation (deviations from the draft below):**
 
@@ -33,6 +34,22 @@
   convention), not `*Store`.
 - **Deferred:** `connect()` doesn't re-bind after logout→login (shared
   permanent-`connected` pattern with `RoomsService`; a separate reconnect refactor).
+
+**UI-phase decisions:**
+
+- **Banner lives in `feature-rooms`, not `feature-crypto`** — the Nx module boundary
+  (`type:feature` → only `type:core`) forbids a feature→feature dep, so the banner can't
+  sit in `feature-crypto` and be imported by rooms. It reads `CryptoService.status` from
+  core directly instead.
+- **Unlock is key-only** — `setUp` provisions a random recovery key, so the unlock page
+  exposes only the recovery-key field; `recoverWithPassphrase` stays available in core but
+  has no UI yet.
+- **Recovery key shown once, in-memory only** — held in a component signal, dropped on
+  continue; copy via `navigator.clipboard`, download via Blob+`<a download>` (web only;
+  object URL revoked in a `finally`); a visually-hidden live region announces outcomes.
+- **Spec alias resolution** — `vite-tsconfig-paths` doesn't crawl spec tsconfigs, so value
+  imports of `@trinity/*` from `*.spec.ts` didn't resolve. The feature vite configs now
+  pass `projects: ['tsconfig.base.json']` so the workspace path aliases apply to specs.
 
 ## What's already done vs. what this milestone adds
 

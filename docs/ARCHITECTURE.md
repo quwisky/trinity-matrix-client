@@ -123,12 +123,14 @@ forwards composer/toolbar actions to `TimelineService`.
 
 Defined in [app.routes.ts](../apps/trinity/src/app/app.routes.ts), all lazy-loaded standalone:
 
-| Path            | Page                               | Guard       |
-| --------------- | ---------------------------------- | ----------- |
-| `/login`        | login                              | —           |
-| `/sso-callback` | SSO token exchange                 | —           |
-| `/rooms`        | Discord-style room shell (default) | `authGuard` |
-| `/spike`        | dev E2EE crypto spike              | —           |
+| Path                 | Page                               | Guard       |
+| -------------------- | ---------------------------------- | ----------- |
+| `/login`             | login                              | —           |
+| `/sso-callback`      | SSO token exchange                 | —           |
+| `/rooms`             | Discord-style room shell (default) | `authGuard` |
+| `/encryption/setup`  | first-device encryption setup      | `authGuard` |
+| `/encryption/unlock` | new-device recovery / unlock       | `authGuard` |
+| `/spike`             | dev E2EE crypto spike              | —           |
 
 ## Authentication flow
 
@@ -196,9 +198,25 @@ Decisions:
   (`CryptoApi`, `CryptoEvent`, `decodeRecoveryKey`, …) are not re-exported from the
   package root in 41.x.
 
-> The setup/recovery **UI** (a `feature-crypto` lib + an encryption banner on `/rooms`)
-> is still to come; these services are the layer it drives. See
-> [CRYPTO-BOOTSTRAP-PLAN.md](CRYPTO-BOOTSTRAP-PLAN.md).
+### Setup/recovery UI
+
+The `@trinity/feature-crypto` lib drives the two flows above:
+
+- **`EncryptionSetupPage`** (`/encryption/setup`) — runs `setUp`, answering the UIA
+  password challenge via an Ionic alert, then shows the recovery key **once** behind an
+  "I've saved it" confirm gate. The key lives only in a component signal (never persisted)
+  and is dropped on continue.
+- **`EncryptionUnlockPage`** (`/encryption/unlock`) — a recovery-key field that calls
+  `recoverWithKey` (key-only; Trinity provisions a random key, so there's no passphrase UI).
+- **`RecoveryKeyDisplayComponent`** — presentational; renders the key with copy
+  (`navigator.clipboard`) and download (Blob + `<a download>`, hidden on native, object URL
+  revoked in a `finally`). Outcomes are announced via a visually-hidden live region.
+
+The **encryption banner** lives in `feature-rooms` (not `feature-crypto`) because the Nx
+module boundary forbids feature→feature deps; it reads `CryptoService.status` from
+`@trinity/core` and links to setup/unlock. It's non-blocking — login/SSO still land on
+`/rooms`, and the banner only nudges when crypto isn't `ready`. See
+[CRYPTO-BOOTSTRAP-PLAN.md](CRYPTO-BOOTSTRAP-PLAN.md).
 
 ## Native shells
 

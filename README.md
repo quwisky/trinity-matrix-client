@@ -8,9 +8,10 @@ End-to-end encryption is a first-class, in-MVP feature.
 
 > Status: **early development.** Scaffold, native platforms, the E2EE crypto spike,
 > authentication, a Discord-style room shell, and a working **timeline — read, send,
-> edit, delete, react, reply, markdown, and emoji** — are done. **Crypto-bootstrap
-> services** (cross-signing, key backup, recovery) are now in place; the setup/recovery
-> UI and device verification are next. See [Project status](#project-status) below.
+> edit, delete, react, reply, markdown, and emoji** — are done. **Crypto bootstrap**
+> (cross-signing, key backup, recovery) is now complete end to end — core services plus
+> the setup/recovery UI and a non-blocking `/rooms` encryption banner. Device-to-device
+> verification (emoji SAS / QR) is next. See [Project status](#project-status) below.
 
 ## Documentation
 
@@ -88,7 +89,9 @@ libs/
   feature-rooms/      @trinity/feature-rooms — Discord-style shell (server rail =
                       Spaces, channel list, members) + message timeline (list,
                       composer + emoji picker, hover toolbar, reactions, replies)
-                      wired to synced rooms  [type:feature]
+                      + encryption banner, wired to synced rooms  [type:feature]
+  feature-crypto/     @trinity/feature-crypto — encryption setup + recovery pages
+                      with one-time recovery-key display  [type:feature]
 e2e/                  headless validation harnesses (serve www/)
 android/ ios/         Capacitor native projects (webDir: www)
 www/                  web build output
@@ -102,17 +105,17 @@ needed. Each component/page lives in its own directory
 
 ## Project status
 
-| Milestone                                        | State                                                                     |
-| ------------------------------------------------ | ------------------------------------------------------------------------- |
-| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md))         |
-| 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                        |
-| 3 — Crypto bootstrap (cross-signing, key backup) | 🚧 Core services done (bootstrap + recovery); setup/recovery UI next      |
-| 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock    |
-| 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history           |
-| 6 — Compose (send)                               | ✅ Done — send/edit/delete, reactions, replies, emoji, local echo + retry |
-| 7 — Device verification UI                       | ⬜                                                                        |
-| 8 — Media                                        | ⬜                                                                        |
-| 9 — MVP polish                                   | ⬜                                                                        |
+| Milestone                                        | State                                                                          |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md))              |
+| 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                             |
+| 3 — Crypto bootstrap (cross-signing, key backup) | ✅ Done — core services + setup/recovery UI and a non-blocking `/rooms` banner |
+| 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock         |
+| 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history                |
+| 6 — Compose (send)                               | ✅ Done — send/edit/delete, reactions, replies, emoji, local echo + retry      |
+| 7 — Device verification UI                       | ⬜                                                                             |
+| 8 — Media                                        | ⬜                                                                             |
+| 9 — MVP polish                                   | ⬜                                                                             |
 
 Full breakdown in [PLAN.md](PLAN.md).
 
