@@ -9,9 +9,10 @@ roadmap see [../PLAN.md](../PLAN.md); for dependency specifics see [../STACK.md]
    services in `@trinity/core` (`libs/core/src/lib/matrix/`). This keeps the SDK
    swappable and the UI testable.
 2. **`@trinity/core` is framework-of-the-app logic**, the `@trinity/feature-*` libs are
-   screens, future shared UI becomes its own lib. Dependencies point inward:
-   `feature-* → core`, never the reverse — enforced by `@nx/enforce-module-boundaries`
-   (project `tags` in each `project.json`).
+   screens, and `@trinity/ui` holds reusable presentational components (no state/SDK
+   deps). Dependencies point inward: `feature-* → {core, ui}` and `ui → ui` only,
+   never the reverse — enforced by `@nx/enforce-module-boundaries` (project `tags` in
+   each `project.json`).
 3. **Reactive state is exposed as Angular signals.** SDK `EventEmitter` streams are
    bridged into signals inside the core services, so components stay zone-friendly
    and change detection is cheap. Services expose state as read-only signals
@@ -21,13 +22,13 @@ roadmap see [../PLAN.md](../PLAN.md); for dependency specifics see [../STACK.md]
    with `takeUntilDestroyed`. Signals are for state, Observables for one-shot actions.
 
 ```
-feature-* libs (pages)     shared libs (ui, pipes)
-        \                  /
-         v                v
-        @trinity/core (services, guards)
-                   |
-                   v
-            matrix-js-sdk + crypto WASM
+            @trinity/feature-* (pages, containers)
+              /                              \
+             v                                v
+    @trinity/ui                      @trinity/core (services, guards)
+  (presentational)                            |
+                                              v
+                                     matrix-js-sdk + crypto WASM
 ```
 
 ## @trinity/core — matrix

@@ -11,7 +11,7 @@ import {
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { happyOutline, send } from 'ionicons/icons';
-import { EmojiPickerComponent } from '../emoji-picker/emoji-picker.component';
+import { EmojiPickerComponent } from '@trinity/ui';
 
 const MAX_HEIGHT_PX = 200;
 

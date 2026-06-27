@@ -93,14 +93,16 @@ libs/
                       + encryption banner, wired to synced rooms  [type:feature]
   feature-crypto/     @trinity/feature-crypto — encryption setup + recovery pages
                       with one-time recovery-key display  [type:feature]
+  ui/                 @trinity/ui — reusable presentational components (avatar,
+                      emoji picker, message toolbar); no core/state deps  [type:ui]
 e2e/                  headless validation harnesses (serve www/)
 android/ ios/         Capacitor native projects (webDir: www)
 www/                  web build output
 ```
 
-Boundaries: features may depend on `core`; `core` depends on nothing; the app
-may depend on anything. New shared UI / chat / settings become libs when first
-needed. Each component/page lives in its own directory
+Boundaries: features may depend on `core` and `ui`; `ui` is presentational-only
+(no `core`/state deps); `core` depends on nothing; the app may depend on anything.
+New shared chat / settings libs are added when first needed. Each component/page lives in its own directory
 (`name/name.component.ts` + `.html`/`.scss`/`.spec.ts`). See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the rationale and data flow.
 

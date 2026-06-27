@@ -30,15 +30,24 @@ export default defineConfig([
             },
             {
               sourceTag: 'type:app',
-              onlyDependOnLibsWithTags: ['type:feature', 'type:core'],
+              onlyDependOnLibsWithTags: [
+                'type:feature',
+                'type:core',
+                'type:ui',
+              ],
             },
             {
               sourceTag: 'type:feature',
-              onlyDependOnLibsWithTags: ['type:core'],
+              onlyDependOnLibsWithTags: ['type:core', 'type:ui'],
             },
             {
               sourceTag: 'type:core',
               onlyDependOnLibsWithTags: ['type:core'],
+            },
+            {
+              // Presentational-only: no state/services, so no core dependency.
+              sourceTag: 'type:ui',
+              onlyDependOnLibsWithTags: ['type:ui'],
             },
           ],
         },

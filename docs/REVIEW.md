@@ -110,7 +110,7 @@ rest are reviewer findings worth confirming during the fix.
       from the core barrel ([index.ts](../libs/core/src/index.ts)). Gate behind
       `environment.production` (the app already has fileReplacements) or remove now that
       crypto is real; drop the spike service + `crypto-wasm-loader` from the barrel.
-- [ ] **Missing `type:ui` shared layer** — `EncryptionBannerComponent` is exiled into
+- [x] **Missing `type:ui` shared layer** _(fixed: added `@trinity/ui` (avatar, emoji-picker, message-toolbar) + boundary rules `feature→[core,ui]`, `ui→[ui]`; the encryption-banner stays a thin container in feature-rooms and can adopt a dumb `ui` shell when a second consumer appears)_ — `EncryptionBannerComponent` is exiled into
       feature-rooms because feature→feature deps are banned; that's the canary. Before M7
       (device verification) and M8 (media) add more cross-feature UI, extract presentational
       pieces (avatar, emoji-picker, a dumb banner shell) into a `type:ui` lib and split

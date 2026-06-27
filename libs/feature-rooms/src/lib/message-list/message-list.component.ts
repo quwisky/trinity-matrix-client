@@ -12,10 +12,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { AlertController } from '@ionic/angular/standalone';
-import { AvatarComponent } from '../avatar/avatar.component';
+import { AvatarComponent, MessageToolbarComponent } from '@trinity/ui';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
-import { MessageToolbarComponent } from '../message-toolbar/message-toolbar.component';
 import type { MessageView } from '@trinity/core';
 
 interface MessageRow extends MessageView {
