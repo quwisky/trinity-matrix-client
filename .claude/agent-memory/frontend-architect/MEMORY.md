@@ -1,1 +1,2 @@
 - [Architecture Overview](architecture_overview.md) — Nx + Angular 20 + Ionic 8 standalone; core-service signals/Observables pattern, feature-lib conventions, Vitest+TestBed, theming tokens
+- [SDK Verification API](sdk-verification-api.md) — matrix-js-sdk 41.x SAS/QR verification symbols verified for M7 (VerificationService); no QR/camera deps installed
