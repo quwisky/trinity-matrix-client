@@ -27,6 +27,7 @@ import { AuthService } from '@trinity/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <ion-content class="ion-padding ion-text-center">
+      <h1 class="sr-only">Completing sign in</h1>
       @if (error(); as e) {
         <p>
           <ion-text color="danger">{{ e }}</ion-text>

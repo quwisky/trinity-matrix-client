@@ -29,7 +29,9 @@
         </ion-buttons>
         <ion-title>
           @if (activeRoom(); as room) {
-            <span class="title-hash">#</span>{{ room.name }}
+            <span role="heading" aria-level="1">
+              <span class="title-hash">#</span>{{ room.name }}
+            </span>
             @if (room.encrypted) {
               <ion-icon
                 class="title-lock"

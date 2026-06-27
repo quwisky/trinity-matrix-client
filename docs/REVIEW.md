@@ -142,14 +142,15 @@ rest are reviewer findings worth confirming during the fix.
 
 ## 🟢 Low / polish
 
-- [ ] No `<h1>` / heading hierarchy on login and the active-chat view (crypto pages do
-      it right).
+- [x] No `<h1>` / heading hierarchy on login and the active-chat view _(fixed: sr-only
+      h1 on login + sso-callback; the room name is a `role="heading"` level-1)_.
 - [x] Busy/loading states not announced (`aria-live`) _(fixed for login + crypto
       pages via `role="status"`; announcing new incoming messages in the timeline
       remains a follow-up)_.
-- [ ] Decryption-failure & redacted messages need a clearer, labeled accessible
-      treatment (reuse the `.warning` pattern); link decryption failures to
-      `/encryption/unlock`.
+- [x] Decryption-failure & redacted messages need a clearer, labeled accessible
+      treatment _(fixed: bordered container with an accent rule; the text label
+      already names the state. Linking failures to `/encryption/unlock` remains a
+      follow-up)_.
 - [x] `escapeHtml` doesn't escape single quotes _(fixed)_
       ([timeline.service.ts:569](../libs/core/src/lib/matrix/timeline.service.ts#L569)) —
       harmless today (double-quoted attrs) but add for robustness.
@@ -162,9 +163,10 @@ rest are reviewer findings worth confirming during the fix.
 - [x] No composer send button (Enter-only) — poor mobile discoverability. _(fixed: touch-only send button)_
 - [ ] `withBusy()` duplicated across login + both crypto pages — extract.
 - [ ] Editable-message predicate duplicated 3× in message-list — extract `isEditable(m)`.
-- [ ] No Nx caching on `test` targets (`nx:run-commands`, no inputs/outputs).
-- [ ] Run `pnpm audit` (couldn't run in a read-only pass) to triage `matrix-js-sdk` /
-      `marked` / transitive advisories.
+- [x] ~~No Nx caching on `test` targets~~ _(non-issue: `nx.json` `targetDefaults`
+      already caches `test`/`build`/`lint` with inputs — the per-project targets
+      inherit it)_.
+- [x] Run `pnpm audit` _(done: `pnpm audit --prod` reports no known vulnerabilities)_.
 
 ## Needs human visual verification
 

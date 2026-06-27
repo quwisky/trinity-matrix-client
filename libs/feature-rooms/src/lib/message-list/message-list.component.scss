@@ -183,8 +183,15 @@
   flex: 1;
 }
 
+// Decryption-failure / redacted fallback: a distinct bordered container so the
+// state is perceivable, not just italic-muted text that blends into the timeline.
 .msg--failed .msg__text {
-  color: var(--trinity-text-muted);
+  display: inline-block;
+  padding: 8px 12px;
+  border-left: 3px solid var(--trinity-accent);
+  border-radius: 4px;
+  background: var(--trinity-sidebar);
+  color: var(--trinity-text);
   font-style: italic;
 }
 
