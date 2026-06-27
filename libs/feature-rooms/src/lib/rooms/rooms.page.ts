@@ -25,6 +25,7 @@ import { addIcons } from 'ionicons';
 import { lockClosed } from 'ionicons/icons';
 import {
   AuthService,
+  CryptoService,
   MatrixClientService,
   RoomsService,
   TimelineService,
@@ -33,6 +34,7 @@ import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
 import { MessageListComponent } from '../message-list/message-list.component';
+import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -57,12 +59,14 @@ import { MessageListComponent } from '../message-list/message-list.component';
     ChannelSidebarComponent,
     MemberListComponent,
     MessageListComponent,
+    EncryptionBannerComponent,
   ],
 })
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);
   readonly timeline = inject(TimelineService);
   private readonly matrix = inject(MatrixClientService);
+  private readonly crypto = inject(CryptoService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly menu = inject(MenuController);
@@ -127,6 +131,7 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.rooms.connect();
+    this.crypto.connect();
   }
 
   ngOnDestroy(): void {
