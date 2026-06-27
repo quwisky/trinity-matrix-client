@@ -69,11 +69,19 @@ export class EncryptionSetupPage {
   /** The "Save your recovery key" heading, focused when the key is revealed. */
   private readonly savedHeading =
     viewChild<ElementRef<HTMLElement>>('savedHeading');
+  private hasFocusedSavedHeading = false;
 
   constructor() {
-    // Move focus to the heading when the recovery key appears, so keyboard and
-    // screen-reader users land on the critical "save this now" content.
-    effect(() => this.savedHeading()?.nativeElement.focus());
+    // Move focus to the heading once, when the recovery key first appears, so
+    // keyboard and screen-reader users land on the critical "save this now"
+    // content — without stealing focus again if the view later re-evaluates.
+    effect(() => {
+      const heading = this.savedHeading();
+      if (heading && !this.hasFocusedSavedHeading) {
+        this.hasFocusedSavedHeading = true;
+        heading.nativeElement.focus();
+      }
+    });
   }
 
   /** Kick off cross-signing + secret-storage + key-backup bootstrap. */

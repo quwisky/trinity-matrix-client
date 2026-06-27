@@ -127,7 +127,7 @@ rest are reviewer findings worth confirming during the fix.
 - [ ] **`window.confirm` for delete** —
       [message-list.component.ts:208](../libs/feature-rooms/src/lib/message-list/message-list.component.ts#L208).
       Use Ionic `AlertController` for theme/consistency (the codebase already does elsewhere).
-- [ ] **`encryption-setup` focus `effect()` fires on any dependency change** —
+- [x] **`encryption-setup` focus `effect()` fires on any dependency change** _(fixed)_ —
       [encryption-setup.page.ts:73-77](../libs/feature-crypto/src/lib/encryption-setup/encryption-setup.page.ts#L73-L77).
       Guard to a one-shot so it can't steal focus mid-interaction.
 - [x] **vite-tsconfig-paths drift** _(fixed)_ — core's
@@ -152,7 +152,7 @@ rest are reviewer findings worth confirming during the fix.
 - [ ] `escapeHtml` doesn't escape single quotes
       ([timeline.service.ts:569](../libs/core/src/lib/matrix/timeline.service.ts#L569)) —
       harmless today (double-quoted attrs) but add for robustness.
-- [ ] Unlock recovery-key signal not cleared after success
+- [x] Unlock recovery-key signal not cleared after success _(fixed)_
       ([encryption-unlock.page.ts](../libs/feature-crypto/src/lib/encryption-unlock/encryption-unlock.page.ts)) —
       mirror the setup page.
 - [ ] Reply-preview connector uses literal `gray`, not a token

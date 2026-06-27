@@ -30,6 +30,7 @@ describe('EncryptionUnlockPage', () => {
 
     expect(recoverWithKey).toHaveBeenCalledWith('my-key');
     expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });
+    expect(fixture.componentInstance.recoveryKey()).toBe(''); // cleared from memory
   });
 
   it('does nothing for a blank key', () => {

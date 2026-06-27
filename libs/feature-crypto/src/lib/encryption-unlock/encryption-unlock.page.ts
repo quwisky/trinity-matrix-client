@@ -64,6 +64,7 @@ export class EncryptionUnlockPage {
       return;
     }
     this.withBusy(this.crypto.recoverWithKey(key)).subscribe(() => {
+      this.recoveryKey.set(''); // drop the key from memory once it's been used
       void this.router.navigateByUrl('/rooms', { replaceUrl: true });
     });
   }
