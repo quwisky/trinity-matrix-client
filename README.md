@@ -22,6 +22,7 @@ End-to-end encryption is a first-class, in-MVP feature.
 | [SPIKE.md](SPIKE.md)                         | E2EE crypto WASM validation results (the gating risk)    |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organized and how data flows             |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)   | Setup, running, testing, troubleshooting                 |
+| [docs/REVIEW.md](docs/REVIEW.md)             | Whole-codebase review findings (2026-06-27)              |
 
 ## Tech stack
 
