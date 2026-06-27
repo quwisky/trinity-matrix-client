@@ -115,7 +115,7 @@ rest are reviewer findings worth confirming during the fix.
       (device verification) and M8 (media) add more cross-feature UI, extract presentational
       pieces (avatar, emoji-picker, a dumb banner shell) into a `type:ui` lib and split
       container vs presentational components.
-- [x] **SSO `loginToken` left in the callback URL** _(fixed: stripped from the URL on entry via Location.replaceState; native deep-link state/nonce hardening remains a follow-up, latent until that path is wired)_ —
+- [x] **SSO `loginToken` left in the callback URL** _(fixed: stripped from the URL on entry via Location.replaceState. The state/nonce hardening is deliberately deferred to the native deep-link work: the web callback is already gated by the same-origin `sso.baseUrl` sessionStorage handshake an attacker can't write, and a homeserver round-trip nonce can't be validated headlessly without risking a login-path regression — so it lands when the native callback (the actual any-app-can-invoke vector) is wired)_ —
       [sso-callback.page.ts:51](../libs/feature-auth/src/lib/sso-callback/sso-callback.page.ts#L51).
       Strip it on entry (covers the error path) and set a `no-referrer` policy. Separately:
       the native deep-link path (`eu.qwky.trinity://`) needs state/nonce + baseUrl
@@ -150,8 +150,11 @@ rest are reviewer findings worth confirming during the fix.
       via a polite live region)_.
 - [x] Decryption-failure & redacted messages need a clearer, labeled accessible
       treatment _(fixed: bordered container with an accent rule; the text label
-      already names the state. Linking failures to `/encryption/unlock` remains a
-      follow-up)_.
+      already names the state. Per-message "verify this device" links were
+      deliberately **not** added: the persistent `/rooms` encryption banner already
+      surfaces that CTA exactly when it helps — `needs-recovery` — whereas a
+      `ready`-status decryption failure means missing keys, not an untrusted device,
+      so linking to unlock there would mislead.)_.
 - [x] `escapeHtml` doesn't escape single quotes _(fixed)_
       ([timeline.service.ts:569](../libs/core/src/lib/matrix/timeline.service.ts#L569)) —
       harmless today (double-quoted attrs) but add for robustness.
