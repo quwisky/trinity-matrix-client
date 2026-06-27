@@ -78,7 +78,20 @@ async function ensureConfig() {
 
   // Patch idempotently: only append blocks we haven't added yet.
   const additions = [];
-  if (!yaml.includes('registration_shared_secret:')) {
+  // Synapse's `generate` emits a *random* registration_shared_secret into the
+  // config (since ~v1.119), so we can't just append ours — register_new_matrix_user
+  // would compute its HMAC with our secret while Synapse validates against the
+  // random one (403 "HMAC incorrect"). Force our known secret: replace the
+  // generated line in place if present, otherwise append it below.
+  let replacedSecret = false;
+  if (/^registration_shared_secret:.*$/m.test(yaml)) {
+    const next = yaml.replace(
+      /^registration_shared_secret:.*$/m,
+      `registration_shared_secret: "${REGISTRATION_SHARED_SECRET}"`,
+    );
+    replacedSecret = next !== yaml;
+    yaml = next;
+  } else {
     additions.push(
       `registration_shared_secret: "${REGISTRATION_SHARED_SECRET}"`,
     );
@@ -110,6 +123,8 @@ async function ensureConfig() {
 
   if (additions.length) {
     yaml += `\n\n# === appended by e2e/synapse/start.mjs ===\n${additions.join('\n')}\n`;
+  }
+  if (additions.length || replacedSecret) {
     await writeFile(CONFIG, yaml, 'utf8');
     log('patched homeserver.yaml (shared secret, public_baseurl, rate limits)');
   }

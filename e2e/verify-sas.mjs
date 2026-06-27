@@ -93,18 +93,38 @@ async function login(page, who) {
 /** Device A: set up encryption (UIA password alert → recovery key → continue). */
 async function setUpEncryption(page) {
   log('A: opening /encryption/setup');
-  await page.goto(`${APP}/encryption/setup`, { waitUntil: 'networkidle' });
+  // domcontentloaded, not networkidle: once logged in the matrix client runs a
+  // sync long-poll, so the network never idles and goto would time out at 30s.
+  // We wait on the concrete "Set up encryption" button below instead.
+  await page.goto(`${APP}/encryption/setup`, { waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'Set up encryption' }).click();
 
-  // UIA: Synapse asks for the account password via an Ionic alert.
+  // UIA is *conditional*: depending on the Synapse build / account state the
+  // bootstrap may pop an Ionic password alert, or proceed straight to the recovery
+  // key. Race the two — only fill the password if the alert actually appears, then
+  // fall through to waiting for the recovery key either way.
   const alert = page.locator('ion-alert');
-  await alert.waitFor({ state: 'visible', timeout: 30_000 });
-  await alert.locator('input[type="password"]').fill(PASS);
-  await alert.getByRole('button', { name: 'Confirm' }).click();
+  const key = page.locator('code.key');
+  const appeared = await Promise.race([
+    alert
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .then(() => 'alert')
+      .catch(() => null),
+    key
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .then(() => 'key')
+      .catch(() => null),
+  ]);
+  if (appeared === 'alert') {
+    log('A: UIA password prompt');
+    await alert.locator('input[type="password"]').fill(PASS);
+    await alert.getByRole('button', { name: 'Confirm' }).click();
+  } else {
+    log('A: no UIA prompt — proceeding to recovery key');
+  }
 
   // Recovery key is shown once; tick "I've saved", then continue.
-  const key = page.locator('code.key');
   await key.waitFor({ state: 'visible', timeout: SETUP_TIMEOUT });
   log(`A: recovery key shown (${(await key.innerText()).slice(0, 12)}…)`);
 
@@ -160,7 +180,8 @@ async function main() {
 
     // 3. B initiates the SAS verification.
     log('B: starting verification (/encryption/verify)');
-    await B.goto(`${APP}/encryption/verify`, { waitUntil: 'networkidle' });
+    // domcontentloaded, not networkidle: sync long-poll keeps the network busy.
+    await B.goto(`${APP}/encryption/verify`, { waitUntil: 'domcontentloaded' });
     await B.getByTestId('verify-start').click();
 
     // 4. A's host auto-pops the incoming-request modal — accept it.
