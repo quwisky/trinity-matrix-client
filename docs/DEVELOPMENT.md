@@ -147,9 +147,9 @@ to point it at your own homeserver. The verification harness needs a homeserver 
 
 - **ESLint** — flat config in [`eslint.config.mjs`](../eslint.config.mjs)
   (`angular-eslint` + `typescript-eslint`). `@nx/enforce-module-boundaries` enforces
-  the layering via project `tags`: `feature-*` may depend on `core`; `core` depends on
-  nothing; the app may depend on anything. Run with `pnpm lint` /
-  `pnpm exec nx run-many -t lint`.
+  the layering via project `tags`: `feature-*` may depend on `core` + `ui`; `ui` is
+  presentational-only (depends on nothing but `ui`); `core` depends on nothing; the app
+  may depend on anything. Run with `pnpm lint` / `pnpm exec nx run-many -t lint`.
 - **Prettier** — [`.prettierrc.json`](../.prettierrc.json) (`singleQuote`, with the
   Angular parser forced for `*.page.html` templates). `pnpm format` writes,
   `pnpm format:check` verifies.
