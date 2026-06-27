@@ -70,6 +70,9 @@ export class MessageListComponent {
       '',
   );
 
+  /** Live-region text announcing a newly-arrived incoming message to screen readers. */
+  readonly announcement = signal('');
+
   private readonly alertCtrl = inject(AlertController);
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
   private lastId = '';
@@ -123,12 +126,25 @@ export class MessageListComponent {
         return;
       }
 
+      const hadPrevious = !!this.lastId;
       const newest = msgs[msgs.length - 1]?.id ?? '';
       const newestChanged = !!newest && newest !== this.lastId;
       this.lastId = newest || this.lastId;
       if (newestChanged) {
         // New room or live message — grant a fresh backfill budget.
         this.backfillRounds = 0;
+        // Announce a genuinely-new incoming message (not our own, not the first
+        // load) so screen-reader users hear it without watching the timeline.
+        const latest = msgs[msgs.length - 1];
+        if (
+          hadPrevious &&
+          latest &&
+          !latest.isOwn &&
+          !latest.decryptionFailed &&
+          latest.kind !== 'redacted'
+        ) {
+          this.announcement.set(`${latest.senderName}: ${latest.body}`);
+        }
       }
       // Keep the newest message in view on open, on live messages, and while
       // backfilling older history.

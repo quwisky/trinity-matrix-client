@@ -141,6 +141,33 @@ describe('MessageListComponent', () => {
     expect(fired).toBe(false);
   });
 
+  it('announces a new incoming message, but not the first load or own messages', () => {
+    const fixture = TestBed.createComponent(MessageListComponent);
+    fixture.detectChanges(); // resolve the scroll viewchild
+    const cmp = fixture.componentInstance;
+
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+    ]);
+    fixture.detectChanges();
+    expect(cmp.announcement()).toBe(''); // first load → silent
+
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    expect(cmp.announcement()).toContain('Bob'); // new incoming → announced
+
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      msg('$2', '@b:hs', 'Bob', 2000),
+      { ...msg('$3', '@me:hs', 'Me', 3000), isOwn: true },
+    ]);
+    fixture.detectChanges();
+    expect(cmp.announcement()).toContain('Bob'); // own message → not announced
+  });
+
   describe('backfill stall guard', () => {
     // jsdom has no layout (scrollHeight/clientHeight are 0), so the viewport
     // always reads as "not full" and the backfill effect engages. Run rAF

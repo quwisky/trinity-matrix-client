@@ -1,3 +1,7 @@
+<span class="sr-only" role="status" aria-live="polite">{{
+  announcement()
+}}</span>
+
 <div class="scroll" #scroll (scroll)="onScroll()">
   @if (loadingOlder()) {
     <div class="load-older">Loading older messages…</div>

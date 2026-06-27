@@ -145,9 +145,9 @@ rest are reviewer findings worth confirming during the fix.
 
 - [x] No `<h1>` / heading hierarchy on login and the active-chat view _(fixed: sr-only
       h1 on login + sso-callback; the room name is a `role="heading"` level-1)_.
-- [x] Busy/loading states not announced (`aria-live`) _(fixed for login + crypto
-      pages via `role="status"`; announcing new incoming messages in the timeline
-      remains a follow-up)_.
+- [x] Busy/loading states not announced (`aria-live`) _(fixed: `role="status"` on
+      login + crypto busy states, and the timeline announces new incoming messages
+      via a polite live region)_.
 - [x] Decryption-failure & redacted messages need a clearer, labeled accessible
       treatment _(fixed: bordered container with an accent rule; the text label
       already names the state. Linking failures to `/encryption/unlock` remains a
