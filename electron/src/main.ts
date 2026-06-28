@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, protocol, shell } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, protocol, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -175,6 +175,13 @@ function buildMenu(): void {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+
+// Set only on the explicit Quit path (tray "Quit", app menu / Cmd+Q, or any
+// app.quit()). Until then, closing the window hides it to the tray instead of
+// destroying it, so the renderer + `/sync` long-poll stay alive in the
+// background and notifications keep firing.
+let isQuitting = false;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -195,12 +202,31 @@ function createWindow(): void {
       // Renderer must never reach Node directly; preload is the only bridge.
       nodeIntegrationInWorker: false,
       nodeIntegrationInSubFrames: false,
+      // Keep the renderer running at full speed when the window is hidden,
+      // minimized, or occluded. Chromium otherwise throttles background pages
+      // (timers, rAF, and — critically — the matrix-js-sdk `/sync` long-poll),
+      // which would stall live events and delay/suppress the renderer-driven
+      // background notifications. This is the key enabler for "notify while in
+      // the background" alongside close-to-tray below.
+      backgroundThrottling: false,
     },
   });
 
   hardenContents(mainWindow.webContents);
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
+
+  // Close-to-tray: a user-initiated window close hides the window instead of
+  // destroying it, keeping the process, renderer, and `/sync` alive so
+  // background notifications keep working. An explicit Quit sets `isQuitting`
+  // first, letting the close proceed and the window actually be destroyed.
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -216,7 +242,86 @@ function focusMainWindow(): void {
   if (mainWindow.isMinimized()) {
     mainWindow.restore();
   }
+  // The window may be hidden in the tray rather than minimized/closed — show()
+  // is a no-op if already visible and reveals it if it was hidden-to-tray.
+  mainWindow.show();
   mainWindow.focus();
+}
+
+/**
+ * Resolve the platform tray icon as a NativeImage.
+ *
+ * macOS uses a monochrome *template* image (`…Template.png`, black + alpha) that
+ * the system recolors for light/dark menubars; Windows/Linux use the colored
+ * PNG. The asset ships in `electron/build/` and is made available at runtime via
+ * electron-builder `extraResources` (Resources/build) when packaged. We probe a
+ * small set of candidate locations so it resolves in dev (run from `electron/`),
+ * when packaged (asar app root + extracted resources), or if ever copied beside
+ * the compiled main — and never throw if missing.
+ */
+function resolveTrayIcon(): Electron.NativeImage {
+  const isMac = process.platform === 'darwin';
+  const fileName = isMac ? 'trinityTrayTemplate.png' : 'trinityTray.png';
+  const candidates = [
+    path.join(process.resourcesPath, 'build', fileName), // packaged: extraResources
+    path.join(app.getAppPath(), 'build', fileName), // dev (electron/) + asar root
+    path.join(__dirname, '..', 'build', fileName), // dist/ -> build/
+    path.join(__dirname, fileName), // alongside compiled main
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) {
+        continue;
+      }
+      const image = nativeImage.createFromPath(candidate);
+      if (image.isEmpty()) {
+        continue;
+      }
+      if (isMac) {
+        image.setTemplateImage(true);
+      }
+      return image;
+    } catch {
+      // try next candidate
+    }
+  }
+
+  console.warn('[tray] icon asset not found; tray may not render', { fileName });
+  return nativeImage.createEmpty();
+}
+
+/**
+ * System tray so the app keeps running (and syncing, and notifying) in the
+ * background after the window is closed to tray. Click / double-click reveals
+ * the window; the context menu offers an explicit "Quit" that sets `isQuitting`
+ * so the app really exits. The reference is held in module scope so the tray is
+ * not garbage-collected (which would make it vanish).
+ */
+function createTray(): void {
+  if (tray) {
+    return;
+  }
+
+  tray = new Tray(resolveTrayIcon());
+  tray.setToolTip('Trinity');
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'Open Trinity', click: () => focusMainWindow() },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(contextMenu);
+
+  // Left-click reveals on Linux/macOS; Windows convention is double-click.
+  tray.on('click', () => focusMainWindow());
+  tray.on('double-click', () => focusMainWindow());
 }
 
 // Custom schemes must be registered as privileged BEFORE the app is ready.
@@ -238,26 +343,36 @@ protocol.registerSchemesAsPrivileged([
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // A second launch (or a forwarded deep link) reveals the existing window,
+  // even if it has been hidden to the tray.
   app.on('second-instance', () => focusMainWindow());
+
+  // Any quit path (tray "Quit", app menu / Cmd+Q, OS shutdown) flips this so the
+  // window `close` handler stops hiding-to-tray and lets the process exit.
+  app.on('before-quit', () => {
+    isQuitting = true;
+  });
 
   app.whenReady().then(() => {
     registerAppProtocol();
     buildMenu();
     createWindow();
+    createTray();
 
     // Block any extra web contents (e.g. from a future webview) at creation.
     app.on('web-contents-created', (_event, contents) => hardenContents(contents));
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-      }
-    });
+    // macOS dock click: reveal the window (it may be hidden in the tray rather
+    // than closed, so a plain "create if none" check would do nothing).
+    app.on('activate', () => focusMainWindow());
   });
 
+  // Intentionally does NOT quit. The window is only ever *hidden* to the tray on
+  // close (it is never destroyed except during an explicit Quit, at which point
+  // the app is already quitting), so this event firing means the app should keep
+  // running in the background. Exit happens solely via the explicit Quit path
+  // (tray "Quit" / app menu / `before-quit`).
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-      app.quit();
-    }
+    // no-op: keep the process + renderer + `/sync` alive in the background.
   });
 }

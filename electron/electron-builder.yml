@@ -17,6 +17,16 @@ files:
 
 asar: true
 
+# Runtime assets that must live OUTSIDE the asar as real files. The tray icons
+# live in build/ (buildResources) at dev time; ship them into Resources/build/
+# so the main process resolves them via process.resourcesPath when packaged.
+# (See resolveTrayIcon() in src/main.ts for the dev + packaged lookup order.)
+extraResources:
+  - from: build/trinityTray.png
+    to: build/trinityTray.png
+  - from: build/trinityTrayTemplate.png
+    to: build/trinityTrayTemplate.png
+
 directories:
   output: release
   buildResources: build # place icons here: icon.icns / icon.ico / icon.png (TODO)
