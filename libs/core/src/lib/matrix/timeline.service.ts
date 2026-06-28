@@ -51,7 +51,7 @@ export interface ReplyPreview {
   id: string;
   senderName: string;
   senderInitial: string;
-  senderAvatarUrl: string | null;
+  senderAvatarMxc: string | null;
   body: string;
 }
 
@@ -61,7 +61,7 @@ export interface MessageView {
   senderId: string;
   senderName: string;
   senderInitial: string;
-  senderAvatarUrl: string | null;
+  senderAvatarMxc: string | null;
   /** Plain-text fallback. */
   body: string;
   /** Sanitized-on-render HTML from `formatted_body` (markdown), or null for plain. */
@@ -82,7 +82,6 @@ export interface MessageView {
   media: MediaPayload | null;
 }
 
-const AVATAR_PX = 64;
 const SCROLLBACK = 30;
 
 /**
@@ -422,15 +421,7 @@ export class TimelineService {
       senderId,
       senderName,
       senderInitial: initialOf(senderName),
-      senderAvatarUrl:
-        member?.getAvatarUrl(
-          client.baseUrl,
-          AVATAR_PX,
-          AVATAR_PX,
-          'crop',
-          false,
-          false,
-        ) ?? null,
+      senderAvatarMxc: member?.getMxcAvatarUrl() ?? null,
       body,
       html,
       timestamp: event.getTs(),
@@ -439,7 +430,7 @@ export class TimelineService {
       edited: event.replacingEvent() !== null,
       reactions: this.reactionsFor(client, room, event),
       replyTo: event.replyEventId
-        ? this.replyPreview(client, room, event.replyEventId)
+        ? this.replyPreview(room, event.replyEventId)
         : null,
       status: mapStatus(event.status),
       kind,
@@ -448,11 +439,7 @@ export class TimelineService {
   }
 
   /** Build a short preview of a replied-to message, or null if it isn't loaded. */
-  private replyPreview(
-    client: MatrixClient,
-    room: Room,
-    eventId: string,
-  ): ReplyPreview | null {
+  private replyPreview(room: Room, eventId: string): ReplyPreview | null {
     const target = room.findEventById(eventId);
     if (!target) {
       return null;
@@ -467,15 +454,7 @@ export class TimelineService {
       id: eventId,
       senderName,
       senderInitial: initialOf(senderName),
-      senderAvatarUrl:
-        member?.getAvatarUrl(
-          client.baseUrl,
-          AVATAR_PX,
-          AVATAR_PX,
-          'crop',
-          false,
-          false,
-        ) ?? null,
+      senderAvatarMxc: member?.getMxcAvatarUrl() ?? null,
       body: raw.replace(/\s+/g, ' ').trim() || '…',
     };
   }

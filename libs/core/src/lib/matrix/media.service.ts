@@ -16,6 +16,7 @@ import {
 import { MsgType } from 'matrix-js-sdk';
 import { decryptAttachment, encryptAttachment } from './attachment-crypto';
 import { MatrixClientService } from './matrix-client.service';
+import { fetchMediaBytes } from './authed-media';
 import type { EncryptedFileInfo, MediaPayload } from './media.model';
 
 /** Which rendition of an attachment to resolve. */
@@ -386,65 +387,9 @@ export class MediaService {
     mxc: string,
     resize: { w: number; h: number } | null,
   ): Observable<ArrayBuffer> {
-    const client = this.matrix.instance;
     return this.supportsAuthedMedia().pipe(
-      switchMap((authed) => {
-        const token = client.getAccessToken();
-        const url = this.httpUrl(mxc, resize, authed && !!token);
-        return this.doFetch(url, authed ? token : null).pipe(
-          // Older servers advertise v1.11 but still serve legacy media: on a
-          // failed authenticated request, retry the unauthenticated endpoint.
-          switchMap((res) =>
-            !res.ok && authed
-              ? this.doFetch(this.httpUrl(mxc, resize, false), null)
-              : of(res),
-          ),
-        );
-      }),
-      switchMap((res) =>
-        res.ok
-          ? from(res.arrayBuffer())
-          : throwError(() => new Error(`Media fetch failed (${res.status})`)),
-      ),
-    );
-  }
-
-  private httpUrl(
-    mxc: string,
-    resize: { w: number; h: number } | null,
-    useAuthentication: boolean,
-  ): string {
-    const client = this.matrix.instance;
-    const url = resize
-      ? client.mxcUrlToHttp(
-          mxc,
-          resize.w,
-          resize.h,
-          'scale',
-          false,
-          true,
-          useAuthentication,
-        )
-      : client.mxcUrlToHttp(
-          mxc,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          true,
-          useAuthentication,
-        );
-    if (!url) {
-      throw new Error('Could not resolve media URL');
-    }
-    return url;
-  }
-
-  private doFetch(url: string, token: string | null): Observable<Response> {
-    return from(
-      fetch(
-        url,
-        token ? { headers: { Authorization: `Bearer ${token}` } } : {},
+      switchMap((authed) =>
+        fetchMediaBytes(this.matrix.instance, mxc, resize, authed),
       ),
     );
   }

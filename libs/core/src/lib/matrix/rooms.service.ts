@@ -14,7 +14,7 @@ export interface RoomSummary {
   id: string;
   name: string;
   initial: string;
-  avatarUrl: string | null;
+  avatarMxc: string | null;
   topic: string;
   memberCount: number;
   /** Whether the room has encryption enabled (`m.room.encryption`). */
@@ -34,7 +34,7 @@ export interface SpaceSummary {
   id: string;
   name: string;
   initial: string;
-  avatarUrl: string | null;
+  avatarMxc: string | null;
   /** Room ids referenced by this space's `m.space.child` state. */
   childRoomIds: string[];
 }
@@ -44,10 +44,8 @@ export interface MemberSummary {
   userId: string;
   name: string;
   initial: string;
-  avatarUrl: string | null;
+  avatarMxc: string | null;
 }
-
-const AVATAR_PX = 64;
 
 /**
  * Read model over the synced `MatrixClient`: exposes Spaces, joined rooms, and
@@ -158,13 +156,13 @@ export class RoomsService {
     this._spaces.set(
       all
         .filter((r) => r.isSpaceRoom())
-        .map((r) => this.toSpace(client, r))
+        .map((r) => this.toSpace(r))
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
     this._rooms.set(
       all
         .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
-        .map((r) => this.toRoom(client, r))
+        .map((r) => this.toRoom(r))
         // Most recently active first; fall back to name for quiet rooms.
         .sort(
           (a, b) => b.activityTs - a.activityTs || a.name.localeCompare(b.name),
@@ -173,19 +171,13 @@ export class RoomsService {
     this._revision.update((n) => n + 1);
   }
 
-  private toSpace(client: MatrixClient, room: Room): SpaceSummary {
+  private toSpace(room: Room): SpaceSummary {
     const name = room.name || room.roomId;
     return {
       id: room.roomId,
       name,
       initial: initialOf(name),
-      avatarUrl: room.getAvatarUrl(
-        client.baseUrl,
-        AVATAR_PX,
-        AVATAR_PX,
-        'crop',
-        false,
-      ),
+      avatarMxc: room.getMxcAvatarUrl(),
       childRoomIds: room.currentState
         .getStateEvents('m.space.child')
         .map((e) => e.getStateKey())
@@ -193,7 +185,7 @@ export class RoomsService {
     };
   }
 
-  private toRoom(client: MatrixClient, room: Room): RoomSummary {
+  private toRoom(room: Room): RoomSummary {
     const name = room.name || room.roomId;
     const topicEvent = room.currentState.getStateEvents('m.room.topic', '');
     const unreadCount = room.getUnreadNotificationCount(
@@ -206,13 +198,7 @@ export class RoomsService {
       id: room.roomId,
       name,
       initial: initialOf(name),
-      avatarUrl: room.getAvatarUrl(
-        client.baseUrl,
-        AVATAR_PX,
-        AVATAR_PX,
-        'crop',
-        false,
-      ),
+      avatarMxc: room.getMxcAvatarUrl(),
       topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
       memberCount: room.getJoinedMemberCount(),
       encrypted: room.hasEncryptionStateEvent(),
@@ -224,20 +210,12 @@ export class RoomsService {
   }
 
   private toMember(member: RoomMember): MemberSummary {
-    const client = this.matrix.instance;
     const name = member.name || member.userId;
     return {
       userId: member.userId,
       name,
       initial: initialOf(name),
-      avatarUrl: member.getAvatarUrl(
-        client.baseUrl,
-        AVATAR_PX,
-        AVATAR_PX,
-        'crop',
-        false,
-        false,
-      ),
+      avatarMxc: member.getMxcAvatarUrl() ?? null,
     };
   }
 }

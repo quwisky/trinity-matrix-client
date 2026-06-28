@@ -13,9 +13,6 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
     setDisplayName: vi.fn().mockResolvedValue({}),
     setAvatarUrl: vi.fn().mockResolvedValue({}),
     uploadContent: vi.fn().mockResolvedValue({ content_uri: 'mxc://hs/new' }),
-    mxcUrlToHttp: vi.fn(
-      (mxc: string) => `https://hs/_matrix/media/download/${mxc.slice(6)}`,
-    ),
     ...overrides,
   };
 }
@@ -38,7 +35,7 @@ function setup(clientOverrides: Record<string, unknown> = {}) {
 describe('ProfileService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
-  it('loads the profile and resolves the avatar to an http URL', async () => {
+  it('loads the profile and exposes the raw mxc avatar', async () => {
     const { svc, client } = setup();
 
     const profile = await firstValueFrom(svc.load());
@@ -49,7 +46,6 @@ describe('ProfileService', () => {
       displayName: 'Alice',
       avatarMxc: 'mxc://hs/a',
     });
-    expect(profile.avatarUrl).toContain('hs/a');
     expect(svc.profile()).toEqual(profile); // mirrored into the signal
   });
 
@@ -62,7 +58,6 @@ describe('ProfileService', () => {
 
     expect(profile.displayName).toBe(''); // raw; the UI renders `|| userId`
     expect(profile.avatarMxc).toBeNull();
-    expect(profile.avatarUrl).toBeNull();
   });
 
   it('treats a 404 (brand-new account) as an empty profile, not an error', async () => {
@@ -76,7 +71,6 @@ describe('ProfileService', () => {
       userId: '@me:hs',
       displayName: '',
       avatarMxc: null,
-      avatarUrl: null,
     });
     expect(svc.profile()).toEqual(profile); // editor can still render + set one
   });
@@ -121,6 +115,5 @@ describe('ProfileService', () => {
     expect(client.uploadContent).toHaveBeenCalledTimes(1);
     expect(client.setAvatarUrl).toHaveBeenCalledWith('mxc://hs/new');
     expect(svc.profile()?.avatarMxc).toBe('mxc://hs/new');
-    expect(svc.profile()?.avatarUrl).toContain('hs/new');
   });
 });

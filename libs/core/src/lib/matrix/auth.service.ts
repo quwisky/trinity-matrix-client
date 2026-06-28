@@ -1,7 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import { AutoDiscovery, createClient } from 'matrix-js-sdk';
-import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  defer,
+  from,
+  map,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
+import { AvatarService } from './avatar.service';
 import { SessionStorageService } from '../storage/session-storage.service';
 import { MatrixSession } from './session.model';
 
@@ -19,6 +29,7 @@ const DEVICE_DISPLAY_NAME = 'Trinity (Ionic)';
 export class AuthService {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
+  private readonly avatars = inject(AvatarService);
 
   /**
    * Resolve a homeserver base URL from a user-entered domain (e.g. "matrix.org"
@@ -102,6 +113,7 @@ export class AuthService {
       // reset() (not stop()) wipes the local sync + crypto stores so the prior
       // account's keys/cache don't linger on a shared device after logout.
       switchMap(() => this.matrix.reset()),
+      tap(() => this.avatars.releaseAll()), // revoke cached avatar blob URLs
       switchMap(() => this.storage.clear()),
     );
   }
@@ -117,6 +129,9 @@ export class AuthService {
       deviceId: res.device_id,
       accessToken: res.access_token,
     };
+    // Drop any avatar blobs cached for a previous session — re-login can switch
+    // accounts/homeservers without a logout (e.g. navigating to /login).
+    this.avatars.releaseAll();
     return this.storage
       .save(session)
       .pipe(switchMap(() => this.matrix.init(session)));

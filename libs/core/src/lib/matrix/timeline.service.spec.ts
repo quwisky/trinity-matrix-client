@@ -113,7 +113,7 @@ function setup(
     findEventById: (id: string) => events.find((e) => e.getId() === id),
     getMember: (id: string) => ({
       name: id === '@me:hs' ? 'Me' : 'Alice',
-      getAvatarUrl: () => null,
+      getMxcAvatarUrl: () => null,
     }),
     relations: {
       getChildEventsForEvent: (id: string) => reactions[id],
@@ -365,7 +365,7 @@ describe('TimelineService', () => {
       id: '$orig',
       senderName: 'Alice',
       senderInitial: 'A',
-      senderAvatarUrl: null,
+      senderAvatarMxc: null,
       body: 'original text',
     });
   });
@@ -419,7 +419,7 @@ describe('TimelineService', () => {
         getEvents: () => [],
         getPaginationToken: () => 'tok',
       }),
-      getMember: () => ({ name: 'A', getAvatarUrl: () => null }),
+      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
       relations: { getChildEventsForEvent: () => undefined },
       on: () => {},
       off: () => {},
@@ -467,7 +467,7 @@ describe('TimelineService', () => {
         getEvents: () => events,
         getPaginationToken: () => null,
       }),
-      getMember: () => ({ name: 'A', getAvatarUrl: () => null }),
+      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
       relations: { getChildEventsForEvent: () => undefined },
       on: () => {},
       off: () => {},

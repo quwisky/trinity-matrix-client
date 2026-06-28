@@ -12,17 +12,13 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 
-/** Max edge (px) for the resolved avatar rendition. */
-const AVATAR_PX = 256;
-
-/** The signed-in user's profile, with the avatar resolved to an `<img>` URL. */
+/** The signed-in user's profile. The avatar is the raw `mxc://`; the UI resolves
+ * it (authenticated) via the shared avatar resolver. */
 export interface UserProfile {
   userId: string;
   displayName: string;
   /** Raw `mxc://` avatar, or null when unset. */
   avatarMxc: string | null;
-  /** Resolved http(s) URL for the avatar, or null. */
-  avatarUrl: string | null;
 }
 
 /**
@@ -82,9 +78,7 @@ export class ProfileService {
             map(() => res.content_uri),
           ),
         ),
-        tap((mxc) =>
-          this.patch({ avatarMxc: mxc, avatarUrl: this.toHttp(mxc) }),
-        ),
+        tap((mxc) => this.patch({ avatarMxc: mxc })),
         map(() => void 0),
       );
     });
@@ -102,23 +96,7 @@ export class ProfileService {
       userId,
       displayName: displayname ?? '',
       avatarMxc,
-      avatarUrl: this.toHttp(avatarMxc),
     };
-  }
-
-  /**
-   * Resolve an `mxc://` avatar to a cropped http(s) URL (null when unset).
-   * NOTE: uses the unauthenticated media endpoint, like the rest of the app's
-   * avatars (rooms/members). On a v1.11 authenticated-media-only homeserver this
-   * 401s and the UI falls back to initials; routing all avatars through
-   * authenticated blob resolution (as MediaService does for attachments) is a
-   * tracked follow-up.
-   */
-  private toHttp(mxc: string | null): string | null {
-    return mxc
-      ? (this.matrix.instance.mxcUrlToHttp(mxc, AVATAR_PX, AVATAR_PX, 'crop') ??
-          null)
-      : null;
   }
 
   private patch(partial: Partial<UserProfile>): void {

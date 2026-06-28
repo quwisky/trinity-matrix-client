@@ -20,7 +20,7 @@ function fakeRoom(opts: {
     name: opts.name,
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
-    getAvatarUrl: () => null,
+    getMxcAvatarUrl: () => null,
     getJoinedMemberCount: () => 0,
     getJoinedMembers: () => [],
     hasEncryptionStateEvent: () => opts.encrypted ?? false,

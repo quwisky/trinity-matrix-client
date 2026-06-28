@@ -4,6 +4,7 @@ export * from './lib/matrix/rooms.service';
 export * from './lib/matrix/timeline.service';
 export * from './lib/matrix/media.model';
 export * from './lib/matrix/media.service';
+export * from './lib/matrix/avatar.service';
 export * from './lib/matrix/auth.service';
 export * from './lib/matrix/profile.service';
 export * from './lib/matrix/devices.service';
