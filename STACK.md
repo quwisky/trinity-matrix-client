@@ -16,6 +16,8 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | `@capacitor/app`                     | 8.1.0   | App URL-open events — native SSO deep-link callback                                   |
 | `@capacitor/browser`                 | 8.0.3   | System browser for native SSO (keeps the app webview alive)                           |
 | `@capacitor/camera`                  | 8.2.0   | Native photo/gallery picker for sending media (web `<input>` fallback)                |
+| `@capacitor/filesystem`              | 8.1.2   | Write a downloaded attachment to cache before sharing it (native save)                |
+| `@capacitor/share`                   | 8.0.1   | Native OS save/share sheet for downloads (web `<a download>` fallback)                |
 | `matrix-encrypt-attachment`          | —       | Removed (unmaintained since 2022); ported into `@trinity/core` `attachment-crypto.ts` |
 | `marked`                             | 18.0.5  | Markdown → HTML for the composer/timeline                                             |
 | `dompurify`                          | 3.4.11  | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                            |
