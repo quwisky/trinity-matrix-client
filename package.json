@@ -25,6 +25,7 @@
     "e2e:threads": "nx build trinity --configuration=development && node e2e/threads-run.mjs",
     "e2e:spaces": "nx build trinity --configuration=development && node e2e/spaces-run.mjs",
     "e2e:rooms": "nx build trinity --configuration=development && node e2e/rooms-run.mjs",
+    "e2e:search": "nx build trinity --configuration=development && node e2e/search-run.mjs",
     "electron:install": "pnpm -C electron install",
     "electron:build": "pnpm run build && pnpm -C electron run build",
     "electron:start": "pnpm run electron:build && pnpm -C electron run start",
