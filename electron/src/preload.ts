@@ -18,8 +18,27 @@ import type { IpcRendererEvent } from 'electron';
  *   the main process forwards over the `deep-link` ipcRenderer channel (used for
  *   the desktop SSO callback) and returns an unsubscribe function. Only the URL
  *   string is passed to the callback — the raw IpcRendererEvent is never leaked.
+ *
+ * Notification contract (consumed by libs/core NotificationService):
+ *   trinityDesktop.showNotification({ title, body, tag?, roomId }) asks the MAIN
+ *   process to display a native OS notification (more reliably surfaced than a
+ *   renderer Web Notification). trinityDesktop.onNotificationClick(cb) subscribes
+ *   to clicks the main process forwards over `notification-click`; only the
+ *   `roomId` string is passed to the callback (never the raw event), and it
+ *   returns an unsubscribe function. The payload is re-validated in main — this
+ *   bridge grants no privileged capability and never exposes ipcRenderer/Node.
  */
 const DEEP_LINK_CHANNEL = 'deep-link';
+const SHOW_NOTIFICATION_CHANNEL = 'show-notification';
+const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
+
+/** Payload accepted by `showNotification`; mirrors core's `DesktopNotification`. */
+interface ShowNotificationPayload {
+  title: string;
+  body: string;
+  tag?: string;
+  roomId: string;
+}
 
 // Listen at preload load (before any page JS), buffering URLs that arrive before
 // the renderer subscribes. The main process flushes a cold-start deep link on
@@ -53,5 +72,36 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
         active = null;
       }
     };
+  },
+
+  // Request a native OS notification from the main process. We forward only the
+  // four known string fields (and only when shaped correctly); the main process
+  // re-validates and clamps everything before constructing a Notification.
+  showNotification(payload: ShowNotificationPayload): void {
+    if (typeof payload !== 'object' || payload === null) {
+      return;
+    }
+    const { title, body, tag, roomId } = payload as Partial<ShowNotificationPayload>;
+    if (typeof roomId !== 'string') {
+      return;
+    }
+    ipcRenderer.send(SHOW_NOTIFICATION_CHANNEL, {
+      title: typeof title === 'string' ? title : '',
+      body: typeof body === 'string' ? body : '',
+      tag: typeof tag === 'string' ? tag : undefined,
+      roomId,
+    });
+  },
+
+  // Subscribe to native-notification clicks. Only the roomId string is handed to
+  // the callback — the raw IpcRendererEvent is never leaked. Returns unsubscribe.
+  onNotificationClick(callback: (roomId: string) => void): () => void {
+    const listener = (_event: IpcRendererEvent, roomId: unknown): void => {
+      if (typeof roomId === 'string') {
+        callback(roomId);
+      }
+    };
+    ipcRenderer.on(NOTIFICATION_CLICK_CHANNEL, listener);
+    return () => ipcRenderer.removeListener(NOTIFICATION_CLICK_CHANNEL, listener);
   },
 });

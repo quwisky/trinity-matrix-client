@@ -10,13 +10,8 @@ import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { SwUpdate } from '@angular/service-worker';
 import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
+import { getTrinityDesktopBridge } from '@trinity/core';
 import { VerificationHostComponent } from './verification-host.component';
-
-/** Minimal shape of the Electron preload bridge (see electron/src/preload.ts). */
-interface TrinityDesktopBridge {
-  isElectron?: boolean;
-  onDeepLink?: (callback: (url: string) => void) => () => void;
-}
 
 @Component({
   selector: 'trn-root',
@@ -38,8 +33,7 @@ export class AppComponent implements OnInit {
     // Electron desktop: the main process forwards `eu.qwky.trinity://` deep links
     // (e.g. the SSO callback) over the preload bridge — there's no Capacitor App
     // plugin in the hand-rolled shell.
-    const desktop = (globalThis as { trinityDesktop?: TrinityDesktopBridge })
-      .trinityDesktop;
+    const desktop = getTrinityDesktopBridge();
     if (desktop?.onDeepLink) {
       desktop.onDeepLink((url) => this.handleDeepLink(url));
     }

@@ -46,6 +46,30 @@ function setup() {
   return { svc: TestBed.inject(NotificationService), client, router };
 }
 
+/**
+ * Fake of the Electron preload `trinityDesktop` bridge. `emitClick` invokes the
+ * handler the service registered via `onNotificationClick`, simulating a click
+ * forwarded by the main process.
+ */
+function desktopBridge() {
+  let clickHandler: ((roomId: string) => void) | undefined;
+  const unsubscribe = vi.fn();
+  const bridge = {
+    isElectron: true,
+    platform: 'darwin',
+    showNotification: vi.fn(),
+    onNotificationClick: vi.fn((cb: (roomId: string) => void) => {
+      clickHandler = cb;
+      return unsubscribe;
+    }),
+  };
+  return {
+    bridge,
+    unsubscribe,
+    emitClick: (roomId: string): void => clickHandler?.(roomId),
+  };
+}
+
 function event(opts: { sender?: string; body?: string } = {}) {
   return {
     getSender: () => opts.sender ?? '@alice:hs',
@@ -201,5 +225,87 @@ describe('NotificationService', () => {
       RoomEvent.Timeline,
       expect.any(Function),
     );
+  });
+
+  describe('desktop (Electron main-process bridge)', () => {
+    let harness: ReturnType<typeof desktopBridge>;
+
+    beforeEach(() => {
+      harness = desktopBridge();
+      vi.stubGlobal('trinityDesktop', harness.bridge);
+    });
+
+    it('routes notifications through the main process, not the Web API', () => {
+      // Electron auto-grants Web permission and never prompts; the bridge path
+      // must work regardless of the renderer Web permission state.
+      MockNotification.permission = 'default';
+      const { svc, client } = setup();
+      svc.connect();
+
+      expect(MockNotification.requestPermission).not.toHaveBeenCalled();
+      expect(harness.bridge.onNotificationClick).toHaveBeenCalledTimes(1);
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(harness.bridge.showNotification).toHaveBeenCalledTimes(1);
+      expect(harness.bridge.showNotification).toHaveBeenCalledWith({
+        title: 'Alice · General',
+        body: 'hello there',
+        tag: '!r:hs',
+        roomId: '!r:hs',
+      });
+      // Did NOT fall back to the renderer Web Notification.
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    it('notifies even when the Web Notification permission is not granted', () => {
+      MockNotification.permission = 'denied';
+      const { svc, client } = setup();
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(harness.bridge.showNotification).toHaveBeenCalledTimes(1);
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    it('still honors gating (own messages / focus / push rules)', () => {
+      const { svc, client } = setup();
+      svc.connect();
+
+      timelineHandler(client)(
+        event({ sender: '@me:hs' }),
+        room,
+        false,
+        false,
+        live,
+      );
+
+      expect(harness.bridge.showNotification).not.toHaveBeenCalled();
+    });
+
+    it('routes to the room when a forwarded click arrives', () => {
+      const { svc, router } = setup();
+      const focus = vi
+        .spyOn(window, 'focus')
+        .mockImplementation(() => undefined);
+      svc.connect();
+
+      harness.emitClick('!r:hs');
+
+      expect(focus).toHaveBeenCalled();
+      expect(router.navigate).toHaveBeenCalledWith(['/rooms'], {
+        queryParams: { room: '!r:hs' },
+      });
+    });
+
+    it('unsubscribes from main-process clicks on disconnect', () => {
+      const { svc } = setup();
+      svc.connect();
+
+      svc.disconnect();
+
+      expect(harness.unsubscribe).toHaveBeenCalledTimes(1);
+    });
   });
 });
