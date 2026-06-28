@@ -106,9 +106,17 @@ the architecture changes — find out before building UI on top.
 - NB: with no Capacitor bridge, `Capacitor.getPlatform()` is `'web'` and
   `isNativePlatform()` is `false` in the shell — desktop is detected via the preload
   marker `trinityDesktop.isElectron` (used to keep the service worker off).
-- Build/run: `pnpm electron:build` / `electron:start`; package via `electron:package`
-  (electron-builder; signing/notarization deferred). Confirm WASM crypto + IndexedDB on
-  a real desktop run.
+- Build/run: `pnpm electron:build` / `electron:start`. Package via electron-builder:
+  `electron:package` (current host OS), or per target `electron:package:{mac,linux,win}`
+  (and `:all`). Targets: macOS dmg+zip, Linux AppImage+deb, Windows nsis → `electron/release/`.
+- **Cross-build constraints** (electron-builder): macOS builds run **only on macOS**;
+  Windows builds run on Windows (or macOS/Linux **with Wine**); Linux builds run on
+  Linux/macOS (deb needs `dpkg`/`fpm`). `:all` (`-mwl`) therefore only fully succeeds on a
+  suitably-tooled macOS host. CI per-OS runners are the reliable way to ship all three.
+- First package downloads the Electron binary (the headless install skipped it); run
+  `pnpm electron:install` on a real machine, or it fetches on first package.
+- Signing/notarization deferred (`electron-builder.yml` TODOs). Confirm WASM crypto +
+  IndexedDB on a real desktop run.
 
 ## Testing — Vitest + Playwright
 

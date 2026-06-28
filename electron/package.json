@@ -11,6 +11,10 @@
     "build": "node scripts/copy-www.mjs && tsc -p tsconfig.json",
     "start": "electron .",
     "package": "electron-builder",
+    "package:mac": "electron-builder --mac",
+    "package:linux": "electron-builder --linux",
+    "package:win": "electron-builder --win",
+    "package:all": "electron-builder --mac --linux --win",
     "pack:dir": "electron-builder --dir"
   },
   "devDependencies": {
