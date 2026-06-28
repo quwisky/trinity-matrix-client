@@ -16,6 +16,7 @@ import {
   IonButton,
 } from '@ionic/angular/standalone';
 import { AuthService } from '@trinity/core';
+import { SsoStateStore } from '../sso-state.store';
 
 /**
  * Landing route for the homeserver's SSO redirect. Reads the `loginToken` query
@@ -46,16 +47,15 @@ export class SsoCallbackPage implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly location = inject(Location);
+  private readonly ssoState = inject(SsoStateStore);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly error = signal<string | null>(null);
 
-  ngOnInit(): void {
+  async ngOnInit(): Promise<void> {
     const params = this.route.snapshot.queryParamMap;
     const loginToken = params.get('loginToken');
     const returnedState = params.get('sso_state');
-    const baseUrl = sessionStorage.getItem('sso.baseUrl');
-    const expectedState = sessionStorage.getItem('sso.state');
 
     // Strip the single-use token + state from the URL/history immediately so they
     // can't leak via the address bar, browser history, or a Referer header —
@@ -64,7 +64,11 @@ export class SsoCallbackPage implements OnInit {
       this.location.replaceState('/sso-callback');
     }
 
-    if (!loginToken || !baseUrl) {
+    // Single-use read from Preferences (survives a native cold-start, unlike
+    // sessionStorage); consuming clears it so a nonce can't be replayed.
+    const stash = await this.ssoState.consume();
+
+    if (!loginToken || !stash.baseUrl) {
       this.error.set(
         'Missing SSO login token or homeserver. Please sign in again.',
       );
@@ -73,8 +77,7 @@ export class SsoCallbackPage implements OnInit {
 
     // Verify the state we generated round-trips — rejects a forged/injected
     // callback (login CSRF / token injection), notably via the native deep link.
-    if (!expectedState || returnedState !== expectedState) {
-      this.clearSsoSession();
+    if (!stash.state || returnedState !== stash.state) {
       this.error.set(
         'This sign-in could not be verified. Please sign in again.',
       );
@@ -82,21 +85,15 @@ export class SsoCallbackPage implements OnInit {
     }
 
     this.auth
-      .completeSsoLogin(baseUrl, loginToken)
+      .completeSsoLogin(stash.baseUrl, loginToken)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
-          this.clearSsoSession();
           void this.router.navigateByUrl('/rooms', { replaceUrl: true });
         },
         error: (err) =>
           this.error.set(err instanceof Error ? err.message : String(err)),
       });
-  }
-
-  private clearSsoSession(): void {
-    sessionStorage.removeItem('sso.baseUrl');
-    sessionStorage.removeItem('sso.state');
   }
 
   back(): void {

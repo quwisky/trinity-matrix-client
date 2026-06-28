@@ -19,6 +19,7 @@ import {
 } from '@ionic/angular/standalone';
 import { AuthService } from '@trinity/core';
 import { runWithBusy } from '@trinity/ui';
+import { SsoStateStore } from '../sso-state.store';
 
 @Component({
   selector: 'trn-login',
@@ -30,6 +31,7 @@ import { runWithBusy } from '@trinity/ui';
 export class LoginPage {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly ssoState = inject(SsoStateStore);
   private readonly destroyRef = inject(DestroyRef);
 
   // Form state.
@@ -76,15 +78,16 @@ export class LoginPage {
   }
 
   /** Step 2b: SSO — hand off to the homeserver's SSO page. */
-  startSso(): void {
+  async startSso(): Promise<void> {
     const baseUrl = this.baseUrl();
     if (!baseUrl) return;
-    // Single-use state bound to this session; verified on the callback to prevent
-    // login CSRF / token injection (esp. on the native deep-link, which any app
-    // can invoke). Stashed alongside the homeserver for the returning callback.
+    // Single-use state bound to this round-trip; verified on the callback to prevent
+    // login CSRF / token injection (esp. on the native deep-link, which any app can
+    // invoke). Stashed in Preferences (not sessionStorage) so a native cold-start
+    // relaunch — whose WebView has empty sessionStorage — can still validate. Await
+    // the write so the stash is durable before the SSO redirect can return.
     const state = this.generateState();
-    sessionStorage.setItem('sso.baseUrl', baseUrl);
-    sessionStorage.setItem('sso.state', state);
+    await this.ssoState.save(state, baseUrl);
 
     const native = Capacitor.isNativePlatform();
     const electron =

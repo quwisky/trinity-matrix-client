@@ -4,19 +4,25 @@ import { AuthService } from '@trinity/core';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { LoginPage } from './login.page';
+import { SsoStateStore } from '../sso-state.store';
 
 function configure(
   auth: Partial<AuthService>,
   navigateByUrl = vi.fn(),
-): { navigateByUrl: ReturnType<typeof vi.fn> } {
+  ssoSave = vi.fn().mockResolvedValue(undefined),
+): {
+  navigateByUrl: ReturnType<typeof vi.fn>;
+  ssoSave: ReturnType<typeof vi.fn>;
+} {
   TestBed.configureTestingModule({
     imports: [LoginPage],
     providers: [
       { provide: AuthService, useValue: auth },
       { provide: Router, useValue: { navigateByUrl } },
+      { provide: SsoStateStore, useValue: { save: ssoSave } },
     ],
   });
-  return { navigateByUrl };
+  return { navigateByUrl, ssoSave };
 }
 
 describe('LoginPage', () => {
@@ -95,28 +101,29 @@ describe('LoginPage', () => {
     expect(navigateByUrl).not.toHaveBeenCalled();
   });
 
-  it('starts SSO with a state nonce stashed and bound to the callback redirect', () => {
-    sessionStorage.clear();
+  it('starts SSO with a state nonce stashed and bound to the callback redirect', async () => {
     const getSsoUrl = vi.fn(
       () => 'https://hs.example/_matrix/sso?redirectUrl=x',
     );
-    configure({ getSsoUrl } as unknown as AuthService);
+    const { ssoSave } = configure({ getSsoUrl } as unknown as AuthService);
     const cmp = TestBed.createComponent(LoginPage).componentInstance;
     cmp.baseUrl.set('https://hs.example');
 
-    cmp.startSso();
+    await cmp.startSso();
 
-    const state = sessionStorage.getItem('sso.state');
-    expect(sessionStorage.getItem('sso.baseUrl')).toBe('https://hs.example');
+    // The nonce + homeserver are persisted via the store (Preferences) so a native
+    // cold-start callback can still validate — not in sessionStorage.
+    expect(ssoSave).toHaveBeenCalledTimes(1);
+    const [state, savedBaseUrl] = ssoSave.mock.calls[0] as [string, string];
+    expect(savedBaseUrl).toBe('https://hs.example');
     expect(state).toBeTruthy();
     // The state round-trips via the redirect URL handed to the homeserver.
     const redirect = getSsoUrl.mock.calls[0][1] as string;
     expect(redirect).toContain('/sso-callback?sso_state=');
-    expect(redirect).toContain(state!);
+    expect(redirect).toContain(state);
   });
 
-  it('uses the eu.qwky.trinity:// scheme and opens externally on Electron', () => {
-    sessionStorage.clear();
+  it('uses the eu.qwky.trinity:// scheme and opens externally on Electron', async () => {
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
       isElectron: true,
     };
@@ -127,7 +134,7 @@ describe('LoginPage', () => {
       const cmp = TestBed.createComponent(LoginPage).componentInstance;
       cmp.baseUrl.set('https://hs.example');
 
-      cmp.startSso();
+      await cmp.startSso();
 
       const redirect = getSsoUrl.mock.calls[0][1] as string;
       expect(redirect).toContain('eu.qwky.trinity://sso-callback?sso_state=');

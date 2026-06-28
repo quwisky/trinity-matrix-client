@@ -5,25 +5,34 @@ import { AuthService } from '@trinity/core';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SsoCallbackPage } from './sso-callback.page';
+import { SsoStateStore, type SsoStateStash } from '../sso-state.store';
 
 function configure(opts: {
   auth: Partial<AuthService>;
   token: string | null;
-  state?: string | null;
+  returnedState?: string | null;
+  stash?: SsoStateStash;
   navigateByUrl?: ReturnType<typeof vi.fn>;
   replaceState?: ReturnType<typeof vi.fn>;
 }): {
   navigateByUrl: ReturnType<typeof vi.fn>;
   replaceState: ReturnType<typeof vi.fn>;
+  consume: ReturnType<typeof vi.fn>;
 } {
   const navigateByUrl = opts.navigateByUrl ?? vi.fn();
   const replaceState = opts.replaceState ?? vi.fn();
+  // The store survives a native cold-start; mock it so the CSRF check is exercised
+  // independently of the storage medium.
+  const consume = vi
+    .fn()
+    .mockResolvedValue(opts.stash ?? { state: null, baseUrl: null });
   TestBed.configureTestingModule({
     imports: [SsoCallbackPage],
     providers: [
       { provide: AuthService, useValue: opts.auth },
       { provide: Router, useValue: { navigateByUrl } },
       { provide: Location, useValue: { replaceState } },
+      { provide: SsoStateStore, useValue: { consume } },
       {
         provide: ActivatedRoute,
         useValue: {
@@ -33,7 +42,7 @@ function configure(opts: {
                 k === 'loginToken'
                   ? opts.token
                   : k === 'sso_state'
-                    ? (opts.state ?? null)
+                    ? (opts.returnedState ?? null)
                     : null,
             },
           },
@@ -41,70 +50,67 @@ function configure(opts: {
       },
     ],
   });
-  return { navigateByUrl, replaceState };
+  return { navigateByUrl, replaceState, consume };
 }
 
 describe('SsoCallbackPage', () => {
   beforeEach(() => sessionStorage.clear());
 
-  it('completes login when the state matches, clearing storage + URL', () => {
-    sessionStorage.setItem('sso.baseUrl', 'https://hs.example');
-    sessionStorage.setItem('sso.state', 'NONCE');
+  it('completes login when the state matches, clearing storage + URL', async () => {
     const completeSsoLogin = vi.fn(() => of({}));
-    const { navigateByUrl, replaceState } = configure({
+    const { navigateByUrl, replaceState, consume } = configure({
       auth: { completeSsoLogin } as unknown as AuthService,
       token: 'TOKEN',
-      state: 'NONCE',
+      returnedState: 'NONCE',
+      stash: { state: 'NONCE', baseUrl: 'https://hs.example' },
     });
     const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
 
-    cmp.ngOnInit();
+    await cmp.ngOnInit();
 
     expect(replaceState).toHaveBeenCalledWith('/sso-callback'); // token off the URL
     expect(completeSsoLogin).toHaveBeenCalledWith(
       'https://hs.example',
       'TOKEN',
     );
-    expect(sessionStorage.getItem('sso.baseUrl')).toBeNull();
-    expect(sessionStorage.getItem('sso.state')).toBeNull();
+    expect(consume).toHaveBeenCalledTimes(1); // single-use read (consuming clears)
     expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });
   });
 
-  it('rejects a callback whose state does not match the stored one', () => {
-    sessionStorage.setItem('sso.baseUrl', 'https://hs.example');
-    sessionStorage.setItem('sso.state', 'EXPECTED');
+  it('rejects a callback whose state does not match the stored one', async () => {
+    const completeSsoLogin = vi.fn();
+    const { consume } = configure({
+      auth: { completeSsoLogin } as unknown as AuthService,
+      token: 'TOKEN',
+      returnedState: 'FORGED',
+      stash: { state: 'EXPECTED', baseUrl: 'https://hs.example' },
+    });
+    const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
+
+    await cmp.ngOnInit();
+
+    expect(completeSsoLogin).not.toHaveBeenCalled();
+    expect(cmp.error()).toMatch(/could not be verified/i);
+    expect(consume).toHaveBeenCalledTimes(1); // consumed (cleared) even on reject
+  });
+
+  it('rejects when no state was stored for this round-trip', async () => {
     const completeSsoLogin = vi.fn();
     configure({
       auth: { completeSsoLogin } as unknown as AuthService,
       token: 'TOKEN',
-      state: 'FORGED',
+      returnedState: 'WHATEVER',
+      stash: { state: null, baseUrl: 'https://hs.example' },
     });
     const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
 
-    cmp.ngOnInit();
-
-    expect(completeSsoLogin).not.toHaveBeenCalled();
-    expect(cmp.error()).toMatch(/could not be verified/i);
-    expect(sessionStorage.getItem('sso.state')).toBeNull(); // cleared on reject
-  });
-
-  it('rejects when no state was stored for this session', () => {
-    sessionStorage.setItem('sso.baseUrl', 'https://hs.example');
-    const completeSsoLogin = vi.fn();
-    configure({
-      auth: { completeSsoLogin } as unknown as AuthService,
-      token: 'TOKEN',
-      state: 'WHATEVER',
-    });
-    const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
-
-    cmp.ngOnInit();
+    await cmp.ngOnInit();
 
     expect(completeSsoLogin).not.toHaveBeenCalled();
     expect(cmp.error()).toMatch(/could not be verified/i);
   });
 
-  it('errors when the login token is missing', () => {
+  it('errors when the login token is missing', async () => {
     const completeSsoLogin = vi.fn();
     configure({
       auth: { completeSsoLogin } as unknown as AuthService,
@@ -112,28 +118,27 @@ describe('SsoCallbackPage', () => {
     });
     const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
 
-    cmp.ngOnInit();
+    await cmp.ngOnInit();
 
     expect(cmp.error()).toMatch(/missing/i);
     expect(completeSsoLogin).not.toHaveBeenCalled();
   });
 
-  it('still strips the token from the URL when the homeserver is missing', () => {
+  it('still strips the token from the URL when the homeserver is missing', async () => {
     const { replaceState } = configure({
       auth: { completeSsoLogin: vi.fn() } as unknown as AuthService,
       token: 'TOKEN',
+      stash: { state: null, baseUrl: null }, // e.g. a stale/expired stash
     });
     const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
 
-    cmp.ngOnInit();
+    await cmp.ngOnInit();
 
     expect(replaceState).toHaveBeenCalledWith('/sso-callback');
     expect(cmp.error()).toMatch(/missing/i);
   });
 
-  it('surfaces a completion error', () => {
-    sessionStorage.setItem('sso.baseUrl', 'https://hs.example');
-    sessionStorage.setItem('sso.state', 'NONCE');
+  it('surfaces a completion error', async () => {
     const { navigateByUrl } = configure({
       auth: {
         completeSsoLogin: vi.fn(() =>
@@ -141,11 +146,12 @@ describe('SsoCallbackPage', () => {
         ),
       } as unknown as AuthService,
       token: 'TOKEN',
-      state: 'NONCE',
+      returnedState: 'NONCE',
+      stash: { state: 'NONCE', baseUrl: 'https://hs.example' },
     });
     const cmp = TestBed.createComponent(SsoCallbackPage).componentInstance;
 
-    cmp.ngOnInit();
+    await cmp.ngOnInit();
 
     expect(cmp.error()).toBe('token expired');
     expect(navigateByUrl).not.toHaveBeenCalled();
