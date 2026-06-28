@@ -128,7 +128,16 @@ src/app/
    picker + save/share (a native rebuild is required to pick up the new plugins; iOS
    `Info.plist` keys + Android perms for picking already added, and the Filesystem-cache/
    Share path needs no extra permission).
-9. **MVP polish** — dark mode, offline cache, settings/profile, device management.
+9. **MVP polish** — 🚧 dark mode, offline cache, settings/profile, device management.
+   Settings shell landed as `@trinity/feature-settings` (a `/settings` route reached
+   from a gear button in the rooms header). **Appearance/dark mode** is done: a core
+   `ThemeService` persists a light/dark/system preference (Capacitor Preferences),
+   resolves `system` via `prefers-color-scheme`, and toggles Ionic's `.ion-palette-dark`
+   class on `<html>` (light is the `:root` default; the dark palette + Ionic's
+   `dark.class.css` tokens layer under the class), applied at startup via
+   `provideAppInitializer`. **Remaining:** profile (display name/avatar),
+   device management (list/rename/delete + verify), and offline cache (an `IndexedDBStore`
+   for the sync store + a connectivity indicator off the existing `syncState` signal).
 
 Phase 2: push notifications, threads, calls, spaces.
 
