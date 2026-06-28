@@ -92,54 +92,57 @@ export class MatrixClientService {
   init(session: MatrixSession): Observable<void> {
     return defer(() => {
       this.teardown();
-      // Persist the sync store to IndexedDB (per-account) so rooms/timelines are
-      // cached for fast startup and offline reads; falls back to the SDK's
-      // in-memory store outside a browser (e.g. unit tests).
-      const store = this.createSyncStore(session.userId);
-      this.syncStore = store;
-      const client = createClient({
-        baseUrl: session.baseUrl,
-        accessToken: session.accessToken,
-        userId: session.userId,
-        deviceId: session.deviceId,
-        ...(store ? { store } : {}),
-        // Lets the crypto stack read/write 4S using the recovery key the user
-        // unlocks during the setup/recovery flows (held only in memory).
-        cryptoCallbacks: {
-          getSecretStorageKey: this.secretStorageKeys.getSecretStorageKey,
-          cacheSecretStorageKey: this.secretStorageKeys.cacheSecretStorageKey,
-        },
-      });
-      // Load any cached sync from IndexedDB (must run after createClient), then
-      // preload the WASM and init the crypto store. The cache is best-effort: a
-      // corrupted/blocked IndexedDB must NOT block login, so a startup failure is
-      // swallowed and the SDK's degradable store falls back to in-memory.
-      return from(
-        store ? store.startup().catch(() => undefined) : Promise.resolve(),
-      ).pipe(
-        // Wait for a prior logout's background store wipe to finish before touching
-        // crypto: the Rust crypto IndexedDB name is fixed, so opening it here while a
-        // delete is still pending would block (or race) it.
-        switchMap(() => from(this.wipe)),
-        switchMap(() => preloadCryptoWasm()),
-        switchMap(() => from(client.initRustCrypto())),
-        tap(() => client.on(ClientEvent.Sync, this.onSync)),
-        // `threadSupport` makes the SDK aggregate `m.thread` relations into
-        // per-thread timelines (`Room.getThreads()` / `getThread()`) and keep
-        // threaded replies out of the room's live (main) timeline — both of which
-        // ThreadsService relies on for the read view.
-        switchMap(() =>
+      // Created inside the wipe-gated switchMap below; kept in an outer ref only so
+      // catchError can tear a half-started client down.
+      let client: MatrixClient | null = null;
+      // Await a prior logout's background store wipe FIRST: the Rust-crypto IndexedDB
+      // name is fixed and the per-account sync DB name repeats across a same-user
+      // re-login, so opening either before the pending delete finishes would block
+      // (or race) it.
+      return from(this.wipe).pipe(
+        switchMap(() => {
+          // Persist the sync store to IndexedDB (per-account) so rooms/timelines are
+          // cached for fast startup + offline reads; null (→ in-memory) off-browser.
+          const store = this.createSyncStore(session.userId);
+          this.syncStore = store;
+          const created = createClient({
+            baseUrl: session.baseUrl,
+            accessToken: session.accessToken,
+            userId: session.userId,
+            deviceId: session.deviceId,
+            ...(store ? { store } : {}),
+            // Lets the crypto stack read/write 4S using the recovery key the user
+            // unlocks during the setup/recovery flows (held only in memory).
+            cryptoCallbacks: {
+              getSecretStorageKey: this.secretStorageKeys.getSecretStorageKey,
+              cacheSecretStorageKey:
+                this.secretStorageKeys.cacheSecretStorageKey,
+            },
+          });
+          client = created;
+          // Best-effort cache load (after createClient); a corrupt/blocked IndexedDB
+          // must NOT block login — the SDK falls back to in-memory.
+          return from(
+            store ? store.startup().catch(() => undefined) : Promise.resolve(),
+          ).pipe(map(() => created));
+        }),
+        switchMap((c) => from(preloadCryptoWasm()).pipe(map(() => c))),
+        switchMap((c) => from(c.initRustCrypto()).pipe(map(() => c))),
+        tap((c) => c.on(ClientEvent.Sync, this.onSync)),
+        // `threadSupport` aggregates `m.thread` relations into per-thread timelines and
+        // keeps threaded replies out of the main timeline — both relied on downstream.
+        switchMap((c) =>
           from(
-            client.startClient({ initialSyncLimit: 20, threadSupport: true }),
-          ),
+            c.startClient({ initialSyncLimit: 20, threadSupport: true }),
+          ).pipe(map(() => c)),
         ),
-        tap(() => {
+        tap((c) => {
           // Publish only after a successful start; until now isInitialized stays false.
-          this.client = client;
+          this.client = c;
         }),
         catchError((err) => {
-          client.off(ClientEvent.Sync, this.onSync);
-          client.stopClient();
+          client?.off(ClientEvent.Sync, this.onSync);
+          client?.stopClient();
           this._syncState.set(null);
           this.secretStorageKeys.clear();
           this.destroySyncStore(); // release the store opened for this failed boot
