@@ -14,7 +14,7 @@ guarded by Nx module boundaries). Projects:
 | `trinity`          | `apps/trinity`          | the Ionic/Angular app (build, serve, test) `[type:app]`                                                                                          |
 | `core`             | `libs/core`             | `@trinity/core` — Matrix services, storage, guard `[type:core]`                                                                                  |
 | `feature-auth`     | `libs/feature-auth`     | `@trinity/feature-auth` — login + SSO callback `[type:feature]`                                                                                  |
-| `feature-rooms`    | `libs/feature-rooms`    | `@trinity/feature-rooms` — room shell + message timeline `[type:feature]`                                                                        |
+| `feature-rooms`    | `libs/feature-rooms`    | `@trinity/feature-rooms` — room shell + message timeline (incl. quick switcher, message search, user picker) `[type:feature]`                    |
 | `feature-crypto`   | `libs/feature-crypto`   | `@trinity/feature-crypto` — encryption setup/recovery + device verification `[type:feature]`                                                     |
 | `feature-settings` | `libs/feature-settings` | `@trinity/feature-settings` — settings: appearance (theme), profile, device management `[type:feature]`                                          |
 | `ui`               | `libs/ui`               | `@trinity/ui` — reusable presentational components (avatar + `AVATAR_RESOLVER` token, emoji picker, message toolbar) + `runWithBusy` `[type:ui]` |
@@ -161,11 +161,13 @@ pnpm e2e:verify       # two-client emoji-SAS device verification (needs Docker; 
 pnpm e2e:media        # note-to-self encrypted media send round-trip (needs Docker; see e2e/README)
 pnpm e2e:threads      # thread lifecycle: Reply-in-thread → first reply creates it, reopen, abandon (needs Docker)
 pnpm e2e:spaces       # spaces create/manage: create space + channel (asserts m.space.child) + leave (needs Docker)
+pnpm e2e:rooms        # room/DM creation + invites: create room, start DM, invite, accept/decline (needs Docker)
+pnpm e2e:search       # search: quick switcher + in-room message search (needs Docker)
 ```
 
-The Synapse-backed flows (`e2e:verify`/`media`/`threads`/`spaces`) each start and tear
-down the **one** disposable Synapse Docker stack (fixed ports), so they **must run
-sequentially**, never concurrently — e.g. `pnpm e2e:threads && pnpm e2e:spaces`.
+The Synapse-backed flows (`e2e:verify`/`media`/`threads`/`spaces`/`rooms`/`search`) each
+start and tear down the **one** disposable Synapse Docker stack (fixed ports), so they
+**must run sequentially**, never concurrently — e.g. `pnpm e2e:threads && pnpm e2e:spaces`.
 
 All should print `RESULT: PASS`. The spike/smoke harnesses require the Playwright
 browsers:
@@ -177,8 +179,9 @@ pnpm exec playwright install chromium webkit
 `e2e/` holds `smoke-login.mjs`, `crypto-spike.mjs`, the two-client
 `verify-sas.mjs` (+ its `verify-sas-run.mjs` orchestrator, `verify-sas-selfcheck.mjs`,
 and a disposable `synapse/` Synapse+Caddy harness), the feature flows
-`send-media.mjs` / `threads.mjs` / `spaces.mjs` (each with a `*-run.mjs` orchestrator that
-owns the Synapse lifecycle), and a shared `support/serve.mjs` static server. See [e2e/README.md](../e2e/README.md) for the verification flow and how
+`send-media.mjs` / `threads.mjs` / `spaces.mjs` / `rooms.mjs` / `search.mjs` (each with a
+`*-run.mjs` orchestrator that owns the Synapse lifecycle), and a shared `support/serve.mjs`
+static server. See [e2e/README.md](../e2e/README.md) for the verification flow and how
 to point it at your own homeserver. The verification harness needs a homeserver over
 **https** because the app CSP only allows `https:`/`wss:` for `connect-src`.
 

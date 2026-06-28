@@ -119,7 +119,9 @@ src/app/
    crypto (AES-CTR-256 + SHA-256) is inlined in `@trinity/core` (`attachment-crypto.ts`,
    replacing the unmaintained `matrix-encrypt-attachment`); the upload path encrypts for
    E2EE rooms. Picking uses Capacitor **Camera** on native with a web `<input type="file">`
-   fallback (works on web and inside WebViews). The upload path now **generates a
+   fallback (works on web and inside WebViews); the composer also accepts a **pasted image**
+   from the clipboard (web `ClipboardEvent` — files + a WebKit `items` fallback), sent
+   through the same media path. The upload path now **generates a
    client-side thumbnail** for images (canvas-downscaled to a 480px edge) and a
    **poster frame for videos** (seek past the start, draw the frame, encode), encrypted
    per-file for E2EE rooms — the only thumbnail an encrypted room can show, since the
@@ -189,13 +191,36 @@ Phase 2:
   won't form one from the sender's own first reply, and opening-then-abandoning leaves no
   empty thread); **history pagination** ("Load older replies"); **per-thread unread
   badges**; and a **threads-list** panel. Covered by an `e2e:threads` Playwright suite.
-- **Spaces** — ✅ navigation + create/manage. A core `SpacesService`; the server rail
-  lists joined spaces and selecting one filters the channel sidebar to its child rooms
-  (Home = all). Now also **create a space**, **create an (encrypted) room in the active
+- **Spaces** — ✅ navigation + create/manage + hierarchy/join. A core `SpacesService`; the
+  server rail lists joined spaces and selecting one filters the channel sidebar to its child
+  rooms (Home = all). Also **create a space**, **create an (encrypted) room in the active
   space** (linked via `m.space.child` + `m.space.parent`), and **leave a space** — `+`
-  affordances in the rail/sidebar plus a leave action, driven through `SpacesService`
-  write methods. Covered by an `e2e:spaces` Playwright suite. Deferred: invites, joining
-  public/invited spaces, not-yet-joined children, nesting, child reordering, remove-child.
+  affordances in the rail/sidebar plus a leave action. `openSpace` now fetches the full child
+  set via `getRoomHierarchy` (MSC2946), so the channel sidebar surfaces a **"More Channels"**
+  group of not-yet-joined rooms (Join, with "suggested" hints) and a **"Spaces"** group of
+  sub-spaces (open/join), plus a **remove-from-space** action (`removeRoomFromSpace`, an
+  empty-`m.space.child` tombstone). Covered by an `e2e:spaces` Playwright suite. Deferred:
+  public-space directory discovery, nested-rail navigation, child reordering.
+- **Room creation & invites** — ✅ `RoomsService` write actions: **create** an encrypted
+  standalone room (`createRoom`), **start a DM** (`createDirectMessage` — reuses an existing
+  `m.direct` room, else creates an `is_direct`/`trusted_private_chat` room and merges it into
+  `m.direct`), **invite a user** to a room or space (`inviteUser`), and a directory **user
+  search** (`searchUsers`); a `directRoomIds` signal flags DMs. Incoming invites get their
+  own core `InvitesService` (`pendingInvites` read model + `acceptInvite`/`declineInvite`).
+  Shared `room-create.ts` helpers (encryption `initial_state`, visibility/preset, MXID
+  validation) back every create path, and `SpacesService` was refactored onto them. UI: a
+  `UserPickerComponent` (MXID + live directory search), a "new chat" `+` in the Home sidebar
+  (create room / start DM via an ActionSheet), invite buttons in the room + space headers, and
+  an **Invites** group (Accept/Decline). Covered by an `e2e:rooms` Playwright suite.
+- **Search** — ✅ a **quick switcher** (core `SearchService`): `localResults` ranks rooms,
+  spaces, DMs, and invites synchronously client-side (no network, E2EE-safe) and `searchPeople`
+  adds a directory lookup; a `QuickSwitcherComponent` opened with global **Cmd/Ctrl+K** (or a
+  header button) jumps to a room/space/DM/person/invite. Plus **in-room message search**,
+  E2EE-honest: `searchLoadedMessages` scans the already-loaded _decrypted_ timeline (the
+  reliable path for an encrypted room, widened by `loadMoreHistory`), while
+  `searchServerMessages` uses the homeserver `/search` and **refuses encrypted rooms**; the
+  `MessageSearchComponent` carries a "loaded messages only" note for E2EE rooms and jumps to
+  the matched event. Covered by an `e2e:search` Playwright suite.
 - **Branding** — ✅ a Trinity app icon: three connected nodes (trinity + a Matrix
   federation/chat graph) in brand blurple `#5865f2`. A transparent SVG master + PNG set
   (favicon, PWA, apple-touch) wired into `index.html`, plus the Electron build icon
