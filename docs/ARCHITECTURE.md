@@ -39,6 +39,11 @@ roadmap see [../PLAN.md](../PLAN.md); for dependency specifics see [../STACK.md]
 | [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts)                             | Homeserver discovery (`.well-known`), password login, SSO URL + token exchange, logout. Persists session and starts the client on success.                                                                                                                                                                                                                                                                                                     |
 | [rooms.service.ts](../libs/core/src/lib/matrix/rooms.service.ts)                           | Read model over the synced client: Spaces / joined rooms / members as plain view models, exposed as read-only signals (recomputed on sync events). Powers the room-list shell.                                                                                                                                                                                                                                                                 |
 | [timeline.service.ts](../libs/core/src/lib/matrix/timeline.service.ts)                     | Per-room timeline read model + actions. `open`/`close` attach to one room; `messages`/`loadingOlder`/`canLoadOlder` signals; `loadOlder` (scrollback), `send`, `edit` (`m.replace`), `redact`, `retry`, `toggleReaction` (`m.annotation`), `reply` (`m.in_reply_to`). Maps SDK events to `MessageView` (markdown HTML, edited/redacted/decryption-failed, reactions, reply preview, local-echo status). See [Messaging](#messaging--timeline). |
+| [media.service.ts](../libs/core/src/lib/matrix/media.service.ts)                           | Encrypted attachments: upload (encrypt → `mxc`) and resolve (download → decrypt → object URL) images/files, generate thumbnails, probe duration/dimensions. Authenticated-media aware. Object URLs are pinned/released per open room.                                                                                                                                                                                                          |
+| [authed-media.ts](../libs/core/src/lib/matrix/authed-media.ts)                             | Shared helper to fetch `mxc://` bytes with the access token (authenticated media, v1.11+) with a legacy-endpoint fallback. Used by `media.service` and `avatar.service`.                                                                                                                                                                                                                                                                       |
+| [avatar.service.ts](../libs/core/src/lib/matrix/avatar.service.ts)                         | Resolves `mxc://` avatars to cached authenticated `blob:` URLs (always attempts authed, falls back to legacy; failures aren't cached). Revoked on logout/login. Bound through the `@trinity/ui` `AVATAR_RESOLVER` token so every `<trn-avatar>` works on authenticated-media-only homeservers.                                                                                                                                                 |
+| [profile.service.ts](../libs/core/src/lib/matrix/profile.service.ts)                       | Signed-in user's profile: load + set display name + avatar (raw `mxc`). Powers the Settings profile editor.                                                                                                                                                                                                                                                                                                                                    |
+| [devices.service.ts](../libs/core/src/lib/matrix/devices.service.ts)                       | Device/session management: list (verified/current flags), rename, sign-out via shared password UIA; live refresh on `CryptoEvent.DevicesUpdated`. Powers the Settings device list.                                                                                                                                                                                                                                                             |
 | [crypto.service.ts](../libs/core/src/lib/matrix/crypto.service.ts)                         | E2EE secret layer over `getCrypto()`: bootstraps cross-signing + secret storage (4S) + key backup and recovers later devices. `status` signal (`unknown` / `ready` / `needs-setup` / `needs-recovery`), `keyBackupActive`, `thisDeviceVerified`; `setUp` / `recoverWithKey` / `recoverWithPassphrase`. See [Crypto bootstrap](#crypto-bootstrap--e2ee-secret-layer).                                                                           |
 | [secret-storage-key.service.ts](../libs/core/src/lib/matrix/secret-storage-key.service.ts) | In-memory holder for the unlocked 4S key; backs the `getSecretStorageKey` / `cacheSecretStorageKey` `cryptoCallbacks`. Never persisted; zeroed on teardown.                                                                                                                                                                                                                                                                                    |
 | [verification.service.ts](../libs/core/src/lib/matrix/verification.service.ts)             | Interactive device verification (emoji SAS). Wraps `VerificationRequest`/`Verifier`; instance-keyed `connect()/disconnect()` listen for incoming requests. `active` signal (a `VerificationView`); `startSelfVerification` / `accept` / `startSas` / `confirmSas` / `mismatchSas` / `cancel`. See [Device verification](#device-verification-milestone-7).                                                                                     |
@@ -54,6 +59,9 @@ roadmap see [../PLAN.md](../PLAN.md); for dependency specifics see [../STACK.md]
 - [auth.guard.ts](../libs/core/src/lib/guards/auth.guard.ts) — a `CanActivateFn` that lets
   routes through only when a client is live, attempting a one-time session **restore**
   first, otherwise redirecting to `/login`.
+- [theme/theme.service.ts](../libs/core/src/lib/theme/theme.service.ts) — light/dark/system
+  theme preference (persisted), toggling the Ionic `.ion-palette-dark` class and the native
+  status-bar style. Drives the Settings _Appearance_ section.
 
 ## State management
 
@@ -83,6 +91,21 @@ trigger is cross-feature / persisted / deep-linkable selection, where adopting
 / `withMethods` / `withEntities`) makes sense. It's a signal-native evolution of the
 current pattern — no Redux ceremony — and the SDK remains the source of truth; the
 store would hold the projected view plus UI / selection state.
+
+## Offline & PWA support
+
+- **Persistent sync store.** `MatrixClientService` backs the client with an
+  `IndexedDBStore` (per-account, best-effort: falls back to in-memory off-browser or when
+  startup fails), so rooms and timelines are cached for fast startup and offline reads.
+  The store is destroyed on logout/reset so a prior account's cache can't linger.
+- **Connectivity signal.** A `connectivity` signal derived from `SyncState` drives the
+  offline banner in the rooms shell.
+- **Service worker (web/PWA only).** `@angular/service-worker` (`apps/trinity/ngsw-config.json`,
+  **production builds only**) precaches the app shell + the crypto WASM (`/assets/crypto/`),
+  giving the web target the same offline cold start native/desktop get from bundled assets.
+  Registration is gated to **web + production** — never inside the Capacitor/Electron WebView,
+  which load assets locally — and an `unrecoverable`-event handler reloads to recover from a
+  broken cache. Needs in-browser verification of the offline/update flow.
 
 ## Messaging / timeline
 
@@ -137,15 +160,16 @@ forwards composer/toolbar actions to `TimelineService`.
 
 Defined in [app.routes.ts](../apps/trinity/src/app/app.routes.ts), all lazy-loaded standalone:
 
-| Path                 | Page                               | Guard       |
-| -------------------- | ---------------------------------- | ----------- |
-| `/login`             | login                              | —           |
-| `/sso-callback`      | SSO token exchange                 | —           |
-| `/rooms`             | Discord-style room shell (default) | `authGuard` |
-| `/encryption/setup`  | first-device encryption setup      | `authGuard` |
-| `/encryption/unlock` | new-device recovery / unlock       | `authGuard` |
-| `/encryption/verify` | device verification (emoji SAS)    | `authGuard` |
-| `/spike`             | dev E2EE crypto spike              | —           |
+| Path                 | Page                                    | Guard       |
+| -------------------- | --------------------------------------- | ----------- |
+| `/login`             | login                                   | —           |
+| `/sso-callback`      | SSO token exchange                      | —           |
+| `/rooms`             | Discord-style room shell (default)      | `authGuard` |
+| `/settings`          | settings (appearance, profile, devices) | `authGuard` |
+| `/encryption/setup`  | first-device encryption setup           | `authGuard` |
+| `/encryption/unlock` | new-device recovery / unlock            | `authGuard` |
+| `/encryption/verify` | device verification (emoji SAS)         | `authGuard` |
+| `/spike`             | dev E2EE crypto spike                   | —           |
 
 ## Authentication flow
 

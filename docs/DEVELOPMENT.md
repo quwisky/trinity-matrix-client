@@ -9,14 +9,15 @@ Trinity is an **Nx integrated monorepo** (pnpm). The deployable app lives in
 `apps/`, reusable code in `libs/` (imported via `@trinity/*` path aliases and
 guarded by Nx module boundaries). Projects:
 
-| Project          | Path                  | Notes                                                                                                                  |
-| ---------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `trinity`        | `apps/trinity`        | the Ionic/Angular app (build, serve, test) `[type:app]`                                                                |
-| `core`           | `libs/core`           | `@trinity/core` — Matrix services, storage, guard `[type:core]`                                                        |
-| `feature-auth`   | `libs/feature-auth`   | `@trinity/feature-auth` — login + SSO callback `[type:feature]`                                                        |
-| `feature-rooms`  | `libs/feature-rooms`  | `@trinity/feature-rooms` — room shell + message timeline `[type:feature]`                                              |
-| `feature-crypto` | `libs/feature-crypto` | `@trinity/feature-crypto` — encryption setup/recovery + device verification `[type:feature]`                           |
-| `ui`             | `libs/ui`             | `@trinity/ui` — reusable presentational components (avatar, emoji picker, message toolbar) + `runWithBusy` `[type:ui]` |
+| Project            | Path                    | Notes                                                                                                                                            |
+| ------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `trinity`          | `apps/trinity`          | the Ionic/Angular app (build, serve, test) `[type:app]`                                                                                          |
+| `core`             | `libs/core`             | `@trinity/core` — Matrix services, storage, guard `[type:core]`                                                                                  |
+| `feature-auth`     | `libs/feature-auth`     | `@trinity/feature-auth` — login + SSO callback `[type:feature]`                                                                                  |
+| `feature-rooms`    | `libs/feature-rooms`    | `@trinity/feature-rooms` — room shell + message timeline `[type:feature]`                                                                        |
+| `feature-crypto`   | `libs/feature-crypto`   | `@trinity/feature-crypto` — encryption setup/recovery + device verification `[type:feature]`                                                     |
+| `feature-settings` | `libs/feature-settings` | `@trinity/feature-settings` — settings: appearance (theme), profile, device management `[type:feature]`                                          |
+| `ui`               | `libs/ui`               | `@trinity/ui` — reusable presentational components (avatar + `AVATAR_RESOLVER` token, emoji picker, message toolbar) + `runWithBusy` `[type:ui]` |
 
 The web build still emits to root `www/`, so Capacitor and the native projects
 are unchanged. `pnpm exec nx graph` opens the dependency graph.

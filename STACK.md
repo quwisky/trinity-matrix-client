@@ -5,22 +5,24 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
 ## Pinned versions (latest on npm, 2026-06-26)
 
-| Package                              | Version | Notes                                                                                 |
-| ------------------------------------ | ------- | ------------------------------------------------------------------------------------- |
-| `@angular/core`                      | 20.3.25 | Standalone + signals; Ionic 8 supports Angular 16+                                    |
-| `@ionic/angular`                     | 8.8.12  | 8.8 is the final Ionic 8 minor; Ionic 9 in development                                |
-| `@capacitor/core`                    | 8.4.1   | Capacitor 8: SPM default on iOS, edge-to-edge Android                                 |
-| `@capacitor-community/electron`      | 5.0.1   | Community-maintained desktop target (less stable than core)                           |
-| `matrix-js-sdk`                      | 41.8.0  | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                     |
-| `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1  | Rust crypto WASM bindings; E2EE backend                                               |
-| `@capacitor/app`                     | 8.1.0   | App URL-open events — native SSO deep-link callback                                   |
-| `@capacitor/browser`                 | 8.0.3   | System browser for native SSO (keeps the app webview alive)                           |
-| `@capacitor/camera`                  | 8.2.0   | Native photo/gallery picker for sending media (web `<input>` fallback)                |
-| `@capacitor/filesystem`              | 8.1.2   | Write a downloaded attachment to cache before sharing it (native save)                |
-| `@capacitor/share`                   | 8.0.1   | Native OS save/share sheet for downloads (web `<a download>` fallback)                |
-| `matrix-encrypt-attachment`          | —       | Removed (unmaintained since 2022); ported into `@trinity/core` `attachment-crypto.ts` |
-| `marked`                             | 18.0.5  | Markdown → HTML for the composer/timeline                                             |
-| `dompurify`                          | 3.4.11  | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                            |
+| Package                              | Version | Notes                                                                                  |
+| ------------------------------------ | ------- | -------------------------------------------------------------------------------------- |
+| `@angular/core`                      | 20.3.25 | Standalone + signals; Ionic 8 supports Angular 16+                                     |
+| `@ionic/angular`                     | 8.8.12  | 8.8 is the final Ionic 8 minor; Ionic 9 in development                                 |
+| `@capacitor/core`                    | 8.4.1   | Capacitor 8: SPM default on iOS, edge-to-edge Android                                  |
+| `@capacitor-community/electron`      | 5.0.1   | Community-maintained desktop target (less stable than core)                            |
+| `matrix-js-sdk`                      | 41.8.0  | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                      |
+| `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1  | Rust crypto WASM bindings; E2EE backend                                                |
+| `@capacitor/app`                     | 8.1.0   | App URL-open events — native SSO deep-link callback                                    |
+| `@capacitor/browser`                 | 8.0.3   | System browser for native SSO (keeps the app webview alive)                            |
+| `@capacitor/camera`                  | 8.2.0   | Native photo/gallery picker for sending media (web `<input>` fallback)                 |
+| `@capacitor/filesystem`              | 8.1.2   | Write a downloaded attachment to cache before sharing it (native save)                 |
+| `@capacitor/share`                   | 8.0.1   | Native OS save/share sheet for downloads (web `<a download>` fallback)                 |
+| `@capacitor/status-bar`              | 8.0.2   | Sets the native status-bar style to match the light/dark theme                         |
+| `@angular/service-worker`            | 20.3.25 | PWA service worker (production web): precaches the app shell + crypto WASM for offline |
+| `matrix-encrypt-attachment`          | —       | Removed (unmaintained since 2022); ported into `@trinity/core` `attachment-crypto.ts`  |
+| `marked`                             | 18.0.5  | Markdown → HTML for the composer/timeline                                              |
+| `dompurify`                          | 3.4.11  | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                             |
 
 > Versions moved since the original plan draft: Capacitor is on **8** (not 6),
 > Ionic on **8.8**. Angular is pinned at **20.3** (the Ionic 8 scaffold targets 20,
@@ -28,18 +30,19 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
 ## Dev tooling & quality gates
 
-| Package                                           | Version      | Notes                                                        |
-| ------------------------------------------------- | ------------ | ------------------------------------------------------------ |
-| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.0.1       | Monorepo task graph, caching, module boundaries              |
-| `vitest` + `@analogjs/*`                          | 3 / 2.6.2    | Unit tests; the Analog plugin compiles Angular for Vite      |
-| `vite`, `vite-tsconfig-paths`, `jsdom`            | 6 / 6 / 25   | Vitest runtime + `@trinity/*` alias resolution + DOM env     |
-| `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 20.7 / 8 | Flat config (`eslint.config.mjs`) + module boundaries        |
-| `prettier`                                        | 3.8          | `singleQuote`; Angular parser forced for `*.page.html`       |
-| `stylelint` + `stylelint-config-standard-scss`    | 17 / 17      | SCSS lint                                                    |
-| `@commitlint/{cli,config-angular}`                | 21           | `commit-msg` hook; Angular commit convention                 |
-| `husky` + `lint-staged`                           | 9 / 17       | `pre-commit` (lint/format staged) + `commit-msg` hooks       |
-| `typescript`                                      | 5.9          | `moduleResolution: bundler`; aliases in `tsconfig.base.json` |
-| `@types/node`                                     | 22           | Node globals for `vite.config.ts` + the spec tsconfigs       |
+| Package                                           | Version       | Notes                                                        |
+| ------------------------------------------------- | ------------- | ------------------------------------------------------------ |
+| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.0.1        | Monorepo task graph, caching, module boundaries              |
+| `@nx/playwright` + `@playwright/test`             | 23.0.1 / 1.61 | `nx e2e trinity` app-journey tests (Playwright, Chromium)    |
+| `vitest` + `@analogjs/*`                          | 3 / 2.6.2     | Unit tests; the Analog plugin compiles Angular for Vite      |
+| `vite`, `vite-tsconfig-paths`, `jsdom`            | 6 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env     |
+| `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 20.7 / 8  | Flat config (`eslint.config.mjs`) + module boundaries        |
+| `prettier`                                        | 3.8           | `singleQuote`; Angular parser forced for `*.page.html`       |
+| `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                    |
+| `@commitlint/{cli,config-angular}`                | 21            | `commit-msg` hook; Angular commit convention                 |
+| `husky` + `lint-staged`                           | 9 / 17        | `pre-commit` (lint/format staged) + `commit-msg` hooks       |
+| `typescript`                                      | 5.9           | `moduleResolution: bundler`; aliases in `tsconfig.base.json` |
+| `@types/node`                                     | 22            | Node globals for `vite.config.ts` + the spec tsconfigs       |
 
 ## Ionic + Angular (standalone)
 
@@ -107,11 +110,15 @@ the architecture changes — find out before building UI on top.
   is an Nx workspace with `project.json`, not `angular.json`.)
 - **Component/browser tests (later):** Vitest Browser Mode with the Playwright provider
   (`@vitest/browser` + `playwright`).
-- **End-to-end:** Playwright **standalone** (`playwright`, not `@playwright/test`) —
-  `e2e/*.mjs` scripts that serve `www/` and drive Chromium/WebKit. Today: `smoke-login`,
-  the `crypto-spike` (per engine), and the two-client emoji-SAS `verify-sas` (with a
-  disposable Synapse harness, env-gated on a homeserver; full round-trip run to PASS
-  2026-06-27). See [e2e/README.md](e2e/README.md).
+- **End-to-end — app journeys:** `@nx/playwright` + `@playwright/test` at
+  `apps/trinity/e2e/`. `nx e2e trinity` builds the dev bundle, serves `www/`, and brings the
+  disposable Synapse harness up/down via global setup (auth specs skip when Docker is absent).
+  Covers login/guard, theme, profile, and device management.
+- **End-to-end — crypto/protocol:** Playwright **standalone** (`playwright`, not
+  `@playwright/test`) — `e2e/*.mjs` scripts that serve `www/` and drive Chromium/WebKit:
+  `smoke-login`, the `crypto-spike` (per engine), the two-client emoji-SAS `verify-sas`, and
+  the encrypted `send-media` round-trip (disposable Synapse harness, env-gated; full
+  round-trips run to PASS 2026-06-27). See [e2e/README.md](e2e/README.md).
 - Vitest shares the Vite config and runs in parallel by default.
 
 ## Open setup decisions / reminders

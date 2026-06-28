@@ -11,9 +11,10 @@ End-to-end encryption is a first-class, in-MVP feature.
 > and a working **timeline — read, send, edit, delete, react, reply, markdown, and
 > emoji** — are done. **End-to-end encryption** is complete through device trust:
 > crypto bootstrap (cross-signing, key backup, recovery) and **device verification**
-> (emoji-SAS, with an incoming-request prompt). **Encrypted media** (M8) — sending
-> and displaying images/files/video/audio, with attachment encryption — is in progress.
-> See [Project status](#project-status) below.
+> (emoji-SAS, with an incoming-request prompt). **Encrypted media** (M8 — sending and
+> displaying images/files/video/audio with attachment encryption) and **MVP polish**
+> (M9 — light/dark theme, offline cache + PWA service worker, settings with profile and
+> device management, authenticated avatars) are done. See [Project status](#project-status) below.
 
 ## Documentation
 
@@ -34,7 +35,10 @@ End-to-end encryption is a first-class, in-MVP feature.
 - **Protocol:** `matrix-js-sdk` 41
 - **E2EE:** `@matrix-org/matrix-sdk-crypto-wasm` (Rust crypto / Vodozemac)
 - **State:** Angular signals (UI state) + RxJS Observables (async service APIs)
-- **Testing:** Vitest (unit) + Playwright-driven headless checks
+- **Offline/PWA:** persistent IndexedDB sync store + Angular Service Worker
+  (production web) precaching the app shell and crypto WASM
+- **Testing:** Vitest (unit) + Playwright e2e (`@nx/playwright` app journeys +
+  standalone crypto/protocol harnesses)
 - **Quality gates:** ESLint (+ module boundaries), Prettier, Stylelint, and Husky
   hooks (lint-staged + commitlint / Angular commit convention), re-run on every
   push/PR by **Crow CI** (the badge above; see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#continuous-integration))
@@ -58,19 +62,20 @@ For native and full testing details see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.m
 
 ## Common commands
 
-| Command                             | Purpose                                                       |
-| ----------------------------------- | ------------------------------------------------------------- |
-| `pnpm start`                        | Web dev server (hot reload) at `:4200`                        |
-| `pnpm build`                        | Production web build into `www/`                              |
-| `pnpm test`                         | Vitest unit tests (`nx run-many -t test` for all projects)    |
-| `pnpm lint`                         | ESLint + Nx module boundaries                                 |
-| `pnpm stylelint`                    | Stylelint (SCSS)                                              |
-| `pnpm format`                       | Prettier-format the workspace                                 |
-| `pnpm smoke:login`                  | Headless: redirect→login + real matrix.org discovery          |
-| `pnpm spike:chromium`               | Headless E2EE WASM check (Blink → Android WebView / Electron) |
-| `pnpm spike:webkit`                 | Headless E2EE WASM check (WebKit → iOS WKWebView)             |
-| `pnpm e2e:verify`                   | Two-client emoji-SAS device verification (needs Docker)       |
-| `pnpm exec cap run ios` / `android` | Build + launch on simulator/emulator                          |
+| Command                             | Purpose                                                        |
+| ----------------------------------- | -------------------------------------------------------------- |
+| `pnpm start`                        | Web dev server (hot reload) at `:4200`                         |
+| `pnpm build`                        | Production web build into `www/`                               |
+| `pnpm test`                         | Vitest unit tests (`nx run-many -t test` for all projects)     |
+| `pnpm lint`                         | ESLint + Nx module boundaries                                  |
+| `pnpm stylelint`                    | Stylelint (SCSS)                                               |
+| `pnpm format`                       | Prettier-format the workspace                                  |
+| `pnpm smoke:login`                  | Headless: redirect→login + real matrix.org discovery           |
+| `pnpm spike:chromium`               | Headless E2EE WASM check (Blink → Android WebView / Electron)  |
+| `pnpm spike:webkit`                 | Headless E2EE WASM check (WebKit → iOS WKWebView)              |
+| `pnpm e2e:verify`                   | Two-client emoji-SAS device verification (needs Docker)        |
+| `pnpm exec nx e2e trinity`          | Playwright app journeys: login, settings, theme (needs Docker) |
+| `pnpm exec cap run ios` / `android` | Build + launch on simulator/emulator                           |
 
 ## Project structure
 
@@ -87,41 +92,47 @@ apps/trinity/
   vite.config.ts      Vitest setup (Analog Angular plugin)
 libs/
   core/               @trinity/core  — MatrixClient lifecycle, auth, RoomsService
-                      read model, crypto loader, session model, storage, authGuard
-                      [type:core]
+                      + timeline read models, crypto loader, profile/devices/avatar
+                      + media (encrypted attachments) services, theme service,
+                      session model, storage, authGuard  [type:core]
   feature-auth/       @trinity/feature-auth — login + SSO callback  [type:feature]
   feature-rooms/      @trinity/feature-rooms — Discord-style shell (server rail =
                       Spaces, channel list, members) + message timeline (list,
-                      composer + emoji picker, hover toolbar, reactions, replies)
-                      + encryption banner, wired to synced rooms  [type:feature]
+                      composer + emoji picker, hover toolbar, reactions, replies,
+                      encrypted media) + encryption/offline banners  [type:feature]
   feature-crypto/     @trinity/feature-crypto — encryption setup + recovery pages
-                      with one-time recovery-key display  [type:feature]
-  ui/                 @trinity/ui — reusable presentational components (avatar,
-                      emoji picker, message toolbar); no core/state deps  [type:ui]
-e2e/                  headless validation harnesses (serve www/)
+                      + device-verification (emoji SAS)  [type:feature]
+  feature-settings/   @trinity/feature-settings — Settings page: appearance
+                      (light/dark/system theme), profile (name + avatar), and
+                      device management (sign-out/verify)  [type:feature]
+  ui/                 @trinity/ui — reusable presentational components (avatar +
+                      mxc resolver token, emoji picker, message toolbar); no
+                      core/state deps  [type:ui]
+apps/trinity/e2e/     @nx/playwright app-journey specs (run: nx e2e trinity)
+e2e/                  standalone crypto/protocol harnesses (serve www/)
 android/ ios/         Capacitor native projects (webDir: www)
 www/                  web build output
 ```
 
 Boundaries: features may depend on `core` and `ui`; `ui` is presentational-only
 (no `core`/state deps); `core` depends on nothing; the app may depend on anything.
-New shared chat / settings libs are added when first needed. Each component/page lives in its own directory
+New shared libs are added when first needed. Each component/page lives in its own directory
 (`name/name.component.ts` + `.html`/`.scss`/`.spec.ts`). See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the rationale and data flow.
 
 ## Project status
 
-| Milestone                                        | State                                                                                                                                                                       |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md))                                                                                                           |
-| 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                                                                                                                          |
-| 3 — Crypto bootstrap (cross-signing, key backup) | ✅ Done — core services + setup/recovery UI and a non-blocking `/rooms` banner                                                                                              |
-| 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock                                                                                                      |
-| 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history                                                                                                             |
-| 6 — Compose (send)                               | ✅ Done — send/edit/delete, reactions, replies, emoji, local echo + retry                                                                                                   |
-| 7 — Device verification UI                       | ✅ Done — emoji SAS self-verification (QR / cross-user deferred)                                                                                                            |
-| 8 — Media                                        | 🚧 In progress — display + send (image/file/video/audio), AES-CTR attachment crypto in-tree, native Camera picker (web `<input>` fallback). Thumbnails + e2e are follow-ups |
-| 9 — MVP polish                                   | ⬜                                                                                                                                                                          |
+| Milestone                                        | State                                                                                                                                                                                              |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md))                                                                                                                                  |
+| 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                                                                                                                                                 |
+| 3 — Crypto bootstrap (cross-signing, key backup) | ✅ Done — core services + setup/recovery UI and a non-blocking `/rooms` banner                                                                                                                     |
+| 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock                                                                                                                             |
+| 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history                                                                                                                                    |
+| 6 — Compose (send)                               | ✅ Done — send/edit/delete, reactions, replies, emoji, local echo + retry                                                                                                                          |
+| 7 — Device verification UI                       | ✅ Done — emoji SAS self-verification (QR / cross-user deferred)                                                                                                                                   |
+| 8 — Media                                        | ✅ Done — display + send (image/file/video/audio), AES-CTR attachment crypto in-tree, server thumbnails + duration/dimension probing, native Camera picker + Filesystem/Share save (web fallbacks) |
+| 9 — MVP polish                                   | ✅ Done — light/dark/system theme (+ native status bar), offline sync cache + web/PWA service worker, Settings (profile + device management), authenticated avatars                                |
 
 Full breakdown in [PLAN.md](PLAN.md).
 

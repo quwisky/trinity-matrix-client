@@ -4,9 +4,7 @@ Guidance for Claude Code in this repository. This file loads into every session.
 
 ## Project
 
-Cross-platform application built with **Ionic + Angular + Capacitor + Electron**, targeting **iOS, Android, desktop (Windows/macOS/Linux), and web/PWA** from a single codebase.
-
-> Fill in: app name, one-line purpose, and any domain context worth knowing.
+**Trinity** — a cross-platform **Matrix** client with first-class end-to-end encryption, built with **Ionic + Angular + Capacitor + Electron** and targeting **iOS, Android, desktop (Windows/macOS/Linux), and web/PWA** from a single codebase. A Discord-style shell (Spaces as a server rail, rooms, members) over `matrix-js-sdk` + Rust crypto (WASM).
 
 ## Stack
 
