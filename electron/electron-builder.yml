@@ -43,7 +43,9 @@ extraResources:
 
 directories:
   output: release
-  buildResources: build # place icons here: icon.icns / icon.ico / icon.png (TODO)
+  # icon.png (1024, transparent Trinity mark) lives here; electron-builder
+  # generates the macOS .icns, Windows .ico, and Linux png set from it at package time.
+  buildResources: build
 
 # afterSign hook: notarizes the signed macOS .app via @electron/notarize, but ONLY
 # when notarization credentials are present in the env. It is a clean no-op for

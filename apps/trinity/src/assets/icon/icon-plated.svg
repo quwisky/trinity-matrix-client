@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Trinity">
+  <defs>
+    <linearGradient id="trinityBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6e79f5" />
+      <stop offset="1" stop-color="#4752c4" />
+    </linearGradient>
+    <radialGradient id="trinitySheen" cx="0.5" cy="0.28" r="0.75">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16" />
+      <stop offset="0.62" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Blurple app-icon plate (rounded; iOS will mask further) -->
+  <rect width="1024" height="1024" rx="224" fill="url(#trinityBg)" />
+  <rect width="1024" height="1024" rx="224" fill="url(#trinitySheen)" />
+
+  <!-- Three connected nodes: trinity (3) + a Matrix federation/chat graph -->
+  <g stroke="#ffffff" stroke-width="32" stroke-linecap="round" opacity="0.9">
+    <line x1="512" y1="224" x2="266" y2="650" />
+    <line x1="512" y1="224" x2="758" y2="650" />
+    <line x1="266" y1="650" x2="758" y2="650" />
+  </g>
+  <g fill="#ffffff">
+    <circle cx="512" cy="224" r="90" />
+    <circle cx="266" cy="650" r="90" />
+    <circle cx="758" cy="650" r="90" />
+  </g>
+</svg>

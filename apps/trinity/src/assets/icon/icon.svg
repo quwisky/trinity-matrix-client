@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Trinity">
+  <!-- Trinity mark on a transparent background: three connected nodes -->
+  <!-- (trinity = 3 + a Matrix federation/chat graph), in brand blurple. -->
+  <g stroke="#5865f2" stroke-width="44" stroke-linecap="round">
+    <line x1="512" y1="222" x2="262" y2="652" />
+    <line x1="512" y1="222" x2="762" y2="652" />
+    <line x1="262" y1="652" x2="762" y2="652" />
+  </g>
+  <g fill="#5865f2">
+    <circle cx="512" cy="222" r="104" />
+    <circle cx="262" cy="652" r="104" />
+    <circle cx="762" cy="652" r="104" />
+  </g>
+</svg>
