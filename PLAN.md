@@ -144,8 +144,15 @@ src/app/
    avatar (`getProfileInfo`/`setDisplayName`/`setAvatarUrl`/`uploadContent`, exposed as a
    signal that edits patch optimistically; a missing profile / 404 is treated as empty
    so a new account can still set one), surfaced as a Profile section in settings (avatar
-   - name editor + image-validated change-avatar picker). **Remaining:** device management
-     (list/rename/delete + verify), and offline cache (an `IndexedDBStore` for the sync
+   - name editor + image-validated change-avatar picker). **Device management** is done: a
+     core `DevicesService` lists sessions (verified/current flags), renames
+     (`setDeviceDetails`), and signs out (`deleteDevice`) driving the password UIA loop the
+     homeserver requires; a Devices section renders the list with badges, alert-driven
+     rename + sign-out (the current device is protected), and a link to the SAS verify flow.
+     _Device follow-ups:_ extract one shared password-UIA helper (the delete loop mirrors
+     `crypto.service`), handle SSO-only / multi-stage UIA beyond password, return to settings
+     (not `/rooms`) after a verify launched from here, and live-refresh on `DevicesUpdated`.
+     **Remaining:** offline cache (an `IndexedDBStore` for the sync
      store + a connectivity indicator off the existing `syncState` signal). _Known
      limitation:_ avatars (here and app-wide for rooms/members) use the unauthenticated
      media path, so they fall back to initials on a v1.11 authenticated-media-only
