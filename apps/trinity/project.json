@@ -57,7 +57,8 @@
               "with": "apps/trinity/src/environments/environment.prod.ts"
             }
           ],
-          "outputHashing": "all"
+          "outputHashing": "all",
+          "serviceWorker": "apps/trinity/ngsw-config.json"
         },
         "development": {
           "optimization": false,

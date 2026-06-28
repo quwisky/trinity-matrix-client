@@ -8,6 +8,7 @@ import { Router } from '@angular/router';
 import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
+import { SwUpdate } from '@angular/service-worker';
 import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
 import { VerificationHostComponent } from './verification-host.component';
 
@@ -19,8 +20,15 @@ import { VerificationHostComponent } from './verification-host.component';
 })
 export class AppComponent implements OnInit {
   private readonly router = inject(Router);
+  private readonly swUpdate = inject(SwUpdate);
 
   ngOnInit(): void {
+    // Recover from a broken service-worker cache (e.g. storage eviction left an
+    // asset un-cacheable) by reloading — web-only, no-op when the SW is disabled.
+    if (this.swUpdate.isEnabled) {
+      this.swUpdate.unrecoverable.subscribe(() => window.location.reload());
+    }
+
     // Deep links only arrive on native; the web SSO flow uses the /sso-callback
     // route directly. Listen for warm opens and handle a cold-start launch URL.
     if (!Capacitor.isNativePlatform()) {

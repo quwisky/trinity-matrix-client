@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
+import { provideServiceWorker } from '@angular/service-worker';
 import { ModalController } from '@ionic/angular/standalone';
 import { MatrixClientService, VerificationService } from '@trinity/core';
 import { describe, expect, it, vi } from 'vitest';
@@ -24,7 +25,11 @@ describe('AppComponent', () => {
   it('should create the app', async () => {
     await TestBed.configureTestingModule({
       imports: [AppComponent],
-      providers: [provideRouter([]), ...hostProviders],
+      providers: [
+        provideRouter([]),
+        provideServiceWorker('ngsw-worker.js', { enabled: false }),
+        ...hostProviders,
+      ],
     }).compileComponents();
 
     const fixture = TestBed.createComponent(AppComponent);
@@ -36,7 +41,11 @@ describe('AppComponent', () => {
     async function create() {
       await TestBed.configureTestingModule({
         imports: [AppComponent],
-        providers: [provideRouter([]), ...hostProviders], // ActivatedRoute for IonRouterOutlet + host deps
+        providers: [
+          provideRouter([]),
+          provideServiceWorker('ngsw-worker.js', { enabled: false }),
+          ...hostProviders,
+        ], // ActivatedRoute for IonRouterOutlet + host deps
       }).compileComponents();
       const cmp = TestBed.createComponent(AppComponent).componentInstance;
       const navigate = vi
