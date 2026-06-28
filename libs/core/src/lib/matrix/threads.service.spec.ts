@@ -158,6 +158,17 @@ function setup(
   const client = {
     getRoom: () => room,
     getUserId: () => '@me:hs',
+    // Fetch a thread root that isn't in memory (raw IEvent, as the SDK returns).
+    fetchRoomEvent: vi.fn((_rid: string, eventId: string) =>
+      Promise.resolve({
+        event_id: eventId,
+        type: 'm.room.message',
+        sender: '@a:hs',
+        room_id: '!r:hs',
+        origin_server_ts: 0,
+        content: { body: 'fetched root', msgtype: 'm.text' },
+      }),
+    ),
     sendTextMessage: (_rid: string, threadId: string, body: string) => {
       sent.push(['text', threadId, body]);
       return Promise.resolve({});
@@ -286,6 +297,36 @@ describe('ThreadsService', () => {
     thread.events.push(reply);
     thread.emit(ThreadEvent.NewReply);
     expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root', '$r1']);
+  });
+
+  it('fetches the thread root when missing so the first reply still shows', async () => {
+    // Replying in a thread whose root isn't in memory (scrolled out / unsynced).
+    const { svc, room, client, sent } = setup([]);
+    svc.openThread('!r:hs', '$missing');
+    expect(room.getThread('$missing')).toBeNull();
+
+    await firstValueFrom(svc.sendToThread('hi'));
+
+    // The root is fetched and a local Thread created so the echo has a home...
+    expect(client.fetchRoomEvent).toHaveBeenCalledWith('!r:hs', '$missing');
+    expect(room.getThread('$missing')).not.toBeNull();
+    // ...and only then is the threaded reply sent.
+    expect(sent).toEqual([['text', '$missing', 'hi']]);
+  });
+
+  it('aborts the threaded send when the root cannot be fetched', async () => {
+    const { svc, room, client, sent } = setup([]);
+    (client.fetchRoomEvent as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('not found'),
+    );
+    svc.openThread('!r:hs', '$gone');
+
+    // The send surfaces the fetch error instead of emitting a homeless echo.
+    await expect(firstValueFrom(svc.sendToThread('hi'))).rejects.toThrow(
+      'not found',
+    );
+    expect(room.getThread('$gone')).toBeNull();
+    expect(sent).toEqual([]);
   });
 
   it('prepends the root when the thread timeline omits it', () => {

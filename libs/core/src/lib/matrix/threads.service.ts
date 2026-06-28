@@ -3,13 +3,13 @@ import { DomSanitizer } from '@angular/platform-browser';
 import {
   Direction,
   EventType,
+  MatrixEvent,
   MatrixEventEvent,
   NotificationCountType,
   ReceiptType,
   RoomEvent,
   ThreadEvent,
   type MatrixClient,
-  type MatrixEvent,
   type Room,
   type Thread,
 } from 'matrix-js-sdk';
@@ -361,22 +361,42 @@ export class ThreadsService {
    * actually sends, gives the reply a home without leaving an empty 0-reply thread
    * when a thread is merely opened then abandoned. No-op once attached/aggregated.
    */
-  private ensureThread(room: Room, rootEventId: string): void {
+  private ensureThread(room: Room, rootEventId: string): Observable<void> {
     if (this.thread) {
-      return;
+      return of(void 0);
     }
     const existing = room.getThread(rootEventId);
     if (existing) {
       this.attachThread(existing);
-      return;
+      return of(void 0);
     }
-    const rootEvent = room.findEventById(rootEventId);
-    if (!rootEvent) {
-      return;
+    const local = room.findEventById(rootEventId);
+    if (local) {
+      this.createThreadFromRoot(room, rootEventId, local);
+      return of(void 0);
     }
+    // The root isn't in memory (e.g. an old thread that scrolled out of the live
+    // timeline). The SDK would still route a threaded send out, but with no local
+    // Thread the optimistic echo has nowhere to land and vanishes. Fetch the root
+    // so the Thread can be created; if it can't be fetched, surface the error
+    // rather than sending a reply that won't show.
+    return from(
+      this.matrix.instance.fetchRoomEvent(room.roomId, rootEventId),
+    ).pipe(
+      map((raw) =>
+        this.createThreadFromRoot(room, rootEventId, new MatrixEvent(raw)),
+      ),
+    );
+  }
+
+  /** Create a Thread from its root event and attach it, unless a concurrent
+   * `ThreadEvent.New` already did (createThread can emit it synchronously). */
+  private createThreadFromRoot(
+    room: Room,
+    rootEventId: string,
+    rootEvent: MatrixEvent,
+  ): void {
     const created = room.createThread(rootEventId, rootEvent, [], false);
-    // createThread may synchronously emit ThreadEvent.New, which `onThreadCreated`
-    // would already have attached; guard so we don't attach (and bind listeners) twice.
     if (!this.thread) {
       this.attachThread(created);
     }
@@ -391,11 +411,16 @@ export class ThreadsService {
     const { client, room, roomId, threadId } = ctx;
     return defer(() => {
       const md = renderMarkdown(this.sanitizer, text);
-      this.ensureThread(room, threadId);
-      return from(
-        md.formatted
-          ? client.sendHtmlMessage(roomId, threadId, text, md.html)
-          : client.sendTextMessage(roomId, threadId, text),
+      // Ensure a local Thread exists (fetching the root if needed) *before*
+      // sending, so the threaded echo has a home; a fetch failure aborts the send.
+      return this.ensureThread(room, threadId).pipe(
+        switchMap(() =>
+          from(
+            md.formatted
+              ? client.sendHtmlMessage(roomId, threadId, text, md.html)
+              : client.sendTextMessage(roomId, threadId, text),
+          ),
+        ),
       );
     }).pipe(map(() => void 0));
   }
@@ -416,17 +441,22 @@ export class ThreadsService {
     const { client, room, roomId, threadId } = ctx;
     const encrypt = room.hasEncryptionStateEvent();
     return defer(() => this.mediaSvc.uploadMedia(file, encrypt, progress)).pipe(
-      switchMap((media) => {
-        this.ensureThread(room, threadId);
-        const content = {
-          msgtype: media.msgtype,
-          body: media.body,
-          info: media.info,
-          ...(media.file ? { file: media.file } : { url: media.mxc }),
-        };
-        // A valid media payload; the SDK's content union doesn't model it.
-        return from(client.sendMessage(roomId, threadId, content as never));
-      }),
+      switchMap((media) =>
+        // Ensure the local Thread (fetching the root if needed) before sending,
+        // so the media echo lands in the thread; a fetch failure aborts the send.
+        this.ensureThread(room, threadId).pipe(
+          switchMap(() => {
+            const content = {
+              msgtype: media.msgtype,
+              body: media.body,
+              info: media.info,
+              ...(media.file ? { file: media.file } : { url: media.mxc }),
+            };
+            // A valid media payload; the SDK's content union doesn't model it.
+            return from(client.sendMessage(roomId, threadId, content as never));
+          }),
+        ),
+      ),
       map(() => void 0),
     );
   }
