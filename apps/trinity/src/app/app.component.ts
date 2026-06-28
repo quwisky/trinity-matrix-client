@@ -12,6 +12,12 @@ import { SwUpdate } from '@angular/service-worker';
 import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
 import { VerificationHostComponent } from './verification-host.component';
 
+/** Minimal shape of the Electron preload bridge (see electron/src/preload.ts). */
+interface TrinityDesktopBridge {
+  isElectron?: boolean;
+  onDeepLink?: (callback: (url: string) => void) => () => void;
+}
+
 @Component({
   selector: 'trn-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -29,8 +35,17 @@ export class AppComponent implements OnInit {
       this.swUpdate.unrecoverable.subscribe(() => window.location.reload());
     }
 
-    // Deep links only arrive on native; the web SSO flow uses the /sso-callback
-    // route directly. Listen for warm opens and handle a cold-start launch URL.
+    // Electron desktop: the main process forwards `eu.qwky.trinity://` deep links
+    // (e.g. the SSO callback) over the preload bridge — there's no Capacitor App
+    // plugin in the hand-rolled shell.
+    const desktop = (globalThis as { trinityDesktop?: TrinityDesktopBridge })
+      .trinityDesktop;
+    if (desktop?.onDeepLink) {
+      desktop.onDeepLink((url) => this.handleDeepLink(url));
+    }
+
+    // Native deep links arrive via Capacitor App; the web SSO flow uses the
+    // /sso-callback route directly. Listen for warm opens + a cold-start URL.
     if (!Capacitor.isNativePlatform()) {
       return;
     }

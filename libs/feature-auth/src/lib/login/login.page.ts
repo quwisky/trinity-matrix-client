@@ -103,9 +103,16 @@ export class LoginPage {
     sessionStorage.setItem('sso.state', state);
 
     const native = Capacitor.isNativePlatform();
-    const base = native
-      ? 'eu.qwky.trinity://sso-callback'
-      : `${window.location.origin}/sso-callback`;
+    const electron =
+      (globalThis as { trinityDesktop?: { isElectron?: boolean } })
+        .trinityDesktop?.isElectron === true;
+    // Native and the Electron desktop shell deep-link back via the OS-registered
+    // `eu.qwky.trinity://` scheme. The bare web origin is wrong on Electron — there
+    // it's `trinity://app` (an internal, non-OS scheme that can't be launched).
+    const base =
+      native || electron
+        ? 'eu.qwky.trinity://sso-callback'
+        : `${window.location.origin}/sso-callback`;
     const redirect = `${base}?sso_state=${encodeURIComponent(state)}`;
     const ssoUrl = this.auth.getSsoUrl(baseUrl, redirect);
 
@@ -114,6 +121,10 @@ export class LoginPage {
       // listener in AppComponent — stay alive; the homeserver redirects back via
       // the eu.qwky.trinity:// scheme, which the OS hands to the running app.
       void Browser.open({ url: ssoUrl });
+    } else if (electron) {
+      // Electron's main process opens https externally (setWindowOpenHandler) and
+      // routes the eu.qwky.trinity:// callback back to the renderer (onDeepLink).
+      window.open(ssoUrl, '_blank');
     } else {
       window.location.href = ssoUrl;
     }

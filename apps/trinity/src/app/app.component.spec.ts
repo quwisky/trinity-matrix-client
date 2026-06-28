@@ -83,5 +83,29 @@ describe('AppComponent', () => {
       cmp.handleDeepLink('not a url');
       expect(navigate).not.toHaveBeenCalled();
     });
+
+    it('registers the Electron deep-link bridge and routes its URLs', async () => {
+      let captured: ((url: string) => void) | undefined;
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+        isElectron: true,
+        onDeepLink: (cb: (url: string) => void) => {
+          captured = cb;
+          return () => undefined;
+        },
+      };
+      try {
+        const { cmp, navigate } = await create();
+        cmp.ngOnInit();
+
+        expect(captured).toBeTypeOf('function');
+        captured?.('eu.qwky.trinity://sso-callback?loginToken=TOK&sso_state=S');
+
+        expect(navigate).toHaveBeenCalledWith(['/sso-callback'], {
+          queryParams: { loginToken: 'TOK', sso_state: 'S' },
+        });
+      } finally {
+        delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+      }
+    });
   });
 });

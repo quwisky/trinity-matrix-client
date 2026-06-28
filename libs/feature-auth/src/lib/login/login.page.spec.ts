@@ -114,4 +114,27 @@ describe('LoginPage', () => {
     expect(redirect).toContain('/sso-callback?sso_state=');
     expect(redirect).toContain(state!);
   });
+
+  it('uses the eu.qwky.trinity:// scheme and opens externally on Electron', () => {
+    sessionStorage.clear();
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      const getSsoUrl = vi.fn(() => 'https://hs.example/sso');
+      configure({ getSsoUrl } as unknown as AuthService);
+      const cmp = TestBed.createComponent(LoginPage).componentInstance;
+      cmp.baseUrl.set('https://hs.example');
+
+      cmp.startSso();
+
+      const redirect = getSsoUrl.mock.calls[0][1] as string;
+      expect(redirect).toContain('eu.qwky.trinity://sso-callback?sso_state=');
+      expect(open).toHaveBeenCalledWith('https://hs.example/sso', '_blank');
+    } finally {
+      open.mockRestore();
+      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    }
+  });
 });
