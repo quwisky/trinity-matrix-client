@@ -115,8 +115,13 @@ src/app/
    crypto (AES-CTR-256 + SHA-256) is inlined in `@trinity/core` (`attachment-crypto.ts`,
    replacing the unmaintained `matrix-encrypt-attachment`); the upload path encrypts for
    E2EE rooms. Picking uses Capacitor **Camera** on native with a web `<input type="file">`
-   fallback (works on web and inside WebViews). **Follow-ups:** client-side thumbnail
-   generation, video/audio duration, an upload-progress UI, native Filesystem/Share, and
+   fallback (works on web and inside WebViews). The upload path now **generates a
+   client-side image thumbnail** (canvas-downscaled to a 480px edge, encrypted per-file
+   for E2EE rooms — the only thumbnail an encrypted room can show, since the server can't
+   scale an encrypted original), **probes audio/video duration + video dimensions** into
+   `content.info`, and surfaces a **determinate upload-progress bar** in the composer.
+   **Remaining follow-ups:** a video poster-frame thumbnail, native Filesystem/Share for
+   downloads (needs `@capacitor/filesystem` + `@capacitor/share` + a native rebuild), and
    on-device verification of the native picker (iOS `Info.plist` keys + Android perms
    added; `cap sync` done for Android, iOS needs a Mac).
 9. **MVP polish** — dark mode, offline cache, settings/profile, device management.
