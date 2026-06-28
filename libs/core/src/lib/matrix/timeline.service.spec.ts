@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of } from 'rxjs';
+import { RoomEvent } from 'matrix-js-sdk';
 import { describe, expect, it } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -499,6 +500,62 @@ describe('TimelineService', () => {
 
     expect(received).toHaveLength(1);
     expect(received[0].getId()).toBe('$a'); // not the pending echo
+  });
+
+  it('re-acks a live message in the open room, deduped across refreshes', () => {
+    const received: { getId: () => string }[] = [];
+    const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
+    let timelineHandler: (() => void) | undefined;
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+      }),
+      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+      relations: { getChildEventsForEvent: () => undefined },
+      on: (ev: string, cb: () => void) => {
+        if (ev === RoomEvent.Timeline) {
+          timelineHandler = cb;
+        }
+      },
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: (e: { getId: () => string }) => {
+        received.push(e);
+        return Promise.resolve({});
+      },
+      scrollback: () => Promise.resolve(room),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    expect(received.map((e) => e.getId())).toEqual(['$a']); // initial ack
+
+    // A live message arrives while the room is open → re-ack the new latest.
+    events.push(fakeEvent({ id: '$b', sender: '@a:hs', body: 'yo' }));
+    timelineHandler?.();
+    expect(received.map((e) => e.getId())).toEqual(['$a', '$b']);
+
+    // A refresh that doesn't change the latest (e.g. backfill) must not re-send.
+    timelineHandler?.();
+    expect(received.map((e) => e.getId())).toEqual(['$a', '$b']);
   });
 
   describe('media messages', () => {

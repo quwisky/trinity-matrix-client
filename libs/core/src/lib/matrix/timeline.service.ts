@@ -73,6 +73,11 @@ export class TimelineService {
   private roomId: string | null = null;
   private room: Room | null = null;
 
+  // Latest event we've already sent a read receipt for, so live messages while
+  // the room is open mark read without re-sending on every refresh — and
+  // pagination/backfill (which leaves the latest unchanged) doesn't re-ack.
+  private lastReadEventId: string | null = null;
+
   private readonly onTimeline = (): void => this.refresh();
   private readonly onLocalEcho = (): void => this.refresh();
   private readonly onDecrypted = (event: MatrixEvent): void => {
@@ -99,16 +104,9 @@ export class TimelineService {
     room.on(RoomEvent.Timeline, this.onTimeline);
     room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
+    // Projects the timeline and sends the initial read receipt; subsequent live
+    // messages re-ack through the same path (see {@link markRead}).
     this.refresh();
-
-    // Best-effort read receipt for the most recent *confirmed* event. Pending
-    // local echoes are skipped (the SDK rejects a receipt on an unsent event),
-    // and the call is fire-and-forget but its rejection is swallowed.
-    const events = room.getLiveTimeline().getEvents();
-    const last = [...events].reverse().find((e) => !e.status);
-    if (last) {
-      client.sendReadReceipt(last).catch(() => undefined);
-    }
   }
 
   /** Detach listeners and clear the timeline. */
@@ -120,6 +118,7 @@ export class TimelineService {
     }
     this.room = null;
     this.roomId = null;
+    this.lastReadEventId = null;
     this._messages.set([]);
     this._canLoadOlder.set(false);
   }
@@ -307,6 +306,33 @@ export class TimelineService {
     this._canLoadOlder.set(
       liveTimeline.getPaginationToken(Direction.Backward) !== null,
     );
+    // The room is on-screen, so mark its latest message read. Deduped, so live
+    // messages clear the badge but paginating older history does not re-send.
+    this.markRead(liveTimeline.getEvents());
+  }
+
+  /**
+   * Send a read receipt for the active room's latest *confirmed* event, clearing
+   * its unread badge. Deduped on the last-acked event id so a live message marks
+   * read but a no-op refresh (decryption, pagination) doesn't re-send. Pending
+   * local echoes are skipped (the SDK rejects a receipt on an unsent event) and
+   * any missing/failed receipt API is swallowed so viewing a room never throws.
+   */
+  private markRead(events: readonly MatrixEvent[]): void {
+    if (!this.matrix.isInitialized) {
+      return;
+    }
+    const latest = [...events].reverse().find((e) => !e.status);
+    const id = latest?.getId() ?? null;
+    if (!latest || !id || id === this.lastReadEventId) {
+      return;
+    }
+    this.lastReadEventId = id;
+    try {
+      void this.matrix.instance.sendReadReceipt(latest)?.catch(() => undefined);
+    } catch {
+      // A missing/unsupported receipt API must never break room viewing.
+    }
   }
 }
 
