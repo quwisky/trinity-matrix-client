@@ -181,7 +181,11 @@ Phase 2:
   `Notification`) so the OS attributes notifications to Trinity; the renderer Web
   Notification path stays for web/PWA. macOS still needs a signed + notarized build to
   actually deliver (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) → signing).
-- **Threads, calls, spaces** — not started.
+- **Threads** — 🚧 in progress: a reading increment first (a core `ThreadsService`,
+  "N replies" timeline indicators, and a thread view; the client runs with
+  `threadSupport: true`), with in-thread composing to follow.
+- **Spaces** — planned next, after threads (the server rail is already Discord-style).
+- **Calls** — deferred / de-prioritized for now.
 
 **Desktop (Electron) hardening (this iteration).** Hand-rolled Electron shell (privileged
 `trinity://app` scheme, tray, deep-link SSO). Resolved this pass: dark theme on desktop
