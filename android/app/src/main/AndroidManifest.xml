@@ -32,6 +32,12 @@
 
         </activity>
 
+        <!-- Route FCM notifications to the "messages" channel created at runtime
+             by PushService (Android O+ drops notifications without a channel). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="messages" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -46,6 +52,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- @capacitor/push-notifications: runtime notification permission (Android 13+).
+         The plugin's own manifest does not declare it, so the OS would deny without
+         a prompt unless it's here. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- @capacitor/camera: capture photos and pick from the gallery. -->
     <uses-permission android:name="android.permission.CAMERA" />
