@@ -140,9 +140,16 @@ src/app/
    tracks the device's `prefers-color-scheme` (the `color-scheme` meta is set).
    _Android needs on-device verification_ that the WebView reports OS dark mode
    (DayNight activity) and that the status-bar icon contrast holds on the pre-edge-to-edge
-   API range. **Remaining:** profile (display name/avatar),
-   device management (list/rename/delete + verify), and offline cache (an `IndexedDBStore`
-   for the sync store + a connectivity indicator off the existing `syncState` signal).
+   API range. **Profile** is done: a core `ProfileService` reads/updates display name +
+   avatar (`getProfileInfo`/`setDisplayName`/`setAvatarUrl`/`uploadContent`, exposed as a
+   signal that edits patch optimistically; a missing profile / 404 is treated as empty
+   so a new account can still set one), surfaced as a Profile section in settings (avatar
+   - name editor + image-validated change-avatar picker). **Remaining:** device management
+     (list/rename/delete + verify), and offline cache (an `IndexedDBStore` for the sync
+     store + a connectivity indicator off the existing `syncState` signal). _Known
+     limitation:_ avatars (here and app-wide for rooms/members) use the unauthenticated
+     media path, so they fall back to initials on a v1.11 authenticated-media-only
+     homeserver — a shared authenticated-avatar resolver is a tracked follow-up.
 
 Phase 2: push notifications, threads, calls, spaces.
 
