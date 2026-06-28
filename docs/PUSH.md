@@ -78,6 +78,14 @@ mutes / mentions-only). A tap focuses the window and opens the app. Connected fr
 rooms shell; the listener dies with the client on logout. This is the desktop story — it
 needs no gateway because a desktop/web client stays connected to `/sync`.
 
+**Background delivery (Electron):** the desktop shell keeps notifying while
+backgrounded. Closing the window **hides it to the system tray** (the process,
+renderer, and `/sync` stay alive) rather than quitting, and the window is created with
+`backgroundThrottling: false` so Chromium doesn't throttle the `/sync` long-poll when
+the window is minimized/hidden. A real quit is available from the tray menu / app menu.
+On web/PWA, notifications fire while the tab is open but unfocused (no background
+process when the tab is closed).
+
 ## Mobile push without your own gateway
 
 A Matrix client always needs an HTTP push **gateway** between the homeserver and APNs/FCM
