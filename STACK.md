@@ -5,25 +5,25 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
 ## Pinned versions (latest on npm, 2026-06-26)
 
-| Package                              | Version | Notes                                                                                  |
-| ------------------------------------ | ------- | -------------------------------------------------------------------------------------- |
-| `@angular/core`                      | 20.3.25 | Standalone + signals; Ionic 8 supports Angular 16+                                     |
-| `@ionic/angular`                     | 8.8.12  | 8.8 is the final Ionic 8 minor; Ionic 9 in development                                 |
-| `@capacitor/core`                    | 8.4.1   | Capacitor 8: SPM default on iOS, edge-to-edge Android                                  |
-| `@capacitor-community/electron`      | 5.0.1   | Community-maintained desktop target (less stable than core)                            |
-| `matrix-js-sdk`                      | 41.8.0  | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                      |
-| `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1  | Rust crypto WASM bindings; E2EE backend                                                |
-| `@capacitor/app`                     | 8.1.0   | App URL-open events — native SSO deep-link callback                                    |
-| `@capacitor/browser`                 | 8.0.3   | System browser for native SSO (keeps the app webview alive)                            |
-| `@capacitor/camera`                  | 8.2.0   | Native photo/gallery picker for sending media (web `<input>` fallback)                 |
-| `@capacitor/filesystem`              | 8.1.2   | Write a downloaded attachment to cache before sharing it (native save)                 |
-| `@capacitor/share`                   | 8.0.1   | Native OS save/share sheet for downloads (web `<a download>` fallback)                 |
-| `@capacitor/status-bar`              | 8.0.2   | Sets the native status-bar style to match the light/dark theme                         |
-| `@angular/service-worker`            | 20.3.25 | PWA service worker (production web): precaches the app shell + crypto WASM for offline |
-| `@capacitor/push-notifications`      | 8.1.1   | FCM/APNs device token for the Matrix pusher (see [docs/PUSH.md](docs/PUSH.md))         |
-| `matrix-encrypt-attachment`          | —       | Removed (unmaintained since 2022); ported into `@trinity/core` `attachment-crypto.ts`  |
-| `marked`                             | 18.0.5  | Markdown → HTML for the composer/timeline                                              |
-| `dompurify`                          | 3.4.11  | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                             |
+| Package                              | Version | Notes                                                                                   |
+| ------------------------------------ | ------- | --------------------------------------------------------------------------------------- |
+| `@angular/core`                      | 20.3.25 | Standalone + signals; Ionic 8 supports Angular 16+                                      |
+| `@ionic/angular`                     | 8.8.12  | 8.8 is the final Ionic 8 minor; Ionic 9 in development                                  |
+| `@capacitor/core`                    | 8.4.1   | Capacitor 8: SPM default on iOS, edge-to-edge Android                                   |
+| `electron` + `electron-builder`      | 42 / 26 | Hand-rolled desktop shell in `electron/` (own package.json); see Electron desktop below |
+| `matrix-js-sdk`                      | 41.8.0  | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                       |
+| `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1  | Rust crypto WASM bindings; E2EE backend                                                 |
+| `@capacitor/app`                     | 8.1.0   | App URL-open events — native SSO deep-link callback                                     |
+| `@capacitor/browser`                 | 8.0.3   | System browser for native SSO (keeps the app webview alive)                             |
+| `@capacitor/camera`                  | 8.2.0   | Native photo/gallery picker for sending media (web `<input>` fallback)                  |
+| `@capacitor/filesystem`              | 8.1.2   | Write a downloaded attachment to cache before sharing it (native save)                  |
+| `@capacitor/share`                   | 8.0.1   | Native OS save/share sheet for downloads (web `<a download>` fallback)                  |
+| `@capacitor/status-bar`              | 8.0.2   | Sets the native status-bar style to match the light/dark theme                          |
+| `@angular/service-worker`            | 20.3.25 | PWA service worker (production web): precaches the app shell + crypto WASM for offline  |
+| `@capacitor/push-notifications`      | 8.1.1   | FCM/APNs device token for the Matrix pusher (see [docs/PUSH.md](docs/PUSH.md))          |
+| `matrix-encrypt-attachment`          | —       | Removed (unmaintained since 2022); ported into `@trinity/core` `attachment-crypto.ts`   |
+| `marked`                             | 18.0.5  | Markdown → HTML for the composer/timeline                                               |
+| `dompurify`                          | 3.4.11  | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                              |
 
 > Versions moved since the original plan draft: Capacitor is on **8** (not 6),
 > Ionic on **8.8**. Angular is pinned at **20.3** (the Ionic 8 scaffold targets 20,
@@ -97,10 +97,18 @@ the architecture changes — find out before building UI on top.
 
 ## Electron desktop
 
-- Add via `@capacitor-community/electron` (`npm i @capacitor-community/electron`).
-- Community-maintained: budget time for IPC wiring (main vs renderer) and packaging
-  (`electron` + a packager/builder). Less polished than core Capacitor platforms.
-- Confirm WASM crypto runs in the Electron renderer during the Milestone 1 spike.
+- **Hand-rolled** (`electron/`), NOT `@capacitor-community/electron` (abandoned, stuck
+  on Cap-5). The desktop app is the existing `www/` build in a hardened Electron shell;
+  on desktop the app runs its web fallbacks (no Capacitor desktop bridge).
+- The build is served over a custom **privileged** scheme (`trinity://app/`, registered
+  standard + secure + fetch + stream) so the renderer is a secure context and the crypto
+  WASM stream-instantiates. `contextIsolation`/`sandbox` on, `nodeIntegration` off.
+- NB: with no Capacitor bridge, `Capacitor.getPlatform()` is `'web'` and
+  `isNativePlatform()` is `false` in the shell — desktop is detected via the preload
+  marker `trinityDesktop.isElectron` (used to keep the service worker off).
+- Build/run: `pnpm electron:build` / `electron:start`; package via `electron:package`
+  (electron-builder; signing/notarization deferred). Confirm WASM crypto + IndexedDB on
+  a real desktop run.
 
 ## Testing — Vitest + Playwright
 
