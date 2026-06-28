@@ -43,7 +43,7 @@ import type { RoomSummary } from '@trinity/core';
 
       <footer class="userbar">
         <trn-avatar
-          [url]="userAvatarUrl()"
+          [mxc]="userAvatarMxc()"
           [initial]="userInitial()"
           [name]="userName()"
           [size]="32"
@@ -71,7 +71,7 @@ export class ChannelSidebarComponent {
   readonly activeRoomId = input<string | null>(null);
   readonly userName = input('');
   readonly userId = input('');
-  readonly userAvatarUrl = input<string | null>(null);
+  readonly userAvatarMxc = input<string | null>(null);
   readonly userInitial = input('?');
   readonly selectRoom = output<string>();
   readonly logout = output<void>();

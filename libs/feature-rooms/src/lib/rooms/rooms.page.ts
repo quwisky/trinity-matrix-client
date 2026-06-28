@@ -120,6 +120,15 @@ export class RoomsPage implements OnInit, OnDestroy {
     return this.matrix.instance.getUser(uid)?.displayName ?? uid;
   });
 
+  readonly userAvatarMxc = computed(() => {
+    this.rooms.revision(); // re-read once the user's profile hydrates on sync
+    const uid = this.userId();
+    if (!uid || !this.matrix.isInitialized) {
+      return null;
+    }
+    return this.matrix.instance.getUser(uid)?.avatarUrl ?? null;
+  });
+
   readonly userInitial = computed(() => {
     const name = this.userName().replace(/^[@#!]+/, '');
     return (name[0] ?? '?').toUpperCase();

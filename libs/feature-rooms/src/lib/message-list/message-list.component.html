@@ -25,7 +25,7 @@
         >
           <trn-avatar
             class="msg__reply-avatar"
-            [url]="row.replyTo.senderAvatarUrl"
+            [mxc]="row.replyTo.senderAvatarMxc"
             [initial]="row.replyTo.senderInitial"
             [name]="row.replyTo.senderName"
             [size]="16"
@@ -37,7 +37,7 @@
       @if (row.showHeader) {
         <trn-avatar
           class="msg__avatar"
-          [url]="row.senderAvatarUrl"
+          [mxc]="row.senderAvatarMxc"
           [initial]="row.senderInitial"
           [name]="row.senderName"
           [size]="40"

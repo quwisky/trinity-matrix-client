@@ -13,7 +13,7 @@ import type { MemberSummary } from '@trinity/core';
       @for (member of members(); track member.userId) {
         <div class="member" [title]="member.userId">
           <trn-avatar
-            [url]="member.avatarUrl"
+            [mxc]="member.avatarMxc"
             [initial]="member.initial"
             [name]="member.name"
             [size]="32"

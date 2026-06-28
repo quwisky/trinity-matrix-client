@@ -39,7 +39,7 @@ import type { SpaceSummary } from '@trinity/core';
             [title]="space.name"
           >
             <trn-avatar
-              [url]="space.avatarUrl"
+              [mxc]="space.avatarMxc"
               [initial]="space.initial"
               [name]="space.name"
               [square]="activeSpaceId() !== space.id"
