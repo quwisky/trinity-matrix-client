@@ -197,10 +197,16 @@ export class MatrixClientService {
       // `this.wipe` before touching crypto again (the crypto DB name is fixed, so a
       // re-login must not race the pending delete). Best-effort: a failure still leaves
       // the client torn down.
+      // Capture the store synchronously so the long background wipe destroys THIS
+      // session's store — not a newer one a re-login may open while the wipe is still
+      // pending (the ~25s crypto-delete window). `destroySyncStore` reads the live
+      // field, which by then may point at the new session's store.
+      const store = this.syncStore;
+      this.syncStore = null;
       this.wipe = client
         .clearStores()
         .catch(() => undefined)
-        .finally(() => this.destroySyncStore());
+        .finally(() => this.closeStore(store));
       return of(void 0);
     });
   }
@@ -243,8 +249,17 @@ export class MatrixClientService {
    */
   private destroySyncStore(): void {
     const store = this.syncStore;
+    this.syncStore = null;
+    this.closeStore(store);
+  }
+
+  /**
+   * Close (and release) a specific IndexedDB sync-store instance. Taken by value so a
+   * long-running background wipe destroys the store it was started for — never a newer
+   * store a re-login may open while the wipe is still pending.
+   */
+  private closeStore(store: IndexedDBStore | null): void {
     if (store) {
-      this.syncStore = null;
       void Promise.resolve()
         .then(() => store.destroy())
         .catch(() => undefined);
