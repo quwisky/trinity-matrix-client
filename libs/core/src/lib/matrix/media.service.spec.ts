@@ -358,10 +358,13 @@ describe('MediaService', () => {
   });
 
   describe('uploadMedia', () => {
-    const pngFile = () => {
-      const bytes = new Uint8Array([1, 2, 3, 4]);
-      const file = new File([bytes], 'pic.png', { type: 'image/png' });
-      // jsdom's File lacks arrayBuffer() (real browsers/WebViews have it).
+    // jsdom's File/Blob lack arrayBuffer() (real browsers/WebViews have it).
+    const fileWithBuffer = (
+      name: string,
+      type: string,
+      bytes = new Uint8Array([1, 2, 3, 4]),
+    ) => {
+      const file = new File([bytes], name, { type });
       if (typeof file.arrayBuffer !== 'function') {
         Object.defineProperty(file, 'arrayBuffer', {
           value: () => Promise.resolve(bytes.buffer),
@@ -369,6 +372,101 @@ describe('MediaService', () => {
       }
       return file;
     };
+    const pngFile = () => fileWithBuffer('pic.png', 'image/png');
+    const imageFile = () => fileWithBuffer('photo.jpg', 'image/jpeg');
+    const mediaFile = (name: string, type: string) =>
+      fileWithBuffer(name, type);
+
+    // jsdom can't decode images (createImageBitmap/canvas) or load media metadata,
+    // so the thumbnail/duration probes are driven by fakes. Mutable per-test meta
+    // lets a test set a video/audio duration before uploading.
+    let videoMeta: {
+      duration: number;
+      videoWidth: number;
+      videoHeight: number;
+    };
+    let audioMeta: { duration: number };
+    let origCreateElement: typeof document.createElement;
+    // How the fake media element behaves on `src` assignment: fire loadedmetadata,
+    // fire an error, or stay silent (so the real timeout branch runs).
+    let mediaElementMode: 'load' | 'silent' | 'error';
+
+    const fakeMediaElement = (tag: 'video' | 'audio') => {
+      const meta = tag === 'video' ? videoMeta : audioMeta;
+      const el = {
+        preload: '',
+        onloadedmetadata: null as null | (() => void),
+        onerror: null as null | (() => void),
+        duration: meta.duration,
+        videoWidth: tag === 'video' ? videoMeta.videoWidth : 0,
+        videoHeight: tag === 'video' ? videoMeta.videoHeight : 0,
+        removeAttribute: vi.fn(),
+        load: vi.fn(),
+        _src: '',
+        set src(v: string) {
+          this._src = v;
+          if (mediaElementMode === 'silent') {
+            return; // nothing fires → exercises the metadata timeout branch
+          }
+          // Real elements fire loadedmetadata (or error) async once the header
+          // is parsed.
+          queueMicrotask(() =>
+            mediaElementMode === 'error'
+              ? this.onerror?.()
+              : this.onloadedmetadata?.(),
+          );
+        },
+        get src() {
+          return this._src;
+        },
+      };
+      return el as unknown as HTMLMediaElement;
+    };
+
+    const fakeCanvas = () =>
+      ({
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => ({ drawImage: vi.fn() })),
+        toBlob: (cb: (b: Blob) => void, type: string) => {
+          const bytes = new Uint8Array([5, 5, 5]);
+          const blob = new Blob([bytes], { type });
+          if (typeof blob.arrayBuffer !== 'function') {
+            Object.defineProperty(blob, 'arrayBuffer', {
+              value: () => Promise.resolve(bytes.buffer),
+            });
+          }
+          cb(blob);
+        },
+      }) as unknown as HTMLCanvasElement;
+
+    /** Stub createImageBitmap to make analyzeImage produce a thumbnail. */
+    const stubBitmap = (width: number, height: number) =>
+      vi.stubGlobal(
+        'createImageBitmap',
+        vi.fn(async () => ({ width, height, close: vi.fn() })),
+      );
+
+    beforeEach(() => {
+      videoMeta = { duration: NaN, videoWidth: 0, videoHeight: 0 };
+      audioMeta = { duration: NaN };
+      mediaElementMode = 'load';
+      origCreateElement = document.createElement;
+      const realCreate = origCreateElement.bind(document);
+      document.createElement = ((tagName: string) => {
+        if (tagName === 'video' || tagName === 'audio') {
+          return fakeMediaElement(tagName);
+        }
+        if (tagName === 'canvas') {
+          return fakeCanvas();
+        }
+        return realCreate(tagName);
+      }) as unknown as typeof document.createElement;
+    });
+
+    afterEach(() => {
+      document.createElement = origCreateElement;
+    });
 
     it('uploads a plaintext file and returns a url descriptor', async () => {
       const { svc, client } = setup();
@@ -436,6 +534,187 @@ describe('MediaService', () => {
       const opts = client.uploadContent.mock.calls[0][1];
       opts.progressHandler({ loaded: 5, total: 10 });
       expect(seen).toEqual([0.5]);
+    });
+
+    it('renders and uploads a thumbnail for a large plaintext image', async () => {
+      const { svc, client } = setup();
+      // The thumbnail uploads first (it's small), then the main resource.
+      client.uploadContent
+        .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb' })
+        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+      stubBitmap(1000, 500);
+
+      const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
+
+      expect(client.uploadContent).toHaveBeenCalledTimes(2);
+      expect(res.mxc).toBe('mxc://hs/full');
+      expect(res.info.w).toBe(1000);
+      expect(res.info.h).toBe(500);
+      expect(res.info.thumbnail_url).toBe('mxc://hs/thumb');
+      expect(res.info.thumbnail_info?.mimetype).toBe('image/jpeg');
+      // 1000×500 scaled to fit a 480px edge → 480×240.
+      expect(res.info.thumbnail_info?.w).toBe(480);
+      expect(res.info.thumbnail_info?.h).toBe(240);
+    });
+
+    it('encrypts the thumbnail for an E2EE image and sets thumbnail_file (not _url)', async () => {
+      const { svc, client } = setup();
+      encryptMock
+        .mockResolvedValueOnce({
+          data: new Uint8Array([1]).buffer,
+          info: {
+            url: '',
+            v: 'v2',
+            key: {},
+            iv: 'tiv',
+            hashes: { sha256: 'th' },
+          },
+        }) // thumbnail (encrypted first)
+        .mockResolvedValueOnce({
+          data: new Uint8Array([2]).buffer,
+          info: {
+            url: '',
+            v: 'v2',
+            key: {},
+            iv: 'fiv',
+            hashes: { sha256: 'fh' },
+          },
+        }); // main resource
+      client.uploadContent
+        .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb-ct' })
+        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full-ct' });
+      stubBitmap(1024, 768);
+
+      const res = await firstValueFrom(svc.uploadMedia(imageFile(), true));
+
+      expect(encryptMock).toHaveBeenCalledTimes(2);
+      expect(res.mxc).toBeNull();
+      expect(res.info.thumbnail_url).toBeUndefined();
+      expect(res.info.thumbnail_file).toMatchObject({
+        url: 'mxc://hs/thumb-ct',
+        iv: 'tiv',
+        v: 'v2',
+      });
+      expect(res.info.thumbnail_info?.mimetype).toBe('image/jpeg');
+    });
+
+    it('does not generate a thumbnail for an already-small image', async () => {
+      const { svc, client } = setup();
+      stubBitmap(320, 200); // within the 480px bound → original is its own thumbnail
+
+      const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
+
+      expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
+      expect(res.info.thumbnail_url).toBeUndefined();
+      // Intrinsic dimensions are still recorded.
+      expect(res.info).toMatchObject({ w: 320, h: 200 });
+    });
+
+    it('still uploads the image when thumbnail generation fails', async () => {
+      const { svc, client } = setup();
+      vi.stubGlobal(
+        'createImageBitmap',
+        vi.fn(() => Promise.reject(new Error('decode failed'))),
+      );
+
+      const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
+
+      expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
+      expect(res.info.thumbnail_url).toBeUndefined();
+      expect(res.info.thumbnail_file).toBeUndefined();
+      expect(res.mxc).toBe('mxc://hs/up');
+    });
+
+    it('still sends when the thumbnail upload fails', async () => {
+      const { svc, client } = setup();
+      client.uploadContent
+        .mockRejectedValueOnce(new Error('thumb upload failed'))
+        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+      stubBitmap(1000, 800);
+
+      const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
+
+      expect(client.uploadContent).toHaveBeenCalledTimes(2);
+      expect(res.info.thumbnail_url).toBeUndefined();
+      expect(res.mxc).toBe('mxc://hs/full');
+    });
+
+    it('probes duration (ms) and dimensions for a video', async () => {
+      const { svc } = setup();
+      videoMeta = { duration: 12.5, videoWidth: 640, videoHeight: 480 };
+
+      const res = await firstValueFrom(
+        svc.uploadMedia(mediaFile('clip.mp4', 'video/mp4'), false),
+      );
+
+      expect(res.msgtype).toBe('m.video');
+      expect(res.info.duration).toBe(12500);
+      expect(res.info.w).toBe(640);
+      expect(res.info.h).toBe(480);
+      expect(res.info.thumbnail_url).toBeUndefined(); // no client video thumbnail yet
+    });
+
+    it('probes duration (ms) for audio without dimensions', async () => {
+      const { svc } = setup();
+      audioMeta = { duration: 30 };
+
+      const res = await firstValueFrom(
+        svc.uploadMedia(mediaFile('voice.ogg', 'audio/ogg'), false),
+      );
+
+      expect(res.msgtype).toBe('m.audio');
+      expect(res.info.duration).toBe(30000);
+      expect(res.info.w).toBeUndefined();
+      expect(res.info.h).toBeUndefined();
+    });
+
+    it('omits duration when metadata loads but duration is unavailable', async () => {
+      const { svc } = setup(); // videoMeta defaults to NaN duration / 0 dims
+
+      const res = await firstValueFrom(
+        svc.uploadMedia(mediaFile('clip.mp4', 'video/mp4'), false),
+      );
+
+      expect(res.info.duration).toBeUndefined();
+      expect(res.info.w).toBeUndefined();
+    });
+
+    it('resolves empty (no hang) when metadata never arrives, via the timeout', async () => {
+      const { svc, client } = setup();
+      mediaElementMode = 'silent'; // neither loadedmetadata nor error ever fires
+      vi.useFakeTimers();
+      try {
+        const pending = firstValueFrom(
+          svc.uploadMedia(mediaFile('clip.mp4', 'video/mp4'), false),
+        );
+        // Advance past METADATA_TIMEOUT_MS (5000ms in media.service.ts) so the
+        // probe's safety timeout fires and resolves to empty dims.
+        await vi.advanceTimersByTimeAsync(5000);
+        const res = await pending;
+
+        expect(res.msgtype).toBe('m.video');
+        expect(res.info.duration).toBeUndefined();
+        expect(res.info.w).toBeUndefined();
+        // The off-screen probe URL is revoked even on the timeout path.
+        expect(revokeObjectURL).toHaveBeenCalled();
+        // The main upload still ran.
+        expect(client.uploadContent).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('resolves empty when the media element errors', async () => {
+      const { svc } = setup();
+      mediaElementMode = 'error'; // the element fires onerror instead of metadata
+
+      const res = await firstValueFrom(
+        svc.uploadMedia(mediaFile('voice.ogg', 'audio/ogg'), false),
+      );
+
+      expect(res.msgtype).toBe('m.audio');
+      expect(res.info.duration).toBeUndefined();
+      expect(revokeObjectURL).toHaveBeenCalled(); // URL revoked on the error path too
     });
   });
 });

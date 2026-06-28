@@ -34,12 +34,59 @@ export interface UploadedMedia {
   mxc: string | null;
   /** `content.file` (encrypted, `url` filled) for E2EE uploads, else null. */
   file: EncryptedFileInfo | null;
-  /** `content.info`. */
-  info: { mimetype: string; size: number; w?: number; h?: number };
+  /** `content.info` — dimensions, duration, and a client-generated thumbnail. */
+  info: {
+    mimetype: string;
+    size: number;
+    w?: number;
+    h?: number;
+    /** Duration in milliseconds (audio/video). */
+    duration?: number;
+    /** Plaintext thumbnail (`mxc://`), set for unencrypted rooms. */
+    thumbnail_url?: string;
+    /** Encrypted thumbnail descriptor, set for E2EE rooms. */
+    thumbnail_file?: EncryptedFileInfo;
+    /** Thumbnail mimetype + scaled dimensions/size. */
+    thumbnail_info?: {
+      mimetype: string;
+      w?: number;
+      h?: number;
+      size?: number;
+    };
+  };
 }
 
-/** Max edge (px) for a server-generated thumbnail when the event ships none. */
+/** A client-rendered thumbnail blob plus its scaled dimensions. */
+interface GeneratedThumbnail {
+  blob: Blob;
+  w: number;
+  h: number;
+}
+
+/** The `content.info` thumbnail fields produced by {@link MediaService.uploadThumbnail}. */
+type ThumbnailInfo = Pick<
+  UploadedMedia['info'],
+  'thumbnail_url' | 'thumbnail_file' | 'thumbnail_info'
+>;
+
+/** Probed dimensions/duration plus an optional rendered thumbnail for a picked file. */
+interface MediaAnalysis {
+  dims: { w?: number; h?: number; durationMs?: number };
+  thumbnail: GeneratedThumbnail | null;
+}
+
+/**
+ * Max edge (px) for both a server-generated thumbnail (when the event ships none)
+ * and a client-rendered thumbnail produced at upload time.
+ */
 const THUMBNAIL_PX = 480;
+
+/** Encoding for client-rendered thumbnails. */
+const THUMBNAIL_MIME = 'image/jpeg';
+const THUMBNAIL_QUALITY = 0.8;
+
+/** How long to wait for an audio/video element to report its metadata. */
+const METADATA_TIMEOUT_MS = 5000;
 
 /** Cap on cached object URLs; pinned (on-screen) entries are never evicted. */
 const CACHE_LIMIT = 64;
@@ -151,7 +198,12 @@ export class MediaService {
   ): Promise<UploadedMedia> {
     const client = this.matrix.instance;
     const msgtype = msgTypeFor(file.type);
-    const dims = await imageDimensions(file);
+    // Probe dimensions/duration and (for images) render a downscaled thumbnail
+    // before the main upload. For E2EE rooms this is the *only* thumbnail the
+    // timeline can show — the server can't scale an encrypted original — so
+    // without it every image row would fetch and decrypt the full-size bytes.
+    const { dims, thumbnail } = await analyzeMedia(file);
+    const thumb = await this.uploadThumbnail(thumbnail, encrypt);
     const onProgress = progress
       ? (p: { loaded: number; total: number }) =>
           progress(p.total ? p.loaded / p.total : 0)
@@ -171,7 +223,7 @@ export class MediaService {
         body: file.name || 'attachment',
         mxc: null,
         file: info,
-        info: mediaInfo(file, data.byteLength, dims),
+        info: mediaInfo(file, data.byteLength, dims, thumb),
       };
     }
 
@@ -185,8 +237,47 @@ export class MediaService {
       body: file.name || 'attachment',
       mxc: res.content_uri,
       file: null,
-      info: mediaInfo(file, file.size, dims),
+      info: mediaInfo(file, file.size, dims, thumb),
     };
+  }
+
+  /**
+   * Upload a freshly-rendered thumbnail — encrypting it for E2EE rooms with its
+   * own key/iv/hash — and return the `content.info` thumbnail fields, or null when
+   * there is no thumbnail. A thumbnail is an enhancement, never a gate: any failure
+   * here resolves to null so the attachment still sends. Uploaded before the main
+   * resource (it is small) so the `progress` callback tracks the dominant bytes.
+   */
+  private async uploadThumbnail(
+    thumbnail: GeneratedThumbnail | null,
+    encrypt: boolean,
+  ): Promise<ThumbnailInfo | null> {
+    if (!thumbnail) {
+      return null;
+    }
+    const client = this.matrix.instance;
+    const { blob, w, h } = thumbnail;
+    const thumbnail_info = { mimetype: blob.type, w, h, size: blob.size };
+    try {
+      if (encrypt) {
+        const { data, info } = await encryptAttachment(
+          await blob.arrayBuffer(),
+        );
+        const res = await client.uploadContent(new Blob([data]), {
+          includeFilename: false,
+          type: 'application/octet-stream',
+        });
+        info.url = res.content_uri;
+        return { thumbnail_file: info, thumbnail_info };
+      }
+      const res = await client.uploadContent(blob, {
+        name: 'thumbnail',
+        type: blob.type,
+      });
+      return { thumbnail_url: res.content_uri, thumbnail_info };
+    } catch {
+      return null; // a thumbnail upload failure must never block the attachment
+    }
   }
 
   /** Mark an object URL as on screen so it is exempt from cache eviction. */
@@ -415,35 +506,203 @@ function msgTypeFor(mime: string): MsgType {
   return MsgType.File;
 }
 
-/** Build the `content.info` block (mimetype/size, plus w/h for images). */
+/** Build `content.info`: mimetype/size plus probed dims/duration and a thumbnail. */
 function mediaInfo(
   file: File,
   size: number,
-  dims: { w: number; h: number } | null,
+  dims: { w?: number; h?: number; durationMs?: number },
+  thumbnail: ThumbnailInfo | null,
 ): UploadedMedia['info'] {
   return {
     mimetype: file.type || 'application/octet-stream',
     size,
-    ...(dims ?? {}),
+    ...(dims.w != null ? { w: dims.w } : {}),
+    ...(dims.h != null ? { h: dims.h } : {}),
+    ...(dims.durationMs != null ? { duration: dims.durationMs } : {}),
+    ...(thumbnail ?? {}),
   };
 }
 
-/** Read an image's intrinsic dimensions (best-effort; null for non-images). */
-async function imageDimensions(
-  file: File,
-): Promise<{ w: number; h: number } | null> {
+/**
+ * Probe a picked file's intrinsic dimensions/duration and, for images, render a
+ * downscaled thumbnail. Best-effort: anything undecodable yields empty dims and a
+ * null thumbnail so the upload still proceeds. Audio/video duration is reported in
+ * milliseconds to match the Matrix `info.duration` field.
+ */
+async function analyzeMedia(file: File): Promise<MediaAnalysis> {
+  if (file.type.startsWith('image/')) {
+    return analyzeImage(file);
+  }
+  if (file.type.startsWith('video/')) {
+    return { dims: await probeMediaElement(file, 'video'), thumbnail: null };
+  }
+  if (file.type.startsWith('audio/')) {
+    return { dims: await probeMediaElement(file, 'audio'), thumbnail: null };
+  }
+  return { dims: {}, thumbnail: null };
+}
+
+/** Decode an image once: derive its dimensions and a scaled thumbnail. */
+async function analyzeImage(file: File): Promise<MediaAnalysis> {
+  // SVG can't be safely rasterized to a thumbnail and renders as a file card
+  // anyway; createImageBitmap is absent outside a real browser/WebView.
   if (
-    !file.type.startsWith('image/') ||
+    file.type === 'image/svg+xml' ||
     typeof createImageBitmap !== 'function'
   ) {
-    return null;
+    return { dims: {}, thumbnail: null };
+  }
+  let bitmap: ImageBitmap;
+  try {
+    // `from-image` applies EXIF orientation during decode, so the thumbnail and
+    // the recorded dimensions match the full image's orientation on every engine
+    // (some older WebViews default to `none`).
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    return { dims: {}, thumbnail: null }; // undecodable — omit rather than fail
   }
   try {
-    const bitmap = await createImageBitmap(file);
     const dims = { w: bitmap.width, h: bitmap.height };
+    let thumbnail: GeneratedThumbnail | null = null;
+    try {
+      thumbnail = await renderThumbnail(bitmap);
+    } catch {
+      thumbnail = null; // thumbnail is best-effort — a render error must not fail the send
+    }
+    return { dims, thumbnail };
+  } finally {
     bitmap.close();
-    return dims;
-  } catch {
-    return null; // undecodable image — omit dimensions rather than fail the send
   }
+}
+
+/**
+ * Draw a decoded image onto a downscaled canvas and encode it as a JPEG. Returns
+ * null when the image is already within the thumbnail bound (its original is a
+ * fine thumbnail) or no 2D canvas is available.
+ */
+async function renderThumbnail(
+  bitmap: ImageBitmap,
+): Promise<GeneratedThumbnail | null> {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+  const { w, h } = fitWithin(bitmap.width, bitmap.height, THUMBNAIL_PX);
+  if (w >= bitmap.width && h >= bitmap.height) {
+    return null; // already small — the original doubles as its own thumbnail
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return null;
+  }
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  const blob = await canvasToBlob(canvas, THUMBNAIL_MIME, THUMBNAIL_QUALITY);
+  return blob ? { blob, w, h } : null;
+}
+
+/** Scale (w, h) to fit within a max edge, preserving aspect; never upscales. */
+function fitWithin(
+  w: number,
+  h: number,
+  max: number,
+): { w: number; h: number } {
+  if (w <= max && h <= max) {
+    return { w, h };
+  }
+  const scale = Math.min(max / w, max / h);
+  // Clamp to >= 1 so an extreme aspect ratio (e.g. 10000×1) can't round an edge
+  // to 0 and yield a degenerate (zero-area) thumbnail descriptor.
+  return {
+    w: Math.max(1, Math.round(w * scale)),
+    h: Math.max(1, Math.round(h * scale)),
+  };
+}
+
+/** Promise wrapper around the callback-style `HTMLCanvasElement.toBlob`. */
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality: number,
+): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    if (typeof canvas.toBlob !== 'function') {
+      resolve(null);
+      return;
+    }
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
+}
+
+/**
+ * Load an audio/video file's metadata off-screen to read its duration (ms) and,
+ * for video, its pixel dimensions. Resolves to empty (never rejects) on error, or
+ * if metadata doesn't arrive within {@link METADATA_TIMEOUT_MS}, so a corrupt file
+ * can't stall the send.
+ */
+function probeMediaElement(
+  file: File,
+  tag: 'video' | 'audio',
+): Promise<{ w?: number; h?: number; durationMs?: number }> {
+  return new Promise((resolve) => {
+    if (
+      typeof document === 'undefined' ||
+      typeof URL === 'undefined' ||
+      typeof URL.createObjectURL !== 'function'
+    ) {
+      resolve({});
+      return;
+    }
+    let url: string;
+    try {
+      url = URL.createObjectURL(file);
+    } catch {
+      resolve({});
+      return;
+    }
+    const el = document.createElement(tag);
+    let settled = false;
+    const finish = (result: {
+      w?: number;
+      h?: number;
+      durationMs?: number;
+    }) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      el.onloadedmetadata = null;
+      el.onerror = null;
+      try {
+        el.removeAttribute('src');
+        el.load();
+      } catch {
+        /* element teardown is best-effort */
+      }
+      URL.revokeObjectURL(url);
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish({}), METADATA_TIMEOUT_MS);
+    el.preload = 'metadata';
+    el.onloadedmetadata = () => {
+      const durationMs =
+        Number.isFinite(el.duration) && el.duration > 0
+          ? Math.round(el.duration * 1000)
+          : undefined;
+      if (tag === 'video') {
+        const v = el as HTMLVideoElement;
+        finish({
+          w: v.videoWidth || undefined,
+          h: v.videoHeight || undefined,
+          durationMs,
+        });
+      } else {
+        finish({ durationMs });
+      }
+    };
+    el.onerror = () => finish({});
+    el.src = url;
+  });
 }
