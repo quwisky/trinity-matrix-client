@@ -35,6 +35,18 @@
     <ion-icon name="arrow-undo-outline" aria-hidden="true" />
   </button>
 
+  @if (canThread()) {
+    <button
+      type="button"
+      class="toolbar__btn"
+      title="Reply in thread"
+      aria-label="Reply in thread"
+      (click)="openThread.emit()"
+    >
+      <ion-icon name="chatbubbles-outline" aria-hidden="true" />
+    </button>
+  }
+
   <button
     type="button"
     class="toolbar__btn"

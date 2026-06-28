@@ -53,6 +53,8 @@ export class MessageRowComponent {
   readonly deletable = input(false);
   /** Hide the hover toolbar + retry affordance (view-only thread panel). */
   readonly readOnly = input(false);
+  /** Offer "Reply in thread" in the toolbar — false inside a thread (no nesting). */
+  readonly canThread = input(true);
 
   /** A reaction key was chosen (quick-emoji toolbar or an existing reaction pill). */
   readonly react = output<string>();

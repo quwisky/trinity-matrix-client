@@ -24,6 +24,7 @@
         [row]="row"
         [editable]="isEditable(row)"
         [deletable]="row.isOwn && !row.status"
+        [canThread]="false"
         (react)="onReact(row.id, $event)"
         (replyMessage)="startReply(row)"
         (copyMessage)="onCopy(row)"

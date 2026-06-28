@@ -13,7 +13,7 @@ describe('MessageToolbarComponent', () => {
     const cmp = fixture.componentInstance;
 
     const buttons = fixture.nativeElement.querySelectorAll('.toolbar__btn');
-    expect(buttons.length).toBe(3); // react + reply + copy, no edit/delete
+    expect(buttons.length).toBe(4); // react + reply + thread + copy, no edit/delete
 
     let replied = false;
     cmp.replyMessage.subscribe(() => (replied = true));
@@ -38,12 +38,31 @@ describe('MessageToolbarComponent', () => {
     cmp.deleteMessage.subscribe(() => (deleted = true));
 
     const buttons = fixture.nativeElement.querySelectorAll('.toolbar__btn');
-    expect(buttons.length).toBe(5); // react + reply + copy + edit + delete
+    expect(buttons.length).toBe(6); // react + reply + thread + copy + edit + delete
     buttons.forEach((b: HTMLButtonElement) => b.click());
 
     expect(copied).toBe(true);
     expect(edited).toBe(true);
     expect(deleted).toBe(true);
+  });
+
+  it('offers "Reply in thread" by default and hides it when canThread is false', () => {
+    const fixture = TestBed.createComponent(MessageToolbarComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let threaded = false;
+    cmp.openThread.subscribe(() => (threaded = true));
+    fixture.nativeElement
+      .querySelector<HTMLButtonElement>('[aria-label="Reply in thread"]')
+      .click();
+    expect(threaded).toBe(true);
+
+    fixture.componentRef.setInput('canThread', false);
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[aria-label="Reply in thread"]'),
+    ).toBeNull();
   });
 
   it('opens the quick-reaction picker and emits the chosen emoji', () => {

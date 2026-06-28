@@ -9,6 +9,7 @@ import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
   arrowUndoOutline,
+  chatbubblesOutline,
   copyOutline,
   happyOutline,
   pencilOutline,
@@ -33,8 +34,11 @@ const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
 export class MessageToolbarComponent {
   readonly canEdit = input(false);
   readonly canDelete = input(false);
+  /** Whether to offer "Reply in thread" — false inside a thread (no nested threads). */
+  readonly canThread = input(true);
   readonly react = output<string>();
   readonly replyMessage = output<void>();
+  readonly openThread = output<void>();
   readonly copyMessage = output<void>();
   readonly editMessage = output<void>();
   readonly deleteMessage = output<void>();
@@ -45,6 +49,7 @@ export class MessageToolbarComponent {
   constructor() {
     addIcons({
       arrowUndoOutline,
+      chatbubblesOutline,
       copyOutline,
       happyOutline,
       pencilOutline,
