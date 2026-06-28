@@ -66,12 +66,38 @@ None of this can be tested on the iOS Simulator or on web/Electron.
    ```
    Then a full native rebuild + reinstall on device (not just `cap copy`).
 
+## Local notifications (desktop + web)
+
+`NotificationService` (`@trinity/core`) surfaces incoming messages as OS notifications
+via the web `Notification` API, driven by the **live sync stream** — no push gateway
+involved. It runs on **desktop (Electron) and web/PWA** (`!isNativePlatform()`); on
+mobile, push (above) owns delivery, so it's a no-op there. It fires only for **live**
+timeline events from someone other than you, while the window is **unfocused**, and only
+when the account's push rules say to notify (`getPushActionsForEvent().notify` — honors
+mutes / mentions-only). A tap focuses the window and opens the app. Connected from the
+rooms shell; the listener dies with the client on logout. This is the desktop story — it
+needs no gateway because a desktop/web client stays connected to `/sync`.
+
+## Mobile push without your own gateway
+
+A Matrix client always needs an HTTP push **gateway** between the homeserver and APNs/FCM
+(the homeserver can't talk to APNs/FCM directly), and matrix.org's public Sygnal only
+serves Element's app ids — not a custom app. Options to avoid running your own gateway:
+
+- **Android — UnifiedPush.** The user installs a distributor (ntfy, NextPush, …) that
+  holds the connection; the app registers a pusher pointing at the **distributor's**
+  gateway, not yours. No server to operate. Needs a native UnifiedPush connector (no
+  off-the-shelf Capacitor plugin) + a distributor picker; the `setPusher` shape is the
+  same as FCM, so it's an additive change to `PushService`.
+- **Android — foreground service.** Keep `/sync` alive in a foreground service and raise
+  local notifications; zero push infra, at the cost of a persistent notification + battery.
+- **iOS — not possible.** APNs is mandatory for background delivery and requires a gateway
+  holding your APNs key; there's no UnifiedPush/background-socket escape for a custom app.
+
 ## Known limitations / follow-ups
 
 - **Web Push** is not implemented (would need a VAPID/Web-Push pushgen + the service
-  worker); web is a no-op today.
-- **Desktop (Electron)** is skipped; a future enhancement could surface local
-  `Notification`s from live sync instead of an HTTP pusher.
+  worker); for web, the local notifications above cover the foreground/tab case.
 - **Notification tap** opens `/rooms`; room-targeted navigation is a follow-up (rooms
   aren't deep-linkable by route yet).
 - **Foreground** pushes aren't surfaced separately — the live sync already updates the UI.

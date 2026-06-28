@@ -28,9 +28,11 @@ iOS, Android, and Desktop (Electron) from a single Angular codebase.
 
 **Phase 2 (post-MVP):**
 
-- Push notifications — _client plumbing landed_ (`PushService` + Matrix pusher via
-  `@capacitor/push-notifications`; see [docs/PUSH.md](docs/PUSH.md)). Remaining: a
-  deployed Sygnal gateway + FCM/APNs credentials + on-device verification.
+- Notifications — _landed_: **desktop/web local notifications** from live sync
+  (`NotificationService`) and **mobile push** client plumbing (`PushService` + Matrix
+  pusher via `@capacitor/push-notifications`); see [docs/PUSH.md](docs/PUSH.md).
+  Remaining for mobile push: a deployed Sygnal gateway + FCM/APNs credentials +
+  on-device verification (or UnifiedPush on Android to avoid running a gateway).
 - Threads (edits, redactions, reactions, and replies landed early, in MVP)
 - Voice/video calls (WebRTC / Element Call style)
 - Spaces, room creation/invites, search
