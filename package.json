@@ -29,6 +29,7 @@
     "electron:package:linux": "pnpm run electron:build && pnpm -C electron run package:linux",
     "electron:package:win": "pnpm run electron:build && pnpm -C electron run package:win",
     "electron:package:all": "pnpm run electron:build && pnpm -C electron run package:all",
+    "electron:e2e": "pnpm run electron:build && pnpm exec playwright test -c apps/trinity/playwright.electron.config.mts",
     "android:sync": "pnpm run build && pnpm exec cap sync android",
     "android:open": "pnpm exec cap open android",
     "android:run": "pnpm run build && pnpm exec cap run android",

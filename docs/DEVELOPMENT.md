@@ -136,6 +136,19 @@ pnpm exec nx e2e trinity            # all specs (Chromium)
 pnpm exec nx e2e trinity -- --list  # enumerate without running
 ```
 
+**Electron desktop (`@playwright/test` + `_electron`)** — specs in
+[`apps/trinity/e2e-electron/`](../apps/trinity/e2e-electron/) launch the **built**
+desktop app (`electron/dist/main.js` serving `www/` over `trinity://app`) and assert it
+boots, exposes the preload bridge but no Node, and renders dark mode (a regression test
+for the critical-CSS/Electron dark-theme bug):
+
+```bash
+pnpm electron:install   # once — downloads the Electron binary (normal install skips it)
+pnpm electron:e2e       # builds the app, then runs the Electron specs
+# headless Linux/CI: wrap with xvfb (Electron needs a display):
+xvfb-run -a pnpm electron:e2e
+```
+
 **Crypto/protocol harnesses** — headless Playwright drivers in [`e2e/`](../e2e/) that
 build, serve `www/`, and assert real behavior (including live `.well-known`
 discovery against matrix.org):
