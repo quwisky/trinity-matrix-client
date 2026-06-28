@@ -10,4 +10,5 @@ export * from './lib/matrix/secret-storage-key.service';
 export * from './lib/matrix/crypto.service';
 export * from './lib/matrix/verification.service';
 export * from './lib/storage/session-storage.service';
+export * from './lib/theme/theme.service';
 export * from './lib/guards/auth.guard';
