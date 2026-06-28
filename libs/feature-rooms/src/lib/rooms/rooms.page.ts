@@ -34,8 +34,10 @@ import {
   NotificationService,
   PushService,
   RoomsService,
+  SpacesService,
   ThreadsService,
   TimelineService,
+  type RoomSummary,
 } from '@trinity/core';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
@@ -75,6 +77,7 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
 })
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);
+  readonly spaces = inject(SpacesService);
   readonly timeline = inject(TimelineService);
   readonly threads = inject(ThreadsService);
   private readonly threadPanel = inject(ThreadPanelService);
@@ -94,16 +97,31 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Attachment upload fraction in [0, 1] while a send is uploading, else null. */
   readonly uploadProgress = signal<number | null>(null);
 
-  readonly visibleRooms = computed(() =>
-    this.rooms.roomsForSpace(this.activeSpaceId()),
-  );
+  /**
+   * Rooms shown in the channel sidebar. Home (`null`) shows every joined room in
+   * recency order (as before). A selected space shows only its joined child rooms,
+   * in the space's own order (`m.space.child` `order` then name). Both read live
+   * signals, so the list reacts to sync, membership, and `m.space.child` changes.
+   */
+  readonly visibleRooms = computed<RoomSummary[]>(() => {
+    const spaceId = this.activeSpaceId();
+    const all = this.rooms.rooms();
+    if (!spaceId) {
+      return all;
+    }
+    const byId = new Map(all.map((room) => [room.id, room] as const));
+    return this.spaces
+      .childRoomIds(spaceId)
+      .map((id) => byId.get(id))
+      .filter((room): room is RoomSummary => room !== undefined);
+  });
 
   readonly activeSpaceName = computed(() => {
     const id = this.activeSpaceId();
     if (!id) {
       return 'Home';
     }
-    return this.rooms.spaces().find((s) => s.id === id)?.name ?? 'Home';
+    return this.spaces.spaces().find((s) => s.id === id)?.name ?? 'Home';
   });
 
   readonly activeRoom = computed(() => {
@@ -159,6 +177,7 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.rooms.connect();
+    this.spaces.connect();
     this.crypto.connect();
     // Register for push once the authenticated shell is live (covers both fresh
     // login and a restored session). Best-effort + native-only; no-op elsewhere.

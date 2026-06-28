@@ -29,16 +29,6 @@ export interface RoomSummary {
   activityTs: number;
 }
 
-/** A Matrix Space shown as a pill in the server rail. */
-export interface SpaceSummary {
-  id: string;
-  name: string;
-  initial: string;
-  avatarMxc: string | null;
-  /** Room ids referenced by this space's `m.space.child` state. */
-  childRoomIds: string[];
-}
-
 /** A joined member shown in the member list. */
 export interface MemberSummary {
   userId: string;
@@ -48,9 +38,12 @@ export interface MemberSummary {
 }
 
 /**
- * Read model over the synced `MatrixClient`: exposes Spaces, joined rooms, and
- * members as plain view models (components never touch `matrix-js-sdk` directly).
- * Signals are recomputed as the client syncs; `connect()` wires the listeners.
+ * Read model over the synced `MatrixClient`: exposes joined rooms and members as
+ * plain view models (components never touch `matrix-js-sdk` directly). Signals are
+ * recomputed as the client syncs; `connect()` wires the listeners.
+ *
+ * Spaces (the server rail) are a separate read model — see {@link SpacesService}.
+ * Space rooms are excluded from {@link rooms} so they never appear as channels.
  */
 @Injectable({ providedIn: 'root' })
 export class RoomsService {
@@ -66,9 +59,6 @@ export class RoomsService {
 
   /** Stable listener ref so {@link connect}/{@link disconnect} can add and remove it. */
   private readonly onClientEvent = (): void => this.refresh();
-
-  private readonly _spaces = signal<SpaceSummary[]>([]);
-  readonly spaces = this._spaces.asReadonly();
 
   private readonly _rooms = signal<RoomSummary[]>([]);
   readonly rooms = this._rooms.asReadonly();
@@ -113,22 +103,7 @@ export class RoomsService {
     client.off(RoomEvent.MyMembership, this.onClientEvent);
     client.off(RoomEvent.Receipt, this.onClientEvent);
     this.connectedClient = null;
-    this._spaces.set([]);
     this._rooms.set([]);
-  }
-
-  /** Joined rooms belonging to a space (or all joined rooms for `null` = Home). */
-  roomsForSpace(spaceId: string | null): RoomSummary[] {
-    const all = this.rooms();
-    if (!spaceId) {
-      return all;
-    }
-    const space = this.spaces().find((s) => s.id === spaceId);
-    if (!space) {
-      return all;
-    }
-    const children = new Set(space.childRoomIds);
-    return all.filter((r) => children.has(r.id));
   }
 
   /** Joined members of a room (empty if the room is unknown). */
@@ -153,14 +128,9 @@ export class RoomsService {
     const client = this.matrix.instance;
     const all = client.getRooms();
 
-    this._spaces.set(
-      all
-        .filter((r) => r.isSpaceRoom())
-        .map((r) => this.toSpace(r))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    );
     this._rooms.set(
       all
+        // Spaces are rendered in the server rail, not as channels in the room list.
         .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
         .map((r) => this.toRoom(r))
         // Most recently active first; fall back to name for quiet rooms.
@@ -169,20 +139,6 @@ export class RoomsService {
         ),
     );
     this._revision.update((n) => n + 1);
-  }
-
-  private toSpace(room: Room): SpaceSummary {
-    const name = room.name || room.roomId;
-    return {
-      id: room.roomId,
-      name,
-      initial: initialOf(name),
-      avatarMxc: room.getMxcAvatarUrl(),
-      childRoomIds: room.currentState
-        .getStateEvents('m.space.child')
-        .map((e) => e.getStateKey())
-        .filter((k): k is string => !!k),
-    };
   }
 
   private toRoom(room: Room): RoomSummary {

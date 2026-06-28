@@ -61,7 +61,7 @@ describe('RoomsService', () => {
     return svc;
   }
 
-  it('splits spaces from joined rooms', () => {
+  it('excludes spaces and non-joined rooms from the channel list', () => {
     const svc = setup([
       fakeRoom({
         roomId: '!s:hs',
@@ -73,27 +73,8 @@ describe('RoomsService', () => {
       fakeRoom({ roomId: '!b:hs', name: 'left', membership: 'leave' }),
     ]);
 
-    expect(svc.spaces().map((s) => s.id)).toEqual(['!s:hs']);
-    expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs']); // 'left' filtered out
-  });
-
-  it('filters rooms by space membership, falling back to all for Home', () => {
-    const svc = setup([
-      fakeRoom({
-        roomId: '!s:hs',
-        name: 'Space',
-        space: true,
-        children: ['!a:hs'],
-      }),
-      fakeRoom({ roomId: '!a:hs', name: 'in-space' }),
-      fakeRoom({ roomId: '!b:hs', name: 'orphan' }),
-    ]);
-
-    expect(svc.roomsForSpace(null).map((r) => r.id)).toEqual([
-      '!a:hs',
-      '!b:hs',
-    ]);
-    expect(svc.roomsForSpace('!s:hs').map((r) => r.id)).toEqual(['!a:hs']);
+    // Spaces live in the rail (SpacesService); 'left' is filtered out too.
+    expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs']);
   });
 
   it('orders rooms by recent activity and maps unread counts', () => {

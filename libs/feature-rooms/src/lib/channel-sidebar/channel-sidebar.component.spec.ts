@@ -8,7 +8,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     id: '!a:hs',
     name: 'general',
     initial: 'G',
-    avatarUrl: null,
+    avatarMxc: null,
     topic: '',
     memberCount: 0,
     encrypted: false,

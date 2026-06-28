@@ -2,7 +2,7 @@
   <ion-menu contentId="main-content" type="overlay">
     <div class="shell-side">
       <trn-server-rail
-        [spaces]="rooms.spaces()"
+        [spaces]="spaces.spaces()"
         [activeSpaceId]="activeSpaceId()"
         (selectSpace)="onSelectSpace($event)"
       />
