@@ -1,4 +1,0 @@
-- [Secret & token storage patterns](secret-token-storage.md) — where session tokens and 4S recovery keys live and how they're zeroed
-- [Crypto bootstrap UI trust model](crypto-bootstrap-ui.md) — recovery-key/password lifetime conventions in feature-crypto + authGuard scope
-- [XSS message-rendering path](xss-rendering-path.md) — how formatted_body reaches [innerHTML] and why Angular's auto-sanitizer is the only defense
-- [CSP & headers gap + SSO trust model](csp-and-headers-gap.md) — no CSP/headers ship; how SSO baseUrl/loginToken/redirect are sourced

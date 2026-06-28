@@ -1,2 +1,0 @@
-- [Design system map](design-system.md) — where tokens, mixins, global styles live and the Discord-dark conventions
-- [Recurring UI/UX gaps](recurring-issues.md) — anti-patterns seen across Trinity components (focus, native dialogs, contrast)

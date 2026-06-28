@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(npm --version)",
-      "WebSearch",
-      "Bash(npx --yes @ionic/cli --version)"
-    ]
-  }
-}

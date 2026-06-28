@@ -143,4 +143,4 @@ Phase 2: push notifications, threads, calls, spaces.
 ## Environment
 
 - Node v25.2.1, npm 11.6.2 (verified 2026-06-26)
-- Working dir: /Users/quwisky/Projects/matrix (empty, not a git repo)
+- Working dir: /Users/quwisky/Projects/trinity-matrix-client
