@@ -135,7 +135,12 @@ src/app/
    resolves `system` via `prefers-color-scheme`, and toggles Ionic's `.ion-palette-dark`
    class on `<html>` (light is the `:root` default; the dark palette + Ionic's
    `dark.class.css` tokens layer under the class), applied at startup via
-   `provideAppInitializer`. **Remaining:** profile (display name/avatar),
+   `provideAppInitializer`. On native the status bar style follows the resolved
+   theme (Capacitor **StatusBar**), so the device chrome matches; the System option
+   tracks the device's `prefers-color-scheme` (the `color-scheme` meta is set).
+   _Android needs on-device verification_ that the WebView reports OS dark mode
+   (DayNight activity) and that the status-bar icon contrast holds on the pre-edge-to-edge
+   API range. **Remaining:** profile (display name/avatar),
    device management (list/rename/delete + verify), and offline cache (an `IndexedDBStore`
    for the sync store + a connectivity indicator off the existing `syncState` signal).
 
