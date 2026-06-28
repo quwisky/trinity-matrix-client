@@ -1,15 +1,25 @@
 import { TestBed } from '@angular/core/testing';
-import { createClient } from 'matrix-js-sdk';
+import { ClientEvent, SyncState, createClient } from 'matrix-js-sdk';
 import { firstValueFrom, of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from './matrix-client.service';
 import { SessionStorageService } from '../storage/session-storage.service';
 import { SecretStorageKeyService } from './secret-storage-key.service';
 
-// Keep the real enums (ClientEvent/SyncState) but stub the client factory.
+// A controllable fake sync store (the real IndexedDBStore needs a browser IDB).
+const storeMock = vi.hoisted(() => ({ startup: vi.fn(), destroy: vi.fn() }));
+
+// Keep the real enums (ClientEvent/SyncState) but stub the client factory + store.
 vi.mock('matrix-js-sdk', async (importOriginal) => {
   const actual = await importOriginal<typeof import('matrix-js-sdk')>();
-  return { ...actual, createClient: vi.fn() };
+  return {
+    ...actual,
+    createClient: vi.fn(),
+    IndexedDBStore: class {
+      startup = storeMock.startup;
+      destroy = storeMock.destroy;
+    },
+  };
 });
 
 // The WASM preload is a no-op in tests (no real crypto engine).
@@ -59,7 +69,13 @@ function setup() {
 }
 
 describe('MatrixClientService', () => {
-  beforeEach(() => vi.mocked(createClient).mockReset());
+  beforeEach(() => {
+    vi.mocked(createClient).mockReset();
+    storeMock.startup.mockReset().mockResolvedValue(undefined);
+    storeMock.destroy.mockReset().mockResolvedValue(undefined);
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it('creates the client, inits crypto, starts, and publishes on success', async () => {
     const client = fakeClient();
@@ -165,5 +181,52 @@ describe('MatrixClientService', () => {
     await firstValueFrom(svc.stop());
     storage.load.mockReturnValue(of(null));
     await expect(firstValueFrom(svc.restore())).resolves.toBe(false);
+  });
+
+  it('maps sync state to connectivity (offline while erroring/reconnecting)', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(SESSION));
+
+    // Before any sync transition the app reads online (no startup offline flash).
+    expect(svc.connectivity()).toBe('online');
+
+    // Drive the Sync listener the service registered during init().
+    const onSync = client.on.mock.calls.find(
+      (c: unknown[]) => c[0] === ClientEvent.Sync,
+    )?.[1] as (state: SyncState) => void;
+
+    onSync(SyncState.Error);
+    expect(svc.connectivity()).toBe('offline');
+    onSync(SyncState.Reconnecting);
+    expect(svc.connectivity()).toBe('offline');
+    onSync(SyncState.Syncing);
+    expect(svc.connectivity()).toBe('online');
+  });
+
+  it('logs in even when the sync-store startup fails (cache is best-effort)', async () => {
+    vi.stubGlobal('indexedDB', {}); // present → an IndexedDBStore is built
+    storeMock.startup.mockRejectedValue(new Error('IndexedDB corrupt'));
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+
+    await expect(firstValueFrom(svc.init(SESSION))).resolves.toBeUndefined();
+    expect(svc.isInitialized).toBe(true); // a broken cache must not block login
+    expect(client.startClient).toHaveBeenCalledOnce();
+  });
+
+  it('closes the sync store on teardown (no leaked IndexedDB connection)', async () => {
+    vi.stubGlobal('indexedDB', {});
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(SESSION));
+
+    await firstValueFrom(svc.stop());
+    await Promise.resolve(); // let the best-effort destroy() microtask run
+
+    expect(storeMock.destroy).toHaveBeenCalled();
   });
 });

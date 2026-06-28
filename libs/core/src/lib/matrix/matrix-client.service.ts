@@ -1,6 +1,7 @@
-import { Injectable, signal, inject } from '@angular/core';
+import { Injectable, computed, signal, inject } from '@angular/core';
 import {
   createClient,
+  IndexedDBStore,
   MatrixClient,
   ClientEvent,
   SyncState,
@@ -37,10 +38,26 @@ export class MatrixClientService {
   private readonly storage = inject(SessionStorageService);
   private readonly secretStorageKeys = inject(SecretStorageKeyService);
   private client: MatrixClient | null = null;
+  /** The persistent sync store, retained so its IndexedDB connection can be closed. */
+  private syncStore: IndexedDBStore | null = null;
 
   /** Coarse sync state for the UI (null until the first sync transition). */
   private readonly _syncState = signal<SyncState | null>(null);
   readonly syncState = this._syncState.asReadonly();
+
+  /**
+   * Connectivity for the UI: `offline` once sync is erroring or reconnecting after
+   * a connection loss, else `online` (including the pre-first-sync window, so a
+   * fresh start doesn't flash an offline banner). Cached data still renders while
+   * offline thanks to the persistent IndexedDB sync store. (`Stopped` maps to
+   * `online` here but is unreachable — teardown detaches this listener first.)
+   */
+  readonly connectivity = computed<'online' | 'offline'>(() => {
+    const state = this._syncState();
+    return state === SyncState.Error || state === SyncState.Reconnecting
+      ? 'offline'
+      : 'online';
+  });
 
   /** Stable reference so the listener can be removed in {@link teardown}. */
   private readonly onSync = (state: SyncState): void =>
@@ -70,11 +87,17 @@ export class MatrixClientService {
   init(session: MatrixSession): Observable<void> {
     return defer(() => {
       this.teardown();
+      // Persist the sync store to IndexedDB (per-account) so rooms/timelines are
+      // cached for fast startup and offline reads; falls back to the SDK's
+      // in-memory store outside a browser (e.g. unit tests).
+      const store = this.createSyncStore(session.userId);
+      this.syncStore = store;
       const client = createClient({
         baseUrl: session.baseUrl,
         accessToken: session.accessToken,
         userId: session.userId,
         deviceId: session.deviceId,
+        ...(store ? { store } : {}),
         // Lets the crypto stack read/write 4S using the recovery key the user
         // unlocks during the setup/recovery flows (held only in memory).
         cryptoCallbacks: {
@@ -82,9 +105,14 @@ export class MatrixClientService {
           cacheSecretStorageKey: this.secretStorageKeys.cacheSecretStorageKey,
         },
       });
-      // Preload the WASM from the served asset path, then init the crypto store
-      // (IndexedDB inside browsers/WebViews by default).
-      return preloadCryptoWasm().pipe(
+      // Load any cached sync from IndexedDB (must run after createClient), then
+      // preload the WASM and init the crypto store. The cache is best-effort: a
+      // corrupted/blocked IndexedDB must NOT block login, so a startup failure is
+      // swallowed and the SDK's degradable store falls back to in-memory.
+      return from(
+        store ? store.startup().catch(() => undefined) : Promise.resolve(),
+      ).pipe(
+        switchMap(() => preloadCryptoWasm()),
         switchMap(() => from(client.initRustCrypto())),
         tap(() => client.on(ClientEvent.Sync, this.onSync)),
         switchMap(() => from(client.startClient({ initialSyncLimit: 20 }))),
@@ -97,6 +125,7 @@ export class MatrixClientService {
           client.stopClient();
           this._syncState.set(null);
           this.secretStorageKeys.clear();
+          this.destroySyncStore(); // release the store opened for this failed boot
           return throwError(() => err);
         }),
         map(() => void 0),
@@ -135,6 +164,7 @@ export class MatrixClientService {
       if (!client) {
         this._syncState.set(null);
         this.secretStorageKeys.clear();
+        this.destroySyncStore();
         return of(void 0);
       }
       client.off(ClientEvent.Sync, this.onSync);
@@ -145,9 +175,26 @@ export class MatrixClientService {
           this.client = null;
           this._syncState.set(null);
           this.secretStorageKeys.clear();
+          this.destroySyncStore(); // close the now-emptied store's connection
         }),
         map(() => void 0),
       );
+    });
+  }
+
+  /**
+   * Build a persistent IndexedDB sync store scoped to the account, or null when
+   * IndexedDB is unavailable (non-browser / unit tests) so the SDK falls back to
+   * its in-memory store. {@link reset} clears the store's database on logout.
+   */
+  private createSyncStore(userId: string): IndexedDBStore | null {
+    if (typeof globalThis.indexedDB === 'undefined') {
+      return null;
+    }
+    return new IndexedDBStore({
+      indexedDB: globalThis.indexedDB,
+      // Per-account database so multiple accounts on one device don't share a cache.
+      dbName: `trinity-sync:${userId}`,
     });
   }
 
@@ -161,7 +208,23 @@ export class MatrixClientService {
       this.client.stopClient();
       this.client = null;
     }
+    this.destroySyncStore();
     this._syncState.set(null);
     this.secretStorageKeys.clear();
+  }
+
+  /**
+   * Close the sync store's IndexedDB connection and release its in-memory copy,
+   * so a stop()/re-login doesn't leak connections (and a later open of the same
+   * `dbName` can't block on a stale handle). Best-effort.
+   */
+  private destroySyncStore(): void {
+    const store = this.syncStore;
+    if (store) {
+      this.syncStore = null;
+      void Promise.resolve()
+        .then(() => store.destroy())
+        .catch(() => undefined);
+    }
   }
 }
