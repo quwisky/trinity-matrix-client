@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { AlertController } from '@ionic/angular/standalone';
+import { AlertController, ModalController } from '@ionic/angular/standalone';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -64,6 +64,9 @@ describe('SettingsPage', () => {
           },
         },
         { provide: AlertController, useValue: { create: vi.fn() } },
+        // The devices section's "Verify a device" goes through EncryptionDialogService,
+        // which injects ModalController.
+        { provide: ModalController, useValue: { create: vi.fn() } },
         // Real router providers — Ionic's NavController (ion-back-button) needs them.
         provideRouter([]),
       ],

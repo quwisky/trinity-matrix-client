@@ -6,7 +6,6 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { Router } from '@angular/router';
 import {
   AlertController,
   IonBadge,
@@ -24,7 +23,7 @@ import {
   shieldCheckmarkOutline,
   trashOutline,
 } from 'ionicons/icons';
-import { runWithBusy } from '@trinity/ui';
+import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
 
 /**
@@ -52,7 +51,7 @@ import { DevicesService, type DeviceInfo } from '@trinity/core';
 export class DevicesSectionComponent {
   private readonly devicesSvc = inject(DevicesService);
   private readonly alertCtrl = inject(AlertController);
-  private readonly router = inject(Router);
+  private readonly dialogs = inject(EncryptionDialogService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly devices = this.devicesSvc.devices;
@@ -120,11 +119,12 @@ export class DevicesSectionComponent {
     await alert.present();
   }
 
-  /** Open the existing SAS verification flow, returning here when it finishes. */
+  /**
+   * Open the SAS verification flow — a modal on the desktop split-pane layout, a
+   * routed page (returning here) on mobile — via {@link EncryptionDialogService}.
+   */
   verifyDevices(): void {
-    void this.router.navigate(['/encryption/verify'], {
-      queryParams: { returnTo: '/settings' },
-    });
+    void this.dialogs.openVerify({ returnTo: '/settings' });
   }
 
   private applyRename(id: string, name: string): void {

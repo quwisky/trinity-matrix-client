@@ -13,7 +13,11 @@ import {
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
 import { AvatarService, PUSH_CONFIG, ThemeService } from '@trinity/core';
-import { AVATAR_RESOLVER } from '@trinity/ui';
+import {
+  AVATAR_RESOLVER,
+  ENCRYPTION_DIALOG_COMPONENTS,
+  type EncryptionDialogLoaders,
+} from '@trinity/ui';
 
 import { routes } from './app/app.routes';
 import { AppComponent } from './app/app.component';
@@ -55,6 +59,21 @@ bootstrapApplication(AppComponent, {
     },
     // Push-gateway config for PushService (null = push disabled; see environment.ts).
     { provide: PUSH_CONFIG, useValue: environment.push },
+    // Lazy loaders so EncryptionDialogService (ui) can present the unlock/verify
+    // pages as desktop modals without ui/core importing feature-crypto. Dynamic
+    // imports (as in app.routes / verification-host) keep the feature in its own
+    // lazy chunk; only the wide split-pane layout actually opens a modal.
+    {
+      provide: ENCRYPTION_DIALOG_COMPONENTS,
+      useValue: {
+        unlock: () =>
+          import('@trinity/feature-crypto').then((m) => m.EncryptionUnlockPage),
+        verify: () =>
+          import('@trinity/feature-crypto').then(
+            (m) => m.DeviceVerificationPage,
+          ),
+      } satisfies EncryptionDialogLoaders,
+    },
     // Precache the app shell + crypto WASM for offline (web/PWA only). Native
     // (Capacitor) and desktop (Electron) already load these as bundled assets and
     // must NOT layer a second SW cache over them — gate on web + production.

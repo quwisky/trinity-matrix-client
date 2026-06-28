@@ -1,6 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
+import { ModalController } from '@ionic/angular/standalone';
 import { VerificationService, type VerificationView } from '@trinity/core';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -41,15 +42,20 @@ function configure(
       },
     },
   };
+  // A modal is "presented" so getTop() resolves it; lets us assert the page
+  // dismisses its own host modal in modal mode.
+  const dismiss = vi.fn().mockResolvedValue(true);
+  const getTop = vi.fn().mockResolvedValue({ dismiss });
   TestBed.configureTestingModule({
     imports: [DeviceVerificationPage],
     providers: [
       { provide: VerificationService, useValue: svc },
       { provide: Router, useValue: router },
       { provide: ActivatedRoute, useValue: route },
+      { provide: ModalController, useValue: { getTop } },
     ],
   });
-  return { svc, router };
+  return { svc, router, getTop, dismiss };
 }
 
 function button(host: HTMLElement, text: string): HTMLElement {
@@ -133,8 +139,10 @@ describe('DeviceVerificationPage', () => {
     });
   });
 
-  it('emits close instead of navigating when shown as a modal', () => {
-    const { svc } = configure(signal(view({ stage: 'done' })));
+  it('dismisses its own modal (and emits close) instead of navigating when modal', async () => {
+    const { svc, router, getTop, dismiss } = configure(
+      signal(view({ stage: 'done' })),
+    );
     const fixture = TestBed.createComponent(DeviceVerificationPage);
     fixture.componentRef.setInput('asModal', true);
     let closed = false;
@@ -145,5 +153,19 @@ describe('DeviceVerificationPage', () => {
 
     expect(svc.dismiss).toHaveBeenCalledOnce();
     expect(closed).toBe(true);
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+    // Dismisses the top modal — but only if one is actually presented.
+    await vi.waitFor(() => expect(getTop).toHaveBeenCalled());
+    await vi.waitFor(() => expect(dismiss).toHaveBeenCalledOnce());
+  });
+
+  it('does not touch the modal stack on the routed (non-modal) path', () => {
+    const { getTop } = configure(signal(view({ stage: 'done' })));
+    const fixture = TestBed.createComponent(DeviceVerificationPage);
+    fixture.detectChanges();
+
+    button(fixture.nativeElement, 'Done').click();
+
+    expect(getTop).not.toHaveBeenCalled();
   });
 });

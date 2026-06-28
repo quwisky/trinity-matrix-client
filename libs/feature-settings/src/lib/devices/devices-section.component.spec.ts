@@ -1,11 +1,24 @@
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { AlertController } from '@ionic/angular/standalone';
+import { AlertController, ModalController } from '@ionic/angular/standalone';
+import {
+  ENCRYPTION_DIALOG_COMPONENTS,
+  EncryptionDialogService,
+  type EncryptionDialogLoaders,
+} from '@trinity/ui';
 import { of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
 import { DevicesSectionComponent } from './devices-section.component';
+
+@Component({ selector: 'trn-stub-verify', template: '' })
+class StubVerifyPage {}
+
+/** Pretend the viewport is (or isn't) the desktop split-pane layout. */
+function stubViewport(matches: boolean): void {
+  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches }));
+}
 
 interface AlertButton {
   text: string;
@@ -35,9 +48,10 @@ describe('DevicesSectionComponent', () => {
   const del = vi.fn(() => of(undefined));
   const connect = vi.fn();
   const disconnect = vi.fn();
-  const navigate = vi.fn();
+  const navigate = vi.fn().mockResolvedValue(true);
   let devices: ReturnType<typeof signal<DeviceInfo[]>>;
   let alertCreate: ReturnType<typeof vi.fn>;
+  let modalCreate: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     rename.mockClear();
@@ -49,10 +63,15 @@ describe('DevicesSectionComponent', () => {
     alertCreate = vi
       .fn()
       .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    modalCreate = vi
+      .fn()
+      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
 
     TestBed.configureTestingModule({
       imports: [DevicesSectionComponent],
       providers: [
+        // The real dialog service so we exercise its desktop-vs-mobile branching.
+        EncryptionDialogService,
         {
           provide: DevicesService,
           useValue: {
@@ -65,10 +84,20 @@ describe('DevicesSectionComponent', () => {
           },
         },
         { provide: AlertController, useValue: { create: alertCreate } },
+        { provide: ModalController, useValue: { create: modalCreate } },
         { provide: Router, useValue: { navigate } },
+        {
+          provide: ENCRYPTION_DIALOG_COMPONENTS,
+          useValue: {
+            unlock: () => Promise.resolve(StubVerifyPage),
+            verify: () => Promise.resolve(StubVerifyPage),
+          } satisfies EncryptionDialogLoaders,
+        },
       ],
     });
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   function lastAlertButtons(): AlertButton[] {
     return alertCreate.mock.calls.at(-1)?.[0].buttons as AlertButton[];
@@ -113,7 +142,8 @@ describe('DevicesSectionComponent', () => {
     expect(del).toHaveBeenCalledWith('B', expect.any(Function));
   });
 
-  it('navigates to the verification flow, asking it to return to settings', () => {
+  it('navigates to the verification flow on mobile, returning to settings', () => {
+    stubViewport(false);
     const fixture = TestBed.createComponent(DevicesSectionComponent);
     fixture.detectChanges();
 
@@ -122,6 +152,25 @@ describe('DevicesSectionComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/encryption/verify'], {
       queryParams: { returnTo: '/settings' },
     });
+    expect(modalCreate).not.toHaveBeenCalled();
+  });
+
+  it('opens the verification flow as a modal on the desktop layout', async () => {
+    stubViewport(true);
+    const fixture = TestBed.createComponent(DevicesSectionComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance.verifyDevices();
+
+    await vi.waitFor(() =>
+      expect(modalCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          component: StubVerifyPage,
+          componentProps: { asModal: true },
+        }),
+      ),
+    );
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('subscribes to live device updates while mounted', () => {

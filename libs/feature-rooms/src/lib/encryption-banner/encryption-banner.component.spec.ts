@@ -1,26 +1,68 @@
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import { ModalController } from '@ionic/angular/standalone';
 import { CryptoService, type CryptoStatus } from '@trinity/core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  ENCRYPTION_DIALOG_COMPONENTS,
+  EncryptionDialogService,
+  type EncryptionDialogLoaders,
+} from '@trinity/ui';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionBannerComponent } from './encryption-banner.component';
 
-describe('EncryptionBannerComponent', () => {
-  const status = signal<CryptoStatus>('unknown');
-  let navigateByUrl: ReturnType<typeof vi.fn>;
+@Component({ selector: 'trn-stub-unlock', template: '' })
+class StubUnlockPage {}
+@Component({ selector: 'trn-stub-verify', template: '' })
+class StubVerifyPage {}
 
-  beforeEach(() => {
-    status.set('unknown');
-    navigateByUrl = vi.fn();
-    TestBed.configureTestingModule({
-      imports: [EncryptionBannerComponent],
-      providers: [
-        { provide: CryptoService, useValue: { status: status.asReadonly() } },
-        { provide: Router, useValue: { navigateByUrl } },
-      ],
-    });
+/** Pretend the viewport is (or isn't) the desktop split-pane layout. */
+function stubViewport(matches: boolean): void {
+  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches }));
+}
+
+const status = signal<CryptoStatus>('unknown');
+let navigateByUrl: ReturnType<typeof vi.fn>;
+let navigate: ReturnType<typeof vi.fn>;
+let create: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  status.set('unknown');
+  navigateByUrl = vi.fn();
+  navigate = vi.fn().mockResolvedValue(true);
+  create = vi
+    .fn()
+    .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+
+  TestBed.configureTestingModule({
+    imports: [EncryptionBannerComponent],
+    providers: [
+      // The real dialog service so we exercise its desktop-vs-mobile branching.
+      EncryptionDialogService,
+      { provide: CryptoService, useValue: { status: status.asReadonly() } },
+      { provide: Router, useValue: { navigateByUrl, navigate } },
+      { provide: ModalController, useValue: { create } },
+      {
+        provide: ENCRYPTION_DIALOG_COMPONENTS,
+        useValue: {
+          unlock: () => Promise.resolve(StubUnlockPage),
+          verify: () => Promise.resolve(StubVerifyPage),
+        } satisfies EncryptionDialogLoaders,
+      },
+    ],
   });
+});
 
+afterEach(() => vi.unstubAllGlobals());
+
+function clickAction(host: HTMLElement, label: string): void {
+  const button = [...host.querySelectorAll('ion-button')].find(
+    (b) => b.textContent?.trim() === label,
+  );
+  (button as HTMLElement).click();
+}
+
+describe('EncryptionBannerComponent', () => {
   it('renders nothing when crypto is unknown or ready', () => {
     const fixture = TestBed.createComponent(EncryptionBannerComponent);
     fixture.detectChanges();
@@ -31,7 +73,8 @@ describe('EncryptionBannerComponent', () => {
     expect(fixture.nativeElement.querySelector('.banner')).toBeNull();
   });
 
-  it('offers a single setup action for needs-setup', () => {
+  it('offers a single setup action that always routes to the setup page', () => {
+    stubViewport(true); // even on desktop, setup stays a full page
     status.set('needs-setup');
     const fixture = TestBed.createComponent(EncryptionBannerComponent);
     fixture.detectChanges();
@@ -39,11 +82,13 @@ describe('EncryptionBannerComponent', () => {
     const buttons = fixture.nativeElement.querySelectorAll('ion-button');
     expect(buttons.length).toBe(1);
     expect(fixture.nativeElement.textContent).toContain('Set up encryption');
-    fixture.componentInstance.go('/encryption/setup');
+
+    clickAction(fixture.nativeElement, 'Set up');
     expect(navigateByUrl).toHaveBeenCalledWith('/encryption/setup');
+    expect(create).not.toHaveBeenCalled();
   });
 
-  it('offers both recovery-key and verify actions for needs-recovery', () => {
+  it('lists both recovery-key and verify actions for needs-recovery', () => {
     status.set('needs-recovery');
     const fixture = TestBed.createComponent(EncryptionBannerComponent);
     fixture.detectChanges();
@@ -52,8 +97,44 @@ describe('EncryptionBannerComponent', () => {
       ...fixture.nativeElement.querySelectorAll('ion-button'),
     ].map((b: HTMLElement) => b.textContent?.trim());
     expect(labels).toEqual(['Use recovery key', 'Verify another device']);
+  });
 
-    fixture.componentInstance.go('/encryption/verify');
-    expect(navigateByUrl).toHaveBeenCalledWith('/encryption/verify');
+  it('opens unlock/verify as modals on the desktop layout', async () => {
+    stubViewport(true);
+    status.set('needs-recovery');
+    const fixture = TestBed.createComponent(EncryptionBannerComponent);
+    fixture.detectChanges();
+
+    clickAction(fixture.nativeElement, 'Use recovery key');
+    await vi.waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          component: StubUnlockPage,
+          componentProps: { asModal: true },
+        }),
+      ),
+    );
+
+    clickAction(fixture.nativeElement, 'Verify another device');
+    await vi.waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ component: StubVerifyPage }),
+      ),
+    );
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('navigates to the unlock/verify routes on the mobile layout', () => {
+    stubViewport(false);
+    status.set('needs-recovery');
+    const fixture = TestBed.createComponent(EncryptionBannerComponent);
+    fixture.detectChanges();
+
+    clickAction(fixture.nativeElement, 'Use recovery key');
+    clickAction(fixture.nativeElement, 'Verify another device');
+
+    expect(navigate).toHaveBeenCalledWith(['/encryption/unlock'], {});
+    expect(navigate).toHaveBeenCalledWith(['/encryption/verify'], {});
+    expect(create).not.toHaveBeenCalled();
   });
 });

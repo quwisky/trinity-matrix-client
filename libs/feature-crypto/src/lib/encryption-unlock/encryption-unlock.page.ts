@@ -3,10 +3,12 @@ import {
   Component,
   DestroyRef,
   inject,
+  input,
+  output,
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import {
   IonHeader,
@@ -17,11 +19,13 @@ import {
   IonItem,
   IonInput,
   IonButton,
+  IonButtons,
   IonText,
   IonSpinner,
+  ModalController,
 } from '@ionic/angular/standalone';
 import { CryptoService } from '@trinity/core';
-import { runWithBusy } from '@trinity/ui';
+import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
 
 /**
  * New-device unlock (flow B). The account already has secret storage; the user
@@ -44,6 +48,7 @@ import { runWithBusy } from '@trinity/ui';
     IonItem,
     IonInput,
     IonButton,
+    IonButtons,
     IonText,
     IonSpinner,
   ],
@@ -51,11 +56,18 @@ import { runWithBusy } from '@trinity/ui';
 export class EncryptionUnlockPage {
   private readonly crypto = inject(CryptoService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly modalCtrl = inject(ModalController);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly recoveryKey = signal('');
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
+
+  /** When true the page is modal content (desktop); else a routed page. */
+  readonly asModal = input(false);
+  /** Asks an @Output-bound host modal to dismiss. */
+  readonly closed = output<void>();
 
   /** Unlock this device from the entered recovery key. */
   unlock(): void {
@@ -65,8 +77,35 @@ export class EncryptionUnlockPage {
     }
     this.withBusy(this.crypto.recoverWithKey(key)).subscribe(() => {
       this.recoveryKey.set(''); // drop the key from memory once it's been used
-      void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+      this.leave();
     });
+  }
+
+  /** Close without unlocking (modal Close / return on the routed page). */
+  close(): void {
+    this.recoveryKey.set('');
+    this.leave();
+  }
+
+  /** Close the modal, or (routed) return to the launch route / /rooms. */
+  private leave(): void {
+    if (this.asModal()) {
+      // @Outputs aren't bound on ModalController-created components, so dismiss
+      // the host modal ourselves; `closed` stays for any @Output-bound host.
+      this.closed.emit();
+      void this.dismissTopModal();
+      return;
+    }
+    const returnTo = this.route.snapshot.queryParamMap.get('returnTo');
+    void this.router.navigateByUrl(resolveInternalReturnTo(returnTo), {
+      replaceUrl: true,
+    });
+  }
+
+  /** Dismiss the host modal if one is still presented (guards double-dismiss). */
+  private async dismissTopModal(): Promise<void> {
+    const top = await this.modalCtrl.getTop();
+    await top?.dismiss();
   }
 
   /** Wrap a one-shot action with shared busy/error handling. */

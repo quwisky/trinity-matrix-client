@@ -18,9 +18,10 @@ import {
   IonButtons,
   IonText,
   IonSpinner,
+  ModalController,
 } from '@ionic/angular/standalone';
 import { VerificationService } from '@trinity/core';
-import { runWithBusy } from '@trinity/ui';
+import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -51,6 +52,7 @@ export class DeviceVerificationPage {
   private readonly verification = inject(VerificationService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly modalCtrl = inject(ModalController);
   private readonly destroyRef = inject(DestroyRef);
 
   /** The active verification view (null until one starts). */
@@ -99,21 +101,31 @@ export class DeviceVerificationPage {
 
   private leave(): void {
     if (this.asModal()) {
+      // @Outputs aren't bound on ModalController-created components, so dismiss
+      // the host modal ourselves; `closed` is still emitted for any future
+      // @Output-bound host. The incoming-request modal is owned by
+      // VerificationHostComponent, which closes it once `active()` clears — the
+      // getTop() guard below keeps that from double-dismissing.
       this.closed.emit();
+      void this.dismissTopModal();
       return;
     }
     // Return to where the flow was launched from (e.g. /settings), defaulting to
-    // /rooms. Only same-origin in-app paths are honored — reject protocol-relative
-    // (`//`) and backslash (`/\`) forms so it can't point off-app.
+    // /rooms; off-app targets are rejected by resolveInternalReturnTo.
     const returnTo = this.route.snapshot.queryParamMap.get('returnTo');
-    const internal =
-      !!returnTo &&
-      returnTo.startsWith('/') &&
-      !returnTo.startsWith('//') &&
-      !returnTo.startsWith('/\\');
-    void this.router.navigateByUrl(internal ? returnTo : '/rooms', {
+    void this.router.navigateByUrl(resolveInternalReturnTo(returnTo), {
       replaceUrl: true,
     });
+  }
+
+  /**
+   * Dismiss the modal that hosts us, if one is still presented. Guarded via
+   * `getTop()` so we never double-dismiss when VerificationHostComponent has
+   * already closed the incoming-request modal after `active()` cleared.
+   */
+  private async dismissTopModal(): Promise<void> {
+    const top = await this.modalCtrl.getTop();
+    await top?.dismiss();
   }
 
   private run(action: Observable<void>): void {

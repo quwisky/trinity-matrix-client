@@ -1,6 +1,11 @@
 <ion-header>
   <ion-toolbar>
     <ion-title>Verify this device</ion-title>
+    @if (asModal()) {
+      <ion-buttons slot="end">
+        <ion-button (click)="close()" aria-label="Close">Close</ion-button>
+      </ion-buttons>
+    }
   </ion-toolbar>
 </ion-header>
 

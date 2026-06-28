@@ -62,6 +62,19 @@ a:focus-visible,
   }
 }
 
+/*
+ * Self-initiated encryption flows (unlock / verify) presented as modals on the
+ * desktop split-pane layout (EncryptionDialogService). A centered, auto-height
+ * card sized to its content — Ionic supplies the rest of the modal chrome.
+ */
+.encryption-dialog-modal {
+  --width: 420px;
+  --max-width: 92vw;
+  --height: auto;
+  --max-height: 90vh;
+  --border-radius: 12px;
+}
+
 /* Visually hidden but available to assistive tech (e.g. page-title headings). */
 .sr-only {
   position: absolute;

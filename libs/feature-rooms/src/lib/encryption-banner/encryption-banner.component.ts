@@ -9,11 +9,15 @@ import { IonButton, IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { lockClosed } from 'ionicons/icons';
 import { CryptoService } from '@trinity/core';
+import { EncryptionDialogService } from '@trinity/ui';
 
-/** A banner call-to-action: a label and the route it navigates to. */
+/** Which encryption flow a banner action triggers. */
+type BannerActionKind = 'setup' | 'unlock' | 'verify';
+
+/** A banner call-to-action: a label and the flow it triggers. */
 interface BannerAction {
   label: string;
-  path: string;
+  kind: BannerActionKind;
 }
 
 /**
@@ -38,12 +42,12 @@ interface BannerAction {
              as part of the polite announcement. -->
         <span class="banner__text" role="status">{{ message() }}</span>
         <span class="banner__actions">
-          @for (action of actions(); track action.path) {
+          @for (action of actions(); track action.kind) {
             <ion-button
               class="banner__action"
               size="small"
               fill="solid"
-              (click)="go(action.path)"
+              (click)="run(action.kind)"
             >
               {{ action.label }}
             </ion-button>
@@ -56,6 +60,7 @@ interface BannerAction {
 export class EncryptionBannerComponent {
   private readonly crypto = inject(CryptoService);
   private readonly router = inject(Router);
+  private readonly dialogs = inject(EncryptionDialogService);
 
   readonly status = this.crypto.status;
 
@@ -74,11 +79,11 @@ export class EncryptionBannerComponent {
   readonly actions = computed<BannerAction[]>(() => {
     switch (this.status()) {
       case 'needs-setup':
-        return [{ label: 'Set up', path: '/encryption/setup' }];
+        return [{ label: 'Set up', kind: 'setup' }];
       case 'needs-recovery':
         return [
-          { label: 'Use recovery key', path: '/encryption/unlock' },
-          { label: 'Verify another device', path: '/encryption/verify' },
+          { label: 'Use recovery key', kind: 'unlock' },
+          { label: 'Verify another device', kind: 'verify' },
         ];
       default:
         return [];
@@ -89,7 +94,22 @@ export class EncryptionBannerComponent {
     addIcons({ lockClosed });
   }
 
-  go(path: string): void {
-    void this.router.navigateByUrl(path);
+  /**
+   * Trigger a flow. Setup stays a full-page route; unlock/verify go through
+   * {@link EncryptionDialogService}, which opens a modal on the desktop
+   * split-pane layout and navigates to the route on mobile.
+   */
+  run(kind: BannerActionKind): void {
+    switch (kind) {
+      case 'setup':
+        void this.router.navigateByUrl('/encryption/setup');
+        break;
+      case 'unlock':
+        void this.dialogs.openUnlock();
+        break;
+      case 'verify':
+        void this.dialogs.openVerify();
+        break;
+    }
   }
 }
