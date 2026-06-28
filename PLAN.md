@@ -181,11 +181,15 @@ Phase 2:
   `Notification`) so the OS attributes notifications to Trinity; the renderer Web
   Notification path stays for web/PWA. macOS still needs a signed + notarized build to
   actually deliver (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) → signing).
-- **Threads** — 🚧 in progress: a reading increment first (a core `ThreadsService`,
-  "N replies" timeline indicators, and a thread view; the client runs with
-  `threadSupport: true`), with in-thread composing to follow.
-- **Spaces** — planned next, after threads (the server rail is already Discord-style).
-- **Calls** — deferred / de-prioritized for now.
+- **Threads** — ✅ reading (a core `ThreadsService`, "N replies" timeline indicators, a
+  thread view; client runs with `threadSupport: true`) and in-thread composing
+  (reply/react/edit/delete, reusing the main-timeline paths via the SDK `threadId`).
+  Deferred: thread history pagination, per-thread unread badges, a threads-list view.
+- **Spaces** — ✅ navigation: a core `SpacesService`; the server rail lists joined spaces
+  and selecting one filters the channel sidebar to its child rooms (Home = all).
+  Deferred: creating/managing spaces, add/remove children, invites, nesting, and
+  not-yet-joined children.
+- **Calls** — deferred / de-prioritized.
 
 **Desktop (Electron) hardening (this iteration).** Hand-rolled Electron shell (privileged
 `trinity://app` scheme, tray, deep-link SSO). Resolved this pass: dark theme on desktop
