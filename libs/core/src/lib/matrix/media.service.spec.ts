@@ -390,19 +390,27 @@ describe('MediaService', () => {
     // How the fake media element behaves on `src` assignment: fire loadedmetadata,
     // fire an error, or stay silent (so the real timeout branch runs).
     let mediaElementMode: 'load' | 'silent' | 'error';
+    // Whether a video `currentTime` seek fires `seeked` (false → poster timeout).
+    let videoSeekFires: boolean;
+    // If true, a seek fires `error` (post-metadata) instead of `seeked`.
+    let videoErrorsOnSeek: boolean;
+    // What the fake canvas 2D context resolves to (null → drawPoster bails out).
+    let canvasContext: 'ctx' | 'null';
 
     const fakeMediaElement = (tag: 'video' | 'audio') => {
-      const meta = tag === 'video' ? videoMeta : audioMeta;
       const el = {
         preload: '',
+        muted: false,
         onloadedmetadata: null as null | (() => void),
         onerror: null as null | (() => void),
-        duration: meta.duration,
+        onseeked: null as null | (() => void),
+        duration: tag === 'video' ? videoMeta.duration : audioMeta.duration,
         videoWidth: tag === 'video' ? videoMeta.videoWidth : 0,
         videoHeight: tag === 'video' ? videoMeta.videoHeight : 0,
         removeAttribute: vi.fn(),
         load: vi.fn(),
         _src: '',
+        _currentTime: 0,
         set src(v: string) {
           this._src = v;
           if (mediaElementMode === 'silent') {
@@ -419,6 +427,22 @@ describe('MediaService', () => {
         get src() {
           return this._src;
         },
+        set currentTime(v: number) {
+          const changed = v !== this._currentTime;
+          this._currentTime = v;
+          // Real <video> only dispatches 'seeked' when the position actually moves.
+          if (!changed) {
+            return;
+          }
+          if (videoErrorsOnSeek) {
+            queueMicrotask(() => this.onerror?.());
+          } else if (videoSeekFires) {
+            queueMicrotask(() => this.onseeked?.());
+          }
+        },
+        get currentTime() {
+          return this._currentTime;
+        },
       };
       return el as unknown as HTMLMediaElement;
     };
@@ -427,7 +451,9 @@ describe('MediaService', () => {
       ({
         width: 0,
         height: 0,
-        getContext: vi.fn(() => ({ drawImage: vi.fn() })),
+        getContext: vi.fn(() =>
+          canvasContext === 'null' ? null : { drawImage: vi.fn() },
+        ),
         toBlob: (cb: (b: Blob) => void, type: string) => {
           const bytes = new Uint8Array([5, 5, 5]);
           const blob = new Blob([bytes], { type });
@@ -451,6 +477,9 @@ describe('MediaService', () => {
       videoMeta = { duration: NaN, videoWidth: 0, videoHeight: 0 };
       audioMeta = { duration: NaN };
       mediaElementMode = 'load';
+      videoSeekFires = true;
+      videoErrorsOnSeek = false;
+      canvasContext = 'ctx';
       origCreateElement = document.createElement;
       const realCreate = origCreateElement.bind(document);
       document.createElement = ((tagName: string) => {
@@ -639,8 +668,11 @@ describe('MediaService', () => {
       expect(res.mxc).toBe('mxc://hs/full');
     });
 
-    it('probes duration (ms) and dimensions for a video', async () => {
-      const { svc } = setup();
+    it('probes a video and captures a poster-frame thumbnail', async () => {
+      const { svc, client } = setup();
+      client.uploadContent
+        .mockResolvedValueOnce({ content_uri: 'mxc://hs/poster' }) // poster first
+        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' }); // then the video
       videoMeta = { duration: 12.5, videoWidth: 640, videoHeight: 480 };
 
       const res = await firstValueFrom(
@@ -651,7 +683,127 @@ describe('MediaService', () => {
       expect(res.info.duration).toBe(12500);
       expect(res.info.w).toBe(640);
       expect(res.info.h).toBe(480);
-      expect(res.info.thumbnail_url).toBeUndefined(); // no client video thumbnail yet
+      expect(client.uploadContent).toHaveBeenCalledTimes(2);
+      expect(res.mxc).toBe('mxc://hs/full');
+      // 640×480 scaled to a 480px edge → 480×360.
+      expect(res.info.thumbnail_url).toBe('mxc://hs/poster');
+      expect(res.info.thumbnail_info?.mimetype).toBe('image/jpeg');
+      expect(res.info.thumbnail_info?.w).toBe(480);
+      expect(res.info.thumbnail_info?.h).toBe(360);
+    });
+
+    it('encrypts the video poster thumbnail for an E2EE room', async () => {
+      const { svc, client } = setup();
+      encryptMock
+        .mockResolvedValueOnce({
+          data: new Uint8Array([1]).buffer,
+          info: {
+            url: '',
+            v: 'v2',
+            key: {},
+            iv: 'pv',
+            hashes: { sha256: 'p' },
+          },
+        }) // poster (encrypted first)
+        .mockResolvedValueOnce({
+          data: new Uint8Array([2]).buffer,
+          info: {
+            url: '',
+            v: 'v2',
+            key: {},
+            iv: 'mv',
+            hashes: { sha256: 'm' },
+          },
+        }); // main video
+      client.uploadContent
+        .mockResolvedValueOnce({ content_uri: 'mxc://hs/poster-ct' })
+        .mockResolvedValueOnce({ content_uri: 'mxc://hs/full-ct' });
+      videoMeta = { duration: 8, videoWidth: 1280, videoHeight: 720 };
+
+      const res = await firstValueFrom(
+        svc.uploadMedia(mediaFile('clip.mp4', 'video/mp4'), true),
+      );
+
+      expect(encryptMock).toHaveBeenCalledTimes(2);
+      expect(res.info.thumbnail_url).toBeUndefined();
+      expect(res.info.thumbnail_file).toMatchObject({
+        url: 'mxc://hs/poster-ct',
+        iv: 'pv',
+        v: 'v2',
+      });
+      expect(res.info.thumbnail_info?.mimetype).toBe('image/jpeg');
+    });
+
+    it('keeps the video dimensions when the poster seek never completes', async () => {
+      const { svc, client } = setup();
+      videoMeta = { duration: 12.5, videoWidth: 640, videoHeight: 480 };
+      videoSeekFires = false; // seeked never fires → the poster timeout fires
+      vi.useFakeTimers();
+      try {
+        const pending = firstValueFrom(
+          svc.uploadMedia(mediaFile('clip.mp4', 'video/mp4'), false),
+        );
+        // Advance past POSTER_TIMEOUT_MS (3000ms in media.service.ts).
+        await vi.advanceTimersByTimeAsync(3000);
+        const res = await pending;
+
+        // Dimensions/duration survive even though no poster was captured.
+        expect(res.info.duration).toBe(12500);
+        expect(res.info.w).toBe(640);
+        expect(res.info.thumbnail_url).toBeUndefined();
+        expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('captures the first frame for an unknown-duration video without seeking', async () => {
+      const { svc, client } = setup();
+      // seekTo resolves to 0 (== currentTime), so no 'seeked' fires — the poster
+      // must still be drawn from the current frame.
+      videoMeta = { duration: NaN, videoWidth: 320, videoHeight: 240 };
+      videoSeekFires = false;
+
+      const res = await firstValueFrom(
+        svc.uploadMedia(mediaFile('clip.mp4', 'video/mp4'), false),
+      );
+
+      expect(res.info.duration).toBeUndefined();
+      expect(client.uploadContent).toHaveBeenCalledTimes(2); // poster + main
+      expect(res.info.thumbnail_url).toBeDefined();
+      // 320×240 already within the 480px bound → kept as-is.
+      expect(res.info.thumbnail_info?.w).toBe(320);
+      expect(res.info.thumbnail_info?.h).toBe(240);
+    });
+
+    it('keeps the video dimensions when the poster frame fails to encode', async () => {
+      const { svc, client } = setup();
+      videoMeta = { duration: 5, videoWidth: 640, videoHeight: 480 };
+      canvasContext = 'null'; // getContext('2d') → null, so drawPoster bails
+
+      const res = await firstValueFrom(
+        svc.uploadMedia(mediaFile('clip.mp4', 'video/mp4'), false),
+      );
+
+      expect(res.info.duration).toBe(5000);
+      expect(res.info.w).toBe(640);
+      expect(res.info.thumbnail_url).toBeUndefined();
+      expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
+    });
+
+    it('keeps the video dimensions when the poster seek errors', async () => {
+      const { svc, client } = setup();
+      videoMeta = { duration: 5, videoWidth: 640, videoHeight: 480 };
+      videoErrorsOnSeek = true; // the element errors after metadata, during the seek
+
+      const res = await firstValueFrom(
+        svc.uploadMedia(mediaFile('clip.mp4', 'video/mp4'), false),
+      );
+
+      expect(res.info.duration).toBe(5000);
+      expect(res.info.w).toBe(640);
+      expect(res.info.thumbnail_url).toBeUndefined();
+      expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
     });
 
     it('probes duration (ms) for audio without dimensions', async () => {

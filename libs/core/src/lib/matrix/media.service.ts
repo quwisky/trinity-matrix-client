@@ -88,6 +88,12 @@ const THUMBNAIL_QUALITY = 0.8;
 /** How long to wait for an audio/video element to report its metadata. */
 const METADATA_TIMEOUT_MS = 5000;
 
+/** Seek offset (s) for the video poster frame — past any black/blank first frame. */
+const POSTER_SEEK_SECONDS = 1;
+
+/** How long to wait for the poster seek+decode before giving up (keeps the dims). */
+const POSTER_TIMEOUT_MS = 3000;
+
 /** Cap on cached object URLs; pinned (on-screen) entries are never evicted. */
 const CACHE_LIMIT = 64;
 
@@ -534,10 +540,10 @@ async function analyzeMedia(file: File): Promise<MediaAnalysis> {
     return analyzeImage(file);
   }
   if (file.type.startsWith('video/')) {
-    return { dims: await probeMediaElement(file, 'video'), thumbnail: null };
+    return analyzeVideo(file);
   }
   if (file.type.startsWith('audio/')) {
-    return { dims: await probeMediaElement(file, 'audio'), thumbnail: null };
+    return { dims: await probeAudioDuration(file), thumbnail: null };
   }
   return { dims: {}, thumbnail: null };
 }
@@ -635,16 +641,19 @@ function canvasToBlob(
   });
 }
 
+/** A media element's duration in ms, or undefined when unknown/zero/infinite. */
+function durationMsOf(el: HTMLMediaElement): number | undefined {
+  return Number.isFinite(el.duration) && el.duration > 0
+    ? Math.round(el.duration * 1000)
+    : undefined;
+}
+
 /**
- * Load an audio/video file's metadata off-screen to read its duration (ms) and,
- * for video, its pixel dimensions. Resolves to empty (never rejects) on error, or
- * if metadata doesn't arrive within {@link METADATA_TIMEOUT_MS}, so a corrupt file
- * can't stall the send.
+ * Load an audio file's metadata off-screen to read its duration (ms). Resolves to
+ * empty (never rejects) on error, or if metadata doesn't arrive within
+ * {@link METADATA_TIMEOUT_MS}, so a corrupt file can't stall the send.
  */
-function probeMediaElement(
-  file: File,
-  tag: 'video' | 'audio',
-): Promise<{ w?: number; h?: number; durationMs?: number }> {
+function probeAudioDuration(file: File): Promise<{ durationMs?: number }> {
   return new Promise((resolve) => {
     if (
       typeof document === 'undefined' ||
@@ -661,13 +670,9 @@ function probeMediaElement(
       resolve({});
       return;
     }
-    const el = document.createElement(tag);
+    const el = document.createElement('audio');
     let settled = false;
-    const finish = (result: {
-      w?: number;
-      h?: number;
-      durationMs?: number;
-    }) => {
+    const finish = (result: { durationMs?: number }) => {
       if (settled) {
         return;
       }
@@ -686,23 +691,127 @@ function probeMediaElement(
     };
     const timer = setTimeout(() => finish({}), METADATA_TIMEOUT_MS);
     el.preload = 'metadata';
-    el.onloadedmetadata = () => {
-      const durationMs =
-        Number.isFinite(el.duration) && el.duration > 0
-          ? Math.round(el.duration * 1000)
-          : undefined;
-      if (tag === 'video') {
-        const v = el as HTMLVideoElement;
-        finish({
-          w: v.videoWidth || undefined,
-          h: v.videoHeight || undefined,
-          durationMs,
-        });
-      } else {
-        finish({ durationMs });
-      }
-    };
+    el.onloadedmetadata = () => finish({ durationMs: durationMsOf(el) });
     el.onerror = () => finish({});
     el.src = url;
   });
+}
+
+/**
+ * Load a video off-screen to read its dimensions/duration and capture a poster
+ * frame. Best-effort and non-blocking: metadata resolves first and is preserved
+ * even if the poster seek/decode fails or times out ({@link POSTER_TIMEOUT_MS});
+ * the whole probe is bounded by {@link METADATA_TIMEOUT_MS} so a corrupt file
+ * can't stall the send.
+ */
+function analyzeVideo(file: File): Promise<MediaAnalysis> {
+  const EMPTY: MediaAnalysis = { dims: {}, thumbnail: null };
+  return new Promise((resolve) => {
+    if (
+      typeof document === 'undefined' ||
+      typeof URL === 'undefined' ||
+      typeof URL.createObjectURL !== 'function'
+    ) {
+      resolve(EMPTY);
+      return;
+    }
+    let url: string;
+    try {
+      url = URL.createObjectURL(file);
+    } catch {
+      resolve(EMPTY);
+      return;
+    }
+    const video = document.createElement('video');
+    let settled = false;
+    const finish = (result: MediaAnalysis) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(metaTimer);
+      video.onloadedmetadata = null;
+      video.onerror = null;
+      video.onseeked = null;
+      try {
+        video.removeAttribute('src');
+        video.load();
+      } catch {
+        /* element teardown is best-effort */
+      }
+      URL.revokeObjectURL(url);
+      resolve(result);
+    };
+    const metaTimer = setTimeout(() => finish(EMPTY), METADATA_TIMEOUT_MS);
+    // `auto` so seeking can decode a frame to draw (metadata alone may not).
+    video.preload = 'auto';
+    video.muted = true;
+    video.onerror = () => finish(EMPTY); // before metadata → total failure
+    video.onloadedmetadata = () => {
+      // Metadata arrived: retire the metadata timeout so it can't later fire and
+      // discard the dims we now hold (a slow load + a longer poster wait could
+      // otherwise let metaTimer win the race). The poster timeout governs from here.
+      clearTimeout(metaTimer);
+      const dims = {
+        w: video.videoWidth || undefined,
+        h: video.videoHeight || undefined,
+        durationMs: durationMsOf(video),
+      };
+      // Metadata is in hand; a poster failure from here must NOT discard it.
+      const posterTimer = setTimeout(
+        () => finish({ dims, thumbnail: null }),
+        POSTER_TIMEOUT_MS,
+      );
+      const finishWithPoster = (thumbnail: GeneratedThumbnail | null) => {
+        clearTimeout(posterTimer);
+        finish({ dims, thumbnail });
+      };
+      const capture = () =>
+        drawPoster(video).then(finishWithPoster, () => finishWithPoster(null));
+      video.onerror = () => finishWithPoster(null);
+      video.onseeked = capture;
+      // Seek a little past the start (clamped for short clips) to skip a black
+      // opening frame; an unknown duration falls back to the first frame.
+      const seekTo =
+        Number.isFinite(video.duration) && video.duration > 0
+          ? Math.min(POSTER_SEEK_SECONDS, video.duration / 2)
+          : 0;
+      if (seekTo === video.currentTime) {
+        // No position change → no 'seeked' fires; capture the current frame now.
+        capture();
+      } else {
+        try {
+          video.currentTime = seekTo;
+        } catch {
+          finishWithPoster(null);
+        }
+      }
+    };
+    video.src = url;
+  });
+}
+
+/** Draw the video's current frame onto a downscaled canvas and encode it as JPEG. */
+function drawPoster(
+  video: HTMLVideoElement,
+): Promise<GeneratedThumbnail | null> {
+  if (
+    typeof document === 'undefined' ||
+    !video.videoWidth ||
+    !video.videoHeight
+  ) {
+    return Promise.resolve(null);
+  }
+  const { w, h } = fitWithin(video.videoWidth, video.videoHeight, THUMBNAIL_PX);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return Promise.resolve(null);
+  }
+  ctx.drawImage(video, 0, 0, w, h);
+  return canvasToBlob(canvas, THUMBNAIL_MIME, THUMBNAIL_QUALITY).then((blob) =>
+    blob ? { blob, w, h } : null,
+  );
 }
