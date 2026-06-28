@@ -32,7 +32,16 @@ const isElectron =
 bootstrapApplication(AppComponent, {
   providers: [
     { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
-    provideIonicAngular(),
+    // Move focus into the entering page during a route transition (before the
+    // leaving page is `aria-hidden`/`ion-page-hidden`). Without this Ionic's focus
+    // manager is a no-op, so a control activated by keyboard/click keeps DOM focus
+    // inside the leaving page; recent Chromium (Electron) then blocks the aria-hidden
+    // on that focused subtree and the IonRouterOutlet transition promise stalls —
+    // a blank entering page + a dead router (ionic-framework#30240). Relocating focus
+    // removes the focused-descendant condition for every transition (and improves a11y).
+    provideIonicAngular({
+      focusManagerPriority: ['content', 'heading', 'banner'],
+    }),
     provideRouter(routes, withPreloading(PreloadAllModules)),
     // Apply the saved light/dark preference before the first paint.
     provideAppInitializer(() => inject(ThemeService).init()),
