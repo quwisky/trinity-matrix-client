@@ -1,0 +1,140 @@
+// Login page — Discord-inspired card layout.
+// Mobile-first: the card fills the entire viewport (edge-to-edge), blending
+// into the page background so the login surface feels native.
+// >= 480 px (tablet / desktop / PWA): a centered fixed-width card floats over
+// a darker backdrop, matching the Discord desktop login aesthetic.
+// All colours come from the theme tokens in apps/trinity/src/theme/variables.scss
+// so both the light and dark palettes work without any duplication here.
+
+// Page background:
+// On mobile the background matches the card surface (seamless full-bleed).
+// On desktop we switch to the darker rail colour so the card reads as elevated.
+.login-page {
+  --background: var(--trinity-sidebar);
+
+  @media (min-width: 480px) {
+    --background: var(--trinity-rail);
+  }
+}
+
+// Centering wrapper — stretches the full scroll-container height so the card
+// can be vertically placed. On desktop the card is centered with comfortable
+// padding.
+.login-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 100%;
+
+  @media (min-width: 480px) {
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+  }
+}
+
+// Card surface:
+// Mobile: fills the viewport — no radius, no shadow.
+// Desktop: fixed-width rounded card with a subtle elevation shadow.
+.login-card {
+  background: var(--trinity-sidebar);
+  padding: 48px 24px 40px;
+  flex: 1;
+
+  @media (min-width: 480px) {
+    width: 420px;
+    max-width: 100%;
+    flex: none;
+    border-radius: var(--trinity-radius);
+    box-shadow: 0 8px 32px rgb(0 0 0 / 24%);
+    padding: 32px 40px 40px;
+  }
+}
+
+// Branding: Trinity wordmark + dynamic subtitle.
+.login-card__brand {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.login-card__wordmark {
+  margin: 0 0 8px;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--trinity-text-bright);
+}
+
+.login-card__subtitle {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--trinity-text-muted);
+}
+
+.login-card__homeserver {
+  margin: 6px 0 0;
+  font-size: 0.875rem;
+  word-break: break-all;
+  color: var(--trinity-accent);
+}
+
+// Individual field wrapper — vertical spacing between stacked inputs.
+.login-card__field {
+  margin-bottom: 16px;
+}
+
+// ion-input: Discord-style rounded fill box with blurple focus ring and
+// uppercase / muted stacked label.
+// CSS custom-properties cascade through shadow-DOM so setting them on the host
+// is the correct Ionic theming approach.
+// ::part(label) is the shadow part exported by ion-input in Ionic 8 for the
+// label element. Angular's emulated encapsulation appends its content attribute
+// to the host selector, which is valid with ::part().
+ion-input {
+  --background: var(--trinity-active);
+  --border-width: 0;
+  --border-radius: var(--trinity-radius);
+  --color: var(--trinity-text-bright);
+  --highlight-color-focused: var(--trinity-accent);
+  --padding-start: 12px;
+  --padding-end: 12px;
+  --padding-top: 10px;
+  --padding-bottom: 10px;
+  --placeholder-color: var(--trinity-text-muted);
+  --placeholder-opacity: 1;
+
+  &::part(label) {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--trinity-text-muted);
+    margin-bottom: 8px;
+  }
+}
+
+// Primary action buttons (Continue / Sign in) — default to --ion-color-primary
+// (blurple). Top margin separates the button from the last field.
+.login-card__submit {
+  display: block;
+  margin-top: 20px;
+}
+
+// SSO secondary action — slightly less emphasis, smaller gap above.
+.login-card__sso {
+  display: block;
+  margin-top: 12px;
+}
+
+// Loading indicator.
+.login-card__busy {
+  padding-top: 16px;
+}
+
+// Inline error message.
+.login-card__error {
+  margin: 12px 0 0;
+  font-size: 0.875rem;
+  text-align: center;
+}

@@ -11,12 +11,7 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { Observable, map, switchMap } from 'rxjs';
 import {
-  IonHeader,
-  IonToolbar,
-  IonTitle,
   IonContent,
-  IonList,
-  IonItem,
   IonInput,
   IonButton,
   IonText,
@@ -29,19 +24,8 @@ import { runWithBusy } from '@trinity/ui';
   selector: 'trn-login',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'login.page.html',
-  imports: [
-    FormsModule,
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonContent,
-    IonList,
-    IonItem,
-    IonInput,
-    IonButton,
-    IonText,
-    IonSpinner,
-  ],
+  styleUrl: 'login.page.scss',
+  imports: [FormsModule, IonContent, IonInput, IonButton, IonText, IonSpinner],
 })
 export class LoginPage {
   private readonly auth = inject(AuthService);

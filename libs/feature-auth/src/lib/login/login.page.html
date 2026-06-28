@@ -1,90 +1,116 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-title>Sign in</ion-title>
-  </ion-toolbar>
-</ion-header>
-
-<ion-content class="ion-padding">
+<ion-content class="login-page">
+  <!-- Visually hidden page title for assistive technology. -->
   <h1 class="sr-only">Sign in to Trinity</h1>
-  @if (!baseUrl()) {
-    <!-- Step 1: pick a homeserver and discover its login flows. -->
-    <ion-list>
-      <ion-item>
-        <ion-input
-          label="Homeserver"
-          labelPlacement="stacked"
-          autocapitalize="off"
-          autocorrect="off"
-          placeholder="matrix.org"
-          [disabled]="busy()"
-          [ngModel]="homeserverInput()"
-          (ngModelChange)="homeserverInput.set($event)"
-        ></ion-input>
-      </ion-item>
-    </ion-list>
 
-    <ion-button expand="block" [disabled]="busy()" (click)="discover()">
-      Continue
-    </ion-button>
-  } @else {
-    <!-- Step 2: surface the discovered login options. -->
-    <ion-text color="medium">
-      <p>Homeserver: {{ baseUrl() }}</p>
-    </ion-text>
+  <div class="login-wrapper">
+    <div class="login-card">
+      <!-- ── Branding ───────────────────────────────────────── -->
+      <div class="login-card__brand">
+        <h2 class="login-card__wordmark">Trinity</h2>
+        @if (!baseUrl()) {
+          <p class="login-card__subtitle">
+            Welcome back! Enter your homeserver to continue.
+          </p>
+        } @else {
+          <p class="login-card__subtitle">Sign in to your account</p>
+          <p class="login-card__homeserver">{{ baseUrl() }}</p>
+        }
+      </div>
 
-    @if (passwordSupported()) {
-      <ion-list>
-        <ion-item>
+      @if (!baseUrl()) {
+        <!-- ── Step 1: Homeserver ──────────────────────────── -->
+        <div class="login-card__field">
           <ion-input
-            label="Username"
+            label="Homeserver"
             labelPlacement="stacked"
+            fill="solid"
             autocapitalize="off"
             autocorrect="off"
+            placeholder="matrix.org"
             [disabled]="busy()"
-            [ngModel]="username()"
-            (ngModelChange)="username.set($event)"
+            [ngModel]="homeserverInput()"
+            (ngModelChange)="homeserverInput.set($event)"
           ></ion-input>
-        </ion-item>
-        <ion-item>
-          <ion-input
-            label="Password"
-            labelPlacement="stacked"
-            type="password"
-            [disabled]="busy()"
-            [ngModel]="password()"
-            (ngModelChange)="password.set($event)"
-          ></ion-input>
-        </ion-item>
-      </ion-list>
+        </div>
 
-      <ion-button expand="block" [disabled]="busy()" (click)="loginPassword()">
-        Sign in
-      </ion-button>
-    }
-    @if (ssoSupported()) {
-      <ion-button
-        expand="block"
-        fill="outline"
-        [disabled]="busy()"
-        (click)="startSso()"
-      >
-        Continue with SSO
-      </ion-button>
-    }
-  }
-  @if (busy()) {
-    <div
-      class="ion-text-center ion-padding-top"
-      role="status"
-      aria-live="polite"
-    >
-      <ion-spinner></ion-spinner>
-      <p><ion-text color="medium">Working…</ion-text></p>
+        <ion-button
+          class="login-card__submit"
+          expand="block"
+          [disabled]="busy()"
+          (click)="discover()"
+        >
+          Continue
+        </ion-button>
+      } @else {
+        <!-- ── Step 2: Username + Password ────────────────── -->
+        @if (passwordSupported()) {
+          <div class="login-card__field">
+            <ion-input
+              label="Username"
+              labelPlacement="stacked"
+              fill="solid"
+              autocapitalize="off"
+              autocorrect="off"
+              [disabled]="busy()"
+              [ngModel]="username()"
+              (ngModelChange)="username.set($event)"
+            ></ion-input>
+          </div>
+
+          <div class="login-card__field">
+            <ion-input
+              label="Password"
+              labelPlacement="stacked"
+              fill="solid"
+              type="password"
+              [disabled]="busy()"
+              [ngModel]="password()"
+              (ngModelChange)="password.set($event)"
+            ></ion-input>
+          </div>
+
+          <ion-button
+            class="login-card__submit"
+            expand="block"
+            [disabled]="busy()"
+            (click)="loginPassword()"
+          >
+            Sign in
+          </ion-button>
+        }
+
+        <!-- ── Step 2b: SSO ───────────────────────────────── -->
+        @if (ssoSupported()) {
+          <ion-button
+            class="login-card__sso"
+            expand="block"
+            fill="outline"
+            [disabled]="busy()"
+            (click)="startSso()"
+          >
+            Continue with SSO
+          </ion-button>
+        }
+      }
+
+      <!-- ── Loading state ──────────────────────────────────── -->
+      @if (busy()) {
+        <div
+          class="login-card__busy ion-text-center"
+          role="status"
+          aria-live="polite"
+        >
+          <ion-spinner></ion-spinner>
+          <p><ion-text color="medium">Working…</ion-text></p>
+        </div>
+      }
+
+      <!-- ── Error state ────────────────────────────────────── -->
+      @if (error(); as message) {
+        <p class="login-card__error">
+          <ion-text color="danger" role="alert">{{ message }}</ion-text>
+        </p>
+      }
     </div>
-  }
-  @if (error(); as message) {
-    <ion-text color="danger">
-      <p role="alert">{{ message }}</p>
-    </ion-text>
-  }
+  </div>
 </ion-content>
