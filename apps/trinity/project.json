@@ -58,7 +58,15 @@
             }
           ],
           "outputHashing": "all",
-          "serviceWorker": "apps/trinity/ngsw-config.json"
+          "serviceWorker": "apps/trinity/ngsw-config.json",
+          "optimization": {
+            "scripts": true,
+            "fonts": true,
+            "styles": {
+              "minify": true,
+              "inlineCritical": false
+            }
+          }
         },
         "development": {
           "optimization": false,
