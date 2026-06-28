@@ -93,6 +93,45 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.loading()).toBe(false);
   });
 
+  it('pins the full-res URL when the lightbox opens and unpins it on close', () => {
+    // Distinct URLs per variant so the lightbox pin is observable apart from the
+    // thumbnail's.
+    mediaService.resolveMedia.mockImplementation(
+      (_m: MediaPayload, variant: string) =>
+        of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
+    );
+    const fixture = TestBed.createComponent(MediaAttachmentComponent);
+    fixture.componentRef.setInput('media', imageMedia());
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    cmp.openLightbox();
+    expect(cmp.lightboxSrc()).toBe('blob:full');
+    // Pinned so a burst of live media can't evict/revoke it while it's on screen.
+    expect(mediaService.pin).toHaveBeenCalledWith('blob:full');
+
+    mediaService.unpin.mockClear();
+    cmp.closeLightbox();
+    expect(cmp.lightboxSrc()).toBeNull();
+    expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+  });
+
+  it('unpins the full-res URL when destroyed with the lightbox still open', () => {
+    mediaService.resolveMedia.mockImplementation(
+      (_m: MediaPayload, variant: string) =>
+        of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
+    );
+    const fixture = TestBed.createComponent(MediaAttachmentComponent);
+    fixture.componentRef.setInput('media', imageMedia());
+    fixture.detectChanges();
+    fixture.componentInstance.openLightbox();
+
+    mediaService.unpin.mockClear();
+    fixture.destroy();
+
+    expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+  });
+
   it('download() resolves the full bytes then hands them to FileSaveService', () => {
     const media = imageMedia();
     const fixture = TestBed.createComponent(MediaAttachmentComponent);

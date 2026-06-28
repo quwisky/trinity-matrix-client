@@ -90,6 +90,8 @@ export class MediaAttachmentComponent {
 
   /** Currently-pinned thumbnail URL (so it survives cache eviction while shown). */
   private pinnedUrl: string | null = null;
+  /** Currently-pinned full-resolution URL while the lightbox is open. */
+  private lightboxPinnedUrl: string | null = null;
   private thumbnailSub?: Subscription;
 
   constructor() {
@@ -101,6 +103,9 @@ export class MediaAttachmentComponent {
       this.src.set(null);
       this.errorMsg.set(null);
       this.repin(null);
+      // A recycled row may carry an open lightbox from the previous message —
+      // unpin its full URL and close it so it can't leak or show stale bytes.
+      this.closeLightbox();
       // A file card is a pure download affordance — it never binds `src`. Skip
       // thumbnail resolution for it: otherwise an encrypted file would be fetched
       // and fully AES-decrypted into pinned memory on every render, just to be
@@ -121,7 +126,10 @@ export class MediaAttachmentComponent {
       });
     });
 
-    this.destroyRef.onDestroy(() => this.repin(null));
+    this.destroyRef.onDestroy(() => {
+      this.repin(null);
+      this.pinLightbox(null);
+    });
   }
 
   /** Open the full-resolution image in an inline lightbox. */
@@ -133,13 +141,20 @@ export class MediaAttachmentComponent {
       .resolveMedia(this.media(), 'full')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (url) => this.lightboxSrc.set(url),
+        next: (url) => {
+          // Pin the full URL like the thumbnail: a burst of live media
+          // (store() → evict(), 64-entry cap) would otherwise revoke it while
+          // it's still on screen. Unpinned on close / destroy.
+          this.pinLightbox(url);
+          this.lightboxSrc.set(url);
+        },
         error: () => this.errorMsg.set('Could not open image'),
       });
   }
 
   closeLightbox(): void {
     this.lightboxSrc.set(null);
+    this.pinLightbox(null);
   }
 
   /** Save the full-resolution attachment — native share sheet or web download. */
@@ -166,6 +181,15 @@ export class MediaAttachmentComponent {
       this.mediaService.unpin(this.pinnedUrl);
     }
     this.pinnedUrl = url;
+    this.mediaService.pin(url);
+  }
+
+  /** Swap the pinned full-resolution URL (lightbox): unpin the previous, pin the next. */
+  private pinLightbox(url: string | null): void {
+    if (this.lightboxPinnedUrl && this.lightboxPinnedUrl !== url) {
+      this.mediaService.unpin(this.lightboxPinnedUrl);
+    }
+    this.lightboxPinnedUrl = url;
     this.mediaService.pin(url);
   }
 }
