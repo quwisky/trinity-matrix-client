@@ -159,7 +159,13 @@ pnpm spike:chromium   # E2EE WASM in Blink  (Android WebView / Electron proxy)
 pnpm spike:webkit     # E2EE WASM in WebKit (iOS WKWebView proxy)
 pnpm e2e:verify       # two-client emoji-SAS device verification (needs Docker; see e2e/README)
 pnpm e2e:media        # note-to-self encrypted media send round-trip (needs Docker; see e2e/README)
+pnpm e2e:threads      # thread lifecycle: Reply-in-thread → first reply creates it, reopen, abandon (needs Docker)
+pnpm e2e:spaces       # spaces create/manage: create space + channel (asserts m.space.child) + leave (needs Docker)
 ```
+
+The Synapse-backed flows (`e2e:verify`/`media`/`threads`/`spaces`) each start and tear
+down the **one** disposable Synapse Docker stack (fixed ports), so they **must run
+sequentially**, never concurrently — e.g. `pnpm e2e:threads && pnpm e2e:spaces`.
 
 All should print `RESULT: PASS`. The spike/smoke harnesses require the Playwright
 browsers:
@@ -170,8 +176,9 @@ pnpm exec playwright install chromium webkit
 
 `e2e/` holds `smoke-login.mjs`, `crypto-spike.mjs`, the two-client
 `verify-sas.mjs` (+ its `verify-sas-run.mjs` orchestrator, `verify-sas-selfcheck.mjs`,
-and a disposable `synapse/` Synapse+Caddy harness), and a shared `support/serve.mjs`
-static server. See [e2e/README.md](../e2e/README.md) for the verification flow and how
+and a disposable `synapse/` Synapse+Caddy harness), the feature flows
+`send-media.mjs` / `threads.mjs` / `spaces.mjs` (each with a `*-run.mjs` orchestrator that
+owns the Synapse lifecycle), and a shared `support/serve.mjs` static server. See [e2e/README.md](../e2e/README.md) for the verification flow and how
 to point it at your own homeserver. The verification harness needs a homeserver over
 **https** because the app CSP only allows `https:`/`wss:` for `connect-src`.
 
@@ -365,6 +372,19 @@ signature isn't stable. Launch from a terminal to see it:
 ```bash
 TRINITY_NOTIFY_TEST=1 "/path/to/Trinity.app/Contents/MacOS/Trinity"
 ```
+
+## App icon
+
+The Trinity icon is three connected nodes (trinity + a Matrix federation/chat graph) in
+brand blurple `#5865f2`. The vector master is
+[`apps/trinity/src/assets/icon/icon.svg`](../apps/trinity/src/assets/icon/icon.svg)
+(transparent); a blurple-plate variant is kept alongside as `icon-plated.svg`. Rasters in
+the same folder — `favicon.png` (wired in `index.html`), `icon-192/512/1024.png`,
+`apple-touch-icon.png` — plus `electron/build/icon.png` (1024), the **Electron** app icon
+from which electron-builder generates the macOS `.icns` / Windows `.ico` / Linux png set
+at package time. There is no `sharp`/`rsvg` in the toolchain: the PNGs were rasterized
+from the SVG through the bundled Chromium (Playwright). Note iOS composites transparency
+onto black, so `apple-touch-icon.png` ideally keeps a solid plate (`icon-plated.svg`).
 
 ## Troubleshooting
 

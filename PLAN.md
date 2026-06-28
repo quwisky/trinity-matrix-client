@@ -181,14 +181,26 @@ Phase 2:
   `Notification`) so the OS attributes notifications to Trinity; the renderer Web
   Notification path stays for web/PWA. macOS still needs a signed + notarized build to
   actually deliver (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) → signing).
-- **Threads** — ✅ reading (a core `ThreadsService`, "N replies" timeline indicators, a
-  thread view; client runs with `threadSupport: true`) and in-thread composing
-  (reply/react/edit/delete, reusing the main-timeline paths via the SDK `threadId`).
-  Deferred: thread history pagination, per-thread unread badges, a threads-list view.
-- **Spaces** — ✅ navigation: a core `SpacesService`; the server rail lists joined spaces
-  and selecting one filters the channel sidebar to its child rooms (Home = all).
-  Deferred: creating/managing spaces, add/remove children, invites, nesting, and
-  not-yet-joined children.
+- **Threads** — ✅ full lifecycle. Reading (a core `ThreadsService`, "N replies" timeline
+  indicators, a thread view; client runs with `threadSupport: true`); in-thread composing
+  (reply/react/edit/delete, reusing the main-timeline paths via the SDK `threadId`);
+  **starting** a thread from any message ("Reply in thread" in the hover toolbar — the
+  thread is created lazily on the first send via `room.createThread`, since matrix-js-sdk
+  won't form one from the sender's own first reply, and opening-then-abandoning leaves no
+  empty thread); **history pagination** ("Load older replies"); **per-thread unread
+  badges**; and a **threads-list** panel. Covered by an `e2e:threads` Playwright suite.
+- **Spaces** — ✅ navigation + create/manage. A core `SpacesService`; the server rail
+  lists joined spaces and selecting one filters the channel sidebar to its child rooms
+  (Home = all). Now also **create a space**, **create an (encrypted) room in the active
+  space** (linked via `m.space.child` + `m.space.parent`), and **leave a space** — `+`
+  affordances in the rail/sidebar plus a leave action, driven through `SpacesService`
+  write methods. Covered by an `e2e:spaces` Playwright suite. Deferred: invites, joining
+  public/invited spaces, not-yet-joined children, nesting, child reordering, remove-child.
+- **Branding** — ✅ a Trinity app icon: three connected nodes (trinity + a Matrix
+  federation/chat graph) in brand blurple `#5865f2`. A transparent SVG master + PNG set
+  (favicon, PWA, apple-touch) wired into `index.html`, plus the Electron build icon
+  (`electron/build/icon.png` → electron-builder generates `.icns`/`.ico`/png at package
+  time). The plated variant is kept as `icon-plated.svg`.
 - **Calls** — deferred / de-prioritized.
 
 **Desktop (Electron) hardening (this iteration).** Hand-rolled Electron shell (privileged
