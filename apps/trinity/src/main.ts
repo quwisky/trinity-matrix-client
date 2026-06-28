@@ -45,6 +45,12 @@ bootstrapApplication(AppComponent, {
     // removes the focused-descendant condition for every transition (and improves a11y).
     provideIonicAngular({
       focusManagerPriority: ['content', 'heading', 'banner'],
+      // Inject modal/popover `componentProps` via Angular's setInput() instead of
+      // Object.assign. Without this, presenting a component with signal inputs (e.g.
+      // DeviceVerificationPage/EncryptionUnlockPage `asModal = input()`) overwrites the
+      // input GETTER with the raw value, so `this.asModal()` throws and the modal can't
+      // dismiss. setInput sets the signal correctly.
+      useSetInputAPI: true,
     }),
     provideRouter(routes, withPreloading(PreloadAllModules)),
     // Apply the saved light/dark preference before the first paint.
