@@ -5,6 +5,7 @@ import {
   OnDestroy,
   OnInit,
   computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -12,6 +13,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
 import {
+  AlertController,
   IonSplitPane,
   IonMenu,
   IonMenuButton,
@@ -43,6 +45,7 @@ import {
   TimelineService,
   type RoomSummary,
 } from '@trinity/core';
+import { runWithBusy } from '@trinity/ui';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
@@ -94,12 +97,18 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly menu = inject(MenuController);
   private readonly toast = inject(ToastController);
+  private readonly alertCtrl = inject(AlertController);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly activeSpaceId = signal<string | null>(null);
   readonly activeRoomId = signal<string | null>(null);
   /** Attachment upload fraction in [0, 1] while a send is uploading, else null. */
   readonly uploadProgress = signal<number | null>(null);
+
+  /** A create-space / create-channel / leave-space action is in flight. */
+  readonly spaceBusy = signal(false);
+  /** Last space-management failure (surfaced as a toast); null when clear. */
+  readonly spaceError = signal<string | null>(null);
 
   /**
    * Rooms shown in the channel sidebar. Home (`null`) shows every joined room in
@@ -177,6 +186,15 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   constructor() {
     addIcons({ chatbubblesOutline, lockClosed, settingsOutline });
+    // Space-management failures (create/leave) have no inline echo in the shell, so
+    // surface each new error as a danger toast. runWithBusy captures the message
+    // into spaceError; this reacts to that signal turning non-null.
+    effect(() => {
+      const message = this.spaceError();
+      if (message) {
+        void this.showError(message);
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -200,6 +218,113 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   onSelectSpace(id: string | null): void {
     this.activeSpaceId.set(id);
+  }
+
+  /** Rail "+": prompt for a name, create the space, then select it on success. */
+  async onCreateSpace(): Promise<void> {
+    this.spaceError.set(null); // don't carry a stale error into a fresh action
+    const alert = await this.alertCtrl.create({
+      header: 'Create a space',
+      message: 'A space groups related rooms, like a Discord server.',
+      inputs: [
+        {
+          name: 'name',
+          placeholder: 'Space name',
+          attributes: { maxlength: 100 },
+        },
+      ],
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        {
+          text: 'Create',
+          handler: (data: { name?: string }) =>
+            this.applyCreateSpace(data.name ?? ''),
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  /** Sidebar "+": prompt for a name and create a room inside the active space. */
+  async onCreateChannel(): Promise<void> {
+    const spaceId = this.activeSpaceId();
+    if (!spaceId) {
+      return; // the affordance is hidden on Home, but guard regardless
+    }
+    this.spaceError.set(null);
+    const alert = await this.alertCtrl.create({
+      header: 'Create a channel',
+      message: `New channels are end-to-end encrypted and added to “${this.activeSpaceName()}”.`,
+      inputs: [
+        {
+          name: 'name',
+          placeholder: 'Channel name',
+          attributes: { maxlength: 100 },
+        },
+      ],
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        {
+          text: 'Create',
+          handler: (data: { name?: string }) =>
+            this.applyCreateChannel(spaceId, data.name ?? ''),
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  /** Sidebar exit icon: confirm, then leave the active space (back to Home). */
+  async onLeaveSpace(): Promise<void> {
+    const spaceId = this.activeSpaceId();
+    if (!spaceId) {
+      return;
+    }
+    this.spaceError.set(null);
+    const alert = await this.alertCtrl.create({
+      header: 'Leave space',
+      message: `Leave “${this.activeSpaceName()}”? Its rooms stay on your account — only the space is left.`,
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        {
+          text: 'Leave',
+          role: 'destructive',
+          handler: () => this.applyLeaveSpace(spaceId),
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  private applyCreateSpace(name: string): void {
+    if (!name.trim()) {
+      return; // empty name — dismiss the prompt without creating
+    }
+    runWithBusy(this.spaces.createSpace({ name }), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe((spaceId) => this.activeSpaceId.set(spaceId));
+  }
+
+  private applyCreateChannel(spaceId: string, name: string): void {
+    if (!name.trim()) {
+      return;
+    }
+    // The new room surfaces in the sidebar live via Rooms/Spaces sync listeners.
+    runWithBusy(this.spaces.createRoomInSpace(spaceId, { name }), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe();
+  }
+
+  private applyLeaveSpace(spaceId: string): void {
+    runWithBusy(this.spaces.leaveSpace(spaceId), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe(() => this.activeSpaceId.set(null));
   }
 
   onSelectRoom(id: string): void {

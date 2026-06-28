@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { SpacesService } from './spaces.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -241,5 +242,115 @@ describe('SpacesService', () => {
     svc.connect();
 
     expect(client.on.mock.calls.length).toBe(wired); // no double-wiring
+  });
+});
+
+// Write paths: createSpace / createRoomInSpace / leaveSpace. The read model is
+// driven by sync listeners (covered above), so these assert the SDK calls only.
+function setupWrites() {
+  const createRoom = vi.fn().mockResolvedValue({ room_id: '!new:hs' });
+  const sendStateEvent = vi.fn().mockResolvedValue({ event_id: '$e' });
+  const leave = vi.fn().mockResolvedValue({});
+  const client = {
+    getRooms: () => [],
+    getRoom: () => null,
+    // `@me:hs.example` → the `via` homeserver is `hs.example`.
+    getUserId: () => '@me:hs.example',
+    createRoom,
+    sendStateEvent,
+    leave,
+    on: vi.fn(),
+    off: vi.fn(),
+  };
+  const matrix = {
+    isInitialized: true,
+    instance: client,
+  } as unknown as MatrixClientService;
+
+  TestBed.configureTestingModule({
+    providers: [
+      SpacesService,
+      { provide: MatrixClientService, useValue: matrix },
+    ],
+  });
+  const svc = TestBed.inject(SpacesService);
+  return { svc, createRoom, sendStateEvent, leave };
+}
+
+describe('SpacesService writes', () => {
+  it('createSpace creates an m.space room and resolves its id', async () => {
+    const { svc, createRoom } = setupWrites();
+
+    const id = await firstValueFrom(
+      svc.createSpace({ name: '  My Space  ', topic: '  hi  ' }),
+    );
+
+    expect(id).toBe('!new:hs');
+    expect(createRoom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        creation_content: { type: 'm.space' },
+        name: 'My Space', // trimmed
+        topic: 'hi', // trimmed
+        visibility: 'private', // default (invite-only)
+        preset: 'private_chat',
+      }),
+    );
+  });
+
+  it('createSpace uses public visibility/preset when isPublic', async () => {
+    const { svc, createRoom } = setupWrites();
+
+    await firstValueFrom(svc.createSpace({ name: 'Open', isPublic: true }));
+
+    expect(createRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ visibility: 'public', preset: 'public_chat' }),
+    );
+    // No topic provided → the field is omitted entirely.
+    expect(createRoom.mock.calls[0][0]).not.toHaveProperty('topic');
+  });
+
+  it('createRoomInSpace creates an encrypted room and two-way links it', async () => {
+    const { svc, createRoom, sendStateEvent } = setupWrites();
+
+    const id = await firstValueFrom(
+      svc.createRoomInSpace('!s:hs', { name: 'general' }),
+    );
+
+    expect(id).toBe('!new:hs');
+    // Encrypted from the first event via initial_state.
+    expect(createRoom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'general',
+        initial_state: [
+          {
+            type: 'm.room.encryption',
+            state_key: '',
+            content: { algorithm: 'm.megolm.v1.aes-sha2' },
+          },
+        ],
+      }),
+    );
+    // Child link on the space, parent link back on the child — both carry `via`.
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      '!s:hs',
+      'm.space.child',
+      { via: ['hs.example'], suggested: true },
+      '!new:hs',
+    );
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      '!new:hs',
+      'm.space.parent',
+      { via: ['hs.example'], canonical: true },
+      '!s:hs',
+    );
+  });
+
+  it('leaveSpace leaves the space room (children untouched)', async () => {
+    const { svc, leave } = setupWrites();
+
+    await firstValueFrom(svc.leaveSpace('!s:hs'));
+
+    expect(leave).toHaveBeenCalledWith('!s:hs');
+    expect(leave).toHaveBeenCalledTimes(1); // only the space, not its children
   });
 });

@@ -1,16 +1,40 @@
 import { Injectable, inject, signal } from '@angular/core';
 import {
   ClientEvent,
+  EventType,
+  Preset,
   RoomEvent,
   RoomStateEvent,
+  RoomType,
+  Visibility,
   type MatrixClient,
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
+import { Observable, defer, from, map, switchMap } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 
 /** State-event type that links a child room into a Space (`m.space.child`). */
 const SPACE_CHILD_EVENT = 'm.space.child';
+
+/** Megolm group-encryption algorithm enabled on every room we create (E2EE-first). */
+const MEGOLM_ALGORITHM = 'm.megolm.v1.aes-sha2';
+
+/** Fields a {@link SpacesService.createSpace} call accepts. */
+export interface CreateSpaceOptions {
+  name: string;
+  topic?: string;
+  /** Public (discoverable + publicly joinable) vs the default invite-only space. */
+  isPublic?: boolean;
+}
+
+/** Fields a {@link SpacesService.createRoomInSpace} call accepts. */
+export interface CreateRoomInSpaceOptions {
+  name: string;
+  topic?: string;
+  /** Public (discoverable + publicly joinable) vs the default invite-only room. */
+  isPublic?: boolean;
+}
 
 /** A Matrix Space (a room with `type: m.space`) shown as a pill in the server rail. */
 export interface SpaceSummary {
@@ -44,8 +68,11 @@ interface ChildEntry {
  * directly, signals recompute as the client syncs, and connection is keyed to the
  * client *instance* (a logout→login swaps in a fresh client) rather than a boolean.
  *
- * Creating/managing spaces (create, add/remove children, invites, nesting) is a
- * deferred follow-up; this service is read-only navigation/display.
+ * Writes are limited to the first management increment — {@link createSpace},
+ * {@link createRoomInSpace}, and {@link leaveSpace}. Their results land in the read
+ * model through the existing sync listeners (no manual signal patching). Invites,
+ * joining public/invited spaces, surfacing not-yet-joined children, nesting, and
+ * reordering remain deferred follow-ups.
  */
 @Injectable({ providedIn: 'root' })
 export class SpacesService {
@@ -129,6 +156,108 @@ export class SpacesService {
     return this.spaces().find((s) => s.id === spaceId)?.childRoomIds ?? [];
   }
 
+  /**
+   * Create a new Space (a room with `type: m.space`) and resolve its room id. The
+   * pill appears in the rail once the client syncs the new room (the existing
+   * listeners pick it up); callers select it by id. Cold: the request runs on
+   * subscribe.
+   */
+  createSpace(options: CreateSpaceOptions): Observable<string> {
+    return defer(() => {
+      const client = this.matrix.instance;
+      return from(
+        client.createRoom({
+          // `creation_content.type` is what marks the room as a Space; the SDK
+          // types `creation_content` loosely (`object`), so the field is set here.
+          creation_content: { type: RoomType.Space },
+          name: options.name.trim(),
+          ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
+          ...this.visibilityOpts(options.isPublic),
+        }),
+      ).pipe(map((res) => res.room_id));
+    });
+  }
+
+  /**
+   * Create a normal (E2EE) room and link it into `spaceId` as a child, resolving the
+   * new room id. The room is created with `m.room.encryption` (Megolm) in its
+   * `initial_state` so it is encrypted from the first event, then two-way linked:
+   * `m.space.child` on the space (pointing at the child) and `m.space.parent` on the
+   * child (pointing back, canonical). Both links carry our homeserver in `via` so a
+   * remote server can route to the room. Cold: the work runs on subscribe.
+   */
+  createRoomInSpace(
+    spaceId: string,
+    options: CreateRoomInSpaceOptions,
+  ): Observable<string> {
+    return defer(() => {
+      const client = this.matrix.instance;
+      const via = serverNameOf(client.getUserId());
+      return from(
+        client.createRoom({
+          name: options.name.trim(),
+          ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
+          ...this.visibilityOpts(options.isPublic),
+          // E2EE-first: enable Megolm before the first message so the room is never
+          // briefly unencrypted. `initial_state` content is loosely typed (`IContent`).
+          initial_state: [
+            {
+              type: EventType.RoomEncryption,
+              state_key: '',
+              content: { algorithm: MEGOLM_ALGORITHM },
+            },
+          ],
+        }),
+      ).pipe(
+        switchMap((res) => {
+          const childId = res.room_id;
+          // Link the child into the space, then point the child back at the space.
+          return from(
+            client.sendStateEvent(
+              spaceId,
+              EventType.SpaceChild,
+              { via: [via], suggested: true },
+              childId,
+            ),
+          ).pipe(
+            switchMap(() =>
+              from(
+                client.sendStateEvent(
+                  childId,
+                  EventType.SpaceParent,
+                  { via: [via], canonical: true },
+                  spaceId,
+                ),
+              ),
+            ),
+            map(() => childId),
+          );
+        }),
+      );
+    });
+  }
+
+  /**
+   * Leave a space room. Only the space itself is left — its child rooms stay joined
+   * (leaving the children too is a deferred follow-up). The rail drops the pill once
+   * the membership change syncs back through the existing listeners.
+   */
+  leaveSpace(spaceId: string): Observable<void> {
+    return defer(() => from(this.matrix.instance.leave(spaceId))).pipe(
+      map(() => void 0),
+    );
+  }
+
+  /** Shared visibility/preset for create calls: public-discoverable vs invite-only. */
+  private visibilityOpts(isPublic?: boolean): {
+    visibility: Visibility;
+    preset: Preset;
+  } {
+    return isPublic
+      ? { visibility: Visibility.Public, preset: Preset.PublicChat }
+      : { visibility: Visibility.Private, preset: Preset.PrivateChat };
+  }
+
   private refresh(): void {
     if (!this.matrix.isInitialized) {
       return;
@@ -194,4 +323,14 @@ export class SpacesService {
 function initialOf(name: string): string {
   const stripped = name.replace(/^[#@!]+/, '').trim();
   return (stripped[0] ?? '?').toUpperCase();
+}
+
+/**
+ * Our homeserver name, derived from the user id (`@user:server.tld` → `server.tld`)
+ * for the `via` of `m.space.child`/`m.space.parent` links. Empty when there is no
+ * server part — the homeserver will still accept the link, just without routing help.
+ */
+function serverNameOf(userId: string | null): string {
+  const colon = userId?.indexOf(':') ?? -1;
+  return colon >= 0 ? userId!.slice(colon + 1) : '';
 }

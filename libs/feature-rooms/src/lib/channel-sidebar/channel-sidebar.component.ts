@@ -4,6 +4,9 @@ import {
   input,
   output,
 } from '@angular/core';
+import { IonIcon } from '@ionic/angular/standalone';
+import { addIcons } from 'ionicons';
+import { addOutline, exitOutline } from 'ionicons/icons';
 import { AvatarComponent } from '@trinity/ui';
 import type { RoomSummary } from '@trinity/core';
 
@@ -11,10 +14,32 @@ import type { RoomSummary } from '@trinity/core';
 @Component({
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent],
+  imports: [AvatarComponent, IonIcon],
   template: `
     <div class="sidebar">
-      <header class="sidebar__header">{{ spaceName() }}</header>
+      <header class="sidebar__header">
+        <span class="sidebar__title">{{ spaceName() }}</span>
+        @if (spaceActive()) {
+          <div class="sidebar__actions">
+            <button
+              class="sidebar__action"
+              (click)="createRoom.emit()"
+              aria-label="Create a channel"
+              title="Create a channel"
+            >
+              <ion-icon name="add-outline" aria-hidden="true" />
+            </button>
+            <button
+              class="sidebar__action"
+              (click)="leaveSpace.emit()"
+              aria-label="Leave space"
+              title="Leave space"
+            >
+              <ion-icon name="exit-outline" aria-hidden="true" />
+            </button>
+          </div>
+        }
+      </header>
 
       <div class="sidebar__scroll">
         <div class="category">Text Channels</div>
@@ -67,6 +92,8 @@ import type { RoomSummary } from '@trinity/core';
 })
 export class ChannelSidebarComponent {
   readonly spaceName = input('Home');
+  /** Whether a space (not Home) is selected — gates the header space actions. */
+  readonly spaceActive = input(false);
   readonly rooms = input<RoomSummary[]>([]);
   readonly activeRoomId = input<string | null>(null);
   readonly userName = input('');
@@ -74,5 +101,13 @@ export class ChannelSidebarComponent {
   readonly userAvatarMxc = input<string | null>(null);
   readonly userInitial = input('?');
   readonly selectRoom = output<string>();
+  /** Header "+" — raise the create-a-channel flow for the active space. */
+  readonly createRoom = output<void>();
+  /** Header exit icon — raise the leave-this-space confirmation. */
+  readonly leaveSpace = output<void>();
   readonly logout = output<void>();
+
+  constructor() {
+    addIcons({ addOutline, exitOutline });
+  }
 }

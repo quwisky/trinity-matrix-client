@@ -53,9 +53,9 @@ import type { SpaceSummary } from '@trinity/core';
         <span class="indicator"></span>
         <button
           class="pill add"
-          aria-label="Add a space"
-          title="Add a space (coming soon)"
-          disabled
+          (click)="createSpace.emit()"
+          aria-label="Create a space"
+          title="Create a space"
         >
           +
         </button>
@@ -68,4 +68,6 @@ export class ServerRailComponent {
   readonly spaces = input<SpaceSummary[]>([]);
   readonly activeSpaceId = input<string | null>(null);
   readonly selectSpace = output<string | null>();
+  /** The "+" pill at the end of the rail — raise the create-a-space flow. */
+  readonly createSpace = output<void>();
 }

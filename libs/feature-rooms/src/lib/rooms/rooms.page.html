@@ -5,9 +5,11 @@
         [spaces]="spaces.spaces()"
         [activeSpaceId]="activeSpaceId()"
         (selectSpace)="onSelectSpace($event)"
+        (createSpace)="onCreateSpace()"
       />
       <trn-channel-sidebar
         [spaceName]="activeSpaceName()"
+        [spaceActive]="activeSpaceId() !== null"
         [rooms]="visibleRooms()"
         [activeRoomId]="activeRoomId()"
         [userName]="userName()"
@@ -15,6 +17,8 @@
         [userInitial]="userInitial()"
         [userAvatarMxc]="userAvatarMxc()"
         (selectRoom)="onSelectRoom($event)"
+        (createRoom)="onCreateChannel()"
+        (leaveSpace)="onLeaveSpace()"
         (logout)="logout()"
       />
     </div>

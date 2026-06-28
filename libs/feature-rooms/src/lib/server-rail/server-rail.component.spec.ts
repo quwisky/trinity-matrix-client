@@ -57,6 +57,19 @@ describe('ServerRailComponent', () => {
     expect(selected).toBe('!s:hs');
   });
 
+  it('emits createSpace when the add ("+") pill is clicked', () => {
+    const fixture = TestBed.createComponent(ServerRailComponent);
+    fixture.detectChanges();
+
+    let created = false;
+    fixture.componentInstance.createSpace.subscribe(() => (created = true));
+    const add = fixture.nativeElement.querySelector('.pill.add');
+    expect(add.disabled).toBe(false); // the affordance is enabled now
+    add.click();
+
+    expect(created).toBe(true);
+  });
+
   it('marks the active space (Home active when no space is selected)', () => {
     const fixture = TestBed.createComponent(ServerRailComponent);
     fixture.componentRef.setInput('spaces', [space({ id: '!s:hs' })]);

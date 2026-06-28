@@ -69,6 +69,31 @@ describe('ChannelSidebarComponent', () => {
     expect(el.querySelectorAll('.channel.unread').length).toBe(2);
   });
 
+  it('hides the space actions on Home (no active space)', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.detectChanges(); // spaceActive defaults to false
+
+    expect(fixture.nativeElement.querySelector('.sidebar__actions')).toBeNull();
+  });
+
+  it('shows the space actions and emits createRoom / leaveSpace', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('spaceActive', true);
+    fixture.detectChanges();
+
+    let created = false;
+    let left = false;
+    fixture.componentInstance.createRoom.subscribe(() => (created = true));
+    fixture.componentInstance.leaveSpace.subscribe(() => (left = true));
+
+    const el = fixture.nativeElement;
+    el.querySelector('[aria-label="Create a channel"]').click();
+    el.querySelector('[aria-label="Leave space"]').click();
+
+    expect(created).toBe(true);
+    expect(left).toBe(true);
+  });
+
   it('emits logout when the logout button is clicked', () => {
     const fixture = TestBed.createComponent(ChannelSidebarComponent);
     fixture.detectChanges();
