@@ -26,6 +26,7 @@
     "electron:start": "pnpm run electron:build && pnpm -C electron run start",
     "electron:package": "pnpm run electron:build && pnpm -C electron run package",
     "electron:package:mac": "pnpm run electron:build && pnpm -C electron run package:mac",
+    "electron:package:mac:signed": "pnpm run electron:build && pnpm -C electron run package:mac:signed",
     "electron:package:linux": "pnpm run electron:build && pnpm -C electron run package:linux",
     "electron:package:win": "pnpm run electron:build && pnpm -C electron run package:win",
     "electron:package:all": "pnpm run electron:build && pnpm -C electron run package:all",

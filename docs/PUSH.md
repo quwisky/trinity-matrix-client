@@ -86,6 +86,11 @@ the window is minimized/hidden. A real quit is available from the tray menu / ap
 On web/PWA, notifications fire while the tab is open but unfocused (no background
 process when the tab is closed).
 
+> **macOS:** OS notifications only appear when the app is **signed (Developer ID) and
+> notarized** — an unsigned/ad-hoc build is silent. See
+> [DEVELOPMENT.md → macOS signing & notarization](DEVELOPMENT.md#macos-signing--notarization)
+> for the signed build script and credentials.
+
 ## Mobile push without your own gateway
 
 A Matrix client always needs an HTTP push **gateway** between the homeserver and APNs/FCM

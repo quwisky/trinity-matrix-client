@@ -45,6 +45,12 @@ directories:
   output: release
   buildResources: build # place icons here: icon.icns / icon.ico / icon.png (TODO)
 
+# afterSign hook: notarizes the signed macOS .app via @electron/notarize, but ONLY
+# when notarization credentials are present in the env. It is a clean no-op for
+# unsigned/ad-hoc local builds, so `pnpm electron:package:mac` keeps working without a
+# cert. See electron/build/notarize.cjs and the mac block below.
+afterSign: build/notarize.cjs
+
 # ---------------------------------------------------------------------------
 # Linux
 # ---------------------------------------------------------------------------
@@ -66,13 +72,22 @@ mac:
   category: public.app-category.social-networking
   hardenedRuntime: true
   gatekeeperAssess: false
-  # TODO(signing): set the Developer ID identity and entitlements, then notarize.
-  #   identity: "Developer ID Application: Your Name (TEAMID)"
-  #   entitlements: build/entitlements.mac.plist
-  #   entitlementsInherit: build/entitlements.mac.plist
-  # TODO(notarize): configure notarization (e.g. notarytool via env creds):
-  #   notarize: true   # requires APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
-  identity: null # null => ad-hoc / unsigned build (DEV ONLY — do not ship)
+  # Hardened-runtime entitlements (V8/WASM JIT + Matrix network.client). Applied only
+  # when the app is signed with a Developer ID identity.
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Signing + notarization (full guide: docs/DEVELOPMENT.md → "macOS signing &
+  # notarization"). NOTE: `identity` is intentionally NOT pinned here, so electron-builder
+  # auto-discovers the "Developer ID Application" cert and signs when one is available.
+  #   - Cert source: the login keychain, OR CSC_LINK (path/base64 of a .p12) +
+  #     CSC_KEY_PASSWORD.
+  #   - Unsigned/ad-hoc dev build: `pnpm electron:package:mac` sets
+  #     CSC_IDENTITY_AUTO_DISCOVERY=false so a stray cert can't trigger a failing sign.
+  #   - Signed+notarized build: `pnpm electron:package:mac:signed` (auto-discovery on).
+  # The afterSign hook (build/notarize.cjs) then notarizes IF notarization creds are set:
+  #   App Store Connect API key: APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER
+  #   Apple ID:                  APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
+  # Notifications on macOS require a signed + notarized app, so ship via the signed path.
 
 # ---------------------------------------------------------------------------
 # Windows

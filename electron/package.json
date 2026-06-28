@@ -11,13 +11,15 @@
     "build": "node scripts/copy-www.mjs && tsc -p tsconfig.json",
     "start": "electron .",
     "package": "electron-builder",
-    "package:mac": "electron-builder --mac",
+    "package:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+    "package:mac:signed": "electron-builder --mac",
     "package:linux": "electron-builder --linux",
     "package:win": "electron-builder --win",
     "package:all": "electron-builder --mac --linux --win",
     "pack:dir": "electron-builder --dir"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.5.0",
     "@types/node": "^22.20.0",
     "electron": "42.5.0",
     "electron-builder": "26.15.3",

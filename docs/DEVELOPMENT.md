@@ -251,9 +251,9 @@ per-workflow in Crow, not per-step):
 
 The macOS/Windows workflows need a Crow **agent connected on that OS advertising the
 matching label** (e.g. `CROW_AGENT_LABELS="os=macos"`); without one, those tag workflows
-stay pending. Both currently produce **unsigned** artifacts — wire signing creds on the
-runners (`electron-builder.yml` TODOs). Publishing the artifacts (release/object store)
-needs a separate upload plugin.
+stay pending. Both currently produce **unsigned** artifacts; for the macOS signed +
+notarized path see [macOS signing & notarization](#macos-signing--notarization) below.
+Publishing the artifacts (release/object store) needs a separate upload plugin.
 
 Steps share the cloned workspace, so the `node_modules` from `install` is reused by the
 rest. `--frozen-lockfile` makes CI fail if `pnpm-lock.yaml` is out of sync with
@@ -261,6 +261,52 @@ rest. `--frozen-lockfile` makes CI fail if `pnpm-lock.yaml` is out of sync with
 failure locally, run the corresponding command from the **Mirrors locally** column; note
 CI uses `format:check` (verifies, non-zero exit on drift) where you'd run `pnpm format`
 to fix.
+
+## macOS signing & notarization
+
+The desktop app must be **signed with a Developer ID identity and notarized** to ship —
+and macOS only delivers the app's **OS notifications** when it is signed + notarized (see
+[PUSH.md → Local notifications](PUSH.md#local-notifications-desktop--web)). The build is
+wired so signing/notarization kicks in automatically **when credentials are present**, and
+local builds **without** a cert still succeed (unsigned/ad-hoc).
+
+**Two build scripts:**
+
+| Script                             | What it does                                                                                                                                                                                                                                                                      |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm electron:package:mac`        | **Unsigned/ad-hoc** dev build. Forces `CSC_IDENTITY_AUTO_DISCOVERY=false` so a stray cert in your keychain can't trigger a failing sign. No cert needed. **Do not ship.**                                                                                                         |
+| `pnpm electron:package:mac:signed` | **Signed + notarized** release build. electron-builder auto-discovers the Developer ID cert and signs with the hardened runtime + `electron/build/entitlements.mac.plist`; the `afterSign` hook (`electron/build/notarize.cjs`) then notarizes **if** notarization creds are set. |
+
+**Signing identity** — provide a "Developer ID Application" cert via either:
+
+- the **login keychain** (Xcode / `security import`), or
+- `CSC_LINK` (path or base64 of a `.p12`) + `CSC_KEY_PASSWORD`.
+
+**Notarization credentials** — set **one** of these styles (App Store Connect API key is
+preferred; it's keychain-free and CI-friendly):
+
+```bash
+# App Store Connect API key
+export APPLE_API_KEY=/abs/path/AuthKey_XXXXXXXXXX.p8   # the .p8 file
+export APPLE_API_KEY_ID=XXXXXXXXXX                     # 10-char Key ID
+export APPLE_API_ISSUER=xxxxxxxx-xxxx-xxxx-xxxx-...     # issuer UUID
+
+# …or Apple ID
+export APPLE_ID=you@example.com
+export APPLE_APP_SPECIFIC_PASSWORD=abcd-efgh-ijkl-mnop  # app-specific password
+export APPLE_TEAM_ID=ABCDE12345
+```
+
+If no notarization creds are set, `notarize.cjs` logs `skipping notarization — no
+credentials` and the (still-signed, if a cert was found) `.app` is left un-notarized.
+
+**CI:** [`.crow/electron-macos.yaml`](../.crow/electron-macos.yaml) runs the **unsigned**
+path on tags today. To produce a signed + notarized artifact, switch it to
+`pnpm electron:package:mac:signed` and provide the cert + notarization values as Crow
+**secrets** wired into the step's `environment:` (commented examples are in that file).
+
+> Cannot be verified on Linux/CI without an Apple Developer cert — the signed path needs a
+> real macOS host with a Developer ID identity and notarization credentials.
 
 ## Troubleshooting
 
