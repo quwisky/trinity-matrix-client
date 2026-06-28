@@ -1,17 +1,13 @@
-import { Injectable, SecurityContext, inject, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import {
   Direction,
   EventType,
   MatrixEventEvent,
-  MsgType,
-  RelationType,
   RoomEvent,
-  type MatrixClient,
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
-import { marked } from 'marked';
 import {
   Observable,
   defer,
@@ -26,11 +22,16 @@ import { MatrixClientService } from './matrix-client.service';
 import { MediaService } from './media.service';
 import {
   buildMessageView,
-  escapeHtml,
   isDisplayableMessage,
-  stripReplyFallbackText,
   type MessageView,
 } from './message-view';
+import {
+  annotationContent,
+  editMessageContent,
+  myReactionId,
+  renderMarkdown,
+  replyMessageContent,
+} from './message-content';
 
 // Re-export the message view model + reaction/reply types from their shared home
 // so existing `@trinity/core` consumers (and the timeline barrel entry) are
@@ -154,10 +155,10 @@ export class TimelineService {
     }
     const client = this.matrix.instance;
     return defer(() => {
-      const { formatted, html } = this.renderMarkdown(text);
+      const md = renderMarkdown(this.sanitizer, text);
       return from(
-        formatted
-          ? client.sendHtmlMessage(room.roomId, text, html)
+        md.formatted
+          ? client.sendHtmlMessage(room.roomId, text, md.html)
           : client.sendTextMessage(room.roomId, text),
       );
     }).pipe(map(() => void 0));
@@ -204,27 +205,11 @@ export class TimelineService {
     }
     const client = this.matrix.instance;
     return defer(() => {
-      const { formatted, html } = this.renderMarkdown(text);
-      const newContent = formatted
-        ? {
-            msgtype: MsgType.Text,
-            body: text,
-            format: 'org.matrix.custom.html',
-            formatted_body: html,
-          }
-        : { msgtype: MsgType.Text, body: text };
-      const content = {
-        msgtype: MsgType.Text,
-        body: `* ${text}`,
-        ...(formatted
-          ? { format: 'org.matrix.custom.html', formatted_body: `* ${html}` }
-          : {}),
-        'm.new_content': newContent,
-        'm.relates_to': {
-          rel_type: RelationType.Replace,
-          event_id: messageId,
-        },
-      };
+      const content = editMessageContent(
+        messageId,
+        text,
+        renderMarkdown(this.sanitizer, text),
+      );
       // `content` is a valid m.replace payload; the SDK's content union doesn't
       // model it, so assert past it.
       return from(client.sendMessage(room.roomId, content as never));
@@ -255,30 +240,12 @@ export class TimelineService {
     }
     const client = this.matrix.instance;
     return defer(() => {
-      const target = room.findEventById(messageId);
-      const sender = target?.getSender() ?? '';
-      const origBody = stripReplyFallbackText(
-        (target?.getContent()['body'] as string) ?? '',
+      const content = replyMessageContent(
+        room,
+        messageId,
+        text,
+        renderMarkdown(this.sanitizer, text),
       );
-      const firstLine = origBody.split('\n')[0] ?? '';
-      const { formatted, html } = this.renderMarkdown(text);
-      const replyHtml = formatted ? html : escapeHtml(text);
-      // Full rich-reply fallback so every client renders it correctly: a plain
-      // `> …` quote in `body` and an `<mx-reply>` block in `formatted_body`.
-      const roomLink = `https://matrix.to/#/${room.roomId}/${messageId}`;
-      const userLink = `https://matrix.to/#/${sender}`;
-      const mxReply =
-        `<mx-reply><blockquote>` +
-        `<a href="${roomLink}">In reply to</a> ` +
-        `<a href="${userLink}">${escapeHtml(sender)}</a><br>` +
-        `${escapeHtml(firstLine)}</blockquote></mx-reply>`;
-      const content = {
-        msgtype: MsgType.Text,
-        body: `> <${sender}> ${firstLine}\n\n${text}`,
-        format: 'org.matrix.custom.html',
-        formatted_body: `${mxReply}${replyHtml}`,
-        'm.relates_to': { 'm.in_reply_to': { event_id: messageId } },
-      };
       return from(client.sendMessage(room.roomId, content as never));
     }).pipe(map(() => void 0));
   }
@@ -306,46 +273,18 @@ export class TimelineService {
     }
     const client = this.matrix.instance;
     return defer(() => {
-      const mine = this.myReactionId(client, room, messageId, key);
+      const mine = myReactionId(client, room, messageId, key);
       if (mine) {
         return from(client.redactEvent(room.roomId, mine));
       }
-      const content = {
-        'm.relates_to': {
-          rel_type: RelationType.Annotation,
-          event_id: messageId,
-          key,
-        },
-      };
       return from(
-        client.sendEvent(room.roomId, EventType.Reaction, content as never),
+        client.sendEvent(
+          room.roomId,
+          EventType.Reaction,
+          annotationContent(messageId, key) as never,
+        ),
       );
     }).pipe(map(() => void 0));
-  }
-
-  /** The id of the current user's own reaction event for a key, if any. */
-  private myReactionId(
-    client: MatrixClient,
-    room: Room,
-    messageId: string,
-    key: string,
-  ): string | null {
-    const annotations = room.relations
-      .getChildEventsForEvent(
-        messageId,
-        RelationType.Annotation,
-        EventType.Reaction,
-      )
-      ?.getSortedAnnotationsByKey();
-    const match = annotations?.find(([k]) => k === key);
-    if (!match) {
-      return null;
-    }
-    const myId = client.getUserId();
-    const mine = [...match[1]].find(
-      (e) => !e.isRedacted() && e.getSender() === myId,
-    );
-    return mine?.getId() ?? null;
   }
 
   private refresh(): void {
@@ -369,12 +308,6 @@ export class TimelineService {
       liveTimeline.getPaginationToken(Direction.Backward) !== null,
     );
   }
-
-  private renderMarkdown(text: string): { formatted: boolean; html: string } {
-    const rendered = marked.parse(text, { async: false }) as string;
-    const html = this.sanitizer.sanitize(SecurityContext.HTML, rendered) ?? '';
-    return { formatted: htmlToText(html).trim() !== text, html };
-  }
 }
 
 /**
@@ -384,11 +317,4 @@ export class TimelineService {
  */
 function isThreadReply(event: MatrixEvent): boolean {
   return event.threadRootId !== undefined && !event.isThreadRoot;
-}
-
-/** Plain-text content of an HTML string (to detect whether markdown added formatting). */
-function htmlToText(html: string): string {
-  return (
-    new DOMParser().parseFromString(html, 'text/html').body.textContent ?? ''
-  );
 }

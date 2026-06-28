@@ -36,7 +36,9 @@
     class="composer__input"
     rows="1"
     [value]="text()"
-    [placeholder]="editing() ? 'Edit message…' : 'Message #' + roomName()"
+    [placeholder]="
+      editing() ? 'Edit message…' : placeholder() || 'Message #' + roomName()
+    "
     (input)="onInput($event)"
     (keydown.enter)="onEnter($event)"
     (keydown.escape)="onEscape()"

@@ -3,6 +3,7 @@ export * from './lib/matrix/matrix-client.service';
 export * from './lib/matrix/rooms.service';
 export * from './lib/matrix/timeline.service';
 export * from './lib/matrix/threads.service';
+export { isEditableMessage } from './lib/matrix/message-view';
 export * from './lib/matrix/media.model';
 export * from './lib/matrix/media.service';
 export * from './lib/matrix/avatar.service';

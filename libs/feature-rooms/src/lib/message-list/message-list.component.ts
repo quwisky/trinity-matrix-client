@@ -16,7 +16,11 @@ import {
   MessageRowComponent,
   type MessageRow,
 } from '../message-row/message-row.component';
-import type { MessageView, ThreadSummary } from '@trinity/core';
+import {
+  isEditableMessage,
+  type MessageView,
+  type ThreadSummary,
+} from '@trinity/core';
 
 /** Trigger older-history loading when the scroll top gets within this many px. */
 const AUTO_LOAD_THRESHOLD_PX = 150;
@@ -217,13 +221,7 @@ export class MessageListComponent {
 
   /** A message the current user can still edit (own, confirmed, text — not media). */
   isEditable(m: MessageView): boolean {
-    return (
-      m.isOwn &&
-      !m.status &&
-      !m.decryptionFailed &&
-      m.kind !== 'redacted' &&
-      !m.media
-    );
+    return isEditableMessage(m);
   }
 
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */

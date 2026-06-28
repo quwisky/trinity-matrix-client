@@ -11,3 +11,14 @@ ion-content {
   text-align: center;
   padding: 24px;
 }
+
+// The composer lives in a footer so it stays pinned while the messages scroll,
+// and Ionic handles the keyboard/safe-area insets on mobile. Match the chat
+// surface and drop the default footer shadow line.
+.thread__footer {
+  background: var(--trinity-chat);
+
+  &::before {
+    display: none;
+  }
+}

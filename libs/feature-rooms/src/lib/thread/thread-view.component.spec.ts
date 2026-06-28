@@ -2,8 +2,10 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ModalController } from '@ionic/angular/standalone';
 import { ThreadsService, type MessageView } from '@trinity/core';
+import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
+import type { MessageRow } from '../message-row/message-row.component';
 
 function msg(id: string, senderId: string, body: string): MessageView {
   return {
@@ -26,17 +28,35 @@ function msg(id: string, senderId: string, body: string): MessageView {
   };
 }
 
+function row(id: string, senderId: string, body: string): MessageRow {
+  return { ...msg(id, senderId, body), showHeader: true };
+}
+
 function build(messages: MessageView[] = []) {
   const threadMessages = signal<MessageView[]>(messages);
   const openThread = vi.fn();
   const closeThread = vi.fn();
+  const sendToThread = vi.fn().mockReturnValue(of(void 0));
+  const editInThread = vi.fn().mockReturnValue(of(void 0));
+  const replyInThread = vi.fn().mockReturnValue(of(void 0));
+  const toggleReactionInThread = vi.fn().mockReturnValue(of(void 0));
+  const retryInThread = vi.fn();
   const dismiss = vi.fn().mockResolvedValue(true);
   TestBed.configureTestingModule({
     imports: [ThreadViewComponent],
     providers: [
       {
         provide: ThreadsService,
-        useValue: { threadMessages, openThread, closeThread },
+        useValue: {
+          threadMessages,
+          openThread,
+          closeThread,
+          sendToThread,
+          editInThread,
+          replyInThread,
+          toggleReactionInThread,
+          retryInThread,
+        },
       },
       { provide: ModalController, useValue: { dismiss } },
     ],
@@ -44,7 +64,17 @@ function build(messages: MessageView[] = []) {
   const fixture = TestBed.createComponent(ThreadViewComponent);
   fixture.componentRef.setInput('roomId', '!r:hs');
   fixture.componentRef.setInput('rootEventId', '$root');
-  return { fixture, openThread, closeThread, dismiss };
+  return {
+    fixture,
+    openThread,
+    closeThread,
+    sendToThread,
+    editInThread,
+    replyInThread,
+    toggleReactionInThread,
+    retryInThread,
+    dismiss,
+  };
 }
 
 describe('ThreadViewComponent', () => {
@@ -89,5 +119,66 @@ describe('ThreadViewComponent', () => {
 
     fixture.destroy();
     expect(closeThread).toHaveBeenCalled();
+  });
+
+  it('sends a new message into the thread when nothing is being edited/replied', () => {
+    const { fixture, sendToThread, editInThread, replyInThread } = build();
+    fixture.detectChanges();
+
+    fixture.componentInstance.onSubmit('hello thread');
+
+    expect(sendToThread).toHaveBeenCalledWith('hello thread');
+    expect(editInThread).not.toHaveBeenCalled();
+    expect(replyInThread).not.toHaveBeenCalled();
+  });
+
+  it('routes a submit to an edit while editing, then leaves edit mode', () => {
+    const { fixture, editInThread, sendToThread } = build([
+      msg('$r1', '@me:hs', 'typo'),
+    ]);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    cmp.startEdit(row('$r1', '@me:hs', 'typo'));
+    cmp.onSubmit('fixed');
+
+    expect(editInThread).toHaveBeenCalledWith('$r1', 'fixed');
+    expect(sendToThread).not.toHaveBeenCalled();
+    expect(cmp.editingId()).toBeNull();
+  });
+
+  it('routes a submit to a reply while replying, then clears the reply target', () => {
+    const { fixture, replyInThread, sendToThread } = build([
+      msg('$r1', '@b:hs', 'a reply'),
+    ]);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    cmp.startReply(row('$r1', '@b:hs', 'a reply'));
+    cmp.onSubmit('replying');
+
+    expect(replyInThread).toHaveBeenCalledWith('$r1', 'replying');
+    expect(sendToThread).not.toHaveBeenCalled();
+    expect(cmp.replyingToId()).toBeNull();
+  });
+
+  it('toggles a reaction on a thread message', () => {
+    const { fixture, toggleReactionInThread } = build([
+      msg('$r1', '@b:hs', 'a reply'),
+    ]);
+    fixture.detectChanges();
+
+    fixture.componentInstance.onReact('$r1', '👍');
+
+    expect(toggleReactionInThread).toHaveBeenCalledWith('$r1', '👍');
+  });
+
+  it('retries a failed thread message', () => {
+    const { fixture, retryInThread } = build();
+    fixture.detectChanges();
+
+    fixture.componentInstance.onRetry('$echo');
+
+    expect(retryInThread).toHaveBeenCalledWith('$echo');
   });
 });

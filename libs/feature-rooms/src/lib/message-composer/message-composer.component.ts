@@ -34,6 +34,8 @@ const MAX_HEIGHT_PX = 200;
 })
 export class MessageComposerComponent {
   readonly roomName = input('');
+  /** Idle placeholder override (e.g. the thread composer); defaults to "Message #room". */
+  readonly placeholder = input('');
   readonly editing = input(false);
   readonly draft = input('');
   /** Sender name of the message being replied to, or '' when not replying. */

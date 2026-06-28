@@ -6,8 +6,9 @@ import { ThreadViewComponent } from './thread-view.component';
 const MODAL_CSS_CLASS = 'thread-modal';
 
 /**
- * Presents the read-only {@link ThreadViewComponent} as an Ionic modal — a
- * full-height right-side panel on the wide/desktop split-pane layout and a
+ * Presents the {@link ThreadViewComponent} (root, replies, and an in-thread
+ * composer) as an Ionic modal — a full-height right-side panel on the wide/desktop
+ * split-pane layout and a
  * full-screen sheet on mobile (the modal default; the desktop sizing comes from
  * {@link MODAL_CSS_CLASS} in global.scss). Centralized here so the rooms page stays
  * thin and the presentation can be retargeted (e.g. an inline side panel) later.

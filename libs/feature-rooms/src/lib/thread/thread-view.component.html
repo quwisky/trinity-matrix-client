@@ -10,11 +10,37 @@
 </ion-header>
 
 <ion-content>
-  <div class="thread">
+  <div class="thread" #scroll>
     @for (row of rows(); track row.id) {
-      <trn-message-row [row]="row" [readOnly]="true" />
+      <trn-message-row
+        [row]="row"
+        [editable]="isEditable(row)"
+        [deletable]="row.isOwn && !row.status"
+        (react)="onReact(row.id, $event)"
+        (replyMessage)="startReply(row)"
+        (copyMessage)="onCopy(row)"
+        (editMessage)="startEdit(row)"
+        (deleteMessage)="onDelete(row)"
+        (retry)="onRetry(row.id)"
+        (jumpReply)="jumpTo($event)"
+      />
     } @empty {
       <div class="thread__empty">No replies in this thread yet.</div>
     }
   </div>
 </ion-content>
+
+<ion-footer class="thread__footer">
+  <trn-message-composer
+    placeholder="Reply…"
+    [editing]="editingId() !== null"
+    [draft]="editingDraft()"
+    [replyingTo]="replyingToName()"
+    [uploadProgress]="uploadProgress()"
+    (submitText)="onSubmit($event)"
+    (submitMedia)="onSendMedia($event)"
+    (cancelEdit)="editingId.set(null)"
+    (cancelReply)="replyingToId.set(null)"
+    (editLast)="editLastOwn()"
+  />
+</ion-footer>

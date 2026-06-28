@@ -113,6 +113,21 @@ export function isDisplayableMessage(event: MatrixEvent): boolean {
   );
 }
 
+/**
+ * Whether the current user may edit this view: own, confirmed (no pending/failed
+ * send), decrypted, not redacted, and text (media isn't editable). Shared by the
+ * main timeline and the in-thread composer so the rule stays in one place.
+ */
+export function isEditableMessage(message: MessageView): boolean {
+  return (
+    message.isOwn &&
+    !message.status &&
+    !message.decryptionFailed &&
+    message.kind !== 'redacted' &&
+    !message.media
+  );
+}
+
 /** Build a short preview of a replied-to message, or null if it isn't loaded. */
 export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
   const target = room.findEventById(eventId);
