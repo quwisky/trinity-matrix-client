@@ -9,14 +9,28 @@ import {
   type Mock,
 } from 'vitest';
 import { Preferences } from '@capacitor/preferences';
+import { Capacitor } from '@capacitor/core';
+import { StatusBar } from '@capacitor/status-bar';
 import { ThemeService } from './theme.service';
 
 vi.mock('@capacitor/preferences', () => ({
   Preferences: { get: vi.fn(), set: vi.fn() },
 }));
+vi.mock('@capacitor/core', () => ({
+  Capacitor: {
+    isNativePlatform: vi.fn(() => false),
+    isPluginAvailable: vi.fn(() => true),
+  },
+}));
+vi.mock('@capacitor/status-bar', () => ({
+  StatusBar: { setStyle: vi.fn(() => Promise.resolve()) },
+  Style: { Dark: 'DARK', Light: 'LIGHT', Default: 'DEFAULT' },
+}));
 
 const get = Preferences.get as unknown as Mock;
 const set = Preferences.set as unknown as Mock;
+const isNative = Capacitor.isNativePlatform as unknown as Mock;
+const setStyle = StatusBar.setStyle as unknown as Mock;
 
 /** A controllable fake of the prefers-color-scheme media query. */
 interface FakeMql {
@@ -45,6 +59,8 @@ describe('ThemeService', () => {
   beforeEach(() => {
     get.mockReset().mockResolvedValue({ value: null });
     set.mockReset().mockResolvedValue(undefined);
+    isNative.mockReturnValue(false); // web by default
+    setStyle.mockClear().mockResolvedValue(undefined);
     mql = makeMql(false); // system = light by default
     origMatchMedia = window.matchMedia;
     window.matchMedia = vi.fn(
@@ -126,5 +142,23 @@ describe('ThemeService', () => {
     mql.fire();
     expect(svc.resolved()).toBe('light');
     expect(isDark()).toBe(false);
+  });
+
+  it('matches the native status bar to the resolved theme on a device', async () => {
+    isNative.mockReturnValue(true);
+    const svc = service();
+    await svc.init(); // system, OS light → resolved light
+    expect(setStyle).toHaveBeenLastCalledWith({ style: 'LIGHT' });
+
+    svc.setPreference('dark');
+    expect(setStyle).toHaveBeenLastCalledWith({ style: 'DARK' });
+  });
+
+  it('leaves the status bar alone on the web', async () => {
+    const svc = service(); // isNativePlatform → false
+    await svc.init();
+    svc.setPreference('dark');
+
+    expect(setStyle).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,7 @@
 import { Injectable, signal } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { StatusBar, Style } from '@capacitor/status-bar';
 
 /** What the user picked: follow the OS, or force a mode. */
 export type ThemePreference = 'system' | 'light' | 'dark';
@@ -79,6 +81,24 @@ export class ThemeService {
         resolved === 'dark',
       );
     }
+    this.applyNativeChrome(resolved);
+  }
+
+  /**
+   * Match the native status bar to the resolved theme so the device chrome follows
+   * along (no-op on web). `Style.Dark` renders light icons/text for a dark bar;
+   * `Style.Light` renders dark icons/text for a light bar. Best-effort.
+   */
+  private applyNativeChrome(resolved: ResolvedTheme): void {
+    if (
+      !Capacitor.isNativePlatform() ||
+      !Capacitor.isPluginAvailable('StatusBar')
+    ) {
+      return;
+    }
+    void StatusBar.setStyle({
+      style: resolved === 'dark' ? Style.Dark : Style.Light,
+    }).catch(() => undefined);
   }
 }
 
