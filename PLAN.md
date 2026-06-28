@@ -128,7 +128,8 @@ src/app/
    picker + save/share (a native rebuild is required to pick up the new plugins; iOS
    `Info.plist` keys + Android perms for picking already added, and the Filesystem-cache/
    Share path needs no extra permission).
-9. **MVP polish** — 🚧 dark mode, offline cache, settings/profile, device management.
+9. **MVP polish** — ✅ dark mode, offline cache, settings/profile, device management
+   (feature-complete; remaining items are on-device verification + the documented follow-ups below).
    Settings shell landed as `@trinity/feature-settings` (a `/settings` route reached
    from a gear button in the rooms header). **Appearance/dark mode** is done: a core
    `ThemeService` persists a light/dark/system preference (Capacitor Preferences),
@@ -152,8 +153,13 @@ src/app/
      _Device follow-ups:_ extract one shared password-UIA helper (the delete loop mirrors
      `crypto.service`), handle SSO-only / multi-stage UIA beyond password, return to settings
      (not `/rooms`) after a verify launched from here, and live-refresh on `DevicesUpdated`.
-     **Remaining:** offline cache (an `IndexedDBStore` for the sync
-     store + a connectivity indicator off the existing `syncState` signal). _Known
+     **Offline cache** is done: `MatrixClientService` persists the sync store to a
+     per-account `IndexedDBStore` (falling back to in-memory off-browser), so rooms and
+     timelines are cached for fast startup and offline reads; a `connectivity` signal
+     (derived from sync state) drives an offline banner in the rooms shell. Offline
+     **cold start** works on native/desktop (Capacitor/Electron bundle the JS + crypto
+     WASM as local assets); the **web/PWA** target would also need a service worker to
+     precache the app shell + WASM (a tracked follow-up). _Known
      limitation:_ avatars (here and app-wide for rooms/members) use the unauthenticated
      media path, so they fall back to initials on a v1.11 authenticated-media-only
      homeserver — a shared authenticated-avatar resolver is a tracked follow-up.
