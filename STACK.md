@@ -124,7 +124,9 @@ the architecture changes — find out before building UI on top.
 ## Open setup decisions / reminders
 
 - Node 22+ required by matrix-js-sdk — current env is Node 25.2.1 (OK).
-- SSO on native needs deep-link / custom URL scheme config (App plugin) per platform.
+- SSO on native: the deep-link / custom URL scheme is configured (App plugin +
+  iOS `CFBundleURLSchemes` + Android intent-filter); the round-trip still needs
+  on-device validation.
 - Push (phase 2) needs Apple dev account (APNs) + FCM, plus a push gateway (sygnal)
   or UnifiedPush.
 

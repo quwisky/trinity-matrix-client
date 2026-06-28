@@ -142,7 +142,10 @@ Full breakdown in [PLAN.md](PLAN.md).
   `smoke:login` check is unauthenticated). The credentialed path is covered end-to-end
   by `e2e:verify` against a disposable local Synapse (live SAS round-trip verified
   2026-06-27); it is not yet wired into CI.
-- Native SSO deep link (`eu.qwky.trinity://sso-callback`) is stubbed, not implemented.
+- Native SSO deep link (`eu.qwky.trinity://sso-callback`) is implemented end-to-end —
+  system-browser login, the custom scheme registered on iOS/Android, warm + cold-start
+  (`getLaunchUrl`) handling, and a single-use `state` nonce checked on the callback — but
+  has not yet been exercised on a physical device against a real SSO provider.
 - Session token stored via Preferences, not yet hardware-backed secure storage.
 
 ## License
