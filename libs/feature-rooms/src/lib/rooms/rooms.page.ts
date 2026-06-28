@@ -33,6 +33,7 @@ import {
   chatbubblesOutline,
   lockClosed,
   personAddOutline,
+  searchCircleOutline,
   searchOutline,
   settingsOutline,
 } from 'ionicons/icons';
@@ -55,6 +56,7 @@ import {
 import { runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
+import { MessageSearchService } from '../message-search/message-search.service';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
@@ -100,6 +102,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly threadPanel = inject(ThreadPanelService);
   private readonly userPicker = inject(UserPickerService);
   private readonly switcher = inject(QuickSwitcherService);
+  private readonly messageSearch = inject(MessageSearchService);
   private readonly media = inject(MediaService);
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
@@ -115,6 +118,12 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   readonly activeSpaceId = signal<string | null>(null);
   readonly activeRoomId = signal<string | null>(null);
+  /**
+   * Event id the message list should scroll to, set when in-room search resolves a
+   * hit. Bound to the list's `jumpToId`; reset to null first so re-selecting the same
+   * message re-triggers the jump.
+   */
+  readonly messageSearchTarget = signal<string | null>(null);
   /** Attachment upload fraction in [0, 1] while a send is uploading, else null. */
   readonly uploadProgress = signal<number | null>(null);
 
@@ -202,6 +211,7 @@ export class RoomsPage implements OnInit, OnDestroy {
       chatbubblesOutline,
       lockClosed,
       personAddOutline,
+      searchCircleOutline,
       searchOutline,
       settingsOutline,
     });
@@ -284,6 +294,24 @@ export class RoomsPage implements OnInit, OnDestroy {
         this.onAcceptInvite(selection.id);
         break;
     }
+  }
+
+  /**
+   * Open in-room message search for the active room and, on a chosen hit, jump the
+   * timeline to that event. Resetting the target to null first guarantees the list's
+   * jump effect re-fires even when the same message is picked again.
+   */
+  async openMessageSearch(): Promise<void> {
+    const roomId = this.activeRoomId();
+    if (!roomId) {
+      return;
+    }
+    const eventId = await this.messageSearch.search(roomId);
+    if (!eventId) {
+      return; // cancelled / already open
+    }
+    this.messageSearchTarget.set(null);
+    this.messageSearchTarget.set(eventId);
   }
 
   onSelectSpace(id: string | null): void {

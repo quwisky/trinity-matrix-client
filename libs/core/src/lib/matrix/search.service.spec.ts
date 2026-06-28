@@ -1,8 +1,15 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import {
+  EventType,
+  RelationType,
+  SearchOrderBy,
+  type ISearchRequestBody,
+} from 'matrix-js-sdk';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { InvitesService, type PendingInvite } from './invites.service';
+import { MatrixClientService } from './matrix-client.service';
 import {
   RoomsService,
   type RoomSummary,
@@ -58,6 +65,7 @@ function setup(opts: {
   spaces?: SpaceSummary[];
   invites?: PendingInvite[];
   searchUsers?: ReturnType<typeof vi.fn>;
+  matrix?: Partial<MatrixClientService>;
 }): { svc: SearchService; searchUsers: ReturnType<typeof vi.fn> } {
   const searchUsers =
     opts.searchUsers ?? vi.fn(() => of<UserSearchResult[]>([]));
@@ -82,9 +90,64 @@ function setup(opts: {
         provide: InvitesService,
         useValue: { pendingInvites: signal(opts.invites ?? []) },
       },
+      {
+        provide: MatrixClientService,
+        useValue: opts.matrix ?? { isInitialized: false, instance: {} },
+      },
     ],
   });
   return { svc: TestBed.inject(SearchService), searchUsers };
+}
+
+/** A fake decrypted `m.room.message` event for the loaded-timeline search tests. */
+function messageEvent(over: {
+  id: string;
+  sender?: string;
+  body?: string;
+  ts?: number;
+  type?: string;
+  replace?: boolean;
+  decryptionFailure?: boolean;
+}) {
+  const type = over.type ?? EventType.RoomMessage;
+  return {
+    getId: () => over.id,
+    getType: () => type,
+    getSender: () => over.sender ?? '@alice:hs',
+    getTs: () => over.ts ?? 0,
+    getContent: () => ({ body: over.body ?? '' }),
+    isDecryptionFailure: () => over.decryptionFailure ?? false,
+    isRelation: (rel: string) =>
+      over.replace === true && rel === RelationType.Replace,
+  };
+}
+
+/** A fake Room exposing just the surface SearchService touches. */
+function fakeRoom(opts: {
+  encrypted?: boolean;
+  events?: ReturnType<typeof messageEvent>[];
+  member?: (
+    id: string,
+  ) => { name: string; getMxcAvatarUrl: () => string | null } | null;
+}) {
+  return {
+    hasEncryptionStateEvent: () => opts.encrypted ?? false,
+    getLiveTimeline: () => ({ getEvents: () => opts.events ?? [] }),
+    getMember:
+      opts.member ??
+      ((id: string) => ({ name: id, getMxcAvatarUrl: () => null })),
+  };
+}
+
+/** A fake MatrixClient + MatrixClientService for the message-search tests. */
+function matrixWith(
+  client: Record<string, unknown>,
+): Partial<MatrixClientService> {
+  return {
+    isInitialized: true,
+    // The service only reads the methods it calls; cast past the full SDK surface.
+    instance: { getUserId: () => '@me:hs', ...client } as never,
+  };
 }
 
 describe('SearchService.localResults ranking', () => {
@@ -227,5 +290,209 @@ describe('SearchService.searchPeople', () => {
     const { svc } = setup({ searchUsers });
 
     await expect(firstValueFrom(svc.searchPeople('bob'))).resolves.toEqual([]);
+  });
+});
+
+describe('SearchService.searchLoadedMessages', () => {
+  it('matches a substring, ranks most-recent first, and builds a snippet', () => {
+    const events = [
+      messageEvent({ id: '$1', body: 'hello there world', ts: 100 }),
+      messageEvent({ id: '$2', body: 'a HELLO again', ts: 300 }),
+      messageEvent({ id: '$3', body: 'no match here', ts: 200 }),
+    ];
+    const { svc } = setup({
+      matrix: matrixWith({ getRoom: () => fakeRoom({ events }) }),
+    });
+
+    const out = svc.searchLoadedMessages('!r:hs', 'hello');
+
+    expect(out.hits.map((h) => h.eventId)).toEqual(['$2', '$1']); // recency, case-insensitive
+    expect(out.scanned).toBe(3);
+    expect(out.hits[0].snippet).toContain('HELLO');
+    expect(out.hits[0].senderName).toBe('@alice:hs');
+  });
+
+  it('skips edit relations and decryption failures, and counts only real scans', () => {
+    const events = [
+      messageEvent({ id: '$1', body: 'keyword one' }),
+      messageEvent({ id: '$2', body: '* keyword edited', replace: true }),
+      messageEvent({
+        id: '$3',
+        body: 'keyword secret',
+        decryptionFailure: true,
+      }),
+      messageEvent({ id: '$4', body: 'unrelated', type: 'm.room.member' }),
+    ];
+    const { svc } = setup({
+      matrix: matrixWith({ getRoom: () => fakeRoom({ events }) }),
+    });
+
+    const out = svc.searchLoadedMessages('!r:hs', 'keyword');
+
+    expect(out.hits.map((h) => h.eventId)).toEqual(['$1']);
+    expect(out.scanned).toBe(1); // only the one displayable, decrypted message
+  });
+
+  it('flags an encrypted room and reports server search as unavailable', () => {
+    const { svc } = setup({
+      matrix: matrixWith({
+        getRoom: () => fakeRoom({ encrypted: true, events: [] }),
+      }),
+    });
+
+    const out = svc.searchLoadedMessages('!r:hs', 'x');
+
+    expect(out.encrypted).toBe(true);
+    expect(out.serverAvailable).toBe(false);
+  });
+
+  it('marks an unencrypted room as server-searchable', () => {
+    const { svc } = setup({
+      matrix: matrixWith({ getRoom: () => fakeRoom({ encrypted: false }) }),
+    });
+
+    expect(svc.searchLoadedMessages('!r:hs', 'x').serverAvailable).toBe(true);
+  });
+
+  it('returns empty for an empty query (no hits, scanned counted)', () => {
+    const events = [messageEvent({ id: '$1', body: 'anything' })];
+    const { svc } = setup({
+      matrix: matrixWith({ getRoom: () => fakeRoom({ events }) }),
+    });
+
+    const out = svc.searchLoadedMessages('!r:hs', '');
+    expect(out.hits).toEqual([]);
+    expect(out.scanned).toBe(1);
+  });
+});
+
+describe('SearchService.searchServerMessages', () => {
+  function searchResponse() {
+    return {
+      search_categories: {
+        room_events: {
+          count: 5,
+          next_batch: 'batch2',
+          results: [
+            {
+              rank: 1,
+              result: {
+                event_id: '$s1',
+                sender: '@bob:hs',
+                origin_server_ts: 111,
+                content: { body: 'server side hit' },
+              },
+              context: {
+                profile_info: {
+                  '@bob:hs': { displayname: 'Bob', avatar_url: 'mxc://a/b' },
+                },
+              },
+            },
+          ],
+        },
+      },
+    };
+  }
+
+  it('searches the server only for an unencrypted room and maps the response', async () => {
+    const search = vi.fn(
+      (_params: { body: ISearchRequestBody; next_batch?: string }) =>
+        Promise.resolve(searchResponse()),
+    );
+    const { svc } = setup({
+      matrix: matrixWith({
+        getRoom: () => fakeRoom({ encrypted: false }),
+        search,
+      }),
+    });
+
+    const page = await firstValueFrom(svc.searchServerMessages('!r:hs', 'hit'));
+
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(search.mock.calls[0][0].body.search_categories.room_events).toEqual(
+      expect.objectContaining({
+        search_term: 'hit',
+        keys: ['content.body'],
+        filter: { rooms: ['!r:hs'] },
+        order_by: SearchOrderBy.Recent,
+      }),
+    );
+    expect(page.hits[0]).toEqual({
+      eventId: '$s1',
+      roomId: '!r:hs',
+      sender: '@bob:hs',
+      senderName: 'Bob',
+      senderAvatarMxc: 'mxc://a/b',
+      body: 'server side hit',
+      ts: 111,
+      snippet: 'server side hit',
+    });
+    expect(page.count).toBe(5);
+    expect(page.nextBatch).toBe('batch2');
+  });
+
+  it('never hits the server for an encrypted room', async () => {
+    const search = vi.fn(
+      (_params: { body: ISearchRequestBody; next_batch?: string }) =>
+        Promise.resolve(searchResponse()),
+    );
+    const { svc } = setup({
+      matrix: matrixWith({
+        getRoom: () => fakeRoom({ encrypted: true }),
+        search,
+      }),
+    });
+
+    const page = await firstValueFrom(svc.searchServerMessages('!r:hs', 'hit'));
+
+    expect(search).not.toHaveBeenCalled();
+    expect(page).toEqual({ hits: [], count: 0, nextBatch: null });
+  });
+
+  it('threads next_batch into the paginated request', async () => {
+    const search = vi.fn(
+      (_params: { body: ISearchRequestBody; next_batch?: string }) =>
+        Promise.resolve(searchResponse()),
+    );
+    const { svc } = setup({
+      matrix: matrixWith({
+        getRoom: () => fakeRoom({ encrypted: false }),
+        search,
+      }),
+    });
+
+    await firstValueFrom(svc.searchServerMessages('!r:hs', 'hit', 'batch1'));
+
+    expect(search.mock.calls[0][0].next_batch).toBe('batch1');
+  });
+
+  it('degrades a failed server search to an empty page', async () => {
+    const search = vi.fn(() => Promise.reject(new Error('5xx')));
+    const { svc } = setup({
+      matrix: matrixWith({
+        getRoom: () => fakeRoom({ encrypted: false }),
+        search,
+      }),
+    });
+
+    await expect(
+      firstValueFrom(svc.searchServerMessages('!r:hs', 'hit')),
+    ).resolves.toEqual({ hits: [], count: 0, nextBatch: null });
+  });
+});
+
+describe('SearchService.loadMoreHistory', () => {
+  it('scrolls back and resolves the new loaded-event count', async () => {
+    const events = [messageEvent({ id: '$1' }), messageEvent({ id: '$2' })];
+    const room = fakeRoom({ events });
+    const scrollback = vi.fn(() => Promise.resolve(room));
+    const { svc } = setup({
+      matrix: matrixWith({ getRoom: () => room, scrollback }),
+    });
+
+    const count = await firstValueFrom(svc.loadMoreHistory('!r:hs', 40));
+
+    expect(scrollback).toHaveBeenCalledWith(room, 40);
+    expect(count).toBe(2);
   });
 });

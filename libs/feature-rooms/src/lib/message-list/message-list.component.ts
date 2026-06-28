@@ -49,6 +49,12 @@ export class MessageListComponent {
   readonly roomName = input('');
   /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
   readonly uploadProgress = input<number | null>(null);
+  /**
+   * Event id to scroll into view, set by an external jump (e.g. in-room message
+   * search). Reuses the same {@link jumpTo} scroll the reply-preview uses; a no-op
+   * when the event isn't in the loaded timeline.
+   */
+  readonly jumpToId = input<string | null>(null);
   readonly loadOlder = output<void>();
   /** Open the thread rooted at this event id (raised by a row's indicator). */
   readonly openThread = output<string>();
@@ -180,6 +186,16 @@ export class MessageListComponent {
           this.backfilling = false;
         }
       });
+    });
+
+    // Scroll to an externally-requested event (in-room search jump). Runs after the
+    // anchoring effect above so the row is in the DOM; reuses jumpTo, so it's a no-op
+    // when the event isn't loaded.
+    effect(() => {
+      const id = this.jumpToId();
+      if (id) {
+        this.jumpTo(id);
+      }
     });
   }
 

@@ -55,6 +55,13 @@
           </ion-button>
           @if (activeRoom()) {
             <ion-button
+              (click)="openMessageSearch()"
+              aria-label="Search messages in this room"
+              data-testid="search-messages"
+            >
+              <ion-icon slot="icon-only" name="search-circle-outline" />
+            </ion-button>
+            <ion-button
               (click)="onInviteToRoom()"
               aria-label="Invite people"
               data-testid="invite-people"
@@ -105,6 +112,7 @@
           [canLoadOlder]="timeline.canLoadOlder()"
           [roomName]="room.name"
           [uploadProgress]="uploadProgress()"
+          [jumpToId]="messageSearchTarget()"
           (loadOlder)="loadOlder()"
           (openThread)="onOpenThread($event)"
           (send)="onSend($event)"

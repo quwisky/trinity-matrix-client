@@ -1,0 +1,48 @@
+.ms-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  color: var(--trinity-text-muted);
+  border-bottom: 1px solid var(--trinity-divider);
+
+  ion-icon {
+    flex: 0 0 auto;
+    font-size: 1rem;
+  }
+
+  span {
+    flex: 1 1 auto;
+  }
+}
+
+.ms-time {
+  margin-inline-start: 8px;
+  font-size: 0.75rem;
+  color: var(--trinity-text-muted);
+}
+
+.ms-snippet {
+  white-space: normal;
+
+  mark {
+    background: var(--trinity-active);
+    color: inherit;
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+}
+
+.ms-empty {
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.ms-more {
+  display: flex;
+  justify-content: center;
+  padding: 8px 16px 16px;
+}

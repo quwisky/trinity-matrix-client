@@ -28,6 +28,7 @@ import { RoomsPage } from './rooms.page';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
+import { MessageSearchService } from '../message-search/message-search.service';
 
 /** Default InvitesService mock: empty model + join/leave stubs. */
 function invitesProvider(over: Partial<Record<string, unknown>> = {}) {
@@ -102,6 +103,7 @@ describe('RoomsPage action error feedback', () => {
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
+        { provide: MessageSearchService, useValue: { search: vi.fn() } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
@@ -271,6 +273,7 @@ describe('RoomsPage space filtering', () => {
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
+        { provide: MessageSearchService, useValue: { search: vi.fn() } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
@@ -360,6 +363,7 @@ describe('RoomsPage space actions', () => {
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
+        { provide: MessageSearchService, useValue: { search: vi.fn() } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
@@ -533,6 +537,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         }),
         { provide: UserPickerService, useValue: { pick } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
+        { provide: MessageSearchService, useValue: { search: vi.fn() } },
         {
           provide: TimelineService,
           useValue: { open: vi.fn(), close: vi.fn() },
@@ -813,6 +818,7 @@ describe('RoomsPage space hierarchy actions', () => {
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
+        { provide: MessageSearchService, useValue: { search: vi.fn() } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
@@ -886,6 +892,7 @@ describe('RoomsPage space hierarchy actions', () => {
 // opens a DM, an invite runs the page's accept path.
 describe('RoomsPage quick switcher', () => {
   let pick: ReturnType<typeof vi.fn>;
+  let messageSearch: ReturnType<typeof vi.fn>;
   let createDirectMessage: ReturnType<typeof vi.fn>;
   let acceptInvite: ReturnType<typeof vi.fn>;
   let openSpace: ReturnType<typeof vi.fn>;
@@ -894,6 +901,7 @@ describe('RoomsPage quick switcher', () => {
 
   function build(): RoomsPage {
     pick = vi.fn();
+    messageSearch = vi.fn();
     createDirectMessage = vi.fn(() => of('!dm:hs'));
     acceptInvite = vi.fn(() => of(undefined));
     openSpace = vi.fn();
@@ -927,6 +935,10 @@ describe('RoomsPage quick switcher', () => {
         }),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick } },
+        {
+          provide: MessageSearchService,
+          useValue: { search: messageSearch },
+        },
         {
           provide: TimelineService,
           useValue: { open: timelineOpen, close: vi.fn() },
@@ -1045,5 +1057,36 @@ describe('RoomsPage quick switcher', () => {
 
     expect(preventDefault).toHaveBeenCalled();
     expect(pick).toHaveBeenCalled();
+  });
+
+  it('opens in-room message search for the active room and jumps to the hit', async () => {
+    const page = build();
+    page.onSelectRoom('!r:hs');
+    messageSearch.mockResolvedValue('$evt:hs');
+
+    await page.openMessageSearch();
+
+    expect(messageSearch).toHaveBeenCalledWith('!r:hs');
+    expect(page.messageSearchTarget()).toBe('$evt:hs');
+  });
+
+  it('does not jump when in-room search is cancelled', async () => {
+    const page = build();
+    page.onSelectRoom('!r:hs');
+    messageSearch.mockResolvedValue(null);
+
+    await page.openMessageSearch();
+
+    expect(page.messageSearchTarget()).toBeNull();
+  });
+
+  it('does not open in-room search when no room is active', async () => {
+    const page = build();
+    messageSearch.mockResolvedValue('$evt:hs');
+
+    await page.openMessageSearch();
+
+    expect(messageSearch).not.toHaveBeenCalled();
+    expect(page.messageSearchTarget()).toBeNull();
   });
 });

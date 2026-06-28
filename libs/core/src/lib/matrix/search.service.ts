@@ -1,6 +1,14 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { Observable, catchError, map, of } from 'rxjs';
+import {
+  SearchOrderBy,
+  type ISearchRequestBody,
+  type ISearchResponse,
+  type MatrixEvent,
+} from 'matrix-js-sdk';
+import { Observable, catchError, defer, from, map, of } from 'rxjs';
 import { InvitesService } from './invites.service';
+import { MatrixClientService } from './matrix-client.service';
+import { isDisplayableMessage } from './message-view';
 import { RoomsService } from './rooms.service';
 import { SpacesService } from './spaces.service';
 
@@ -29,6 +37,47 @@ export interface SwitcherResult {
 export interface SwitcherSelection {
   kind: SwitcherKind;
   id: string;
+}
+
+/** A single message that matched an in-room search (client- or server-side). */
+export interface MessageHit {
+  /** The matched event's id; used to jump to it in the timeline. */
+  eventId: string;
+  roomId: string;
+  /** Sender MXID. */
+  sender: string;
+  /** Resolved display name (room member / directory profile), or the MXID. */
+  senderName: string;
+  /** Sender `mxc://` avatar for the result row, or null. */
+  senderAvatarMxc: string | null;
+  /** Full plain-text body of the matched message. */
+  body: string;
+  /** Origin-server timestamp (ms), for ordering + display. */
+  ts: number;
+  /** A single-line excerpt around the first match, for the result row. */
+  snippet: string;
+}
+
+/**
+ * Result of a client-side search over the active room's already-loaded, *decrypted*
+ * timeline — the only reliable path for an E2EE room (the homeserver can't search
+ * ciphertext). `scanned` is the size of the searchable corpus so the UI can be honest
+ * about coverage; `serverAvailable` is true only for unencrypted rooms.
+ */
+export interface LoadedMessageSearch {
+  hits: MessageHit[];
+  scanned: number;
+  encrypted: boolean;
+  serverAvailable: boolean;
+}
+
+/** A page of server-side (full-history) search results for an unencrypted room. */
+export interface ServerMessageSearch {
+  hits: MessageHit[];
+  /** Total server-reported match count (>= hits.length once paginated). */
+  count: number;
+  /** Token for the next page, or null when results are exhausted. */
+  nextBatch: string | null;
 }
 
 /** Memoized, lowercased projection of a searchable source row. */
@@ -76,6 +125,7 @@ export class SearchService {
   private readonly rooms = inject(RoomsService);
   private readonly spaces = inject(SpacesService);
   private readonly invites = inject(InvitesService);
+  private readonly matrix = inject(MatrixClientService);
 
   /**
    * The searchable corpus, recomputed only when a source signal changes — so each
@@ -196,6 +246,126 @@ export class SearchService {
       catchError(() => of<SwitcherResult[]>([])),
     );
   }
+
+  /**
+   * Search the active room's already-loaded, *decrypted* timeline for `query`. This is
+   * the only reliable path for an end-to-end-encrypted room: the homeserver stores
+   * only ciphertext, so server search can't see message bodies. Only loaded history is
+   * covered (widen it with {@link loadMoreHistory}); undecryptable events are skipped
+   * and excluded from `scanned`. Synchronous — wrap it in a component `computed` that
+   * also reads the timeline signal so it recomputes on new/decrypted events.
+   */
+  searchLoadedMessages(roomId: string, query: string): LoadedMessageSearch {
+    const empty: LoadedMessageSearch = {
+      hits: [],
+      scanned: 0,
+      encrypted: false,
+      serverAvailable: true,
+    };
+    if (!this.matrix.isInitialized) {
+      return empty;
+    }
+    const client = this.matrix.instance;
+    const room = client.getRoom(roomId);
+    if (!room) {
+      return empty;
+    }
+    const encrypted = room.hasEncryptionStateEvent();
+    const qLower = query.trim().toLowerCase();
+    const hits: MessageHit[] = [];
+    let scanned = 0;
+    for (const event of room.getLiveTimeline().getEvents()) {
+      // Mirror the timeline's notion of a visible message (drop edits/relations),
+      // and never read an event we couldn't decrypt.
+      if (!isDisplayableMessage(event) || event.isDecryptionFailure()) {
+        continue;
+      }
+      scanned++;
+      const body = readBody(event);
+      if (!qLower || !body.toLowerCase().includes(qLower)) {
+        continue;
+      }
+      const sender = event.getSender() ?? '';
+      const member = room.getMember(sender);
+      hits.push({
+        eventId: event.getId() ?? '',
+        roomId,
+        sender,
+        senderName: member?.name ?? sender,
+        senderAvatarMxc: member?.getMxcAvatarUrl() ?? null,
+        body,
+        ts: event.getTs(),
+        snippet: buildSnippet(body, qLower),
+      });
+    }
+    hits.sort((a, b) => b.ts - a.ts); // most-recent first
+    return { hits, scanned, encrypted, serverAvailable: !encrypted };
+  }
+
+  /**
+   * Full-text server search for an UNENCRYPTED room, covering its entire history.
+   * Refuses (resolves empty) for an encrypted or unknown room — the homeserver can't
+   * search ciphertext, so we never pretend it can. `nextBatch` pages further results.
+   * Wraps the homeserver `/search` endpoint (`client.search`).
+   */
+  searchServerMessages(
+    roomId: string,
+    term: string,
+    nextBatch?: string,
+  ): Observable<ServerMessageSearch> {
+    const empty: ServerMessageSearch = { hits: [], count: 0, nextBatch: null };
+    const trimmed = term.trim();
+    return defer(() => {
+      if (!this.matrix.isInitialized || !trimmed) {
+        return of(empty);
+      }
+      const client = this.matrix.instance;
+      const room = client.getRoom(roomId);
+      // E2EE-honest: never issue a server search for an encrypted room.
+      if (!room || room.hasEncryptionStateEvent()) {
+        return of(empty);
+      }
+      const body: ISearchRequestBody = {
+        search_categories: {
+          room_events: {
+            search_term: trimmed,
+            keys: ['content.body'],
+            filter: { rooms: [roomId] },
+            order_by: SearchOrderBy.Recent,
+            event_context: {
+              before_limit: 0,
+              after_limit: 0,
+              include_profile: true,
+            },
+          },
+        },
+      };
+      return from(
+        client.search(nextBatch ? { body, next_batch: nextBatch } : { body }),
+      ).pipe(map((response) => mapServerResponse(roomId, trimmed, response)));
+    }).pipe(catchError(() => of(empty)));
+  }
+
+  /**
+   * Page in older history for `roomId` so {@link searchLoadedMessages} can see more of
+   * it (the only way to widen search in an E2EE room). Resolves the new loaded-event
+   * count; the caller re-runs the client-side search afterward.
+   */
+  loadMoreHistory(roomId: string, count = 50): Observable<number> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return of(0);
+      }
+      const client = this.matrix.instance;
+      const room = client.getRoom(roomId);
+      if (!room) {
+        return of(0);
+      }
+      return from(client.scrollback(room, count)).pipe(
+        map((paged) => paged.getLiveTimeline().getEvents().length),
+      );
+    });
+  }
 }
 
 /**
@@ -233,4 +403,64 @@ function escapeRegExp(value: string): string {
 function initialOf(name: string): string {
   const stripped = name.replace(/^[#@!]+/, '').trim();
   return (stripped[0] ?? '?').toUpperCase();
+}
+
+/** Plain-text body of a message event, or '' when absent. */
+function readBody(event: MatrixEvent): string {
+  const body = event.getContent()['body'];
+  return typeof body === 'string' ? body : '';
+}
+
+/** Flatten a homeserver `/search` response into our {@link MessageHit} list. */
+function mapServerResponse(
+  roomId: string,
+  term: string,
+  response: ISearchResponse,
+): ServerMessageSearch {
+  const category = response.search_categories.room_events;
+  const qLower = term.toLowerCase();
+  const hits = (category.results ?? []).map<MessageHit>((entry) => {
+    const event = entry.result;
+    const sender = event.sender;
+    const profile = entry.context?.profile_info?.[sender];
+    const raw = event.content['body'];
+    const body = typeof raw === 'string' ? raw : '';
+    return {
+      eventId: event.event_id,
+      roomId,
+      sender,
+      senderName: profile?.displayname ?? sender,
+      senderAvatarMxc: profile?.avatar_url ?? null,
+      body,
+      ts: event.origin_server_ts,
+      snippet: buildSnippet(body, qLower),
+    };
+  });
+  return {
+    hits,
+    count: category.count ?? hits.length,
+    nextBatch: category.next_batch ?? null,
+  };
+}
+
+/** Characters of context to keep on each side of the first match in a snippet. */
+const SNIPPET_RADIUS = 60;
+
+/** A single-line excerpt around the first occurrence of `qLower` in `body`. */
+function buildSnippet(body: string, qLower: string): string {
+  const flat = body.replace(/\s+/g, ' ').trim();
+  if (!qLower) {
+    return flat.length > SNIPPET_RADIUS * 2
+      ? `${flat.slice(0, SNIPPET_RADIUS * 2)}…`
+      : flat;
+  }
+  const at = flat.toLowerCase().indexOf(qLower);
+  if (at < 0) {
+    return flat;
+  }
+  const start = Math.max(0, at - SNIPPET_RADIUS);
+  const end = Math.min(flat.length, at + qLower.length + SNIPPET_RADIUS);
+  return `${start > 0 ? '…' : ''}${flat.slice(start, end)}${
+    end < flat.length ? '…' : ''
+  }`;
 }

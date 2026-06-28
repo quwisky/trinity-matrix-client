@@ -112,6 +112,28 @@ describe('MessageListComponent', () => {
     expect(cmp.editingId()).toBe('$3');
   });
 
+  it('scrolls the matching row into view when jumpToId is set', () => {
+    let jumped: Element | null = null;
+    // jsdom doesn't implement scrollIntoView; stub it on the prototype and
+    // capture the element it was invoked on (a regular fn binds `this`).
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      jumped = this;
+    });
+
+    const fixture = TestBed.createComponent(MessageListComponent);
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+
+    fixture.componentRef.setInput('jumpToId', '$2');
+    fixture.detectChanges();
+
+    expect(jumped).not.toBeNull();
+    expect((jumped as unknown as Element).getAttribute('data-mid')).toBe('$2');
+  });
+
   it('emits loadOlder when scrolled near the top (and history remains)', () => {
     const fixture = TestBed.createComponent(MessageListComponent);
     fixture.componentRef.setInput('canLoadOlder', true);
