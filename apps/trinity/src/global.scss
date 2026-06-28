@@ -92,6 +92,21 @@ a:focus-visible,
   }
 }
 
+/*
+ * Invite / DM user picker (UserPickerService). A sized card on the wide split-pane
+ * layout (the same `md`/768px breakpoint as the rooms shell) tall enough to show a
+ * few directory results; below that it falls back to Ionic's full-screen modal.
+ */
+.user-picker-modal {
+  @media (min-width: 768px) {
+    --width: 460px;
+    --max-width: 92vw;
+    --height: 560px;
+    --max-height: 90vh;
+    --border-radius: 12px;
+  }
+}
+
 /* Visually hidden but available to assistive tech (e.g. page-title headings). */
 .sr-only {
   position: absolute;

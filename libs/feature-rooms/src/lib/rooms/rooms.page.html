@@ -11,14 +11,19 @@
         [spaceName]="activeSpaceName()"
         [spaceActive]="activeSpaceId() !== null"
         [rooms]="visibleRooms()"
+        [invites]="invites.pendingInvites()"
         [activeRoomId]="activeRoomId()"
         [userName]="userName()"
         [userId]="userId()"
         [userInitial]="userInitial()"
         [userAvatarMxc]="userAvatarMxc()"
         (selectRoom)="onSelectRoom($event)"
+        (newChat)="onNewChat()"
         (createRoom)="onCreateChannel()"
+        (inviteToSpace)="onInviteToSpace()"
         (leaveSpace)="onLeaveSpace()"
+        (acceptInvite)="onAcceptInvite($event)"
+        (declineInvite)="onDeclineInvite($event)"
         (logout)="logout()"
       />
     </div>
@@ -35,6 +40,13 @@
         </ion-buttons>
         <ion-buttons slot="end">
           @if (activeRoom()) {
+            <ion-button
+              (click)="onInviteToRoom()"
+              aria-label="Invite people"
+              data-testid="invite-people"
+            >
+              <ion-icon slot="icon-only" name="person-add-outline" />
+            </ion-button>
             <ion-button
               (click)="openThreadsList()"
               aria-label="Threads"

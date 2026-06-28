@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
 import { MatrixClientService } from './matrix-client.service';
 import { describe, expect, it, vi } from 'vitest';
@@ -179,5 +180,181 @@ describe('RoomsService', () => {
     svc.connect();
 
     expect(client.on.mock.calls.length).toBe(wiredCalls); // no double-wiring
+  });
+});
+
+// Write paths: createRoom / createDirectMessage / inviteUser / searchUsers. The
+// read model is driven by sync listeners (covered above), so these assert the SDK
+// calls + the `m.direct` merge only.
+describe('RoomsService writes', () => {
+  // `direct` seeds the `m.direct` account-data map; `joinedRooms` are the rooms a
+  // DM-reuse lookup can resolve (with their membership).
+  function setupWrites(opts?: {
+    direct?: Record<string, string[]>;
+    joinedRooms?: Record<string, string>; // roomId -> membership
+  }) {
+    const createRoom = vi.fn().mockResolvedValue({ room_id: '!new:hs' });
+    const invite = vi.fn().mockResolvedValue({});
+    const setAccountData = vi.fn().mockResolvedValue({});
+    const searchUserDirectory = vi.fn().mockResolvedValue({
+      results: [
+        { user_id: '@bob:hs', display_name: 'Bob', avatar_url: 'mxc://a/b' },
+        { user_id: '@eve:hs' }, // no display name / avatar
+      ],
+    });
+    const membershipById = opts?.joinedRooms ?? {};
+    const client = {
+      getRooms: () => [],
+      getRoom: (id: string) =>
+        membershipById[id]
+          ? { getMyMembership: () => membershipById[id] }
+          : null,
+      getAccountData: (type: string) =>
+        type === 'm.direct'
+          ? { getContent: () => opts?.direct ?? {} }
+          : undefined,
+      createRoom,
+      invite,
+      setAccountData,
+      searchUserDirectory,
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    return { svc, createRoom, invite, setAccountData, searchUserDirectory };
+  }
+
+  it('createRoom creates an encrypted, invite-only room and resolves its id', async () => {
+    const { svc, createRoom } = setupWrites();
+
+    const id = await firstValueFrom(svc.createRoom({ name: '  general  ' }));
+
+    expect(id).toBe('!new:hs');
+    expect(createRoom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'general', // trimmed
+        visibility: 'private',
+        preset: 'private_chat',
+        initial_state: [
+          {
+            type: 'm.room.encryption',
+            state_key: '',
+            content: { algorithm: 'm.megolm.v1.aes-sha2' },
+          },
+        ],
+      }),
+    );
+  });
+
+  it('createDirectMessage creates an encrypted DM and records it in m.direct', async () => {
+    const { svc, createRoom, setAccountData } = setupWrites();
+
+    const id = await firstValueFrom(svc.createDirectMessage('@bob:hs'));
+
+    expect(id).toBe('!new:hs');
+    expect(createRoom).toHaveBeenCalledWith(
+      expect.objectContaining({
+        is_direct: true,
+        invite: ['@bob:hs'],
+        preset: 'trusted_private_chat',
+        initial_state: [
+          {
+            type: 'm.room.encryption',
+            state_key: '',
+            content: { algorithm: 'm.megolm.v1.aes-sha2' },
+          },
+        ],
+      }),
+    );
+    // The new room is merged into m.direct under the invitee.
+    expect(setAccountData).toHaveBeenCalledWith('m.direct', {
+      '@bob:hs': ['!new:hs'],
+    });
+  });
+
+  it('createDirectMessage reuses a joined DM and writes nothing', async () => {
+    const { svc, createRoom, setAccountData } = setupWrites({
+      direct: { '@bob:hs': ['!existing:hs'] },
+      joinedRooms: { '!existing:hs': 'join' },
+    });
+
+    const id = await firstValueFrom(svc.createDirectMessage('@bob:hs'));
+
+    expect(id).toBe('!existing:hs');
+    expect(createRoom).not.toHaveBeenCalled();
+    expect(setAccountData).not.toHaveBeenCalled();
+  });
+
+  it('createDirectMessage ignores a left DM and creates + appends a new one', async () => {
+    const { svc, createRoom, setAccountData } = setupWrites({
+      direct: { '@bob:hs': ['!left:hs'] },
+      joinedRooms: { '!left:hs': 'leave' },
+    });
+
+    const id = await firstValueFrom(svc.createDirectMessage('@bob:hs'));
+
+    expect(id).toBe('!new:hs');
+    expect(createRoom).toHaveBeenCalled();
+    // The new room is appended; the stale (left) id is preserved in the map.
+    expect(setAccountData).toHaveBeenCalledWith('m.direct', {
+      '@bob:hs': ['!left:hs', '!new:hs'],
+    });
+  });
+
+  it('createDirectMessage rejects an invalid user id without creating', async () => {
+    const { svc, createRoom } = setupWrites();
+
+    await expect(
+      firstValueFrom(svc.createDirectMessage('not-a-mxid')),
+    ).rejects.toThrow();
+    expect(createRoom).not.toHaveBeenCalled();
+  });
+
+  it('inviteUser invites the user to the room (works for spaces too)', async () => {
+    const { svc, invite } = setupWrites();
+
+    await firstValueFrom(svc.inviteUser('!r:hs', '@bob:hs'));
+
+    expect(invite).toHaveBeenCalledWith('!r:hs', '@bob:hs');
+  });
+
+  it('inviteUser rejects an invalid user id without calling invite', async () => {
+    const { svc, invite } = setupWrites();
+
+    await expect(
+      firstValueFrom(svc.inviteUser('!r:hs', '@bob')),
+    ).rejects.toThrow();
+    expect(invite).not.toHaveBeenCalled();
+  });
+
+  it('searchUsers maps directory results, falling back to the user id', async () => {
+    const { svc } = setupWrites();
+
+    const results = await firstValueFrom(svc.searchUsers('b'));
+
+    expect(results).toEqual([
+      { userId: '@bob:hs', displayName: 'Bob', avatarMxc: 'mxc://a/b' },
+      { userId: '@eve:hs', displayName: '@eve:hs', avatarMxc: null },
+    ]);
+  });
+
+  it('searchUsers short-circuits an empty term without a request', async () => {
+    const { svc, searchUserDirectory } = setupWrites();
+
+    const results = await firstValueFrom(svc.searchUsers('   '));
+
+    expect(results).toEqual([]);
+    expect(searchUserDirectory).not.toHaveBeenCalled();
   });
 });

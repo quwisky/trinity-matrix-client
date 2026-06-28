@@ -2,6 +2,8 @@ export * from './lib/matrix/session.model';
 export * from './lib/matrix/matrix-client.service';
 export * from './lib/matrix/rooms.service';
 export * from './lib/matrix/spaces.service';
+export * from './lib/matrix/invites.service';
+export { isValidUserId } from './lib/matrix/room-create';
 export * from './lib/matrix/timeline.service';
 export * from './lib/matrix/threads.service';
 export { isEditableMessage } from './lib/matrix/message-view';

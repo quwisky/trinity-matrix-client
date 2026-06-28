@@ -61,6 +61,68 @@
   padding: 12px 8px 4px;
 }
 
+.invite {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-top: 1px;
+  border-radius: 4px;
+  background: var(--trinity-hover);
+}
+
+.invite__avatar {
+  flex: 0 0 auto;
+}
+
+.invite__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.invite__name {
+  @include ellipsis;
+
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--trinity-text-bright);
+}
+
+.invite__meta {
+  @include ellipsis;
+
+  font-size: 11px;
+  color: var(--trinity-text-muted);
+}
+
+.invite__actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.invite__btn {
+  @include interactive-row;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+
+  &.accept:hover {
+    color: var(--trinity-green);
+  }
+
+  &.decline:hover {
+    color: var(--ion-color-danger);
+  }
+}
+
 .channel {
   @include interactive-row;
 

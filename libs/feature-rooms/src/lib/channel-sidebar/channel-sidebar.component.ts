@@ -6,11 +6,17 @@ import {
 } from '@angular/core';
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
-import { addOutline, exitOutline } from 'ionicons/icons';
+import {
+  addOutline,
+  checkmarkOutline,
+  closeOutline,
+  exitOutline,
+  personAddOutline,
+} from 'ionicons/icons';
 import { AvatarComponent } from '@trinity/ui';
-import type { RoomSummary } from '@trinity/core';
+import type { PendingInvite, RoomSummary } from '@trinity/core';
 
-/** Discord channel sidebar: space header, room list, and the user panel. */
+/** Discord channel sidebar: space header, invites, room list, and the user panel. */
 @Component({
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -19,8 +25,8 @@ import type { RoomSummary } from '@trinity/core';
     <div class="sidebar">
       <header class="sidebar__header">
         <span class="sidebar__title">{{ spaceName() }}</span>
-        @if (spaceActive()) {
-          <div class="sidebar__actions">
+        <div class="sidebar__actions">
+          @if (spaceActive()) {
             <button
               class="sidebar__action"
               (click)="createRoom.emit()"
@@ -31,17 +37,78 @@ import type { RoomSummary } from '@trinity/core';
             </button>
             <button
               class="sidebar__action"
+              (click)="inviteToSpace.emit()"
+              aria-label="Invite people to space"
+              title="Invite people to space"
+            >
+              <ion-icon name="person-add-outline" aria-hidden="true" />
+            </button>
+            <button
+              class="sidebar__action"
               (click)="leaveSpace.emit()"
               aria-label="Leave space"
               title="Leave space"
             >
               <ion-icon name="exit-outline" aria-hidden="true" />
             </button>
-          </div>
-        }
+          } @else {
+            <button
+              class="sidebar__action"
+              (click)="newChat.emit()"
+              aria-label="New room or direct message"
+              title="New room or direct message"
+            >
+              <ion-icon name="add-outline" aria-hidden="true" />
+            </button>
+          }
+        </div>
       </header>
 
       <div class="sidebar__scroll">
+        @if (invites().length) {
+          <div class="category">Invites</div>
+          @for (invite of invites(); track invite.roomId) {
+            <div class="invite">
+              <trn-avatar
+                class="invite__avatar"
+                [mxc]="invite.avatarMxc"
+                [initial]="invite.initial"
+                [name]="invite.name"
+                [size]="32"
+              />
+              <div class="invite__text">
+                <span class="invite__name" [title]="invite.name">{{
+                  invite.name
+                }}</span>
+                <span class="invite__meta"
+                  >{{
+                    invite.isSpace ? 'Space' : invite.isDirect ? 'DM' : 'Room'
+                  }}
+                  · from {{ invite.inviterName }}</span
+                >
+              </div>
+              <div class="invite__actions">
+                <button
+                  class="invite__btn accept"
+                  (click)="acceptInvite.emit(invite.roomId)"
+                  [attr.aria-label]="'Accept invite to ' + invite.name"
+                  title="Accept"
+                >
+                  <ion-icon name="checkmark-outline" aria-hidden="true" />
+                </button>
+                <button
+                  class="invite__btn decline"
+                  (click)="declineInvite.emit(invite.roomId)"
+                  [attr.aria-label]="'Decline invite to ' + invite.name"
+                  title="Decline"
+                >
+                  <ion-icon name="close-outline" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          }
+        }
+
         <div class="category">Text Channels</div>
         @for (room of rooms(); track room.id) {
           <button
@@ -95,19 +162,34 @@ export class ChannelSidebarComponent {
   /** Whether a space (not Home) is selected — gates the header space actions. */
   readonly spaceActive = input(false);
   readonly rooms = input<RoomSummary[]>([]);
+  /** Pending invites surfaced in an "Invites" group above the channels. */
+  readonly invites = input<PendingInvite[]>([]);
   readonly activeRoomId = input<string | null>(null);
   readonly userName = input('');
   readonly userId = input('');
   readonly userAvatarMxc = input<string | null>(null);
   readonly userInitial = input('?');
   readonly selectRoom = output<string>();
-  /** Header "+" — raise the create-a-channel flow for the active space. */
+  /** Header "+" on Home — raise the new-room / new-DM chooser. */
+  readonly newChat = output<void>();
+  /** Header "+" in a space — raise the create-a-channel flow. */
   readonly createRoom = output<void>();
+  /** Header person-add in a space — raise the invite-to-space flow. */
+  readonly inviteToSpace = output<void>();
   /** Header exit icon — raise the leave-this-space confirmation. */
   readonly leaveSpace = output<void>();
+  /** Accept / decline a pending invite by room id. */
+  readonly acceptInvite = output<string>();
+  readonly declineInvite = output<string>();
   readonly logout = output<void>();
 
   constructor() {
-    addIcons({ addOutline, exitOutline });
+    addIcons({
+      addOutline,
+      checkmarkOutline,
+      closeOutline,
+      exitOutline,
+      personAddOutline,
+    });
   }
 }

@@ -1,7 +1,8 @@
-import { signal } from '@angular/core';
+import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import {
+  ActionSheetController,
   AlertController,
   MenuController,
   ToastController,
@@ -9,11 +10,14 @@ import {
 import {
   AuthService,
   CryptoService,
+  InvitesService,
   MatrixClientService,
+  MediaService,
   RoomsService,
   SpacesService,
   ThreadsService,
   TimelineService,
+  type PendingInvite,
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/core';
@@ -21,6 +25,22 @@ import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { ThreadPanelService } from '../thread/thread-panel.service';
+import { UserPickerService } from '../user-picker/user-picker.service';
+
+/** Default InvitesService mock: empty model + join/leave stubs. */
+function invitesProvider(over: Partial<Record<string, unknown>> = {}) {
+  return {
+    provide: InvitesService,
+    useValue: {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      pendingInvites: signal<PendingInvite[]>([]),
+      acceptInvite: vi.fn(() => of(undefined)),
+      declineInvite: vi.fn(() => of(undefined)),
+      ...over,
+    },
+  };
+}
 
 // Instantiate the page through DI without rendering (the shell template pulls in
 // many child components); we only exercise the action handlers' error feedback.
@@ -74,6 +94,9 @@ describe('RoomsPage action error feedback', () => {
           provide: ThreadPanelService,
           useValue: { open: vi.fn(), openList: vi.fn() },
         },
+        invitesProvider(),
+        { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
@@ -238,6 +261,9 @@ describe('RoomsPage space filtering', () => {
           provide: ThreadPanelService,
           useValue: { open: vi.fn(), openList: vi.fn() },
         },
+        invitesProvider(),
+        { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
@@ -322,6 +348,9 @@ describe('RoomsPage space actions', () => {
           provide: ThreadPanelService,
           useValue: { open: vi.fn(), openList: vi.fn() },
         },
+        invitesProvider(),
+        { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
@@ -415,5 +444,254 @@ describe('RoomsPage space actions', () => {
 
     expect(create).not.toHaveBeenCalled();
     expect(leaveSpace).not.toHaveBeenCalled();
+  });
+});
+
+// Room / DM creation, invites, and accept/decline. The page picks a user (modal),
+// prompts for a name (alert), or reads a pending invite, then delegates to the
+// services and handles selection + success/error toasts.
+describe('RoomsPage room / DM / invite actions', () => {
+  interface AlertButton {
+    text: string;
+    handler?: (data?: unknown) => unknown;
+  }
+  let alertCreate: ReturnType<typeof vi.fn>;
+  let toastCreate: ReturnType<typeof vi.fn>;
+  let pick: ReturnType<typeof vi.fn>;
+  let createRoom: ReturnType<typeof vi.fn>;
+  let createDirectMessage: ReturnType<typeof vi.fn>;
+  let inviteUser: ReturnType<typeof vi.fn>;
+  let acceptInvite: ReturnType<typeof vi.fn>;
+  let declineInvite: ReturnType<typeof vi.fn>;
+  let pending: WritableSignal<PendingInvite[]>;
+
+  function pendingInvite(over: Partial<PendingInvite> = {}): PendingInvite {
+    return {
+      roomId: '!i:hs',
+      name: 'Invited',
+      initial: 'I',
+      avatarMxc: null,
+      inviterName: 'Alice',
+      isSpace: false,
+      isDirect: false,
+      ...over,
+    };
+  }
+
+  function build(): RoomsPage {
+    alertCreate = vi
+      .fn()
+      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    toastCreate = vi
+      .fn()
+      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    pick = vi.fn();
+    createRoom = vi.fn(() => of('!room:hs'));
+    createDirectMessage = vi.fn(() => of('!dm:hs'));
+    inviteUser = vi.fn(() => of(undefined));
+    acceptInvite = vi.fn(() => of(undefined));
+    declineInvite = vi.fn(() => of(undefined));
+    pending = signal<PendingInvite[]>([]);
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        {
+          provide: RoomsService,
+          useValue: {
+            connect: vi.fn(),
+            rooms: signal<RoomSummary[]>([]),
+            revision: signal(0),
+            membersOf: () => [],
+            createRoom,
+            createDirectMessage,
+            inviteUser,
+          },
+        },
+        {
+          provide: SpacesService,
+          useValue: {
+            connect: vi.fn(),
+            spaces: signal<SpaceSummary[]>([]),
+            childRoomIds: () => [],
+          },
+        },
+        invitesProvider({
+          pendingInvites: pending,
+          acceptInvite,
+          declineInvite,
+        }),
+        { provide: UserPickerService, useValue: { pick } },
+        {
+          provide: TimelineService,
+          useValue: { open: vi.fn(), close: vi.fn() },
+        },
+        { provide: MediaService, useValue: { releaseAll: vi.fn() } },
+        {
+          provide: MatrixClientService,
+          useValue: {
+            isInitialized: true,
+            instance: { getUserId: () => '@me:hs', getUser: () => null },
+          },
+        },
+        { provide: CryptoService, useValue: { connect: vi.fn() } },
+        {
+          provide: ThreadsService,
+          useValue: { open: vi.fn(), close: vi.fn(), closeThread: vi.fn() },
+        },
+        {
+          provide: ThreadPanelService,
+          useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        {
+          provide: AuthService,
+          useValue: { logout: vi.fn(() => of(undefined)) },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        { provide: MenuController, useValue: { close: vi.fn() } },
+        { provide: AlertController, useValue: { create: alertCreate } },
+        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: ToastController, useValue: { create: toastCreate } },
+      ],
+    });
+    return TestBed.inject(RoomsPage);
+  }
+
+  function tapAlert(text: string, data?: unknown): void {
+    const opts = alertCreate.mock.calls.at(-1)?.[0] as {
+      buttons: AlertButton[];
+    };
+    opts.buttons.find((b) => b.text === text)?.handler?.(data);
+  }
+
+  it('creates an encrypted room from the name prompt and selects it', async () => {
+    const page = build();
+
+    await page.onCreateRoom();
+    tapAlert('Create', { name: 'general' });
+
+    expect(createRoom).toHaveBeenCalledWith({ name: 'general' });
+    expect(page.activeRoomId()).toBe('!room:hs');
+  });
+
+  it('does not create a room for an empty name', async () => {
+    const page = build();
+
+    await page.onCreateRoom();
+    tapAlert('Create', { name: '   ' });
+
+    expect(createRoom).not.toHaveBeenCalled();
+  });
+
+  it('starts a DM with the picked user and selects the DM room', async () => {
+    const page = build();
+    pick.mockResolvedValue('@bob:hs');
+
+    await page.onStartDm();
+
+    expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
+    expect(page.activeRoomId()).toBe('!dm:hs');
+  });
+
+  it('does not start a DM when the picker is cancelled', async () => {
+    const page = build();
+    pick.mockResolvedValue(null);
+
+    await page.onStartDm();
+
+    expect(createDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it('invites the picked user to the active room and toasts success', async () => {
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+    pick.mockResolvedValue('@bob:hs');
+
+    await page.onInviteToRoom();
+
+    expect(inviteUser).toHaveBeenCalledWith('!r:hs', '@bob:hs');
+    expect(toastCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ color: 'success' }),
+    );
+  });
+
+  it('captures an invite failure in spaceError without a success toast', async () => {
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+    pick.mockResolvedValue('@bob:hs');
+    inviteUser.mockReturnValue(throwError(() => new Error('forbidden')));
+
+    await page.onInviteToRoom();
+
+    // runWithBusy records the message in spaceError (the shell's effect toasts it,
+    // like the create-space path); no success toast on failure.
+    expect(page.spaceError()).toBe('forbidden');
+    expect(toastCreate).not.toHaveBeenCalled();
+  });
+
+  it('does not invite when the picker is cancelled', async () => {
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+    pick.mockResolvedValue(null);
+
+    await page.onInviteToRoom();
+
+    expect(inviteUser).not.toHaveBeenCalled();
+  });
+
+  it('invites to the active space from the sidebar action', async () => {
+    const page = build();
+    page.activeSpaceId.set('!s:hs');
+    pick.mockResolvedValue('@bob:hs');
+
+    await page.onInviteToSpace();
+
+    expect(inviteUser).toHaveBeenCalledWith('!s:hs', '@bob:hs');
+  });
+
+  it('accepts a room invite (joins) and selects the joined room', () => {
+    const page = build();
+    pending.set([pendingInvite({ roomId: '!i:hs', isSpace: false })]);
+
+    page.onAcceptInvite('!i:hs');
+
+    expect(acceptInvite).toHaveBeenCalledWith('!i:hs');
+    expect(page.activeSpaceId()).toBeNull();
+    expect(page.activeRoomId()).toBe('!i:hs');
+  });
+
+  it('accepts a space invite without auto-selecting a room', () => {
+    const page = build();
+    pending.set([pendingInvite({ roomId: '!s:hs', isSpace: true })]);
+
+    page.onAcceptInvite('!s:hs');
+
+    expect(acceptInvite).toHaveBeenCalledWith('!s:hs');
+    expect(page.activeRoomId()).toBeNull(); // a space lands in the rail, not selected
+  });
+
+  it('declines an invite (leaves)', () => {
+    const page = build();
+
+    page.onDeclineInvite('!i:hs');
+
+    expect(declineInvite).toHaveBeenCalledWith('!i:hs');
+  });
+
+  it('opens the new-chat action sheet on Home', async () => {
+    const page = build();
+    const sheetCreate = TestBed.inject(ActionSheetController)
+      .create as ReturnType<typeof vi.fn>;
+    sheetCreate.mockResolvedValue({ present: vi.fn() });
+
+    await page.onNewChat();
+
+    expect(sheetCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        buttons: expect.arrayContaining([
+          expect.objectContaining({ text: 'Create a room' }),
+          expect.objectContaining({ text: 'Start a direct message' }),
+        ]),
+      }),
+    );
   });
 });

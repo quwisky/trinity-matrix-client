@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { RoomSummary } from '@trinity/core';
+import type { PendingInvite, RoomSummary } from '@trinity/core';
 import { ChannelSidebarComponent } from './channel-sidebar.component';
 
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
@@ -16,6 +16,19 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     highlightCount: 0,
     hasUnread: false,
     activityTs: 0,
+    ...over,
+  };
+}
+
+function invite(over: Partial<PendingInvite> = {}): PendingInvite {
+  return {
+    roomId: '!i:hs',
+    name: 'Invited Room',
+    initial: 'I',
+    avatarMxc: null,
+    inviterName: 'Alice',
+    isSpace: false,
+    isDirect: false,
     ...over,
   };
 }
@@ -69,29 +82,91 @@ describe('ChannelSidebarComponent', () => {
     expect(el.querySelectorAll('.channel.unread').length).toBe(2);
   });
 
-  it('hides the space actions on Home (no active space)', () => {
+  it('shows only the new-chat affordance on Home (no space actions)', () => {
     const fixture = TestBed.createComponent(ChannelSidebarComponent);
     fixture.detectChanges(); // spaceActive defaults to false
 
-    expect(fixture.nativeElement.querySelector('.sidebar__actions')).toBeNull();
+    const el = fixture.nativeElement;
+    // Space-only actions are hidden on Home; the new-room/DM "+" is present.
+    expect(el.querySelector('[aria-label="Create a channel"]')).toBeNull();
+    expect(
+      el.querySelector('[aria-label="Invite people to space"]'),
+    ).toBeNull();
+    expect(el.querySelector('[aria-label="Leave space"]')).toBeNull();
+    expect(
+      el.querySelector('[aria-label="New room or direct message"]'),
+    ).not.toBeNull();
   });
 
-  it('shows the space actions and emits createRoom / leaveSpace', () => {
+  it('emits newChat from the Home "+" affordance', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.detectChanges();
+
+    let opened = false;
+    fixture.componentInstance.newChat.subscribe(() => (opened = true));
+    fixture.nativeElement
+      .querySelector('[aria-label="New room or direct message"]')
+      .click();
+
+    expect(opened).toBe(true);
+  });
+
+  it('shows the space actions and emits createRoom / inviteToSpace / leaveSpace', () => {
     const fixture = TestBed.createComponent(ChannelSidebarComponent);
     fixture.componentRef.setInput('spaceActive', true);
     fixture.detectChanges();
 
     let created = false;
+    let invited = false;
     let left = false;
     fixture.componentInstance.createRoom.subscribe(() => (created = true));
+    fixture.componentInstance.inviteToSpace.subscribe(() => (invited = true));
     fixture.componentInstance.leaveSpace.subscribe(() => (left = true));
 
     const el = fixture.nativeElement;
     el.querySelector('[aria-label="Create a channel"]').click();
+    el.querySelector('[aria-label="Invite people to space"]').click();
     el.querySelector('[aria-label="Leave space"]').click();
 
     expect(created).toBe(true);
+    expect(invited).toBe(true);
     expect(left).toBe(true);
+    // The Home affordance is hidden while a space is active.
+    expect(
+      el.querySelector('[aria-label="New room or direct message"]'),
+    ).toBeNull();
+  });
+
+  it('renders pending invites and emits accept / decline with the room id', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('invites', [
+      invite({ roomId: '!i:hs', name: 'Invited Room', inviterName: 'Alice' }),
+    ]);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement;
+    const invites = el.querySelectorAll('.invite');
+    expect(invites.length).toBe(1);
+    expect(invites[0].textContent).toContain('Invited Room');
+    expect(invites[0].textContent).toContain('Alice');
+
+    let accepted: string | undefined;
+    let declined: string | undefined;
+    fixture.componentInstance.acceptInvite.subscribe((id) => (accepted = id));
+    fixture.componentInstance.declineInvite.subscribe((id) => (declined = id));
+
+    el.querySelector('.invite__btn.accept').click();
+    el.querySelector('.invite__btn.decline').click();
+
+    expect(accepted).toBe('!i:hs');
+    expect(declined).toBe('!i:hs');
+  });
+
+  it('shows no Invites group when there are none', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.invite')).toBeNull();
   });
 
   it('emits logout when the logout button is clicked', () => {

@@ -2,23 +2,19 @@ import { Injectable, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   EventType,
-  Preset,
   RoomEvent,
   RoomStateEvent,
   RoomType,
-  Visibility,
   type MatrixClient,
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, map, switchMap } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
+import { roomEncryptionInitialState, visibilityOptions } from './room-create';
 
 /** State-event type that links a child room into a Space (`m.space.child`). */
 const SPACE_CHILD_EVENT = 'm.space.child';
-
-/** Megolm group-encryption algorithm enabled on every room we create (E2EE-first). */
-const MEGOLM_ALGORITHM = 'm.megolm.v1.aes-sha2';
 
 /** Fields a {@link SpacesService.createSpace} call accepts. */
 export interface CreateSpaceOptions {
@@ -172,7 +168,7 @@ export class SpacesService {
           creation_content: { type: RoomType.Space },
           name: options.name.trim(),
           ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
-          ...this.visibilityOpts(options.isPublic),
+          ...visibilityOptions(options.isPublic),
         }),
       ).pipe(map((res) => res.room_id));
     });
@@ -197,16 +193,10 @@ export class SpacesService {
         client.createRoom({
           name: options.name.trim(),
           ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
-          ...this.visibilityOpts(options.isPublic),
+          ...visibilityOptions(options.isPublic),
           // E2EE-first: enable Megolm before the first message so the room is never
-          // briefly unencrypted. `initial_state` content is loosely typed (`IContent`).
-          initial_state: [
-            {
-              type: EventType.RoomEncryption,
-              state_key: '',
-              content: { algorithm: MEGOLM_ALGORITHM },
-            },
-          ],
+          // briefly unencrypted.
+          initial_state: [roomEncryptionInitialState()],
         }),
       ).pipe(
         switchMap((res) => {
@@ -246,16 +236,6 @@ export class SpacesService {
     return defer(() => from(this.matrix.instance.leave(spaceId))).pipe(
       map(() => void 0),
     );
-  }
-
-  /** Shared visibility/preset for create calls: public-discoverable vs invite-only. */
-  private visibilityOpts(isPublic?: boolean): {
-    visibility: Visibility;
-    preset: Preset;
-  } {
-    return isPublic
-      ? { visibility: Visibility.Public, preset: Preset.PublicChat }
-      : { visibility: Visibility.Private, preset: Preset.PrivateChat };
   }
 
   private refresh(): void {

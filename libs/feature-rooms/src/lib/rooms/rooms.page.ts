@@ -13,6 +13,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
 import {
+  ActionSheetController,
   AlertController,
   IonSplitPane,
   IonMenu,
@@ -30,11 +31,13 @@ import { addIcons } from 'ionicons';
 import {
   chatbubblesOutline,
   lockClosed,
+  personAddOutline,
   settingsOutline,
 } from 'ionicons/icons';
 import {
   AuthService,
   CryptoService,
+  InvitesService,
   MatrixClientService,
   MediaService,
   NotificationService,
@@ -46,6 +49,7 @@ import {
   type RoomSummary,
 } from '@trinity/core';
 import { runWithBusy } from '@trinity/ui';
+import { UserPickerService } from '../user-picker/user-picker.service';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
@@ -85,9 +89,11 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);
   readonly spaces = inject(SpacesService);
+  readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
   readonly threads = inject(ThreadsService);
   private readonly threadPanel = inject(ThreadPanelService);
+  private readonly userPicker = inject(UserPickerService);
   private readonly media = inject(MediaService);
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
@@ -98,6 +104,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly menu = inject(MenuController);
   private readonly toast = inject(ToastController);
   private readonly alertCtrl = inject(AlertController);
+  private readonly actionSheetCtrl = inject(ActionSheetController);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly activeSpaceId = signal<string | null>(null);
@@ -185,7 +192,12 @@ export class RoomsPage implements OnInit, OnDestroy {
   });
 
   constructor() {
-    addIcons({ chatbubblesOutline, lockClosed, settingsOutline });
+    addIcons({
+      chatbubblesOutline,
+      lockClosed,
+      personAddOutline,
+      settingsOutline,
+    });
     // Space-management failures (create/leave) have no inline echo in the shell, so
     // surface each new error as a danger toast. runWithBusy captures the message
     // into spaceError; this reacts to that signal turning non-null.
@@ -200,6 +212,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.rooms.connect();
     this.spaces.connect();
+    this.invites.connect();
     this.crypto.connect();
     // Register for push once the authenticated shell is live (covers both fresh
     // login and a restored session). Best-effort + native-only; no-op elsewhere.
@@ -213,6 +226,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.timeline.close();
     this.threads.close();
     this.threads.closeThread();
+    this.invites.disconnect();
     this.media.releaseAll();
   }
 
@@ -327,6 +341,138 @@ export class RoomsPage implements OnInit, OnDestroy {
     }).subscribe(() => this.activeSpaceId.set(null));
   }
 
+  /** Home "+": choose between creating a room and starting a DM. */
+  async onNewChat(): Promise<void> {
+    const sheet = await this.actionSheetCtrl.create({
+      header: 'New message',
+      buttons: [
+        { text: 'Create a room', handler: () => void this.onCreateRoom() },
+        {
+          text: 'Start a direct message',
+          handler: () => void this.onStartDm(),
+        },
+        { text: 'Cancel', role: 'cancel' },
+      ],
+    });
+    await sheet.present();
+  }
+
+  /** Prompt for a name, create a standalone encrypted room, then select it. */
+  async onCreateRoom(): Promise<void> {
+    this.spaceError.set(null);
+    const alert = await this.alertCtrl.create({
+      header: 'Create a room',
+      message: 'New rooms are end-to-end encrypted.',
+      inputs: [
+        {
+          name: 'name',
+          placeholder: 'Room name',
+          attributes: { maxlength: 100 },
+        },
+      ],
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        {
+          text: 'Create',
+          handler: (data: { name?: string }) =>
+            this.applyCreateRoom(data.name ?? ''),
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  /** Pick a user (MXID or directory), open/reuse a DM with them, then select it. */
+  async onStartDm(): Promise<void> {
+    this.spaceError.set(null);
+    const userId = await this.userPicker.pick({
+      title: 'Start a direct message',
+      confirmLabel: 'Message',
+    });
+    if (!userId) {
+      return; // cancelled
+    }
+    runWithBusy(this.rooms.createDirectMessage(userId), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe((roomId) => this.onSelectRoom(roomId));
+  }
+
+  /** Open-room header: invite a user to the active room. */
+  async onInviteToRoom(): Promise<void> {
+    const roomId = this.activeRoomId();
+    if (roomId) {
+      await this.invitePeople(roomId, this.activeRoom()?.name ?? 'this room');
+    }
+  }
+
+  /** Space sidebar: invite a user to the active space. */
+  async onInviteToSpace(): Promise<void> {
+    const spaceId = this.activeSpaceId();
+    if (spaceId) {
+      await this.invitePeople(spaceId, this.activeSpaceName());
+    }
+  }
+
+  /** Accept a pending invite (join); select the joined room when it's not a space. */
+  onAcceptInvite(roomId: string): void {
+    this.spaceError.set(null);
+    const invite = this.invites
+      .pendingInvites()
+      .find((i) => i.roomId === roomId);
+    runWithBusy(this.invites.acceptInvite(roomId), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe(() => {
+      // A joined room/DM lives under Home; surface it by switching there and
+      // opening it. A joined space just appears in the rail (no auto-select).
+      if (invite && !invite.isSpace) {
+        this.activeSpaceId.set(null);
+        this.onSelectRoom(roomId);
+      }
+    });
+  }
+
+  /** Decline a pending invite (leave the invited room/space). */
+  onDeclineInvite(roomId: string): void {
+    this.spaceError.set(null);
+    runWithBusy(this.invites.declineInvite(roomId), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe();
+  }
+
+  private applyCreateRoom(name: string): void {
+    if (!name.trim()) {
+      return; // empty name — dismiss without creating
+    }
+    runWithBusy(this.rooms.createRoom({ name }), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe((roomId) => this.onSelectRoom(roomId));
+  }
+
+  /** Shared invite flow for a room or space: pick a user, invite, then toast. */
+  private async invitePeople(targetId: string, label: string): Promise<void> {
+    this.spaceError.set(null);
+    const userId = await this.userPicker.pick({
+      title: `Invite to ${label}`,
+      confirmLabel: 'Invite',
+    });
+    if (!userId) {
+      return; // cancelled
+    }
+    runWithBusy(this.rooms.inviteUser(targetId, userId), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe(() => void this.showSuccess(`Invitation sent to ${userId}.`));
+  }
+
   onSelectRoom(id: string): void {
     // Drop the previous room's resolved media URLs before switching timelines.
     this.media.releaseAll();
@@ -426,6 +572,16 @@ export class RoomsPage implements OnInit, OnDestroy {
       message,
       duration: 4000,
       color: 'danger',
+      position: 'bottom',
+    });
+    await toast.present();
+  }
+
+  private async showSuccess(message: string): Promise<void> {
+    const toast = await this.toast.create({
+      message,
+      duration: 3000,
+      color: 'success',
       position: 'bottom',
     });
     await toast.present();

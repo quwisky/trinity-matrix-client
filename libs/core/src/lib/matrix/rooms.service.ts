@@ -1,13 +1,38 @@
 import { Injectable, inject, signal } from '@angular/core';
 import {
   ClientEvent,
+  EventType,
   NotificationCountType,
+  Preset,
   RoomEvent,
   type MatrixClient,
   type Room,
   type RoomMember,
 } from 'matrix-js-sdk';
+import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
+import {
+  isValidUserId,
+  roomEncryptionInitialState,
+  visibilityOptions,
+} from './room-create';
+
+/** Fields a {@link RoomsService.createRoom} call accepts. */
+export interface CreateRoomOptions {
+  name: string;
+  topic?: string;
+  /** Public (discoverable + publicly joinable) vs the default invite-only room. */
+  isPublic?: boolean;
+}
+
+/** A user-directory hit shown in the invite / DM picker. */
+export interface UserSearchResult {
+  userId: string;
+  /** Display name, falling back to the user id when the server has none. */
+  displayName: string;
+  /** Raw `mxc://` avatar, or null when unset; the UI resolves it (authed). */
+  avatarMxc: string | null;
+}
 
 /** A joinable room shown in the channel sidebar. */
 export interface RoomSummary {
@@ -119,6 +144,152 @@ export class RoomsService {
       .getJoinedMembers()
       .map((m) => this.toMember(m))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Create a standalone (not space-linked) E2EE room and resolve its room id. Like
+   * {@link SpacesService.createRoomInSpace} the room carries `m.room.encryption`
+   * (Megolm) in its `initial_state` so it is encrypted from the first event, but it
+   * is not linked into any space. It surfaces in {@link rooms} once the client syncs
+   * the new room (the existing listeners pick it up). Cold: runs on subscribe.
+   */
+  createRoom(options: CreateRoomOptions): Observable<string> {
+    return defer(() => {
+      const client = this.matrix.instance;
+      return from(
+        client.createRoom({
+          name: options.name.trim(),
+          ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
+          ...visibilityOptions(options.isPublic),
+          initial_state: [roomEncryptionInitialState()],
+        }),
+      ).pipe(map((res) => res.room_id));
+    });
+  }
+
+  /**
+   * Open (or reuse) a 1:1 direct message with `userId` and resolve its room id.
+   *
+   * If `m.direct` account data already records a DM with this user that we have not
+   * left, that room is reused (resolving immediately) so repeated "message" actions
+   * don't spawn duplicate DMs. Otherwise a new invite-only, encrypted room is created
+   * (`is_direct`, `trusted_private_chat` preset, the user invited, Megolm enabled)
+   * and registered in the `m.direct` map so both ends — and a future reuse — treat it
+   * as a DM. Rejects when `userId` isn't a valid MXID. Cold: runs on subscribe.
+   */
+  createDirectMessage(userId: string): Observable<string> {
+    return defer(() => {
+      if (!isValidUserId(userId)) {
+        return throwError(() => new Error(`Invalid user id: ${userId}`));
+      }
+      const client = this.matrix.instance;
+      const existing = this.existingDirectRoom(client, userId);
+      if (existing) {
+        return of(existing);
+      }
+      return from(
+        client.createRoom({
+          is_direct: true,
+          invite: [userId],
+          preset: Preset.TrustedPrivateChat,
+          initial_state: [roomEncryptionInitialState()],
+        }),
+      ).pipe(
+        switchMap((res) =>
+          this.addToDirectMap(client, userId, res.room_id).pipe(
+            map(() => res.room_id),
+          ),
+        ),
+      );
+    });
+  }
+
+  /**
+   * Invite `userId` to `roomId` — works for both rooms and spaces (a space is just a
+   * room). Rejects when `userId` isn't a valid MXID. Cold: runs on subscribe.
+   */
+  inviteUser(roomId: string, userId: string): Observable<void> {
+    return defer(() => {
+      if (!isValidUserId(userId)) {
+        return throwError(() => new Error(`Invalid user id: ${userId}`));
+      }
+      return from(this.matrix.instance.invite(roomId, userId)).pipe(
+        map(() => void 0),
+      );
+    });
+  }
+
+  /**
+   * Search the homeserver user directory for an invite / DM picker. An empty term
+   * resolves to `[]` without a request. Cold: runs on subscribe.
+   */
+  searchUsers(term: string): Observable<UserSearchResult[]> {
+    const trimmed = term.trim();
+    if (!trimmed) {
+      return of([]);
+    }
+    return defer(() =>
+      from(this.matrix.instance.searchUserDirectory({ term: trimmed })),
+    ).pipe(
+      map((res) =>
+        res.results.map((u) => ({
+          userId: u.user_id,
+          displayName: u.display_name || u.user_id,
+          avatarMxc: u.avatar_url ?? null,
+        })),
+      ),
+    );
+  }
+
+  /**
+   * The id of an existing, not-left DM room with `userId` from the `m.direct`
+   * account-data map, or null. A joined room is preferred; an outstanding invite we
+   * sent (membership `invite`) is also reused so we don't create a second DM while
+   * the first is pending. Rooms we have left (or that no longer exist) are skipped.
+   */
+  private existingDirectRoom(
+    client: MatrixClient,
+    userId: string,
+  ): string | null {
+    const candidates = this.directMap(client)[userId] ?? [];
+    let firstUsable: string | null = null;
+    for (const roomId of candidates) {
+      const room = client.getRoom(roomId);
+      const membership = room?.getMyMembership();
+      if (membership === 'join') {
+        return roomId; // a live DM — prefer it
+      }
+      if (!firstUsable && membership === 'invite') {
+        firstUsable = roomId; // pending invite we sent — usable fallback
+      }
+    }
+    return firstUsable;
+  }
+
+  /** Merge `roomId` into `m.direct[userId]` and persist the updated map. */
+  private addToDirectMap(
+    client: MatrixClient,
+    userId: string,
+    roomId: string,
+  ): Observable<void> {
+    const current = this.directMap(client);
+    const forUser = current[userId] ?? [];
+    if (forUser.includes(roomId)) {
+      return of(void 0); // already recorded — nothing to write
+    }
+    const next = { ...current, [userId]: [...forUser, roomId] };
+    return from(client.setAccountData(EventType.Direct, next)).pipe(
+      map(() => void 0),
+    );
+  }
+
+  /** Current `m.direct` map (`{ userId: roomId[] }`), or an empty map when unset. */
+  private directMap(client: MatrixClient): Record<string, string[]> {
+    return (
+      client
+        .getAccountData(EventType.Direct)
+        ?.getContent<Record<string, string[]>>() ?? {}
+    );
   }
 
   private refresh(): void {
