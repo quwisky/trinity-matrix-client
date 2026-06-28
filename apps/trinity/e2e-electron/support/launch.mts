@@ -1,4 +1,6 @@
+import { mkdtempSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron, type ElectronApplication } from 'playwright';
@@ -23,6 +25,10 @@ function electronExecutable(): string {
 
 /** Launch the built Trinity desktop app for an e2e run. */
 export function launchApp(): Promise<ElectronApplication> {
+  // Fresh, isolated profile per launch so the app always starts unauthenticated
+  // (the login screen) — without this the suite inherits whatever session was last
+  // persisted in Electron's default userDataDir and boots straight to /rooms.
+  const userDataDir = mkdtempSync(path.join(tmpdir(), 'trinity-e2e-'));
   return electron.launch({
     args: [
       mainEntry,
@@ -30,6 +36,7 @@ export function launchApp(): Promise<ElectronApplication> {
       // This is the Chromium zygote sandbox flag, NOT the app's webPreferences
       // sandbox (which stays true) — it only affects the test launch.
       '--no-sandbox',
+      `--user-data-dir=${userDataDir}`,
     ],
     executablePath: electronExecutable(),
   });
