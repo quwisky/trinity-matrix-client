@@ -28,7 +28,16 @@
     "electron:package:mac": "pnpm run electron:build && pnpm -C electron run package:mac",
     "electron:package:linux": "pnpm run electron:build && pnpm -C electron run package:linux",
     "electron:package:win": "pnpm run electron:build && pnpm -C electron run package:win",
-    "electron:package:all": "pnpm run electron:build && pnpm -C electron run package:all"
+    "electron:package:all": "pnpm run electron:build && pnpm -C electron run package:all",
+    "android:sync": "pnpm run build && pnpm exec cap sync android",
+    "android:open": "pnpm exec cap open android",
+    "android:run": "pnpm run build && pnpm exec cap run android",
+    "android:build": "pnpm run android:sync && cd android && ./gradlew assembleDebug",
+    "android:build:release": "pnpm run android:sync && cd android && ./gradlew bundleRelease",
+    "ios:sync": "pnpm run build && pnpm exec cap sync ios",
+    "ios:open": "pnpm exec cap open ios",
+    "ios:run": "pnpm run build && pnpm exec cap run ios",
+    "ios:build": "pnpm run ios:sync && pnpm exec cap build ios --scheme App"
   },
   "private": true,
   "packageManager": "pnpm@10.26.2",

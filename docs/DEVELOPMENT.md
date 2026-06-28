@@ -58,19 +58,38 @@ pnpm start         # nx serve trinity → http://localhost:4200, hot reload
 
 ## Running on device / simulator
 
-```bash
-export ANDROID_HOME="$HOME/Library/Android/sdk"   # Android only
-pnpm build && pnpm exec cap sync
+Each `pnpm` script below builds the web app (`www/`), `cap sync`s it into the native
+project, then runs/opens/builds. `export ANDROID_HOME="$HOME/Library/Android/sdk"` first
+for Android.
 
-pnpm exec cap run ios          # choose a simulator
-pnpm exec cap run android      # choose an emulator/device
-# or open the native IDE:
-pnpm exec cap open ios         # Xcode
-pnpm exec cap open android     # Android Studio
+```bash
+pnpm android:run      # build → sync → run on an emulator/device (Android SDK)
+pnpm android:open     # open Android Studio
+pnpm android:sync     # build → cap sync android only
+
+pnpm ios:run          # build → sync → run on a simulator (macOS + Xcode)
+pnpm ios:open         # open Xcode
+pnpm ios:sync         # build → cap sync ios only
 ```
 
-After **every** web-code change, re-run `pnpm build && pnpm exec cap sync` (or the
-faster `pnpm exec cap copy` when only web assets changed) to push it into the shells.
+### Build artifacts
+
+```bash
+pnpm android:build            # debug APK → android/app/build/outputs/apk/debug/
+pnpm android:build:release    # release AAB (needs a signing keystore — see below)
+pnpm ios:build                # cap build ios --scheme App (macOS + Xcode + signing)
+```
+
+- **Android** needs the Android SDK; `android:build` (gradlew `assembleDebug`) is
+  debug-signed and works out of the box. `android:build:release` (`bundleRelease`)
+  needs a release keystore wired into `android/` signing config (`keystore.properties`
+  / Gradle signingConfigs) — not committed.
+- **iOS** builds **only on macOS with Xcode** and a signing identity (Apple Developer
+  account / provisioning); `ios:build` uses `cap build ios`. For an unsigned simulator
+  build, use `ios:open` and build/run from Xcode.
+
+After **every** web-code change, re-run a `*:sync` (or `pnpm exec cap copy` when only web
+assets changed) to push it into the shells.
 
 ## Nx tasks
 
