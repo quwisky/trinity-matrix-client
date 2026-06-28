@@ -31,6 +31,7 @@ import {
   CryptoService,
   MatrixClientService,
   MediaService,
+  NotificationService,
   PushService,
   RoomsService,
   TimelineService,
@@ -77,6 +78,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
   private readonly push = inject(PushService);
+  private readonly notifications = inject(NotificationService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly menu = inject(MenuController);
@@ -157,6 +159,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     // Register for push once the authenticated shell is live (covers both fresh
     // login and a restored session). Best-effort + native-only; no-op elsewhere.
     this.push.register().subscribe({ error: () => undefined });
+    // Desktop/web OS notifications from live sync (no-op on native mobile + web
+    // without permission). Listener dies with the client on logout/reset.
+    this.notifications.connect();
   }
 
   ngOnDestroy(): void {
