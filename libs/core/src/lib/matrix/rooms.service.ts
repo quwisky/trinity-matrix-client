@@ -282,15 +282,22 @@ export class RoomsService {
     userId: string,
     roomId: string,
   ): Observable<void> {
-    const current = this.directMap(client);
-    const forUser = current[userId] ?? [];
-    if (forUser.includes(roomId)) {
-      return of(void 0); // already recorded — nothing to write
-    }
-    const next = { ...current, [userId]: [...forUser, roomId] };
-    return from(client.setAccountData(EventType.Direct, next)).pipe(
-      map(() => void 0),
-    );
+    // `setAccountData` does a *full replace* of m.direct, so merge against the
+    // freshest map, re-read at write time (inside the defer, on subscribe) — not
+    // a snapshot taken before `createRoom`. Otherwise an m.direct update that
+    // arrived during the create round-trip (another device / a concurrent DM)
+    // would be clobbered by our PUT.
+    return defer(() => {
+      const current = this.directMap(client);
+      const forUser = current[userId] ?? [];
+      if (forUser.includes(roomId)) {
+        return of(void 0); // already recorded — nothing to write
+      }
+      const next = { ...current, [userId]: [...forUser, roomId] };
+      return from(client.setAccountData(EventType.Direct, next)).pipe(
+        map(() => void 0),
+      );
+    });
   }
 
   /**

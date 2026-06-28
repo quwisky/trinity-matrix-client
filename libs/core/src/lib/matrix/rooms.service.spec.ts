@@ -312,6 +312,47 @@ describe('RoomsService writes', () => {
     });
   });
 
+  it('createDirectMessage merges against m.direct re-read after createRoom (no lost update)', async () => {
+    // m.direct starts empty; a concurrent device records a DM with someone else
+    // *while* createRoom is in flight. Because the write re-reads the freshest
+    // map (not a pre-createRoom snapshot), that entry must survive the PUT.
+    const directMap: Record<string, string[]> = {};
+    const setAccountData = vi.fn().mockResolvedValue({});
+    const createRoom = vi.fn().mockImplementation(async () => {
+      directMap['@carol:hs'] = ['!carol-dm:hs']; // arrives mid-flight via sync
+      return { room_id: '!new:hs' };
+    });
+    const client = {
+      getRooms: () => [],
+      getRoom: () => null,
+      getAccountData: (type: string) =>
+        type === 'm.direct' ? { getContent: () => directMap } : undefined,
+      createRoom,
+      setAccountData,
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+
+    await firstValueFrom(svc.createDirectMessage('@bob:hs'));
+
+    // The PUT keeps the concurrent entry and adds the new DM — nothing clobbered.
+    expect(setAccountData).toHaveBeenCalledWith('m.direct', {
+      '@carol:hs': ['!carol-dm:hs'],
+      '@bob:hs': ['!new:hs'],
+    });
+  });
+
   it('createDirectMessage rejects an invalid user id without creating', async () => {
     const { svc, createRoom } = setupWrites();
 
