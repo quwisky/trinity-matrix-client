@@ -258,11 +258,17 @@ const MATRIX_ALLOWED_ATTR = [
 // are stripped below so sender HTML can't smuggle a tracking pixel.
 const LOCAL_IMG_SCHEME = /^(?:mxc|blob|data):/i;
 
+// The only `class` tokens Matrix sanctions: `language-*` (syntax highlighting on
+// <code>) and the spoiler class. `class` is otherwise allowed globally, so a
+// sender could borrow app/Ionic classes to spoof UI chrome — restrict to these.
+const ALLOWED_CLASS = /^(?:language-[\w-]+|mx-spoiler)$/;
+
 // A sender's `formatted_body` can embed `<img src="https://attacker/x.gif">`,
 // which the browser would fetch on render — leaking the viewer's IP and acting
 // as a read receipt. Inline mxc rendering isn't wired yet, so strip the `src`
 // of any non-local image: this blocks remote auto-loading outright while
-// leaving mxc/blob/data sources intact for when inline rendering lands. Hook is
+// leaving mxc/blob/data sources intact for when inline rendering lands. The hook
+// also filters the `class` attribute to the Matrix-sanctioned allowlist. Hook is
 // registered once at module load; it only affects `sanitizeMatrixHtml` (the
 // composer path uses Angular's DomSanitizer, not DOMPurify).
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
@@ -270,6 +276,16 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     const src = node.getAttribute('src') ?? '';
     if (!LOCAL_IMG_SCHEME.test(src)) {
       node.removeAttribute('src');
+    }
+  }
+  if (node.hasAttribute('class')) {
+    const kept = (node.getAttribute('class') ?? '')
+      .split(/\s+/)
+      .filter((token) => ALLOWED_CLASS.test(token));
+    if (kept.length > 0) {
+      node.setAttribute('class', kept.join(' '));
+    } else {
+      node.removeAttribute('class');
     }
   }
 });

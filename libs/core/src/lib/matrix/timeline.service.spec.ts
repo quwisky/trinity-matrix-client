@@ -245,6 +245,26 @@ describe('TimelineService', () => {
     expect(html).toContain('<strong>text</strong>');
   });
 
+  it('restricts the class attribute to the Matrix-sanctioned allowlist', () => {
+    const svc = setup([
+      fakeEvent({
+        id: '$cls',
+        sender: '@a:hs',
+        body: 'code',
+        format: 'org.matrix.custom.html',
+        formattedBody:
+          '<pre><code class="language-python evil-toolbar">x = 1</code></pre>' +
+          '<span class="ion-page header-bar">spoof</span>',
+      }),
+    ]);
+
+    const html = svc.messages()[0].html ?? '';
+    expect(html).toContain('language-python'); // sanctioned class survives
+    expect(html).not.toContain('evil-toolbar'); // sibling token dropped
+    expect(html).not.toContain('ion-page'); // borrowed app/Ionic class dropped
+    expect(html).not.toContain('header-bar');
+  });
+
   it('neutralizes javascript: links and strips the new-tab target', () => {
     const svc = setup([
       fakeEvent({
