@@ -149,6 +149,37 @@ export class MessageComposerComponent {
     input.value = ''; // let the same file be picked again
   }
 
+  /**
+   * Paste an image from the clipboard → send it as an attachment (Discord-style),
+   * via the same media path as the picker. Pasted images land in `files` on most
+   * engines; some (older WebKit) expose them only as `items` of kind `file`. Text
+   * paste is left untouched.
+   */
+  onPaste(event: ClipboardEvent): void {
+    // One upload at a time (matches the disabled attach button); let text paste through.
+    if (this.uploadProgress() !== null) {
+      return;
+    }
+    const data = event.clipboardData;
+    if (!data) {
+      return;
+    }
+    let image: File | null =
+      Array.from(data.files).find((f) => f.type.startsWith('image/')) ?? null;
+    if (!image) {
+      for (const item of Array.from(data.items)) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          image = item.getAsFile();
+          break;
+        }
+      }
+    }
+    if (image) {
+      event.preventDefault(); // don't also drop the raw image into the textarea
+      this.submitMedia.emit(image);
+    }
+  }
+
   onEscape(): void {
     if (this.pickerOpen()) {
       this.pickerOpen.set(false);

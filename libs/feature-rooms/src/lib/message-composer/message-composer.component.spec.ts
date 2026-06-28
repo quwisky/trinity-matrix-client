@@ -250,4 +250,89 @@ describe('MessageComposerComponent', () => {
       fixture.nativeElement.querySelector('trn-emoji-picker'),
     ).not.toBeNull();
   });
+
+  function pasteEvent(opts: { files?: File[]; items?: unknown[] }): {
+    event: ClipboardEvent;
+    preventDefault: ReturnType<typeof vi.fn>;
+  } {
+    const preventDefault = vi.fn();
+    const event = {
+      clipboardData: { files: opts.files ?? [], items: opts.items ?? [] },
+      preventDefault,
+    } as unknown as ClipboardEvent;
+    return { event, preventDefault };
+  }
+
+  it('sends a pasted image as an attachment and prevents the default paste', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let emitted: File | undefined;
+    cmp.submitMedia.subscribe((f) => (emitted = f));
+    const file = new File([new Uint8Array([1])], 'paste.png', {
+      type: 'image/png',
+    });
+    const { event, preventDefault } = pasteEvent({ files: [file] });
+
+    cmp.onPaste(event);
+
+    expect(emitted).toBe(file);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends a pasted image exposed only via clipboard items (WebKit fallback)', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let emitted: File | undefined;
+    cmp.submitMedia.subscribe((f) => (emitted = f));
+    const file = new File([new Uint8Array([1])], 'paste.png', {
+      type: 'image/png',
+    });
+    const { event } = pasteEvent({
+      items: [{ kind: 'file', type: 'image/png', getAsFile: () => file }],
+    });
+
+    cmp.onPaste(event);
+
+    expect(emitted).toBe(file);
+  });
+
+  it('lets a non-image (text) paste through untouched', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let count = 0;
+    cmp.submitMedia.subscribe(() => count++);
+    const { event, preventDefault } = pasteEvent({
+      items: [{ kind: 'string', type: 'text/plain', getAsFile: () => null }],
+    });
+
+    cmp.onPaste(event);
+
+    expect(count).toBe(0);
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('ignores a pasted image while an upload is already in flight', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('uploadProgress', 0.5);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let count = 0;
+    cmp.submitMedia.subscribe(() => count++);
+    const file = new File([new Uint8Array([1])], 'paste.png', {
+      type: 'image/png',
+    });
+    const { event, preventDefault } = pasteEvent({ files: [file] });
+
+    cmp.onPaste(event);
+
+    expect(count).toBe(0);
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
 });
