@@ -259,20 +259,25 @@ describe('ThreadsService', () => {
     expect(svc.openThreadRootId()).toBe('$root');
   });
 
-  it('eagerly creates a thread for a brand-new one so the first reply surfaces', () => {
+  it('creates the thread only on the first send, not on open, so the reply surfaces', async () => {
     // "Reply in thread" on a plain message: no thread exists yet, but the root does.
     const root = fakeEvent({ id: '$root', sender: '@me:hs', body: 'root msg' });
     const { svc, room } = setup([], [], {}, [root]);
     svc.openThread('!r:hs', '$root');
 
-    // The thread is created + attached up front; the root shows immediately.
+    // Opening alone must NOT create a thread — else an empty 0-reply thread lingers
+    // if the user never sends. The view is just the root.
+    expect(room.getThread('$root')).toBeNull();
+    expect(room.getThreads()).toHaveLength(0);
+    expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root']);
+
+    // The first send creates + attaches the thread (matrix-js-sdk never forms one
+    // from the sender's own first reply alone); the reply then surfaces live.
+    await firstValueFrom(svc.sendToThread('first reply'));
     const thread = room.getThread('$root');
     expect(thread).not.toBeNull();
     if (!thread) return;
-    expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root']);
 
-    // The first reply lands in that created thread → surfaces via the live listener.
-    // (matrix-js-sdk never forms a thread from the sender's own first reply alone.)
     const reply = fakeEvent({
       id: '$r1',
       sender: '@me:hs',
@@ -280,7 +285,6 @@ describe('ThreadsService', () => {
     });
     thread.events.push(reply);
     thread.emit(ThreadEvent.NewReply);
-
     expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root', '$r1']);
   });
 

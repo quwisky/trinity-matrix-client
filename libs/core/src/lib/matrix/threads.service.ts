@@ -249,20 +249,13 @@ export class ThreadsService {
     this.threadRoom = room;
     this.threadRoomId = roomId;
     this._openThreadRootId.set(rootEventId);
-    // `getThread` returns the existing Thread when one is already aggregated (e.g.
-    // opening from a "N replies" indicator). When it's absent — opening a *new*
-    // thread via "Reply in thread" on a plain message — eagerly create the Thread
-    // so the first reply has a home. matrix-js-sdk does NOT form a thread from the
-    // sender's own first reply: the echo is recognised as threaded (so it's kept
-    // out of the main timeline) but no `Thread` is created and `getThread`/
-    // `getThreads` stay empty, so the reply would silently vanish. Creating it up
-    // front (verified against matrix-js-sdk 41.8: `getThread` then returns it and
-    // `sendToThread`'s echo lands inside) means the reply surfaces immediately via
-    // the live/reply listeners; a later sync updates this same registered Thread.
-    const rootEvent = room.findEventById(rootEventId);
-    const thread =
-      room.getThread(rootEventId) ??
-      (rootEvent ? room.createThread(rootEventId, rootEvent, [], false) : null);
+    // Attach an already-aggregated Thread (e.g. opening from a "N replies"
+    // indicator). When none exists — opening a *new* thread via "Reply in thread"
+    // on a plain message — leave the view root-only and do NOT create a Thread yet:
+    // creating one on open would leave an empty 0-reply thread if the user never
+    // sends. The Thread is created lazily on the first send (see `ensureThread`),
+    // and `ThreadEvent.New` still attaches it if a remote reply forms it meanwhile.
+    const thread = room.getThread(rootEventId);
     if (thread) {
       this.attachThread(thread);
     }
@@ -360,15 +353,45 @@ export class ThreadsService {
    * 'm.in_reply_to': { event_id: <latest reply ?? root> } }`) and route the echo
    * into the thread timeline. Encrypted rooms reuse the SDK's E2EE send path.
    */
+  /**
+   * Create + attach the Thread just before the first reply is sent, if one doesn't
+   * exist yet. matrix-js-sdk doesn't form a Thread from the sender's own first reply
+   * — the echo is treated as threaded (so it's kept out of the main timeline) but no
+   * Thread is created, so the reply would vanish. Creating it here, only when the user
+   * actually sends, gives the reply a home without leaving an empty 0-reply thread
+   * when a thread is merely opened then abandoned. No-op once attached/aggregated.
+   */
+  private ensureThread(room: Room, rootEventId: string): void {
+    if (this.thread) {
+      return;
+    }
+    const existing = room.getThread(rootEventId);
+    if (existing) {
+      this.attachThread(existing);
+      return;
+    }
+    const rootEvent = room.findEventById(rootEventId);
+    if (!rootEvent) {
+      return;
+    }
+    const created = room.createThread(rootEventId, rootEvent, [], false);
+    // createThread may synchronously emit ThreadEvent.New, which `onThreadCreated`
+    // would already have attached; guard so we don't attach (and bind listeners) twice.
+    if (!this.thread) {
+      this.attachThread(created);
+    }
+  }
+
   sendToThread(body: string): Observable<void> {
     const ctx = this.threadContext();
     const text = body.trim();
     if (!ctx || !text) {
       return of(void 0);
     }
-    const { client, roomId, threadId } = ctx;
+    const { client, room, roomId, threadId } = ctx;
     return defer(() => {
       const md = renderMarkdown(this.sanitizer, text);
+      this.ensureThread(room, threadId);
       return from(
         md.formatted
           ? client.sendHtmlMessage(roomId, threadId, text, md.html)
@@ -394,6 +417,7 @@ export class ThreadsService {
     const encrypt = room.hasEncryptionStateEvent();
     return defer(() => this.mediaSvc.uploadMedia(file, encrypt, progress)).pipe(
       switchMap((media) => {
+        this.ensureThread(room, threadId);
         const content = {
           msgtype: media.msgtype,
           body: media.body,
