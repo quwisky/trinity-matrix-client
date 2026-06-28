@@ -7,11 +7,13 @@ import {
   CryptoService,
   MatrixClientService,
   RoomsService,
+  ThreadsService,
   TimelineService,
 } from '@trinity/core';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
+import { ThreadPanelService } from '../thread/thread-panel.service';
 
 // Instantiate the page through DI without rendering (the shell template pulls in
 // many child components); we only exercise the action handlers' error feedback.
@@ -51,6 +53,16 @@ describe('RoomsPage action error feedback', () => {
           provide: CryptoService,
           useValue: { connect: vi.fn(), status: signal('ready') },
         },
+        {
+          provide: ThreadsService,
+          useValue: {
+            open: vi.fn(),
+            close: vi.fn(),
+            closeThread: vi.fn(),
+            summaries: signal({}),
+          },
+        },
+        { provide: ThreadPanelService, useValue: { open: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },

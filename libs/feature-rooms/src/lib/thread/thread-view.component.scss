@@ -1,0 +1,13 @@
+ion-content {
+  --background: var(--trinity-chat);
+}
+
+.thread {
+  padding: 16px 16px 8px;
+}
+
+.thread__empty {
+  color: var(--trinity-text-muted);
+  text-align: center;
+  padding: 24px;
+}

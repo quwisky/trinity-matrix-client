@@ -61,11 +61,13 @@
       @if (activeRoom(); as room) {
         <trn-message-list
           [messages]="timeline.messages()"
+          [threadSummaries]="threads.summaries()"
           [loadingOlder]="timeline.loadingOlder()"
           [canLoadOlder]="timeline.canLoadOlder()"
           [roomName]="room.name"
           [uploadProgress]="uploadProgress()"
           (loadOlder)="loadOlder()"
+          (openThread)="onOpenThread($event)"
           (send)="onSend($event)"
           (sendMedia)="onSendMedia($event)"
           (retry)="timeline.retry($event)"

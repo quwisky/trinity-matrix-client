@@ -1,0 +1,336 @@
+@use '../styles/mixins' as *;
+
+// Transparent wrapper: the row participates in the list's layout as if `.msg`
+// were a direct child (so the full-width hover bleed and padding are unchanged).
+:host {
+  display: contents;
+}
+
+.msg {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  // Bleed into the scroll's horizontal padding so the hover highlight spans
+  // the full width (Discord-style); content position is unchanged.
+  padding: 2px 16px;
+  margin: 0 -16px;
+
+  &:hover {
+    background: var(--trinity-hover);
+  }
+}
+
+.msg--cont {
+  padding-top: 0;
+}
+
+.msg__edited {
+  margin-left: 4px;
+  color: var(--trinity-text-muted);
+  font-size: 10px;
+}
+
+.msg__toolbar {
+  position: absolute;
+  top: -16px;
+  right: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+.msg:hover .msg__toolbar,
+.msg:focus-within .msg__toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+// Touch devices have no hover, so the actions would be unreachable — keep them
+// visible there. (Keyboard users still reveal them via :focus-within above.)
+@media (hover: none) {
+  .msg__toolbar {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.msg__avatar {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.msg__gutter {
+  flex: 0 0 40px;
+  align-self: center;
+  text-align: right;
+  font-size: 10px;
+  color: var(--trinity-text-muted);
+  opacity: 0;
+}
+
+.msg--cont:hover .msg__gutter {
+  opacity: 1;
+}
+
+.msg__body {
+  min-width: 0;
+  flex: 1;
+}
+
+// A full-width reply preview sits on its own line above the message, indented
+// to align with the body, with a Discord-style connector curving to the avatar.
+.msg__reply {
+  position: relative;
+
+  // Full row minus the 52px indent, so the margin-box stays within the row
+  // (otherwise a long body overflows and adds a horizontal scrollbar).
+  flex: 0 0 calc(100% - 52px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0 0 2px 52px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--trinity-text-muted);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    bottom: -8px;
+    left: -32px;
+    width: 28px;
+    border-top: 2px solid var(--trinity-text-muted);
+    border-left: 2px solid var(--trinity-text-muted);
+    border-top-left-radius: 8px;
+  }
+
+  &:hover .msg__reply-author,
+  &:hover .msg__reply-body {
+    color: var(--trinity-text);
+  }
+}
+
+.msg__reply-avatar {
+  flex: 0 0 auto;
+}
+
+.msg__reply-author {
+  flex: 0 0 auto;
+  color: var(--trinity-text-bright);
+  font-weight: 500;
+}
+
+.msg__reply-body {
+  @include ellipsis;
+
+  flex: 1;
+  min-width: 0;
+}
+
+.msg__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.msg__author {
+  font-weight: 600;
+  color: var(--trinity-text-bright);
+}
+
+.msg__time {
+  font-size: 11px;
+  color: var(--trinity-text-muted);
+}
+
+.msg__text {
+  margin: 2px 0 0;
+  color: var(--trinity-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg__text--cont {
+  margin: 0;
+  flex: 1;
+}
+
+// Decryption-failure / redacted fallback: a distinct bordered container so the
+// state is perceivable, not just italic-muted text that blends into the timeline.
+.msg--failed .msg__text {
+  display: inline-block;
+  padding: 8px 12px;
+  border-left: 3px solid var(--trinity-accent);
+  border-radius: 4px;
+  background: var(--trinity-sidebar);
+  color: var(--trinity-text);
+  font-style: italic;
+}
+
+// Rendered markdown (formatted_body) container.
+.msg__text--html {
+  white-space: normal;
+}
+
+// Compact "💬 N replies · last reply <time>" affordance under a thread root,
+// indented to align with the message body (avatar 40 + gap 12).
+.msg__thread {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0 52px;
+  padding: 4px 10px;
+  border: 1px solid var(--trinity-divider);
+  border-radius: 14px;
+  background: var(--trinity-sidebar);
+  color: var(--trinity-accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--trinity-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--trinity-accent);
+    outline-offset: 2px;
+  }
+}
+
+.msg__thread-icon {
+  font-size: 15px;
+}
+
+.msg__thread-sep {
+  color: var(--trinity-text-muted);
+}
+
+.msg__thread-time {
+  color: var(--trinity-text-muted);
+  font-weight: 400;
+}
+
+// `[innerHTML]` content isn't tagged by Angular's emulated encapsulation, so the
+// rendered markdown elements are styled through `::ng-deep`, scoped to the host.
+:host ::ng-deep .msg__text--html {
+  p {
+    margin: 0 0 4px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  a {
+    color: var(--trinity-accent);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  code {
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--trinity-rail);
+    font-family: ui-monospace, monospace;
+    font-size: 85%;
+  }
+
+  pre {
+    margin: 4px 0;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: var(--trinity-rail);
+    overflow-x: auto;
+
+    code {
+      padding: 0;
+      background: none;
+      font-size: 100%;
+    }
+  }
+
+  blockquote {
+    margin: 4px 0;
+    padding-left: 10px;
+    border-left: 3px solid var(--trinity-divider);
+    color: var(--trinity-text-muted);
+  }
+
+  ul,
+  ol {
+    margin: 4px 0;
+    padding-left: 22px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 8px 0 4px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  h1 {
+    font-size: 1.4em;
+  }
+
+  h2 {
+    font-size: 1.25em;
+  }
+
+  h3 {
+    font-size: 1.1em;
+  }
+
+  hr {
+    margin: 8px 0;
+    border: none;
+    border-top: 1px solid var(--trinity-divider);
+  }
+
+  img {
+    max-width: 100%;
+    border-radius: 4px;
+  }
+}
+
+// Local-echo send states.
+.msg--sending {
+  opacity: 0.55;
+}
+
+.msg--sendfailed {
+  flex-wrap: wrap;
+}
+
+.msg__retry {
+  flex-basis: 100%;
+  margin-left: 52px; // align under the message body (avatar 40 + gap 12)
+  padding: 0;
+  border: none;
+  background: none;
+  color: #ed4245;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

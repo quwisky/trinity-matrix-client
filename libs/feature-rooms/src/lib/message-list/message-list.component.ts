@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -12,15 +11,12 @@ import {
   viewChild,
 } from '@angular/core';
 import { AlertController } from '@ionic/angular/standalone';
-import { AvatarComponent, MessageToolbarComponent } from '@trinity/ui';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
-import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
-import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
-import type { MessageView } from '@trinity/core';
-
-interface MessageRow extends MessageView {
-  showHeader: boolean;
-}
+import {
+  MessageRowComponent,
+  type MessageRow,
+} from '../message-row/message-row.component';
+import type { MessageView, ThreadSummary } from '@trinity/core';
 
 /** Trigger older-history loading when the scroll top gets within this many px. */
 const AUTO_LOAD_THRESHOLD_PX = 150;
@@ -36,25 +32,22 @@ const MAX_BACKFILL_ROUNDS = 20;
 @Component({
   selector: 'trn-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    AvatarComponent,
-    DatePipe,
-    MediaAttachmentComponent,
-    MessageComposerComponent,
-    MessageReactionsComponent,
-    MessageToolbarComponent,
-  ],
+  imports: [MessageComposerComponent, MessageRowComponent],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
 })
 export class MessageListComponent {
   readonly messages = input<MessageView[]>([]);
+  /** Thread summaries keyed by root event id, for the per-row thread indicator. */
+  readonly threadSummaries = input<Record<string, ThreadSummary>>({});
   readonly loadingOlder = input(false);
   readonly canLoadOlder = input(false);
   readonly roomName = input('');
   /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
   readonly uploadProgress = input<number | null>(null);
   readonly loadOlder = output<void>();
+  /** Open the thread rooted at this event id (raised by a row's indicator). */
+  readonly openThread = output<string>();
   readonly send = output<string>();
   readonly sendMedia = output<File>();
   readonly retry = output<string>();

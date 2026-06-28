@@ -34,6 +34,7 @@ import {
   NotificationService,
   PushService,
   RoomsService,
+  ThreadsService,
   TimelineService,
 } from '@trinity/core';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
@@ -42,6 +43,7 @@ import { MemberListComponent } from '../member-list/member-list.component';
 import { MessageListComponent } from '../message-list/message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
+import { ThreadPanelService } from '../thread/thread-panel.service';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -74,6 +76,8 @@ import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);
   readonly timeline = inject(TimelineService);
+  readonly threads = inject(ThreadsService);
+  private readonly threadPanel = inject(ThreadPanelService);
   private readonly media = inject(MediaService);
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
@@ -166,6 +170,8 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.timeline.close();
+    this.threads.close();
+    this.threads.closeThread();
     this.media.releaseAll();
   }
 
@@ -178,7 +184,16 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.media.releaseAll();
     this.activeRoomId.set(id);
     this.timeline.open(id);
+    this.threads.open(id); // project this room's thread summaries for indicators
     void this.menu.close(); // collapse the drawer on mobile (fire-and-forget)
+  }
+
+  /** Open the thread rooted at `rootEventId` (raised by a message's indicator). */
+  onOpenThread(rootEventId: string): void {
+    const roomId = this.activeRoomId();
+    if (roomId) {
+      void this.threadPanel.open(roomId, rootEventId);
+    }
   }
 
   loadOlder(): void {

@@ -1,0 +1,127 @@
+@let r = row();
+
+<div
+  class="msg"
+  [class.msg--cont]="!r.showHeader"
+  [class.msg--failed]="r.decryptionFailed"
+  [class.msg--sending]="r.status === 'sending'"
+  [class.msg--sendfailed]="r.status === 'failed'"
+  [attr.data-mid]="r.id"
+>
+  @if (r.replyTo) {
+    <button
+      type="button"
+      class="msg__reply"
+      [attr.aria-label]="'Replying to ' + r.replyTo.senderName"
+      (click)="jumpReply.emit(r.replyTo.id)"
+    >
+      <trn-avatar
+        class="msg__reply-avatar"
+        [mxc]="r.replyTo.senderAvatarMxc"
+        [initial]="r.replyTo.senderInitial"
+        [name]="r.replyTo.senderName"
+        [size]="16"
+      />
+      <span class="msg__reply-author">{{ r.replyTo.senderName }}</span>
+      <span class="msg__reply-body">{{ r.replyTo.body }}</span>
+    </button>
+  }
+  @if (r.showHeader) {
+    <trn-avatar
+      class="msg__avatar"
+      [mxc]="r.senderAvatarMxc"
+      [initial]="r.senderInitial"
+      [name]="r.senderName"
+      [size]="40"
+    />
+    <div class="msg__body">
+      <div class="msg__head">
+        <span class="msg__author">{{ r.senderName }}</span>
+        <span class="msg__time">{{ r.timestamp | date: 'short' }}</span>
+        @if (r.edited) {
+          <span class="msg__edited">(edited)</span>
+        }
+      </div>
+      @if (r.media) {
+        <trn-media-attachment class="msg__media" [media]="r.media" />
+      } @else if (r.html) {
+        <div class="msg__text msg__text--html" [innerHTML]="r.html"></div>
+      } @else {
+        <p class="msg__text">{{ r.body }}</p>
+      }
+      @if (r.reactions.length) {
+        <trn-message-reactions
+          [reactions]="r.reactions"
+          (toggleReaction)="react.emit($event)"
+        />
+      }
+    </div>
+  } @else {
+    <span class="msg__gutter">{{ r.timestamp | date: 'shortTime' }}</span>
+    <div class="msg__body">
+      @if (r.media) {
+        <trn-media-attachment class="msg__media" [media]="r.media" />
+      } @else if (r.html) {
+        <div
+          class="msg__text msg__text--cont msg__text--html"
+          [innerHTML]="r.html"
+        ></div>
+      } @else {
+        <p class="msg__text msg__text--cont">{{ r.body }}</p>
+      }
+      @if (r.edited) {
+        <span class="msg__edited">(edited)</span>
+      }
+      @if (r.reactions.length) {
+        <trn-message-reactions
+          [reactions]="r.reactions"
+          (toggleReaction)="react.emit($event)"
+        />
+      }
+    </div>
+  }
+
+  @if (threadSummary(); as thread) {
+    <button
+      type="button"
+      class="msg__thread"
+      [attr.aria-label]="threadLabel(thread)"
+      (click)="openThread.emit(r.id)"
+    >
+      <ion-icon
+        class="msg__thread-icon"
+        name="chatbubbles-outline"
+        aria-hidden="true"
+      />
+      <span class="msg__thread-count"
+        >{{ thread.replyCount }}
+        {{ thread.replyCount === 1 ? 'reply' : 'replies' }}</span
+      >
+      @if (thread.latestReplyTs) {
+        <span class="msg__thread-sep" aria-hidden="true">·</span>
+        <span class="msg__thread-time"
+          >last reply {{ thread.latestReplyTs | date: 'short' }}</span
+        >
+      }
+    </button>
+  }
+
+  @if (!readOnly() && r.status === 'failed') {
+    <button class="msg__retry" (click)="retry.emit()">
+      Failed to send — retry
+    </button>
+  }
+
+  @if (!readOnly() && !r.decryptionFailed && r.kind !== 'redacted') {
+    <trn-message-toolbar
+      class="msg__toolbar"
+      [canEdit]="editable()"
+      [canDelete]="deletable()"
+      (react)="react.emit($event)"
+      (replyMessage)="replyMessage.emit()"
+      (copyMessage)="copyMessage.emit()"
+      (editMessage)="editMessage.emit()"
+      (deleteMessage)="deleteMessage.emit()"
+    />
+  }
+</div>

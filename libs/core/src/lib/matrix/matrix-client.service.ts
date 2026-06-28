@@ -124,7 +124,15 @@ export class MatrixClientService {
         switchMap(() => preloadCryptoWasm()),
         switchMap(() => from(client.initRustCrypto())),
         tap(() => client.on(ClientEvent.Sync, this.onSync)),
-        switchMap(() => from(client.startClient({ initialSyncLimit: 20 }))),
+        // `threadSupport` makes the SDK aggregate `m.thread` relations into
+        // per-thread timelines (`Room.getThreads()` / `getThread()`) and keep
+        // threaded replies out of the room's live (main) timeline — both of which
+        // ThreadsService relies on for the read view.
+        switchMap(() =>
+          from(
+            client.startClient({ initialSyncLimit: 20, threadSupport: true }),
+          ),
+        ),
         tap(() => {
           // Publish only after a successful start; until now isInitialized stays false.
           this.client = client;

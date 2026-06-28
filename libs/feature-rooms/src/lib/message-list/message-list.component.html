@@ -8,106 +8,20 @@
   }
 
   @for (row of rows(); track row.id) {
-    <div
-      class="msg"
-      [class.msg--cont]="!row.showHeader"
-      [class.msg--failed]="row.decryptionFailed"
-      [class.msg--sending]="row.status === 'sending'"
-      [class.msg--sendfailed]="row.status === 'failed'"
-      [attr.data-mid]="row.id"
-    >
-      @if (row.replyTo) {
-        <button
-          type="button"
-          class="msg__reply"
-          [attr.aria-label]="'Replying to ' + row.replyTo.senderName"
-          (click)="jumpTo(row.replyTo.id)"
-        >
-          <trn-avatar
-            class="msg__reply-avatar"
-            [mxc]="row.replyTo.senderAvatarMxc"
-            [initial]="row.replyTo.senderInitial"
-            [name]="row.replyTo.senderName"
-            [size]="16"
-          />
-          <span class="msg__reply-author">{{ row.replyTo.senderName }}</span>
-          <span class="msg__reply-body">{{ row.replyTo.body }}</span>
-        </button>
-      }
-      @if (row.showHeader) {
-        <trn-avatar
-          class="msg__avatar"
-          [mxc]="row.senderAvatarMxc"
-          [initial]="row.senderInitial"
-          [name]="row.senderName"
-          [size]="40"
-        />
-        <div class="msg__body">
-          <div class="msg__head">
-            <span class="msg__author">{{ row.senderName }}</span>
-            <span class="msg__time">{{ row.timestamp | date: 'short' }}</span>
-            @if (row.edited) {
-              <span class="msg__edited">(edited)</span>
-            }
-          </div>
-          @if (row.media) {
-            <trn-media-attachment class="msg__media" [media]="row.media" />
-          } @else if (row.html) {
-            <div class="msg__text msg__text--html" [innerHTML]="row.html"></div>
-          } @else {
-            <p class="msg__text">{{ row.body }}</p>
-          }
-          @if (row.reactions.length) {
-            <trn-message-reactions
-              [reactions]="row.reactions"
-              (toggleReaction)="react.emit({ id: row.id, key: $event })"
-            />
-          }
-        </div>
-      } @else {
-        <span class="msg__gutter">{{ row.timestamp | date: 'shortTime' }}</span>
-        <div class="msg__body">
-          @if (row.media) {
-            <trn-media-attachment class="msg__media" [media]="row.media" />
-          } @else if (row.html) {
-            <div
-              class="msg__text msg__text--cont msg__text--html"
-              [innerHTML]="row.html"
-            ></div>
-          } @else {
-            <p class="msg__text msg__text--cont">{{ row.body }}</p>
-          }
-          @if (row.edited) {
-            <span class="msg__edited">(edited)</span>
-          }
-          @if (row.reactions.length) {
-            <trn-message-reactions
-              [reactions]="row.reactions"
-              (toggleReaction)="react.emit({ id: row.id, key: $event })"
-            />
-          }
-        </div>
-      }
-
-      @if (row.status === 'failed') {
-        <button class="msg__retry" (click)="retry.emit(row.id)">
-          Failed to send — retry
-        </button>
-      }
-
-      @if (!row.decryptionFailed && row.kind !== 'redacted') {
-        <trn-message-toolbar
-          class="msg__toolbar"
-          [canEdit]="isEditable(row)"
-          [canDelete]="row.isOwn && !row.status"
-          (react)="react.emit({ id: row.id, key: $event })"
-          (replyMessage)="startReply(row)"
-          (copyMessage)="onCopy(row)"
-          (editMessage)="startEdit(row)"
-          (deleteMessage)="onDelete(row)"
-        />
-      }
-    </div>
+    <trn-message-row
+      [row]="row"
+      [threadSummary]="threadSummaries()[row.id] ?? null"
+      [editable]="isEditable(row)"
+      [deletable]="row.isOwn && !row.status"
+      (react)="react.emit({ id: row.id, key: $event })"
+      (replyMessage)="startReply(row)"
+      (copyMessage)="onCopy(row)"
+      (editMessage)="startEdit(row)"
+      (deleteMessage)="onDelete(row)"
+      (retry)="retry.emit(row.id)"
+      (jumpReply)="jumpTo($event)"
+      (openThread)="openThread.emit($event)"
+    />
   } @empty {
     <div class="empty">No messages yet.</div>
   }

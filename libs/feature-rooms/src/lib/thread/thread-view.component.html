@@ -1,0 +1,20 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Thread</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="close()" aria-label="Close thread">
+        <ion-icon slot="icon-only" name="close" />
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <div class="thread">
+    @for (row of rows(); track row.id) {
+      <trn-message-row [row]="row" [readOnly]="true" />
+    } @empty {
+      <div class="thread__empty">No replies in this thread yet.</div>
+    }
+  </div>
+</ion-content>
