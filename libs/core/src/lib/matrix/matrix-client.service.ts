@@ -10,7 +10,6 @@ import {
   Observable,
   catchError,
   defer,
-  finalize,
   from,
   map,
   of,
@@ -40,6 +39,12 @@ export class MatrixClientService {
   private client: MatrixClient | null = null;
   /** The persistent sync store, retained so its IndexedDB connection can be closed. */
   private syncStore: IndexedDBStore | null = null;
+  /**
+   * Tracks an in-flight background store wipe started by {@link reset} on logout.
+   * {@link init} awaits it before re-initialising crypto: the Rust crypto IndexedDB
+   * has a fixed (not per-account) name, so a re-login must not race a pending delete.
+   */
+  private wipe: Promise<void> = Promise.resolve();
 
   /** Coarse sync state for the UI (null until the first sync transition). */
   private readonly _syncState = signal<SyncState | null>(null);
@@ -112,6 +117,10 @@ export class MatrixClientService {
       return from(
         store ? store.startup().catch(() => undefined) : Promise.resolve(),
       ).pipe(
+        // Wait for a prior logout's background store wipe to finish before touching
+        // crypto: the Rust crypto IndexedDB name is fixed, so opening it here while a
+        // delete is still pending would block (or race) it.
+        switchMap(() => from(this.wipe)),
         switchMap(() => preloadCryptoWasm()),
         switchMap(() => from(client.initRustCrypto())),
         tap(() => client.on(ClientEvent.Sync, this.onSync)),
@@ -167,18 +176,24 @@ export class MatrixClientService {
         this.destroySyncStore();
         return of(void 0);
       }
+      // Tear the client down synchronously so logout can navigate away immediately.
       client.off(ClientEvent.Sync, this.onSync);
       client.stopClient(); // clearStores must run with the client stopped
-      return from(client.clearStores()).pipe(
-        catchError(() => of(void 0)),
-        finalize(() => {
-          this.client = null;
-          this._syncState.set(null);
-          this.secretStorageKeys.clear();
-          this.destroySyncStore(); // close the now-emptied store's connection
-        }),
-        map(() => void 0),
-      );
+      this.client = null;
+      this._syncState.set(null);
+      this.secretStorageKeys.clear();
+      // clearStores() deletes the sync + Rust-crypto IndexedDB. The crypto delete can
+      // block for ~25s: matrix-sdk-crypto-wasm doesn't release the store connection
+      // until GC, and clearStores' `onblocked` handler merely waits. So run it as a
+      // tracked BACKGROUND wipe rather than gating navigation on it; init() awaits
+      // `this.wipe` before touching crypto again (the crypto DB name is fixed, so a
+      // re-login must not race the pending delete). Best-effort: a failure still leaves
+      // the client torn down.
+      this.wipe = client
+        .clearStores()
+        .catch(() => undefined)
+        .finally(() => this.destroySyncStore());
+      return of(void 0);
     });
   }
 
