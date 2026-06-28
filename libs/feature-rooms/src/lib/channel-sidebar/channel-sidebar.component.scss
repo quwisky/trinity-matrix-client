@@ -123,10 +123,24 @@
   }
 }
 
+// Row wrapper so a joined channel can carry a (hover-revealed) remove action
+// alongside the selectable channel button without nesting buttons.
+.channel-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+
+  &:hover .channel__remove,
+  &:focus-within .channel__remove {
+    opacity: 1;
+  }
+}
+
 .channel {
   @include interactive-row;
 
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -189,10 +203,82 @@
   background: var(--trinity-text-bright);
 }
 
+.channel__remove {
+  @include interactive-row;
+
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 18px;
+  opacity: 0;
+
+  &:hover {
+    color: var(--ion-color-danger);
+  }
+}
+
+// Not-yet-joined child rooms / sub-spaces: muted rows with a Join (or Open) action.
+.joinable {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-top: 1px;
+  color: var(--trinity-text-muted);
+}
+
+.joinable__hash {
+  font-size: 18px;
+}
+
+.joinable__text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.joinable__name {
+  @include ellipsis;
+
+  font-size: 14px;
+  min-width: 0;
+}
+
+.joinable__tag {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.joinable__action {
+  @include interactive-row;
+
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--trinity-hover);
+
+  &:hover {
+    background: var(--trinity-active);
+    color: var(--trinity-text-bright);
+  }
+}
+
 .empty {
   color: var(--trinity-text-muted);
   font-size: 13px;
   padding: 8px;
+}
+
+.empty--error {
+  color: var(--ion-color-danger);
 }
 
 .userbar {

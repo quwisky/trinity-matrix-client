@@ -19,6 +19,7 @@ import {
   TimelineService,
   type PendingInvite,
   type RoomSummary,
+  type SpaceChildRoom,
   type SpaceSummary,
 } from '@trinity/core';
 import { Subject, of, throwError } from 'rxjs';
@@ -58,7 +59,10 @@ describe('RoomsPage action error feedback', () => {
       providers: [
         RoomsPage,
         { provide: RoomsService, useValue: { connect: vi.fn() } },
-        { provide: SpacesService, useValue: { connect: vi.fn() } },
+        {
+          provide: SpacesService,
+          useValue: { connect: vi.fn(), openSpace: vi.fn() },
+        },
         {
           provide: TimelineService,
           useValue: {
@@ -240,6 +244,7 @@ describe('RoomsPage space filtering', () => {
           provide: SpacesService,
           useValue: {
             connect: vi.fn(),
+            openSpace: vi.fn(),
             spaces: signal([spaceSummary('!s:hs', ['!a:hs', '!b:hs'])]),
             childRoomIds,
           },
@@ -324,6 +329,7 @@ describe('RoomsPage space actions', () => {
           provide: SpacesService,
           useValue: {
             connect: vi.fn(),
+            openSpace: vi.fn(),
             spaces: signal<SpaceSummary[]>([]),
             childRoomIds: () => [],
             createSpace,
@@ -511,6 +517,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           provide: SpacesService,
           useValue: {
             connect: vi.fn(),
+            openSpace: vi.fn(),
             spaces: signal<SpaceSummary[]>([]),
             childRoomIds: () => [],
           },
@@ -693,5 +700,177 @@ describe('RoomsPage room / DM / invite actions', () => {
         ]),
       }),
     );
+  });
+});
+
+// Selecting a space loads its hierarchy; joining a not-yet-joined child and
+// removing a joined child delegate to SpacesService (the live read model + sync
+// surface the result, so the page only fires the SDK-backed call).
+describe('RoomsPage space hierarchy actions', () => {
+  interface AlertButton {
+    text: string;
+    handler?: (data?: unknown) => unknown;
+  }
+  let alertCreate: ReturnType<typeof vi.fn>;
+  let openSpace: ReturnType<typeof vi.fn>;
+  let joinRoom: ReturnType<typeof vi.fn>;
+  let removeRoomFromSpace: ReturnType<typeof vi.fn>;
+
+  function childRoom(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
+    return {
+      roomId: '!c:hs',
+      name: 'general',
+      initial: 'G',
+      avatarMxc: null,
+      memberCount: 3,
+      joinRule: 'public',
+      suggested: false,
+      isSpace: false,
+      via: ['hs.example'],
+      joined: false,
+      ...over,
+    };
+  }
+
+  function build(): RoomsPage {
+    alertCreate = vi
+      .fn()
+      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    openSpace = vi.fn();
+    joinRoom = vi.fn(() => of(undefined));
+    removeRoomFromSpace = vi.fn(() => of(undefined));
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        {
+          provide: RoomsService,
+          useValue: {
+            connect: vi.fn(),
+            rooms: signal<RoomSummary[]>([
+              {
+                id: '!c:hs',
+                name: 'general',
+                initial: 'G',
+                avatarMxc: null,
+                topic: '',
+                memberCount: 0,
+                encrypted: false,
+                unreadCount: 0,
+                highlightCount: 0,
+                hasUnread: false,
+                activityTs: 0,
+              },
+            ]),
+            revision: signal(0),
+            membersOf: () => [],
+          },
+        },
+        {
+          provide: SpacesService,
+          useValue: {
+            connect: vi.fn(),
+            openSpace,
+            joinRoom,
+            removeRoomFromSpace,
+            spaces: signal<SpaceSummary[]>([
+              {
+                id: '!s:hs',
+                name: 'My Space',
+                initial: 'M',
+                avatarMxc: null,
+                childRoomIds: [],
+              },
+            ]),
+            childRoomIds: () => [],
+            notJoinedRooms: signal<SpaceChildRoom[]>([]),
+            childSpaces: signal<SpaceChildRoom[]>([]),
+            childrenLoading: signal(false),
+            childrenError: signal<string | null>(null),
+          },
+        },
+        { provide: TimelineService, useValue: { close: vi.fn() } },
+        {
+          provide: MatrixClientService,
+          useValue: {
+            isInitialized: true,
+            instance: { getUserId: () => '@me:hs', getUser: () => null },
+          },
+        },
+        { provide: CryptoService, useValue: { connect: vi.fn() } },
+        {
+          provide: ThreadsService,
+          useValue: { close: vi.fn(), closeThread: vi.fn() },
+        },
+        {
+          provide: ThreadPanelService,
+          useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        invitesProvider(),
+        { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        {
+          provide: AuthService,
+          useValue: { logout: vi.fn(() => of(undefined)) },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        { provide: MenuController, useValue: { close: vi.fn() } },
+        { provide: AlertController, useValue: { create: alertCreate } },
+        {
+          provide: ToastController,
+          useValue: { create: vi.fn().mockResolvedValue({ present: vi.fn() }) },
+        },
+      ],
+    });
+    return TestBed.inject(RoomsPage);
+  }
+
+  function tapAlert(text: string): void {
+    const opts = alertCreate.mock.calls.at(-1)?.[0] as {
+      buttons: AlertButton[];
+    };
+    opts.buttons.find((b) => b.text === text)?.handler?.();
+  }
+
+  it('loads the hierarchy when a space is selected (and clears it for Home)', () => {
+    const page = build();
+
+    page.onSelectSpace('!s:hs');
+    expect(page.activeSpaceId()).toBe('!s:hs');
+    expect(openSpace).toHaveBeenCalledWith('!s:hs');
+
+    page.onSelectSpace(null);
+    expect(openSpace).toHaveBeenLastCalledWith(null);
+  });
+
+  it('joins a not-yet-joined child through its via servers', () => {
+    const page = build();
+
+    page.onJoinChild(childRoom({ roomId: '!x:hs', via: ['hs.example'] }));
+
+    expect(joinRoom).toHaveBeenCalledWith('!x:hs', ['hs.example']);
+  });
+
+  it('confirms then removes a joined child from the active space', async () => {
+    const page = build();
+    page.activeSpaceId.set('!s:hs');
+
+    await page.onRemoveFromSpace('!c:hs');
+    // The confirmation names the channel and the space.
+    expect(alertCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ header: 'Remove from space' }),
+    );
+    tapAlert('Remove');
+
+    expect(removeRoomFromSpace).toHaveBeenCalledWith('!s:hs', '!c:hs');
+  });
+
+  it('does not prompt to remove on Home (no active space)', async () => {
+    const page = build();
+    page.activeSpaceId.set(null);
+
+    await page.onRemoveFromSpace('!c:hs');
+
+    expect(alertCreate).not.toHaveBeenCalled();
+    expect(removeRoomFromSpace).not.toHaveBeenCalled();
   });
 });

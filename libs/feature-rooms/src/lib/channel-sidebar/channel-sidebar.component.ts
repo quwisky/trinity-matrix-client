@@ -12,9 +12,10 @@ import {
   closeOutline,
   exitOutline,
   personAddOutline,
+  removeCircleOutline,
 } from 'ionicons/icons';
 import { AvatarComponent } from '@trinity/ui';
-import type { PendingInvite, RoomSummary } from '@trinity/core';
+import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
 
 /** Discord channel sidebar: space header, invites, room list, and the user panel. */
 @Component({
@@ -111,25 +112,114 @@ import type { PendingInvite, RoomSummary } from '@trinity/core';
 
         <div class="category">Text Channels</div>
         @for (room of rooms(); track room.id) {
-          <button
-            class="channel"
-            [class.active]="activeRoomId() === room.id"
-            [class.unread]="room.hasUnread"
-            (click)="selectRoom.emit(room.id)"
-            [title]="room.name"
-          >
-            <span class="channel__hash">#</span>
-            <span class="channel__name">{{ room.name }}</span>
-            @if (room.highlightCount > 0) {
-              <span class="channel__badge" aria-label="Unread mentions">{{
-                room.highlightCount
-              }}</span>
-            } @else if (room.hasUnread) {
-              <span class="channel__dot" aria-label="Unread"></span>
+          <div class="channel-row">
+            <button
+              class="channel"
+              [class.active]="activeRoomId() === room.id"
+              [class.unread]="room.hasUnread"
+              (click)="selectRoom.emit(room.id)"
+              [title]="room.name"
+            >
+              <span class="channel__hash">#</span>
+              <span class="channel__name">{{ room.name }}</span>
+              @if (room.highlightCount > 0) {
+                <span class="channel__badge" aria-label="Unread mentions">{{
+                  room.highlightCount
+                }}</span>
+              } @else if (room.hasUnread) {
+                <span class="channel__dot" aria-label="Unread"></span>
+              }
+            </button>
+            @if (spaceActive()) {
+              <button
+                class="channel__remove"
+                (click)="removeRoom.emit(room.id)"
+                [attr.aria-label]="'Remove ' + room.name + ' from this space'"
+                title="Remove from space"
+              >
+                <ion-icon name="remove-circle-outline" aria-hidden="true" />
+              </button>
             }
-          </button>
+          </div>
         } @empty {
           <p class="empty">No channels here yet.</p>
+        }
+
+        @if (spaceActive()) {
+          @if (childrenLoading()) {
+            <p class="empty">Loading channels…</p>
+          } @else if (childrenError()) {
+            <p class="empty empty--error">
+              Couldn’t load this space’s channels.
+            </p>
+          } @else {
+            @if (joinableRooms().length) {
+              <div class="category">More Channels</div>
+              @for (child of joinableRooms(); track child.roomId) {
+                <div class="joinable">
+                  <span class="joinable__hash">#</span>
+                  <div class="joinable__text">
+                    <span
+                      class="joinable__name"
+                      [title]="child.topic || child.name"
+                      >{{ child.name }}</span
+                    >
+                    @if (child.suggested) {
+                      <span class="joinable__tag">Suggested</span>
+                    }
+                  </div>
+                  <button
+                    class="joinable__action"
+                    (click)="joinRoom.emit(child)"
+                    [attr.aria-label]="'Join ' + child.name"
+                    title="Join"
+                  >
+                    Join
+                  </button>
+                </div>
+              }
+            }
+
+            @if (childSpaces().length) {
+              <div class="category">Spaces</div>
+              @for (child of childSpaces(); track child.roomId) {
+                <div class="joinable joinable--space">
+                  <trn-avatar
+                    class="joinable__avatar"
+                    [mxc]="child.avatarMxc"
+                    [initial]="child.initial"
+                    [name]="child.name"
+                    [size]="24"
+                    [square]="true"
+                  />
+                  <div class="joinable__text">
+                    <span class="joinable__name" [title]="child.name">{{
+                      child.name
+                    }}</span>
+                  </div>
+                  @if (child.joined) {
+                    <button
+                      class="joinable__action"
+                      (click)="openChildSpace.emit(child.roomId)"
+                      [attr.aria-label]="'Open ' + child.name"
+                      title="Open"
+                    >
+                      Open
+                    </button>
+                  } @else {
+                    <button
+                      class="joinable__action"
+                      (click)="joinRoom.emit(child)"
+                      [attr.aria-label]="'Join ' + child.name"
+                      title="Join"
+                    >
+                      Join
+                    </button>
+                  }
+                </div>
+              }
+            }
+          }
         }
       </div>
 
@@ -162,6 +252,14 @@ export class ChannelSidebarComponent {
   /** Whether a space (not Home) is selected — gates the header space actions. */
   readonly spaceActive = input(false);
   readonly rooms = input<RoomSummary[]>([]);
+  /** Not-yet-joined channels of the active space (the "More Channels" list). */
+  readonly joinableRooms = input<SpaceChildRoom[]>([]);
+  /** Sub-spaces of the active space (joined → Open, otherwise Join). */
+  readonly childSpaces = input<SpaceChildRoom[]>([]);
+  /** Whether the active space's child hierarchy is still loading. */
+  readonly childrenLoading = input(false);
+  /** Non-null when the active space's child hierarchy failed to load. */
+  readonly childrenError = input<string | null>(null);
   /** Pending invites surfaced in an "Invites" group above the channels. */
   readonly invites = input<PendingInvite[]>([]);
   readonly activeRoomId = input<string | null>(null);
@@ -178,6 +276,12 @@ export class ChannelSidebarComponent {
   readonly inviteToSpace = output<void>();
   /** Header exit icon — raise the leave-this-space confirmation. */
   readonly leaveSpace = output<void>();
+  /** Join a not-yet-joined child room or sub-space of the active space. */
+  readonly joinRoom = output<SpaceChildRoom>();
+  /** Remove (unlink) a joined channel from the active space, by room id. */
+  readonly removeRoom = output<string>();
+  /** Open a joined sub-space (select it in the rail), by room id. */
+  readonly openChildSpace = output<string>();
   /** Accept / decline a pending invite by room id. */
   readonly acceptInvite = output<string>();
   readonly declineInvite = output<string>();
@@ -190,6 +294,7 @@ export class ChannelSidebarComponent {
       closeOutline,
       exitOutline,
       personAddOutline,
+      removeCircleOutline,
     });
   }
 }

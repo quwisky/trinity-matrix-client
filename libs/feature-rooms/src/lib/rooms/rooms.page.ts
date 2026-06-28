@@ -47,6 +47,7 @@ import {
   ThreadsService,
   TimelineService,
   type RoomSummary,
+  type SpaceChildRoom,
 } from '@trinity/core';
 import { runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -232,6 +233,10 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   onSelectSpace(id: string | null): void {
     this.activeSpaceId.set(id);
+    // Load (or clear, for Home) the space's full child hierarchy so the sidebar can
+    // offer not-yet-joined channels + sub-spaces. The fetch is cancelled/replaced if
+    // the selection changes again before it lands.
+    this.spaces.openSpace(id);
   }
 
   /** Rail "+": prompt for a name, create the space, then select it on success. */
@@ -318,7 +323,7 @@ export class RoomsPage implements OnInit, OnDestroy {
       busy: this.spaceBusy,
       error: this.spaceError,
       destroyRef: this.destroyRef,
-    }).subscribe((spaceId) => this.activeSpaceId.set(spaceId));
+    }).subscribe((spaceId) => this.onSelectSpace(spaceId));
   }
 
   private applyCreateChannel(spaceId: string, name: string): void {
@@ -338,7 +343,52 @@ export class RoomsPage implements OnInit, OnDestroy {
       busy: this.spaceBusy,
       error: this.spaceError,
       destroyRef: this.destroyRef,
-    }).subscribe(() => this.activeSpaceId.set(null));
+    }).subscribe(() => this.onSelectSpace(null));
+  }
+
+  /** Sidebar "Join" on a not-yet-joined child: join it (via its routing servers). */
+  onJoinChild(child: SpaceChildRoom): void {
+    this.spaceError.set(null);
+    // On success the child lands in the synced read model — a room moves into the
+    // joined channel list, a space into the rail — and its `joined` flag flips live,
+    // dropping it from the "more channels"/Spaces lists. No manual selection here.
+    runWithBusy(this.spaces.joinRoom(child.roomId, child.via), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe();
+  }
+
+  /** Sidebar remove icon on a joined channel: confirm, then unlink it from the space. */
+  async onRemoveFromSpace(roomId: string): Promise<void> {
+    const spaceId = this.activeSpaceId();
+    if (!spaceId) {
+      return; // the affordance only shows in a space, but guard regardless
+    }
+    this.spaceError.set(null);
+    const name =
+      this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this channel';
+    const alert = await this.alertCtrl.create({
+      header: 'Remove from space',
+      message: `Remove “${name}” from “${this.activeSpaceName()}”? You stay in the room — it’s just unlinked from this space.`,
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        {
+          text: 'Remove',
+          role: 'destructive',
+          handler: () => this.applyRemoveFromSpace(spaceId, roomId),
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  private applyRemoveFromSpace(spaceId: string, childId: string): void {
+    runWithBusy(this.spaces.removeRoomFromSpace(spaceId, childId), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe();
   }
 
   /** Home "+": choose between creating a room and starting a DM. */
@@ -429,7 +479,7 @@ export class RoomsPage implements OnInit, OnDestroy {
       // A joined room/DM lives under Home; surface it by switching there and
       // opening it. A joined space just appears in the rail (no auto-select).
       if (invite && !invite.isSpace) {
-        this.activeSpaceId.set(null);
+        this.onSelectSpace(null);
         this.onSelectRoom(roomId);
       }
     });

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { PendingInvite, RoomSummary } from '@trinity/core';
+import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
 import { ChannelSidebarComponent } from './channel-sidebar.component';
 
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
@@ -29,6 +29,22 @@ function invite(over: Partial<PendingInvite> = {}): PendingInvite {
     inviterName: 'Alice',
     isSpace: false,
     isDirect: false,
+    ...over,
+  };
+}
+
+function child(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
+  return {
+    roomId: '!c:hs',
+    name: 'announcements',
+    initial: 'A',
+    avatarMxc: null,
+    memberCount: 4,
+    joinRule: 'public',
+    suggested: false,
+    isSpace: false,
+    via: ['hs.example'],
+    joined: false,
     ...over,
   };
 }
@@ -178,5 +194,87 @@ describe('ChannelSidebarComponent', () => {
     fixture.nativeElement.querySelector('.userbar__logout').click();
 
     expect(loggedOut).toBe(true);
+  });
+
+  it('lists not-yet-joined channels and emits joinRoom with the child', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('spaceActive', true);
+    fixture.componentRef.setInput('joinableRooms', [
+      child({ roomId: '!x:hs', name: 'open-channel', suggested: true }),
+    ]);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement;
+    const joinables = el.querySelectorAll('.joinable');
+    expect(joinables.length).toBe(1);
+    expect(joinables[0].textContent).toContain('open-channel');
+    expect(joinables[0].textContent).toContain('Suggested'); // suggested hint
+
+    let joined: SpaceChildRoom | undefined;
+    fixture.componentInstance.joinRoom.subscribe((c) => (joined = c));
+    el.querySelector('[aria-label="Join open-channel"]').click();
+
+    expect(joined?.roomId).toBe('!x:hs');
+  });
+
+  it('offers Open for joined sub-spaces and Join for the rest', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('spaceActive', true);
+    fixture.componentRef.setInput('childSpaces', [
+      child({
+        roomId: '!j:hs',
+        name: 'Joined Sub',
+        isSpace: true,
+        joined: true,
+      }),
+      child({ roomId: '!n:hs', name: 'New Sub', isSpace: true, joined: false }),
+    ]);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement;
+    let opened: string | undefined;
+    let joined: SpaceChildRoom | undefined;
+    fixture.componentInstance.openChildSpace.subscribe((id) => (opened = id));
+    fixture.componentInstance.joinRoom.subscribe((c) => (joined = c));
+
+    el.querySelector('[aria-label="Open Joined Sub"]').click();
+    el.querySelector('[aria-label="Join New Sub"]').click();
+
+    expect(opened).toBe('!j:hs');
+    expect(joined?.roomId).toBe('!n:hs');
+  });
+
+  it('emits removeRoom for a joined channel only while a space is active', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [
+      room({ id: '!a:hs', name: 'general' }),
+    ]);
+    // No space active → no remove affordance.
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.channel__remove')).toBeNull();
+
+    fixture.componentRef.setInput('spaceActive', true);
+    fixture.detectChanges();
+
+    let removed: string | undefined;
+    fixture.componentInstance.removeRoom.subscribe((id) => (removed = id));
+    fixture.nativeElement.querySelector('.channel__remove').click();
+
+    expect(removed).toBe('!a:hs');
+  });
+
+  it('shows loading then error states for the space hierarchy', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('spaceActive', true);
+    fixture.componentRef.setInput('childrenLoading', true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Loading channels');
+
+    fixture.componentRef.setInput('childrenLoading', false);
+    fixture.componentRef.setInput('childrenError', 'nope');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.empty--error')).not.toBeNull();
+    // No joinable rows render while erroring.
+    expect(fixture.nativeElement.querySelector('.joinable')).toBeNull();
   });
 });
