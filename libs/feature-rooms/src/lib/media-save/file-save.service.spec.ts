@@ -23,7 +23,7 @@ vi.mock('@capacitor/core', () => ({
   },
 }));
 vi.mock('@capacitor/filesystem', () => ({
-  Filesystem: { writeFile: vi.fn(), deleteFile: vi.fn() },
+  Filesystem: { writeFile: vi.fn(), rmdir: vi.fn() },
   Directory: { Cache: 'CACHE' },
 }));
 vi.mock('@capacitor/share', () => ({
@@ -32,8 +32,11 @@ vi.mock('@capacitor/share', () => ({
 
 const isNative = Capacitor.isNativePlatform as unknown as Mock;
 const writeFile = Filesystem.writeFile as unknown as Mock;
-const deleteFile = Filesystem.deleteFile as unknown as Mock;
+const rmdir = Filesystem.rmdir as unknown as Mock;
 const share = Share.share as unknown as Mock;
+
+/** The basename a per-share path ('trinity-shared/<token>/<name>') ends with. */
+const sharedBasename = (path: string) => path.split('/').pop();
 
 function build(): FileSaveService {
   TestBed.configureTestingModule({ providers: [FileSaveService] });
@@ -44,7 +47,7 @@ describe('FileSaveService', () => {
   beforeEach(() => {
     isNative.mockReturnValue(false);
     writeFile.mockReset().mockResolvedValue({ uri: 'file:///cache/pic.png' });
-    deleteFile.mockReset().mockResolvedValue(undefined);
+    rmdir.mockReset().mockResolvedValue(undefined);
     share.mockReset().mockResolvedValue(undefined);
   });
 
@@ -98,26 +101,31 @@ describe('FileSaveService', () => {
   describe('native', () => {
     beforeEach(() => isNative.mockReturnValue(true));
 
-    it('writes the bytes to the cache, shares, then deletes the temp file', async () => {
+    it('sweeps prior shares, writes to a per-share folder, then shares', async () => {
       const svc = build();
       expect(svc.nativeAvailable).toBe(true);
 
       await firstValueFrom(svc.save(new Blob(['hello']), 'pic.png'));
 
+      // Previous shares are swept first so plaintext never lingers, but the file
+      // for *this* share is left in place — deleting it now could truncate the
+      // receiver's still-pending read (notably on Android).
+      expect(rmdir).toHaveBeenCalledWith({
+        path: 'trinity-shared',
+        directory: 'CACHE',
+        recursive: true,
+      });
       expect(writeFile).toHaveBeenCalledTimes(1);
       const opts = writeFile.mock.calls[0][0];
-      expect(opts.path).toBe('pic.png');
+      // A unique subfolder under the share dir, keeping a clean filename.
+      expect(opts.path).toMatch(/^trinity-shared\/[^/]+\/pic\.png$/);
       expect(opts.directory).toBe('CACHE');
+      expect(opts.recursive).toBe(true); // creates the per-share subfolder
       expect(typeof opts.data).toBe('string'); // base64, no data: prefix
       expect(opts.data).not.toContain(',');
       expect(share).toHaveBeenCalledWith(
         expect.objectContaining({ files: ['file:///cache/pic.png'] }),
       );
-      // Decrypted plaintext must not linger in the cache after the sheet closes.
-      expect(deleteFile).toHaveBeenCalledWith({
-        path: 'pic.png',
-        directory: 'CACHE',
-      });
     });
 
     it('reduces a path-bearing filename to a safe basename', async () => {
@@ -125,17 +133,29 @@ describe('FileSaveService', () => {
 
       await firstValueFrom(svc.save(new Blob(['x']), 'a/b\\c.png'));
 
-      expect(writeFile.mock.calls[0][0].path).toBe('a_b_c.png');
+      expect(sharedBasename(writeFile.mock.calls[0][0].path)).toBe('a_b_c.png');
     });
 
     it('falls back to "download" for empty or dot-only filenames', async () => {
       const svc = build();
 
       await firstValueFrom(svc.save(new Blob(['x']), '   '));
-      expect(writeFile.mock.calls[0][0].path).toBe('download');
+      expect(sharedBasename(writeFile.mock.calls[0][0].path)).toBe('download');
 
       await firstValueFrom(svc.save(new Blob(['x']), '..'));
-      expect(writeFile.mock.calls[1][0].path).toBe('download');
+      expect(sharedBasename(writeFile.mock.calls[1][0].path)).toBe('download');
+    });
+
+    it('gives each share its own folder so a sweep never hits a live file', async () => {
+      const svc = build();
+
+      await firstValueFrom(svc.save(new Blob(['x']), 'pic.png'));
+      await firstValueFrom(svc.save(new Blob(['y']), 'pic.png'));
+
+      const first = writeFile.mock.calls[0][0].path as string;
+      const second = writeFile.mock.calls[1][0].path as string;
+      expect(first).not.toBe(second); // distinct per-share tokens
+      expect(rmdir).toHaveBeenCalledTimes(2); // each save sweeps prior shares
     });
 
     it('truncates an over-long filename while keeping its extension', async () => {
@@ -143,19 +163,21 @@ describe('FileSaveService', () => {
 
       await firstValueFrom(svc.save(new Blob(['x']), `${'a'.repeat(400)}.png`));
 
-      const path = writeFile.mock.calls[0][0].path as string;
-      expect(path.length).toBe(200);
-      expect(path.endsWith('.png')).toBe(true);
+      const name = sharedBasename(writeFile.mock.calls[0][0].path) as string;
+      expect(name.length).toBe(200);
+      expect(name.endsWith('.png')).toBe(true);
     });
 
-    it('swallows a user-cancelled share (not a failure) and still cleans up', async () => {
+    it('swallows a user-cancelled share (not a failure), no immediate delete', async () => {
       share.mockRejectedValueOnce(new Error('Share canceled'));
       const svc = build();
 
       await expect(
         firstValueFrom(svc.save(new Blob(['x']), 'pic.png')),
       ).resolves.toBeUndefined();
-      expect(deleteFile).toHaveBeenCalled();
+      // The file is left for the next save's sweep — never deleted out from under
+      // a receiver that may still be reading it.
+      expect(writeFile).toHaveBeenCalledTimes(1);
     });
 
     it('propagates a genuine share failure', async () => {

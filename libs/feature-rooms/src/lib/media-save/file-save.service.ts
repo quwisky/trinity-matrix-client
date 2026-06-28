@@ -33,11 +33,20 @@ export class FileSaveService {
   /** Write the blob to the cache and surface the native share sheet. */
   private async saveNative(blob: Blob, filename: string): Promise<void> {
     const data = await blobToBase64(blob);
-    const path = safeName(filename);
+    // The OS hands the receiving app a content:// URI it reads asynchronously —
+    // on Android share() resolves before that read completes, so deleting the
+    // file now can truncate the share. Instead, each share gets its own cache
+    // subfolder (keeping a clean filename for the target) and the *previous*
+    // shares are swept first. By the time the user triggers another save the
+    // earlier receiver has long finished reading, so plaintext never lingers
+    // indefinitely yet the delete can't race the receiver. Same on iOS.
+    await sweepShareDir();
+    const path = `${SHARE_DIR}/${uniqueToken()}/${safeName(filename)}`;
     const { uri } = await Filesystem.writeFile({
       path,
       data,
       directory: Directory.Cache,
+      recursive: true,
     });
     try {
       await Share.share({ files: [uri], dialogTitle: 'Save or share' });
@@ -46,12 +55,6 @@ export class FileSaveService {
       if (!isShareCancel(err)) {
         throw err;
       }
-    } finally {
-      // Don't leave the decrypted plaintext in the cache after the sheet closes
-      // (the share target has already copied it by the time share() resolves).
-      await Filesystem.deleteFile({ path, directory: Directory.Cache }).catch(
-        () => undefined,
-      );
     }
   }
 
@@ -67,6 +70,33 @@ export class FileSaveService {
     a.remove();
     URL.revokeObjectURL(url);
   }
+}
+
+/** Cache subfolder holding files handed to the OS share sheet (swept per save). */
+const SHARE_DIR = 'trinity-shared';
+
+/**
+ * Delete the cache subfolder of all previous shares (best-effort). Run before each
+ * new native share so a former share's plaintext never lingers, without deleting a
+ * file the receiving app might still be reading from the *current* share.
+ */
+async function sweepShareDir(): Promise<void> {
+  await Filesystem.rmdir({
+    path: SHARE_DIR,
+    directory: Directory.Cache,
+    recursive: true,
+  }).catch(() => undefined); // missing dir on the first share — nothing to sweep
+}
+
+/** A random, collision-free folder name so concurrent/sequential shares never clash. */
+function uniqueToken(): string {
+  const c = globalThis.crypto;
+  if (c?.randomUUID) {
+    return c.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  c?.getRandomValues?.(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /** Read a blob as an unprefixed base64 string (what Filesystem.writeFile expects). */
