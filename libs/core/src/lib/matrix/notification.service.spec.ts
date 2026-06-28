@@ -324,6 +324,69 @@ describe('NotificationService', () => {
     });
   });
 
+  describe('web service worker', () => {
+    afterEach(() => {
+      // Drop the stubbed serviceWorker so other tests fall back to the ctor.
+      Reflect.deleteProperty(navigator, 'serviceWorker');
+    });
+
+    function stubServiceWorker(showNotification = vi.fn()) {
+      const registration = { showNotification };
+      Object.defineProperty(navigator, 'serviceWorker', {
+        configurable: true,
+        value: {
+          controller: {},
+          ready: Promise.resolve(registration),
+        },
+      });
+      return { showNotification };
+    }
+
+    it('shows via the SW registration when one controls the page', async () => {
+      const { showNotification } = stubServiceWorker();
+      const { svc, client } = setup();
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+      await Promise.resolve(); // let navigator.serviceWorker.ready resolve
+
+      expect(showNotification).toHaveBeenCalledWith('Alice · General', {
+        body: 'hello there',
+        tag: '!r:hs',
+        data: { roomId: '!r:hs' },
+      });
+      // Did NOT fall back to the renderer Notification constructor.
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    it('falls back to the constructor when no SW controls the page', () => {
+      const { svc, client } = setup();
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('treats a constructor throw as unsupported (no crash)', () => {
+      vi.stubGlobal(
+        'Notification',
+        class {
+          static permission = 'granted';
+          constructor() {
+            throw new Error('not supported on this platform');
+          }
+        },
+      );
+      const { svc, client } = setup();
+      svc.connect();
+
+      expect(() =>
+        timelineHandler(client)(event(), room, false, false, live),
+      ).not.toThrow();
+    });
+  });
+
   describe('desktop (Electron main-process bridge)', () => {
     let harness: ReturnType<typeof desktopBridge>;
 

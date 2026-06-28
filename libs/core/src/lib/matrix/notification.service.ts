@@ -233,9 +233,45 @@ export class NotificationService {
       return;
     }
 
-    // Web / PWA: the renderer Web Notification API. `tag` collapses repeated
-    // notifications from the same room.
-    const notification = new Notification(title, { body, tag: roomId });
+    // Web / PWA. `tag` collapses repeated notifications from the same room.
+    const options: NotificationOptions = {
+      body,
+      tag: roomId,
+      data: { roomId },
+    };
+
+    // Mobile browsers (Android Chrome, etc.) only allow notifications through
+    // the service worker's registration — `new Notification()` throws there.
+    // When a SW controls the page, show via the registration; otherwise use the
+    // renderer constructor (desktop browsers), falling back if the SW path fails.
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.serviceWorker?.controller
+    ) {
+      void navigator.serviceWorker.ready
+        .then((registration) => registration.showNotification(title, options))
+        .catch(() => this.showViaConstructor(title, options));
+      return;
+    }
+
+    this.showViaConstructor(title, options);
+  }
+
+  /**
+   * Renderer Web `Notification` constructor path (desktop browsers). A throw
+   * here means the browser doesn't support constructor notifications (mobile),
+   * so it's swallowed as "unsupported" rather than bubbling to the sync loop.
+   */
+  private showViaConstructor(
+    title: string,
+    options: NotificationOptions,
+  ): void {
+    let notification: Notification;
+    try {
+      notification = new Notification(title, options);
+    } catch {
+      return; // unsupported (e.g. mobile browser) — nothing more to do
+    }
     notification.onclick = (): void =>
       // The OS-notification click fires outside Angular's zone.
       this.zone.run(() => {
