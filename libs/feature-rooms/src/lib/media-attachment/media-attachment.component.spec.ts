@@ -1,16 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-  type Mock,
-} from 'vitest';
+import { Subject, of, throwError } from 'rxjs';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { MediaService, type MediaPayload } from '@trinity/core';
 import { MediaAttachmentComponent } from './media-attachment.component';
+import { FileSaveService } from '../media-save/file-save.service';
 
 function imageMedia(): MediaPayload {
   return {
@@ -34,8 +27,7 @@ interface MediaServiceStub {
 
 describe('MediaAttachmentComponent', () => {
   let mediaService: MediaServiceStub;
-  let origCreate: typeof URL.createObjectURL;
-  let origRevoke: typeof URL.revokeObjectURL;
+  let fileSave: { save: Mock };
 
   beforeEach(() => {
     mediaService = {
@@ -47,24 +39,17 @@ describe('MediaAttachmentComponent', () => {
       unpin: vi.fn(),
       releaseAll: vi.fn(),
     };
-
-    // saveBlob() uses the object-URL API, which jsdom doesn't implement.
-    origCreate = URL.createObjectURL;
-    origRevoke = URL.revokeObjectURL;
-    URL.createObjectURL = vi.fn(
-      () => 'blob:dl',
-    ) as unknown as typeof URL.createObjectURL;
-    URL.revokeObjectURL = vi.fn() as unknown as typeof URL.revokeObjectURL;
+    // FileSaveService owns the platform branch; stub it so the component test
+    // doesn't touch the object-URL API / native plugins.
+    fileSave = { save: vi.fn().mockReturnValue(of(undefined)) };
 
     TestBed.configureTestingModule({
       imports: [MediaAttachmentComponent],
-      providers: [{ provide: MediaService, useValue: mediaService }],
+      providers: [
+        { provide: MediaService, useValue: mediaService },
+        { provide: FileSaveService, useValue: fileSave },
+      ],
     });
-  });
-
-  afterEach(() => {
-    URL.createObjectURL = origCreate;
-    URL.revokeObjectURL = origRevoke;
   });
 
   it('resolves the thumbnail, sets src, and pins the resolved URL', () => {
@@ -108,7 +93,7 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.loading()).toBe(false);
   });
 
-  it('download() requests the full bytes via downloadMedia', () => {
+  it('download() resolves the full bytes then hands them to FileSaveService', () => {
     const media = imageMedia();
     const fixture = TestBed.createComponent(MediaAttachmentComponent);
     fixture.componentRef.setInput('media', media);
@@ -117,5 +102,37 @@ describe('MediaAttachmentComponent', () => {
     fixture.componentInstance.download();
 
     expect(mediaService.downloadMedia).toHaveBeenCalledWith(media);
+    expect(fileSave.save).toHaveBeenCalledWith(expect.any(Blob), 'pic.png');
+    expect(fixture.componentInstance.hasError()).toBe(false);
+  });
+
+  it('download() surfaces an error when saving fails', () => {
+    fileSave.save.mockReturnValue(throwError(() => new Error('save failed')));
+    const fixture = TestBed.createComponent(MediaAttachmentComponent);
+    fixture.componentRef.setInput('media', imageMedia());
+    fixture.detectChanges();
+
+    fixture.componentInstance.download();
+
+    expect(fixture.componentInstance.hasError()).toBe(true);
+  });
+
+  it('ignores a second download() while a save is in flight', () => {
+    const saveStream = new Subject<void>();
+    fileSave.save.mockReturnValue(saveStream.asObservable());
+    const fixture = TestBed.createComponent(MediaAttachmentComponent);
+    fixture.componentRef.setInput('media', imageMedia());
+    fixture.detectChanges();
+
+    fixture.componentInstance.download();
+    fixture.componentInstance.download(); // second tap while the first is saving
+
+    expect(mediaService.downloadMedia).toHaveBeenCalledTimes(1);
+    expect(fileSave.save).toHaveBeenCalledTimes(1);
+
+    // Completing the first save re-enables downloads.
+    saveStream.complete();
+    fixture.componentInstance.download();
+    expect(fileSave.save).toHaveBeenCalledTimes(2);
   });
 });

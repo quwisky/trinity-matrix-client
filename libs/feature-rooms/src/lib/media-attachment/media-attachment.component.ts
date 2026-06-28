@@ -9,9 +9,10 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Subscription } from 'rxjs';
+import { Subscription, finalize, switchMap } from 'rxjs';
 import { MediaBubbleComponent, runWithBusy } from '@trinity/ui';
 import { MediaService, type MediaPayload } from '@trinity/core';
+import { FileSaveService } from '../media-save/file-save.service';
 
 /**
  * Smart wrapper bridging the timeline's {@link MediaPayload} to the presentational
@@ -75,6 +76,7 @@ export class MediaAttachmentComponent {
   readonly media = input.required<MediaPayload>();
 
   private readonly mediaService = inject(MediaService);
+  private readonly fileSave = inject(FileSaveService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly src = signal<string | null>(null);
@@ -82,6 +84,9 @@ export class MediaAttachmentComponent {
   readonly errorMsg = signal<string | null>(null);
   readonly hasError = computed(() => this.errorMsg() !== null);
   readonly lightboxSrc = signal<string | null>(null);
+  /** Guards against a second save starting while one is in flight (native Share
+   * rejects a concurrent invocation, and it would write the file twice). */
+  private readonly saving = signal(false);
 
   /** Currently-pinned thumbnail URL (so it survives cache eviction while shown). */
   private pinnedUrl: string | null = null;
@@ -137,13 +142,20 @@ export class MediaAttachmentComponent {
     this.lightboxSrc.set(null);
   }
 
-  /** Download/save the full-resolution attachment (web `<a download>`). */
+  /** Save the full-resolution attachment — native share sheet or web download. */
   download(): void {
+    if (this.saving()) {
+      return; // a save is already in flight (avoid a concurrent native share)
+    }
+    this.saving.set(true);
     this.mediaService
       .downloadMedia(this.media())
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        switchMap(({ blob, filename }) => this.fileSave.save(blob, filename)),
+        finalize(() => this.saving.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
-        next: ({ blob, filename }) => saveBlob(blob, filename),
         error: () => this.errorMsg.set('Download failed'),
       });
   }
@@ -156,17 +168,4 @@ export class MediaAttachmentComponent {
     this.pinnedUrl = url;
     this.mediaService.pin(url);
   }
-}
-
-/** Trigger a browser download of a blob via a transient object URL. */
-function saveBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.style.display = 'none';
-  document.body.append(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
