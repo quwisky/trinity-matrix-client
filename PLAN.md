@@ -161,10 +161,12 @@ src/app/
      **cold start** works on native/desktop (Capacitor/Electron bundle the JS + crypto
      WASM as local assets); on **web/PWA** an `@angular/service-worker` (`ngsw-config.json`,
      production-only) precaches the app shell + crypto WASM for the same offline cold start
-     (needs in-browser verification of the offline/update flow). _Known
-     limitation:_ avatars (here and app-wide for rooms/members) use the unauthenticated
-     media path, so they fall back to initials on a v1.11 authenticated-media-only
-     homeserver — a shared authenticated-avatar resolver is a tracked follow-up.
+     (needs in-browser verification of the offline/update flow). **Authenticated avatars**
+     are done: a shared `AvatarService` resolves every `mxc://` avatar (rooms, spaces,
+     members, timeline senders, profile, sidebar user) to a cached authenticated `blob:`
+     URL via a ui-side `AVATAR_RESOLVER` token, so avatars load on v1.11
+     authenticated-media-only homeservers instead of falling back to initials; the cache
+     is revoked on logout (needs verification against a real authed-media homeserver).
 
 Phase 2: push notifications, threads, calls, spaces.
 
