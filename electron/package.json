@@ -1,0 +1,22 @@
+{
+  "name": "trinity-desktop",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Hand-rolled, hardened Electron desktop shell for Trinity. Serves the Angular www/ build over a custom privileged scheme (no Capacitor desktop bridge).",
+  "author": "Trinity",
+  "main": "dist/main.js",
+  "scripts": {
+    "copy:www": "node scripts/copy-www.mjs",
+    "compile": "tsc -p tsconfig.json",
+    "build": "node scripts/copy-www.mjs && tsc -p tsconfig.json",
+    "start": "electron .",
+    "package": "electron-builder",
+    "pack:dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "electron": "42.5.0",
+    "electron-builder": "26.15.3",
+    "typescript": "~5.9.0"
+  }
+}

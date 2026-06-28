@@ -19,6 +19,16 @@ import { routes } from './app/app.routes';
 import { AppComponent } from './app/app.component';
 import { environment } from './environments/environment';
 
+// Desktop (hand-rolled Electron) detection. The preload bridge exposes
+// `trinityDesktop.isElectron`; we fall back to the Electron user-agent token in
+// case the marker is ever unavailable. Capacitor.isNativePlatform() is FALSE in
+// this shell, so the service worker must be gated on this flag too.
+const isElectron =
+  !!(globalThis as { trinityDesktop?: { isElectron?: boolean } }).trinityDesktop
+    ?.isElectron ||
+  (typeof navigator !== 'undefined' &&
+    navigator.userAgent.includes('Electron'));
+
 bootstrapApplication(AppComponent, {
   providers: [
     { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
@@ -39,8 +49,11 @@ bootstrapApplication(AppComponent, {
     // Precache the app shell + crypto WASM for offline (web/PWA only). Native
     // (Capacitor) and desktop (Electron) already load these as bundled assets and
     // must NOT layer a second SW cache over them — gate on web + production.
+    // NB: Capacitor.isNativePlatform() is false inside the hand-rolled Electron
+    // shell, so we additionally exclude Electron via the preload marker / UA.
     provideServiceWorker('ngsw-worker.js', {
-      enabled: environment.production && !Capacitor.isNativePlatform(),
+      enabled:
+        environment.production && !Capacitor.isNativePlatform() && !isElectron,
       registrationStrategy: 'registerWhenStable:30000',
     }),
   ],

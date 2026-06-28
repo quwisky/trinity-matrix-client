@@ -29,6 +29,12 @@ log.txt
 /out-tsc
 /bazel-out
 
+# Electron desktop shell (self-contained; not an Nx project)
+/electron/node_modules
+/electron/dist
+/electron/www
+/electron/release
+
 # Node
 /node_modules
 npm-debug.log

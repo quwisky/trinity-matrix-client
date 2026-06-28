@@ -20,7 +20,11 @@
     "e2e:verify": "nx build trinity --configuration=development && node e2e/verify-sas-run.mjs",
     "e2e:verify:up": "node e2e/synapse/start.mjs",
     "e2e:verify:down": "node e2e/synapse/stop.mjs",
-    "e2e:media": "nx build trinity --configuration=development && node e2e/send-media-run.mjs"
+    "e2e:media": "nx build trinity --configuration=development && node e2e/send-media-run.mjs",
+    "electron:install": "pnpm -C electron install",
+    "electron:build": "pnpm run build && pnpm -C electron run build",
+    "electron:start": "pnpm run electron:build && pnpm -C electron run start",
+    "electron:package": "pnpm run electron:build && pnpm -C electron run package"
   },
   "private": true,
   "packageManager": "pnpm@10.26.2",

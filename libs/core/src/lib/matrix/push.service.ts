@@ -93,9 +93,9 @@ export class PushService {
   }
 
   private canPush(): boolean {
-    // NB: gate on the concrete mobile platforms, NOT `isNativePlatform()` —
-    // `@capacitor-community/electron` reports `isNativePlatform() === true` but has
-    // no push plugin, so the looser check would throw on desktop.
+    // Gate on the concrete mobile platforms. On web — and inside the hand-rolled
+    // Electron desktop shell, where `getPlatform()` is also `'web'` — there is no
+    // push plugin, so this keeps push a no-op everywhere except real iOS/Android.
     const platform = Capacitor.getPlatform();
     return (
       !!this.config &&

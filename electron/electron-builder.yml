@@ -1,0 +1,77 @@
+# electron-builder configuration for the Trinity desktop app.
+# Declarative + reproducible. Run from electron/ via `pnpm run package`.
+#
+# IMPORTANT: this packages the compiled main/preload (dist/) plus the copied
+# Angular web build (www/). Run `pnpm run build` in this folder first (the root
+# `electron:package` script chains the web build + copy + compile for you).
+appId: eu.qwky.trinity
+productName: Trinity
+copyright: Copyright © 2026 Trinity
+
+# Source files that go INTO the app bundle (relative to electron/).
+# We have no production npm dependencies, so node_modules is intentionally absent.
+files:
+  - dist/**/*
+  - www/**/*
+  - package.json
+
+asar: true
+
+directories:
+  output: release
+  buildResources: build # place icons here: icon.icns / icon.ico / icon.png (TODO)
+
+# ---------------------------------------------------------------------------
+# Linux
+# ---------------------------------------------------------------------------
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Network
+  synopsis: Trinity Matrix client
+  maintainer: Trinity <quwisky@qwky.eu>
+
+# ---------------------------------------------------------------------------
+# macOS
+# ---------------------------------------------------------------------------
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.social-networking
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  # TODO(signing): set the Developer ID identity and entitlements, then notarize.
+  #   identity: "Developer ID Application: Your Name (TEAMID)"
+  #   entitlements: build/entitlements.mac.plist
+  #   entitlementsInherit: build/entitlements.mac.plist
+  # TODO(notarize): configure notarization (e.g. notarytool via env creds):
+  #   notarize: true   # requires APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+  identity: null # null => ad-hoc / unsigned build (DEV ONLY — do not ship)
+
+# ---------------------------------------------------------------------------
+# Windows
+# ---------------------------------------------------------------------------
+win:
+  target:
+    - nsis
+  # TODO(signing): configure code signing (Authenticode / Azure Trusted Signing).
+  #   e.g. signtoolOptions / azureSignOptions, or CSC_LINK + CSC_KEY_PASSWORD env.
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+# ---------------------------------------------------------------------------
+# Auto-update (TODO)
+# ---------------------------------------------------------------------------
+# Not wired yet. To enable signed, signature-verified updates with
+# electron-updater, add a `publish` block (e.g. provider: github / generic) and
+# integrate autoUpdater in the main process. Never ship an unsigned update
+# channel — updates must be served over https from a signed artifact.
+# publish:
+#   provider: github
+#   owner: <owner>
+#   repo: <repo>
