@@ -1,11 +1,24 @@
 import { TestBed } from '@angular/core/testing';
+import { ToastController } from '@ionic/angular/standalone';
+import { throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageComposerComponent } from './message-composer.component';
+import { MediaPickerService } from '../media-picker/media-picker.service';
 
 describe('MessageComposerComponent', () => {
-  beforeEach(() =>
-    TestBed.configureTestingModule({ imports: [MessageComposerComponent] }),
-  );
+  let toastCreate: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    toastCreate = vi
+      .fn()
+      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    TestBed.configureTestingModule({
+      imports: [MessageComposerComponent],
+      providers: [
+        { provide: ToastController, useValue: { create: toastCreate } },
+      ],
+    });
+  });
 
   function enter(shift = false): Event {
     return new KeyboardEvent('keydown', { key: 'Enter', shiftKey: shift });
@@ -178,6 +191,32 @@ describe('MessageComposerComponent', () => {
     cmp.onAttach(); // picker.available is false under jsdom → uses the input
 
     expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('toasts a clear message when the native attach is denied/fails', async () => {
+    // Stand in for the native picker: available, but pickImage errors (e.g. denied
+    // photo access) instead of resolving a file.
+    TestBed.overrideProvider(MediaPickerService, {
+      useValue: {
+        available: true,
+        pickImage: () =>
+          throwError(
+            () => new Error('Photo access is denied. Enable it in Settings.'),
+          ),
+      },
+    });
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance.onAttach();
+    await Promise.resolve(); // let the error handler's toast.create settle
+
+    expect(toastCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        color: 'danger',
+        message: expect.stringContaining('Photo access is denied'),
+      }),
+    );
   });
 
   it('shows a determinate upload progress bar while uploading and hides it when idle', () => {

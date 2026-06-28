@@ -12,7 +12,11 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { IonIcon, IonProgressBar } from '@ionic/angular/standalone';
+import {
+  IonIcon,
+  IonProgressBar,
+  ToastController,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { addOutline, happyOutline, send } from 'ionicons/icons';
 import { EmojiPickerComponent } from '@trinity/ui';
@@ -62,6 +66,7 @@ export class MessageComposerComponent {
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('fileInput');
   private readonly picker = inject(MediaPickerService);
+  private readonly toast = inject(ToastController);
   private readonly destroyRef = inject(DestroyRef);
   private wasEditing = false;
   private wasReplying = false;
@@ -129,14 +134,32 @@ export class MessageComposerComponent {
       this.picker
         .pickImage()
         .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe((file) => {
-          if (file) {
-            this.submitMedia.emit(file);
-          }
+        .subscribe({
+          next: (file) => {
+            if (file) {
+              this.submitMedia.emit(file);
+            }
+          },
+          // A user-cancel resolves to null above; this catches a denied photo
+          // permission (or a genuine picker failure) instead of leaving it
+          // unhandled, and shows the reason.
+          error: (err: unknown) => void this.showAttachError(err),
         });
     } else {
       this.fileInput()?.nativeElement.click();
     }
+  }
+
+  /** Surface a gallery-picker failure (notably denied photo access) as a toast. */
+  private async showAttachError(err: unknown): Promise<void> {
+    const toast = await this.toast.create({
+      message:
+        err instanceof Error ? err.message : 'Could not open the gallery.',
+      duration: 4000,
+      color: 'danger',
+      position: 'bottom',
+    });
+    await toast.present();
   }
 
   /** Hidden file input change → emit the picked file, then reset for re-picking. */

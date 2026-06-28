@@ -1,7 +1,31 @@
 import { Injectable } from '@angular/core';
-import { Observable, defer, from, of, switchMap } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  defer,
+  from,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import { Capacitor } from '@capacitor/core';
-import { Camera, type MediaResult } from '@capacitor/camera';
+import {
+  Camera,
+  CameraErrorCode,
+  type MediaResult,
+  type PermissionStatus,
+} from '@capacitor/camera';
+
+/**
+ * Raised by {@link MediaPickerService.pickImage} when photo-library access is denied.
+ * Carries a user-facing message so the composer can surface it verbatim.
+ */
+export class GalleryPermissionDeniedError extends Error {
+  constructor() {
+    super('Photo access is denied. Enable it in Settings to attach images.');
+    this.name = 'GalleryPermissionDeniedError';
+  }
+}
 
 /**
  * Picks a media file for the composer. On a native platform it opens the
@@ -15,15 +39,58 @@ export class MediaPickerService {
   /** True when the native gallery picker should be used instead of `<input>`. */
   readonly available = Capacitor.isNativePlatform();
 
-  /** Open the native gallery and resolve the chosen image as a File, or null. */
+  /**
+   * Open the native gallery and resolve the chosen image as a File, or null. Gates
+   * on photo-library permission first, swallows a user-cancel (resolves null), and
+   * surfaces a denial as a {@link GalleryPermissionDeniedError} — so the composer
+   * shows feedback instead of an unhandled rejection.
+   */
   pickImage(): Observable<File | null> {
     if (!this.available) {
       return of(null);
     }
-    return defer(() =>
-      from(Camera.chooseFromGallery({ allowMultipleSelection: false })),
-    ).pipe(switchMap((res) => from(toFile(res.results[0]))));
+    return defer(() => from(this.ensurePhotoAccess())).pipe(
+      switchMap(() =>
+        from(Camera.chooseFromGallery({ allowMultipleSelection: false })),
+      ),
+      switchMap((res) => from(toFile(res.results[0]))),
+      catchError((err: unknown) => {
+        // Dismissing the picker is a user choice, not a failure → null, no error.
+        if (errorCode(err) === CameraErrorCode.ChooseMediaCancelled) {
+          return of(null);
+        }
+        // A denial raised at pick time (rather than the gate) normalizes to the
+        // same typed error, so there's a single clear message to show.
+        if (errorCode(err) === CameraErrorCode.GalleryPermissionDenied) {
+          return throwError(() => new GalleryPermissionDeniedError());
+        }
+        return throwError(() => err);
+      }),
+    );
   }
+
+  /** Resolve once photo-library access is granted; reject with a typed error if denied. */
+  private async ensurePhotoAccess(): Promise<void> {
+    let status: PermissionStatus = await Camera.checkPermissions();
+    if (
+      status.photos === 'prompt' ||
+      status.photos === 'prompt-with-rationale'
+    ) {
+      status = await Camera.requestPermissions({ permissions: ['photos'] });
+    }
+    // 'limited' (iOS partial library) is enough to pick; only outright denial blocks.
+    if (status.photos !== 'granted' && status.photos !== 'limited') {
+      throw new GalleryPermissionDeniedError();
+    }
+  }
+}
+
+/** The `code` on a Capacitor plugin rejection, if present. */
+function errorCode(err: unknown): string | undefined {
+  if (typeof err === 'object' && err !== null && 'code' in err) {
+    return String((err as { code: unknown }).code);
+  }
+  return undefined;
 }
 
 /** Materialize a gallery result into a File via its web-accessible URL. */

@@ -12,11 +12,21 @@ vi.mock('@capacitor/core', () => ({
   },
 }));
 vi.mock('@capacitor/camera', () => ({
-  Camera: { chooseFromGallery: vi.fn() },
+  Camera: {
+    chooseFromGallery: vi.fn(),
+    checkPermissions: vi.fn(),
+    requestPermissions: vi.fn(),
+  },
+  CameraErrorCode: {
+    GalleryPermissionDenied: 'OS-PLUG-CAMR-0005',
+    ChooseMediaCancelled: 'OS-PLUG-CAMR-0020',
+  },
 }));
 
 const isNative = Capacitor.isNativePlatform as unknown as Mock;
 const chooseFromGallery = Camera.chooseFromGallery as unknown as Mock;
+const checkPermissions = Camera.checkPermissions as unknown as Mock;
+const requestPermissions = Camera.requestPermissions as unknown as Mock;
 
 function makeService(): MediaPickerService {
   TestBed.configureTestingModule({ providers: [MediaPickerService] });
@@ -27,6 +37,14 @@ describe('MediaPickerService', () => {
   beforeEach(() => {
     isNative.mockReturnValue(false);
     chooseFromGallery.mockReset();
+    // Default to already-granted photo access so the gallery branch runs; tests
+    // that exercise the permission gate override this.
+    checkPermissions
+      .mockReset()
+      .mockResolvedValue({ camera: 'granted', photos: 'granted' });
+    requestPermissions
+      .mockReset()
+      .mockResolvedValue({ camera: 'granted', photos: 'granted' });
   });
 
   it('is unavailable on web; pickImage resolves null without opening the gallery', async () => {
@@ -62,5 +80,70 @@ describe('MediaPickerService', () => {
     expect(file?.type).toBe('image/png');
 
     vi.unstubAllGlobals();
+  });
+
+  it('requests photo access when prompting, then opens the gallery on grant', async () => {
+    isNative.mockReturnValue(true);
+    checkPermissions.mockResolvedValue({ camera: 'denied', photos: 'prompt' });
+    requestPermissions.mockResolvedValue({
+      camera: 'denied',
+      photos: 'granted',
+    });
+    chooseFromGallery.mockResolvedValue({
+      results: [{ webPath: 'blob:pic', type: 'photo' }],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        blob: () =>
+          Promise.resolve(
+            new Blob([new Uint8Array([1])], { type: 'image/png' }),
+          ),
+      }),
+    );
+
+    const svc = makeService();
+    const file = await firstValueFrom(svc.pickImage());
+
+    expect(requestPermissions).toHaveBeenCalledWith({
+      permissions: ['photos'],
+    });
+    expect(chooseFromGallery).toHaveBeenCalled();
+    expect(file).toBeInstanceOf(File);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('errors with a clear message and never opens the gallery when access is denied', async () => {
+    isNative.mockReturnValue(true);
+    checkPermissions.mockResolvedValue({ camera: 'denied', photos: 'denied' });
+
+    const svc = makeService();
+
+    await expect(firstValueFrom(svc.pickImage())).rejects.toThrow(
+      /photo access is denied/i,
+    );
+    expect(requestPermissions).not.toHaveBeenCalled(); // already denied → no prompt
+    expect(chooseFromGallery).not.toHaveBeenCalled();
+  });
+
+  it('resolves null (no error) when the user cancels the picker', async () => {
+    isNative.mockReturnValue(true);
+    chooseFromGallery.mockRejectedValue({ code: 'OS-PLUG-CAMR-0020' });
+
+    const svc = makeService();
+
+    expect(await firstValueFrom(svc.pickImage())).toBeNull();
+  });
+
+  it('surfaces a denial raised at pick time as the permission error', async () => {
+    isNative.mockReturnValue(true);
+    chooseFromGallery.mockRejectedValue({ code: 'OS-PLUG-CAMR-0005' });
+
+    const svc = makeService();
+
+    await expect(firstValueFrom(svc.pickImage())).rejects.toThrow(
+      /photo access is denied/i,
+    );
   });
 });
