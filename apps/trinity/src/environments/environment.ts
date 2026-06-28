@@ -4,6 +4,10 @@
 
 export const environment = {
   production: false,
+  // Native push notifications. Set both fields to enable (needs a deployed Sygnal
+  // push gateway + FCM/APNs credentials); null leaves push disabled (the app falls
+  // back to in-app/sync updates). `appId` is the base id; `.ios`/`.android` is appended.
+  push: null as { gatewayUrl: string; appId: string } | null,
 };
 
 /*

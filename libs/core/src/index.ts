@@ -8,6 +8,7 @@ export * from './lib/matrix/avatar.service';
 export * from './lib/matrix/auth.service';
 export * from './lib/matrix/profile.service';
 export * from './lib/matrix/devices.service';
+export * from './lib/matrix/push.service';
 export * from './lib/matrix/crypto-spike.service';
 export * from './lib/matrix/secret-storage-key.service';
 export * from './lib/matrix/crypto.service';

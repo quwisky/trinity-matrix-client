@@ -12,7 +12,7 @@ import {
 } from '@ionic/angular/standalone';
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
-import { AvatarService, ThemeService } from '@trinity/core';
+import { AvatarService, PUSH_CONFIG, ThemeService } from '@trinity/core';
 import { AVATAR_RESOLVER } from '@trinity/ui';
 
 import { routes } from './app/app.routes';
@@ -34,6 +34,8 @@ bootstrapApplication(AppComponent, {
         return (mxc: string | null, size: number) => avatars.resolve(mxc, size);
       },
     },
+    // Push-gateway config for PushService (null = push disabled; see environment.ts).
+    { provide: PUSH_CONFIG, useValue: environment.push },
     // Precache the app shell + crypto WASM for offline (web/PWA only). Native
     // (Capacitor) and desktop (Electron) already load these as bundled assets and
     // must NOT layer a second SW cache over them — gate on web + production.

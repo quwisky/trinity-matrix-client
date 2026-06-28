@@ -12,6 +12,7 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 import { AvatarService } from './avatar.service';
+import { PushService } from './push.service';
 import { SessionStorageService } from '../storage/session-storage.service';
 import { MatrixSession } from './session.model';
 
@@ -30,6 +31,7 @@ export class AuthService {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
   private readonly avatars = inject(AvatarService);
+  private readonly push = inject(PushService);
 
   /**
    * Resolve a homeserver base URL from a user-entered domain (e.g. "matrix.org"
@@ -109,7 +111,10 @@ export class AuthService {
         )
       : of(void 0);
 
-    return serverLogout.pipe(
+    // Delete the Matrix pusher first, while the access token is still valid, so the
+    // gateway stops pushing to this device; then log out and clear local state.
+    return this.push.unregister().pipe(
+      switchMap(() => serverLogout),
       // reset() (not stop()) wipes the local sync + crypto stores so the prior
       // account's keys/cache don't linger on a shared device after logout.
       switchMap(() => this.matrix.reset()),
@@ -132,9 +137,13 @@ export class AuthService {
     // Drop any avatar blobs cached for a previous session — re-login can switch
     // accounts/homeservers without a logout (e.g. navigating to /login).
     this.avatars.releaseAll();
-    return this.storage
-      .save(session)
-      .pipe(switchMap(() => this.matrix.init(session)));
+    // Likewise tear down a prior session's push registration (remove its pusher
+    // while its token is still valid, and reset the once-per-session guard) so the
+    // new account registers its own pusher when the shell mounts.
+    return this.push.unregister().pipe(
+      switchMap(() => this.storage.save(session)),
+      switchMap(() => this.matrix.init(session)),
+    );
   }
 
   /** Accept "@user:server.org", "user:server.org", or a bare "server.org". */

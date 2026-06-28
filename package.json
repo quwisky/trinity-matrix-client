@@ -58,6 +58,7 @@
     "@capacitor/ios": "^8.4.1",
     "@capacitor/keyboard": "8.0.5",
     "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.1.1",
     "@capacitor/share": "^8.0.1",
     "@capacitor/status-bar": "8.0.2",
     "@ionic/angular": "^8.0.0",
