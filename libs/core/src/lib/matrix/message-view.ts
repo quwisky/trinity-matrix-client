@@ -254,6 +254,26 @@ const MATRIX_ALLOWED_ATTR = [
   'data-mx-spoiler',
 ];
 
+// Image sources we consider local (no network fetch on render). Remote schemes
+// are stripped below so sender HTML can't smuggle a tracking pixel.
+const LOCAL_IMG_SCHEME = /^(?:mxc|blob|data):/i;
+
+// A sender's `formatted_body` can embed `<img src="https://attacker/x.gif">`,
+// which the browser would fetch on render — leaking the viewer's IP and acting
+// as a read receipt. Inline mxc rendering isn't wired yet, so strip the `src`
+// of any non-local image: this blocks remote auto-loading outright while
+// leaving mxc/blob/data sources intact for when inline rendering lands. Hook is
+// registered once at module load; it only affects `sanitizeMatrixHtml` (the
+// composer path uses Angular's DomSanitizer, not DOMPurify).
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.nodeName === 'IMG' && node.hasAttribute('src')) {
+    const src = node.getAttribute('src') ?? '';
+    if (!LOCAL_IMG_SCHEME.test(src)) {
+      node.removeAttribute('src');
+    }
+  }
+});
+
 /**
  * Sanitize sender-provided HTML (`formatted_body`) against the Matrix allowlist.
  * Federated, end-to-end-encrypted content is untrusted and can't be scanned

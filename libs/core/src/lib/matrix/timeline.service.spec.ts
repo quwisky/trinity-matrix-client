@@ -225,6 +225,26 @@ describe('TimelineService', () => {
     expect(html).toContain('<strong>ok</strong>');
   });
 
+  it('strips remote image sources (no tracking-pixel auto-fetch)', () => {
+    const svc = setup([
+      fakeEvent({
+        id: '$img',
+        sender: '@a:hs',
+        body: 'pic',
+        format: 'org.matrix.custom.html',
+        formattedBody:
+          '<img src="https://attacker.test/x.gif" alt="leak">' +
+          '<img src="mxc://hs/abc" alt="ok"><strong>text</strong>',
+      }),
+    ]);
+
+    const html = svc.messages()[0].html ?? '';
+    expect(html).not.toContain('attacker.test'); // remote src dropped
+    expect(html).toContain('mxc://hs/abc'); // local mxc src kept
+    expect(html).toContain('alt="leak"'); // node itself survives, just no src
+    expect(html).toContain('<strong>text</strong>');
+  });
+
   it('neutralizes javascript: links and strips the new-tab target', () => {
     const svc = setup([
       fakeEvent({
