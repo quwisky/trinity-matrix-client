@@ -1,5 +1,8 @@
 import { TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
+import { vi } from 'vitest';
 import { AvatarComponent } from './avatar.component';
+import { AVATAR_RESOLVER } from './avatar-resolver';
 
 describe('AvatarComponent', () => {
   beforeEach(() =>
@@ -43,5 +46,38 @@ describe('AvatarComponent', () => {
         .querySelector('.avatar--fallback')
         .textContent.trim(),
     ).toBe('B');
+  });
+
+  it('resolves an mxc via the resolver and shows the resolved url', () => {
+    const resolver = vi.fn(() => of('blob:resolved'));
+    TestBed.configureTestingModule({
+      providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
+    });
+    const fixture = TestBed.createComponent(AvatarComponent);
+    fixture.componentRef.setInput('mxc', 'mxc://hs/a');
+    fixture.componentRef.setInput('size', 64);
+    fixture.detectChanges();
+
+    expect(resolver).toHaveBeenCalledWith('mxc://hs/a', 64);
+    expect(
+      fixture.nativeElement.querySelector('img.avatar').getAttribute('src'),
+    ).toBe('blob:resolved');
+  });
+
+  it('falls back to initials when the resolver yields null', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: AVATAR_RESOLVER, useValue: () => of(null) }],
+    });
+    const fixture = TestBed.createComponent(AvatarComponent);
+    fixture.componentRef.setInput('mxc', 'mxc://hs/missing');
+    fixture.componentRef.setInput('initial', 'C');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('img.avatar')).toBeNull();
+    expect(
+      fixture.nativeElement
+        .querySelector('.avatar--fallback')
+        .textContent.trim(),
+    ).toBe('C');
   });
 });
