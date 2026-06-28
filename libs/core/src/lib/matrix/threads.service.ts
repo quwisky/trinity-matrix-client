@@ -249,11 +249,20 @@ export class ThreadsService {
     this.threadRoom = room;
     this.threadRoomId = roomId;
     this._openThreadRootId.set(rootEventId);
-    // `getThread` returns the existing Thread when the indicator that launched this
-    // is showing (the SDK has already aggregated it). If absent, fall through to a
-    // root-only view (and bind via ThreadEvent.New once a first reply creates it)
-    // rather than throwing.
-    const thread = room.getThread(rootEventId);
+    // `getThread` returns the existing Thread when one is already aggregated (e.g.
+    // opening from a "N replies" indicator). When it's absent — opening a *new*
+    // thread via "Reply in thread" on a plain message — eagerly create the Thread
+    // so the first reply has a home. matrix-js-sdk does NOT form a thread from the
+    // sender's own first reply: the echo is recognised as threaded (so it's kept
+    // out of the main timeline) but no `Thread` is created and `getThread`/
+    // `getThreads` stay empty, so the reply would silently vanish. Creating it up
+    // front (verified against matrix-js-sdk 41.8: `getThread` then returns it and
+    // `sendToThread`'s echo lands inside) means the reply surfaces immediately via
+    // the live/reply listeners; a later sync updates this same registered Thread.
+    const rootEvent = room.findEventById(rootEventId);
+    const thread =
+      room.getThread(rootEventId) ??
+      (rootEvent ? room.createThread(rootEventId, rootEvent, [], false) : null);
     if (thread) {
       this.attachThread(thread);
     }

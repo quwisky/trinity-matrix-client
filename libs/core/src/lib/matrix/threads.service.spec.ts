@@ -116,8 +116,10 @@ function setup(
   threads: FakeThread[],
   sent: unknown[][] = [],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
+  extraEvents: FakeEvent[] = [],
 ) {
   const all = [
+    ...extraEvents,
     ...threads.flatMap((t) => [
       ...(t.rootEvent ? [t.rootEvent] : []),
       ...t.events,
@@ -128,6 +130,21 @@ function setup(
     getThreads: () => threads,
     getThread: (id: string) => threads.find((t) => t.id === id) ?? null,
     findEventById: (id: string) => all.find((e) => e.getId() === id),
+    // Mirrors Room.createThread: registers a new Thread so a later getThread finds
+    // it — matches openThread eagerly creating a thread for a brand-new reply.
+    createThread: (
+      threadId: string,
+      rootEvent: FakeEvent | undefined,
+      events: FakeEvent[] | undefined,
+    ) => {
+      const created = fakeThread({
+        id: threadId,
+        rootEvent,
+        events: events?.length ? events : rootEvent ? [rootEvent] : [],
+      });
+      threads.push(created);
+      return created;
+    },
     getMember: (id: string) => ({
       name: MEMBERS[id] ?? id,
       getMxcAvatarUrl: () => null,
@@ -240,6 +257,31 @@ describe('ThreadsService', () => {
     expect(msgs.map((m) => m.id)).toEqual(['$root', '$r1']);
     expect(msgs[0].body).toBe('root msg');
     expect(svc.openThreadRootId()).toBe('$root');
+  });
+
+  it('eagerly creates a thread for a brand-new one so the first reply surfaces', () => {
+    // "Reply in thread" on a plain message: no thread exists yet, but the root does.
+    const root = fakeEvent({ id: '$root', sender: '@me:hs', body: 'root msg' });
+    const { svc, room } = setup([], [], {}, [root]);
+    svc.openThread('!r:hs', '$root');
+
+    // The thread is created + attached up front; the root shows immediately.
+    const thread = room.getThread('$root');
+    expect(thread).not.toBeNull();
+    if (!thread) return;
+    expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root']);
+
+    // The first reply lands in that created thread → surfaces via the live listener.
+    // (matrix-js-sdk never forms a thread from the sender's own first reply alone.)
+    const reply = fakeEvent({
+      id: '$r1',
+      sender: '@me:hs',
+      body: 'first reply',
+    });
+    thread.events.push(reply);
+    thread.emit(ThreadEvent.NewReply);
+
+    expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root', '$r1']);
   });
 
   it('prepends the root when the thread timeline omits it', () => {
