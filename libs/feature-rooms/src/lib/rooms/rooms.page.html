@@ -27,6 +27,15 @@
         <ion-buttons slot="start">
           <ion-menu-button></ion-menu-button>
         </ion-buttons>
+        <ion-buttons slot="end">
+          <ion-button
+            (click)="goToSettings()"
+            aria-label="Settings"
+            data-testid="open-settings"
+          >
+            <ion-icon slot="icon-only" name="settings-outline" />
+          </ion-button>
+        </ion-buttons>
         <ion-title>
           @if (activeRoom(); as room) {
             <span role="heading" aria-level="1">

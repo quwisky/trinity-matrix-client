@@ -1,0 +1,25 @@
+ion-content {
+  --background: var(--trinity-chat);
+}
+
+ion-list {
+  background: transparent;
+}
+
+ion-list-header {
+  color: var(--trinity-text-muted);
+  font-weight: 600;
+}
+
+ion-item {
+  --background: transparent;
+  --color: var(--trinity-text);
+  --border-color: var(--trinity-divider);
+}
+
+.setting-note {
+  display: block;
+  padding: 8px 16px;
+  color: var(--trinity-text-muted);
+  font-size: 13px;
+}

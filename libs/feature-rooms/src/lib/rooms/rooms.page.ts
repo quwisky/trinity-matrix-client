@@ -19,12 +19,13 @@ import {
   IonToolbar,
   IonTitle,
   IonButtons,
+  IonButton,
   IonIcon,
   MenuController,
   ToastController,
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
-import { lockClosed } from 'ionicons/icons';
+import { lockClosed, settingsOutline } from 'ionicons/icons';
 import {
   AuthService,
   CryptoService,
@@ -57,6 +58,7 @@ import { EncryptionBannerComponent } from '../encryption-banner/encryption-banne
     IonToolbar,
     IonTitle,
     IonButtons,
+    IonButton,
     IonIcon,
     ServerRailComponent,
     ChannelSidebarComponent,
@@ -133,7 +135,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   });
 
   constructor() {
-    addIcons({ lockClosed });
+    addIcons({ lockClosed, settingsOutline });
   }
 
   ngOnInit(): void {
@@ -235,6 +237,10 @@ export class RoomsPage implements OnInit, OnDestroy {
       position: 'bottom',
     });
     await toast.present();
+  }
+
+  goToSettings(): void {
+    void this.router.navigateByUrl('/settings');
   }
 
   logout(): void {

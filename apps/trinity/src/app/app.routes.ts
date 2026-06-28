@@ -20,6 +20,12 @@ export const routes: Routes = [
       import('@trinity/feature-rooms').then((m) => m.RoomsPage),
   },
   {
+    path: 'settings',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('@trinity/feature-settings').then((m) => m.SettingsPage),
+  },
+  {
     path: 'encryption/setup',
     canActivate: [authGuard],
     loadComponent: () =>

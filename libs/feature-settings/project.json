@@ -1,0 +1,22 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "feature-settings",
+  "projectType": "library",
+  "sourceRoot": "libs/feature-settings/src",
+  "prefix": "trn",
+  "tags": ["type:feature", "scope:trinity"],
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/feature-settings"
+      },
+      "configurations": {
+        "watch": {
+          "command": "vitest"
+        }
+      }
+    }
+  }
+}

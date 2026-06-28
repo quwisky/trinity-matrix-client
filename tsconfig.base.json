@@ -27,6 +27,7 @@
       "@trinity/feature-auth": ["libs/feature-auth/src/index.ts"],
       "@trinity/feature-crypto": ["libs/feature-crypto/src/index.ts"],
       "@trinity/feature-rooms": ["libs/feature-rooms/src/index.ts"],
+      "@trinity/feature-settings": ["libs/feature-settings/src/index.ts"],
       "@trinity/ui": ["libs/ui/src/index.ts"]
     }
   },

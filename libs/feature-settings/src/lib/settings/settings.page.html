@@ -1,0 +1,33 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/rooms" />
+    </ion-buttons>
+    <ion-title>Settings</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-list>
+    <ion-list-header>Appearance</ion-list-header>
+    <ion-radio-group
+      [value]="theme.preference()"
+      (ionChange)="onThemeChange($event)"
+    >
+      <ion-item>
+        <ion-radio value="system" data-testid="theme-system">
+          Use system setting
+        </ion-radio>
+      </ion-item>
+      <ion-item>
+        <ion-radio value="light" data-testid="theme-light">Light</ion-radio>
+      </ion-item>
+      <ion-item>
+        <ion-radio value="dark" data-testid="theme-dark">Dark</ion-radio>
+      </ion-item>
+    </ion-radio-group>
+    <ion-note class="setting-note">
+      Showing the {{ theme.resolved() }} theme.
+    </ion-note>
+  </ion-list>
+</ion-content>
