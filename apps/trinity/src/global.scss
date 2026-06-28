@@ -32,8 +32,10 @@
  * https://ionicframework.com/docs/theming/dark-mode
  */
 
-/* Trinity ships a Discord-style always-dark UI. */
-@import '@ionic/angular/css/palettes/dark.always.css';
+/* Class-based dark palette: Ionic's dark tokens apply only under `.ion-palette-dark`
+ * (toggled on <html> by ThemeService). With the class absent, Ionic's light defaults
+ * apply — so light mode works without us re-deriving Ionic's full token ramp. */
+@import '@ionic/angular/css/palettes/dark.class.css';
 
 /*
  * Keyboard-focus baseline. The custom Discord-style controls strip native

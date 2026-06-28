@@ -1,23 +1,12 @@
-// Trinity theme — Discord-inspired dark palette.
+// Trinity theme — Discord-inspired palette.
 // https://ionicframework.com/docs/theming/
+// Light is the :root default; dark is layered under `.ion-palette-dark`, the class
+// ThemeService toggles on <html>. That class also gates Ionic's own dark tokens
+// (see global.scss → dark.class.css), so the two stay in lockstep. The brand accent
+// (blurple) and primary mapping are theme-constant and live in :root.
 
 :root {
-  // Discord surface ramp (darkest → lightest).
-  --trinity-rail: #1e1f22; // server rail
-  --trinity-sidebar: #2b2d31; // channel + member columns
-  --trinity-sidebar-header: #232428;
-  --trinity-chat: #313338; // main content
-  --trinity-members: #2b2d31;
-  --trinity-hover: #35373c; // row hover
-  --trinity-active: #404249; // selected row
-  --trinity-divider: #1f2023;
-
-  // Text.
-  --trinity-text: #dbdee1;
-  --trinity-text-muted: #949ba4;
-  --trinity-text-bright: #f2f3f5;
-
-  // Brand.
+  // Brand (constant across themes).
   --trinity-accent: #5865f2; // blurple
   --trinity-accent-hover: #4752c4;
   --trinity-green: #23a55a;
@@ -30,11 +19,45 @@
   --ion-color-primary-tint: #6974f3;
   --ion-color-primary-contrast: #fff;
   --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-font-family: 'gg sans', 'Helvetica Neue', helvetica, arial, sans-serif;
 
-  // App background + text defaults.
+  // Light surface ramp (lightest → darkest accents).
+  --trinity-rail: #e3e5e8; // server rail
+  --trinity-sidebar: #f2f3f5; // channel + member columns
+  --trinity-sidebar-header: #ebedef;
+  --trinity-chat: #fff; // main content
+  --trinity-members: #f2f3f5;
+  --trinity-hover: #e9eaec; // row hover
+  --trinity-active: #d4d7dc; // selected row
+  --trinity-divider: #e0e1e4;
+
+  // Light text.
+  --trinity-text: #313338;
+  --trinity-text-muted: #5c5e66;
+  --trinity-text-bright: #060607;
+
+  // App background + text defaults (Ionic supplies the rest of its light ramp).
+  --ion-background-color: #fff;
+  --ion-background-color-rgb: 255, 255, 255;
+  --ion-text-color: #313338;
+  --ion-text-color-rgb: 49, 51, 56;
+}
+
+// Dark theme — the Discord-style default look, applied via `.ion-palette-dark`.
+.ion-palette-dark {
+  --trinity-rail: #1e1f22;
+  --trinity-sidebar: #2b2d31;
+  --trinity-sidebar-header: #232428;
+  --trinity-chat: #313338;
+  --trinity-members: #2b2d31;
+  --trinity-hover: #35373c;
+  --trinity-active: #404249;
+  --trinity-divider: #1f2023;
+  --trinity-text: #dbdee1;
+  --trinity-text-muted: #949ba4;
+  --trinity-text-bright: #f2f3f5;
   --ion-background-color: #313338;
   --ion-background-color-rgb: 49, 51, 56;
   --ion-text-color: #dbdee1;
   --ion-text-color-rgb: 219, 222, 225;
-  --ion-font-family: 'gg sans', 'Helvetica Neue', helvetica, arial, sans-serif;
 }
