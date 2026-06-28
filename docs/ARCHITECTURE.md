@@ -173,6 +173,19 @@ Defined in [app.routes.ts](../apps/trinity/src/app/app.routes.ts), all lazy-load
 | `/encryption/verify` | device verification (emoji SAS)         | `authGuard` |
 | `/spike`             | dev E2EE crypto spike                   | —           |
 
+On the **desktop/wide split-pane layout** (≥`md`), `/encryption/unlock` and
+`/encryption/verify` are presented as **Ionic modals** rather than routed pages — the
+`EncryptionDialogService` (`@trinity/ui`) decides modal-vs-route from the `md` breakpoint
+and lazy-loads the page components via the `ENCRYPTION_DIALOG_COMPONENTS` token (wired in
+`main.ts`, so `ui`/`core` never import `feature-crypto`); the routes remain the canonical
+deep-link / mobile target. `provideIonicAngular` is configured with
+`focusManagerPriority` (moves focus into the entering page during a transition, before
+the leaving one is `aria-hidden` — fixes an `IonRouterOutlet` lock, ionic#30240) and
+`useSetInputAPI: true` (so modal `componentProps` set signal inputs via `setInput()`
+instead of clobbering the getter). Production builds disable `optimization.styles.inlineCritical`
+— its deferred stylesheet `onload` never fires over the `trinity://` scheme, which broke
+the desktop dark theme.
+
 ## Authentication flow
 
 ```
@@ -302,6 +315,22 @@ Capacitor wraps the web build (`www/`) into `ios/` and `android/`. After any web
 change, `pnpm build && pnpm exec cap sync` (or `pnpm exec cap copy`) pushes it into the shells.
 iOS uses Swift Package Manager (Capacitor 8 default); Android needs `ANDROID_HOME`.
 
+### Electron desktop
+
+A hand-rolled Electron shell (`electron/`, own `package.json`) serves `www/` over a
+privileged `trinity://app` scheme (a secure context, so IndexedDB / WASM / `crypto.subtle`
+work). Hardened: `contextIsolation` + `sandbox` + `nodeIntegration: false`. The preload
+exposes a minimal `trinityDesktop` bridge (`contextBridge`) — `isElectron`, `onDeepLink`
+(OS SSO callback over the `eu.qwky.trinity://` scheme), and `showNotification` /
+`onNotificationClick`. **Notifications** are posted from the **main process** (Electron
+`Notification`, over a validated, sender-checked IPC channel) so the OS attributes them to
+Trinity; a click focuses the window and routes to the room. `Capacitor.isNativePlatform()`
+is **false** here, so platform branches that must treat desktop like web (service worker
+off, push off, web-notification gate) key off the `trinityDesktop` marker too. Packaging is
+electron-builder: `pnpm electron:package:mac` is unsigned (dev), `electron:package:mac:signed`
+produces a signed + notarized build (Developer ID + an `@electron/notarize` afterSign hook)
+— required before macOS will deliver notifications. See [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## Testing harnesses
 
 Unit tests are **Vitest** (via the Analog Angular plugin), one suite per project, run
@@ -317,3 +346,15 @@ assert real behavior:
   fallback. The full SAS round-trip was run to PASS (2026-06-27).
 
 See [e2e/README.md](../e2e/README.md) for the verification flow.
+
+There are also two **`@playwright/test`** suites under `apps/trinity/`:
+
+- `e2e/` (the `@nx/playwright` project, `nx e2e trinity`) — authenticated app journeys
+  against the same disposable Synapse harness (login, settings/theme, devices,
+  focus-relocation on navigation). Skips itself when Docker/Synapse is unavailable.
+- `e2e-electron/` (`pnpm electron:e2e`, config `playwright.electron.config.mts`) — launches
+  the **built desktop app** via Playwright's `_electron` API and asserts it boots over
+  `trinity://app`, the preload bridge is exposed but Node isn't, dark mode applies (a
+  regression for the critical-CSS bug), and crypto WASM loads. Each run gets a fresh
+  `--user-data-dir`; on headless Linux/CI wrap with `xvfb-run` (and `pnpm electron:install`
+  for the binary).

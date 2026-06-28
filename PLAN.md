@@ -172,7 +172,28 @@ src/app/
      authenticated-media-only homeservers instead of falling back to initials; the cache
      is revoked on logout (needs verification against a real authed-media homeserver).
 
-Phase 2: push notifications, threads, calls, spaces.
+Phase 2:
+
+- **Push notifications** — ✅ mobile push (FCM/APNs → a Matrix pusher via a Sygnal
+  gateway; `PushService`, gated to real iOS/Android) plus an in-app `NotificationService`
+  driven by the live sync stream for desktop + web/PWA. On Electron, delivery goes
+  through the **main process** (the `trinityDesktop` preload bridge → Electron
+  `Notification`) so the OS attributes notifications to Trinity; the renderer Web
+  Notification path stays for web/PWA. macOS still needs a signed + notarized build to
+  actually deliver (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) → signing).
+- **Threads, calls, spaces** — not started.
+
+**Desktop (Electron) hardening (this iteration).** Hand-rolled Electron shell (privileged
+`trinity://app` scheme, tray, deep-link SSO). Resolved this pass: dark theme on desktop
+(production critical-CSS inlining deferred the stylesheet behind an `onload` that never
+fires over `trinity://`, so `inlineCritical` is off; dark also uses `:root.ion-palette-dark`
+to win the cascade unconditionally); an `IonRouterOutlet` navigation lock (ionic#30240 —
+`focusManagerPriority` moves focus into the entering page before the leaving one is
+`aria-hidden`); modal `componentProps` clobbering signal inputs (`useSetInputAPI: true`);
+logout hanging ~25s on the Rust-crypto IndexedDB wipe (now backgrounded, with `init()`
+gating re-login on it); unlock/verify presented as **modals** on the desktop layout;
+**main-process notifications**; a **Discord-style login**; a **macOS signing + notarization**
+scaffold; and an **Electron Playwright e2e** suite. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 5. Key Risks (front-loaded)
 
