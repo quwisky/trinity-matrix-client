@@ -1,0 +1,26 @@
+# Windows Electron build (NSIS .exe installer), produced on tags.
+#
+# Building the Windows target needs Windows (or Wine on Linux/macOS); this targets a
+# real Windows runner via the `os: windows` label — connect a Crow agent on Windows
+# advertising it (e.g. CROW_AGENT_LABELS="os=windows"). Runner needs Node 22+ +
+# corepack. No container `image:` — Windows agents use the local backend and run on
+# the host (commands execute in the agent's shell, e.g. PowerShell).
+#
+# Signing: this produces an UNSIGNED installer (Authenticode is a TODO in
+# electron-builder.yml). For a shippable artifact, set CSC_LINK / CSC_KEY_PASSWORD (or
+# Azure Trusted Signing) on the runner.
+when:
+  - event: tag
+
+labels:
+  os: windows
+
+steps:
+  package-windows:
+    environment:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+    commands:
+      - corepack enable
+      - pnpm install --frozen-lockfile
+      - pnpm electron:install
+      - pnpm electron:package:win # → electron/release/*.exe

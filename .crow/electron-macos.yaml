@@ -1,0 +1,26 @@
+# macOS Electron build (.dmg + .zip), produced on tags.
+#
+# electron-builder can ONLY build macOS targets on macOS, so this is a separate
+# workflow routed to a macOS runner via the `os: macos` label — a Crow agent must be
+# connected on a Mac advertising that label (e.g. CROW_AGENT_LABELS="os=macos").
+# Runner needs Node 22+ + corepack (bundled with Node). No container `image:` —
+# macOS agents use the local backend and run commands directly on the host.
+#
+# Signing/notarization: this does an UNSIGNED dev build (electron-builder.yml has
+# `identity: null` + TODOs). For a shippable artifact, provide a Developer ID identity
+# + notarization creds (e.g. CSC_LINK / CSC_KEY_PASSWORD / APPLE_ID env on the runner).
+when:
+  - event: tag
+
+labels:
+  os: macos
+
+steps:
+  package-macos:
+    environment:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+    commands:
+      - corepack enable
+      - pnpm install --frozen-lockfile
+      - pnpm electron:install
+      - pnpm electron:package:mac # → electron/release/*.dmg, *.zip

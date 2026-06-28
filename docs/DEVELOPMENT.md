@@ -224,12 +224,23 @@ first download non-interactive so CI doesn't hang on a prompt.
 | `electron`             | `pnpm -C electron run compile`      | (Electron TS compile check)   |
 | `electron-build-linux` | `electron-builder --linux AppImage` | `pnpm electron:package:linux` |
 
-`electron` (Electron main/preload compile check) runs on push/PR. **`electron-build-linux`
-runs only on `tag` events** — it builds the Linux **AppImage** into `electron/release/`
-(electron-builder downloads the Electron binary + tooling, too heavy for every push).
-macOS (`.dmg`) and Windows (`.exe`) can't be cross-built on the Linux runner —
-electron-builder needs a macOS runner for mac and Wine/Windows for win, so add dedicated
-per-OS pipelines to ship those (and an upload plugin to publish the artifacts).
+`electron` (Electron main/preload compile check) runs on push/PR. The **per-OS Electron
+packages build only on `tag` events** (electron-builder downloads the Electron binary +
+tooling — too heavy for every push). electron-builder can't cross-build, so each OS is a
+**separate workflow** routed to its own runner via a `labels` filter (labels are
+per-workflow in Crow, not per-step):
+
+| Workflow file                           | Runner label    | Builds                               |
+| --------------------------------------- | --------------- | ------------------------------------ |
+| `ci.yaml` (`electron-build-linux` step) | _default agent_ | Linux AppImage → `electron/release/` |
+| `electron-macos.yaml`                   | `os: macos`     | macOS `.dmg` + `.zip` (macOS host)   |
+| `electron-windows.yaml`                 | `os: windows`   | Windows NSIS `.exe` (Windows host)   |
+
+The macOS/Windows workflows need a Crow **agent connected on that OS advertising the
+matching label** (e.g. `CROW_AGENT_LABELS="os=macos"`); without one, those tag workflows
+stay pending. Both currently produce **unsigned** artifacts — wire signing creds on the
+runners (`electron-builder.yml` TODOs). Publishing the artifacts (release/object store)
+needs a separate upload plugin.
 
 Steps share the cloned workspace, so the `node_modules` from `install` is reused by the
 rest. `--frozen-lockfile` makes CI fail if `pnpm-lock.yaml` is out of sync with
