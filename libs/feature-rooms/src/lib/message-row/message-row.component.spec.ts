@@ -29,11 +29,16 @@ function row(overrides: Partial<MessageRow> = {}): MessageRow {
 function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
   return {
     rootEventId: '$1',
+    rootPreview: 'the root',
+    rootSenderName: 'Alice',
     replyCount: 3,
     latestReplyTs: 1000,
+    latestActivityTs: 1000,
     latestReplyPreview: 'a reply',
     latestReplySenderName: 'Bob',
     participants: [],
+    unreadCount: 0,
+    highlight: false,
     ...overrides,
   };
 }
@@ -80,6 +85,38 @@ describe('MessageRowComponent', () => {
     expect(
       fixture.nativeElement.querySelector('.msg__thread').textContent,
     ).toContain('1 reply');
+  });
+
+  it('shows an unread badge on the thread indicator when the thread is unread', () => {
+    const fixture = TestBed.createComponent(MessageRowComponent);
+    fixture.componentRef.setInput('row', row());
+    fixture.componentRef.setInput(
+      'threadSummary',
+      summary({ unreadCount: 5, highlight: true }),
+    );
+    fixture.detectChanges();
+
+    const badge = fixture.nativeElement.querySelector('.msg__thread-badge');
+    expect(badge).toBeTruthy();
+    expect(badge.textContent).toContain('5');
+    expect(badge.classList.contains('msg__thread-badge--highlight')).toBe(true);
+    // The count rides on the (aria-hidden badge's) button label for SR users.
+    expect(
+      fixture.nativeElement
+        .querySelector('.msg__thread')
+        .getAttribute('aria-label'),
+    ).toContain('5 unread');
+  });
+
+  it('omits the unread badge when the thread is read', () => {
+    const fixture = TestBed.createComponent(MessageRowComponent);
+    fixture.componentRef.setInput('row', row());
+    fixture.componentRef.setInput('threadSummary', summary({ unreadCount: 0 }));
+    fixture.detectChanges();
+
+    expect(
+      fixture.nativeElement.querySelector('.msg__thread-badge'),
+    ).toBeNull();
   });
 
   it('omits the thread indicator when there is no summary', () => {

@@ -32,10 +32,16 @@ function row(id: string, senderId: string, body: string): MessageRow {
   return { ...msg(id, senderId, body), showHeader: true };
 }
 
-function build(messages: MessageView[] = []) {
+function build(
+  messages: MessageView[] = [],
+  state: { canPaginate?: boolean; loadingOlder?: boolean } = {},
+) {
   const threadMessages = signal<MessageView[]>(messages);
+  const canPaginateThread = signal(state.canPaginate ?? false);
+  const loadingOlderThread = signal(state.loadingOlder ?? false);
   const openThread = vi.fn();
   const closeThread = vi.fn();
+  const paginateOpenThread = vi.fn().mockReturnValue(of(void 0));
   const sendToThread = vi.fn().mockReturnValue(of(void 0));
   const editInThread = vi.fn().mockReturnValue(of(void 0));
   const replyInThread = vi.fn().mockReturnValue(of(void 0));
@@ -49,8 +55,11 @@ function build(messages: MessageView[] = []) {
         provide: ThreadsService,
         useValue: {
           threadMessages,
+          canPaginateThread,
+          loadingOlderThread,
           openThread,
           closeThread,
+          paginateOpenThread,
           sendToThread,
           editInThread,
           replyInThread,
@@ -66,8 +75,11 @@ function build(messages: MessageView[] = []) {
   fixture.componentRef.setInput('rootEventId', '$root');
   return {
     fixture,
+    canPaginateThread,
+    loadingOlderThread,
     openThread,
     closeThread,
+    paginateOpenThread,
     sendToThread,
     editInThread,
     replyInThread,
@@ -180,5 +192,35 @@ describe('ThreadViewComponent', () => {
     fixture.componentInstance.onRetry('$echo');
 
     expect(retryInThread).toHaveBeenCalledWith('$echo');
+  });
+
+  it('shows a "Load older" affordance and paginates when it can load older', () => {
+    const { fixture, paginateOpenThread } = build([], { canPaginate: true });
+    fixture.detectChanges();
+
+    const btn = fixture.nativeElement.querySelector('.thread__load-older');
+    expect(btn).toBeTruthy();
+    expect(btn.textContent).toContain('Load older');
+
+    btn.click();
+    expect(paginateOpenThread).toHaveBeenCalled();
+  });
+
+  it('shows a loading note (not the button) while older replies load', () => {
+    const { fixture } = build([], { loadingOlder: true });
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement.querySelector('.thread__load-older');
+    expect(el.textContent).toContain('Loading older');
+    expect(el.tagName).not.toBe('BUTTON');
+  });
+
+  it('omits the load-older affordance when there is no older history', () => {
+    const { fixture } = build([], { canPaginate: false });
+    fixture.detectChanges();
+
+    expect(
+      fixture.nativeElement.querySelector('.thread__load-older'),
+    ).toBeNull();
   });
 });

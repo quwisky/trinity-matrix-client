@@ -12,6 +12,23 @@ ion-content {
   padding: 24px;
 }
 
+// "Load older replies" affordance / loading note, centered above the replies.
+.thread__load-older {
+  display: block;
+  width: 100%;
+  padding: 8px 0 12px;
+  border: none;
+  background: none;
+  color: var(--trinity-text-muted);
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--trinity-text);
+  }
+}
+
 // The composer lives in a footer so it stays pinned while the messages scroll,
 // and Ionic handles the keyboard/safe-area insets on mobile. Match the chat
 // surface and drop the default footer shadow line.

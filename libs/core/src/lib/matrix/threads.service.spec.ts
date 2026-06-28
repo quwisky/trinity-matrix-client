@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of } from 'rxjs';
 import { RoomEvent, ThreadEvent } from 'matrix-js-sdk';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ThreadsService } from './threads.service';
 import { MatrixClientService } from './matrix-client.service';
 import { MediaService, type UploadedMedia } from './media.service';
@@ -75,13 +75,23 @@ function fakeThread(o: {
   events?: FakeEvent[];
   replyToEvent?: FakeEvent | null;
   length?: number;
+  paginationToken?: string | null;
 }) {
+  const events = o.events ?? [];
+  // A minimal EventTimeline shim: the service paginates `liveTimeline` and reads
+  // its backward pagination token to drive `canPaginateThread`.
+  const liveTimeline = {
+    _token: o.paginationToken ?? null,
+    getEvents: () => events,
+    getPaginationToken: () => liveTimeline._token,
+  };
   return {
     id: o.id,
     rootEvent: o.rootEvent,
-    events: o.events ?? [],
+    events,
     replyToEvent: o.replyToEvent ?? null,
     length: o.length ?? o.events?.length ?? 0,
+    liveTimeline,
     ...emitter(),
   };
 }
@@ -179,7 +189,7 @@ function setup(
     ],
   });
   const svc = TestBed.inject(ThreadsService);
-  return { svc, room, sent };
+  return { svc, room, client, sent };
 }
 
 describe('ThreadsService', () => {
@@ -473,6 +483,251 @@ describe('ThreadsService', () => {
       // openThread was never called → no active thread context.
       await firstValueFrom(svc.sendToThread('nope'));
       expect(sent).toHaveLength(0);
+    });
+  });
+
+  describe('history pagination', () => {
+    it('exposes canPaginate from the thread timeline’s backward token', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const { svc } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root],
+          paginationToken: 'tok',
+        }),
+      ]);
+      svc.openThread('!r:hs', '$root');
+
+      expect(svc.canPaginateThread()).toBe(true);
+    });
+
+    it('pages older replies into the thread, then re-maps + clears the token', async () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const newer = fakeEvent({
+        id: '$r2',
+        sender: '@b:hs',
+        body: 'newer',
+        ts: 2000,
+      });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, newer],
+        paginationToken: 'tok',
+      });
+      const { svc, client } = setup([thread]);
+
+      // Stub the SDK pagination: prepend an older reply and clear the token.
+      const older = fakeEvent({
+        id: '$r1',
+        sender: '@a:hs',
+        body: 'older',
+        ts: 1000,
+      });
+      let calledWith: unknown;
+      (
+        client as unknown as {
+          paginateEventTimeline: (t: unknown, o: unknown) => Promise<boolean>;
+        }
+      ).paginateEventTimeline = (timeline, opts) => {
+        calledWith = { timeline, opts };
+        // Older replies land after the root (a thread's oldest event) and before
+        // the already-loaded ones, mirroring the SDK's backward pagination.
+        thread.events.splice(1, 0, older);
+        thread.liveTimeline._token = null;
+        return Promise.resolve(true);
+      };
+
+      svc.openThread('!r:hs', '$root');
+      expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root', '$r2']);
+      expect(svc.canPaginateThread()).toBe(true);
+
+      await firstValueFrom(svc.paginateOpenThread());
+
+      // Paginated the thread's own live timeline, backwards.
+      expect(calledWith).toEqual({
+        timeline: thread.liveTimeline,
+        opts: { backwards: true, limit: 30 },
+      });
+      // Older reply prepended (root still first), token cleared, flag reset.
+      expect(svc.threadMessages().map((m) => m.id)).toEqual([
+        '$root',
+        '$r1',
+        '$r2',
+      ]);
+      expect(svc.canPaginateThread()).toBe(false);
+      expect(svc.loadingOlderThread()).toBe(false);
+    });
+
+    it('is a no-op when no thread is open', async () => {
+      const { svc, client } = setup([]);
+      const paginate = vi.fn();
+      (
+        client as unknown as { paginateEventTimeline: unknown }
+      ).paginateEventTimeline = paginate;
+
+      await firstValueFrom(svc.paginateOpenThread());
+
+      expect(paginate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('unread badges', () => {
+    it('carries each thread’s unread count + highlight in the summary', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'reply',
+        ts: 1000,
+      });
+      const { svc, room } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, reply],
+          replyToEvent: reply,
+          length: 1,
+        }),
+      ]);
+      (
+        room as unknown as {
+          getThreadUnreadNotificationCount: (i: string, t: string) => number;
+        }
+      ).getThreadUnreadNotificationCount = (_id, type) =>
+        type === 'highlight' ? 1 : 3;
+
+      svc.open('!r:hs');
+
+      const summary = svc.summaries()['$root'];
+      expect(summary.unreadCount).toBe(3);
+      expect(summary.highlight).toBe(true);
+    });
+
+    it('defaults to read when the per-thread count API is unavailable', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const { svc } = setup([
+        fakeThread({ id: '$root', rootEvent: root, events: [root] }),
+      ]);
+      // setup()'s room has no getThreadUnreadNotificationCount — must not throw.
+      svc.open('!r:hs');
+
+      expect(svc.summaries()['$root'].unreadCount).toBe(0);
+      expect(svc.summaries()['$root'].highlight).toBe(false);
+    });
+
+    it('refreshes unread counts live on UnreadNotifications', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'reply',
+        ts: 1000,
+      });
+      const { svc, room } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, reply],
+          replyToEvent: reply,
+          length: 1,
+        }),
+      ]);
+      let total = 0;
+      (
+        room as unknown as {
+          getThreadUnreadNotificationCount: () => number;
+        }
+      ).getThreadUnreadNotificationCount = () => total;
+
+      svc.open('!r:hs');
+      expect(svc.summaries()['$root'].unreadCount).toBe(0);
+
+      total = 4;
+      room.emit(RoomEvent.UnreadNotifications);
+      expect(svc.summaries()['$root'].unreadCount).toBe(4);
+    });
+
+    it('marks the opened thread read via a thread-scoped read receipt', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'reply',
+        ts: 1000,
+      });
+      const receipts: [string, string][] = [];
+      const { svc, client } = setup([
+        fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
+      ]);
+      (
+        client as unknown as {
+          sendReadReceipt: (e: FakeEvent, t: string) => Promise<unknown>;
+        }
+      ).sendReadReceipt = (event, type) => {
+        receipts.push([event.getId(), type]);
+        return Promise.resolve({});
+      };
+
+      svc.openThread('!r:hs', '$root');
+
+      // Receipt for the latest reply (not the root), with ReceiptType.Read.
+      expect(receipts).toEqual([['$r1', 'm.read']]);
+    });
+
+    it('does not throw when the read-receipt API is unavailable', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const { svc } = setup([
+        fakeThread({ id: '$root', rootEvent: root, events: [root] }),
+      ]);
+      // setup()'s client has no sendReadReceipt — opening must still succeed.
+      expect(() => svc.openThread('!r:hs', '$root')).not.toThrow();
+      expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root']);
+    });
+  });
+
+  describe('threads list', () => {
+    it('lists threads sorted by latest activity, newest first', () => {
+      const older = fakeThread({
+        id: '$old',
+        rootEvent: fakeEvent({
+          id: '$old',
+          sender: '@a:hs',
+          body: 'old root',
+          ts: 100,
+        }),
+        replyToEvent: fakeEvent({
+          id: '$or',
+          sender: '@b:hs',
+          body: 'old reply',
+          ts: 200,
+        }),
+        length: 1,
+      });
+      const newer = fakeThread({
+        id: '$new',
+        rootEvent: fakeEvent({
+          id: '$new',
+          sender: '@a:hs',
+          body: 'new root',
+          ts: 300,
+        }),
+        replyToEvent: fakeEvent({
+          id: '$nr',
+          sender: '@b:hs',
+          body: 'new reply',
+          ts: 900,
+        }),
+        length: 1,
+      });
+      const { svc } = setup([older, newer]);
+      svc.open('!r:hs');
+
+      const list = svc.threadList();
+      expect(list.map((t) => t.rootEventId)).toEqual(['$new', '$old']);
+      expect(list[0].latestActivityTs).toBe(900);
+      expect(list[0].rootPreview).toBe('new root');
     });
   });
 });

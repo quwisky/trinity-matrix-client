@@ -66,7 +66,10 @@ describe('RoomsPage action error feedback', () => {
             summaries: signal({}),
           },
         },
-        { provide: ThreadPanelService, useValue: { open: vi.fn() } },
+        {
+          provide: ThreadPanelService,
+          useValue: { open: vi.fn(), openList: vi.fn() },
+        },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
@@ -97,6 +100,26 @@ describe('RoomsPage action error feedback', () => {
     page.onEdit({ id: '$1', body: 'x' });
 
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('opens the threads-list panel for the active room', () => {
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+    const panel = TestBed.inject(ThreadPanelService);
+
+    page.openThreadsList();
+
+    expect(panel.openList).toHaveBeenCalledWith('!r:hs');
+  });
+
+  it('does not open the threads-list panel without an active room', () => {
+    const page = build();
+    page.activeRoomId.set(null);
+    const panel = TestBed.inject(ThreadPanelService);
+
+    page.openThreadsList();
+
+    expect(panel.openList).not.toHaveBeenCalled();
   });
 
   const pngFile = () =>
@@ -207,7 +230,10 @@ describe('RoomsPage space filtering', () => {
           provide: ThreadsService,
           useValue: { close: vi.fn(), closeThread: vi.fn() },
         },
-        { provide: ThreadPanelService, useValue: { open: vi.fn() } },
+        {
+          provide: ThreadPanelService,
+          useValue: { open: vi.fn(), openList: vi.fn() },
+        },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },

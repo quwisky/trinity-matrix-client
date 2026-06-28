@@ -1,0 +1,79 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Threads</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="close()" aria-label="Close threads">
+        <ion-icon slot="icon-only" name="close" />
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <div class="threads">
+    @for (t of threads(); track t.rootEventId) {
+      <button
+        type="button"
+        class="thread-item"
+        [class.thread-item--unread]="t.unreadCount > 0"
+        (click)="openThread(t.rootEventId)"
+      >
+        <div class="thread-item__avatars" aria-hidden="true">
+          @for (p of t.participants.slice(0, maxAvatars); track p.id) {
+            <trn-avatar
+              class="thread-item__avatar"
+              [mxc]="p.avatarMxc"
+              [initial]="p.initial"
+              [name]="p.name"
+              [size]="24"
+            />
+          }
+          @if (t.participants.length > maxAvatars) {
+            <span class="thread-item__more"
+              >+{{ t.participants.length - maxAvatars }}</span
+            >
+          }
+        </div>
+
+        <div class="thread-item__body">
+          <div class="thread-item__head">
+            <span class="thread-item__root">{{
+              t.rootPreview || 'Thread'
+            }}</span>
+            <span class="thread-item__time">{{
+              t.latestActivityTs | date: 'short'
+            }}</span>
+          </div>
+          <div class="thread-item__meta">
+            <span class="thread-item__count"
+              >{{ t.replyCount }}
+              {{ t.replyCount === 1 ? 'reply' : 'replies' }}</span
+            >
+            @if (t.latestReplyPreview) {
+              <span class="thread-item__sep" aria-hidden="true">·</span>
+              <span class="thread-item__last">
+                @if (t.latestReplySenderName) {
+                  <span class="thread-item__last-author"
+                    >{{ t.latestReplySenderName }}:
+                  </span>
+                }
+                {{ t.latestReplyPreview }}
+              </span>
+            }
+          </div>
+        </div>
+
+        @if (t.unreadCount > 0) {
+          <span
+            class="thread-item__badge"
+            [class.thread-item__badge--highlight]="t.highlight"
+            [attr.aria-label]="unreadLabel(t)"
+            >{{ t.unreadCount }}</span
+          >
+        }
+      </button>
+    } @empty {
+      <div class="threads__empty">No threads in this channel yet.</div>
+    }
+  </div>
+</ion-content>

@@ -120,6 +120,11 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         ?.senderName ?? '',
   );
 
+  /** Whether older thread replies remain to be paged in. */
+  readonly canLoadOlder = this.threads.canPaginateThread;
+  /** Whether an older-replies page is currently loading. */
+  readonly loadingOlder = this.threads.loadingOlderThread;
+
   constructor() {
     addIcons({ close });
   }
@@ -136,6 +141,14 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   close(): void {
     this.closed.emit();
     void this.modalCtrl.dismiss();
+  }
+
+  /** Page in older replies for this thread (mirrors the timeline's load-older). */
+  loadOlder(): void {
+    this.threads
+      .paginateOpenThread()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** Composer submit — routes to an edit or reply when active, else a new send. */

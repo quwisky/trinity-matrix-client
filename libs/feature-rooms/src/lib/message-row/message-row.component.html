@@ -103,6 +103,14 @@
           >last reply {{ thread.latestReplyTs | date: 'short' }}</span
         >
       }
+      @if (thread.unreadCount > 0) {
+        <span
+          class="msg__thread-badge"
+          [class.msg__thread-badge--highlight]="thread.highlight"
+          aria-hidden="true"
+          >{{ thread.unreadCount }}</span
+        >
+      }
     </button>
   }
 

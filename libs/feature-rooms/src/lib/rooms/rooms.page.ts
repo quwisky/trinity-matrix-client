@@ -25,7 +25,11 @@ import {
   ToastController,
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
-import { lockClosed, settingsOutline } from 'ionicons/icons';
+import {
+  chatbubblesOutline,
+  lockClosed,
+  settingsOutline,
+} from 'ionicons/icons';
 import {
   AuthService,
   CryptoService,
@@ -172,7 +176,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   });
 
   constructor() {
-    addIcons({ lockClosed, settingsOutline });
+    addIcons({ chatbubblesOutline, lockClosed, settingsOutline });
   }
 
   ngOnInit(): void {
@@ -212,6 +216,14 @@ export class RoomsPage implements OnInit, OnDestroy {
     const roomId = this.activeRoomId();
     if (roomId) {
       void this.threadPanel.open(roomId, rootEventId);
+    }
+  }
+
+  /** Open the threads-list panel for the active room (header "Threads" button). */
+  openThreadsList(): void {
+    const roomId = this.activeRoomId();
+    if (roomId) {
+      void this.threadPanel.openList(roomId);
     }
   }
 

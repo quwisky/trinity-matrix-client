@@ -11,6 +11,14 @@
 
 <ion-content>
   <div class="thread" #scroll>
+    @if (loadingOlder()) {
+      <div class="thread__load-older">Loading older replies…</div>
+    } @else if (canLoadOlder()) {
+      <button type="button" class="thread__load-older" (click)="loadOlder()">
+        Load older replies
+      </button>
+    }
+
     @for (row of rows(); track row.id) {
       <trn-message-row
         [row]="row"

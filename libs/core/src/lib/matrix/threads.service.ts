@@ -1,8 +1,11 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import {
+  Direction,
   EventType,
   MatrixEventEvent,
+  NotificationCountType,
+  ReceiptType,
   RoomEvent,
   ThreadEvent,
   type MatrixClient,
@@ -10,7 +13,16 @@ import {
   type Room,
   type Thread,
 } from 'matrix-js-sdk';
-import { Observable, defer, from, map, of, switchMap } from 'rxjs';
+import {
+  Observable,
+  defer,
+  finalize,
+  from,
+  map,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 import { MediaService } from './media.service';
 import {
@@ -43,20 +55,37 @@ export interface ThreadParticipant {
 export interface ThreadSummary {
   /** The event id of the thread root (the message the thread hangs off). */
   rootEventId: string;
+  /** Short plain-text preview of the thread root, or null. */
+  rootPreview: string | null;
+  /** Display name of the thread root's sender, or null. */
+  rootSenderName: string | null;
   /** Number of replies (excludes the root). */
   replyCount: number;
   /** Timestamp of the most recent reply, or null when not yet known. */
   latestReplyTs: number | null;
+  /**
+   * Timestamp of the thread's most recent activity — the latest reply, falling
+   * back to the root's own timestamp. Always set, so it sorts a threads list
+   * cleanly (newest first) even for a root that has no replies yet.
+   */
+  latestActivityTs: number;
   /** Short plain-text preview of the most recent reply, or null. */
   latestReplyPreview: string | null;
   /** Display name of the most recent reply's sender, or null. */
   latestReplySenderName: string | null;
   /** Distinct participants (capped) for an avatar cluster. */
   participants: ThreadParticipant[];
+  /** Total unread notifications for this thread (0 when read / unknown). */
+  unreadCount: number;
+  /** Whether this thread has an unread highlight (mention/keyword). */
+  highlight: boolean;
 }
 
 /** Most participant avatars shown in a summary cluster before "+N". */
 const MAX_PARTICIPANTS = 8;
+
+/** Older thread replies pulled in per backward-pagination round. */
+const THREAD_SCROLLBACK = 30;
 
 /**
  * Projects a room's threads into render-ready signals — mirroring
@@ -86,6 +115,19 @@ export class ThreadsService {
   /** Thread summaries for the active room, keyed by thread-root event id. */
   readonly summaries = this._summaries.asReadonly();
 
+  /**
+   * The active room's threads as a flat list, newest activity first — drives the
+   * threads-list panel. Derived from {@link summaries}, so it reacts to new
+   * threads, replies, and unread changes without a separate projection.
+   */
+  readonly threadList = computed<ThreadSummary[]>(() =>
+    Object.values(this._summaries()).sort(
+      (a, b) =>
+        b.latestActivityTs - a.latestActivityTs ||
+        a.rootEventId.localeCompare(b.rootEventId),
+    ),
+  );
+
   private readonly _threadMessages = signal<MessageView[]>([]);
   /** Live, decrypted messages of the opened thread (root first, then replies). */
   readonly threadMessages = this._threadMessages.asReadonly();
@@ -93,6 +135,18 @@ export class ThreadsService {
   private readonly _openThreadRootId = signal<string | null>(null);
   /** The root event id of the currently opened thread, or null. */
   readonly openThreadRootId = this._openThreadRootId.asReadonly();
+
+  private readonly _loadingOlderThread = signal(false);
+  /** Whether an older-replies page is currently loading in the opened thread. */
+  readonly loadingOlderThread = this._loadingOlderThread.asReadonly();
+
+  private readonly _canPaginateThread = signal(false);
+  /** Whether the opened thread has older replies left to page in. */
+  readonly canPaginateThread = this._canPaginateThread.asReadonly();
+
+  // Latest thread event we have already sent a read receipt for, so live replies
+  // arriving while the thread is open mark read without re-sending on every refresh.
+  private lastReadEventId: string | null = null;
 
   // --- Summaries (active room) ---------------------------------------------
   private summariesRoom: Room | null = null;
@@ -146,6 +200,10 @@ export class ThreadsService {
     room.on(ThreadEvent.Update, this.onSummariesChanged);
     room.on(ThreadEvent.NewReply, this.onSummariesChanged);
     room.on(RoomEvent.Timeline, this.onSummariesChanged);
+    // Per-thread unread badges: UnreadNotifications fires when a thread's counts
+    // change, and Receipt fires when our (or another) read receipt clears them.
+    room.on(RoomEvent.UnreadNotifications, this.onSummariesChanged);
+    room.on(RoomEvent.Receipt, this.onSummariesChanged);
     client.on(MatrixEventEvent.Decrypted, this.onSummariesDecrypted);
     this.refreshSummaries();
   }
@@ -158,6 +216,8 @@ export class ThreadsService {
       room.off(ThreadEvent.Update, this.onSummariesChanged);
       room.off(ThreadEvent.NewReply, this.onSummariesChanged);
       room.off(RoomEvent.Timeline, this.onSummariesChanged);
+      room.off(RoomEvent.UnreadNotifications, this.onSummariesChanged);
+      room.off(RoomEvent.Receipt, this.onSummariesChanged);
     }
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(
@@ -228,8 +288,11 @@ export class ThreadsService {
     this.thread = null;
     this.threadRoom = null;
     this.threadRoomId = null;
+    this.lastReadEventId = null;
     this._openThreadRootId.set(null);
     this._threadMessages.set([]);
+    this._canPaginateThread.set(false);
+    this._loadingOlderThread.set(false);
   }
 
   /** Bind to a thread's live + reply listeners (shared by open and lazy creation). */
@@ -238,6 +301,41 @@ export class ThreadsService {
     thread.on(ThreadEvent.Update, this.onThreadChanged);
     thread.on(ThreadEvent.NewReply, this.onThreadChanged);
     thread.on(RoomEvent.Timeline, this.onThreadChanged);
+  }
+
+  /**
+   * Page in older replies for the opened thread (backward pagination over the
+   * thread's own live timeline), mirroring {@link TimelineService.loadOlder}. A
+   * `Thread` owns a {@link EventTimeline} via `thread.liveTimeline`; paginating it
+   * backwards prepends older replies, which are re-mapped into
+   * {@link threadMessages} exactly like the live path. The `loadingOlder` flag is
+   * reset on success *or* error so a failed page can't wedge pagination off.
+   */
+  paginateOpenThread(): Observable<void> {
+    const thread = this.thread;
+    const timeline = thread?.liveTimeline ?? null;
+    if (
+      !thread ||
+      !timeline ||
+      this._loadingOlderThread() ||
+      !this.matrix.isInitialized
+    ) {
+      return of(void 0);
+    }
+    const client = this.matrix.instance;
+    return defer(() => {
+      this._loadingOlderThread.set(true);
+      return from(
+        client.paginateEventTimeline(timeline, {
+          backwards: true,
+          limit: THREAD_SCROLLBACK,
+        }),
+      );
+    }).pipe(
+      tap(() => this.refreshThread()),
+      finalize(() => this._loadingOlderThread.set(false)),
+      map(() => void 0),
+    );
   }
 
   // --- In-thread composing --------------------------------------------------
@@ -451,6 +549,49 @@ export class ThreadsService {
     this._threadMessages.set(
       ordered.map((e) => buildMessageView(client, room, e)),
     );
+
+    // A thread's own live timeline carries a backward pagination token while
+    // older replies remain server-side; absent (or no timeline) means none left.
+    const timeline = thread?.liveTimeline ?? null;
+    this._canPaginateThread.set(
+      timeline
+        ? timeline.getPaginationToken(Direction.Backward) !== null
+        : false,
+    );
+
+    // The opened thread is being viewed, so mark its latest reply read (a
+    // thread-scoped receipt). Deduped, so live replies mark read but paginating
+    // older history — which leaves the latest unchanged — does not re-send.
+    this.markThreadRead();
+  }
+
+  /**
+   * Send a thread-scoped read receipt for the opened thread's latest confirmed
+   * event, clearing its unread badge. Best-effort: a pending local echo is skipped
+   * (the SDK rejects a receipt on an unsent event) and any missing/failed receipt
+   * API is swallowed so viewing a thread never throws.
+   */
+  private markThreadRead(): void {
+    const thread = this.thread;
+    if (!thread || !this.matrix.isInitialized) {
+      return;
+    }
+    const latest = [...(thread.events ?? [])].reverse().find((e) => !e.status);
+    const target = latest ?? thread.rootEvent ?? null;
+    const id = target?.getId() ?? null;
+    if (!target || !id || id === this.lastReadEventId) {
+      return;
+    }
+    this.lastReadEventId = id;
+    try {
+      // The event carries its thread id, so the SDK scopes the receipt to the
+      // thread (rather than the main timeline) automatically.
+      void this.matrix.instance
+        .sendReadReceipt(target, ReceiptType.Read)
+        ?.catch(() => undefined);
+    } catch {
+      // A missing/unsupported receipt API must never break thread viewing.
+    }
   }
 
   private summaryFor(
@@ -458,6 +599,16 @@ export class ThreadsService {
     room: Room,
     thread: Thread,
   ): ThreadSummary {
+    const root = thread.rootEvent ?? null;
+    const rootTs = root?.getTs() ?? 0;
+    let rootPreview: string | null = null;
+    let rootSenderName: string | null = null;
+    if (root) {
+      rootPreview = previewText(root);
+      const sender = root.getSender() ?? '';
+      rootSenderName = room.getMember(sender)?.name ?? sender;
+    }
+
     const latest = thread.replyToEvent;
     let latestReplyTs: number | null = null;
     let latestReplyPreview: string | null = null;
@@ -470,14 +621,45 @@ export class ThreadsService {
       const sender = latest.getSender() ?? '';
       latestReplySenderName = room.getMember(sender)?.name ?? sender;
     }
+
+    const unread = threadUnread(room, thread.id);
     return {
       rootEventId: thread.id,
+      rootPreview,
+      rootSenderName,
       replyCount: thread.length,
       latestReplyTs,
+      latestActivityTs: latestReplyTs ?? rootTs,
       latestReplyPreview,
       latestReplySenderName,
       participants: participantsOf(room, thread),
+      unreadCount: unread.count,
+      highlight: unread.highlight,
     };
+  }
+}
+
+/**
+ * A thread's unread notification counts, defensively read. A server/SDK that
+ * doesn't expose per-thread counts (older homeserver, missing API) must yield a
+ * read state rather than throw.
+ */
+function threadUnread(
+  room: Room,
+  threadId: string,
+): { count: number; highlight: boolean } {
+  try {
+    const total = room.getThreadUnreadNotificationCount(
+      threadId,
+      NotificationCountType.Total,
+    );
+    const highlight = room.getThreadUnreadNotificationCount(
+      threadId,
+      NotificationCountType.Highlight,
+    );
+    return { count: total, highlight: highlight > 0 };
+  } catch {
+    return { count: 0, highlight: false };
   }
 }
 

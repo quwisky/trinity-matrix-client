@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { ModalController } from '@ionic/angular/standalone';
 import { ThreadViewComponent } from './thread-view.component';
+import { ThreadsListComponent } from './threads-list.component';
 
 /** Card class sizing the thread modal as a full-height side panel on desktop. */
 const MODAL_CSS_CLASS = 'thread-modal';
@@ -30,5 +31,24 @@ export class ThreadPanelService {
       cssClass: MODAL_CSS_CLASS,
     });
     await modal.present();
+  }
+
+  /**
+   * Open the threads-list panel for `roomId` (same modal sizing as the thread
+   * view). When a row is tapped the list dismisses with the chosen thread-root id,
+   * which is then opened as a thread view — so the two never stack and the list
+   * stays free of any thread-open dependency.
+   */
+  async openList(roomId: string): Promise<void> {
+    const modal = await this.modalCtrl.create({
+      component: ThreadsListComponent,
+      componentProps: { roomId },
+      cssClass: MODAL_CSS_CLASS,
+    });
+    await modal.present();
+    const { data } = await modal.onWillDismiss<string | undefined>();
+    if (data) {
+      await this.open(roomId, data);
+    }
   }
 }

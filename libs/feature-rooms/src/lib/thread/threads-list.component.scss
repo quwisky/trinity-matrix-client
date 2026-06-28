@@ -1,0 +1,132 @@
+@use '../styles/mixins' as *;
+
+ion-content {
+  --background: var(--trinity-chat);
+}
+
+.threads {
+  padding: 8px;
+}
+
+.threads__empty {
+  color: var(--trinity-text-muted);
+  text-align: center;
+  padding: 24px;
+}
+
+.thread-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--trinity-radius);
+  background: none;
+  color: var(--trinity-text);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--trinity-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--trinity-accent);
+    outline-offset: -2px;
+  }
+
+  // Unread threads read brighter (Discord-style), like the channel list.
+  &--unread .thread-item__root {
+    color: var(--trinity-text-bright);
+    font-weight: 600;
+  }
+}
+
+.thread-item__avatars {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+// Overlap the avatar cluster into a compact stack.
+.thread-item__avatar:not(:first-child) {
+  margin-left: -8px;
+}
+
+.thread-item__more {
+  margin-left: 4px;
+  color: var(--trinity-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.thread-item__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.thread-item__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.thread-item__root {
+  @include ellipsis;
+
+  flex: 1;
+  min-width: 0;
+  color: var(--trinity-text);
+}
+
+.thread-item__time {
+  flex: 0 0 auto;
+  color: var(--trinity-text-muted);
+  font-size: 11px;
+}
+
+.thread-item__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--trinity-text-muted);
+}
+
+.thread-item__count {
+  flex: 0 0 auto;
+  color: var(--trinity-accent);
+  font-weight: 500;
+}
+
+.thread-item__last {
+  @include ellipsis;
+
+  flex: 1;
+  min-width: 0;
+}
+
+.thread-item__last-author {
+  color: var(--trinity-text);
+}
+
+.thread-item__badge {
+  flex: 0 0 auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--trinity-accent);
+  color: var(--ion-color-primary-contrast);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.thread-item__badge--highlight {
+  background: var(--ion-color-danger);
+  color: var(--ion-color-danger-contrast);
+}

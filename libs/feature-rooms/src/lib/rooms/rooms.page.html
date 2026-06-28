@@ -30,6 +30,15 @@
           <ion-menu-button></ion-menu-button>
         </ion-buttons>
         <ion-buttons slot="end">
+          @if (activeRoom()) {
+            <ion-button
+              (click)="openThreadsList()"
+              aria-label="Threads"
+              data-testid="open-threads"
+            >
+              <ion-icon slot="icon-only" name="chatbubbles-outline" />
+            </ion-button>
+          }
           <ion-button
             (click)="goToSettings()"
             aria-label="Settings"

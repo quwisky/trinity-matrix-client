@@ -70,9 +70,12 @@ export class MessageRowComponent {
     addIcons({ chatbubblesOutline });
   }
 
-  /** Accessible label for the thread indicator button. */
+  /** Accessible label for the thread indicator button (incl. any unread count). */
   threadLabel(summary: ThreadSummary): string {
     const count = summary.replyCount;
-    return `View thread, ${count} ${count === 1 ? 'reply' : 'replies'}`;
+    const base = `View thread, ${count} ${count === 1 ? 'reply' : 'replies'}`;
+    return summary.unreadCount > 0
+      ? `${base}, ${summary.unreadCount} unread`
+      : base;
   }
 }
