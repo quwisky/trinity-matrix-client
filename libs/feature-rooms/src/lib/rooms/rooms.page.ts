@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { Observable } from 'rxjs';
+import { Observable, finalize } from 'rxjs';
 import {
   IonSplitPane,
   IonMenu,
@@ -79,6 +79,8 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   readonly activeSpaceId = signal<string | null>(null);
   readonly activeRoomId = signal<string | null>(null);
+  /** Attachment upload fraction in [0, 1] while a send is uploading, else null. */
+  readonly uploadProgress = signal<number | null>(null);
 
   readonly visibleRooms = computed(() =>
     this.rooms.roomsForSpace(this.activeSpaceId()),
@@ -172,12 +174,20 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   onSendMedia(file: File): void {
-    // The upload phase has no echo, so surface its failure as a toast. Once the
-    // event is sent the SDK echo + retry path takes over (like onSend).
-    this.runAction(
-      this.timeline.sendMedia(file),
-      'Could not upload the attachment.',
-    );
+    // The upload phase has no echo, so drive a determinate progress bar from the
+    // upload fraction and surface a failure as a toast. Once the event is sent the
+    // SDK echo + retry path takes over (like onSend). finalize() clears the bar on
+    // success, error, or unsubscribe — runAction has no such hook, so subscribe here.
+    this.uploadProgress.set(0);
+    this.timeline
+      .sendMedia(file, (fraction) => this.uploadProgress.set(fraction))
+      .pipe(
+        finalize(() => this.uploadProgress.set(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        error: () => void this.showError('Could not upload the attachment.'),
+      });
   }
 
   // Edit/delete/react have no visible local echo, so a failure would otherwise be

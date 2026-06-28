@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  computed,
   effect,
   inject,
   input,
@@ -11,7 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { IonIcon } from '@ionic/angular/standalone';
+import { IonIcon, IonProgressBar } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { addOutline, happyOutline, send } from 'ionicons/icons';
 import { EmojiPickerComponent } from '@trinity/ui';
@@ -27,7 +28,7 @@ const MAX_HEIGHT_PX = 200;
 @Component({
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, EmojiPickerComponent],
+  imports: [IonIcon, IonProgressBar, EmojiPickerComponent],
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
 })
@@ -37,6 +38,8 @@ export class MessageComposerComponent {
   readonly draft = input('');
   /** Sender name of the message being replied to, or '' when not replying. */
   readonly replyingTo = input('');
+  /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
+  readonly uploadProgress = input<number | null>(null);
   readonly submitText = output<string>();
   readonly submitMedia = output<File>();
   readonly cancelEdit = output<void>();
@@ -45,6 +48,14 @@ export class MessageComposerComponent {
 
   readonly text = signal('');
   readonly pickerOpen = signal(false);
+  /** Whether to show a determinate bar — true once the first real fraction lands.
+   * Until then (metadata probe + thumbnail upload) the bar is indeterminate so it
+   * reads as "working" rather than a stalled 0%. */
+  readonly uploadDeterminate = computed(() => (this.uploadProgress() ?? 0) > 0);
+  /** Whole-percent upload progress for the determinate bar's label. */
+  readonly uploadPercent = computed(() =>
+    Math.round((this.uploadProgress() ?? 0) * 100),
+  );
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('fileInput');

@@ -52,6 +52,8 @@ export class MessageListComponent {
   readonly loadingOlder = input(false);
   readonly canLoadOlder = input(false);
   readonly roomName = input('');
+  /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
+  readonly uploadProgress = input<number | null>(null);
   readonly loadOlder = output<void>();
   readonly send = output<string>();
   readonly sendMedia = output<File>();

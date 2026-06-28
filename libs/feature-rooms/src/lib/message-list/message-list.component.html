@@ -118,6 +118,7 @@
   [editing]="editingId() !== null"
   [draft]="editingDraft()"
   [replyingTo]="replyingToName()"
+  [uploadProgress]="uploadProgress()"
   (submitText)="onSubmit($event)"
   (submitMedia)="sendMedia.emit($event)"
   (cancelEdit)="editingId.set(null)"

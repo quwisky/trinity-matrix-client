@@ -14,6 +14,19 @@
   </div>
 }
 
+@if (uploadProgress() !== null) {
+  <div class="composer__upload" data-testid="upload-progress">
+    <ion-progress-bar
+      [type]="uploadDeterminate() ? 'determinate' : 'indeterminate'"
+      [value]="uploadProgress() ?? 0"
+      aria-label="Uploading attachment"
+    />
+    <span class="composer__upload-label" aria-live="polite">
+      Uploading…{{ uploadDeterminate() ? ' ' + uploadPercent() + '%' : '' }}
+    </span>
+  </div>
+}
+
 <div class="composer">
   @if (pickerOpen()) {
     <trn-emoji-picker class="composer__picker" (pick)="insertEmoji($event)" />
@@ -43,6 +56,7 @@
     title="Attach"
     aria-label="Attach a file"
     data-testid="composer-attach"
+    [disabled]="uploadProgress() !== null"
     (click)="onAttach()"
   >
     <ion-icon name="add-outline" aria-hidden="true" />

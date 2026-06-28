@@ -180,6 +180,62 @@ describe('MessageComposerComponent', () => {
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('shows a determinate upload progress bar while uploading and hides it when idle', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    const el = fixture.nativeElement as HTMLElement;
+    const wrapper = () => el.querySelector('[data-testid=upload-progress]');
+    const bar = () =>
+      el.querySelector('ion-progress-bar') as
+        | (HTMLElement & { value: number; type: string })
+        | null;
+
+    // Idle: no progress UI.
+    expect(wrapper()).toBeNull();
+
+    // Mid-upload with a real fraction → determinate bar bound to the value.
+    fixture.componentRef.setInput('uploadProgress', 0.42);
+    fixture.detectChanges();
+    expect(wrapper()).not.toBeNull();
+    expect(bar()).not.toBeNull();
+    expect(bar()?.value).toBeCloseTo(0.42, 5);
+    expect(bar()?.type).toBe('determinate');
+    expect(wrapper()?.textContent).toContain('42%');
+    expect(cmp.uploadPercent()).toBe(42);
+
+    // Just started (0, before the first real tick) → indeterminate, no percent.
+    fixture.componentRef.setInput('uploadProgress', 0);
+    fixture.detectChanges();
+    expect(wrapper()).not.toBeNull();
+    expect(bar()?.type).toBe('indeterminate');
+    expect(wrapper()?.textContent).not.toContain('%');
+
+    // Upload finished → null clears the bar (and re-enables the attach button).
+    fixture.componentRef.setInput('uploadProgress', null);
+    fixture.detectChanges();
+    expect(wrapper()).toBeNull();
+  });
+
+  it('disables the attach button while an upload is in flight', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const attach = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid=composer-attach]',
+      ) as HTMLButtonElement;
+
+    expect(attach().disabled).toBe(false);
+
+    fixture.componentRef.setInput('uploadProgress', 0.1);
+    fixture.detectChanges();
+    expect(attach().disabled).toBe(true);
+
+    fixture.componentRef.setInput('uploadProgress', null);
+    fixture.detectChanges();
+    expect(attach().disabled).toBe(false);
+  });
+
   it('toggles the emoji picker from the button', () => {
     const fixture = TestBed.createComponent(MessageComposerComponent);
     fixture.detectChanges();
