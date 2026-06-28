@@ -501,7 +501,13 @@ describe('SpacesService hierarchy', () => {
     svc.openSpace('!s:hs');
     await flush();
 
-    expect(getRoomHierarchy).toHaveBeenCalledWith('!s:hs', 100, 1, false);
+    expect(getRoomHierarchy).toHaveBeenCalledWith(
+      '!s:hs',
+      100,
+      1,
+      false,
+      undefined, // first page — no pagination token yet
+    );
     const children = svc.openSpaceChildren();
     // Root excluded; ordered by order ('10' < '20') then name ('Sub' > 'alpha').
     expect(children.map((c) => c.roomId)).toEqual([
@@ -562,6 +568,65 @@ describe('SpacesService hierarchy', () => {
     expect(getRoomHierarchy).not.toHaveBeenCalled();
     expect(svc.openSpaceChildren()).toEqual([]);
     expect(svc.childrenLoading()).toBe(false);
+  });
+
+  it('follows next_batch to fetch children beyond the first page', async () => {
+    const root = hroom({
+      roomId: '!s:hs',
+      name: 'Space',
+      isSpace: true,
+      children: [
+        { childId: '!a:hs', order: '10' },
+        { childId: '!b:hs', order: '20' },
+      ],
+    });
+    // Page 1 carries the root + first child and a next_batch token; page 2 the rest.
+    const getRoomHierarchy = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rooms: [root, hroom({ roomId: '!a:hs', name: 'alpha' })],
+        next_batch: 'tok',
+      })
+      .mockResolvedValueOnce({
+        rooms: [hroom({ roomId: '!b:hs', name: 'bravo' })],
+      });
+    const client = {
+      getRooms: () => [],
+      getRoom: () => null,
+      getRoomHierarchy,
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        SpacesService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(SpacesService);
+
+    svc.openSpace('!s:hs');
+    await flush();
+
+    // Both pages fetched; the second passes the next_batch token through.
+    expect(getRoomHierarchy).toHaveBeenCalledTimes(2);
+    expect(getRoomHierarchy).toHaveBeenNthCalledWith(
+      2,
+      '!s:hs',
+      100,
+      1,
+      false,
+      'tok',
+    );
+    // Children from BOTH pages are projected — not truncated at the first 100.
+    expect(svc.openSpaceChildren().map((c) => c.roomId)).toEqual([
+      '!a:hs',
+      '!b:hs',
+    ]);
   });
 
   it('surfaces a hierarchy fetch failure in childrenError', async () => {

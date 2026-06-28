@@ -14,8 +14,16 @@ import { Observable, Subscription, defer, from, map, switchMap } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 import { roomEncryptionInitialState, visibilityOptions } from './room-create';
 
-/** Children fetched per `getRoomHierarchy` page; one page is plenty for a space. */
+/** Children fetched per `getRoomHierarchy` page. */
 const HIERARCHY_LIMIT = 100;
+
+/**
+ * Safety cap on hierarchy pages we follow via `next_batch`. A space with more
+ * than `HIERARCHY_LIMIT * HIERARCHY_MAX_PAGES` joinable children is well beyond
+ * what the rail shows usefully; stop there so a pathological/looping hierarchy
+ * can't fan out unbounded requests. 5 pages ≈ 500 children.
+ */
+const HIERARCHY_MAX_PAGES = 5;
 
 /** State-event type that links a child room into a Space (`m.space.child`). */
 const SPACE_CHILD_EVENT = 'm.space.child';
@@ -432,15 +440,37 @@ export class SpacesService {
    */
   private fetchHierarchy(spaceId: string): Observable<SpaceChildBase[]> {
     return defer(() =>
-      from(
-        this.matrix.instance.getRoomHierarchy(
-          spaceId,
-          HIERARCHY_LIMIT,
-          1,
-          false,
-        ),
-      ).pipe(map((res) => this.projectHierarchy(spaceId, res.rooms))),
+      from(this.fetchHierarchyRooms(spaceId)).pipe(
+        map((rooms) => this.projectHierarchy(spaceId, rooms)),
+      ),
     );
+  }
+
+  /**
+   * Accumulate a space's children across `getRoomHierarchy` pages, following
+   * `next_batch` until it's exhausted (or {@link HIERARCHY_MAX_PAGES} is hit, so
+   * a huge/looping hierarchy can't fan out unbounded). Without this, spaces with
+   * more than {@link HIERARCHY_LIMIT} children silently dropped the overflow.
+   */
+  private async fetchHierarchyRooms(spaceId: string): Promise<HierarchyRoom[]> {
+    const client = this.matrix.instance;
+    const rooms: HierarchyRoom[] = [];
+    let fromToken: string | undefined;
+    for (let page = 0; page < HIERARCHY_MAX_PAGES; page++) {
+      const res = await client.getRoomHierarchy(
+        spaceId,
+        HIERARCHY_LIMIT,
+        1,
+        false,
+        fromToken,
+      );
+      rooms.push(...res.rooms);
+      if (!res.next_batch) {
+        break; // no more pages — full hierarchy fetched
+      }
+      fromToken = res.next_batch;
+    }
+    return rooms;
   }
 
   /**
