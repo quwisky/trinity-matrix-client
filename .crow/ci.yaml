@@ -6,6 +6,7 @@
 when:
   - event: push
   - event: pull_request
+  - event: tag
 
 steps:
   install:
@@ -43,3 +44,35 @@ steps:
     commands:
       - corepack enable
       - COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm build
+
+  # Verify the Electron main/preload still compile (the web `build` step doesn't
+  # touch electron/). Cheap: types only — skips the ~100MB Electron binary download
+  # and does no packaging. On push/PR only; the tag build below recompiles anyway.
+  electron:
+    image: node:22
+    when:
+      - event: push
+      - event: pull_request
+    commands:
+      - corepack enable
+      - export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+      - ELECTRON_SKIP_BINARY_DOWNLOAD=1 pnpm -C electron install
+      - pnpm -C electron run compile
+
+  # Create the Electron desktop build (Linux AppImage) → electron/release/, on tags
+  # only (electron-builder downloads the Electron binary + tooling — too heavy for
+  # every push). Reuses the workspace node_modules from `install`; `electron:install`
+  # adds electron/'s deps. macOS (.dmg) and Windows (.exe) can't be cross-built here —
+  # electron-builder needs a macOS runner for mac, and Wine/Windows for win; add
+  # dedicated mac/win pipelines (or a matrix on per-OS runners) to ship those.
+  # Publishing the artifact (release/object store) needs a separate upload plugin.
+  electron-build-linux:
+    image: node:22
+    when:
+      - event: tag
+    commands:
+      - corepack enable
+      - export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+      - pnpm electron:install
+      - pnpm electron:build
+      - pnpm -C electron exec electron-builder --linux AppImage

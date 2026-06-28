@@ -206,20 +206,30 @@ to point it at your own homeserver. The verification harness needs a homeserver 
 ## Continuous integration
 
 [Crow CI](https://crowci.dev) runs the same gates on the server, on every **push**
-and **pull request** (config: [`.crow/ci.yaml`](../.crow/ci.yaml); status badge in the
+and **pull request** — and on **tags** it also builds the Electron Linux package
+(config: [`.crow/ci.yaml`](../.crow/ci.yaml); status badge in the
 [README](../README.md)). The `node:22` image has no pnpm, so each step runs
 `corepack enable` first — Corepack (bundled with Node) activates the version pinned in
 `package.json`'s `packageManager` field; `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` keeps its
 first download non-interactive so CI doesn't hang on a prompt.
 
-| Step        | Command                          | Mirrors locally  |
-| ----------- | -------------------------------- | ---------------- |
-| `install`   | `pnpm install --frozen-lockfile` | `pnpm install`   |
-| `lint`      | `pnpm lint`                      | `pnpm lint`      |
-| `stylelint` | `pnpm stylelint`                 | `pnpm stylelint` |
-| `format`    | `pnpm format:check`              | `pnpm format`    |
-| `test`      | `pnpm test`                      | `pnpm test`      |
-| `build`     | `pnpm build`                     | `pnpm build`     |
+| Step                   | Command                             | Mirrors locally               |
+| ---------------------- | ----------------------------------- | ----------------------------- |
+| `install`              | `pnpm install --frozen-lockfile`    | `pnpm install`                |
+| `lint`                 | `pnpm lint`                         | `pnpm lint`                   |
+| `stylelint`            | `pnpm stylelint`                    | `pnpm stylelint`              |
+| `format`               | `pnpm format:check`                 | `pnpm format`                 |
+| `test`                 | `pnpm test`                         | `pnpm test`                   |
+| `build`                | `pnpm build`                        | `pnpm build`                  |
+| `electron`             | `pnpm -C electron run compile`      | (Electron TS compile check)   |
+| `electron-build-linux` | `electron-builder --linux AppImage` | `pnpm electron:package:linux` |
+
+`electron` (Electron main/preload compile check) runs on push/PR. **`electron-build-linux`
+runs only on `tag` events** — it builds the Linux **AppImage** into `electron/release/`
+(electron-builder downloads the Electron binary + tooling, too heavy for every push).
+macOS (`.dmg`) and Windows (`.exe`) can't be cross-built on the Linux runner —
+electron-builder needs a macOS runner for mac and Wine/Windows for win, so add dedicated
+per-OS pipelines to ship those (and an upload plugin to publish the artifacts).
 
 Steps share the cloned workspace, so the `node_modules` from `install` is reused by the
 rest. `--frozen-lockfile` makes CI fail if `pnpm-lock.yaml` is out of sync with
