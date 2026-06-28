@@ -1,6 +1,6 @@
 import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
-import { RoomEvent } from 'matrix-js-sdk';
+import { MatrixEventEvent, RoomEvent } from 'matrix-js-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -28,6 +28,7 @@ function setup() {
   const client = {
     getUserId: () => '@me:hs',
     getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
+    getRoom: vi.fn(() => room),
     on: vi.fn(),
     off: vi.fn(),
   };
@@ -70,11 +71,31 @@ function desktopBridge() {
   };
 }
 
-function event(opts: { sender?: string; body?: string } = {}) {
+function event(
+  opts: {
+    sender?: string;
+    body?: string;
+    id?: string;
+    /** Encrypted, with cleartext not yet available (ciphertext timeline emit). */
+    encrypted?: boolean;
+    /** Encrypted but already decrypted (clear content present). */
+    decrypted?: boolean;
+    /** Encrypted and decryption permanently failed. */
+    failure?: boolean;
+  } = {},
+) {
+  const isEncrypted = !!(opts.encrypted || opts.decrypted || opts.failure);
+  const hasClear = !!opts.decrypted;
   return {
+    getId: () => opts.id,
+    getRoomId: () => '!r:hs',
     getSender: () => opts.sender ?? '@alice:hs',
     sender: { name: 'Alice' },
     getContent: () => ({ body: opts.body ?? 'hello there' }),
+    isEncrypted: () => isEncrypted,
+    getClearContent: () =>
+      hasClear ? { body: opts.body ?? 'hello there' } : null,
+    isDecryptionFailure: () => !!opts.failure,
   };
 }
 const room = { roomId: '!r:hs', name: 'General' };
@@ -83,6 +104,14 @@ const live = { liveEvent: true };
 /** Grab the RoomEvent.Timeline handler registered via client.on. */
 function timelineHandler(client: { on: { mock: { calls: unknown[][] } } }) {
   const call = client.on.mock.calls.find((c) => c[0] === RoomEvent.Timeline);
+  return call?.[1] as (...args: unknown[]) => void;
+}
+
+/** Grab the MatrixEventEvent.Decrypted handler registered via client.on. */
+function decryptedHandler(client: { on: { mock: { calls: unknown[][] } } }) {
+  const call = client.on.mock.calls.find(
+    (c) => c[0] === MatrixEventEvent.Decrypted,
+  );
   return call?.[1] as (...args: unknown[]) => void;
 }
 
@@ -215,7 +244,7 @@ describe('NotificationService', () => {
     expect(MockNotification.instances).toHaveLength(0);
   });
 
-  it('disconnect detaches the listener', () => {
+  it('disconnect detaches both listeners', () => {
     const { svc, client } = setup();
     svc.connect();
 
@@ -225,6 +254,74 @@ describe('NotificationService', () => {
       RoomEvent.Timeline,
       expect.any(Function),
     );
+    expect(client.off).toHaveBeenCalledWith(
+      MatrixEventEvent.Decrypted,
+      expect.any(Function),
+    );
+  });
+
+  describe('E2EE (decryption-aware)', () => {
+    it('attaches a decrypted listener too', () => {
+      const { svc, client } = setup();
+      svc.connect();
+
+      expect(client.on).toHaveBeenCalledWith(
+        MatrixEventEvent.Decrypted,
+        expect.any(Function),
+      );
+    });
+
+    it('does not notify on the ciphertext timeline emit, only on decrypt', () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const enc = event({ id: '$e1', encrypted: true });
+
+      // Ciphertext arrives live — must NOT notify yet.
+      timelineHandler(client)(enc, room, false, false, live);
+      expect(MockNotification.instances).toHaveLength(0);
+
+      // Now it decrypts — notify, recalculating push rules on the cleartext.
+      decryptedHandler(client)(event({ id: '$e1', decrypted: true }));
+      expect(MockNotification.instances).toHaveLength(1);
+      expect(client.getPushActionsForEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        true,
+      );
+    });
+
+    it('ignores decryption of events it never saw live (backfill)', () => {
+      const { svc, client } = setup();
+      svc.connect();
+
+      // No prior live timeline emit for $b1 → not pending → no notification.
+      decryptedHandler(client)(event({ id: '$b1', decrypted: true }));
+
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    it('does not notify when decryption fails', () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const enc = event({ id: '$e2', encrypted: true });
+
+      timelineHandler(client)(enc, room, false, false, live);
+      decryptedHandler(client)(event({ id: '$e2', failure: true }));
+
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    it('notifies a decrypted event at most once', () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const enc = event({ id: '$e3', encrypted: true });
+
+      timelineHandler(client)(enc, room, false, false, live);
+      decryptedHandler(client)(event({ id: '$e3', decrypted: true }));
+      // A re-decrypt (e.g. retry) must not double-notify.
+      decryptedHandler(client)(event({ id: '$e3', decrypted: true }));
+
+      expect(MockNotification.instances).toHaveLength(1);
+    });
   });
 
   describe('desktop (Electron main-process bridge)', () => {

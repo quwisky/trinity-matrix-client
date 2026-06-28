@@ -2,6 +2,7 @@ import { Injectable, NgZone, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import {
+  MatrixEventEvent,
   RoomEvent,
   type IRoomTimelineData,
   type MatrixClient,
@@ -31,6 +32,12 @@ const PREVIEW_LIMIT = 140;
  * than us, while the window is **unfocused**, and only when the user's push rules
  * say to notify (`getPushActionsForEvent().notify` — respects mutes /
  * mentions-only). A click focuses the window and opens the app.
+ *
+ * For E2EE rooms the `RoomEvent.Timeline` emit carries ciphertext (the preview
+ * would be generic and push rules would run against the encrypted payload, so
+ * mentions are missed). Those live events are deferred and re-evaluated on
+ * `MatrixEventEvent.Decrypted` with `getPushActionsForEvent(event, true)`; a
+ * dedupe set guarantees each event notifies at most once.
  */
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
@@ -44,6 +51,19 @@ export class NotificationService {
   /** Unsubscribe for the desktop notification-click bridge, when on Electron. */
   private notificationClickUnsubscribe: (() => void) | null = null;
 
+  /**
+   * Live, still-encrypted events seen on the timeline that we deferred until
+   * `MatrixEventEvent.Decrypted`. Backfill never lands here, so the Decrypted
+   * handler won't notify for scrollback that happens to decrypt.
+   */
+  private readonly pendingDecryption = new Set<string>();
+
+  /** Event ids already notified, so an event notifies at most once. */
+  private readonly notified = new Set<string>();
+
+  /** Bound on {@link notified} so it can't grow without limit on a long session. */
+  private static readonly NOTIFIED_CAP = 500;
+
   private readonly onTimeline = (
     event: MatrixEvent,
     room: Room | undefined,
@@ -53,11 +73,47 @@ export class NotificationService {
   ): void => {
     // This runs inside the SDK's sync emit loop — a throw must never disrupt it.
     try {
-      this.maybeNotify(event, room, data);
+      if (data?.liveEvent !== true) {
+        return; // backfill / scrollback — not a fresh event
+      }
+      if (this.isAwaitingDecryption(event)) {
+        // E2EE: this emit is ciphertext. Defer to MatrixEventEvent.Decrypted so
+        // the preview and push rules run against the cleartext.
+        const id = event.getId();
+        if (id) {
+          this.pendingDecryption.add(id);
+        }
+        return;
+      }
+      this.maybeNotify(event, room);
     } catch {
       /* a notification failure is non-fatal */
     }
   };
+
+  private readonly onDecrypted = (event: MatrixEvent): void => {
+    // Also runs inside the SDK's emit loop — never let a throw escape.
+    try {
+      const id = event.getId();
+      if (!id || !this.pendingDecryption.has(id)) {
+        return; // not a live event we deferred (e.g. backfill decryption)
+      }
+      if (event.isDecryptionFailure()) {
+        return; // keep it pending for a possible later retry
+      }
+      this.pendingDecryption.delete(id);
+      const room = this.connectedClient?.getRoom(event.getRoomId() ?? '');
+      this.maybeNotify(event, room ?? undefined, /* forceRecalculate */ true);
+    } catch {
+      /* a notification failure is non-fatal */
+    }
+  };
+
+  /** A live encrypted event whose cleartext isn't available yet — wait for the
+   * `Decrypted` emit rather than previewing/scoring the ciphertext. */
+  private isAwaitingDecryption(event: MatrixEvent): boolean {
+    return event.isEncrypted?.() === true && event.getClearContent?.() == null;
+  }
 
   /** Attach to live timeline events + request permission. Idempotent; pair with
    * {@link disconnect}. Call once the client is live (from the rooms shell). */
@@ -88,13 +144,17 @@ export class NotificationService {
     }
 
     client.on(RoomEvent.Timeline, this.onTimeline);
+    client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
   }
 
   disconnect(): void {
     this.notificationClickUnsubscribe?.();
     this.notificationClickUnsubscribe = null;
     this.connectedClient?.off(RoomEvent.Timeline, this.onTimeline);
+    this.connectedClient?.off(MatrixEventEvent.Decrypted, this.onDecrypted);
     this.connectedClient = null;
+    this.pendingDecryption.clear();
+    this.notified.clear();
   }
 
   /** Skip on native mobile (push owns delivery there). Otherwise we can notify
@@ -113,14 +173,11 @@ export class NotificationService {
   private maybeNotify(
     event: MatrixEvent,
     room: Room | undefined,
-    data?: IRoomTimelineData,
+    forceRecalculate = false,
   ): void {
     const client = this.connectedClient;
     if (!client || !room) {
       return;
-    }
-    if (data?.liveEvent !== true) {
-      return; // backfill / scrollback — not a fresh event
     }
     if (event.getSender() === client.getUserId()) {
       return; // our own message
@@ -136,8 +193,24 @@ export class NotificationService {
       return;
     }
     // Respect the account's push rules (mute / mentions-only / etc.).
-    if (!client.getPushActionsForEvent(event)?.notify) {
+    // `forceRecalculate` is set on the decrypted path so the rules score the
+    // cleartext (mentions) rather than a cached ciphertext result.
+    if (!client.getPushActionsForEvent(event, forceRecalculate)?.notify) {
       return;
+    }
+    // Notify each event at most once (Timeline + Decrypted can both fire).
+    const id = event.getId();
+    if (id) {
+      if (this.notified.has(id)) {
+        return;
+      }
+      this.notified.add(id);
+      if (this.notified.size > NotificationService.NOTIFIED_CAP) {
+        const oldest = this.notified.values().next().value;
+        if (oldest !== undefined) {
+          this.notified.delete(oldest);
+        }
+      }
     }
 
     const sender = event.sender?.name ?? event.getSender() ?? 'Someone';
