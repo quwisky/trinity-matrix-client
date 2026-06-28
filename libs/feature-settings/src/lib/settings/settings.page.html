@@ -9,6 +9,66 @@
 
 <ion-content>
   <ion-list>
+    <ion-list-header>Profile</ion-list-header>
+    @if (profile(); as p) {
+      <ion-item lines="none">
+        <trn-avatar
+          slot="start"
+          [url]="p.avatarUrl"
+          [name]="p.displayName || p.userId"
+          [initial]="initial()"
+          [size]="64"
+        />
+        <ion-label>
+          <h2>{{ p.displayName || p.userId }}</h2>
+          <p>{{ p.userId }}</p>
+        </ion-label>
+        <ion-button
+          slot="end"
+          fill="clear"
+          size="small"
+          [disabled]="savingAvatar()"
+          (click)="pickAvatar()"
+          data-testid="change-avatar"
+        >
+          {{ savingAvatar() ? 'Uploading…' : 'Change' }}
+        </ion-button>
+      </ion-item>
+      <ion-item>
+        <ion-input
+          label="Display name"
+          labelPlacement="stacked"
+          [value]="nameDraft()"
+          (ionInput)="onNameInput($event)"
+          data-testid="display-name-input"
+        />
+        <ion-button
+          slot="end"
+          size="small"
+          [disabled]="savingName() || !nameDirty()"
+          (click)="saveName()"
+          data-testid="save-name"
+        >
+          Save
+        </ion-button>
+      </ion-item>
+    } @else if (loading()) {
+      <ion-item lines="none"><ion-label>Loading profile…</ion-label></ion-item>
+    }
+    @if (error(); as e) {
+      <ion-note color="danger" class="setting-note">{{ e }}</ion-note>
+    }
+    <input
+      #avatarInput
+      type="file"
+      accept="image/*"
+      hidden
+      data-testid="avatar-input"
+      (change)="onAvatarPicked($event)"
+    />
+  </ion-list>
+
+  <ion-list>
     <ion-list-header>Appearance</ion-list-header>
     <ion-radio-group
       [value]="theme.preference()"
