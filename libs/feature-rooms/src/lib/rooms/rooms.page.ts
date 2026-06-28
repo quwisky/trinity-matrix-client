@@ -26,6 +26,7 @@ import {
   IonButton,
   IonIcon,
   MenuController,
+  ModalController,
   ToastController,
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
@@ -111,6 +112,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly menu = inject(MenuController);
+  private readonly modalCtrl = inject(ModalController);
   private readonly toast = inject(ToastController);
   private readonly alertCtrl = inject(AlertController);
   private readonly actionSheetCtrl = inject(ActionSheetController);
@@ -264,8 +266,16 @@ export class RoomsPage implements OnInit, OnDestroy {
    * Open the switcher and jump to the selection: room/DM open the room, space selects
    * it in the rail, a directory person opens (or reuses) a DM, an invite runs the
    * page's existing accept path. Also the header search button's handler.
+   *
+   * Bail when an overlay already owns the screen: the Cmd/Ctrl+K shortcut fires even
+   * while a thread/search/verification modal is open (RoomsPage isn't destroyed), so
+   * without this it would stack the switcher over that modal — and picking a result
+   * runs onSelectRoom() → media.releaseAll(), revoking the open modal's pinned blobs.
    */
   async openSwitcher(): Promise<void> {
+    if (await this.modalCtrl.getTop()) {
+      return; // an overlay owns the screen — don't stack the switcher over it
+    }
     const selection = await this.switcher.pick();
     if (!selection) {
       return; // cancelled / already open

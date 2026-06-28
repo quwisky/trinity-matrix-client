@@ -5,6 +5,7 @@ import {
   ActionSheetController,
   AlertController,
   MenuController,
+  ModalController,
   ToastController,
 } from '@ionic/angular/standalone';
 import {
@@ -111,6 +112,10 @@ describe('RoomsPage action error feedback', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
+        {
+          provide: ModalController,
+          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: ToastController, useValue: { create } },
       ],
     });
@@ -281,6 +286,10 @@ describe('RoomsPage space filtering', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
+        {
+          provide: ModalController,
+          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: ToastController, useValue: { create: vi.fn() } },
       ],
     });
@@ -371,6 +380,10 @@ describe('RoomsPage space actions', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
+        {
+          provide: ModalController,
+          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: AlertController, useValue: { create } },
         {
           provide: ToastController,
@@ -565,6 +578,10 @@ describe('RoomsPage room / DM / invite actions', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
+        {
+          provide: ModalController,
+          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: AlertController, useValue: { create: alertCreate } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
         { provide: ToastController, useValue: { create: toastCreate } },
@@ -826,6 +843,10 @@ describe('RoomsPage space hierarchy actions', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
+        {
+          provide: ModalController,
+          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: AlertController, useValue: { create: alertCreate } },
         {
           provide: ToastController,
@@ -966,6 +987,10 @@ describe('RoomsPage quick switcher', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
+        {
+          provide: ModalController,
+          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: AlertController, useValue: { create: vi.fn() } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
@@ -1048,15 +1073,30 @@ describe('RoomsPage quick switcher', () => {
     expect(timelineOpen).not.toHaveBeenCalled();
   });
 
-  it('Ctrl/Cmd+K prevents default and opens the switcher', () => {
+  it('Ctrl/Cmd+K prevents default and opens the switcher', async () => {
     const page = build();
     pick.mockResolvedValue(null);
     const preventDefault = vi.fn();
 
     page.onQuickSwitch({ preventDefault } as unknown as KeyboardEvent);
 
-    expect(preventDefault).toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalled(); // sync — stops the browser's Cmd+K
+    await new Promise((resolve) => setTimeout(resolve)); // settle the getTop() guard
     expect(pick).toHaveBeenCalled();
+  });
+
+  it('does not open the switcher over an existing overlay', async () => {
+    const page = build();
+    const modalCtrl = TestBed.inject(ModalController);
+    (modalCtrl.getTop as ReturnType<typeof vi.fn>).mockResolvedValue(
+      {} as HTMLIonModalElement,
+    );
+
+    await page.openSwitcher();
+
+    // A thread/search/verification modal owns the screen — the switcher must not
+    // stack over it (picking a result would releaseAll() its pinned media).
+    expect(pick).not.toHaveBeenCalled();
   });
 
   it('opens in-room message search for the active room and jumps to the hit', async () => {
