@@ -44,7 +44,11 @@
 }
 
 // Dark theme — the Discord-style default look, applied via `.ion-palette-dark`.
-.ion-palette-dark {
+// Use `:root.ion-palette-dark` (specificity 0,2,0) rather than a bare
+// `.ion-palette-dark` (0,1,0): otherwise it ties with `:root` (light) and wins only by
+// source order — fragile across bundles/build orders (light was winning in Electron).
+// Raising specificity makes dark win unconditionally whenever the class is present.
+:root.ion-palette-dark {
   --trinity-rail: #1e1f22;
   --trinity-sidebar: #2b2d31;
   --trinity-sidebar-header: #232428;
