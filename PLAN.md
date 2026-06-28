@@ -159,8 +159,9 @@ src/app/
      timelines are cached for fast startup and offline reads; a `connectivity` signal
      (derived from sync state) drives an offline banner in the rooms shell. Offline
      **cold start** works on native/desktop (Capacitor/Electron bundle the JS + crypto
-     WASM as local assets); the **web/PWA** target would also need a service worker to
-     precache the app shell + WASM (a tracked follow-up). _Known
+     WASM as local assets); on **web/PWA** an `@angular/service-worker` (`ngsw-config.json`,
+     production-only) precaches the app shell + crypto WASM for the same offline cold start
+     (needs in-browser verification of the offline/update flow). _Known
      limitation:_ avatars (here and app-wide for rooms/members) use the unauthenticated
      media path, so they fall back to initials on a v1.11 authenticated-media-only
      homeserver — a shared authenticated-avatar resolver is a tracked follow-up.
