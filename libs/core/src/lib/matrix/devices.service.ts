@@ -1,8 +1,13 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { MatrixError, type AuthDict } from 'matrix-js-sdk';
+import type { MatrixClient } from 'matrix-js-sdk';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { Observable, defer, from, map, tap } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
-import type { PasswordPrompt } from './crypto.service';
+import {
+  UiaCancelledError,
+  runPasswordUia,
+  type PasswordPrompt,
+} from './password-uia';
 
 /** A signed-in device (session) for the current user. */
 export interface DeviceInfo {
@@ -17,13 +22,12 @@ export interface DeviceInfo {
   isVerified: boolean;
 }
 
-const MAX_PASSWORD_ATTEMPTS = 3;
-
 /**
  * Lists and manages the current user's devices (sessions), wrapping the SDK so
  * components never touch matrix-js-sdk directly. Device removal drives the
  * password user-interactive-auth (UIA) flow the homeserver requires. Exposes the
- * list as a signal that rename/remove patch in place.
+ * list as a signal that rename/remove patch in place; {@link connect} keeps it
+ * live as the device list changes elsewhere.
  */
 @Injectable({ providedIn: 'root' })
 export class DevicesService {
@@ -32,12 +36,55 @@ export class DevicesService {
   private readonly _devices = signal<DeviceInfo[]>([]);
   readonly devices = this._devices.asReadonly();
 
+  /** The client the listener is attached to, so disconnect() targets the same one. */
+  private connectedClient: MatrixClient | null = null;
+  /** Increments per load (and per mutation) so a stale reload can't clobber. */
+  private loadGen = 0;
+
+  /** Refresh only when OUR session list could have changed — the event also fires
+   * for other users we share encrypted rooms with (and on the initial fetch). */
+  private readonly onDevicesUpdated = (
+    users: string[],
+    initialFetch?: boolean,
+  ): void => {
+    if (initialFetch || !this.matrix.isInitialized) {
+      return;
+    }
+    const me = this.matrix.instance.getUserId();
+    if (me && users.includes(me)) {
+      void this.loadDevices().catch(() => undefined);
+    }
+  };
+
+  /** Subscribe to live device-list changes; pair with {@link disconnect}. */
+  connect(): void {
+    if (!this.matrix.isInitialized) {
+      return;
+    }
+    const client = this.matrix.instance;
+    if (this.connectedClient === client) {
+      return;
+    }
+    this.disconnect();
+    this.connectedClient = client;
+    client.on(CryptoEvent.DevicesUpdated, this.onDevicesUpdated);
+  }
+
+  disconnect(): void {
+    this.connectedClient?.off(
+      CryptoEvent.DevicesUpdated,
+      this.onDevicesUpdated,
+    );
+    this.connectedClient = null;
+  }
+
   /** Fetch all devices with their verification status (current device first). */
   list(): Observable<DeviceInfo[]> {
     return defer(() => from(this.loadDevices()));
   }
 
   private async loadDevices(): Promise<DeviceInfo[]> {
+    const gen = ++this.loadGen;
     const client = this.matrix.instance;
     const userId = client.getUserId() ?? '';
     const currentId = client.getDeviceId();
@@ -70,7 +117,11 @@ export class DevicesService {
       }
       return (b.lastSeenTs ?? 0) - (a.lastSeenTs ?? 0);
     });
-    this._devices.set(result);
+    // Drop a stale result if a newer load — or a mutation (rename/remove) — has
+    // happened since this one began, so a slow reload can't resurrect a device.
+    if (gen === this.loadGen) {
+      this._devices.set(result);
+    }
     return result;
   }
 
@@ -108,65 +159,32 @@ export class DevicesService {
     if (deviceId === client.getDeviceId()) {
       throw new Error('Use “Log out” to sign out the device you are using.');
     }
-
-    // Many servers complete without UIA; a 401 carries the session + flows.
-    let session: string;
     try {
-      await client.deleteDevice(deviceId);
-      this.removeLocal(deviceId);
-      return;
+      await runPasswordUia(
+        (auth) => client.deleteDevice(deviceId, auth ?? undefined),
+        promptPassword,
+        client.getUserId() ?? '',
+      );
     } catch (err) {
-      const probe = uiaSession(err);
-      if (!probe) {
-        throw err;
+      if (err instanceof UiaCancelledError) {
+        return; // user cancelled the password prompt — a silent no-op
       }
-      session = probe;
+      throw err;
     }
-
-    for (let attempt = 0; attempt < MAX_PASSWORD_ATTEMPTS; attempt++) {
-      const password = await promptPassword();
-      if (password === null) {
-        return; // user cancelled — a silent no-op, not an error
-      }
-      const auth: AuthDict = {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user: client.getUserId() ?? '' },
-        password,
-        session,
-      };
-      try {
-        await client.deleteDevice(deviceId, auth);
-        this.removeLocal(deviceId);
-        return;
-      } catch (err) {
-        const next = uiaSession(err);
-        if (!next) {
-          throw err; // a non-UIA failure (network/server) — give up
-        }
-        session = next; // wrong password / next stage — re-prompt
-      }
-    }
-    throw new Error('Too many password attempts.');
+    this.removeLocal(deviceId);
   }
 
   private removeLocal(deviceId: string): void {
+    this.loadGen++; // invalidate any in-flight reload that predates this removal
     this._devices.set(this._devices().filter((d) => d.id !== deviceId));
   }
 
   private patch(deviceId: string, partial: Partial<DeviceInfo>): void {
+    this.loadGen++; // invalidate any in-flight reload that predates this edit
     this._devices.set(
       this._devices().map((d) =>
         d.id === deviceId ? { ...d, ...partial } : d,
       ),
     );
   }
-}
-
-/** A UIA 401 carries `flows` + a `session`; return the session, or null. */
-function uiaSession(err: unknown): string | null {
-  const data = err instanceof MatrixError ? err.data : undefined;
-  if (data && 'flows' in data) {
-    return (data as { session?: string }).session ?? null;
-  }
-  return null;
 }

@@ -1,10 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import {
-  MatrixError,
-  type AuthDict,
-  type MatrixClient,
-  type UIAuthCallback,
-} from 'matrix-js-sdk';
+import { type MatrixClient, type UIAuthCallback } from 'matrix-js-sdk';
 import {
   CryptoEvent,
   decodeRecoveryKey,
@@ -16,6 +11,7 @@ import type { SecretStorageKeyDescriptionAesV1 } from 'matrix-js-sdk/lib/secret-
 import { Observable, defer, from } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 import { SecretStorageKeyService } from './secret-storage-key.service';
+import { runPasswordUia, type PasswordPrompt } from './password-uia';
 
 /**
  * Where this device stands relative to the account's encryption setup:
@@ -30,9 +26,6 @@ export type CryptoStatus =
   | 'ready'
   | 'needs-setup'
   | 'needs-recovery';
-
-/** Prompts the user for their password when a UIA stage requires it. */
-export type PasswordPrompt = () => Promise<string | null>;
 
 /**
  * The account-level secret layer on top of {@link MatrixClientService}: bootstraps
@@ -284,60 +277,12 @@ export class CryptoService {
   }
 
   /**
-   * UIA callback for uploading new device-signing keys: probe once unauthenticated,
-   * then submit the user's password against the returned session, re-prompting on a
-   * rejected password up to a few times. Only the `m.login.password` stage is
-   * handled — SSO-only accounts (no password) surface the original UIA error.
+   * UIA callback for uploading new device-signing keys: defers to the shared
+   * password-UIA loop (probe unauthenticated, then prompt + retry).
    */
   private passwordUia(promptPassword: PasswordPrompt): UIAuthCallback<void> {
-    const client = this.matrix.instance;
-    const MAX_ATTEMPTS = 3;
-    return async (makeRequest) => {
-      // Many servers complete without UIA; a 401 carries the session + flows.
-      let challenge: { session?: string };
-      try {
-        return await makeRequest(null);
-      } catch (err) {
-        const probe = this.uiaChallenge(err);
-        if (!probe) {
-          throw err;
-        }
-        challenge = probe;
-      }
-
-      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-        const session = challenge.session;
-        if (!session) {
-          throw new Error('Encryption setup failed: missing auth session.');
-        }
-        const password = await promptPassword();
-        if (password === null) {
-          throw new Error('Encryption setup was cancelled.');
-        }
-        const auth: AuthDict = {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user: client.getUserId() ?? '' },
-          password,
-          session,
-        };
-        try {
-          return await makeRequest(auth);
-        } catch (err) {
-          const next = this.uiaChallenge(err);
-          if (!next) {
-            throw err; // a non-UIA failure (network, server error) — give up
-          }
-          challenge = next; // wrong password / next stage — re-prompt
-        }
-      }
-      throw new Error('Encryption setup failed: too many password attempts.');
-    };
-  }
-
-  /** A UIA 401 carries `flows`; return its data (with the session) or null. */
-  private uiaChallenge(err: unknown): { session?: string } | null {
-    const data = err instanceof MatrixError ? err.data : undefined;
-    return data && 'flows' in data ? (data as { session?: string }) : null;
+    const userId = this.matrix.instance.getUserId() ?? '';
+    return (makeRequest) => runPasswordUia(makeRequest, promptPassword, userId);
   }
 
   private requireCrypto(): CryptoApi {

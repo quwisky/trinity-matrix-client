@@ -10,6 +10,7 @@ export * from './lib/matrix/devices.service';
 export * from './lib/matrix/crypto-spike.service';
 export * from './lib/matrix/secret-storage-key.service';
 export * from './lib/matrix/crypto.service';
+export * from './lib/matrix/password-uia';
 export * from './lib/matrix/verification.service';
 export * from './lib/storage/session-storage.service';
 export * from './lib/theme/theme.service';

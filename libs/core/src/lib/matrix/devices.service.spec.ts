@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MatrixError } from 'matrix-js-sdk';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevicesService } from './devices.service';
@@ -40,6 +41,8 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
     }),
     setDeviceDetails: vi.fn().mockResolvedValue({}),
     deleteDevice: vi.fn().mockResolvedValue({}),
+    on: vi.fn(),
+    off: vi.fn(),
     ...overrides,
   };
 }
@@ -196,5 +199,80 @@ describe('DevicesService', () => {
       /network down/,
     );
     expect(prompt).not.toHaveBeenCalled();
+  });
+
+  it('bails with a clear error when no password stage is offered (SSO-only)', async () => {
+    const { svc, client } = setup();
+    await firstValueFrom(svc.list());
+    client.deleteDevice.mockRejectedValueOnce(
+      new MatrixError(
+        { flows: [{ stages: ['m.login.sso'] }], session: 's' },
+        401,
+      ),
+    );
+    const prompt = vi.fn();
+
+    await expect(firstValueFrom(svc.delete('B', prompt))).rejects.toThrow(
+      /additional verification/i,
+    );
+    expect(prompt).not.toHaveBeenCalled();
+  });
+
+  it('refetches only on the current user’s device change; disconnect detaches', async () => {
+    const { svc, client } = setup();
+    await firstValueFrom(svc.list());
+
+    svc.connect();
+    expect(client.on).toHaveBeenCalledWith(
+      CryptoEvent.DevicesUpdated,
+      expect.any(Function),
+    );
+    const handler = client.on.mock.calls.at(-1)?.[1] as (
+      users: string[],
+      initialFetch?: boolean,
+    ) => void;
+
+    client.getDevices.mockClear();
+    handler(['@other:hs']); // a peer's devices changed → ignore
+    expect(client.getDevices).not.toHaveBeenCalled();
+    handler(['@me:hs'], true); // initial bulk fetch → ignore (list() already ran)
+    expect(client.getDevices).not.toHaveBeenCalled();
+    handler(['@me:hs']); // our own session list changed → refetch
+    expect(client.getDevices).toHaveBeenCalled();
+
+    svc.disconnect();
+    expect(client.off).toHaveBeenCalledWith(
+      CryptoEvent.DevicesUpdated,
+      handler,
+    );
+  });
+
+  it('a slow background reload cannot resurrect a just-removed device', async () => {
+    const { svc, client } = setup();
+    await firstValueFrom(svc.list()); // [A, B]
+    svc.connect();
+    const handler = client.on.mock.calls.at(-1)?.[1] as (u: string[]) => void;
+
+    // The event-triggered reload is slow and would return the stale (pre-delete) list.
+    let release!: (value: { devices: unknown[] }) => void;
+    client.getDevices.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    handler(['@me:hs']); // starts the slow reload
+
+    await firstValueFrom(svc.delete('B', vi.fn())); // removes B (bumps generation)
+    expect(svc.devices().some((d) => d.id === 'B')).toBe(false);
+
+    release({
+      devices: [
+        { device_id: 'A', display_name: 'Laptop', last_seen_ts: 200 },
+        { device_id: 'B', last_seen_ts: 100 },
+      ],
+    });
+    await new Promise((resolve) => setTimeout(resolve)); // flush the stale reload
+
+    expect(svc.devices().some((d) => d.id === 'B')).toBe(false); // not resurrected
   });
 });
