@@ -116,17 +116,18 @@ src/app/
    replacing the unmaintained `matrix-encrypt-attachment`); the upload path encrypts for
    E2EE rooms. Picking uses Capacitor **Camera** on native with a web `<input type="file">`
    fallback (works on web and inside WebViews). The upload path now **generates a
-   client-side image thumbnail** (canvas-downscaled to a 480px edge, encrypted per-file
-   for E2EE rooms — the only thumbnail an encrypted room can show, since the server can't
-   scale an encrypted original), **probes audio/video duration + video dimensions** into
-   `content.info`, and surfaces a **determinate upload-progress bar** in the composer.
-   Downloads save via a platform-branched `FileSaveService`: native uses Capacitor
-   **Filesystem** (write to cache) + **Share** (the OS save/share sheet), with a web
-   `<a download>` fallback. `cap sync` registered both new plugins for Android and iOS.
-   **Remaining follow-ups:** a video poster-frame thumbnail, and on-device verification
-   of the native picker + save/share (a native rebuild is required to pick up the new
-   plugins; iOS `Info.plist` keys + Android perms for picking already added, and the
-   Filesystem-cache/Share path needs no extra permission).
+   client-side thumbnail** for images (canvas-downscaled to a 480px edge) and a
+   **poster frame for videos** (seek past the start, draw the frame, encode), encrypted
+   per-file for E2EE rooms — the only thumbnail an encrypted room can show, since the
+   server can't scale an encrypted original. It also **probes audio/video duration +
+   video dimensions** into `content.info` and surfaces a **determinate upload-progress
+   bar** in the composer. Downloads save via a platform-branched `FileSaveService`:
+   native uses Capacitor **Filesystem** (write to cache) + **Share** (the OS save/share
+   sheet), with a web `<a download>` fallback. `cap sync` registered both new plugins
+   for Android and iOS. **Remaining follow-up:** on-device verification of the native
+   picker + save/share (a native rebuild is required to pick up the new plugins; iOS
+   `Info.plist` keys + Android perms for picking already added, and the Filesystem-cache/
+   Share path needs no extra permission).
 9. **MVP polish** — dark mode, offline cache, settings/profile, device management.
 
 Phase 2: push notifications, threads, calls, spaces.
