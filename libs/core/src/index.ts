@@ -5,6 +5,7 @@ export * from './lib/matrix/timeline.service';
 export * from './lib/matrix/media.model';
 export * from './lib/matrix/media.service';
 export * from './lib/matrix/auth.service';
+export * from './lib/matrix/profile.service';
 export * from './lib/matrix/crypto-spike.service';
 export * from './lib/matrix/secret-storage-key.service';
 export * from './lib/matrix/crypto.service';
