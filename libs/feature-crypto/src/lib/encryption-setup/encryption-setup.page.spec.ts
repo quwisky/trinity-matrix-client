@@ -67,21 +67,16 @@ describe('EncryptionSetupPage', () => {
   });
 
   it('surfaces an error when setUp fails', () => {
+    // An arbitrary failure message — the page surfaces whatever setUp emits.
     const setUp = vi
       .fn()
-      .mockReturnValue(
-        throwError(() => new Error('Encryption setup was cancelled.')),
-      );
+      .mockReturnValue(throwError(() => new Error('Setup failed.')));
     configure(setUp);
     const fixture = TestBed.createComponent(EncryptionSetupPage);
     fixture.componentInstance.setUp();
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.error()).toBe(
-      'Encryption setup was cancelled.',
-    );
-    expect(fixture.nativeElement.textContent).toContain(
-      'Encryption setup was cancelled.',
-    );
+    expect(fixture.componentInstance.error()).toBe('Setup failed.');
+    expect(fixture.nativeElement.textContent).toContain('Setup failed.');
   });
 });

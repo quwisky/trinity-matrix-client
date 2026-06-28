@@ -7,7 +7,7 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import {
   IonHeader,
@@ -50,6 +50,7 @@ import { SasCompareComponent } from './sas-compare.component';
 export class DeviceVerificationPage {
   private readonly verification = inject(VerificationService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
 
   /** The active verification view (null until one starts). */
@@ -99,9 +100,20 @@ export class DeviceVerificationPage {
   private leave(): void {
     if (this.asModal()) {
       this.closed.emit();
-    } else {
-      void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+      return;
     }
+    // Return to where the flow was launched from (e.g. /settings), defaulting to
+    // /rooms. Only same-origin in-app paths are honored — reject protocol-relative
+    // (`//`) and backslash (`/\`) forms so it can't point off-app.
+    const returnTo = this.route.snapshot.queryParamMap.get('returnTo');
+    const internal =
+      !!returnTo &&
+      returnTo.startsWith('/') &&
+      !returnTo.startsWith('//') &&
+      !returnTo.startsWith('/\\');
+    void this.router.navigateByUrl(internal ? returnTo : '/rooms', {
+      replaceUrl: true,
+    });
   }
 
   private run(action: Observable<void>): void {
