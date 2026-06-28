@@ -39,6 +39,7 @@ import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.comp
 import { MemberListComponent } from '../member-list/member-list.component';
 import { MessageListComponent } from '../message-list/message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
+import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -65,6 +66,7 @@ import { EncryptionBannerComponent } from '../encryption-banner/encryption-banne
     MemberListComponent,
     MessageListComponent,
     EncryptionBannerComponent,
+    ConnectivityBannerComponent,
   ],
 })
 export class RoomsPage implements OnInit, OnDestroy {
