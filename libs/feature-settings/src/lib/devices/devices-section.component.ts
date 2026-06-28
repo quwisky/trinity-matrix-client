@@ -71,6 +71,10 @@ export class DevicesSectionComponent {
       error: this.error,
       destroyRef: this.destroyRef,
     }).subscribe();
+    // Keep the list live while the section is mounted (e.g. another session
+    // signs a device out), and detach on destroy.
+    this.devicesSvc.connect();
+    this.destroyRef.onDestroy(() => this.devicesSvc.disconnect());
   }
 
   /** Prompt for a new display name, then rename. */
@@ -116,9 +120,11 @@ export class DevicesSectionComponent {
     await alert.present();
   }
 
-  /** Open the existing SAS verification flow. */
+  /** Open the existing SAS verification flow, returning here when it finishes. */
   verifyDevices(): void {
-    void this.router.navigateByUrl('/encryption/verify');
+    void this.router.navigate(['/encryption/verify'], {
+      queryParams: { returnTo: '/settings' },
+    });
   }
 
   private applyRename(id: string, name: string): void {

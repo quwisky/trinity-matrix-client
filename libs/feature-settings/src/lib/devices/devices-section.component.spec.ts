@@ -33,14 +33,18 @@ const OTHER: DeviceInfo = {
 describe('DevicesSectionComponent', () => {
   const rename = vi.fn(() => of(undefined));
   const del = vi.fn(() => of(undefined));
-  const navigateByUrl = vi.fn();
+  const connect = vi.fn();
+  const disconnect = vi.fn();
+  const navigate = vi.fn();
   let devices: ReturnType<typeof signal<DeviceInfo[]>>;
   let alertCreate: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     rename.mockClear();
     del.mockClear();
-    navigateByUrl.mockClear();
+    connect.mockClear();
+    disconnect.mockClear();
+    navigate.mockClear();
     devices = signal<DeviceInfo[]>([CURRENT, OTHER]);
     alertCreate = vi
       .fn()
@@ -51,10 +55,17 @@ describe('DevicesSectionComponent', () => {
       providers: [
         {
           provide: DevicesService,
-          useValue: { devices, list: () => of(devices()), rename, delete: del },
+          useValue: {
+            devices,
+            list: () => of(devices()),
+            rename,
+            delete: del,
+            connect,
+            disconnect,
+          },
         },
         { provide: AlertController, useValue: { create: alertCreate } },
-        { provide: Router, useValue: { navigateByUrl } },
+        { provide: Router, useValue: { navigate } },
       ],
     });
   });
@@ -102,13 +113,24 @@ describe('DevicesSectionComponent', () => {
     expect(del).toHaveBeenCalledWith('B', expect.any(Function));
   });
 
-  it('navigates to the verification flow', () => {
+  it('navigates to the verification flow, asking it to return to settings', () => {
     const fixture = TestBed.createComponent(DevicesSectionComponent);
     fixture.detectChanges();
 
     fixture.componentInstance.verifyDevices();
 
-    expect(navigateByUrl).toHaveBeenCalledWith('/encryption/verify');
+    expect(navigate).toHaveBeenCalledWith(['/encryption/verify'], {
+      queryParams: { returnTo: '/settings' },
+    });
+  });
+
+  it('subscribes to live device updates while mounted', () => {
+    const fixture = TestBed.createComponent(DevicesSectionComponent);
+    fixture.detectChanges();
+    expect(connect).toHaveBeenCalled();
+
+    fixture.destroy();
+    expect(disconnect).toHaveBeenCalled();
   });
 
   it('hides the verify affordance when every session is verified', () => {

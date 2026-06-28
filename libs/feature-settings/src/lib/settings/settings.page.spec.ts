@@ -56,7 +56,12 @@ describe('SettingsPage', () => {
         // The embedded devices section needs these to construct.
         {
           provide: DevicesService,
-          useValue: { devices: signal([]), list: () => of([]) },
+          useValue: {
+            devices: signal([]),
+            list: () => of([]),
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+          },
         },
         { provide: AlertController, useValue: { create: vi.fn() } },
         // Real router providers — Ionic's NavController (ion-back-button) needs them.
