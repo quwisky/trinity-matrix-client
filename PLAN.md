@@ -150,9 +150,10 @@ src/app/
      (`setDeviceDetails`), and signs out (`deleteDevice`) driving the password UIA loop the
      homeserver requires; a Devices section renders the list with badges, alert-driven
      rename + sign-out (the current device is protected), and a link to the SAS verify flow.
-     _Device follow-ups:_ extract one shared password-UIA helper (the delete loop mirrors
-     `crypto.service`), handle SSO-only / multi-stage UIA beyond password, return to settings
-     (not `/rooms`) after a verify launched from here, and live-refresh on `DevicesUpdated`.
+     _Device follow-ups (done):_ a shared `runPasswordUia` helper (`password-uia.ts`) now
+     backs both encryption setup and device sign-out, bailing clearly on SSO-only/multi-stage
+     UIA instead of looping; a verify launched from settings returns there (`?returnTo`); and
+     the list live-refreshes on `CryptoEvent.DevicesUpdated`.
      **Offline cache** is done: `MatrixClientService` persists the sync store to a
      per-account `IndexedDBStore` (falling back to in-memory off-browser), so rooms and
      timelines are cached for fast startup and offline reads; a `connectivity` signal
