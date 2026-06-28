@@ -515,8 +515,55 @@ function showOsNotification(payload: NotificationRequest): void {
       activeNotifications.delete(payload.roomId);
     }
   });
+  // Electron 42 posts via macOS UNUserNotification, which requires a STABLE code
+  // signature — unsigned/ad-hoc builds fail silently here with "UNErrorDomain error 1"
+  // rather than displaying. Surface it so it's diagnosable instead of mysterious.
+  notification.on('failed', (_event, error) => {
+    console.error(
+      `[notification] display failed (room ${payload.roomId}): ${error}. On macOS this ` +
+        'usually means the app is unsigned or ad-hoc-signed — Electron 42 needs a stable ' +
+        'code signature to post notifications. See docs/DEVELOPMENT.md (macOS signing).',
+    );
+  });
 
   notification.show();
+}
+
+/**
+ * Dev aid: when the `TRINITY_NOTIFY_TEST` env var is set, post one OS notification a few
+ * seconds after startup — a quick way to confirm desktop notifications actually display
+ * (and, via the `failed` listener, to see "UNErrorDomain error 1" when the build lacks a
+ * stable code signature). OFF by default; never fires in normal use. Launch the app's
+ * binary with the env set so you also see the console output, e.g.:
+ *   TRINITY_NOTIFY_TEST=1 "/Applications/Trinity.app/Contents/MacOS/Trinity"
+ */
+function maybeSendStartupTestNotification(): void {
+  if (!process.env['TRINITY_NOTIFY_TEST']) {
+    return;
+  }
+  setTimeout(() => {
+    if (!Notification.isSupported()) {
+      console.log('[notify-test] Notification.isSupported() is false here.');
+      return;
+    }
+    const icon = resolveNotificationIcon();
+    const notification = new Notification({
+      title: 'Trinity',
+      body: 'Test notification — desktop notifications are working.',
+      ...(icon ? { icon } : {}),
+    });
+    notification.on('show', () =>
+      console.log('[notify-test] OS accepted the notification (shown).'),
+    );
+    notification.on('failed', (_event, error) =>
+      console.error(
+        `[notify-test] FAILED: ${error}. On macOS this means the app lacks a stable code ` +
+          'signature — sign it (docs/DEVELOPMENT.md → macOS signing).',
+      ),
+    );
+    notification.show();
+    console.log('[notify-test] posted a startup test notification.');
+  }, 3000);
 }
 
 /**
@@ -631,6 +678,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     createTray();
     registerNotificationIpc();
+    maybeSendStartupTestNotification(); // dev-only, gated on TRINITY_NOTIFY_TEST
 
     // Block any extra web contents (e.g. from a future webview) at creation.
     app.on('web-contents-created', (_event, contents) => hardenContents(contents));

@@ -5,6 +5,7 @@
   "homepage": "https://ionicframework.com/",
   "scripts": {
     "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project — run: corepack enable && pnpm install'); process.exit(1); }\"",
+    "postinstall": "node -e \"process.platform==='darwin' && require('child_process').execSync('pnpm run electron:sign:dev', {stdio: 'inherit'})\"",
     "prepare": "husky",
     "format": "nx format:write --all",
     "format:check": "nx format:check --all",
@@ -30,6 +31,7 @@
     "electron:package:linux": "pnpm run electron:build && pnpm -C electron run package:linux",
     "electron:package:win": "pnpm run electron:build && pnpm -C electron run package:win",
     "electron:package:all": "pnpm run electron:build && pnpm -C electron run package:all",
+    "electron:sign:dev": "pnpm -C electron run sign:dev",
     "electron:e2e": "pnpm run electron:build && pnpm exec playwright test -c apps/trinity/playwright.electron.config.mts",
     "android:sync": "pnpm run build && pnpm exec cap sync android",
     "android:open": "pnpm exec cap open android",

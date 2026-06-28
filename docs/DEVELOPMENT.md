@@ -308,6 +308,64 @@ path on tags today. To produce a signed + notarized artifact, switch it to
 > Cannot be verified on Linux/CI without an Apple Developer cert — the signed path needs a
 > real macOS host with a Developer ID identity and notarization credentials.
 
+### Local notification testing without an Apple Developer account
+
+Electron 42 posts macOS notifications through `UNUserNotification`, which **requires a
+stable code signature**. The unsigned/ad-hoc `package:mac` build therefore can't display
+them — the OS rejects the post with `UNErrorDomain error 1` (now logged by the main
+process — see the `failed` handler in `electron/src/main.ts`). **Notarization is not
+required for this — only a stable signature** — so you can test notifications locally with
+a free **self-signed** cert. (Plain ad-hoc `codesign --sign -` does NOT work: no stable
+identity.)
+
+1. Create a self-signed code-signing identity named `trinity-dev`, once (or via Keychain
+   Access → Certificate Assistant → Create a Certificate → Self-Signed Root + Code Signing):
+
+   ```bash
+   cat > /tmp/edev.conf <<'EOF'
+   [ req ]
+   distinguished_name = dn
+   x509_extensions = ext
+   prompt = no
+   [ dn ]
+   CN = trinity-dev
+   [ ext ]
+   keyUsage = critical, digitalSignature
+   extendedKeyUsage = critical, codeSigning
+   basicConstraints = critical, CA:false
+   EOF
+   openssl req -x509 -newkey rsa:2048 -keyout /tmp/edev-key.pem -out /tmp/edev.pem \
+     -days 3650 -nodes -config /tmp/edev.conf
+   openssl pkcs12 -export -legacy -macalg sha1 -inkey /tmp/edev-key.pem -in /tmp/edev.pem \
+     -out /tmp/edev.p12 -passout pass:electron -name "trinity-dev"
+   security import /tmp/edev.p12 -k ~/Library/Keychains/login.keychain-db -P electron -T /usr/bin/codesign
+   security add-trusted-cert -r trustRoot -p codeSign -k ~/Library/Keychains/login.keychain-db /tmp/edev.pem
+   rm -f /tmp/edev*.pem /tmp/edev.p12 /tmp/edev.conf
+   ```
+
+2. Sign with it. For a packaged build (notarization auto-skips with no Apple creds):
+
+   ```bash
+   CSC_NAME="trinity-dev" pnpm electron:package:mac:signed
+   ```
+
+   For the `pnpm electron:start` dev runner, sign the Electron binary instead:
+   `pnpm electron:sign:dev`.
+
+3. Launch the app (right-click → **Open** to clear Gatekeeper — it isn't notarized) and
+   click **Always Allow** on the first keychain prompt (it persists for the stable
+   `trinity-dev` identity). Notifications now display. For a shippable build, swap the
+   self-signed cert for a real Developer ID + notarization (above).
+
+**Quick check:** launch the app's binary with `TRINITY_NOTIFY_TEST=1` to post a test
+notification ~3s after startup (no login or incoming message needed). The main process
+logs `[notify-test] …` — `shown` on success, or `FAILED: UNErrorDomain error 1` when the
+signature isn't stable. Launch from a terminal to see it:
+
+```bash
+TRINITY_NOTIFY_TEST=1 "/path/to/Trinity.app/Contents/MacOS/Trinity"
+```
+
 ## Troubleshooting
 
 | Symptom                                                                   | Cause / fix                                                                                                                                                                                                  |

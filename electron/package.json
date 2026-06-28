@@ -16,7 +16,8 @@
     "package:linux": "electron-builder --linux",
     "package:win": "electron-builder --win",
     "package:all": "electron-builder --mac --linux --win",
-    "pack:dir": "electron-builder --dir"
+    "pack:dir": "electron-builder --dir",
+    "sign:dev": "codesign --force --deep --sign \"trinity-dev\" node_modules/electron/dist/Electron.app"
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",
