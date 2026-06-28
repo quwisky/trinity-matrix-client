@@ -1,0 +1,24 @@
+.qs-row--active {
+  --background: var(--trinity-active);
+}
+
+.qs-kind {
+  margin-inline-start: 8px;
+  color: var(--trinity-text-muted);
+}
+
+.qs-lock {
+  color: var(--trinity-text-muted);
+}
+
+ion-note[slot='end'] {
+  align-self: center;
+  color: var(--trinity-text-muted);
+}
+
+.qs-empty {
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+  text-align: center;
+}

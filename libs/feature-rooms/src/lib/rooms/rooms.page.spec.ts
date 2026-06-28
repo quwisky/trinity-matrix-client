@@ -27,6 +27,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 
 /** Default InvitesService mock: empty model + join/leave stubs. */
 function invitesProvider(over: Partial<Record<string, unknown>> = {}) {
@@ -100,6 +101,7 @@ describe('RoomsPage action error feedback', () => {
         },
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
@@ -268,6 +270,7 @@ describe('RoomsPage space filtering', () => {
         },
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
@@ -356,6 +359,7 @@ describe('RoomsPage space actions', () => {
         },
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
@@ -528,6 +532,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           declineInvite,
         }),
         { provide: UserPickerService, useValue: { pick } },
+        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         {
           provide: TimelineService,
           useValue: { open: vi.fn(), close: vi.fn() },
@@ -807,6 +812,7 @@ describe('RoomsPage space hierarchy actions', () => {
         },
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
         {
           provide: AuthService,
@@ -872,5 +878,172 @@ describe('RoomsPage space hierarchy actions', () => {
 
     expect(alertCreate).not.toHaveBeenCalled();
     expect(removeRoomFromSpace).not.toHaveBeenCalled();
+  });
+});
+
+// The quick switcher (Ctrl/Cmd+K) presents a modal and, on a selection, jumps per
+// kind: room/dm open the room, space selects it in the rail, a directory person
+// opens a DM, an invite runs the page's accept path.
+describe('RoomsPage quick switcher', () => {
+  let pick: ReturnType<typeof vi.fn>;
+  let createDirectMessage: ReturnType<typeof vi.fn>;
+  let acceptInvite: ReturnType<typeof vi.fn>;
+  let openSpace: ReturnType<typeof vi.fn>;
+  let timelineOpen: ReturnType<typeof vi.fn>;
+  let pending: WritableSignal<PendingInvite[]>;
+
+  function build(): RoomsPage {
+    pick = vi.fn();
+    createDirectMessage = vi.fn(() => of('!dm:hs'));
+    acceptInvite = vi.fn(() => of(undefined));
+    openSpace = vi.fn();
+    timelineOpen = vi.fn();
+    pending = signal<PendingInvite[]>([]);
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        {
+          provide: RoomsService,
+          useValue: {
+            connect: vi.fn(),
+            rooms: signal<RoomSummary[]>([]),
+            revision: signal(0),
+            membersOf: () => [],
+            createDirectMessage,
+          },
+        },
+        {
+          provide: SpacesService,
+          useValue: {
+            connect: vi.fn(),
+            openSpace,
+            spaces: signal<SpaceSummary[]>([]),
+            childRoomIds: () => [],
+          },
+        },
+        invitesProvider({
+          pendingInvites: pending,
+          acceptInvite,
+        }),
+        { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: QuickSwitcherService, useValue: { pick } },
+        {
+          provide: TimelineService,
+          useValue: { open: timelineOpen, close: vi.fn() },
+        },
+        { provide: MediaService, useValue: { releaseAll: vi.fn() } },
+        {
+          provide: MatrixClientService,
+          useValue: {
+            isInitialized: true,
+            instance: { getUserId: () => '@me:hs', getUser: () => null },
+          },
+        },
+        { provide: CryptoService, useValue: { connect: vi.fn() } },
+        {
+          provide: ThreadsService,
+          useValue: { open: vi.fn(), close: vi.fn(), closeThread: vi.fn() },
+        },
+        {
+          provide: ThreadPanelService,
+          useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        {
+          provide: AuthService,
+          useValue: { logout: vi.fn(() => of(undefined)) },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        { provide: MenuController, useValue: { close: vi.fn() } },
+        { provide: AlertController, useValue: { create: vi.fn() } },
+        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        {
+          provide: ToastController,
+          useValue: { create: vi.fn().mockResolvedValue({ present: vi.fn() }) },
+        },
+      ],
+    });
+    return TestBed.inject(RoomsPage);
+  }
+
+  it('opens the selected room', async () => {
+    const page = build();
+    pick.mockResolvedValue({ kind: 'room', id: '!r:hs' });
+
+    await page.openSwitcher();
+
+    expect(page.activeRoomId()).toBe('!r:hs');
+    expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
+  });
+
+  it('opens a DM result like a room', async () => {
+    const page = build();
+    pick.mockResolvedValue({ kind: 'dm', id: '!d:hs' });
+
+    await page.openSwitcher();
+
+    expect(page.activeRoomId()).toBe('!d:hs');
+  });
+
+  it('selects a space in the rail (loading its hierarchy)', async () => {
+    const page = build();
+    pick.mockResolvedValue({ kind: 'space', id: '!s:hs' });
+
+    await page.openSwitcher();
+
+    expect(page.activeSpaceId()).toBe('!s:hs');
+    expect(openSpace).toHaveBeenCalledWith('!s:hs');
+    expect(page.activeRoomId()).toBeNull();
+  });
+
+  it('opens (or reuses) a DM for a directory person', async () => {
+    const page = build();
+    pick.mockResolvedValue({ kind: 'user', id: '@bob:hs' });
+
+    await page.openSwitcher();
+
+    expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
+    expect(page.activeRoomId()).toBe('!dm:hs');
+  });
+
+  it('runs the accept path for an invite result', async () => {
+    const page = build();
+    pending.set([
+      {
+        roomId: '!i:hs',
+        name: 'Invited',
+        initial: 'I',
+        avatarMxc: null,
+        inviterName: 'Alice',
+        isSpace: false,
+        isDirect: false,
+      },
+    ]);
+    pick.mockResolvedValue({ kind: 'invite', id: '!i:hs' });
+
+    await page.openSwitcher();
+
+    expect(acceptInvite).toHaveBeenCalledWith('!i:hs');
+    expect(page.activeRoomId()).toBe('!i:hs');
+  });
+
+  it('does nothing when the switcher is cancelled', async () => {
+    const page = build();
+    pick.mockResolvedValue(null);
+
+    await page.openSwitcher();
+
+    expect(page.activeRoomId()).toBeNull();
+    expect(timelineOpen).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl/Cmd+K prevents default and opens the switcher', () => {
+    const page = build();
+    pick.mockResolvedValue(null);
+    const preventDefault = vi.fn();
+
+    page.onQuickSwitch({ preventDefault } as unknown as KeyboardEvent);
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(pick).toHaveBeenCalled();
   });
 });

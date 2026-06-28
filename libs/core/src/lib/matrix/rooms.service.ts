@@ -88,6 +88,15 @@ export class RoomsService {
   private readonly _rooms = signal<RoomSummary[]>([]);
   readonly rooms = this._rooms.asReadonly();
 
+  /**
+   * Room ids the `m.direct` account-data map records as direct messages, recomputed
+   * on each {@link refresh}. Lets read-only consumers (e.g. the quick switcher) tag a
+   * joined room as a DM without re-reading account data themselves. Non-authoritative
+   * for membership — a DM we have left still appears here until the map is rewritten.
+   */
+  private readonly _directRoomIds = signal<ReadonlySet<string>>(new Set());
+  readonly directRoomIds = this._directRoomIds.asReadonly();
+
   /** Bumped on every refresh so member queries can stay reactive. */
   private readonly _revision = signal(0);
   readonly revision = this._revision.asReadonly();
@@ -129,6 +138,7 @@ export class RoomsService {
     client.off(RoomEvent.Receipt, this.onClientEvent);
     this.connectedClient = null;
     this._rooms.set([]);
+    this._directRoomIds.set(new Set());
   }
 
   /** Joined members of a room (empty if the room is unknown). */
@@ -283,11 +293,15 @@ export class RoomsService {
     );
   }
 
-  /** Current `m.direct` map (`{ userId: roomId[] }`), or an empty map when unset. */
+  /**
+   * Current `m.direct` map (`{ userId: roomId[] }`), or an empty map when unset. The
+   * accessor is called optionally so a stub client without account data (e.g. unit
+   * fakes for the sync-driven read model) yields an empty map rather than throwing.
+   */
   private directMap(client: MatrixClient): Record<string, string[]> {
     return (
       client
-        .getAccountData(EventType.Direct)
+        .getAccountData?.(EventType.Direct)
         ?.getContent<Record<string, string[]>>() ?? {}
     );
   }
@@ -309,6 +323,16 @@ export class RoomsService {
           (a, b) => b.activityTs - a.activityTs || a.name.localeCompare(b.name),
         ),
     );
+    // Flatten `m.direct` to the set of DM room ids so the read model can tag DMs.
+    const direct = new Set<string>();
+    for (const ids of Object.values(this.directMap(client))) {
+      if (Array.isArray(ids)) {
+        for (const roomId of ids) {
+          direct.add(roomId);
+        }
+      }
+    }
+    this._directRoomIds.set(direct);
     this._revision.update((n) => n + 1);
   }
 

@@ -107,6 +107,22 @@ a:focus-visible,
   }
 }
 
+/*
+ * Quick switcher (QuickSwitcherService) — the Ctrl/Cmd+K "jump to" overlay. On the
+ * wide split-pane layout (the same `md`/768px breakpoint as the rooms shell) it is a
+ * centered card tall enough to show a handful of ranked results; below that it falls
+ * back to Ionic's full-screen modal on mobile.
+ */
+.quick-switcher-modal {
+  @media (min-width: 768px) {
+    --width: 560px;
+    --max-width: 92vw;
+    --height: 60vh;
+    --max-height: 70vh;
+    --border-radius: 12px;
+  }
+}
+
 /* Visually hidden but available to assistive tech (e.g. page-title headings). */
 .sr-only {
   position: absolute;

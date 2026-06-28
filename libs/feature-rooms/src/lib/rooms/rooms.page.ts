@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  HostListener,
   OnDestroy,
   OnInit,
   computed,
@@ -32,6 +33,7 @@ import {
   chatbubblesOutline,
   lockClosed,
   personAddOutline,
+  searchOutline,
   settingsOutline,
 } from 'ionicons/icons';
 import {
@@ -48,9 +50,11 @@ import {
   TimelineService,
   type RoomSummary,
   type SpaceChildRoom,
+  type SwitcherSelection,
 } from '@trinity/core';
 import { runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
@@ -95,6 +99,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly threads = inject(ThreadsService);
   private readonly threadPanel = inject(ThreadPanelService);
   private readonly userPicker = inject(UserPickerService);
+  private readonly switcher = inject(QuickSwitcherService);
   private readonly media = inject(MediaService);
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
@@ -197,6 +202,7 @@ export class RoomsPage implements OnInit, OnDestroy {
       chatbubblesOutline,
       lockClosed,
       personAddOutline,
+      searchOutline,
       settingsOutline,
     });
     // Space-management failures (create/leave) have no inline echo in the shell, so
@@ -229,6 +235,55 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.threads.closeThread();
     this.invites.disconnect();
     this.media.releaseAll();
+  }
+
+  /**
+   * Global quick switcher. `meta` is Cmd (macOS) and `control` is Ctrl (Win/Linux);
+   * Angular auto-unbinds both on destroy, and the chord's modifier means plain typing
+   * (including in the composer) never triggers it. `preventDefault` stops the
+   * browser's own Cmd/Ctrl+K. Re-entrancy is guarded in {@link QuickSwitcherService}.
+   */
+  @HostListener('document:keydown.meta.k', ['$event'])
+  @HostListener('document:keydown.control.k', ['$event'])
+  onQuickSwitch(event: KeyboardEvent): void {
+    event.preventDefault();
+    void this.openSwitcher();
+  }
+
+  /**
+   * Open the switcher and jump to the selection: room/DM open the room, space selects
+   * it in the rail, a directory person opens (or reuses) a DM, an invite runs the
+   * page's existing accept path. Also the header search button's handler.
+   */
+  async openSwitcher(): Promise<void> {
+    const selection = await this.switcher.pick();
+    if (!selection) {
+      return; // cancelled / already open
+    }
+    this.jumpTo(selection);
+  }
+
+  private jumpTo(selection: SwitcherSelection): void {
+    switch (selection.kind) {
+      case 'room':
+      case 'dm':
+        this.onSelectRoom(selection.id);
+        break;
+      case 'space':
+        this.onSelectSpace(selection.id);
+        break;
+      case 'user':
+        this.spaceError.set(null);
+        runWithBusy(this.rooms.createDirectMessage(selection.id), {
+          busy: this.spaceBusy,
+          error: this.spaceError,
+          destroyRef: this.destroyRef,
+        }).subscribe((roomId) => this.onSelectRoom(roomId));
+        break;
+      case 'invite':
+        this.onAcceptInvite(selection.id);
+        break;
+    }
   }
 
   onSelectSpace(id: string | null): void {

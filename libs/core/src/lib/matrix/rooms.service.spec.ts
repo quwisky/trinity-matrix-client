@@ -358,3 +358,47 @@ describe('RoomsService writes', () => {
     expect(searchUserDirectory).not.toHaveBeenCalled();
   });
 });
+
+// directRoomIds flattens the `m.direct` account-data map on each sync refresh so the
+// read model can tag joined DMs without re-reading account data.
+describe('RoomsService directRoomIds', () => {
+  function setup(direct: Record<string, string[]> | undefined): RoomsService {
+    const client = {
+      getRooms: () => [],
+      getAccountData: (type: string) =>
+        type === 'm.direct' ? { getContent: () => direct ?? {} } : undefined,
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    svc.connect();
+    return svc;
+  }
+
+  it('flattens every DM room id from m.direct', () => {
+    const svc = setup({
+      '@bob:hs': ['!dm1:hs'],
+      '@eve:hs': ['!dm2:hs', '!dm3:hs'],
+    });
+
+    expect([...svc.directRoomIds()].sort()).toEqual([
+      '!dm1:hs',
+      '!dm2:hs',
+      '!dm3:hs',
+    ]);
+  });
+
+  it('yields an empty set when m.direct is empty', () => {
+    expect(setup({}).directRoomIds().size).toBe(0);
+  });
+});
