@@ -1,0 +1,83 @@
+<ion-list>
+  <ion-list-header>Devices</ion-list-header>
+
+  @for (device of devices(); track device.id) {
+    <ion-item lines="full">
+      <ion-label>
+        <h2>
+          <span class="device-name">{{ device.displayName }}</span>
+          @if (device.isCurrent) {
+            <ion-badge color="primary">This device</ion-badge>
+          }
+          @if (device.isVerified) {
+            <ion-badge color="success">Verified</ion-badge>
+          } @else {
+            <ion-badge color="warning">Unverified</ion-badge>
+          }
+        </h2>
+        <p>{{ device.id }}</p>
+        @if (device.lastSeenIp) {
+          <p>Last seen from {{ device.lastSeenIp }}</p>
+        }
+      </ion-label>
+
+      <ion-button
+        slot="end"
+        fill="clear"
+        size="small"
+        [disabled]="busy()"
+        [attr.aria-label]="'Rename ' + device.displayName"
+        data-testid="rename-device"
+        (click)="rename(device)"
+      >
+        <ion-icon slot="icon-only" name="create-outline" />
+      </ion-button>
+      @if (!device.isCurrent) {
+        <ion-button
+          slot="end"
+          fill="clear"
+          size="small"
+          color="danger"
+          [disabled]="busy()"
+          [attr.aria-label]="'Sign out ' + device.displayName"
+          data-testid="remove-device"
+          (click)="remove(device)"
+        >
+          <ion-icon slot="icon-only" name="trash-outline" />
+        </ion-button>
+      }
+    </ion-item>
+  } @empty {
+    @if (loading()) {
+      <ion-item lines="none" aria-live="polite">
+        <ion-label>Loading devices…</ion-label>
+      </ion-item>
+    }
+  }
+
+  @if (error(); as e) {
+    <ion-note
+      color="danger"
+      class="setting-note"
+      role="alert"
+      aria-live="assertive"
+    >
+      {{ e }}
+    </ion-note>
+  }
+
+  @if (hasUnverified()) {
+    <ion-item lines="none">
+      <ion-button
+        slot="start"
+        fill="clear"
+        size="small"
+        data-testid="verify-devices"
+        (click)="verifyDevices()"
+      >
+        <ion-icon slot="start" name="shield-checkmark-outline" />
+        Verify another session
+      </ion-button>
+    </ion-item>
+  }
+</ion-list>

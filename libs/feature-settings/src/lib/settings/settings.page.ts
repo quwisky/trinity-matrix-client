@@ -31,6 +31,7 @@ import {
   ThemeService,
   type ThemePreference,
 } from '@trinity/core';
+import { DevicesSectionComponent } from '../devices/devices-section.component';
 
 /**
  * Settings shell hosting Profile (display name + avatar) and Appearance
@@ -43,6 +44,7 @@ import {
   styleUrl: './settings.page.scss',
   imports: [
     AvatarComponent,
+    DevicesSectionComponent,
     IonBackButton,
     IonButton,
     IonButtons,

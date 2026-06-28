@@ -1,8 +1,11 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { AlertController } from '@ionic/angular/standalone';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  DevicesService,
   ProfileService,
   ThemeService,
   type ResolvedTheme,
@@ -50,6 +53,14 @@ describe('SettingsPage', () => {
             setAvatar,
           },
         },
+        // The embedded devices section needs these to construct.
+        {
+          provide: DevicesService,
+          useValue: { devices: signal([]), list: () => of([]) },
+        },
+        { provide: AlertController, useValue: { create: vi.fn() } },
+        // Real router providers — Ionic's NavController (ion-back-button) needs them.
+        provideRouter([]),
       ],
     });
   });
