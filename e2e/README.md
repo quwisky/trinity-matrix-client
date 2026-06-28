@@ -1,5 +1,14 @@
 # Trinity e2e
 
+> **Two e2e systems, by purpose.** App-level user journeys (login, settings,
+> theme, profile, devices) live in the **`@nx/playwright` project** at
+> `apps/trinity/e2e/` — run them with `pnpm exec nx e2e trinity` (`@playwright/test`,
+> Chromium; it builds the dev bundle, serves `www/`, and spins the Synapse harness
+> below up/down via global setup, skipping auth specs when Docker is absent). The
+> scripts in **this directory** are specialised crypto/protocol drivers (E2EE
+> spike, two-client SAS verification, encrypted media) kept as raw `playwright`
+> harnesses; both reuse the same disposable Synapse (`e2e/synapse/`).
+
 Standalone Node ESM e2e scripts (raw `playwright`, **not** `@playwright/test`).
 Each script serves the dev build from `www/` with `support/serve.mjs` and drives
 Chromium. Build the dev bundle first (`pnpm nx build trinity --configuration=development`),

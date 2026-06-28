@@ -106,7 +106,17 @@ pnpm test                                 # nx run-many -t test (once)
 pnpm exec nx test trinity --configuration=watch
 ```
 
-**End-to-end harnesses** — headless Playwright drivers in [`e2e/`](../e2e/) that
+**App journeys (`@nx/playwright`)** — `@playwright/test` specs in
+[`apps/trinity/e2e/`](../apps/trinity/e2e/) covering login/guard, theme, profile,
+and device management. Builds the dev bundle, serves `www/`, and brings the Synapse
+harness below up/down via global setup (auth specs skip themselves when Docker is absent):
+
+```bash
+pnpm exec nx e2e trinity            # all specs (Chromium)
+pnpm exec nx e2e trinity -- --list  # enumerate without running
+```
+
+**Crypto/protocol harnesses** — headless Playwright drivers in [`e2e/`](../e2e/) that
 build, serve `www/`, and assert real behavior (including live `.well-known`
 discovery against matrix.org):
 
