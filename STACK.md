@@ -20,6 +20,7 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | `@capacitor/share`                   | 8.0.1   | Native OS save/share sheet for downloads (web `<a download>` fallback)                 |
 | `@capacitor/status-bar`              | 8.0.2   | Sets the native status-bar style to match the light/dark theme                         |
 | `@angular/service-worker`            | 20.3.25 | PWA service worker (production web): precaches the app shell + crypto WASM for offline |
+| `@capacitor/push-notifications`      | 8.1.1   | FCM/APNs device token for the Matrix pusher (see [docs/PUSH.md](docs/PUSH.md))         |
 | `matrix-encrypt-attachment`          | —       | Removed (unmaintained since 2022); ported into `@trinity/core` `attachment-crypto.ts`  |
 | `marked`                             | 18.0.5  | Markdown → HTML for the composer/timeline                                              |
 | `dompurify`                          | 3.4.11  | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                             |
@@ -127,8 +128,10 @@ the architecture changes — find out before building UI on top.
 - SSO on native: the deep-link / custom URL scheme is configured (App plugin +
   iOS `CFBundleURLSchemes` + Android intent-filter); the round-trip still needs
   on-device validation.
-- Push (phase 2) needs Apple dev account (APNs) + FCM, plus a push gateway (sygnal)
-  or UnifiedPush.
+- Push: the client plumbing is done (`@capacitor/push-notifications` + a Matrix
+  pusher; see [docs/PUSH.md](docs/PUSH.md)). Delivery still needs a deployed push
+  gateway (Sygnal), an Apple dev account (APNs) + Firebase project (FCM), and
+  on-device verification.
 
 ## Sources
 
