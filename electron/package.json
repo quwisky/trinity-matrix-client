@@ -9,6 +9,7 @@
     "copy:www": "node scripts/copy-www.mjs",
     "compile": "tsc -p tsconfig.json",
     "build": "node scripts/copy-www.mjs && tsc -p tsconfig.json",
+    "test": "vitest run",
     "start": "electron .",
     "package": "electron-builder",
     "package:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
@@ -24,6 +25,7 @@
     "@types/node": "^22.20.0",
     "electron": "42.5.0",
     "electron-builder": "26.15.3",
-    "typescript": "~5.9.0"
+    "typescript": "~5.9.0",
+    "vitest": "^4.1.9"
   }
 }
