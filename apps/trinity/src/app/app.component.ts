@@ -9,7 +9,7 @@ import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { SwUpdate } from '@angular/service-worker';
-import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
+import { IonApp, IonRouterOutlet, Platform } from '@ionic/angular/standalone';
 import { getTrinityDesktopBridge } from '@trinity/core';
 import { VerificationHostComponent } from './verification-host.component';
 
@@ -22,6 +22,7 @@ import { VerificationHostComponent } from './verification-host.component';
 export class AppComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly swUpdate = inject(SwUpdate);
+  private readonly platform = inject(Platform);
 
   ngOnInit(): void {
     // Recover from a broken service-worker cache (e.g. storage eviction left an
@@ -43,6 +44,13 @@ export class AppComponent implements OnInit {
     if (!Capacitor.isNativePlatform()) {
       return;
     }
+    // Android hardware back: IonRouterOutlet (higher priority) pops overlays/routes
+    // first; this lowest-priority handler runs only when nothing was left to pop (the
+    // root), where it backgrounds the app rather than letting the JS-suppressed default
+    // do nothing. iOS has no hardware back, so this never fires there.
+    this.platform.backButton.subscribeWithPriority(-1, () => {
+      void App.minimizeApp();
+    });
     void App.addListener('appUrlOpen', (event: URLOpenListenerEvent) =>
       this.handleDeepLink(event.url),
     );
