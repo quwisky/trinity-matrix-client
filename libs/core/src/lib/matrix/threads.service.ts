@@ -152,6 +152,17 @@ export class ThreadsService {
   private summariesRoom: Room | null = null;
   private summariesRoomId: string | null = null;
 
+  // Per-thread summary cache keyed by thread-root id. Each entry stores the summary
+  // and a `rev` fingerprint of everything {@link summaryFor} reads that can change
+  // (reply count, root/latest reply, unread counts — see {@link threadSummaryRevision}).
+  // A summary is rebuilt only when its fingerprint changes, so a message in one
+  // thread no longer rebuilds every other thread's summary — and unchanged
+  // thread-root rows keep their object identity and aren't re-rendered.
+  private readonly summaryCache = new Map<
+    string,
+    { rev: string; summary: ThreadSummary }
+  >();
+
   private readonly onSummariesChanged = (): void => this.refreshSummaries();
   private readonly onSummariesDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.summariesRoomId) {
@@ -227,6 +238,7 @@ export class ThreadsService {
     }
     this.summariesRoom = null;
     this.summariesRoomId = null;
+    this.summaryCache.clear();
     this._summaries.set({});
   }
 
@@ -583,8 +595,27 @@ export class ThreadsService {
     }
     const client = this.matrix.instance;
     const summaries: Record<string, ThreadSummary> = {};
+    const seen = new Set<string>();
     for (const thread of room.getThreads()) {
-      summaries[thread.id] = this.summaryFor(client, room, thread);
+      const id = thread.id;
+      seen.add(id);
+      // Reuse the cached summary (preserving its identity) unless this thread's
+      // fingerprint changed; only the affected thread is rebuilt + merged in.
+      const rev = threadSummaryRevision(room, thread);
+      const cached = this.summaryCache.get(id);
+      if (cached && cached.rev === rev) {
+        summaries[id] = cached.summary;
+        continue;
+      }
+      const summary = this.summaryFor(client, room, thread);
+      this.summaryCache.set(id, { rev, summary });
+      summaries[id] = summary;
+    }
+    // Drop cache entries for threads no longer present.
+    for (const id of [...this.summaryCache.keys()]) {
+      if (!seen.has(id)) {
+        this.summaryCache.delete(id);
+      }
     }
     this._summaries.set(summaries);
   }
@@ -700,6 +731,47 @@ export class ThreadsService {
       highlight: unread.highlight,
     };
   }
+}
+
+/**
+ * A compact fingerprint of every input {@link ThreadsService.summaryFor} reads
+ * that can change for a thread: its reply count (which also tracks new
+ * participants), its root and latest-reply events (id/timestamp/redaction/
+ * decryption/body/sender + resolved name, so edits and redactions are caught), and
+ * its unread counts. The summary is rebuilt only when this changes.
+ */
+function threadSummaryRevision(room: Room, thread: Thread): string {
+  const latest = thread.replyToEvent;
+  const unread = threadUnread(room, thread.id);
+  return [
+    thread.id,
+    String(thread.length),
+    threadEventSignature(room, thread.rootEvent ?? null),
+    // The SDK falls back to the root when every reply is redacted; mirror
+    // summaryFor and treat that as "no latest reply".
+    latest && latest.getId() !== thread.id
+      ? threadEventSignature(room, latest)
+      : '',
+    String(unread.count),
+    unread.highlight ? '1' : '0',
+  ].join('\x1f');
+}
+
+/** Signature of a thread root/reply event for {@link threadSummaryRevision}. */
+function threadEventSignature(room: Room, event: MatrixEvent | null): string {
+  if (!event) {
+    return '';
+  }
+  const sender = event.getSender() ?? '';
+  return [
+    event.getId() ?? '',
+    String(event.getTs()),
+    event.isRedacted() ? 'r' : '',
+    event.isDecryptionFailure() ? 'd' : '',
+    String(event.getContent()['body'] ?? ''),
+    sender,
+    room.getMember(sender)?.name ?? sender,
+  ].join('\x02');
 }
 
 /**
