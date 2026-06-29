@@ -78,4 +78,14 @@ export default defineConfig([
     extends: [...angular.configs.templateRecommended],
     rules: {},
   },
+  {
+    // The hand-rolled Electron package is a standalone Node/Electron app (its own
+    // tsc + vitest, run via `pnpm -C electron`), not part of the libs/apps Nx graph.
+    // It legitimately imports the `electron` runtime, so the lib/app module-boundary
+    // rule (which misreads that as a same-project import) doesn't apply.
+    files: ['electron/**/*.ts', 'electron/**/*.mts'],
+    rules: {
+      '@nx/enforce-module-boundaries': 'off',
+    },
+  },
 ]);
