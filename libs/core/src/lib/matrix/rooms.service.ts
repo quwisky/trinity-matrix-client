@@ -5,6 +5,7 @@ import {
   NotificationCountType,
   Preset,
   RoomEvent,
+  RoomStateEvent,
   type MatrixClient,
   type Room,
   type RoomMember,
@@ -85,6 +86,27 @@ export class RoomsService {
   /** Stable listener ref so {@link connect}/{@link disconnect} can add and remove it. */
   private readonly onClientEvent = (): void => this.refresh();
 
+  /**
+   * Bumped only on membership changes (`RoomState.members`/`MyMembership`) so a
+   * member-list projection can stay reactive *without* re-running on every sync
+   * tick or read receipt — those bump {@link revision} (which drives the room list)
+   * but never change a room's membership. See {@link membersOf}.
+   */
+  private readonly _memberRevision = signal(0);
+  readonly memberRevision = this._memberRevision.asReadonly();
+  private readonly onMembershipEvent = (): void =>
+    this._memberRevision.update((n) => n + 1);
+
+  // Memoized member projection: a cached, sorted list per room keyed by a cheap
+  // fingerprint of its joined members, plus one shared collator (avoids spinning up
+  // a fresh locale comparator on every sort). `localeCompare()` with no args is
+  // equivalent to a default `Intl.Collator`, so the order is unchanged.
+  private readonly memberCollator = new Intl.Collator();
+  private readonly memberCache = new Map<
+    string,
+    { sig: string; list: MemberSummary[] }
+  >();
+
   private readonly _rooms = signal<RoomSummary[]>([]);
   readonly rooms = this._rooms.asReadonly();
 
@@ -122,6 +144,10 @@ export class RoomsService {
     // Keep unread badges live: new-message increments arrive via Sync above;
     // Receipt fires when a room is read and its unread count clears.
     client.on(RoomEvent.Receipt, this.onClientEvent);
+    // Membership-only revision (drives the member list); RoomState.members and
+    // MyMembership are the events that change who is in a room (or their profile).
+    client.on(RoomStateEvent.Members, this.onMembershipEvent);
+    client.on(RoomEvent.MyMembership, this.onMembershipEvent);
     this.refresh();
   }
 
@@ -136,12 +162,21 @@ export class RoomsService {
     client.off(RoomEvent.Name, this.onClientEvent);
     client.off(RoomEvent.MyMembership, this.onClientEvent);
     client.off(RoomEvent.Receipt, this.onClientEvent);
+    client.off(RoomStateEvent.Members, this.onMembershipEvent);
+    client.off(RoomEvent.MyMembership, this.onMembershipEvent);
     this.connectedClient = null;
+    this.memberCache.clear();
     this._rooms.set([]);
     this._directRoomIds.set(new Set());
   }
 
-  /** Joined members of a room (empty if the room is unknown). */
+  /**
+   * Joined members of a room (empty if the room is unknown), sorted by name. The
+   * sorted list is memoized per room against a cheap fingerprint of its joined
+   * members, so a recompute (e.g. a membership change in another room ticking
+   * {@link memberRevision}) reuses the same array — and the same object identity —
+   * when this room's membership is unchanged, instead of re-sorting every call.
+   */
   membersOf(roomId: string | null): MemberSummary[] {
     if (!roomId || !this.matrix.isInitialized) {
       return [];
@@ -150,10 +185,19 @@ export class RoomsService {
     if (!room) {
       return [];
     }
-    return room
-      .getJoinedMembers()
+    const joined = room.getJoinedMembers();
+    const sig = joined
+      .map((m) => `${m.userId}\x1f${m.name}\x1f${m.getMxcAvatarUrl() ?? ''}`)
+      .join('\x1e');
+    const cached = this.memberCache.get(roomId);
+    if (cached && cached.sig === sig) {
+      return cached.list;
+    }
+    const list = joined
       .map((m) => this.toMember(m))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => this.memberCollator.compare(a.name, b.name));
+    this.memberCache.set(roomId, { sig, list });
+    return list;
   }
 
   /**
