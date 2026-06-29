@@ -37,6 +37,20 @@ export interface TrinityDesktopBridge {
    * Returns an unsubscribe function.
    */
   onNotificationClick?: (callback: (roomId: string) => void) => () => void;
+
+  /**
+   * OS-keychain-backed secret storage in the MAIN process (Electron `safeStorage`).
+   * The renderer never touches the keyring or the on-disk ciphertext — it only asks
+   * main to get/set/delete a key. `set` resolves `false` when the OS keychain is
+   * unavailable (`safeStorage.isEncryptionAvailable()` false), and `isAvailable`
+   * reports the same so callers can fall back. Backs the Electron `SecureStorage`.
+   */
+  secureStore?: {
+    isAvailable: () => Promise<boolean>;
+    get: (key: string) => Promise<string | null>;
+    set: (key: string, value: string) => Promise<boolean>;
+    delete: (key: string) => Promise<void>;
+  };
 }
 
 /** Payload for {@link TrinityDesktopBridge.showNotification}. */

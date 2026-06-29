@@ -7,6 +7,7 @@ import {
   Tray,
   nativeImage,
   protocol,
+  safeStorage,
   shell,
 } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
@@ -583,6 +584,93 @@ function registerNotificationIpc(): void {
   });
 }
 
+/** On-disk home for the OS-encrypted secret map (safeStorage only encrypts bytes). */
+function secureStoreFile(): string {
+  return path.join(app.getPath('userData'), 'trinity-secure-store.json');
+}
+
+function readSecureStore(): Record<string, string> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(secureStoreFile(), 'utf8')) as unknown;
+    return raw && typeof raw === 'object' ? (raw as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSecureStore(data: Record<string, string>): void {
+  fs.writeFileSync(secureStoreFile(), JSON.stringify(data), { mode: 0o600 });
+}
+
+/**
+ * Wire the secure-storage IPC (renderer <-> main, request/response). The renderer
+ * never sees the OS keyring or the on-disk ciphertext — it only asks main to
+ * get/set/delete a key. Values are encrypted with Electron `safeStorage` (OS keychain)
+ * and the base64 ciphertext is persisted to a 0600 file under `userData`. Treats the
+ * channel as untrusted: only our own main window's renderer is served, and `set`
+ * returns false (so the renderer can fall back) when OS encryption is unavailable.
+ */
+function registerSecureStoreIpc(): void {
+  ipcMain.handle('trinity:secure-store:available', (event) =>
+    !!mainWindow && event.sender === mainWindow.webContents
+      ? safeStorage.isEncryptionAvailable()
+      : false,
+  );
+
+  ipcMain.handle('trinity:secure-store:get', (event, rawKey: unknown) => {
+    if (
+      !mainWindow ||
+      event.sender !== mainWindow.webContents ||
+      typeof rawKey !== 'string'
+    ) {
+      return null;
+    }
+    const entry = readSecureStore()[rawKey];
+    if (!entry || !safeStorage.isEncryptionAvailable()) {
+      return null;
+    }
+    try {
+      return safeStorage.decryptString(Buffer.from(entry, 'base64'));
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle(
+    'trinity:secure-store:set',
+    (event, rawKey: unknown, rawValue: unknown) => {
+      if (
+        !mainWindow ||
+        event.sender !== mainWindow.webContents ||
+        typeof rawKey !== 'string' ||
+        typeof rawValue !== 'string' ||
+        !safeStorage.isEncryptionAvailable()
+      ) {
+        return false;
+      }
+      const data = readSecureStore();
+      data[rawKey] = safeStorage.encryptString(rawValue).toString('base64');
+      writeSecureStore(data);
+      return true;
+    },
+  );
+
+  ipcMain.handle('trinity:secure-store:delete', (event, rawKey: unknown) => {
+    if (
+      !mainWindow ||
+      event.sender !== mainWindow.webContents ||
+      typeof rawKey !== 'string'
+    ) {
+      return;
+    }
+    const data = readSecureStore();
+    if (rawKey in data) {
+      delete data[rawKey];
+      writeSecureStore(data);
+    }
+  });
+}
+
 /**
  * System tray so the app keeps running (and syncing, and notifying) in the
  * background after the window is closed to tray. Click / double-click reveals
@@ -678,6 +766,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     createTray();
     registerNotificationIpc();
+    registerSecureStoreIpc();
     maybeSendStartupTestNotification(); // dev-only, gated on TRINITY_NOTIFY_TEST
 
     // Block any extra web contents (e.g. from a future webview) at creation.

@@ -104,4 +104,20 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
     ipcRenderer.on(NOTIFICATION_CLICK_CHANNEL, listener);
     return () => ipcRenderer.removeListener(NOTIFICATION_CLICK_CHANNEL, listener);
   },
+
+  // OS-keychain-backed secret storage in the MAIN process (safeStorage). These only
+  // proxy to validated main-process handlers — the renderer never sees the keyring or
+  // the on-disk ciphertext. Backs core's Electron SecureStorage backend.
+  secureStore: {
+    isAvailable: (): Promise<boolean> =>
+      ipcRenderer.invoke('trinity:secure-store:available') as Promise<boolean>,
+    get: (key: string): Promise<string | null> =>
+      ipcRenderer.invoke('trinity:secure-store:get', key) as Promise<
+        string | null
+      >,
+    set: (key: string, value: string): Promise<boolean> =>
+      ipcRenderer.invoke('trinity:secure-store:set', key, value) as Promise<boolean>,
+    delete: (key: string): Promise<void> =>
+      ipcRenderer.invoke('trinity:secure-store:delete', key) as Promise<void>,
+  },
 });
