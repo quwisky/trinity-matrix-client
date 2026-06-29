@@ -13,6 +13,12 @@ import {
 import type { MenuItemConstructorOptions } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { coerceNotificationPayload, type NotificationRequest } from './notification-payload';
+import {
+  secureStoreDelete,
+  secureStoreGet,
+  secureStoreSet,
+} from './secure-store';
 
 /**
  * Hand-rolled Electron main process for Trinity.
@@ -60,9 +66,6 @@ const DEEP_LINK_CHANNEL = 'deep-link';
 //     notification's roomId so the Angular app can route to it.
 const SHOW_NOTIFICATION_CHANNEL = 'show-notification';
 const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
-const NOTIFICATION_TITLE_LIMIT = 120;
-const NOTIFICATION_BODY_LIMIT = 300;
-const NOTIFICATION_ROOM_ID_LIMIT = 256;
 
 // Windows toast identity: OS notifications are attributed to this
 // AppUserModelID (must match the installer's appId). Set once at startup;
@@ -445,47 +448,6 @@ function resolveNotificationIcon(): Electron.NativeImage | undefined {
   return notificationIconCache ?? undefined;
 }
 
-/** Validated, clamped notification request derived from an untrusted IPC payload. */
-interface NotificationRequest {
-  title: string;
-  body: string;
-  roomId: string;
-  silent: boolean;
-}
-
-/**
- * Clamp an untrusted IPC string: it must be a string; strip control characters
- * (defends against terminal/markup injection in the toast), trim, and cap length.
- */
-function sanitizeNotificationText(value: unknown, limit: number): string {
-  if (typeof value !== 'string') {
-    return '';
-  }
-  return value.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, limit);
-}
-
-/**
- * Validate + coerce the UNTRUSTED `show-notification` payload. Returns `null`
- * (so the caller shows nothing) for anything malformed: a non-object, a missing
- * room id, or an empty title+body.
- */
-function coerceNotificationPayload(raw: unknown): NotificationRequest | null {
-  if (typeof raw !== 'object' || raw === null) {
-    return null;
-  }
-  const rec = raw as Record<string, unknown>;
-  const roomId = sanitizeNotificationText(rec['roomId'], NOTIFICATION_ROOM_ID_LIMIT);
-  if (!roomId) {
-    return null; // no target room => nothing to collapse on or open
-  }
-  const title = sanitizeNotificationText(rec['title'], NOTIFICATION_TITLE_LIMIT);
-  const body = sanitizeNotificationText(rec['body'], NOTIFICATION_BODY_LIMIT);
-  if (!title && !body) {
-    return null; // empty notification => ignore
-  }
-  return { title, body, roomId, silent: rec['silent'] === true };
-}
-
 /**
  * Show a validated OS notification. Collapses per room (a newer notification for
  * the same room replaces the previous open one). On click, reveals/focuses the
@@ -589,19 +551,6 @@ function secureStoreFile(): string {
   return path.join(app.getPath('userData'), 'trinity-secure-store.json');
 }
 
-function readSecureStore(): Record<string, string> {
-  try {
-    const raw = JSON.parse(fs.readFileSync(secureStoreFile(), 'utf8')) as unknown;
-    return raw && typeof raw === 'object' ? (raw as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeSecureStore(data: Record<string, string>): void {
-  fs.writeFileSync(secureStoreFile(), JSON.stringify(data), { mode: 0o600 });
-}
-
 /**
  * Wire the secure-storage IPC (renderer <-> main, request/response). The renderer
  * never sees the OS keyring or the on-disk ciphertext — it only asks main to
@@ -625,15 +574,7 @@ function registerSecureStoreIpc(): void {
     ) {
       return null;
     }
-    const entry = readSecureStore()[rawKey];
-    if (!entry || !safeStorage.isEncryptionAvailable()) {
-      return null;
-    }
-    try {
-      return safeStorage.decryptString(Buffer.from(entry, 'base64'));
-    } catch {
-      return null;
-    }
+    return secureStoreGet(safeStorage, secureStoreFile(), rawKey);
   });
 
   ipcMain.handle(
@@ -643,15 +584,11 @@ function registerSecureStoreIpc(): void {
         !mainWindow ||
         event.sender !== mainWindow.webContents ||
         typeof rawKey !== 'string' ||
-        typeof rawValue !== 'string' ||
-        !safeStorage.isEncryptionAvailable()
+        typeof rawValue !== 'string'
       ) {
         return false;
       }
-      const data = readSecureStore();
-      data[rawKey] = safeStorage.encryptString(rawValue).toString('base64');
-      writeSecureStore(data);
-      return true;
+      return secureStoreSet(safeStorage, secureStoreFile(), rawKey, rawValue);
     },
   );
 
@@ -663,11 +600,7 @@ function registerSecureStoreIpc(): void {
     ) {
       return;
     }
-    const data = readSecureStore();
-    if (rawKey in data) {
-      delete data[rawKey];
-      writeSecureStore(data);
-    }
+    secureStoreDelete(secureStoreFile(), rawKey);
   });
 }
 
