@@ -290,20 +290,42 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
+// Memoize sanitization by raw input: DOMPurify is a pure function of the html
+// string (the config + hook are constant), so the same `formatted_body` always
+// yields the same scrubbed output. Caching it means the timeline/thread
+// projections can re-derive a view (status flip, edit, decryption) without paying
+// for DOMPurify again, and identical bodies across messages are scrubbed once.
+// Bounded with FIFO eviction so a long-lived session can't grow it unboundedly.
+const SANITIZED_HTML_CACHE_MAX = 1000;
+const sanitizedHtmlCache = new Map<string, string>();
+
 /**
  * Sanitize sender-provided HTML (`formatted_body`) against the Matrix allowlist.
  * Federated, end-to-end-encrypted content is untrusted and can't be scanned
  * server-side, so it is scrubbed here *explicitly* rather than relying on
  * Angular's implicit `[innerHTML]` sanitization at the render leaf. Never wrap
- * the result in `bypassSecurityTrust*`.
+ * the result in `bypassSecurityTrust*`. The result is memoized by raw input (see
+ * {@link sanitizedHtmlCache}); the scrubbed output is identical regardless.
  */
 export function sanitizeMatrixHtml(html: string): string {
-  return DOMPurify.sanitize(html, {
+  const memoized = sanitizedHtmlCache.get(html);
+  if (memoized !== undefined) {
+    return memoized;
+  }
+  const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: MATRIX_ALLOWED_TAGS,
     ALLOWED_ATTR: MATRIX_ALLOWED_ATTR,
     // Only safe URL schemes on href/src (DOMPurify also blocks javascript:).
     ALLOWED_URI_REGEXP: /^(?:https?|ftp|mailto|magnet|mxc):/i,
   });
+  if (sanitizedHtmlCache.size >= SANITIZED_HTML_CACHE_MAX) {
+    const oldest = sanitizedHtmlCache.keys().next().value;
+    if (oldest !== undefined) {
+      sanitizedHtmlCache.delete(oldest);
+    }
+  }
+  sanitizedHtmlCache.set(html, clean);
+  return clean;
 }
 
 interface RenderedBody {

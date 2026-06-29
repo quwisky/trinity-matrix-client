@@ -99,18 +99,40 @@ export class MessageListComponent {
   private lastBackfillOldestId = '';
   private backfillRounds = 0;
 
+  // Grouping rows, cached per event id so an unchanged message (same view object
+  // AND same header flag) keeps its row identity. The timeline projects stable view
+  // objects (only changed events get a new identity), so reusing the row here means
+  // an OnPush row is re-rendered only when its message or grouping actually changes
+  // — not on every live event elsewhere in the room.
+  private rowCache = new Map<
+    string,
+    { view: MessageView; showHeader: boolean; row: MessageRow }
+  >();
+
   /** Group consecutive messages from the same sender (Discord-style). */
   readonly rows = computed<MessageRow[]>(() => {
     const GAP_MS = 5 * 60 * 1000;
     const msgs = this.messages();
-    return msgs.map((m, i) => {
+    const nextCache = new Map<
+      string,
+      { view: MessageView; showHeader: boolean; row: MessageRow }
+    >();
+    const result = msgs.map((m, i) => {
       const prev = msgs[i - 1];
       const showHeader =
         !prev ||
         prev.senderId !== m.senderId ||
         m.timestamp - prev.timestamp > GAP_MS;
-      return { ...m, showHeader };
+      const cached = this.rowCache.get(m.id);
+      const row =
+        cached && cached.view === m && cached.showHeader === showHeader
+          ? cached.row
+          : { ...m, showHeader };
+      nextCache.set(m.id, { view: m, showHeader, row });
+      return row;
     });
+    this.rowCache = nextCache;
+    return result;
   });
 
   constructor() {

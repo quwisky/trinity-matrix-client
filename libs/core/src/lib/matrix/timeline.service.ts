@@ -5,6 +5,7 @@ import {
   EventType,
   MatrixEventEvent,
   RoomEvent,
+  type MatrixClient,
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
@@ -23,6 +24,7 @@ import { MediaService } from './media.service';
 import {
   buildMessageView,
   isDisplayableMessage,
+  reactionsFor,
   type MessageView,
 } from './message-view';
 import {
@@ -73,6 +75,17 @@ export class TimelineService {
   private roomId: string | null = null;
   private room: Room | null = null;
 
+  // Per-event projection cache keyed by event id. Each entry stores the view model
+  // and a `rev` fingerprint of everything {@link buildMessageView} reads that can
+  // change while the room is open (see {@link eventRevision}). On refresh an event
+  // is re-projected only when its fingerprint changes; otherwise the existing view
+  // object is reused so its OnPush row never re-renders — instead of rebuilding the
+  // entire timeline (and re-running DOMPurify) on every live event.
+  private readonly viewCache = new Map<
+    string,
+    { rev: string; view: MessageView }
+  >();
+
   // Latest event we've already sent a read receipt for, so live messages while
   // the room is open mark read without re-sending on every refresh — and
   // pagination/backfill (which leaves the latest unchanged) doesn't re-ack.
@@ -119,6 +132,7 @@ export class TimelineService {
     this.room = null;
     this.roomId = null;
     this.lastReadEventId = null;
+    this.viewCache.clear();
     this._messages.set([]);
     this._canLoadOlder.set(false);
   }
@@ -293,22 +307,42 @@ export class TimelineService {
     }
     const client = this.matrix.instance;
     const liveTimeline = room.getLiveTimeline();
-    this._messages.set(
-      liveTimeline
-        .getEvents()
-        // Edit events (m.replace) are aggregated onto their target, so hide them.
-        // Threaded replies (`threadRootId` set on a non-root) are projected by
-        // ThreadsService instead — the SDK already keeps them out of the live
-        // timeline when thread support is on, but guard here too in case any leak.
-        .filter((e) => isDisplayableMessage(e) && !isThreadReply(e))
-        .map((e) => buildMessageView(client, room, e)),
-    );
+    const events = liveTimeline.getEvents();
+    const seen = new Set<string>();
+    const views = events
+      // Edit events (m.replace) are aggregated onto their target, so hide them.
+      // Threaded replies (`threadRootId` set on a non-root) are projected by
+      // ThreadsService instead — the SDK already keeps them out of the live
+      // timeline when thread support is on, but guard here too in case any leak.
+      .filter((e) => isDisplayableMessage(e) && !isThreadReply(e))
+      .map((e) => {
+        const id = e.getId() ?? '';
+        seen.add(id);
+        // Reuse the existing view (preserving its object identity for OnPush)
+        // unless something this event renders from has actually changed.
+        const rev = eventRevision(client, room, e);
+        const cached = this.viewCache.get(id);
+        if (cached && cached.rev === rev) {
+          return cached.view;
+        }
+        const view = buildMessageView(client, room, e);
+        this.viewCache.set(id, { rev, view });
+        return view;
+      });
+    // Drop cache entries for events no longer in the timeline (redacted-away,
+    // replaced by their remote id, or scrolled out under a window cap).
+    for (const id of [...this.viewCache.keys()]) {
+      if (!seen.has(id)) {
+        this.viewCache.delete(id);
+      }
+    }
+    this._messages.set(views);
     this._canLoadOlder.set(
       liveTimeline.getPaginationToken(Direction.Backward) !== null,
     );
     // The room is on-screen, so mark its latest message read. Deduped, so live
     // messages clear the badge but paginating older history does not re-send.
-    this.markRead(liveTimeline.getEvents());
+    this.markRead(events);
   }
 
   /**
@@ -343,4 +377,47 @@ export class TimelineService {
  */
 function isThreadReply(event: MatrixEvent): boolean {
   return event.threadRootId !== undefined && !event.isThreadRoot;
+}
+
+/**
+ * A compact fingerprint of every per-event input {@link buildMessageView} reads
+ * that can change while the room is open: send status, redaction, decryption,
+ * edits (captured via the effective content + replacing-event presence),
+ * aggregated reactions, whether the replied-to event is now loaded, and the
+ * sender's resolved name/avatar. The projection rebuilds a view only when this
+ * changes, so an unchanged message keeps its existing object and its OnPush row
+ * is never touched.
+ */
+function eventRevision(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+): string {
+  const senderId = event.getSender() ?? '';
+  const member = room.getMember(senderId);
+  const replyId = event.replyEventId;
+  return [
+    event.status ?? '',
+    event.isRedacted() ? 'r' : '',
+    event.isDecryptionFailure() ? 'd' : '',
+    event.replacingEvent() ? 'e' : '',
+    // Effective content captures edits (m.replace) and decrypted bodies; it is far
+    // cheaper than the DOMPurify pass that a rebuild would otherwise repeat.
+    JSON.stringify(event.getContent()),
+    reactionSignature(client, room, event),
+    replyId ? (room.findEventById(replyId) ? 'y' : 'n') : '',
+    member?.name ?? senderId,
+    member?.getMxcAvatarUrl() ?? '',
+  ].join('\x1f');
+}
+
+/** Stable signature of an event's aggregated reactions (key, count, own flag). */
+function reactionSignature(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+): string {
+  return reactionsFor(client, room, event)
+    .map((r) => `${r.key}:${r.count}:${r.reacted ? 1 : 0}`)
+    .join(',');
 }
