@@ -117,7 +117,14 @@ function setup(
       getMxcAvatarUrl: () => null,
     }),
     relations: {
-      getChildEventsForEvent: (id: string) => reactions[id],
+      getChildEventsForEvent: (
+        id: string,
+        relType?: string,
+        evType?: string,
+      ) =>
+        relType === 'm.annotation' && evType === 'm.reaction'
+          ? reactions[id]
+          : undefined,
     },
     hasEncryptionStateEvent: () => encrypted,
     on: () => {},

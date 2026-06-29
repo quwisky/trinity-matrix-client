@@ -38,6 +38,7 @@ function fakeEvent(o: {
   decryptFail?: boolean;
   replyTo?: string;
   status?: string | null;
+  editRelation?: boolean;
 }) {
   return {
     getId: () => o.id,
@@ -48,8 +49,10 @@ function fakeEvent(o: {
     getContent: () => ({ body: o.body ?? '', msgtype: 'm.text' }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
-    isRelation: () => false,
-    replacingEvent: () => null,
+    isRelation: (relType?: string) =>
+      o.editRelation === true &&
+      (relType === undefined || relType === 'm.replace'),
+    replacingEvent: () => (o.editRelation ? {} : null),
     replyEventId: o.replyTo,
     status: o.status ?? null,
   };
@@ -150,7 +153,14 @@ function setup(
       getMxcAvatarUrl: () => null,
     }),
     relations: {
-      getChildEventsForEvent: (id: string) => reactions[id],
+      getChildEventsForEvent: (
+        id: string,
+        relType?: string,
+        evType?: string,
+      ) =>
+        relType === 'm.annotation' && evType === 'm.reaction'
+          ? reactions[id]
+          : undefined,
     },
     hasEncryptionStateEvent: () => false,
     ...emitter(),
@@ -268,6 +278,25 @@ describe('ThreadsService', () => {
     expect(msgs.map((m) => m.id)).toEqual(['$root', '$r1']);
     expect(msgs[0].body).toBe('root msg');
     expect(svc.openThreadRootId()).toBe('$root');
+  });
+
+  it('excludes m.replace edit events from the thread messages', () => {
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
+    const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'a reply' });
+    const edit = fakeEvent({
+      id: '$e1',
+      sender: '@b:hs',
+      body: '* edited reply',
+      editRelation: true,
+    });
+    const { svc } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [root, reply, edit] }),
+    ]);
+    svc.openThread('!r:hs', '$root');
+
+    // The edit (an m.replace relation) is filtered out by isDisplayableMessage —
+    // only the root and the original reply remain.
+    expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root', '$r1']);
   });
 
   it('creates the thread only on the first send, not on open, so the reply surfaces', async () => {
