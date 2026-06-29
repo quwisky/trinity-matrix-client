@@ -43,16 +43,81 @@ test('exposes the desktop bridge but no Node in the renderer', async () => {
   expect(isElectron).toBe(true);
 
   // contextIsolation + nodeIntegration:false + sandbox → no Node reachable.
-  const exposure = await page.evaluate(() => ({
-    require: typeof (globalThis as Record<string, unknown>)['require'],
-    process: typeof (globalThis as Record<string, unknown>)['process'],
-    onDeepLink: typeof (
-      globalThis as { trinityDesktop?: { onDeepLink?: unknown } }
-    ).trinityDesktop?.onDeepLink,
-  }));
+  const exposure = await page.evaluate(() => {
+    const td = (
+      globalThis as {
+        trinityDesktop?: {
+          onDeepLink?: unknown;
+          showNotification?: unknown;
+          onNotificationClick?: unknown;
+          secureStore?: unknown;
+        };
+      }
+    ).trinityDesktop;
+    return {
+      require: typeof (globalThis as Record<string, unknown>)['require'],
+      process: typeof (globalThis as Record<string, unknown>)['process'],
+      onDeepLink: typeof td?.onDeepLink,
+      showNotification: typeof td?.showNotification,
+      onNotificationClick: typeof td?.onNotificationClick,
+      secureStore: typeof td?.secureStore,
+    };
+  });
   expect(exposure.require).toBe('undefined');
   expect(exposure.process).toBe('undefined');
   expect(exposure.onDeepLink).toBe('function'); // the SSO deep-link bridge
+  expect(exposure.showNotification).toBe('function'); // main-process notifications
+  expect(exposure.onNotificationClick).toBe('function');
+  expect(exposure.secureStore).toBe('object'); // OS-keychain secret storage (#1)
+});
+
+test('secureStore round-trips through the main process (or degrades cleanly)', async () => {
+  // The OS-keychain token store (review finding #1): the renderer asks the main
+  // process to get/set/delete; values are encrypted with safeStorage and the secret
+  // never touches renderer storage. In a headless/no-keyring CI safeStorage is
+  // unavailable, so the contract is "set is refused and nothing is stored".
+  const KEY = 'e2e.secure.probe';
+  const result = await page.evaluate(async (key) => {
+    const store = (
+      globalThis as {
+        trinityDesktop?: {
+          secureStore?: {
+            isAvailable: () => Promise<boolean>;
+            get: (k: string) => Promise<string | null>;
+            set: (k: string, v: string) => Promise<boolean>;
+            delete: (k: string) => Promise<void>;
+          };
+        };
+      }
+    ).trinityDesktop?.secureStore;
+    if (!store) {
+      return { present: false } as const;
+    }
+    const available = await store.isAvailable();
+    const setOk = await store.set(key, 'secret-value');
+    const got = await store.get(key);
+    await store.delete(key);
+    const afterDelete = await store.get(key);
+    // The secret must never live in the renderer's own storage.
+    const inLocalStorage = Object.values(localStorage).some((v) =>
+      v.includes('secret-value'),
+    );
+    return { present: true, available, setOk, got, afterDelete, inLocalStorage };
+  }, KEY);
+
+  expect(result.present).toBe(true);
+  if (!result.present) {
+    return;
+  }
+  expect(result.inLocalStorage).toBe(false);
+  if (result.available) {
+    expect(result.setOk).toBe(true);
+    expect(result.got).toBe('secret-value');
+    expect(result.afterDelete).toBeNull();
+  } else {
+    expect(result.setOk).toBe(false);
+    expect(result.got).toBeNull();
+  }
 });
 
 test('dark palette wins the cascade when ion-palette-dark is set (regression)', async () => {
