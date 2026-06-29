@@ -83,8 +83,17 @@ export class RoomsService {
    */
   private connectedClient: MatrixClient | null = null;
 
-  /** Stable listener ref so {@link connect}/{@link disconnect} can add and remove it. */
-  private readonly onClientEvent = (): void => this.refresh();
+  /**
+   * Stable listener ref so {@link connect}/{@link disconnect} can add and remove it.
+   * Listener-driven refreshes are coalesced ({@link scheduleRefresh}): one completed
+   * /sync fires a burst of Sync/Room/Receipt events, and rebuilding the whole read
+   * model (O(rooms) + a full re-sort) once per event is wasteful — collapse them
+   * into a single rebuild.
+   */
+  private readonly onClientEvent = (): void => this.scheduleRefresh();
+
+  /** Whether a coalesced refresh is already queued for this microtask turn. */
+  private refreshScheduled = false;
 
   /**
    * Bumped only on membership changes (`RoomState.members`/`MyMembership`) so a
@@ -165,9 +174,29 @@ export class RoomsService {
     client.off(RoomStateEvent.Members, this.onMembershipEvent);
     client.off(RoomEvent.MyMembership, this.onMembershipEvent);
     this.connectedClient = null;
+    this.refreshScheduled = false;
     this.memberCache.clear();
     this._rooms.set([]);
     this._directRoomIds.set(new Set());
+  }
+
+  /**
+   * Coalesce a burst of sync events into a single rebuild: queue {@link refresh} on
+   * the microtask after the current task drains, deduped by {@link refreshScheduled}.
+   * The pending run is dropped if {@link disconnect} ran meanwhile. (The first read
+   * is done synchronously by {@link connect}, so consumers see the model immediately.)
+   */
+  private scheduleRefresh(): void {
+    if (this.refreshScheduled) {
+      return;
+    }
+    this.refreshScheduled = true;
+    queueMicrotask(() => {
+      this.refreshScheduled = false;
+      if (this.connectedClient) {
+        this.refresh();
+      }
+    });
   }
 
   /**

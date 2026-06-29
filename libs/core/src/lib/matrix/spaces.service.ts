@@ -195,13 +195,22 @@ export class SpacesService {
     this.openSpaceChildren().filter((c) => c.isSpace),
   );
 
-  /** Stable listener ref so {@link connect}/{@link disconnect} can add and remove it. */
-  private readonly onChange = (): void => this.refresh();
+  /**
+   * Stable listener ref so {@link connect}/{@link disconnect} can add and remove it.
+   * Coalesced ({@link scheduleRefresh}): a completed /sync fires a burst of
+   * Sync/Room/Name/MyMembership events, and rebuilding + re-sorting the whole spaces
+   * read model once per event is wasteful — collapse them into a single rebuild.
+   */
+  private readonly onChange = (): void => this.scheduleRefresh();
+
+  /** Whether a coalesced refresh is already queued for this microtask turn. */
+  private refreshScheduled = false;
 
   /**
    * State-event listener scoped to `m.space.child`: every state event flows through
    * here, so filter to the child links to avoid refreshing on unrelated state
-   * (avatars, topics, membership of unrelated rooms, …).
+   * (avatars, topics, membership of unrelated rooms, …). These are rare admin
+   * actions (not a sync burst), so they refresh immediately rather than coalescing.
    */
   private readonly onStateEvent = (event: MatrixEvent): void => {
     if (event.getType() === SPACE_CHILD_EVENT) {
@@ -246,8 +255,28 @@ export class SpacesService {
     client.off(RoomEvent.MyMembership, this.onChange);
     client.off(RoomStateEvent.Events, this.onStateEvent);
     this.connectedClient = null;
+    this.refreshScheduled = false;
     this._spaces.set([]);
     this.resetHierarchy();
+  }
+
+  /**
+   * Coalesce a burst of sync events into a single rebuild: queue {@link refresh} on
+   * the microtask after the current task drains, deduped by {@link refreshScheduled},
+   * and dropped if {@link disconnect} ran meanwhile. ({@link connect} does the first
+   * read synchronously, so consumers see the model immediately.)
+   */
+  private scheduleRefresh(): void {
+    if (this.refreshScheduled) {
+      return;
+    }
+    this.refreshScheduled = true;
+    queueMicrotask(() => {
+      this.refreshScheduled = false;
+      if (this.connectedClient) {
+        this.refresh();
+      }
+    });
   }
 
   /** Cancel any in-flight hierarchy fetch and clear the open-space child model. */
