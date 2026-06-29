@@ -47,16 +47,19 @@ interface ShowNotificationPayload {
 const buffered: string[] = [];
 let active: ((url: string) => void) | null = null;
 
-ipcRenderer.on(DEEP_LINK_CHANNEL, (_event: IpcRendererEvent, url: string): void => {
-  if (typeof url !== 'string') {
-    return;
-  }
-  if (active) {
-    active(url);
-  } else {
-    buffered.push(url);
-  }
-});
+ipcRenderer.on(
+  DEEP_LINK_CHANNEL,
+  (_event: IpcRendererEvent, url: string): void => {
+    if (typeof url !== 'string') {
+      return;
+    }
+    if (active) {
+      active(url);
+    } else {
+      buffered.push(url);
+    }
+  },
+);
 
 contextBridge.exposeInMainWorld('trinityDesktop', {
   isElectron: true,
@@ -81,7 +84,8 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
     if (typeof payload !== 'object' || payload === null) {
       return;
     }
-    const { title, body, tag, roomId } = payload as Partial<ShowNotificationPayload>;
+    const { title, body, tag, roomId } =
+      payload as Partial<ShowNotificationPayload>;
     if (typeof roomId !== 'string') {
       return;
     }
@@ -102,7 +106,8 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
       }
     };
     ipcRenderer.on(NOTIFICATION_CLICK_CHANNEL, listener);
-    return () => ipcRenderer.removeListener(NOTIFICATION_CLICK_CHANNEL, listener);
+    return () =>
+      ipcRenderer.removeListener(NOTIFICATION_CLICK_CHANNEL, listener);
   },
 
   // OS-keychain-backed secret storage in the MAIN process (safeStorage). These only
@@ -116,7 +121,11 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
         string | null
       >,
     set: (key: string, value: string): Promise<boolean> =>
-      ipcRenderer.invoke('trinity:secure-store:set', key, value) as Promise<boolean>,
+      ipcRenderer.invoke(
+        'trinity:secure-store:set',
+        key,
+        value,
+      ) as Promise<boolean>,
     delete: (key: string): Promise<void> =>
       ipcRenderer.invoke('trinity:secure-store:delete', key) as Promise<void>,
   },

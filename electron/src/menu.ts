@@ -4,9 +4,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 export function buildMenu(): void {
   const isMac = process.platform === 'darwin';
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac
-      ? [{ role: 'appMenu' as const }]
-      : []),
+    ...(isMac ? [{ role: 'appMenu' as const }] : []),
     { role: 'fileMenu' },
     { role: 'editMenu' },
     {

@@ -1,6 +1,9 @@
 import { ipcMain, nativeImage, Notification } from 'electron';
 import * as fs from 'node:fs';
-import { coerceNotificationPayload, type NotificationRequest } from './notification-payload';
+import {
+  coerceNotificationPayload,
+  type NotificationRequest,
+} from './notification-payload';
 import { iconCandidatePaths } from './icons';
 import { focusMainWindow, getMainWindow } from './window';
 
@@ -72,7 +75,10 @@ function showOsNotification(payload: NotificationRequest): void {
 
   notification.on('click', () => {
     focusMainWindow();
-    getMainWindow()?.webContents.send(NOTIFICATION_CLICK_CHANNEL, payload.roomId);
+    getMainWindow()?.webContents.send(
+      NOTIFICATION_CLICK_CHANNEL,
+      payload.roomId,
+    );
   });
   notification.on('close', () => {
     if (activeNotifications.get(payload.roomId) === notification) {

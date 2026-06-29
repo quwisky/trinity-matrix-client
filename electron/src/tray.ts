@@ -36,7 +36,9 @@ function resolveTrayIcon(): Electron.NativeImage {
     }
   }
 
-  console.warn('[tray] icon asset not found; tray may not render', { fileName });
+  console.warn('[tray] icon asset not found; tray may not render', {
+    fileName,
+  });
   return nativeImage.createEmpty();
 }
 

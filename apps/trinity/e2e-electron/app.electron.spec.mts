@@ -18,9 +18,9 @@ test.afterAll(async () => {
 
 test('boots the app over the trinity:// custom scheme', async () => {
   // Served via the privileged trinity://app scheme (secure context), not file://.
-  await expect.poll(() => page.evaluate(() => location.origin)).toBe(
-    'trinity://app',
-  );
+  await expect
+    .poll(() => page.evaluate(() => location.origin))
+    .toBe('trinity://app');
   // Unauthenticated → the login screen renders (proves the SPA + assets loaded).
   await expect(page.locator('ion-input[label="Homeserver"]')).toBeVisible();
 });
@@ -102,7 +102,14 @@ test('secureStore round-trips through the main process (or degrades cleanly)', a
     const inLocalStorage = Object.values(localStorage).some((v) =>
       v.includes('secret-value'),
     );
-    return { present: true, available, setOk, got, afterDelete, inLocalStorage };
+    return {
+      present: true,
+      available,
+      setOk,
+      got,
+      afterDelete,
+      inLocalStorage,
+    };
   }, KEY);
 
   expect(result.present).toBe(true);

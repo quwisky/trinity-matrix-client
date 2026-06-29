@@ -28,7 +28,10 @@ function sanitizeNotificationText(value: unknown, limit: number): string {
   if (typeof value !== 'string') {
     return '';
   }
-  return value.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, limit);
+  return value
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .trim()
+    .slice(0, limit);
 }
 
 /**
@@ -37,16 +40,24 @@ function sanitizeNotificationText(value: unknown, limit: number): string {
  * room id, or an empty title+body. A string `tag` is passed through; any other
  * type is omitted.
  */
-export function coerceNotificationPayload(raw: unknown): NotificationRequest | null {
+export function coerceNotificationPayload(
+  raw: unknown,
+): NotificationRequest | null {
   if (typeof raw !== 'object' || raw === null) {
     return null;
   }
   const rec = raw as Record<string, unknown>;
-  const roomId = sanitizeNotificationText(rec['roomId'], NOTIFICATION_ROOM_ID_LIMIT);
+  const roomId = sanitizeNotificationText(
+    rec['roomId'],
+    NOTIFICATION_ROOM_ID_LIMIT,
+  );
   if (!roomId) {
     return null; // no target room => nothing to collapse on or open
   }
-  const title = sanitizeNotificationText(rec['title'], NOTIFICATION_TITLE_LIMIT);
+  const title = sanitizeNotificationText(
+    rec['title'],
+    NOTIFICATION_TITLE_LIMIT,
+  );
   const body = sanitizeNotificationText(rec['body'], NOTIFICATION_BODY_LIMIT);
   if (!title && !body) {
     return null; // empty notification => ignore

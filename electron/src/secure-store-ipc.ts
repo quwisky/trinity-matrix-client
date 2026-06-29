@@ -1,6 +1,10 @@
 import { app, ipcMain, safeStorage } from 'electron';
 import * as path from 'node:path';
-import { secureStoreDelete, secureStoreGet, secureStoreSet } from './secure-store';
+import {
+  secureStoreDelete,
+  secureStoreGet,
+  secureStoreSet,
+} from './secure-store';
 import { getMainWindow } from './window';
 
 /** On-disk home for the OS-encrypted secret map (safeStorage only encrypts bytes). */
@@ -26,7 +30,11 @@ export function registerSecureStoreIpc(): void {
 
   ipcMain.handle('trinity:secure-store:get', (event, rawKey: unknown) => {
     const win = getMainWindow();
-    if (!win || event.sender !== win.webContents || typeof rawKey !== 'string') {
+    if (
+      !win ||
+      event.sender !== win.webContents ||
+      typeof rawKey !== 'string'
+    ) {
       return null;
     }
     return secureStoreGet(safeStorage, secureStoreFile(), rawKey);
@@ -50,7 +58,11 @@ export function registerSecureStoreIpc(): void {
 
   ipcMain.handle('trinity:secure-store:delete', (event, rawKey: unknown) => {
     const win = getMainWindow();
-    if (!win || event.sender !== win.webContents || typeof rawKey !== 'string') {
+    if (
+      !win ||
+      event.sender !== win.webContents ||
+      typeof rawKey !== 'string'
+    ) {
       return;
     }
     secureStoreDelete(secureStoreFile(), rawKey);

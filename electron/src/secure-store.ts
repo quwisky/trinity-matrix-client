@@ -44,7 +44,9 @@ export function readSecureStore(
 ): Record<string, string> {
   try {
     const raw = JSON.parse(io.readFile(filePath)) as unknown;
-    return raw && typeof raw === 'object' ? (raw as Record<string, string>) : {};
+    return raw && typeof raw === 'object'
+      ? (raw as Record<string, string>)
+      : {};
   } catch {
     return {};
   }

@@ -63,7 +63,9 @@ describe('secure store', () => {
     const safeStorage = makeSafeStorage(false);
     const { io, files } = makeIo();
 
-    expect(secureStoreSet(safeStorage, FILE, 'token', 'sekret', io)).toBe(false);
+    expect(secureStoreSet(safeStorage, FILE, 'token', 'sekret', io)).toBe(
+      false,
+    );
     expect(secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();
     expect(files.has(FILE)).toBe(false);
   });
@@ -91,7 +93,9 @@ describe('secure store', () => {
     // A well-formed JSON map whose value is not valid ciphertext.
     io.writeFile(
       FILE,
-      JSON.stringify({ token: Buffer.from('garbage', 'utf8').toString('base64') }),
+      JSON.stringify({
+        token: Buffer.from('garbage', 'utf8').toString('base64'),
+      }),
     );
 
     expect(secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();

@@ -36,7 +36,9 @@ describe('coerceNotificationPayload', () => {
     expect(coerceNotificationPayload({ roomId: 123, title: 'hi' })).toBeNull();
     expect(coerceNotificationPayload({ roomId: '', title: 'hi' })).toBeNull();
     // whitespace-only collapses to empty after trim => treated as missing
-    expect(coerceNotificationPayload({ roomId: '   ', title: 'hi' })).toBeNull();
+    expect(
+      coerceNotificationPayload({ roomId: '   ', title: 'hi' }),
+    ).toBeNull();
   });
 
   it('returns null when both title and body are absent/empty', () => {
@@ -64,7 +66,11 @@ describe('coerceNotificationPayload', () => {
 
   it('passes tag through when it is a string and omits it otherwise', () => {
     expect(
-      coerceNotificationPayload({ roomId: '!r:s', title: 'hi', tag: 'collapse-key' })?.tag,
+      coerceNotificationPayload({
+        roomId: '!r:s',
+        title: 'hi',
+        tag: 'collapse-key',
+      })?.tag,
     ).toBe('collapse-key');
     expect(
       coerceNotificationPayload({ roomId: '!r:s', title: 'hi' }),
@@ -75,12 +81,16 @@ describe('coerceNotificationPayload', () => {
   });
 
   it('treats silent as false unless it is strictly true', () => {
-    expect(coerceNotificationPayload({ roomId: '!r:s', title: 'hi' })?.silent).toBe(false);
     expect(
-      coerceNotificationPayload({ roomId: '!r:s', title: 'hi', silent: 'true' })?.silent,
+      coerceNotificationPayload({ roomId: '!r:s', title: 'hi' })?.silent,
     ).toBe(false);
     expect(
-      coerceNotificationPayload({ roomId: '!r:s', title: 'hi', silent: true })?.silent,
+      coerceNotificationPayload({ roomId: '!r:s', title: 'hi', silent: 'true' })
+        ?.silent,
+    ).toBe(false);
+    expect(
+      coerceNotificationPayload({ roomId: '!r:s', title: 'hi', silent: true })
+        ?.silent,
     ).toBe(true);
   });
 });

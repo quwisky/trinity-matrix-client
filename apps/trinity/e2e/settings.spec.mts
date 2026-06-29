@@ -44,9 +44,9 @@ test.describe('Settings', () => {
 
   test('lists the current device under Devices', async ({ page }) => {
     const devices = page.locator('trn-devices-section');
-    await expect(
-      devices.getByText('Devices', { exact: true }),
-    ).toBeVisible({ timeout: 20_000 });
+    await expect(devices.getByText('Devices', { exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     // Once the list loads, the signed-in session carries a "This device" badge.
     await expect(devices.getByText('This device')).toBeVisible({
       timeout: 30_000,

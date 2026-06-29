@@ -94,7 +94,9 @@ if (!app.requestSingleInstanceLock()) {
     maybeSendStartupTestNotification(); // dev-only, gated on TRINITY_NOTIFY_TEST
 
     // Block any extra web contents (e.g. from a future webview) at creation.
-    app.on('web-contents-created', (_event, contents) => hardenContents(contents));
+    app.on('web-contents-created', (_event, contents) =>
+      hardenContents(contents),
+    );
 
     // macOS dock click: reveal the window (it may be hidden in the tray rather
     // than closed, so a plain "create if none" check would do nothing).

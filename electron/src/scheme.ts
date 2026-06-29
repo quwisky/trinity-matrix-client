@@ -50,10 +50,16 @@ export const CONTENT_TYPES: Readonly<Record<string, string>> = {
 };
 
 export function contentTypeFor(filePath: string): string {
-  return CONTENT_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+  return (
+    CONTENT_TYPES[path.extname(filePath).toLowerCase()] ??
+    'application/octet-stream'
+  );
 }
 
-export async function fileResponse(filePath: string, status = 200): Promise<Response> {
+export async function fileResponse(
+  filePath: string,
+  status = 200,
+): Promise<Response> {
   const data = await fs.promises.readFile(filePath);
   return new Response(new Uint8Array(data), {
     status,
