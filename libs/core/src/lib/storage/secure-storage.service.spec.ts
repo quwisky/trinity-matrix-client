@@ -1,9 +1,14 @@
 import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Capacitor } from '@capacitor/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SecureStorageService } from './secure-storage.service';
 
-// In-memory @capacitor/preferences (hoisted for the vi.mock factory).
-const { prefs } = vi.hoisted(() => ({ prefs: new Map<string, string>() }));
+// In-memory @capacitor/preferences + the native keychain plugin (hoisted so the
+// vi.mock factories can see them).
+const { prefs, nativeStore } = vi.hoisted(() => ({
+  prefs: new Map<string, string>(),
+  nativeStore: new Map<string, string>(),
+}));
 vi.mock('@capacitor/preferences', () => ({
   Preferences: {
     get: async ({ key }: { key: string }) => ({
@@ -17,9 +22,25 @@ vi.mock('@capacitor/preferences', () => ({
     },
   },
 }));
+vi.mock('@aparajita/capacitor-secure-storage', () => ({
+  SecureStorage: {
+    get: async (key: string) => nativeStore.get(key) ?? null,
+    set: async (key: string, value: string) => {
+      nativeStore.set(key, value);
+    },
+    remove: async (key: string) => {
+      nativeStore.delete(key);
+      return true;
+    },
+  },
+}));
 
-describe('SecureStorageService (web fallback)', () => {
-  beforeEach(() => prefs.clear());
+describe('SecureStorageService', () => {
+  beforeEach(() => {
+    prefs.clear();
+    nativeStore.clear();
+  });
+  afterEach(() => vi.restoreAllMocks());
 
   function service(): SecureStorageService {
     TestBed.configureTestingModule({ providers: [SecureStorageService] });
@@ -36,6 +57,21 @@ describe('SecureStorageService (web fallback)', () => {
     await s.set('accessToken', 'tok');
     expect(await s.get('accessToken')).toBe('tok');
     expect(prefs.get('secure.accessToken')).toBe('tok'); // namespaced, no collision
+
+    await s.remove('accessToken');
+    expect(await s.get('accessToken')).toBeNull();
+  });
+
+  it('uses the native keychain backend on a native platform', async () => {
+    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+    vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(true);
+    const s = service();
+
+    expect(await s.isSecure()).toBe(true);
+    await s.set('accessToken', 'tok');
+    expect(nativeStore.get('accessToken')).toBe('tok'); // keychain, not Preferences
+    expect(prefs.get('secure.accessToken')).toBeUndefined();
+    expect(await s.get('accessToken')).toBe('tok');
 
     await s.remove('accessToken');
     expect(await s.get('accessToken')).toBeNull();

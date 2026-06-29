@@ -1,5 +1,7 @@
 import { Injectable } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { SecureStorage } from '@aparajita/capacitor-secure-storage';
 import {
   getTrinityDesktopBridge,
   type TrinityDesktopBridge,
@@ -65,6 +67,29 @@ function createElectronBackend(
 }
 
 /**
+ * Native iOS/Android: the OS Keychain / Android Keystore via
+ * `@aparajita/capacitor-secure-storage`. `sync: false` (the last arg on each call)
+ * keeps the value on THIS device — never synced to iCloud Keychain — so a per-device
+ * Matrix session can't leak across a user's devices.
+ */
+function createNativeBackend(): SecureStorageBackend {
+  return {
+    kind: 'native',
+    isSecure: true,
+    async get(key) {
+      const value = await SecureStorage.get(key, false, false);
+      return typeof value === 'string' ? value : null;
+    },
+    async set(key, value) {
+      await SecureStorage.set(key, value, false, false);
+    },
+    async remove(key) {
+      await SecureStorage.remove(key, false);
+    },
+  };
+}
+
+/**
  * Stores secrets (notably the Matrix access token) behind the strongest backend the
  * current platform offers, chosen once at first use and memoized. Centralizes the
  * platform branch so callers never feature-detect themselves.
@@ -103,11 +128,14 @@ export class SecureStorageService {
     if (bridge?.secureStore && (await bridge.secureStore.isAvailable())) {
       return createElectronBackend(bridge.secureStore);
     }
-    // 2) TODO(native): a Keychain/Keystore backend (@aparajita/capacitor-secure-storage)
-    //    once the iOS/Android projects are scaffolded (`cap add` → `cap sync` → native
-    //    rebuild; Android minSdk 23+, allowBackup=false). Until then native devices use
-    //    the best-effort web fallback below.
-    // 3) Web/PWA (and Electron without an available keyring).
+    // 2) Native iOS/Android — OS Keychain / Android Keystore.
+    if (
+      Capacitor.isNativePlatform() &&
+      Capacitor.isPluginAvailable('SecureStorage')
+    ) {
+      return createNativeBackend();
+    }
+    // 3) Web/PWA (and Electron without an available keyring): best-effort.
     return createWebBackend();
   }
 }
