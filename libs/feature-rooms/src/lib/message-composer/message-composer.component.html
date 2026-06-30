@@ -29,7 +29,49 @@
 
 <div class="composer">
   @if (pickerOpen()) {
-    <trn-emoji-picker class="composer__picker" (pick)="insertEmoji($event)" />
+    <emoji-mart
+      class="composer__picker"
+      [isNative]="true"
+      [showPreview]="false"
+      [darkMode]="isDarkMode()"
+      [emojiSize]="20"
+      title="Pick an emoji"
+      emoji=""
+      (emojiSelect)="onPickerSelect($event)"
+    />
+  }
+  @if (emojiOpen()) {
+    <ul
+      id="emoji-suggestions"
+      class="composer__emoji-menu"
+      role="listbox"
+      aria-label="Emoji suggestions"
+      data-testid="emoji-autocomplete"
+    >
+      @for (m of emojiMatches(); track m.id; let i = $index) {
+        <li role="presentation">
+          <button
+            type="button"
+            tabindex="-1"
+            [id]="'emoji-suggestion-' + i"
+            class="composer__emoji-suggestion"
+            [class.composer__emoji-suggestion--active]="
+              i === emojiActiveIndex()
+            "
+            role="option"
+            [attr.aria-selected]="i === emojiActiveIndex()"
+            (mousedown)="$event.preventDefault()"
+            (mouseenter)="emojiActiveIndex.set(i)"
+            (click)="acceptEmoji(i)"
+          >
+            <span class="composer__emoji-suggestion-char" aria-hidden="true">{{
+              m.native
+            }}</span>
+            <span class="composer__emoji-suggestion-code">{{ m.colons }}</span>
+          </button>
+        </li>
+      }
+    </ul>
   }
   <textarea
     #ta
@@ -39,10 +81,18 @@
     [placeholder]="
       editing() ? 'Edit message…' : placeholder() || 'Message #' + roomName()
     "
+    aria-autocomplete="list"
+    [attr.aria-controls]="emojiOpen() ? 'emoji-suggestions' : null"
+    [attr.aria-activedescendant]="
+      emojiOpen() ? 'emoji-suggestion-' + emojiActiveIndex() : null
+    "
     (input)="onInput($event)"
     (keydown.enter)="onEnter($event)"
     (keydown.escape)="onEscape()"
     (keydown.arrowUp)="onArrowUp($event)"
+    (keydown.arrowDown)="onArrowDown($event)"
+    (keydown.tab)="onTab($event)"
+    (blur)="onBlur()"
     (paste)="onPaste($event)"
   ></textarea>
   <input

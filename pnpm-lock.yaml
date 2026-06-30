@@ -77,6 +77,9 @@ importers:
       '@capacitor/status-bar':
         specifier: 8.0.2
         version: 8.0.2(@capacitor/core@8.4.1)
+      '@ctrl/ngx-emoji-mart':
+        specifier: ^9.3.0
+        version: 9.3.0(@angular/core@20.3.25(@angular/compiler@20.3.25)(rxjs@7.8.2)(zone.js@0.15.1))
       '@ionic/angular':
         specifier: ^8.0.0
         version: 8.8.12(5617e5c8610d1256638f1b6c4095b5e3)
@@ -1380,6 +1383,11 @@ packages:
     engines: {node: '>=20.19.0'}
     peerDependencies:
       postcss-selector-parser: ^7.1.1
+
+  '@ctrl/ngx-emoji-mart@9.3.0':
+    resolution: {integrity: sha512-9uFzAvlFT21OLsTfhL3ZEO5mp51qvL1F4ErIZVBIsvAlji46u6p2KGgVA60oIheFBX4JoZI7HBDGOkGnm9dTUQ==}
+    peerDependencies:
+      '@angular/core': '>=15.0.0-0'
 
   '@discoveryjs/json-ext@0.6.3':
     resolution: {integrity: sha512-4B4OijXeVNOPZlYA2oEwWOTkzyltLao+xbotHQeqN++Rv27Y6s818+n2Qkp8q+Fxhn0t/5lA5X1Mxktud8eayQ==}
@@ -9850,6 +9858,11 @@ snapshots:
   '@csstools/selector-specificity@6.0.0(postcss-selector-parser@7.1.4)':
     dependencies:
       postcss-selector-parser: 7.1.4
+
+  '@ctrl/ngx-emoji-mart@9.3.0(@angular/core@20.3.25(@angular/compiler@20.3.25)(rxjs@7.8.2)(zone.js@0.15.1))':
+    dependencies:
+      '@angular/core': 20.3.25(@angular/compiler@20.3.25)(rxjs@7.8.2)(zone.js@0.15.1)
+      tslib: 2.8.1
 
   '@discoveryjs/json-ext@0.6.3': {}
 

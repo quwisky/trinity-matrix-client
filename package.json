@@ -87,6 +87,7 @@
     "@capacitor/push-notifications": "^8.1.1",
     "@capacitor/share": "^8.0.1",
     "@capacitor/status-bar": "8.0.2",
+    "@ctrl/ngx-emoji-mart": "^9.3.0",
     "@ionic/angular": "^8.0.0",
     "@matrix-org/matrix-sdk-crypto-wasm": "^18.3.1",
     "dompurify": "^3.4.11",

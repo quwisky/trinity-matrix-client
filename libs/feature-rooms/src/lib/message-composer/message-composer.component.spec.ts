@@ -1,7 +1,10 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ToastController } from '@ionic/angular/standalone';
 import { throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
+import { ThemeService } from '@trinity/core';
 import { MessageComposerComponent } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 
@@ -275,19 +278,55 @@ describe('MessageComposerComponent', () => {
     expect(attach().disabled).toBe(false);
   });
 
-  it('toggles the emoji picker from the button', () => {
+  it('toggles the emoji picker open and closed from the button', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    const button = fixture.nativeElement.querySelector(
+      '.composer__emoji',
+    ) as HTMLButtonElement;
+
+    expect(cmp.pickerOpen()).toBe(false);
+    button.click(); // (don't detectChanges — avoids rendering the full picker)
+    expect(cmp.pickerOpen()).toBe(true);
+    button.click();
+    expect(cmp.pickerOpen()).toBe(false);
+  });
+
+  it('inserts the emoji chosen from the picker at the cursor', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    const ta = fixture.nativeElement.querySelector(
+      'textarea',
+    ) as HTMLTextAreaElement;
+
+    cmp.text.set('ab');
+    fixture.detectChanges();
+    ta.selectionStart = ta.selectionEnd = 1; // cursor between a and b
+    cmp.pickerOpen.set(true);
+
+    cmp.onPickerSelect({
+      emoji: { native: '😎' },
+      $event: new Event('click'),
+    } as unknown as EmojiEvent);
+
+    expect(cmp.text()).toBe('a😎b');
+    expect(cmp.pickerOpen()).toBe(false);
+  });
+
+  it('mirrors the active app theme into the picker dark mode', () => {
+    const resolved = signal<'light' | 'dark'>('dark');
+    TestBed.overrideProvider(ThemeService, {
+      useValue: { resolved: resolved.asReadonly() },
+    });
     const fixture = TestBed.createComponent(MessageComposerComponent);
     fixture.detectChanges();
     const cmp = fixture.componentInstance;
 
-    expect(fixture.nativeElement.querySelector('trn-emoji-picker')).toBeNull();
-
-    cmp.pickerOpen.set(true);
-    fixture.detectChanges();
-
-    expect(
-      fixture.nativeElement.querySelector('trn-emoji-picker'),
-    ).not.toBeNull();
+    expect(cmp.isDarkMode()).toBe(true);
+    resolved.set('light');
+    expect(cmp.isDarkMode()).toBe(false);
   });
 
   function pasteEvent(opts: { files?: File[]; items?: unknown[] }): {
@@ -373,5 +412,256 @@ describe('MessageComposerComponent', () => {
 
     expect(count).toBe(0);
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  /** Type `value` into the textarea and place the caret (default: at the end). */
+  function type(
+    fixture: ReturnType<typeof TestBed.createComponent>,
+    value: string,
+    caret = value.length,
+  ): HTMLTextAreaElement {
+    const ta = fixture.nativeElement.querySelector(
+      'textarea',
+    ) as HTMLTextAreaElement;
+    ta.value = value;
+    ta.selectionStart = ta.selectionEnd = caret;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    return ta;
+  }
+
+  const menu = (fixture: ReturnType<typeof TestBed.createComponent>) =>
+    fixture.nativeElement.querySelector('[data-testid=emoji-autocomplete]');
+
+  it('opens the emoji menu while typing a :shortcode and ranks an exact match first', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    type(fixture, ':joy');
+
+    expect(cmp.emojiQuery()).toBe('joy');
+    expect(menu(fixture)).not.toBeNull();
+    expect(cmp.emojiMatches()[0].native).toBe('😂');
+  });
+
+  it('accepts the highlighted emoji on Enter without sending the message', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let sent = 0;
+    cmp.submitText.subscribe(() => sent++);
+
+    type(fixture, ':joy');
+    cmp.onEnter(enter());
+
+    expect(cmp.text()).toBe('😂');
+    expect(sent).toBe(0);
+    expect(cmp.emojiOpen()).toBe(false);
+  });
+
+  it('replaces only the :shortcode token, preserving surrounding text', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    type(fixture, 'hi :joy');
+    cmp.onEnter(enter());
+
+    expect(cmp.text()).toBe('hi 😂');
+  });
+
+  it('moves the highlight with the arrow keys before accepting', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    type(fixture, ':joy');
+    const second = cmp.emojiMatches()[1].native;
+    cmp.onArrowDown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    expect(cmp.emojiActiveIndex()).toBe(1);
+    cmp.onEnter(enter());
+
+    expect(cmp.text()).toBe(second);
+  });
+
+  it('closes the menu on Escape without cancelling an active reply', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('replyingTo', 'Alice');
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let cancelled = 0;
+    cmp.cancelReply.subscribe(() => cancelled++);
+
+    type(fixture, ':joy');
+    cmp.onEscape();
+    expect(cmp.emojiOpen()).toBe(false);
+    expect(cancelled).toBe(0);
+
+    cmp.onEscape(); // menu already closed → now cancels the reply
+    expect(cancelled).toBe(1);
+  });
+
+  it('converts a fully typed :shortcode: to its emoji inline', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    type(fixture, 'party :tada:');
+
+    expect(cmp.text()).toBe('party 🎉');
+    expect(cmp.emojiOpen()).toBe(false);
+  });
+
+  it('inserts the emoji when a suggestion is clicked', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    type(fixture, ':fire');
+    const option = menu(fixture).querySelector('button') as HTMLButtonElement;
+    option.click();
+
+    expect(cmp.text()).toBe('🔥');
+    expect(cmp.emojiOpen()).toBe(false);
+  });
+
+  it('does not trigger on a colon that is not a shortcode boundary', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    type(fixture, '8:30');
+    expect(cmp.emojiOpen()).toBe(false);
+    expect(menu(fixture)).toBeNull();
+
+    type(fixture, 'http://');
+    expect(cmp.emojiOpen()).toBe(false);
+  });
+
+  it('accepts on Tab when open and leaves Tab alone when closed', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    type(fixture, ':joy');
+    const open = new KeyboardEvent('keydown', { key: 'Tab' });
+    const openPrevent = vi.spyOn(open, 'preventDefault');
+    cmp.onTab(open);
+
+    expect(cmp.text()).toBe('😂');
+    expect(cmp.emojiOpen()).toBe(false);
+    expect(openPrevent).toHaveBeenCalled();
+
+    // Menu closed → Tab must keep its native focus-moving behaviour.
+    const closed = new KeyboardEvent('keydown', { key: 'Tab' });
+    const closedPrevent = vi.spyOn(closed, 'preventDefault');
+    cmp.onTab(closed);
+    expect(closedPrevent).not.toHaveBeenCalled();
+  });
+
+  it('replaces a :shortcode in the middle of the text (caret not at end)', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    type(fixture, 'hey :joy there', 8); // caret right after ":joy"
+    cmp.onEnter(enter());
+
+    expect(cmp.text()).toBe('hey 😂 there');
+  });
+
+  it('resets the highlight to the first item when the result set changes', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    type(fixture, ':joy');
+    cmp.onArrowDown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    expect(cmp.emojiActiveIndex()).toBe(1);
+
+    type(fixture, ':grin'); // different matches → effect resets the index
+    expect(cmp.emojiMatches().length).toBeGreaterThan(1);
+    expect(cmp.emojiActiveIndex()).toBe(0);
+  });
+
+  it('does not open the menu while an IME composition is in progress', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    const ta = fixture.nativeElement.querySelector(
+      'textarea',
+    ) as HTMLTextAreaElement;
+
+    ta.value = ':joy';
+    ta.selectionStart = ta.selectionEnd = 4;
+    const composing = new Event('input', { bubbles: true });
+    Object.defineProperty(composing, 'isComposing', { value: true });
+    ta.dispatchEvent(composing);
+    fixture.detectChanges();
+
+    expect(cmp.emojiOpen()).toBe(false);
+
+    // Once composition ends, the next (non-composing) input opens it.
+    type(fixture, ':joy');
+    expect(cmp.emojiOpen()).toBe(true);
+  });
+
+  it('lets an IME-confirming Enter pass through without accepting or sending', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let sent = 0;
+    cmp.submitText.subscribe(() => sent++);
+
+    type(fixture, ':joy');
+    const composingEnter = new KeyboardEvent('keydown', { key: 'Enter' });
+    Object.defineProperty(composingEnter, 'isComposing', { value: true });
+    cmp.onEnter(composingEnter);
+
+    expect(cmp.text()).toBe(':joy'); // not accepted
+    expect(sent).toBe(0); // not sent
+    expect(cmp.emojiOpen()).toBe(true); // menu still open
+
+    cmp.onEnter(enter()); // a real Enter then accepts
+    expect(cmp.text()).toBe('😂');
+  });
+
+  it('resolves the +1/-1 shortcodes through the emoji index', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    type(fixture, ':+1');
+    expect(cmp.emojiMatches()[0].native).toBe('👍');
+    cmp.onEnter(enter());
+    expect(cmp.text()).toBe('👍');
+  });
+
+  it('renders each suggestion with its native emoji and :colons: label', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+
+    type(fixture, ':joy');
+    const first = menu(fixture).querySelector('.composer__emoji-suggestion');
+    expect(
+      first.querySelector('.composer__emoji-suggestion-char').textContent,
+    ).toContain('😂');
+    expect(
+      first.querySelector('.composer__emoji-suggestion-code').textContent,
+    ).toContain(':joy:');
+  });
+
+  it('does not inline-convert a token that is not a real shortcode', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    // "happy" is only a search keyword, never a shortcode → stays literal.
+    type(fixture, 'x :happy:');
+    expect(cmp.text()).toBe('x :happy:');
   });
 });
