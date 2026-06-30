@@ -1,7 +1,7 @@
 // Headless validation of the in-app E2EE crypto spike.
 // Serves the production build, drives the "Run crypto spike" button in Chromium
 // (proxy for Android WebView / Electron renderer), and reports PASS/FAIL.
-import { serve } from './support/serve.mjs';
+import { serve } from '../support/serve.mjs';
 import * as playwright from 'playwright';
 
 // Engine to drive: chromium (≈ Android WebView / Electron) or webkit (≈ iOS WKWebView).

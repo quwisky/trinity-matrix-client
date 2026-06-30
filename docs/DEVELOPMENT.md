@@ -127,17 +127,17 @@ pnpm exec nx test trinity --configuration=watch
 ```
 
 **App journeys (`@nx/playwright`)** — `@playwright/test` specs in
-[`apps/trinity/e2e/`](../apps/trinity/e2e/) covering login/guard, theme, profile,
+[`e2e/playwright/`](../e2e/playwright/) covering login/guard, theme, profile,
 and device management. Builds the dev bundle, serves `www/`, and brings the Synapse
 harness below up/down via global setup (auth specs skip themselves when Docker is absent):
 
 ```bash
-pnpm exec nx e2e trinity            # all specs (Chromium)
-pnpm exec nx e2e trinity -- --list  # enumerate without running
+pnpm exec nx e2e trinity-e2e            # all specs (Chromium)
+pnpm exec nx e2e trinity-e2e -- --list  # enumerate without running
 ```
 
 **Electron desktop (`@playwright/test` + `_electron`)** — specs in
-[`apps/trinity/e2e-electron/`](../apps/trinity/e2e-electron/) launch the **built**
+[`e2e/electron/`](../e2e/electron/) launch the **built**
 desktop app (`electron/dist/main.js` serving `www/` over `trinity://app`) and assert it
 boots, exposes the preload bridge but no Node, and renders dark mode (a regression test
 for the critical-CSS/Electron dark-theme bug):
@@ -194,7 +194,7 @@ to point it at your own homeserver. The verification harness needs a homeserver 
   (or an external https homeserver via `TRINITY_HS`).
 - A **credentialed** plain login → sync → logout cycle against the _public_ homeserver
   (the matrix.org `smoke:login` is unauthenticated; no throwaway account is wired in).
-  `e2e/verify-sas.mjs` already does credentialed login (twice) against the disposable
+  `e2e/features/verify-sas.mjs` already does credentialed login (twice) against the disposable
   Synapse, so the credentialed path itself is exercised end-to-end — just not against
   matrix.org.
 - On-device WebView runtime (the Playwright engine runs are faithful proxies, but a

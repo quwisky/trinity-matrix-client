@@ -13,7 +13,7 @@
 //
 // This is the "verify as much as we can headlessly" path the task asks for when the
 // live round-trip is gated. It does NOT assert a PASS of the SAS flow.
-import { serve } from './support/serve.mjs';
+import { serve } from '../support/serve.mjs';
 import { chromium } from 'playwright';
 
 const PORT = 8126;

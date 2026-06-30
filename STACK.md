@@ -31,19 +31,19 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
 ## Dev tooling & quality gates
 
-| Package                                           | Version       | Notes                                                        |
-| ------------------------------------------------- | ------------- | ------------------------------------------------------------ |
-| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.0.1        | Monorepo task graph, caching, module boundaries              |
-| `@nx/playwright` + `@playwright/test`             | 23.0.1 / 1.61 | `nx e2e trinity` app-journey tests (Playwright, Chromium)    |
-| `vitest` + `@analogjs/*`                          | 3 / 2.6.2     | Unit tests; the Analog plugin compiles Angular for Vite      |
-| `vite`, `vite-tsconfig-paths`, `jsdom`            | 6 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env     |
-| `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 20.7 / 8  | Flat config (`eslint.config.mjs`) + module boundaries        |
-| `prettier`                                        | 3.8           | `singleQuote`; Angular parser forced for `*.page.html`       |
-| `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                    |
-| `@commitlint/{cli,config-angular}`                | 21            | `commit-msg` hook; Angular commit convention                 |
-| `husky` + `lint-staged`                           | 9 / 17        | `pre-commit` (lint/format staged) + `commit-msg` hooks       |
-| `typescript`                                      | 5.9           | `moduleResolution: bundler`; aliases in `tsconfig.base.json` |
-| `@types/node`                                     | 22            | Node globals for `vite.config.ts` + the spec tsconfigs       |
+| Package                                           | Version       | Notes                                                         |
+| ------------------------------------------------- | ------------- | ------------------------------------------------------------- |
+| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.0.1        | Monorepo task graph, caching, module boundaries               |
+| `@nx/playwright` + `@playwright/test`             | 23.0.1 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium) |
+| `vitest` + `@analogjs/*`                          | 3 / 2.6.2     | Unit tests; the Analog plugin compiles Angular for Vite       |
+| `vite`, `vite-tsconfig-paths`, `jsdom`            | 6 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env      |
+| `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 20.7 / 8  | Flat config (`eslint.config.mjs`) + module boundaries         |
+| `prettier`                                        | 3.8           | `singleQuote`; Angular parser forced for `*.page.html`        |
+| `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                     |
+| `@commitlint/{cli,config-angular}`                | 21            | `commit-msg` hook; Angular commit convention                  |
+| `husky` + `lint-staged`                           | 9 / 17        | `pre-commit` (lint/format staged) + `commit-msg` hooks        |
+| `typescript`                                      | 5.9           | `moduleResolution: bundler`; aliases in `tsconfig.base.json`  |
+| `@types/node`                                     | 22            | Node globals for `vite.config.ts` + the spec tsconfigs        |
 
 ## Ionic + Angular (standalone)
 
@@ -128,7 +128,7 @@ the architecture changes — find out before building UI on top.
 - **Component/browser tests (later):** Vitest Browser Mode with the Playwright provider
   (`@vitest/browser` + `playwright`).
 - **End-to-end — app journeys:** `@nx/playwright` + `@playwright/test` at
-  `apps/trinity/e2e/`. `nx e2e trinity` builds the dev bundle, serves `www/`, and brings the
+  `e2e/playwright/`. `nx e2e trinity-e2e` builds the dev bundle, serves `www/`, and brings the
   disposable Synapse harness up/down via global setup (auth specs skip when Docker is absent).
   Covers login/guard, theme, profile, and device management.
 - **End-to-end — crypto/protocol:** Playwright **standalone** (`playwright`, not

@@ -2,7 +2,7 @@
 //  1. unauthenticated load redirects to /login
 //  2. real .well-known discovery for matrix.org resolves the homeserver
 //  3. the discovered flows surface the password form + SSO button
-import { serve } from './support/serve.mjs';
+import { serve } from '../support/serve.mjs';
 import { chromium } from 'playwright';
 
 const PORT = 8124;

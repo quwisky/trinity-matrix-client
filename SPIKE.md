@@ -13,7 +13,7 @@ inside the WebView engines we ship to? Answer: yes, on both engines.
   [home.page.html](src/app/home/home.page.html). It creates a throwaway,
   unauthenticated client, preloads the WASM, calls `initRustCrypto()`, and reports
   the crypto version, generated device key, IndexedDB availability, and timing.
-- Driven headlessly by [e2e/crypto-spike.mjs](e2e/crypto-spike.mjs)
+- Driven headlessly by [e2e/features/crypto-spike.mjs](e2e/features/crypto-spike.mjs)
   via Playwright against two engines (run `pnpm spike:chromium` / `pnpm spike:webkit`).
 
 ## Results

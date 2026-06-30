@@ -17,9 +17,9 @@
 //
 // `pnpm e2e:verify` builds dev, starts the harness, runs this, and tears down.
 // Run standalone against an existing HS with:
-//   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/verify-sas.mjs
+//   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/features/verify-sas.mjs
 import { mkdir } from 'node:fs/promises';
-import { serve } from './support/serve.mjs';
+import { serve } from '../support/serve.mjs';
 import { chromium } from 'playwright';
 
 const PORT = 8125;

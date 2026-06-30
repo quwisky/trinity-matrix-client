@@ -367,10 +367,10 @@ See [e2e/README.md](../e2e/README.md) for the verification flow.
 
 There are also two **`@playwright/test`** suites under `apps/trinity/`:
 
-- `e2e/` (the `@nx/playwright` project, `nx e2e trinity`) — authenticated app journeys
+- `e2e/` (the `@nx/playwright` project, `nx e2e trinity-e2e`) — authenticated app journeys
   against the same disposable Synapse harness (login, settings/theme, devices,
   focus-relocation on navigation). Skips itself when Docker/Synapse is unavailable.
-- `e2e-electron/` (`pnpm electron:e2e`, config `playwright.electron.config.mts`) — launches
+- `e2e/electron/` (`pnpm electron:e2e`, config `playwright.electron.config.mts`) — launches
   the **built desktop app** via Playwright's `_electron` API and asserts it boots over
   `trinity://app`, the preload bridge is exposed but Node isn't, dark mode applies (a
   regression for the critical-CSS bug), and crypto WASM loads. Each run gets a fresh

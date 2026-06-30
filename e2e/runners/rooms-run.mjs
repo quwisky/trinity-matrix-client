@@ -9,8 +9,8 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { start } from './synapse/start.mjs';
-import { stop } from './synapse/stop.mjs';
+import { start } from '../synapse/start.mjs';
+import { stop } from '../synapse/stop.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -28,7 +28,7 @@ function runNode(script, env) {
 let exit = 1;
 try {
   const hs = await start();
-  exit = await runNode('rooms.mjs', {
+  exit = await runNode('../features/rooms.mjs', {
     TRINITY_HS: hs.hs,
     TRINITY_USER: hs.user,
     TRINITY_PASS: hs.pass,

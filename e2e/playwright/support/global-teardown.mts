@@ -1,5 +1,5 @@
 import { rmSync } from 'node:fs';
-import { stop } from '../../../../e2e/synapse/stop.mjs';
+import { stop } from '../../synapse/stop.mjs';
 import { SESSION_FILE } from './global-setup.mts';
 
 /** Tear the Synapse harness down and remove the session file (no-op if Docker

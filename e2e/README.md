@@ -1,18 +1,42 @@
 # Trinity e2e
 
-> **Two e2e systems, by purpose.** App-level user journeys (login, settings,
-> theme, profile, devices) live in the **`@nx/playwright` project** at
-> `apps/trinity/e2e/` — run them with `pnpm exec nx e2e trinity` (`@playwright/test`,
-> Chromium; it builds the dev bundle, serves `www/`, and spins the Synapse harness
-> below up/down via global setup, skipping auth specs when Docker is absent). The
-> scripts in **this directory** are specialised crypto/protocol drivers (E2EE
-> spike, two-client SAS verification, encrypted media) kept as raw `playwright`
-> harnesses; both reuse the same disposable Synapse (`e2e/synapse/`).
+> **Two e2e systems, one `e2e/` root.** App-level user journeys (login, settings,
+> theme, profile, devices) are **`@nx/playwright` specs** in `e2e/playwright/`
+> (web) and `e2e/electron/` (desktop) — run the web suite with
+> `pnpm exec nx e2e trinity` (`@playwright/test`, Chromium; it builds the dev
+> bundle, serves `www/`, and spins the Synapse harness below up/down via global
+> setup, skipping auth specs when Docker is absent) and the desktop suite with
+> `pnpm electron:e2e`. The `features/` + `runners/` scripts are specialised
+> crypto/protocol drivers (E2EE spike, two-client SAS verification, encrypted
+> media, emoji composer) kept as raw `playwright` Node harnesses. All of it reuses
+> the same disposable Synapse (`e2e/synapse/`).
+>
+> The Playwright **configs stay at `apps/trinity/`** (`playwright.config.mts`,
+> `playwright.electron.config.mts`) so Nx keeps inferring the `e2e` target on the
+> `trinity` project; their `testDir` points back here at `../../e2e/{playwright,electron}`.
 
-Standalone Node ESM e2e scripts (raw `playwright`, **not** `@playwright/test`).
-Each script serves the dev build from `www/` with `support/serve.mjs` and drives
-Chromium. Build the dev bundle first (`pnpm nx build trinity --configuration=development`),
+Build the dev bundle first (`pnpm nx build trinity --configuration=development`),
 which the `pnpm` wrappers below do for you.
+
+## Layout
+
+```
+e2e/
+  features/   raw-playwright test bodies — what each scenario drives in the browser
+              (emoji, rooms, search, spaces, threads, send-media, verify-sas, …)
+  runners/    Synapse orchestrators — start the harness, spawn one feature body
+              with the HS env, tear the harness down (the `pnpm e2e:*` entrypoints)
+  playwright/ @nx/playwright web app-journey specs (app, navigation, settings) +
+              support/ (global-setup/teardown, serve-www) — `nx e2e trinity`
+  electron/   @nx/playwright Electron specs + support/launch — `pnpm electron:e2e`
+  support/    shared helpers (e.g. serve.mjs — static file server for www/)
+  synapse/    the disposable Synapse + Caddy harness (docker-compose, start/stop)
+```
+
+A `features/` body can be run on its own against an already-running homeserver
+(set `TRINITY_HS`/`TRINITY_USER`/`TRINITY_PASS`); a runner just wraps it with the
+disposable Synapse. Paths are relative to the repo root, so always invoke via the
+`pnpm` scripts (or `node e2e/runners/<x>-run.mjs`) from there.
 
 ## Scripts
 
@@ -67,7 +91,7 @@ pnpm e2e:verify
 ```
 
 This builds the dev bundle, runs `verify-sas-run.mjs` which: starts the harness
-(`e2e/synapse/`), registers the test user, runs `verify-sas.mjs`, and tears the
+(`e2e/synapse/`), registers the test user, runs `features/verify-sas.mjs`, and tears the
 harness down (`docker compose down -v` + removes `e2e/synapse/data`) — even on failure.
 
 Debugging:
@@ -76,7 +100,7 @@ Debugging:
 HEADED=1 SLOWMO=100 pnpm e2e:verify        # watch it run
 pnpm e2e:verify:up                          # leave the HS up
 TRINITY_HS=https://localhost:8448 TRINITY_USER=verify-e2e TRINITY_PASS=verify-e2e-pass-123 \
-  node e2e/verify-sas.mjs                    # iterate the runner against it
+  node e2e/features/verify-sas.mjs                    # iterate the runner against it
 pnpm e2e:verify:down                         # tear down
 ```
 
@@ -90,7 +114,7 @@ password login + E2EE and is reachable over **https** (the app CSP only allows
 TRINITY_HS=https://your.hs \
 TRINITY_USER=alice \
 TRINITY_PASS=… \
-  node e2e/verify-sas.mjs
+  node e2e/features/verify-sas.mjs
 ```
 
 The account must be allowed to set up encryption fresh (the runner does the
@@ -99,7 +123,7 @@ The account must be allowed to set up encryption fresh (the runner does the
 ### Homeserver-free self-check
 
 ```bash
-node e2e/verify-sas-selfcheck.mjs
+node e2e/features/verify-sas-selfcheck.mjs
 ```
 
 Validates everything that does **not** need a homeserver: the build serves, the SPA
@@ -143,6 +167,6 @@ green across all projects.
 
 `e2e:verify` **requires Docker** able to run those images. Where Docker or registry
 access is unavailable, fall back to the homeserver-free self-check
-(`node e2e/verify-sas-selfcheck.mjs` → `RESULT: PASS`), which still covers the dev
+(`node e2e/features/verify-sas-selfcheck.mjs` → `RESULT: PASS`), which still covers the dev
 build serving, the SPA booting, `/login` + discovery + the password form, and the
 guarded `/encryption/verify` route — everything except the live SAS exchange.

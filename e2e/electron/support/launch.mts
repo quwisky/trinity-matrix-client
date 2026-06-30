@@ -5,9 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron, type ElectronApplication } from 'playwright';
 
-// apps/trinity/e2e-electron/support → repo root.
+// e2e/electron/support → repo root.
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, '../../../..');
+const repoRoot = path.resolve(here, '../../..');
 const electronDir = path.join(repoRoot, 'electron');
 const mainEntry = path.join(electronDir, 'dist', 'main.js');
 

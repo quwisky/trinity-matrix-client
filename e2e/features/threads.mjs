@@ -20,9 +20,9 @@
 //
 // `pnpm e2e:threads` builds dev, starts the harness, runs this, and tears down.
 // Run standalone against an already-running HS:
-//   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/threads.mjs
+//   TRINITY_HS=… TRINITY_USER=… TRINITY_PASS=… node e2e/features/threads.mjs
 import { mkdir } from 'node:fs/promises';
-import { serve } from './support/serve.mjs';
+import { serve } from '../support/serve.mjs';
 import { chromium } from 'playwright';
 
 // Node's fetch (room setup) must accept Caddy's self-signed cert.

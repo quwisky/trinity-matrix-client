@@ -23,7 +23,7 @@
 // `pnpm e2e:spaces` builds dev, starts the harness, runs this, and tears down.
 // MUST run sequentially with other e2e scripts (shared docker stack + www/).
 import { mkdir } from 'node:fs/promises';
-import { serve } from './support/serve.mjs';
+import { serve } from '../support/serve.mjs';
 import { chromium } from 'playwright';
 
 // Node's fetch (CS-API helpers) must accept Caddy's self-signed cert.

@@ -15,7 +15,7 @@
 //
 // `pnpm e2e:media` builds dev, starts the harness, runs this, and tears down.
 import { mkdir } from 'node:fs/promises';
-import { serve } from './support/serve.mjs';
+import { serve } from '../support/serve.mjs';
 import { chromium } from 'playwright';
 
 // Node's fetch (room setup) must accept Caddy's self-signed cert.

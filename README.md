@@ -75,7 +75,7 @@ For native and full testing details see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.m
 | `pnpm spike:chromium`               | Headless E2EE WASM check (Blink → Android WebView / Electron)  |
 | `pnpm spike:webkit`                 | Headless E2EE WASM check (WebKit → iOS WKWebView)              |
 | `pnpm e2e:verify`                   | Two-client emoji-SAS device verification (needs Docker)        |
-| `pnpm exec nx e2e trinity`          | Playwright app journeys: login, settings, theme (needs Docker) |
+| `pnpm exec nx e2e trinity-e2e`      | Playwright app journeys: login, settings, theme (needs Docker) |
 | `pnpm exec cap run ios` / `android` | Build + launch on simulator/emulator                           |
 
 ## Project structure
@@ -109,7 +109,7 @@ libs/
   ui/                 @trinity/ui — reusable presentational components (avatar +
                       mxc resolver token, emoji picker, message toolbar); no
                       core/state deps  [type:ui]
-apps/trinity/e2e/     @nx/playwright app-journey specs (run: nx e2e trinity)
+e2e/playwright/     @nx/playwright app-journey specs (run: nx e2e trinity-e2e)
 e2e/                  standalone crypto/protocol harnesses (serve www/)
 android/ ios/         Capacitor native projects (webDir: www)
 www/                  web build output

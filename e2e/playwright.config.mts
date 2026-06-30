@@ -14,11 +14,14 @@ const baseURL = process.env['BASE_URL'] || 'http://localhost:4200';
  * through its ESM loader and Nx's TS strip loads it directly.
  */
 export default defineConfig({
-  ...nxE2EPreset(import.meta.dirname, { testDir: './e2e' }),
+  // This config lives in the `trinity-e2e` project (e2e/), so the @nx/playwright
+  // plugin infers the `e2e` target here and the web specs sit within the project
+  // root at e2e/playwright/.
+  ...nxE2EPreset(import.meta.dirname, { testDir: './playwright' }),
   // Bring up / tear down the disposable Synapse homeserver (Docker). Gracefully
   // skips when Docker is unavailable; auth-only specs skip themselves then.
-  globalSetup: './e2e/support/global-setup.mts',
-  globalTeardown: './e2e/support/global-teardown.mts',
+  globalSetup: './playwright/support/global-setup.mts',
+  globalTeardown: './playwright/support/global-teardown.mts',
   use: {
     baseURL,
     // Accept the disposable Synapse + Caddy self-signed cert (the app CSP only
@@ -28,7 +31,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      'pnpm exec nx run trinity:build:development && node apps/trinity/e2e/support/serve-www.mjs',
+      'pnpm exec nx run trinity:build:development && node e2e/playwright/support/serve-www.mjs',
     url: baseURL,
     reuseExistingServer: !process.env['CI'],
     timeout: 240_000,

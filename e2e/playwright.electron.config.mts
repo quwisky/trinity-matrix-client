@@ -6,7 +6,7 @@ import { join } from 'node:path';
  * Electron e2e — launches the BUILT desktop app (electron/dist/main.js serving www/
  * over the trinity://app scheme) via Playwright's `_electron` API. Unlike the web
  * config there's no `webServer`/`baseURL`; each spec launches the Electron process
- * itself (see e2e-electron/support/launch.mts).
+ * itself (see e2e/electron/support/launch.mts).
  *
  * Prerequisites (run `pnpm electron:e2e`):
  *   1. `pnpm electron:install` — once, to download the Electron binary (the normal
@@ -15,7 +15,8 @@ import { join } from 'node:path';
  *      `xvfb-run -a` (Electron needs an X server).
  */
 export default defineConfig({
-  testDir: './e2e-electron',
+  // Electron specs live alongside this config in the `trinity-e2e` project.
+  testDir: './electron',
   testMatch: '**/*.electron.spec.mts',
   outputDir: join(workspaceRoot, 'dist/.playwright/electron'),
   // Each test launches its own Electron instance — keep them serial.

@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 // The disposable Synapse + Caddy harness lives in the repo-root e2e/ tree and is
 // reused here so there's a single source of truth for the test homeserver.
-import { start } from '../../../../e2e/synapse/start.mjs';
+import { start } from '../../synapse/start.mjs';
 
 export const SESSION_FILE = join(import.meta.dirname, '.synapse-session.json');
 
