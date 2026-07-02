@@ -44,12 +44,12 @@ builds and ships the entire time; `@ionic/angular` is removed last.
 Ionic's imperative controllers get a thin **adapter service** each, so call sites
 migrate mechanically and behavior (returns, `onWillDismiss`) is preserved:
 
-| Ionic controller        | Sites | Target                              | Adapter                                          |
-| ----------------------- | ----- | ----------------------------------- | ------------------------------------------------ |
-| `ModalController`       | 70    | `brain/dialog` (CDK) + `hlm-dialog` | `TrnDialogService.open()/openAndWait()` ✅ built |
-| `AlertController`       | 23    | CDK dialog + `TrnAlertDialog`       | `TrnAlertService.confirm()/prompt()` ✅ done     |
-| `ToastController`       | 15    | CDK-overlay toast + `hlm-sonner`    | `TrnToastService.show()` ✅ done                 |
-| `ActionSheetController` | 10    | CDK bottom-sheet + `TrnActionSheet` | `TrnActionSheetService.open()` ✅ done           |
+| Ionic controller        | Sites | Target                              | Adapter                                                                                                                                                                                                                 |
+| ----------------------- | ----- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ModalController`       | 70    | `brain/dialog` (CDK) + `hlm-dialog` | `TrnDialogService.open()/openAndWait()` ✅ built · sweeping call sites: user-picker ✅, quick-switcher ✅, message-search ✅ (`side:'end'` panel); thread-view / threads-list / encryption-dialog / verification-host ▢ |
+| `AlertController`       | 23    | CDK dialog + `TrnAlertDialog`       | `TrnAlertService.confirm()/prompt()` ✅ done                                                                                                                                                                            |
+| `ToastController`       | 15    | CDK-overlay toast + `hlm-sonner`    | `TrnToastService.show()` ✅ done                                                                                                                                                                                        |
+| `ActionSheetController` | 10    | CDK bottom-sheet + `TrnActionSheet` | `TrnActionSheetService.open()` ✅ done                                                                                                                                                                                  |
 
 ## Phased plan
 

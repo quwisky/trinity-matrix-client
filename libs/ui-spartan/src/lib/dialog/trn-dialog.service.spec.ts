@@ -38,4 +38,22 @@ describe('TrnDialogService', () => {
     ref.close(); // dismissed without a value
     expect(await waited).toBeNull();
   });
+
+  it('opens an end-aligned side panel (side: "end") that still renders and closes', async () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const ref = svc.open<string, TestDialogComponent>(TestDialogComponent, {
+      side: 'end',
+      inputs: { label: 'Side' },
+    });
+    TestBed.inject(ApplicationRef).tick();
+
+    // The right-aligned global position strategy pins the pane to the viewport edge.
+    const wrapper = document.querySelector('.cdk-global-overlay-wrapper');
+    expect(wrapper).toBeTruthy();
+    expect(document.body.textContent).toContain('Side');
+
+    const closed = firstValueFrom(ref.closed);
+    ref.componentInstance!.close('done');
+    expect(await closed).toBe('done');
+  });
 });

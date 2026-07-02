@@ -2,26 +2,16 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ViewChild,
+  ElementRef,
+  afterNextRender,
   computed,
   inject,
   input,
   signal,
+  viewChild,
 } from '@angular/core';
-import {
-  IonButton,
-  IonButtons,
-  IonContent,
-  IonHeader,
-  IonIcon,
-  IonItem,
-  IonLabel,
-  IonList,
-  IonSearchbar,
-  IonTitle,
-  IonToolbar,
-  ModalController,
-} from '@ionic/angular/standalone';
+import { DialogRef } from '@angular/cdk/dialog';
+import { IonIcon } from '@ionic/angular/standalone';
 import {
   SearchService,
   TimelineService,
@@ -29,7 +19,11 @@ import {
   type MessageHit,
 } from '@trinity/core';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
-import { TrnSpinnerComponent } from '@trinity/ui-spartan';
+import {
+  TrnButtonDirective,
+  TrnInputDirective,
+  TrnSpinnerComponent,
+} from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import { lockClosed, serverOutline } from 'ionicons/icons';
 
@@ -40,10 +34,12 @@ interface HighlightPart {
 }
 
 /**
- * In-room message search, presented as an Ionic modal from the room header (parallel
- * to the threads list). Scoped to the active room's `roomId` (a signal input from
- * `componentProps`). Injects {@link SearchService} + {@link TimelineService} directly
- * so the matching logic stays in core and nothing is threaded through props.
+ * In-room message search, presented from the room header (parallel to the threads
+ * list) by {@link MessageSearchService} as a full-height, right-aligned
+ * {@link TrnDialogService} side panel. Scoped to the active room's `roomId` (a signal
+ * input set from the dialog's `inputs`). Injects {@link SearchService} +
+ * {@link TimelineService} directly so the matching logic stays in core and nothing is
+ * threaded through props.
  *
  * E2EE-honest by construction:
  *  - The instant results come from {@link SearchService.searchLoadedMessages}, over the
@@ -55,162 +51,170 @@ interface HighlightPart {
  *    full-text search ({@link SearchService.searchServerMessages}) over the whole
  *    history, paged via `next_batch`.
  *
- * Selecting a result dismisses with its event id; `RoomsPage` jumps the timeline to it.
+ * Selecting a result closes with its event id; `RoomsPage` jumps the timeline to it.
  */
 @Component({
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonButtons,
-    IonButton,
-    IonContent,
-    IonSearchbar,
-    IonList,
-    IonItem,
-    IonLabel,
     IonIcon,
     AvatarComponent,
     TrnSpinnerComponent,
+    TrnButtonDirective,
+    TrnInputDirective,
   ],
   template: `
-    <ion-header>
-      <ion-toolbar>
-        <ion-title>Search messages</ion-title>
-        <ion-buttons slot="end">
-          <ion-button (click)="dismiss()">Cancel</ion-button>
-        </ion-buttons>
-      </ion-toolbar>
-      <ion-toolbar>
-        <ion-searchbar
-          [debounce]="0"
+    <div
+      class="flex h-screen w-screen flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg md:w-[480px]"
+    >
+      <div
+        class="flex items-center gap-2 border-b border-solid border-border p-3"
+      >
+        <h2 class="flex-1 text-base font-semibold">Search messages</h2>
+        <button trnBtn variant="ghost" size="sm" (click)="dismiss()">
+          Cancel
+        </button>
+      </div>
+
+      <div class="border-b border-solid border-border p-3">
+        <input
+          #searchInput
+          trnInput
           placeholder="Search this conversation"
           autocapitalize="off"
           autocorrect="off"
           inputmode="text"
-          (ionInput)="onInput($event)"
+          [value]="query()"
+          (input)="onInput($event)"
           (keydown.escape)="dismiss()"
         />
-      </ion-toolbar>
-    </ion-header>
+      </div>
 
-    <ion-content>
-      @if (encrypted()) {
-        <div class="ms-banner" data-testid="e2ee-note">
-          <ion-icon name="lock-closed" aria-hidden="true" />
-          <span>
-            Encrypted room — searching the {{ scanned() }} loaded
-            {{ scanned() === 1 ? 'message' : 'messages' }} only.
-          </span>
-          <ion-button
-            size="small"
-            fill="outline"
-            [disabled]="loadingHistory()"
-            (click)="loadOlderHistory()"
-            data-testid="load-older"
-          >
-            @if (loadingHistory()) {
-              <trn-spinner />
-            }
-            Load older messages
-          </ion-button>
-        </div>
-      } @else if (query().trim()) {
-        <div class="ms-banner">
-          @if (serverMode()) {
-            <span data-testid="server-summary">
-              Showing {{ serverCount() }} server
-              {{ serverCount() === 1 ? 'result' : 'results' }} from the full
-              history.
+      <div class="flex-1 overflow-y-auto">
+        @if (encrypted()) {
+          <div class="ms-banner" data-testid="e2ee-note">
+            <ion-icon name="lock-closed" aria-hidden="true" />
+            <span>
+              Encrypted room — searching the {{ scanned() }} loaded
+              {{ scanned() === 1 ? 'message' : 'messages' }} only.
             </span>
-          } @else {
-            <ion-button
-              size="small"
-              fill="outline"
+            <button
+              trnBtn
+              variant="outline"
+              size="sm"
+              [disabled]="loadingHistory()"
+              (click)="loadOlderHistory()"
+              data-testid="load-older"
+            >
+              @if (loadingHistory()) {
+                <trn-spinner />
+              }
+              Load older messages
+            </button>
+          </div>
+        } @else if (query().trim()) {
+          <div class="ms-banner">
+            @if (serverMode()) {
+              <span data-testid="server-summary">
+                Showing {{ serverCount() }} server
+                {{ serverCount() === 1 ? 'result' : 'results' }} from the full
+                history.
+              </span>
+            } @else {
+              <button
+                trnBtn
+                variant="outline"
+                size="sm"
+                [disabled]="searching()"
+                (click)="searchServer()"
+                data-testid="search-server"
+              >
+                @if (searching()) {
+                  <trn-spinner />
+                } @else {
+                  <ion-icon name="server-outline" aria-hidden="true" />
+                }
+                Search all messages
+              </button>
+            }
+          </div>
+        }
+
+        <div>
+          @for (hit of results(); track hit.eventId) {
+            <button
+              type="button"
+              class="ms-row flex w-full items-start gap-3 p-3 text-left hover:bg-accent"
+              (click)="select(hit)"
+              data-testid="result"
+            >
+              <trn-avatar
+                [mxc]="hit.senderAvatarMxc"
+                [initial]="initialOf(hit.senderName)"
+                [name]="hit.senderName"
+                [size]="36"
+              />
+              <span class="min-w-0 flex-1">
+                <span class="flex items-baseline gap-2">
+                  <span class="truncate text-sm font-medium">{{
+                    hit.senderName
+                  }}</span>
+                  <span class="ms-time shrink-0">{{ formatTime(hit.ts) }}</span>
+                </span>
+                <p class="ms-snippet text-sm">
+                  @for (part of highlight(hit.snippet); track $index) {
+                    @if (part.match) {
+                      <mark>{{ part.text }}</mark>
+                    } @else {
+                      <span>{{ part.text }}</span>
+                    }
+                  }
+                </p>
+              </span>
+            </button>
+          } @empty {
+            <div class="ms-empty" aria-live="polite">
+              <span class="text-muted-foreground text-xs">{{
+                emptyHint()
+              }}</span>
+            </div>
+          }
+        </div>
+
+        @if (serverMode() && serverNextBatch()) {
+          <div class="ms-more">
+            <button
+              trnBtn
+              variant="ghost"
+              size="sm"
               [disabled]="searching()"
-              (click)="searchServer()"
-              data-testid="search-server"
+              (click)="loadMoreServer()"
+              data-testid="load-more-server"
             >
               @if (searching()) {
                 <trn-spinner />
-              } @else {
-                <ion-icon
-                  name="server-outline"
-                  slot="start"
-                  aria-hidden="true"
-                />
               }
-              Search all messages
-            </ion-button>
-          }
-        </div>
-      }
-
-      <ion-list>
-        @for (hit of results(); track hit.eventId) {
-          <ion-item button (click)="select(hit)" data-testid="result">
-            <trn-avatar
-              slot="start"
-              [mxc]="hit.senderAvatarMxc"
-              [initial]="initialOf(hit.senderName)"
-              [name]="hit.senderName"
-              [size]="36"
-            />
-            <ion-label>
-              <h2>
-                {{ hit.senderName }}
-                <span class="ms-time">{{ formatTime(hit.ts) }}</span>
-              </h2>
-              <p class="ms-snippet">
-                @for (part of highlight(hit.snippet); track $index) {
-                  @if (part.match) {
-                    <mark>{{ part.text }}</mark>
-                  } @else {
-                    <span>{{ part.text }}</span>
-                  }
-                }
-              </p>
-            </ion-label>
-          </ion-item>
-        } @empty {
-          <div class="ms-empty" aria-live="polite">
-            <span class="text-muted-foreground text-xs">{{ emptyHint() }}</span>
+              Load more results
+            </button>
           </div>
         }
-      </ion-list>
-
-      @if (serverMode() && serverNextBatch()) {
-        <div class="ms-more">
-          <ion-button
-            size="small"
-            fill="clear"
-            [disabled]="searching()"
-            (click)="loadMoreServer()"
-            data-testid="load-more-server"
-          >
-            @if (searching()) {
-              <trn-spinner />
-            }
-            Load more results
-          </ion-button>
-        </div>
-      }
-    </ion-content>
+      </div>
+    </div>
   `,
   styleUrl: './message-search.component.scss',
 })
 export class MessageSearchComponent {
   private readonly search = inject(SearchService);
   private readonly timeline = inject(TimelineService);
-  private readonly modalCtrl = inject(ModalController);
+  private readonly dialogRef =
+    inject<DialogRef<string | null, MessageSearchComponent>>(DialogRef);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** Active room, populated from `componentProps` (app sets `useSetInputAPI`). */
+  /** Active room, populated from the dialog's `inputs` (app sets `useSetInputAPI`). */
   readonly roomId = input.required<string>();
 
-  @ViewChild(IonSearchbar) private readonly searchbar?: IonSearchbar;
+  private readonly searchInput =
+    viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   /** Current query text. */
   readonly query = signal('');
@@ -260,17 +264,12 @@ export class MessageSearchComponent {
 
   constructor() {
     addIcons({ lockClosed, serverOutline });
-  }
-
-  /** Autofocus the field once the modal has finished presenting. */
-  ionViewDidEnter(): void {
-    void this.searchbar?.setFocus();
+    // Autofocus the field once the dialog has rendered.
+    afterNextRender(() => this.searchInput()?.nativeElement.focus());
   }
 
   onInput(event: Event): void {
-    const value =
-      (event as CustomEvent<{ value: string | null }>).detail?.value ?? '';
-    this.query.set(value);
+    this.query.set((event.target as HTMLInputElement).value);
     // A changed query invalidates any server results; fall back to instant local.
     this.resetServer();
   }
@@ -321,14 +320,14 @@ export class MessageSearchComponent {
     }).subscribe();
   }
 
-  /** Click on a row: dismiss with the matched event id for the page to jump to. */
+  /** Click on a row: close with the matched event id for the page to jump to. */
   select(hit: MessageHit): void {
-    void this.modalCtrl.dismiss(hit.eventId);
+    this.dialogRef.close(hit.eventId);
   }
 
-  /** Cancel / Escape: dismiss without a selection. */
+  /** Cancel / Escape: close without a selection. */
   dismiss(): void {
-    void this.modalCtrl.dismiss(null);
+    this.dialogRef.close(null);
   }
 
   /** Split a snippet into matched / unmatched runs for the highlighted render. */

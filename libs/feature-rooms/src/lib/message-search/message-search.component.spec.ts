@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ModalController } from '@ionic/angular/standalone';
+import { DialogRef } from '@angular/cdk/dialog';
 import {
   SearchService,
   TimelineService,
@@ -54,7 +54,7 @@ describe('MessageSearchComponent', () => {
   }
 
   function setQuery(value: string, c: MessageSearchComponent): void {
-    c.onInput({ detail: { value } } as unknown as Event);
+    c.onInput({ target: { value } } as unknown as Event);
   }
 
   beforeEach(() => {
@@ -67,7 +67,7 @@ describe('MessageSearchComponent', () => {
     TestBed.configureTestingModule({
       imports: [MessageSearchComponent],
       providers: [
-        { provide: ModalController, useValue: { dismiss } },
+        { provide: DialogRef, useValue: { close: dismiss } },
         {
           provide: SearchService,
           useValue: {

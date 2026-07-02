@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
+import { Overlay } from '@angular/cdk/overlay';
 import type { ComponentType } from '@angular/cdk/portal';
 import { firstValueFrom } from 'rxjs';
 
@@ -8,6 +9,13 @@ export interface DialogOptions {
   inputs?: Record<string, unknown>;
   /** Extra class(es) on the dialog panel (for width/height/position styling). */
   panelClass?: string | string[];
+  /**
+   * Where the panel sits. `'center'` (default) is a centered modal card;
+   * `'end'` pins it full-height against the inline-end (right) edge — the
+   * split-pane side panel (the panel supplies its own width/height). Replaces the
+   * Ionic `justify-content: flex-end` modal css.
+   */
+  side?: 'center' | 'end';
   /** Prevent backdrop/escape close (Ionic backdropDismiss: false). */
   disableClose?: boolean;
   /** Injected as DIALOG_DATA, for components that read data instead of inputs. */
@@ -25,6 +33,7 @@ export interface DialogOptions {
 @Injectable({ providedIn: 'root' })
 export class TrnDialogService {
   private readonly dialog = inject(Dialog);
+  private readonly overlay = inject(Overlay);
 
   open<R = unknown, C = object>(
     component: ComponentType<C>,
@@ -35,6 +44,12 @@ export class TrnDialogService {
       backdropClass: ['cdk-overlay-dark-backdrop'],
       disableClose: opts.disableClose ?? false,
       data: opts.data,
+      // Default (undefined) lets CDK center the card; `'end'` pins it top-right
+      // and full-height (the panel's own h-screen fills the axis).
+      positionStrategy:
+        opts.side === 'end'
+          ? this.overlay.position().global().top('0').right('0')
+          : undefined,
     });
     if (opts.inputs && ref.componentRef) {
       for (const [key, value] of Object.entries(opts.inputs)) {
