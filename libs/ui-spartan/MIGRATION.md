@@ -2,8 +2,10 @@
 
 `@trinity/ui-spartan` holds our owned, in-repo **spartan.ng "helm"** components
 (built on `@spartan-ng/brain` primitives + Angular CDK, styled with Tailwind
-tokens). Ionic and spartan **coexist** while we migrate lib-by-lib so the app
-builds and ships the entire time; `@ionic/angular` is removed last.
+tokens). The migration is **complete** — `@ionic/angular` has been fully removed
+(deps, CSS, `provideIonicAngular`/`IonicRouteStrategy`, and every `ion-*` element).
+It was done lib-by-lib so the app built and shipped the entire time. Remaining
+follow-ups: an e2e-selector pass (Phase 6) and a visual/device smoke-test.
 
 ## Canonical helm (via `@spartan-ng/cli`)
 
@@ -33,14 +35,15 @@ declarative API. Regenerate/update via `nx g @spartan-ng/cli:ui <name>` (config 
 - **Versions.** The app was upgraded to **Angular 21** (+ CDK 21) so it can run
   stable **`@spartan-ng/brain@1.0.3`** (Angular ≥21 <23). Nx 23 caps Angular at
   21, so 21 is the ceiling until Nx bumps. Ionic 8 (peer `>=16`) runs on 21.
-- **Tailwind v4** (CSS-first). `apps/trinity/src/theme/spartan.css` imports only
-  the `theme` + `utilities` layers — **preflight stays out** so it never fights
-  Ionic's reset — so helm components that draw a border carry `border-solid`.
-  `@theme inline` maps tokens to color utilities by reference.
-- **Dark mode** via `@custom-variant dark` keyed to `.ion-palette-dark` (the
-  class `ThemeService` toggles on `<html>`), so spartan tokens flip with the rest
-  of the app — no new wiring. `--primary` is Trinity blurple so helm buttons
-  match the existing brand accent.
+- **Tailwind v4** (CSS-first). `apps/trinity/src/theme/spartan.css` imports the
+  `theme` + **`preflight`** + `utilities` layers. (Preflight was omitted while Ionic
+  coexisted so it wouldn't fight Ionic's reset; once Ionic was removed in Phase 4e it
+  became the app's base reset.) `@theme inline` maps tokens to color utilities by
+  reference.
+- **Dark mode** via `@custom-variant dark` keyed to `.ion-palette-dark` (the class
+  `ThemeService` toggles on `<html>` — kept purely as that marker now that Ionic is
+  gone), so spartan tokens flip with the rest of the app. `--primary` is Trinity
+  blurple so helm buttons match the brand accent.
 - **`hlm(...)`** (`clsx` + `tailwind-merge`) is the class-merge helper every helm
   primitive routes its host `class` through, so callers override without
   `!important`.
