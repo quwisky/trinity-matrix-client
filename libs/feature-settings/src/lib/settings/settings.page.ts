@@ -19,12 +19,10 @@ import {
   IonLabel,
   IonList,
   IonListHeader,
-  IonNote,
-  IonRadio,
-  IonRadioGroup,
   IonTitle,
   IonToolbar,
 } from '@ionic/angular/standalone';
+import { TrnRadioComponent, TrnRadioGroupComponent } from '@trinity/ui-spartan';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import {
   ProfileService,
@@ -55,11 +53,10 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
     IonLabel,
     IonList,
     IonListHeader,
-    IonNote,
-    IonRadio,
-    IonRadioGroup,
     IonTitle,
     IonToolbar,
+    TrnRadioComponent,
+    TrnRadioGroupComponent,
   ],
 })
 export class SettingsPage {
@@ -99,10 +96,8 @@ export class SettingsPage {
   }
 
   /** Apply + persist the chosen appearance when the radio group changes. */
-  onThemeChange(event: Event): void {
-    const value = (event as CustomEvent<{ value: ThemePreference }>).detail
-      .value;
-    this.theme.setPreference(value);
+  onThemeChange(value: string): void {
+    this.theme.setPreference(value as ThemePreference);
   }
 
   onNameInput(event: Event): void {

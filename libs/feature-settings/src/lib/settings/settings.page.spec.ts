@@ -78,12 +78,13 @@ describe('SettingsPage', () => {
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelectorAll('ion-radio').length).toBe(3);
+    expect(el.querySelectorAll('trn-radio').length).toBe(3);
     expect(el.querySelector('[data-testid=theme-system]')).not.toBeNull();
-    const group = el.querySelector('ion-radio-group') as
-      | (HTMLElement & { value: string })
-      | null;
-    expect(group?.value).toBe('system');
+    // The bound preference ('system') is reflected on the native radio input.
+    const systemInput = el.querySelector<HTMLInputElement>(
+      '[data-testid=theme-system] input',
+    );
+    expect(systemInput?.checked).toBe(true);
     expect(el.textContent).toContain('dark'); // resolved-theme note
   });
 
@@ -91,9 +92,7 @@ describe('SettingsPage', () => {
     const fixture = TestBed.createComponent(SettingsPage);
     fixture.detectChanges();
 
-    fixture.componentInstance.onThemeChange(
-      new CustomEvent('ionChange', { detail: { value: 'light' } }),
-    );
+    fixture.componentInstance.onThemeChange('light');
 
     expect(setPreference).toHaveBeenCalledWith('light');
   });

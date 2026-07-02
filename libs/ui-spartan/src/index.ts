@@ -8,3 +8,5 @@ export * from './lib/button/hlm-button.directive';
 export * from './lib/input/hlm-input.directive';
 export * from './lib/label/hlm-label.directive';
 export * from './lib/spinner/trn-spinner.component';
+export * from './lib/radio/trn-radio-group.component';
+export * from './lib/radio/trn-radio.component';

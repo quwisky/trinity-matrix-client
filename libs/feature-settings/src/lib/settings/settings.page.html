@@ -56,7 +56,7 @@
       <ion-item lines="none"><ion-label>Loading profile…</ion-label></ion-item>
     }
     @if (error(); as e) {
-      <ion-note color="danger" class="setting-note">{{ e }}</ion-note>
+      <p class="setting-note setting-note--error">{{ e }}</p>
     }
     <input
       #avatarInput
@@ -70,25 +70,18 @@
 
   <ion-list>
     <ion-list-header>Appearance</ion-list-header>
-    <ion-radio-group
+    <trn-radio-group
+      class="px-4 py-2"
       [value]="theme.preference()"
-      (ionChange)="onThemeChange($event)"
+      (valueChange)="onThemeChange($event)"
     >
-      <ion-item>
-        <ion-radio value="system" data-testid="theme-system">
-          Use system setting
-        </ion-radio>
-      </ion-item>
-      <ion-item>
-        <ion-radio value="light" data-testid="theme-light">Light</ion-radio>
-      </ion-item>
-      <ion-item>
-        <ion-radio value="dark" data-testid="theme-dark">Dark</ion-radio>
-      </ion-item>
-    </ion-radio-group>
-    <ion-note class="setting-note">
-      Showing the {{ theme.resolved() }} theme.
-    </ion-note>
+      <trn-radio value="system" data-testid="theme-system">
+        Use system setting
+      </trn-radio>
+      <trn-radio value="light" data-testid="theme-light">Light</trn-radio>
+      <trn-radio value="dark" data-testid="theme-dark">Dark</trn-radio>
+    </trn-radio-group>
+    <p class="setting-note">Showing the {{ theme.resolved() }} theme.</p>
   </ion-list>
 
   <trn-devices-section />

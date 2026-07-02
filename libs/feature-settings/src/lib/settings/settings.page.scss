@@ -24,6 +24,11 @@ ion-item {
   font-size: 13px;
 }
 
+// Error variant — the spartan destructive token (defined in theme/spartan.css).
+.setting-note--error {
+  color: var(--destructive);
+}
+
 // Gap between the Profile and Appearance sections.
 ion-list + ion-list {
   margin-top: 12px;
