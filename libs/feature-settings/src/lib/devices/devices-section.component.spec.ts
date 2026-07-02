@@ -99,7 +99,8 @@ describe('DevicesSectionComponent', () => {
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelectorAll('ion-item').length).toBe(3); // 2 devices + verify row
+    expect(el.querySelectorAll('[data-testid=device-row]').length).toBe(2);
+    expect(el.querySelector('[data-testid=verify-devices]')).not.toBeNull();
     expect(el.textContent).toContain('Laptop');
     expect(el.textContent).toContain('Phone');
     expect(el.textContent).toContain('This device');

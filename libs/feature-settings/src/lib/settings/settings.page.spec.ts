@@ -104,6 +104,17 @@ describe('SettingsPage', () => {
     expect(fixture.componentInstance.nameDraft()).toBe('Alice'); // seeded by load()
   });
 
+  it('updates the draft name from a native input event', () => {
+    const fixture = TestBed.createComponent(SettingsPage);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    // The handler now reads a native <input>'s value (not an ionInput CustomEvent).
+    cmp.onNameInput({ target: { value: 'Carol' } } as unknown as Event);
+
+    expect(cmp.nameDraft()).toBe('Carol');
+  });
+
   it('saves an edited display name', () => {
     const fixture = TestBed.createComponent(SettingsPage);
     fixture.detectChanges();

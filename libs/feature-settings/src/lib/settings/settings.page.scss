@@ -2,21 +2,6 @@ ion-content {
   --background: var(--trinity-chat);
 }
 
-ion-list {
-  background: transparent;
-}
-
-ion-list-header {
-  color: var(--trinity-text-muted);
-  font-weight: 600;
-}
-
-ion-item {
-  --background: transparent;
-  --color: var(--trinity-text);
-  --border-color: var(--trinity-divider);
-}
-
 .setting-note {
   display: block;
   padding: 8px 16px;
@@ -27,22 +12,4 @@ ion-item {
 // Error variant — the spartan destructive token (defined in theme/spartan.css).
 .setting-note--error {
   color: var(--destructive);
-}
-
-// Gap between the Profile and Appearance sections.
-ion-list + ion-list {
-  margin-top: 12px;
-}
-
-ion-label h2 {
-  color: var(--trinity-text-bright);
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0;
-}
-
-ion-label p {
-  color: var(--trinity-text-muted);
-  font-size: 13px;
-  margin: 0;
 }

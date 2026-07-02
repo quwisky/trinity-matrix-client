@@ -6,21 +6,14 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import {
-  IonButton,
-  IonIcon,
-  IonItem,
-  IonLabel,
-  IonList,
-  IonListHeader,
-} from '@ionic/angular/standalone';
+import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
   createOutline,
   shieldCheckmarkOutline,
   trashOutline,
 } from 'ionicons/icons';
-import { TrnAlertService, HlmBadge } from '@trinity/ui-spartan';
+import { TrnAlertService, HlmBadge, HlmButton } from '@trinity/ui-spartan';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
 
@@ -35,15 +28,7 @@ import { DevicesService, type DeviceInfo } from '@trinity/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './devices-section.component.html',
   styleUrl: './devices-section.component.scss',
-  imports: [
-    IonButton,
-    IonIcon,
-    IonItem,
-    IonLabel,
-    IonList,
-    IonListHeader,
-    HlmBadge,
-  ],
+  imports: [IonIcon, HlmBadge, HlmButton],
 })
 export class DevicesSectionComponent {
   private readonly devicesSvc = inject(DevicesService);

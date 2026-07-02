@@ -10,19 +10,16 @@ import {
 } from '@angular/core';
 import {
   IonBackButton,
-  IonButton,
   IonButtons,
   IonContent,
   IonHeader,
-  IonInput,
-  IonItem,
-  IonLabel,
-  IonList,
-  IonListHeader,
   IonTitle,
   IonToolbar,
 } from '@ionic/angular/standalone';
 import {
+  HlmButton,
+  HlmInput,
+  HlmLabel,
   HlmRadio,
   HlmRadioGroup,
   HlmRadioIndicator,
@@ -48,17 +45,14 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
     AvatarComponent,
     DevicesSectionComponent,
     IonBackButton,
-    IonButton,
     IonButtons,
     IonContent,
     IonHeader,
-    IonInput,
-    IonItem,
-    IonLabel,
-    IonList,
-    IonListHeader,
     IonTitle,
     IonToolbar,
+    HlmButton,
+    HlmInput,
+    HlmLabel,
     HlmRadioGroup,
     HlmRadio,
     HlmRadioIndicator,
@@ -106,9 +100,7 @@ export class SettingsPage {
   }
 
   onNameInput(event: Event): void {
-    this.nameDraft.set(
-      (event as CustomEvent<{ value: string | null }>).detail.value ?? '',
-    );
+    this.nameDraft.set((event.target as HTMLInputElement).value);
   }
 
   saveName(): void {

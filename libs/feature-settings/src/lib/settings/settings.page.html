@@ -8,52 +8,69 @@
 </ion-header>
 
 <ion-content>
-  <ion-list>
-    <ion-list-header>Profile</ion-list-header>
+  <div>
+    <h2
+      class="px-4 pt-5 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+    >
+      Profile
+    </h2>
     @if (profile(); as p) {
-      <ion-item lines="none">
+      <div class="flex items-center gap-3 px-4 py-2">
         <trn-avatar
-          slot="start"
           [mxc]="p.avatarMxc"
           [name]="p.displayName || p.userId"
           [initial]="initial()"
           [size]="64"
         />
-        <ion-label>
-          <h2>{{ p.displayName || p.userId }}</h2>
-          <p>{{ p.userId }}</p>
-        </ion-label>
-        <ion-button
-          slot="end"
-          fill="clear"
-          size="small"
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-sm font-medium text-foreground">
+            {{ p.displayName || p.userId }}
+          </div>
+          <div class="truncate text-xs text-muted-foreground">
+            {{ p.userId }}
+          </div>
+        </div>
+        <button
+          hlmBtn
+          variant="ghost"
+          size="sm"
+          class="ml-auto shrink-0"
           [disabled]="savingAvatar()"
           (click)="pickAvatar()"
           data-testid="change-avatar"
         >
           {{ savingAvatar() ? 'Uploading…' : 'Change' }}
-        </ion-button>
-      </ion-item>
-      <ion-item>
-        <ion-input
-          label="Display name"
-          labelPlacement="stacked"
-          [value]="nameDraft()"
-          (ionInput)="onNameInput($event)"
-          data-testid="display-name-input"
-        />
-        <ion-button
-          slot="end"
-          size="small"
+        </button>
+      </div>
+      <div
+        class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
+      >
+        <div class="min-w-0 flex-1">
+          <label hlmLabel for="display-name">Display name</label>
+          <input
+            id="display-name"
+            hlmInput
+            class="mt-1"
+            [value]="nameDraft()"
+            (input)="onNameInput($event)"
+            data-testid="display-name-input"
+          />
+        </div>
+        <button
+          hlmBtn
+          size="sm"
+          class="ml-auto shrink-0"
           [disabled]="savingName() || !nameDirty()"
           (click)="saveName()"
           data-testid="save-name"
         >
           Save
-        </ion-button>
-      </ion-item>
+        </button>
+      </div>
     } @else if (loading()) {
-      <ion-item lines="none"><ion-label>Loading profile…</ion-label></ion-item>
+      <div class="px-4 py-2 text-sm text-muted-foreground">
+        Loading profile…
+      </div>
     }
     @if (error(); as e) {
       <p class="setting-note setting-note--error">{{ e }}</p>
@@ -66,10 +83,14 @@
       data-testid="avatar-input"
       (change)="onAvatarPicked($event)"
     />
-  </ion-list>
+  </div>
 
-  <ion-list>
-    <ion-list-header>Appearance</ion-list-header>
+  <div>
+    <h2
+      class="px-4 pt-5 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+    >
+      Appearance
+    </h2>
     <hlm-radio-group
       class="px-4 py-2"
       [value]="theme.preference()"
@@ -98,7 +119,7 @@
       </label>
     </hlm-radio-group>
     <p class="setting-note">Showing the {{ theme.resolved() }} theme.</p>
-  </ion-list>
+  </div>
 
   <trn-devices-section />
 </ion-content>
