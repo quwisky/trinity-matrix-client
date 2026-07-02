@@ -7,12 +7,12 @@
         <h2>
           <span class="device-name">{{ device.displayName }}</span>
           @if (device.isCurrent) {
-            <ion-badge color="primary">This device</ion-badge>
+            <span trnBadge>This device</span>
           }
           @if (device.isVerified) {
-            <ion-badge color="success">Verified</ion-badge>
+            <span trnBadge variant="success">Verified</span>
           } @else {
-            <ion-badge color="warning">Unverified</ion-badge>
+            <span trnBadge variant="warning">Unverified</span>
           }
         </h2>
         <p>{{ device.id }}</p>
@@ -56,14 +56,13 @@
   }
 
   @if (error(); as e) {
-    <ion-note
-      color="danger"
-      class="setting-note"
+    <p
+      class="setting-note setting-note--error"
       role="alert"
       aria-live="assertive"
     >
       {{ e }}
-    </ion-note>
+    </p>
   }
 
   @if (hasUnverified()) {

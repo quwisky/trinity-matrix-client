@@ -26,14 +26,14 @@ ion-label p {
   font-size: 12px;
 }
 
-ion-badge {
-  font-size: 10px;
-  font-weight: 600;
-}
-
 .setting-note {
   display: block;
   padding: 8px 16px;
   color: var(--trinity-text-muted);
   font-size: 13px;
+}
+
+// Error variant — the spartan destructive token (defined in theme/spartan.css).
+.setting-note--error {
+  color: var(--destructive);
 }

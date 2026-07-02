@@ -8,14 +8,12 @@ import {
 } from '@angular/core';
 import {
   AlertController,
-  IonBadge,
   IonButton,
   IonIcon,
   IonItem,
   IonLabel,
   IonList,
   IonListHeader,
-  IonNote,
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
@@ -23,6 +21,7 @@ import {
   shieldCheckmarkOutline,
   trashOutline,
 } from 'ionicons/icons';
+import { TrnBadgeDirective } from '@trinity/ui-spartan';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
 
@@ -38,14 +37,13 @@ import { DevicesService, type DeviceInfo } from '@trinity/core';
   templateUrl: './devices-section.component.html',
   styleUrl: './devices-section.component.scss',
   imports: [
-    IonBadge,
     IonButton,
     IonIcon,
     IonItem,
     IonLabel,
     IonList,
     IonListHeader,
-    IonNote,
+    TrnBadgeDirective,
   ],
 })
 export class DevicesSectionComponent {
