@@ -88,4 +88,14 @@ export default defineConfig([
       '@nx/enforce-module-boundaries': 'off',
     },
   },
+  {
+    // @trinity/ui-spartan helm components alias their host `class` input so
+    // tailwind-merge can fold a caller's classes over the variant defaults —
+    // the core of the spartan styling pattern. That rename is intentional, so
+    // allow the `class` alias for this library only.
+    files: ['libs/ui-spartan/**/*.ts'],
+    rules: {
+      '@angular-eslint/no-input-rename': ['error', { allowedNames: ['class'] }],
+    },
+  },
 ]);

@@ -28,7 +28,8 @@
       "@trinity/feature-crypto": ["libs/feature-crypto/src/index.ts"],
       "@trinity/feature-rooms": ["libs/feature-rooms/src/index.ts"],
       "@trinity/feature-settings": ["libs/feature-settings/src/index.ts"],
-      "@trinity/ui": ["libs/ui/src/index.ts"]
+      "@trinity/ui": ["libs/ui/src/index.ts"],
+      "@trinity/ui-spartan": ["libs/ui-spartan/src/index.ts"]
     }
   },
   "angularCompilerOptions": {
