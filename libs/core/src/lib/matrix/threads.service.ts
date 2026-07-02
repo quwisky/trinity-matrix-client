@@ -8,9 +8,12 @@ import {
   NotificationCountType,
   ReceiptType,
   RoomEvent,
+  RoomStateEvent,
   ThreadEvent,
   type MatrixClient,
   type Room,
+  type RoomMember,
+  type RoomState,
   type Thread,
 } from 'matrix-js-sdk';
 import {
@@ -27,6 +30,7 @@ import { MatrixClientService } from './matrix-client.service';
 import { MediaService } from './media.service';
 import {
   buildMessageView,
+  collectMessageSenders,
   initialOf,
   isDisplayableMessage,
   stripReplyFallbackText,
@@ -169,15 +173,63 @@ export class ThreadsService {
       this.refreshSummaries();
     }
   };
+  // A summary renders each participant's name + avatar (and the root/latest sender
+  // names), all resolved from room membership — which can arrive (lazy loading) or
+  // change after the summary was built. The revision fingerprint deliberately does
+  // NOT walk participant avatars (that would cost a member scan on every refresh),
+  // so instead drop the summaries the changed member takes part in and let
+  // refreshSummaries rebuild just those with the resolved profile. The cached
+  // participant list is the gate: an unreferenced member matches nothing and no
+  // rebuild happens.
+  private readonly onSummariesMember = (
+    _event: MatrixEvent,
+    _state: RoomState,
+    member: RoomMember,
+  ): void => {
+    if (member.roomId !== this.summariesRoomId) {
+      return;
+    }
+    let invalidated = false;
+    for (const [id, entry] of this.summaryCache) {
+      if (entry.summary.participants.some((p) => p.id === member.userId)) {
+        this.summaryCache.delete(id);
+        invalidated = true;
+      }
+    }
+    if (invalidated) {
+      this.refreshSummaries();
+    }
+  };
 
   // --- Opened thread --------------------------------------------------------
   private thread: Thread | null = null;
   private threadRoom: Room | null = null;
   private threadRoomId: string | null = null;
 
+  // User ids the opened thread renders a member for: each message's sender plus
+  // each reply's quoted sender. Recomputed on every refresh; the member listener
+  // re-maps only when one of these members loads/changes, so a lazy member-load
+  // doesn't re-project the thread once per member.
+  private threadRelevantSenders = new Set<string>();
+
   private readonly onThreadChanged = (): void => this.refreshThread();
   private readonly onThreadDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.threadRoomId) {
+      this.refreshThread();
+    }
+  };
+  // A quoted sender's name/avatar can arrive after its reply (lazy loading),
+  // otherwise leaving the in-thread reply preview stuck on the raw mxid + initials.
+  // Re-map when a member the thread actually references loads or changes.
+  private readonly onThreadMember = (
+    _event: MatrixEvent,
+    _state: RoomState,
+    member: RoomMember,
+  ): void => {
+    if (
+      member.roomId === this.threadRoomId &&
+      this.threadRelevantSenders.has(member.userId)
+    ) {
       this.refreshThread();
     }
   };
@@ -215,6 +267,8 @@ export class ThreadsService {
     // change, and Receipt fires when our (or another) read receipt clears them.
     room.on(RoomEvent.UnreadNotifications, this.onSummariesChanged);
     room.on(RoomEvent.Receipt, this.onSummariesChanged);
+    // Participant names/avatars resolve from membership, which can load/change late.
+    room.on(RoomStateEvent.Members, this.onSummariesMember);
     client.on(MatrixEventEvent.Decrypted, this.onSummariesDecrypted);
     this.refreshSummaries();
   }
@@ -229,6 +283,7 @@ export class ThreadsService {
       room.off(RoomEvent.Timeline, this.onSummariesChanged);
       room.off(RoomEvent.UnreadNotifications, this.onSummariesChanged);
       room.off(RoomEvent.Receipt, this.onSummariesChanged);
+      room.off(RoomStateEvent.Members, this.onSummariesMember);
     }
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(
@@ -276,6 +331,7 @@ export class ThreadsService {
     // listen there too to re-map the optimistic echo just like the main timeline.
     room.on(ThreadEvent.New, this.onThreadCreated);
     room.on(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
+    room.on(RoomStateEvent.Members, this.onThreadMember);
     client.on(MatrixEventEvent.Decrypted, this.onThreadDecrypted);
     this.refreshThread();
   }
@@ -292,6 +348,7 @@ export class ThreadsService {
     if (room) {
       room.off(ThreadEvent.New, this.onThreadCreated);
       room.off(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
+      room.off(RoomStateEvent.Members, this.onThreadMember);
     }
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(
@@ -303,6 +360,7 @@ export class ThreadsService {
     this.threadRoom = null;
     this.threadRoomId = null;
     this.lastReadEventId = null;
+    this.threadRelevantSenders.clear();
     this._openThreadRootId.set(null);
     this._threadMessages.set([]);
     this._canPaginateThread.set(false);
@@ -639,6 +697,12 @@ export class ThreadsService {
       ordered.push(root);
     }
     ordered.push(...replies);
+
+    const relevant = new Set<string>();
+    for (const e of ordered) {
+      collectMessageSenders(room, e, relevant);
+    }
+    this.threadRelevantSenders = relevant;
 
     this._threadMessages.set(
       ordered.map((e) => buildMessageView(client, room, e)),

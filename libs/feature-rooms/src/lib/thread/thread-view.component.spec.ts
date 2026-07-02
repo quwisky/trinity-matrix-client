@@ -110,6 +110,33 @@ describe('ThreadViewComponent', () => {
     expect(el.textContent).toContain('a reply');
   });
 
+  it('keeps the header on a reply that continues the same sender', () => {
+    const { fixture } = build([
+      msg('$root', '@a:hs', 'the root'),
+      {
+        // Same sender and timestamp as the prior message → would group as a
+        // continuation, but a reply must keep its own author + avatar.
+        ...msg('$r1', '@a:hs', 'a reply'),
+        replyTo: {
+          id: '$root',
+          senderName: '@b:hs',
+          senderInitial: 'B',
+          senderAvatarMxc: null,
+          body: 'the root',
+        },
+      },
+    ]);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement;
+    const rows = el.querySelectorAll('.msg');
+    expect(rows.length).toBe(2);
+    expect(el.querySelectorAll('.msg__avatar').length).toBe(2);
+    expect(el.querySelectorAll('.msg--cont').length).toBe(0);
+    expect(rows[1].querySelector('.msg__author')).toBeTruthy();
+    expect(rows[1].querySelector('.msg__reply')).toBeTruthy();
+  });
+
   it('shows an empty state when the thread has no messages', () => {
     const { fixture } = build([]);
     fixture.detectChanges();

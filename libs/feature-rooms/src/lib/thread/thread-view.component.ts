@@ -103,7 +103,11 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
       const showHeader =
         !prev ||
         prev.senderId !== m.senderId ||
-        m.timestamp - prev.timestamp > GROUP_GAP_MS;
+        m.timestamp - prev.timestamp > GROUP_GAP_MS ||
+        // A reply always shows its own header: the quoted preview breaks the
+        // visual flow, so a headerless continuation would look like the reply
+        // lost its author (name + avatar).
+        !!m.replyTo;
       return { ...m, showHeader };
     });
   });

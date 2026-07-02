@@ -5,9 +5,12 @@ import {
   EventType,
   MatrixEventEvent,
   RoomEvent,
+  RoomStateEvent,
   type MatrixClient,
   type MatrixEvent,
   type Room,
+  type RoomMember,
+  type RoomState,
 } from 'matrix-js-sdk';
 import {
   Observable,
@@ -23,6 +26,7 @@ import { MatrixClientService } from './matrix-client.service';
 import { MediaService } from './media.service';
 import {
   buildMessageView,
+  collectMessageSenders,
   isDisplayableMessage,
   reactionsFor,
   type MessageView,
@@ -91,10 +95,33 @@ export class TimelineService {
   // pagination/backfill (which leaves the latest unchanged) doesn't re-ack.
   private lastReadEventId: string | null = null;
 
+  // User ids the current projection renders a member for: every message's sender
+  // (its header) plus every reply's quoted sender (its preview). Recomputed each
+  // refresh; the member listener re-projects only when one of *these* members
+  // loads/changes, so a full lazy member-load doesn't re-map once per member.
+  private relevantSenders = new Set<string>();
+
   private readonly onTimeline = (): void => this.refresh();
   private readonly onLocalEcho = (): void => this.refresh();
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.roomId) {
+      this.refresh();
+    }
+  };
+  // A member's display name/avatar can arrive (lazy loading) or change *after* the
+  // events that reference it — as a header sender or, more subtly, as a reply
+  // preview's quoted sender, which would otherwise stay stuck on the raw mxid +
+  // initials. The room re-emits its state's Members event for both membership and
+  // profile changes; gate on `relevantSenders` so only a referenced member re-maps.
+  private readonly onMember = (
+    _event: MatrixEvent,
+    _state: RoomState,
+    member: RoomMember,
+  ): void => {
+    if (
+      member.roomId === this.roomId &&
+      this.relevantSenders.has(member.userId)
+    ) {
       this.refresh();
     }
   };
@@ -116,6 +143,7 @@ export class TimelineService {
     this.room = room;
     room.on(RoomEvent.Timeline, this.onTimeline);
     room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
+    room.on(RoomStateEvent.Members, this.onMember);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     // Projects the timeline and sends the initial read receipt; subsequent live
     // messages re-ack through the same path (see {@link markRead}).
@@ -126,12 +154,14 @@ export class TimelineService {
   close(): void {
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
     this.room?.off(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
+    this.room?.off(RoomStateEvent.Members, this.onMember);
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);
     }
     this.room = null;
     this.roomId = null;
     this.lastReadEventId = null;
+    this.relevantSenders.clear();
     this.viewCache.clear();
     this._messages.set([]);
     this._canLoadOlder.set(false);
@@ -309,6 +339,7 @@ export class TimelineService {
     const liveTimeline = room.getLiveTimeline();
     const events = liveTimeline.getEvents();
     const seen = new Set<string>();
+    const relevant = new Set<string>();
     const views = events
       // Edit events (m.replace) are aggregated onto their target, so hide them.
       // Threaded replies (`threadRootId` set on a non-root) are projected by
@@ -318,6 +349,7 @@ export class TimelineService {
       .map((e) => {
         const id = e.getId() ?? '';
         seen.add(id);
+        collectMessageSenders(room, e, relevant);
         // Reuse the existing view (preserving its object identity for OnPush)
         // unless something this event renders from has actually changed.
         const rev = eventRevision(client, room, e);
@@ -329,6 +361,7 @@ export class TimelineService {
         this.viewCache.set(id, { rev, view });
         return view;
       });
+    this.relevantSenders = relevant;
     // Drop cache entries for events no longer in the timeline (redacted-away,
     // replaced by their remote id, or scrolled out under a window cap).
     for (const id of [...this.viewCache.keys()]) {
@@ -383,8 +416,8 @@ function isThreadReply(event: MatrixEvent): boolean {
  * A compact fingerprint of every per-event input {@link buildMessageView} reads
  * that can change while the room is open: send status, redaction, decryption,
  * edits (captured via the effective content + replacing-event presence),
- * aggregated reactions, whether the replied-to event is now loaded, and the
- * sender's resolved name/avatar. The projection rebuilds a view only when this
+ * aggregated reactions, the reply preview (see {@link replyTargetSignature}), and
+ * the sender's resolved name/avatar. The projection rebuilds a view only when this
  * changes, so an unchanged message keeps its existing object and its OnPush row
  * is never touched.
  */
@@ -395,7 +428,6 @@ function eventRevision(
 ): string {
   const senderId = event.getSender() ?? '';
   const member = room.getMember(senderId);
-  const replyId = event.replyEventId;
   return [
     event.status ?? '',
     event.isRedacted() ? 'r' : '',
@@ -405,10 +437,36 @@ function eventRevision(
     // cheaper than the DOMPurify pass that a rebuild would otherwise repeat.
     JSON.stringify(event.getContent()),
     reactionSignature(client, room, event),
-    replyId ? (room.findEventById(replyId) ? 'y' : 'n') : '',
+    replyTargetSignature(room, event.replyEventId),
     member?.name ?? senderId,
     member?.getMxcAvatarUrl() ?? '',
   ].join('\x1f');
+}
+
+/**
+ * Signature of a reply's quoted target for {@link eventRevision}: empty when the
+ * event isn't a reply, `'n'` while the target isn't loaded (no preview yet), else
+ * its redaction, body, and — crucially — the quoted sender's resolved name +
+ * avatar. Including the latter re-projects the preview when the quoted member's
+ * profile arrives late (lazy loading), so it stops showing the raw mxid + initials.
+ */
+function replyTargetSignature(room: Room, replyId: string | undefined): string {
+  if (!replyId) {
+    return '';
+  }
+  const target = room.findEventById(replyId);
+  if (!target) {
+    return 'n';
+  }
+  const sender = target.getSender() ?? '';
+  const member = room.getMember(sender);
+  return [
+    'y',
+    target.isRedacted() ? 'r' : '',
+    String(target.getContent()['body'] ?? ''),
+    member?.name || sender,
+    member?.getMxcAvatarUrl() ?? '',
+  ].join('\x02');
 }
 
 /** Stable signature of an event's aggregated reactions (key, count, own flag). */

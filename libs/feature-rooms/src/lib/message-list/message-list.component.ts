@@ -122,7 +122,11 @@ export class MessageListComponent {
       const showHeader =
         !prev ||
         prev.senderId !== m.senderId ||
-        m.timestamp - prev.timestamp > GAP_MS;
+        m.timestamp - prev.timestamp > GAP_MS ||
+        // A reply always shows its own header: the quoted preview breaks the
+        // visual flow, so a headerless continuation would look like the reply
+        // lost its author (name + avatar).
+        !!m.replyTo;
       const cached = this.rowCache.get(m.id);
       const row =
         cached && cached.view === m && cached.showHeader === showHeader
