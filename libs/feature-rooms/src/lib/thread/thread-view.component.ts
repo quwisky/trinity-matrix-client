@@ -14,20 +14,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, type Observable } from 'rxjs';
-import {
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonButtons,
-  IonButton,
-  IonIcon,
-  IonContent,
-  IonFooter,
-  ModalController,
-} from '@ionic/angular/standalone';
+import { DialogRef } from '@angular/cdk/dialog';
+import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { close } from 'ionicons/icons';
-import { TrnAlertService, TrnToastService } from '@trinity/ui-spartan';
+import {
+  TrnAlertService,
+  TrnButtonDirective,
+  TrnToastService,
+} from '@trinity/ui-spartan';
 import {
   ThreadsService,
   isEditableMessage,
@@ -51,22 +46,16 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
  *
  * Orchestration mirrors {@link MessageListComponent} but routes every action
  * through {@link ThreadsService}'s thread-scoped methods, which carry the thread
- * relation so sends/edits/replies stay in the thread. Presented as an Ionic modal
- * (a full-height side panel on desktop, full-screen on mobile) via
- * {@link ThreadPanelService}; `roomId`/`rootEventId` arrive as signal inputs.
+ * relation so sends/edits/replies stay in the thread. Presented via
+ * {@link ThreadPanelService} as a full-height, right-aligned {@link TrnDialogService}
+ * side panel (full-screen on mobile); `roomId`/`rootEventId` arrive as signal inputs.
  */
 @Component({
   selector: 'trn-thread-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonButtons,
-    IonButton,
     IonIcon,
-    IonContent,
-    IonFooter,
+    TrnButtonDirective,
     MessageRowComponent,
     MessageComposerComponent,
   ],
@@ -75,7 +64,8 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 })
 export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly threads = inject(ThreadsService);
-  private readonly modalCtrl = inject(ModalController);
+  private readonly dialogRef =
+    inject<DialogRef<void, ThreadViewComponent>>(DialogRef);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
@@ -140,10 +130,10 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     this.threads.closeThread();
   }
 
-  /** Dismiss the host modal (Output bindings aren't wired on modal components). */
+  /** Close the host dialog (Output bindings aren't wired on dialog components). */
   close(): void {
     this.closed.emit();
-    void this.modalCtrl.dismiss();
+    this.dialogRef.close();
   }
 
   /** Page in older replies for this thread (mirrors the timeline's load-older). */

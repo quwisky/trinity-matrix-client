@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ModalController } from '@ionic/angular/standalone';
+import { DialogRef } from '@angular/cdk/dialog';
 import { ThreadsService, type MessageView } from '@trinity/core';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -67,7 +67,7 @@ function build(
           retryInThread,
         },
       },
-      { provide: ModalController, useValue: { dismiss } },
+      { provide: DialogRef, useValue: { close: dismiss } },
     ],
   });
   const fixture = TestBed.createComponent(ThreadViewComponent);
@@ -144,7 +144,7 @@ describe('ThreadViewComponent', () => {
     expect(fixture.nativeElement.querySelector('.thread__empty')).toBeTruthy();
   });
 
-  it('dismisses the modal on close', () => {
+  it('closes the host dialog on close', () => {
     const { fixture, dismiss } = build();
     fixture.detectChanges();
 

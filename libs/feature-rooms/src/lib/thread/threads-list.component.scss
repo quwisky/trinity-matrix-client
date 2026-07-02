@@ -1,11 +1,9 @@
 @use '../styles/mixins' as *;
 
-ion-content {
-  --background: var(--trinity-chat);
-}
-
+// The scrollable list matches the chat surface (was ion-content's --background).
 .threads {
   padding: 8px;
+  background: var(--trinity-chat);
 }
 
 .threads__empty {

@@ -1,16 +1,20 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-title>Thread</ion-title>
-    <ion-buttons slot="end">
-      <ion-button (click)="close()" aria-label="Close thread">
-        <ion-icon slot="icon-only" name="close" />
-      </ion-button>
-    </ion-buttons>
-  </ion-toolbar>
-</ion-header>
+<div
+  class="flex h-screen w-screen flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg md:w-[480px]"
+>
+  <div class="flex items-center gap-2 border-b border-solid border-border p-3">
+    <h2 class="flex-1 text-base font-semibold">Thread</h2>
+    <button
+      trnBtn
+      variant="ghost"
+      size="icon"
+      (click)="close()"
+      aria-label="Close thread"
+    >
+      <ion-icon name="close" class="text-xl" />
+    </button>
+  </div>
 
-<ion-content>
-  <div class="thread" #scroll>
+  <div class="thread flex-1 overflow-y-auto" #scroll>
     @if (loadingOlder()) {
       <div class="thread__load-older">Loading older replies…</div>
     } @else if (canLoadOlder()) {
@@ -37,19 +41,19 @@
       <div class="thread__empty">No replies in this thread yet.</div>
     }
   </div>
-</ion-content>
 
-<ion-footer class="thread__footer">
-  <trn-message-composer
-    placeholder="Reply…"
-    [editing]="editingId() !== null"
-    [draft]="editingDraft()"
-    [replyingTo]="replyingToName()"
-    [uploadProgress]="uploadProgress()"
-    (submitText)="onSubmit($event)"
-    (submitMedia)="onSendMedia($event)"
-    (cancelEdit)="editingId.set(null)"
-    (cancelReply)="replyingToId.set(null)"
-    (editLast)="editLastOwn()"
-  />
-</ion-footer>
+  <div class="thread__footer">
+    <trn-message-composer
+      placeholder="Reply…"
+      [editing]="editingId() !== null"
+      [draft]="editingDraft()"
+      [replyingTo]="replyingToName()"
+      [uploadProgress]="uploadProgress()"
+      (submitText)="onSubmit($event)"
+      (submitMedia)="onSendMedia($event)"
+      (cancelEdit)="editingId.set(null)"
+      (cancelReply)="replyingToId.set(null)"
+      (editLast)="editLastOwn()"
+    />
+  </div>
+</div>

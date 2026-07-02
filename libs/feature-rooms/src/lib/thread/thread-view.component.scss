@@ -1,9 +1,8 @@
-ion-content {
-  --background: var(--trinity-chat);
-}
-
+// The scrollable replies area matches the chat surface (was ion-content's
+// --background); the card header/footer keep the panel background.
 .thread {
   padding: 16px 16px 8px;
+  background: var(--trinity-chat);
 }
 
 .thread__empty {
@@ -29,13 +28,8 @@ ion-content {
   }
 }
 
-// The composer lives in a footer so it stays pinned while the messages scroll,
-// and Ionic handles the keyboard/safe-area insets on mobile. Match the chat
-// surface and drop the default footer shadow line.
+// The composer footer stays pinned (flex sibling) while the replies scroll;
+// match the chat surface so it blends with the messages above.
 .thread__footer {
   background: var(--trinity-chat);
-
-  &::before {
-    display: none;
-  }
 }
