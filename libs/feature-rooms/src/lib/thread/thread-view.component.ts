@@ -20,7 +20,7 @@ import { addIcons } from 'ionicons';
 import { close } from 'ionicons/icons';
 import {
   TrnAlertService,
-  TrnButtonDirective,
+  HlmButton,
   TrnToastService,
 } from '@trinity/ui-spartan';
 import {
@@ -53,12 +53,7 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 @Component({
   selector: 'trn-thread-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    IonIcon,
-    TrnButtonDirective,
-    MessageRowComponent,
-    MessageComposerComponent,
-  ],
+  imports: [IonIcon, HlmButton, MessageRowComponent, MessageComposerComponent],
   templateUrl: './thread-view.component.html',
   styleUrl: './thread-view.component.scss',
 })

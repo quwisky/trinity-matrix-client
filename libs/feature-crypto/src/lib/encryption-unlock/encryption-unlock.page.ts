@@ -21,7 +21,7 @@ import {
 import { CryptoService } from '@trinity/core';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
 import {
-  TrnButtonDirective,
+  HlmButton,
   TrnInputDirective,
   TrnLabelDirective,
   TrnSpinnerComponent,
@@ -45,7 +45,7 @@ import {
     IonToolbar,
     IonTitle,
     IonContent,
-    TrnButtonDirective,
+    HlmButton,
     TrnInputDirective,
     TrnLabelDirective,
     TrnSpinnerComponent,

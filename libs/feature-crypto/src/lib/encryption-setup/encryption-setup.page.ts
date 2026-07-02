@@ -18,7 +18,7 @@ import {
 } from '@ionic/angular/standalone';
 import {
   TrnAlertService,
-  TrnButtonDirective,
+  HlmButton,
   TrnCheckboxComponent,
   TrnSpinnerComponent,
 } from '@trinity/ui-spartan';
@@ -43,7 +43,7 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
     IonToolbar,
     IonTitle,
     IonContent,
-    TrnButtonDirective,
+    HlmButton,
     TrnCheckboxComponent,
     TrnSpinnerComponent,
     RecoveryKeyDisplayComponent,

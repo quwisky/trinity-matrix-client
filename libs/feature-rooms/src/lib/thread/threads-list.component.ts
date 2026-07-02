@@ -10,7 +10,7 @@ import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { close } from 'ionicons/icons';
 import { AvatarComponent } from '@trinity/ui';
-import { TrnButtonDirective } from '@trinity/ui-spartan';
+import { HlmButton } from '@trinity/ui-spartan';
 import { ThreadsService, type ThreadSummary } from '@trinity/core';
 
 /** Most participant avatars shown per row before the "+N" overflow chip. */
@@ -32,7 +32,7 @@ const MAX_AVATARS = 4;
 @Component({
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, DatePipe, AvatarComponent, TrnButtonDirective],
+  imports: [IonIcon, DatePipe, AvatarComponent, HlmButton],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',
 })

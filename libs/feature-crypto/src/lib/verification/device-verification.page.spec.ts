@@ -55,7 +55,7 @@ function configure(
   return { svc, router, close };
 }
 
-// Body buttons are native `<button trnBtn>`; the routed header's Close is an
+// Body buttons are native `<button hlmBtn>`; the routed header's Close is an
 // `ion-button`; the SAS "They match"/"They don't match"/"Cancel" controls (owned
 // by <trn-sas-compare>, unchanged) are still `ion-button`. Cover both.
 function button(host: HTMLElement, text: string): HTMLElement {

@@ -21,7 +21,7 @@ import {
 } from '@ionic/angular/standalone';
 import { VerificationService } from '@trinity/core';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
-import { TrnButtonDirective, TrnSpinnerComponent } from '@trinity/ui-spartan';
+import { HlmButton, TrnSpinnerComponent } from '@trinity/ui-spartan';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -44,7 +44,7 @@ import { SasCompareComponent } from './sas-compare.component';
     IonContent,
     IonButton,
     IonButtons,
-    TrnButtonDirective,
+    HlmButton,
     SasCompareComponent,
     TrnSpinnerComponent,
   ],

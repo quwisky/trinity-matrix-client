@@ -36,7 +36,7 @@
         </div>
 
         <button
-          trnBtn
+          hlmBtn
           class="login-card__submit w-full"
           [disabled]="busy()"
           (click)="discover()"
@@ -76,7 +76,7 @@
           </div>
 
           <button
-            trnBtn
+            hlmBtn
             class="login-card__submit w-full"
             [disabled]="busy()"
             (click)="loginPassword()"
@@ -88,7 +88,7 @@
         <!-- ── Step 2b: SSO ───────────────────────────────── -->
         @if (ssoSupported()) {
           <button
-            trnBtn
+            hlmBtn
             variant="outline"
             class="login-card__sso w-full"
             [disabled]="busy()"

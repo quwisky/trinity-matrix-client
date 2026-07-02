@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { TrnButtonDirective } from '../button/hlm-button.directive';
+import { HlmButton } from '@trinity/helm/button';
 
 export interface ActionSheetButton {
   text: string;
@@ -22,7 +22,7 @@ export interface ActionSheetData {
   selector: 'trn-action-sheet',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButtonDirective],
+  imports: [HlmButton],
   template: `
     <div
       class="mb-3 w-[min(96vw,26rem)] overflow-hidden rounded-xl border border-solid border-border bg-card p-1.5 shadow-lg"
@@ -36,7 +36,7 @@ export interface ActionSheetData {
       }
       @for (button of data.buttons; track $index) {
         <button
-          trnBtn
+          hlmBtn
           variant="ghost"
           class="w-full justify-center"
           [class.text-destructive]="button.role === 'destructive'"

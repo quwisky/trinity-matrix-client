@@ -12,7 +12,7 @@ import { Browser } from '@capacitor/browser';
 import { Observable, map, switchMap } from 'rxjs';
 import { IonContent } from '@ionic/angular/standalone';
 import {
-  TrnButtonDirective,
+  HlmButton,
   TrnInputDirective,
   TrnLabelDirective,
   TrnSpinnerComponent,
@@ -29,7 +29,7 @@ import { SsoStateStore } from '../sso-state.store';
   imports: [
     FormsModule,
     IonContent,
-    TrnButtonDirective,
+    HlmButton,
     TrnInputDirective,
     TrnLabelDirective,
     TrnSpinnerComponent,

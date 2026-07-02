@@ -33,7 +33,7 @@ function configure(
   return { navigateByUrl, close };
 }
 
-/** Finds a `<button>` whose trimmed text is exactly `text` (native trnBtn only). */
+/** Finds a `<button>` whose trimmed text is exactly `text` (native hlmBtn only). */
 function closeButton(host: HTMLElement): HTMLElement | undefined {
   return [...host.querySelectorAll('button')].find(
     (b) => b.textContent?.trim() === 'Close',

@@ -20,7 +20,7 @@ import {
 } from '@trinity/core';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import {
-  TrnButtonDirective,
+  HlmButton,
   TrnInputDirective,
   TrnSpinnerComponent,
 } from '@trinity/ui-spartan';
@@ -60,7 +60,7 @@ interface HighlightPart {
     IonIcon,
     AvatarComponent,
     TrnSpinnerComponent,
-    TrnButtonDirective,
+    HlmButton,
     TrnInputDirective,
   ],
   template: `
@@ -71,7 +71,7 @@ interface HighlightPart {
         class="flex items-center gap-2 border-b border-solid border-border p-3"
       >
         <h2 class="flex-1 text-base font-semibold">Search messages</h2>
-        <button trnBtn variant="ghost" size="sm" (click)="dismiss()">
+        <button hlmBtn variant="ghost" size="sm" (click)="dismiss()">
           Cancel
         </button>
       </div>
@@ -99,7 +99,7 @@ interface HighlightPart {
               {{ scanned() === 1 ? 'message' : 'messages' }} only.
             </span>
             <button
-              trnBtn
+              hlmBtn
               variant="outline"
               size="sm"
               [disabled]="loadingHistory()"
@@ -122,7 +122,7 @@ interface HighlightPart {
               </span>
             } @else {
               <button
-                trnBtn
+                hlmBtn
                 variant="outline"
                 size="sm"
                 [disabled]="searching()"
@@ -184,7 +184,7 @@ interface HighlightPart {
         @if (serverMode() && serverNextBatch()) {
           <div class="ms-more">
             <button
-              trnBtn
+              hlmBtn
               variant="ghost"
               size="sm"
               [disabled]="searching()"

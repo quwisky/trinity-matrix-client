@@ -24,7 +24,7 @@ import {
 import { AvatarComponent } from '@trinity/ui';
 import {
   DialogRef,
-  TrnButtonDirective,
+  HlmButton,
   TrnInputDirective,
   TrnSpinnerComponent,
 } from '@trinity/ui-spartan';
@@ -49,12 +49,7 @@ const MIN_SEARCH_LENGTH = 2;
 @Component({
   selector: 'trn-user-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    AvatarComponent,
-    TrnSpinnerComponent,
-    TrnButtonDirective,
-    TrnInputDirective,
-  ],
+  imports: [AvatarComponent, TrnSpinnerComponent, HlmButton, TrnInputDirective],
   template: `
     <div
       class="flex h-[560px] max-h-[85vh] w-[92vw] max-w-[460px] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
@@ -62,14 +57,14 @@ const MIN_SEARCH_LENGTH = 2;
       <div
         class="flex items-center gap-2 border-b border-solid border-border p-3"
       >
-        <button trnBtn variant="ghost" size="sm" (click)="cancel()">
+        <button hlmBtn variant="ghost" size="sm" (click)="cancel()">
           Cancel
         </button>
         <h2 class="flex-1 truncate text-center text-base font-semibold">
           {{ title() }}
         </h2>
         <button
-          trnBtn
+          hlmBtn
           size="sm"
           [disabled]="!canConfirm()"
           (click)="confirmTyped()"

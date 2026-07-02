@@ -19,7 +19,7 @@ import {
 import { AvatarComponent } from '@trinity/ui';
 import {
   DialogRef,
-  TrnButtonDirective,
+  HlmButton,
   TrnInputDirective,
   TrnSpinnerComponent,
 } from '@trinity/ui-spartan';
@@ -80,7 +80,7 @@ const KIND_ICON: Record<SwitcherKind, string> = {
     IonIcon,
     AvatarComponent,
     TrnSpinnerComponent,
-    TrnButtonDirective,
+    HlmButton,
     TrnInputDirective,
   ],
   template: `
@@ -91,7 +91,7 @@ const KIND_ICON: Record<SwitcherKind, string> = {
         class="flex items-center gap-2 border-b border-solid border-border p-3"
       >
         <h2 class="flex-1 text-base font-semibold">Jump to…</h2>
-        <button trnBtn variant="ghost" size="sm" (click)="dismiss(null)">
+        <button hlmBtn variant="ghost" size="sm" (click)="dismiss(null)">
           Cancel
         </button>
       </div>

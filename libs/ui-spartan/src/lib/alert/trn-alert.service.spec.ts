@@ -11,7 +11,7 @@ function render(): void {
 
 function clickButton(text: string): void {
   const btns = [
-    ...document.querySelectorAll<HTMLButtonElement>('button[trnBtn]'),
+    ...document.querySelectorAll<HTMLButtonElement>('button[hlmBtn]'),
   ];
   btns.find((b) => b.textContent?.trim() === text)?.click();
 }

@@ -5,7 +5,7 @@ import {
   signal,
 } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { TrnButtonDirective } from '../button/hlm-button.directive';
+import { HlmButton } from '@trinity/helm/button';
 import { TrnInputDirective } from '../input/hlm-input.directive';
 
 /** Payload for {@link TrnAlertDialogComponent}, built by TrnAlertService. */
@@ -34,7 +34,7 @@ export type AlertDialogResult = boolean | string | null;
   selector: 'trn-alert-dialog',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButtonDirective, TrnInputDirective],
+  imports: [HlmButton, TrnInputDirective],
   template: `
     <div
       class="w-[min(90vw,26rem)] rounded-lg border border-solid border-border bg-card p-6 text-card-foreground shadow-lg"
@@ -58,11 +58,11 @@ export type AlertDialogResult = boolean | string | null;
         />
       }
       <div class="mt-6 flex justify-end gap-2">
-        <button trnBtn variant="outline" (click)="onCancel()">
+        <button hlmBtn variant="outline" (click)="onCancel()">
           {{ data.cancelText }}
         </button>
         <button
-          trnBtn
+          hlmBtn
           [variant]="data.destructive ? 'destructive' : 'default'"
           (click)="onConfirm()"
         >

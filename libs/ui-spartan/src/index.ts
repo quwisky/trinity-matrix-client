@@ -4,7 +4,7 @@
 // CDK, styled with Tailwind design tokens. These progressively replace the Ionic
 // components across the app (see MIGRATION.md).
 export * from './lib/core/cn';
-export * from './lib/button/hlm-button.directive';
+export * from '@trinity/helm/button';
 export * from './lib/input/hlm-input.directive';
 export * from './lib/label/hlm-label.directive';
 export * from './lib/spinner/trn-spinner.component';

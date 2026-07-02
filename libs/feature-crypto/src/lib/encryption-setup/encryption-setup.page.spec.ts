@@ -30,7 +30,7 @@ function configure(
 }
 
 function continueButton(host: HTMLElement): HTMLElement {
-  const buttons = [...host.querySelectorAll('button[trnBtn]')] as HTMLElement[];
+  const buttons = [...host.querySelectorAll('button[hlmBtn]')] as HTMLElement[];
   return buttons.find((b) => b.textContent?.includes('Continue'))!;
 }
 

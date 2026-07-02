@@ -8,7 +8,7 @@ function render(): void {
 }
 
 function clickButton(text: string): void {
-  [...document.querySelectorAll<HTMLButtonElement>('button[trnBtn]')]
+  [...document.querySelectorAll<HTMLButtonElement>('button[hlmBtn]')]
     .find((b) => b.textContent?.trim() === text)
     ?.click();
 }
