@@ -75,7 +75,7 @@ describe('SettingsPage', () => {
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelectorAll('trn-radio').length).toBe(3);
+    expect(el.querySelectorAll('hlm-radio').length).toBe(3);
     expect(el.querySelector('[data-testid=theme-system]')).not.toBeNull();
     // The bound preference ('system') is reflected on the native radio input.
     const systemInput = el.querySelector<HTMLInputElement>(

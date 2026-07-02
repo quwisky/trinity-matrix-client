@@ -222,7 +222,7 @@ describe('MessageComposerComponent', () => {
     const cmp = fixture.componentInstance;
     const el = fixture.nativeElement as HTMLElement;
     const wrapper = () => el.querySelector('[data-testid=upload-progress]');
-    const bar = () => el.querySelector('trn-progress') as HTMLElement | null;
+    const bar = () => el.querySelector('hlm-progress') as HTMLElement | null;
 
     // Idle: no progress UI.
     expect(wrapper()).toBeNull();
@@ -232,8 +232,9 @@ describe('MessageComposerComponent', () => {
     fixture.detectChanges();
     expect(wrapper()).not.toBeNull();
     expect(bar()).not.toBeNull();
-    // Determinate → the 0–1 value is exposed on aria-valuenow.
-    expect(Number(bar()?.getAttribute('aria-valuenow'))).toBeCloseTo(0.42, 5);
+    // Determinate → the fraction is exposed as a 0–100 percentage on aria-valuenow
+    // (helm/BrnProgress uses a 0–max scale with max defaulting to 100).
+    expect(Number(bar()?.getAttribute('aria-valuenow'))).toBeCloseTo(42, 5);
     expect(wrapper()?.textContent).toContain('42%');
     expect(cmp.uploadPercent()).toBe(42);
 

@@ -22,7 +22,11 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular/standalone';
-import { TrnRadioComponent, TrnRadioGroupComponent } from '@trinity/ui-spartan';
+import {
+  HlmRadio,
+  HlmRadioGroup,
+  HlmRadioIndicator,
+} from '@trinity/ui-spartan';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import {
   ProfileService,
@@ -55,8 +59,9 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
     IonListHeader,
     IonTitle,
     IonToolbar,
-    TrnRadioComponent,
-    TrnRadioGroupComponent,
+    HlmRadioGroup,
+    HlmRadio,
+    HlmRadioIndicator,
   ],
 })
 export class SettingsPage {

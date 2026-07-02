@@ -17,6 +17,9 @@ const badgeVariants = cva(
         ghost:
           'hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50',
         link: 'text-primary underline-offset-4 hover:underline',
+        // Trinity status variants (ported from TrnBadge). Tokens: theme/spartan.css.
+        success: 'bg-success text-success-foreground [a]:hover:bg-success/80',
+        warning: 'bg-warning text-warning-foreground [a]:hover:bg-warning/80',
       },
     },
     defaultVariants: {

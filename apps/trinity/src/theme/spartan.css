@@ -103,6 +103,21 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+  /*
+   * Indeterminate progress sweep. HlmProgressIndicator toggles
+   * `.animate-indeterminate` when BrnProgress has no value; this animation drives
+   * the fill (a running CSS animation overrides the indicator's inline transform).
+   */
+  --animate-indeterminate: trn-progress-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes trn-progress-indeterminate {
+  0% {
+    transform: translateX(-100%) scaleX(0.4);
+  }
+  100% {
+    transform: translateX(250%) scaleX(0.4);
+  }
 }
 
 /*

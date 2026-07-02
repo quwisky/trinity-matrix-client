@@ -70,17 +70,33 @@
 
   <ion-list>
     <ion-list-header>Appearance</ion-list-header>
-    <trn-radio-group
+    <hlm-radio-group
       class="px-4 py-2"
       [value]="theme.preference()"
       (valueChange)="onThemeChange($event)"
     >
-      <trn-radio value="system" data-testid="theme-system">
+      <label
+        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+        data-testid="theme-system"
+      >
+        <hlm-radio value="system"><hlm-radio-indicator /></hlm-radio>
         Use system setting
-      </trn-radio>
-      <trn-radio value="light" data-testid="theme-light">Light</trn-radio>
-      <trn-radio value="dark" data-testid="theme-dark">Dark</trn-radio>
-    </trn-radio-group>
+      </label>
+      <label
+        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+        data-testid="theme-light"
+      >
+        <hlm-radio value="light"><hlm-radio-indicator /></hlm-radio>
+        Light
+      </label>
+      <label
+        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+        data-testid="theme-dark"
+      >
+        <hlm-radio value="dark"><hlm-radio-indicator /></hlm-radio>
+        Dark
+      </label>
+    </hlm-radio-group>
     <p class="setting-note">Showing the {{ theme.resolved() }} theme.</p>
   </ion-list>
 

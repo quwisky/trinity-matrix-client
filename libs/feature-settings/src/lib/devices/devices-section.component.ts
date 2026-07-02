@@ -20,7 +20,7 @@ import {
   shieldCheckmarkOutline,
   trashOutline,
 } from 'ionicons/icons';
-import { TrnAlertService, TrnBadgeDirective } from '@trinity/ui-spartan';
+import { TrnAlertService, HlmBadge } from '@trinity/ui-spartan';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
 
@@ -42,7 +42,7 @@ import { DevicesService, type DeviceInfo } from '@trinity/core';
     IonLabel,
     IonList,
     IonListHeader,
-    TrnBadgeDirective,
+    HlmBadge,
   ],
 })
 export class DevicesSectionComponent {

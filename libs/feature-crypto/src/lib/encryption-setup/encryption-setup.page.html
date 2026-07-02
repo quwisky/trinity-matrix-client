@@ -20,13 +20,15 @@
 
     <trn-recovery-key-display [recoveryKey]="key" />
 
-    <trn-checkbox
-      class="confirm"
-      [checked]="confirmedSaved()"
-      (checkedChange)="confirmedSaved.set($event)"
+    <label
+      class="confirm flex cursor-pointer items-center gap-2 text-sm font-medium"
     >
+      <hlm-checkbox
+        [checked]="confirmedSaved()"
+        (checkedChange)="confirmedSaved.set($event)"
+      />
       I've saved my recovery key somewhere safe
-    </trn-checkbox>
+    </label>
 
     <button
       hlmBtn

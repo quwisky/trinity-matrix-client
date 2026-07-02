@@ -19,7 +19,7 @@ import {
 import {
   TrnAlertService,
   HlmButton,
-  TrnCheckboxComponent,
+  HlmCheckbox,
   HlmSpinner,
 } from '@trinity/ui-spartan';
 import { CryptoService, type PasswordPrompt } from '@trinity/core';
@@ -44,7 +44,7 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
     IonTitle,
     IonContent,
     HlmButton,
-    TrnCheckboxComponent,
+    HlmCheckbox,
     HlmSpinner,
     RecoveryKeyDisplayComponent,
   ],

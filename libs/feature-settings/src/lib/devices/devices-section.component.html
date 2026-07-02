@@ -7,12 +7,12 @@
         <h2>
           <span class="device-name">{{ device.displayName }}</span>
           @if (device.isCurrent) {
-            <span trnBadge>This device</span>
+            <span hlmBadge>This device</span>
           }
           @if (device.isVerified) {
-            <span trnBadge variant="success">Verified</span>
+            <span hlmBadge variant="success">Verified</span>
           } @else {
-            <span trnBadge variant="warning">Unverified</span>
+            <span hlmBadge variant="warning">Unverified</span>
           }
         </h2>
         <p>{{ device.id }}</p>
