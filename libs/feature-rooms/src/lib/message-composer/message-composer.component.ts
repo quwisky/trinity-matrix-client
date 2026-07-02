@@ -12,8 +12,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { IonIcon, ToastController } from '@ionic/angular/standalone';
-import { TrnProgressComponent } from '@trinity/ui-spartan';
+import { IonIcon } from '@ionic/angular/standalone';
+import { TrnProgressComponent, TrnToastService } from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import { addOutline, happyOutline, send } from 'ionicons/icons';
 import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
@@ -96,7 +96,7 @@ export class MessageComposerComponent {
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('fileInput');
   private readonly picker = inject(MediaPickerService);
-  private readonly toast = inject(ToastController);
+  private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly emojiSearch = inject(EmojiSearch);
   private readonly emojiService = inject(EmojiService);
@@ -317,15 +317,11 @@ export class MessageComposerComponent {
   }
 
   /** Surface a gallery-picker failure (notably denied photo access) as a toast. */
-  private async showAttachError(err: unknown): Promise<void> {
-    const toast = await this.toast.create({
-      message:
-        err instanceof Error ? err.message : 'Could not open the gallery.',
-      duration: 4000,
-      color: 'danger',
-      position: 'bottom',
-    });
-    await toast.present();
+  private showAttachError(err: unknown): void {
+    this.toast.show(
+      err instanceof Error ? err.message : 'Could not open the gallery.',
+      { duration: 4000, variant: 'destructive' },
+    );
   }
 
   /** Hidden file input change → emit the picked file, then reset for re-picking. */

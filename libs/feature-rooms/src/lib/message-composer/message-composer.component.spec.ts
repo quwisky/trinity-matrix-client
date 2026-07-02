@@ -1,25 +1,21 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ToastController } from '@ionic/angular/standalone';
 import { throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import { ThemeService } from '@trinity/core';
+import { TrnToastService } from '@trinity/ui-spartan';
 import { MessageComposerComponent } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 
 describe('MessageComposerComponent', () => {
-  let toastCreate: ReturnType<typeof vi.fn>;
+  let toastShow: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    toastCreate = vi
-      .fn()
-      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    toastShow = vi.fn();
     TestBed.configureTestingModule({
       imports: [MessageComposerComponent],
-      providers: [
-        { provide: ToastController, useValue: { create: toastCreate } },
-      ],
+      providers: [{ provide: TrnToastService, useValue: { show: toastShow } }],
     });
   });
 
@@ -212,13 +208,11 @@ describe('MessageComposerComponent', () => {
     fixture.detectChanges();
 
     fixture.componentInstance.onAttach();
-    await Promise.resolve(); // let the error handler's toast.create settle
+    await Promise.resolve(); // let the error handler's toast settle
 
-    expect(toastCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        color: 'danger',
-        message: expect.stringContaining('Photo access is denied'),
-      }),
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.stringContaining('Photo access is denied'),
+      expect.objectContaining({ variant: 'destructive', duration: 4000 }),
     );
   });
 

@@ -13,3 +13,5 @@ export * from './lib/radio/trn-radio.component';
 export * from './lib/badge/trn-badge.directive';
 export * from './lib/checkbox/trn-checkbox.component';
 export * from './lib/progress/trn-progress.component';
+export * from './lib/toast/trn-toast.service';
+export * from './lib/toast/trn-toast-container.component';
