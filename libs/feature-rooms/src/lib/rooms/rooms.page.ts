@@ -14,7 +14,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
 import {
-  ActionSheetController,
   IonSplitPane,
   IonMenu,
   IonMenuButton,
@@ -27,7 +26,11 @@ import {
   MenuController,
   ModalController,
 } from '@ionic/angular/standalone';
-import { TrnAlertService, TrnToastService } from '@trinity/ui-spartan';
+import {
+  TrnActionSheetService,
+  TrnAlertService,
+  TrnToastService,
+} from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import {
   chatbubblesOutline,
@@ -114,7 +117,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly modalCtrl = inject(ModalController);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
-  private readonly actionSheetCtrl = inject(ActionSheetController);
+  private readonly actionSheet = inject(TrnActionSheetService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly activeSpaceId = signal<string | null>(null);
@@ -462,8 +465,8 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   /** Home "+": choose between creating a room and starting a DM. */
-  async onNewChat(): Promise<void> {
-    const sheet = await this.actionSheetCtrl.create({
+  onNewChat(): void {
+    this.actionSheet.open({
       header: 'New message',
       buttons: [
         { text: 'Create a room', handler: () => void this.onCreateRoom() },
@@ -474,7 +477,6 @@ export class RoomsPage implements OnInit, OnDestroy {
         { text: 'Cancel', role: 'cancel' },
       ],
     });
-    await sheet.present();
   }
 
   /** Prompt for a name, create a standalone encrypted room, then select it. */

@@ -17,3 +17,9 @@ export * from './lib/toast/trn-toast.service';
 export * from './lib/toast/trn-toast-container.component';
 export * from './lib/alert/trn-alert.service';
 export * from './lib/alert/trn-alert-dialog.component';
+export * from './lib/action-sheet/trn-action-sheet.service';
+export * from './lib/action-sheet/trn-action-sheet.component';
+export * from './lib/dialog/trn-dialog.service';
+// Re-exported so modal'd components close themselves via @trinity/ui-spartan
+// (inject(DialogRef).close(data)) instead of importing @angular/cdk directly.
+export { DialogRef } from '@angular/cdk/dialog';

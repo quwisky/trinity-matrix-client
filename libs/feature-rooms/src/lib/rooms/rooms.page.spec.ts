@@ -1,11 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import {
-  ActionSheetController,
-  MenuController,
-  ModalController,
-} from '@ionic/angular/standalone';
+import { MenuController, ModalController } from '@ionic/angular/standalone';
 import {
   AuthService,
   CryptoService,
@@ -21,7 +17,11 @@ import {
   type SpaceChildRoom,
   type SpaceSummary,
 } from '@trinity/core';
-import { TrnAlertService, TrnToastService } from '@trinity/ui-spartan';
+import {
+  TrnActionSheetService,
+  TrnAlertService,
+  TrnToastService,
+} from '@trinity/ui-spartan';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
@@ -103,7 +103,7 @@ describe('RoomsPage action error feedback', () => {
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
@@ -279,7 +279,7 @@ describe('RoomsPage space filtering', () => {
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
@@ -370,7 +370,7 @@ describe('RoomsPage space actions', () => {
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
@@ -588,7 +588,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           provide: TrnAlertService,
           useValue: { confirm: vi.fn(), prompt: alertPrompt },
         },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
         { provide: TrnToastService, useValue: { show: toastShow } },
       ],
     });
@@ -712,13 +712,13 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('opens the new-chat action sheet on Home', async () => {
     const page = build();
-    const sheetCreate = TestBed.inject(ActionSheetController)
-      .create as ReturnType<typeof vi.fn>;
-    sheetCreate.mockResolvedValue({ present: vi.fn() });
+    const sheetOpen = TestBed.inject(TrnActionSheetService).open as ReturnType<
+      typeof vi.fn
+    >;
 
-    await page.onNewChat();
+    page.onNewChat();
 
-    expect(sheetCreate).toHaveBeenCalledWith(
+    expect(sheetOpen).toHaveBeenCalledWith(
       expect.objectContaining({
         buttons: expect.arrayContaining([
           expect.objectContaining({ text: 'Create a room' }),
@@ -829,7 +829,7 @@ describe('RoomsPage space hierarchy actions', () => {
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
@@ -991,7 +991,7 @@ describe('RoomsPage quick switcher', () => {
           provide: TrnAlertService,
           useValue: { confirm: vi.fn(), prompt: vi.fn() },
         },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
         { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
     });
