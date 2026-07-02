@@ -119,7 +119,7 @@
   }
 
   &.decline:hover {
-    color: var(--ion-color-danger);
+    color: var(--destructive);
   }
 }
 
@@ -216,7 +216,7 @@
   opacity: 0;
 
   &:hover {
-    color: var(--ion-color-danger);
+    color: var(--destructive);
   }
 }
 
@@ -278,7 +278,7 @@
 }
 
 .empty--error {
-  color: var(--ion-color-danger);
+  color: var(--destructive);
 }
 
 .userbar {

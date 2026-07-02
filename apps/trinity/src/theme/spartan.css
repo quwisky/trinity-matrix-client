@@ -1,18 +1,18 @@
 /*
  * spartan.ng design tokens + Tailwind v4 for @trinity/ui-spartan.
  *
- * Loaded as its own entry in the app's `styles` (see project.json). Preflight is
- * intentionally omitted — we import only the `theme` and `utilities` layers — so
- * Tailwind never resets Ionic's base styles; helm components that draw a border
- * therefore carry `border-solid` (that reset is what would set border-style).
+ * Loaded as its own entry in the app's `styles` (see project.json). Now that Ionic
+ * is gone, Tailwind's `preflight` is the app's base reset (box-sizing, margin/padding
+ * reset, `border: 0 solid` so bare `border` utilities render, form-control reset that
+ * the raw <button> rows rely on) — it used to be omitted to avoid fighting Ionic.
  *
- * `--primary` is Trinity blurple (#5865f2 ≈ hsl(235 86% 65%)) so helm buttons
- * match the brand accent Ionic already uses. `@theme inline` maps the tokens to
- * Tailwind color utilities *by reference*, so flipping `.ion-palette-dark` (the
- * class ThemeService toggles on <html>) re-themes helm components at runtime.
+ * `--primary` is Trinity blurple (#5865f2 ≈ hsl(235 86% 65%)). `@theme inline` maps
+ * the tokens to Tailwind color utilities *by reference*, so flipping `.ion-palette-dark`
+ * (the class ThemeService toggles on <html>) re-themes at runtime.
  */
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
 @import 'tailwindcss/utilities.css' layer(utilities);
 @import 'tw-animate-css';
 
@@ -117,23 +117,5 @@
   }
   100% {
     transform: translateX(250%) scaleX(0.4);
-  }
-}
-
-/*
- * Preflight is omitted (see the header note), so Tailwind's `*{ border-style: solid }`
- * reset is absent and a bare `border` utility would set width but no style — drawing
- * nothing. The canonical spartan/helm components use bare `border` (their styles are
- * the nova utilities inlined at generation), so restore just that one reset in the
- * low-precedence base layer. Explicit `border-dashed`/component `border-*` styles still
- * win; Ionic internals are shadow DOM and unaffected (light-DOM hosts get border-style
- * with width 0 = nothing visible).
- */
-@layer base {
-  *,
-  ::before,
-  ::after {
-    --tw-border-style: solid;
-    border-style: solid;
   }
 }

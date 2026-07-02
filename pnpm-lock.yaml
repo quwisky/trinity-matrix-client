@@ -83,9 +83,6 @@ importers:
       '@ctrl/ngx-emoji-mart':
         specifier: ^9.3.0
         version: 9.3.0(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1))
-      '@ionic/angular':
-        specifier: ^8.0.0
-        version: 8.8.12(5c6d335c6c897ae0aa8e97073644bc9e)
       '@matrix-org/matrix-sdk-crypto-wasm':
         specifier: ^18.3.1
         version: 18.3.1
@@ -171,9 +168,6 @@ importers:
       '@commitlint/config-angular':
         specifier: ^21.1.0
         version: 21.1.0
-      '@ionic/angular-toolkit':
-        specifier: ^12.0.0
-        version: 12.3.0(chokidar@5.0.0)
       '@nx/angular':
         specifier: 23.0.1
         version: 23.0.1(993d6aa81db97f7bebe4d8b9647996de)
@@ -2245,25 +2239,9 @@ packages:
       '@types/node':
         optional: true
 
-  '@ionic/angular-toolkit@12.3.0':
-    resolution: {integrity: sha512-9cPTMmwggviB2W7wf4sv4vFeQnYq5HbO6V89UqQHopShokdhSvUFpaQ2w1/Mdf/ot8PghGjR3t5IdnXV7i1LvA==}
-
-  '@ionic/angular@8.8.12':
-    resolution: {integrity: sha512-itZTT2i7G5c2Uv6VV2wow3FKjW8R8YIkwuQAJjO9o0SlzngSbA6HIZ6lS7h0FkYvle1VZreWdkvS21wbHs0hnA==}
-    peerDependencies:
-      '@angular/core': '>=16.0.0'
-      '@angular/forms': '>=16.0.0'
-      '@angular/router': '>=16.0.0'
-      rxjs: '>=7.5.0'
-      zone.js: '>=0.13.0'
-
   '@ionic/cli-framework-output@2.2.8':
     resolution: {integrity: sha512-TshtaFQsovB4NWRBydbNFawql6yul7d5bMiW1WYYf17hd99V6xdDdk3vtF51bw6sLkxON3bDQpWsnUc9/hVo3g==}
     engines: {node: '>=16.0.0'}
-
-  '@ionic/core@8.8.12':
-    resolution: {integrity: sha512-nR3Us+NICa4eACvPXb4yUzza1URxQ23ELjjLmK1KRFHlk4DhhlzNrYAad0aibTRFh4toXqvFMTADFPB+JiTTFg==}
-    engines: {node: '>= 16'}
 
   '@ionic/utils-array@2.1.6':
     resolution: {integrity: sha512-0JZ1Zkp3wURnv8oq6Qt7fMPo5MpjbLoUoa9Bu2Q4PJuSDWM8H8gwF3dQO7VTeUj3/0o1IB1wGkFWZZYgUXZMUg==}
@@ -5830,9 +5808,6 @@ packages:
 
   ionicons@7.4.0:
     resolution: {integrity: sha512-ZK94MMqgzMCPPMhmk8Ouu6goyVHFIlw/ACP6oe3FrikcI0N7CX0xcwVaEbUc0G/v3W0shI93vo+9ve/KpvcNhQ==}
-
-  ionicons@8.0.13:
-    resolution: {integrity: sha512-2QQVyG2P4wszne79jemMjWYLp0DBbDhr4/yFroPCxvPP1wtMxgdIV3l5n+XZ5E9mgoXU79w7yTWpm2XzJsISxQ==}
 
   ip-address@10.2.0:
     resolution: {integrity: sha512-/+S6j4E9AHvW9SWMSEY9Xfy66O5PWvVEJ08O0y5JGyEKQpojb0K0GKpz/v5HJ/G0vi3D2sjGK78119oXZeE0qA==}
@@ -11720,26 +11695,6 @@ snapshots:
     optionalDependencies:
       '@types/node': 22.20.0
 
-  '@ionic/angular-toolkit@12.3.0(chokidar@5.0.0)':
-    dependencies:
-      '@angular-devkit/core': 20.3.30(chokidar@5.0.0)
-      '@angular-devkit/schematics': 20.3.30(chokidar@5.0.0)
-      '@schematics/angular': 20.3.28(chokidar@5.0.0)
-    transitivePeerDependencies:
-      - chokidar
-
-  '@ionic/angular@8.8.12(5c6d335c6c897ae0aa8e97073644bc9e)':
-    dependencies:
-      '@angular/core': 21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1)
-      '@angular/forms': 21.2.9(@angular/common@21.2.9(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@21.2.9(@angular/animations@21.2.9(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@21.2.9(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
-      '@angular/router': 21.2.9(@angular/common@21.2.9(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@21.2.9(@angular/animations@21.2.9(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@21.2.9(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
-      '@ionic/core': 8.8.12
-      ionicons: 8.0.13
-      jsonc-parser: 3.3.1
-      rxjs: 7.8.2
-      tslib: 2.8.1
-      zone.js: 0.15.1
-
   '@ionic/cli-framework-output@2.2.8':
     dependencies:
       '@ionic/utils-terminal': 2.3.5
@@ -11747,12 +11702,6 @@ snapshots:
       tslib: 2.8.1
     transitivePeerDependencies:
       - supports-color
-
-  '@ionic/core@8.8.12':
-    dependencies:
-      '@stencil/core': 4.43.5
-      ionicons: 8.0.13
-      tslib: 2.8.1
 
   '@ionic/utils-array@2.1.6':
     dependencies:
@@ -16098,10 +16047,6 @@ snapshots:
       side-channel: 1.1.1
 
   ionicons@7.4.0:
-    dependencies:
-      '@stencil/core': 4.43.5
-
-  ionicons@8.0.13:
     dependencies:
       '@stencil/core': 4.43.5
 

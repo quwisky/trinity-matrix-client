@@ -1,41 +1,12 @@
 /*
  * App Global CSS
  * ----------------------------------------------------------------------------
- * Put style rules here that you want to apply globally. These styles are for
- * the entire app and not just one component. Additionally, this file can be
- * used as an entry point to import other CSS/Sass files to be included in the
- * output CSS.
- * For more information on global stylesheets, visit the documentation:
- * https://ionicframework.com/docs/layout/global-stylesheets
+ * Global styles for the whole app. Ionic is fully removed: the base reset now comes
+ * from Tailwind's preflight (imported in theme/spartan.css) and the design tokens
+ * from theme/variables.scss. Dark mode is still keyed off the `.ion-palette-dark`
+ * class ThemeService toggles on <html> (variables.scss + spartan.css define the
+ * dark ramp under it) — the class name is kept purely as that marker.
  */
-
-/* Core CSS required for Ionic components to work properly */
-@import '@ionic/angular/css/core.css';
-
-/* Basic CSS for apps built with Ionic */
-@import '@ionic/angular/css/normalize.css';
-@import '@ionic/angular/css/structure.css';
-@import '@ionic/angular/css/typography.css';
-@import '@ionic/angular/css/display.css';
-
-/* Optional CSS utils that can be commented out */
-@import '@ionic/angular/css/padding.css';
-@import '@ionic/angular/css/float-elements.css';
-@import '@ionic/angular/css/text-alignment.css';
-@import '@ionic/angular/css/text-transformation.css';
-@import '@ionic/angular/css/flex-utils.css';
-
-/**
- * Ionic Dark Mode
- * -----------------------------------------------------
- * For more info, please see:
- * https://ionicframework.com/docs/theming/dark-mode
- */
-
-/* Class-based dark palette: Ionic's dark tokens apply only under `.ion-palette-dark`
- * (toggled on <html> by ThemeService). With the class absent, Ionic's light defaults
- * apply — so light mode works without us re-deriving Ionic's full token ramp. */
-@import '@ionic/angular/css/palettes/dark.class.css';
 
 /*
  * Keyboard-focus baseline. The custom Discord-style controls strip native

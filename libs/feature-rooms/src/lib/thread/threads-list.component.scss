@@ -117,7 +117,7 @@
   padding: 0 6px;
   border-radius: 9px;
   background: var(--trinity-accent);
-  color: var(--ion-color-primary-contrast);
+  color: var(--primary-foreground);
   font-size: 12px;
   font-weight: 700;
   line-height: 18px;
@@ -125,6 +125,6 @@
 }
 
 .thread-item__badge--highlight {
-  background: var(--ion-color-danger);
-  color: var(--ion-color-danger-contrast);
+  background: var(--destructive);
+  color: var(--destructive-foreground);
 }
