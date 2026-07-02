@@ -22,6 +22,7 @@ import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
+import { provideSpartanHlm } from '@trinity/helm/utils';
 
 import { routes } from './app/app.routes';
 import { AppComponent } from './app/app.component';
@@ -40,6 +41,9 @@ const isElectron =
 bootstrapApplication(AppComponent, {
   providers: [
     provideZoneChangeDetection(),
+    // Spartan/helm CDK-overlay default: disable Angular 21's usePopover so helm
+    // dialogs/tooltips render above position:fixed elements (e.g. the toaster).
+    provideSpartanHlm(),
     { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
     // Move focus into the entering page during a route transition (before the
     // leaving page is `aria-hidden`/`ion-page-hidden`). Without this Ionic's focus

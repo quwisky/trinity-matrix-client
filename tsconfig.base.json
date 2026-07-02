@@ -1,4 +1,3 @@
-/* Workspace-wide TypeScript options + path aliases. Projects extend this. */
 {
   "compileOnSave": false,
   "compilerOptions": {
@@ -29,7 +28,21 @@
       "@trinity/feature-rooms": ["libs/feature-rooms/src/index.ts"],
       "@trinity/feature-settings": ["libs/feature-settings/src/index.ts"],
       "@trinity/ui": ["libs/ui/src/index.ts"],
-      "@trinity/ui-spartan": ["libs/ui-spartan/src/index.ts"]
+      "@trinity/ui-spartan": ["libs/ui-spartan/src/index.ts"],
+      "@trinity/helm/button": ["./libs/spartan/button/src/index.ts"],
+      "@trinity/helm/utils": ["./libs/spartan/utils/src/index.ts"],
+      "@trinity/helm/input": ["./libs/spartan/input/src/index.ts"],
+      "@trinity/helm/label": ["./libs/spartan/label/src/index.ts"],
+      "@trinity/helm/badge": ["./libs/spartan/badge/src/index.ts"],
+      "@trinity/helm/checkbox": ["./libs/spartan/checkbox/src/index.ts"],
+      "@trinity/helm/radio-group": ["./libs/spartan/radio-group/src/index.ts"],
+      "@trinity/helm/progress": ["./libs/spartan/progress/src/index.ts"],
+      "@trinity/helm/spinner": ["./libs/spartan/spinner/src/index.ts"],
+      "@trinity/helm/dialog": ["./libs/spartan/dialog/src/index.ts"],
+      "@trinity/helm/alert-dialog": [
+        "./libs/spartan/alert-dialog/src/index.ts"
+      ],
+      "@trinity/helm/sonner": ["./libs/spartan/sonner/src/index.ts"]
     }
   },
   "angularCompilerOptions": {

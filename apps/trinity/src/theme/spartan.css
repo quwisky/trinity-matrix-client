@@ -104,3 +104,21 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 }
+
+/*
+ * Preflight is omitted (see the header note), so Tailwind's `*{ border-style: solid }`
+ * reset is absent and a bare `border` utility would set width but no style — drawing
+ * nothing. The canonical spartan/helm components use bare `border` (their styles are
+ * the nova utilities inlined at generation), so restore just that one reset in the
+ * low-precedence base layer. Explicit `border-dashed`/component `border-*` styles still
+ * win; Ionic internals are shadow DOM and unaffected (light-DOM hosts get border-style
+ * with width 0 = nothing visible).
+ */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    --tw-border-style: solid;
+    border-style: solid;
+  }
+}

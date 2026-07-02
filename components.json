@@ -1,0 +1,7 @@
+{
+  "componentsPath": "libs/spartan",
+  "buildable": false,
+  "generateAs": "library",
+  "style": "nova",
+  "importAlias": "@trinity/helm"
+}
