@@ -84,34 +84,25 @@
   margin-bottom: 16px;
 }
 
-// ion-input: Discord-style rounded fill box with blurple focus ring and
-// uppercase / muted stacked label.
-// CSS custom-properties cascade through shadow-DOM so setting them on the host
-// is the correct Ionic theming approach.
-// ::part(label) is the shadow part exported by ion-input in Ionic 8 for the
-// label element. Angular's emulated encapsulation appends its content attribute
-// to the host selector, which is valid with ::part().
-ion-input {
-  --background: var(--trinity-active);
-  --border-width: 0;
-  --border-radius: var(--trinity-radius);
-  --color: var(--trinity-text-bright);
-  --highlight-color-focused: var(--trinity-accent);
-  --padding-start: 12px;
-  --padding-end: 12px;
-  --padding-top: 10px;
-  --padding-bottom: 10px;
-  --placeholder-color: var(--trinity-text-muted);
-  --placeholder-opacity: 1;
+// Stacked field label (trnLabel) — uppercase / muted, matching the prior Ionic
+// look. View-encapsulation specificity beats the trnLabel Tailwind utilities.
+.login-card__label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--trinity-text-muted);
+}
 
-  &::part(label) {
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--trinity-text-muted);
-    margin-bottom: 8px;
-  }
+// Native field (trnInput) — Discord-style filled box on the card surface so it
+// reads consistently in light + dark; the spartan border/ring stays for focus.
+.login-card__field input {
+  width: 100%;
+  background: var(--trinity-active);
+  color: var(--trinity-text-bright);
+  border-color: transparent;
 }
 
 // Primary action buttons (Continue / Sign in) — default to --ion-color-primary

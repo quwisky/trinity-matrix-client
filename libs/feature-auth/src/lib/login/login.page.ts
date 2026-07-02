@@ -10,13 +10,13 @@ import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { Observable, map, switchMap } from 'rxjs';
+import { IonContent } from '@ionic/angular/standalone';
 import {
-  IonContent,
-  IonInput,
-  IonButton,
-  IonText,
-  IonSpinner,
-} from '@ionic/angular/standalone';
+  TrnButtonDirective,
+  TrnInputDirective,
+  TrnLabelDirective,
+  TrnSpinnerComponent,
+} from '@trinity/ui-spartan';
 import { AuthService } from '@trinity/core';
 import { runWithBusy } from '@trinity/ui';
 import { SsoStateStore } from '../sso-state.store';
@@ -26,7 +26,14 @@ import { SsoStateStore } from '../sso-state.store';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'login.page.html',
   styleUrl: 'login.page.scss',
-  imports: [FormsModule, IonContent, IonInput, IonButton, IonText, IonSpinner],
+  imports: [
+    FormsModule,
+    IonContent,
+    TrnButtonDirective,
+    TrnInputDirective,
+    TrnLabelDirective,
+    TrnSpinnerComponent,
+  ],
 })
 export class LoginPage {
   private readonly auth = inject(AuthService);

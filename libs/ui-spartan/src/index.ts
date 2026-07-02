@@ -7,3 +7,4 @@ export * from './lib/core/cn';
 export * from './lib/button/hlm-button.directive';
 export * from './lib/input/hlm-input.directive';
 export * from './lib/label/hlm-label.directive';
+export * from './lib/spinner/trn-spinner.component';
