@@ -228,10 +228,7 @@ describe('MessageComposerComponent', () => {
     const cmp = fixture.componentInstance;
     const el = fixture.nativeElement as HTMLElement;
     const wrapper = () => el.querySelector('[data-testid=upload-progress]');
-    const bar = () =>
-      el.querySelector('ion-progress-bar') as
-        | (HTMLElement & { value: number; type: string })
-        | null;
+    const bar = () => el.querySelector('trn-progress') as HTMLElement | null;
 
     // Idle: no progress UI.
     expect(wrapper()).toBeNull();
@@ -241,8 +238,8 @@ describe('MessageComposerComponent', () => {
     fixture.detectChanges();
     expect(wrapper()).not.toBeNull();
     expect(bar()).not.toBeNull();
-    expect(bar()?.value).toBeCloseTo(0.42, 5);
-    expect(bar()?.type).toBe('determinate');
+    // Determinate → the 0–1 value is exposed on aria-valuenow.
+    expect(Number(bar()?.getAttribute('aria-valuenow'))).toBeCloseTo(0.42, 5);
     expect(wrapper()?.textContent).toContain('42%');
     expect(cmp.uploadPercent()).toBe(42);
 
@@ -250,7 +247,8 @@ describe('MessageComposerComponent', () => {
     fixture.componentRef.setInput('uploadProgress', 0);
     fixture.detectChanges();
     expect(wrapper()).not.toBeNull();
-    expect(bar()?.type).toBe('indeterminate');
+    // Indeterminate → no aria-valuenow.
+    expect(bar()?.getAttribute('aria-valuenow')).toBeNull();
     expect(wrapper()?.textContent).not.toContain('%');
 
     // Upload finished → null clears the bar (and re-enables the attach button).

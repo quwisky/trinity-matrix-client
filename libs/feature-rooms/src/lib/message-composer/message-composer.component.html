@@ -16,8 +16,8 @@
 
 @if (uploadProgress() !== null) {
   <div class="composer__upload" data-testid="upload-progress">
-    <ion-progress-bar
-      [type]="uploadDeterminate() ? 'determinate' : 'indeterminate'"
+    <trn-progress
+      [indeterminate]="!uploadDeterminate()"
       [value]="uploadProgress() ?? 0"
       aria-label="Uploading attachment"
     />

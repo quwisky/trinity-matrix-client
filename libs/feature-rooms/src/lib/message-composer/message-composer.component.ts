@@ -12,11 +12,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import {
-  IonIcon,
-  IonProgressBar,
-  ToastController,
-} from '@ionic/angular/standalone';
+import { IonIcon, ToastController } from '@ionic/angular/standalone';
+import { TrnProgressComponent } from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import { addOutline, happyOutline, send } from 'ionicons/icons';
 import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
@@ -49,7 +46,7 @@ const EMOJI_SUGGESTION_LIMIT = 8;
 @Component({
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, IonProgressBar, PickerComponent],
+  imports: [IonIcon, PickerComponent, TrnProgressComponent],
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
 })
