@@ -1101,3 +1101,124 @@ describe('RoomsPage quick switcher', () => {
     expect(page.messageSearchTarget()).toBeNull();
   });
 });
+
+// The channel sidebar renders as a static column at md+ and an overlay drawer
+// below that breakpoint. `drawerOpen` tracks the overlay's visibility; picking a
+// room (mobile's primary path to the sidebar) should collapse it again.
+describe('RoomsPage mobile nav drawer', () => {
+  let timelineOpen: ReturnType<typeof vi.fn>;
+  let threadsOpen: ReturnType<typeof vi.fn>;
+  let releaseAll: ReturnType<typeof vi.fn>;
+
+  function build(): RoomsPage {
+    timelineOpen = vi.fn();
+    threadsOpen = vi.fn();
+    releaseAll = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        {
+          provide: RoomsService,
+          useValue: {
+            connect: vi.fn(),
+            rooms: signal<RoomSummary[]>([]),
+            revision: signal(0),
+            membersOf: () => [],
+          },
+        },
+        {
+          provide: SpacesService,
+          useValue: {
+            connect: vi.fn(),
+            openSpace: vi.fn(),
+            spaces: signal<SpaceSummary[]>([]),
+            childRoomIds: () => [],
+          },
+        },
+        {
+          provide: TimelineService,
+          useValue: { open: timelineOpen, close: vi.fn() },
+        },
+        { provide: MediaService, useValue: { releaseAll } },
+        {
+          provide: MatrixClientService,
+          useValue: {
+            isInitialized: true,
+            instance: { getUserId: () => '@me:hs', getUser: () => null },
+          },
+        },
+        { provide: CryptoService, useValue: { connect: vi.fn() } },
+        {
+          provide: ThreadsService,
+          useValue: { open: threadsOpen, close: vi.fn(), closeThread: vi.fn() },
+        },
+        {
+          provide: ThreadPanelService,
+          useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        invitesProvider(),
+        { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
+        { provide: MessageSearchService, useValue: { search: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
+        {
+          provide: AuthService,
+          useValue: { logout: vi.fn(() => of(undefined)) },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
+      ],
+    });
+    return TestBed.inject(RoomsPage);
+  }
+
+  it('starts closed', () => {
+    const page = build();
+
+    expect(page.drawerOpen()).toBe(false);
+  });
+
+  it('toggleDrawer flips the open state', () => {
+    const page = build();
+
+    page.toggleDrawer();
+    expect(page.drawerOpen()).toBe(true);
+
+    page.toggleDrawer();
+    expect(page.drawerOpen()).toBe(false);
+  });
+
+  it('closeDrawer forces the drawer closed regardless of its current state', () => {
+    const page = build();
+    page.toggleDrawer();
+    expect(page.drawerOpen()).toBe(true);
+
+    page.closeDrawer();
+
+    expect(page.drawerOpen()).toBe(false);
+  });
+
+  it('closeDrawer is a no-op when already closed', () => {
+    const page = build();
+
+    page.closeDrawer();
+
+    expect(page.drawerOpen()).toBe(false);
+  });
+
+  it('onSelectRoom collapses an open drawer after picking a room', () => {
+    const page = build();
+    page.toggleDrawer();
+    expect(page.drawerOpen()).toBe(true);
+
+    page.onSelectRoom('!r:hs');
+
+    expect(page.drawerOpen()).toBe(false);
+    // The existing room-switch behavior keeps working alongside the new collapse.
+    expect(page.activeRoomId()).toBe('!r:hs');
+    expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
+    expect(threadsOpen).toHaveBeenCalledWith('!r:hs');
+    expect(releaseAll).toHaveBeenCalled();
+  });
+});
