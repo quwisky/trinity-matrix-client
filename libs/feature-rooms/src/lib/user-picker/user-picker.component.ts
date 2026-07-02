@@ -16,7 +16,6 @@ import {
   IonLabel,
   IonList,
   IonSearchbar,
-  IonSpinner,
   IonTitle,
   IonToolbar,
   ModalController,
@@ -36,6 +35,7 @@ import {
   type UserSearchResult,
 } from '@trinity/core';
 import { AvatarComponent } from '@trinity/ui';
+import { TrnSpinnerComponent } from '@trinity/ui-spartan';
 
 /** Don't hit the directory until the term is at least this long. */
 const MIN_SEARCH_LENGTH = 2;
@@ -66,8 +66,8 @@ const MIN_SEARCH_LENGTH = 2;
     IonList,
     IonItem,
     IonLabel,
-    IonSpinner,
     AvatarComponent,
+    TrnSpinnerComponent,
   ],
   template: `
     <ion-header>
@@ -101,7 +101,7 @@ const MIN_SEARCH_LENGTH = 2;
     <ion-content>
       @if (searching()) {
         <div class="picker-status" aria-live="polite">
-          <ion-spinner name="dots" aria-label="Searching" />
+          <trn-spinner />
         </div>
       }
 

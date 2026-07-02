@@ -16,11 +16,11 @@ import {
   IonContent,
   IonButton,
   IonButtons,
-  IonSpinner,
   ModalController,
 } from '@ionic/angular/standalone';
 import { VerificationService } from '@trinity/core';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
+import { TrnSpinnerComponent } from '@trinity/ui-spartan';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -42,8 +42,8 @@ import { SasCompareComponent } from './sas-compare.component';
     IonContent,
     IonButton,
     IonButtons,
-    IonSpinner,
     SasCompareComponent,
+    TrnSpinnerComponent,
   ],
 })
 export class DeviceVerificationPage {

@@ -20,11 +20,11 @@ import {
   IonInput,
   IonButton,
   IonButtons,
-  IonSpinner,
   ModalController,
 } from '@ionic/angular/standalone';
 import { CryptoService } from '@trinity/core';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
+import { TrnSpinnerComponent } from '@trinity/ui-spartan';
 
 /**
  * New-device unlock (flow B). The account already has secret storage; the user
@@ -48,7 +48,7 @@ import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
     IonInput,
     IonButton,
     IonButtons,
-    IonSpinner,
+    TrnSpinnerComponent,
   ],
 })
 export class EncryptionUnlockPage {

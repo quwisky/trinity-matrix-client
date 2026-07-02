@@ -18,7 +18,6 @@ import {
   IonLabel,
   IonList,
   IonSearchbar,
-  IonSpinner,
   IonTitle,
   IonToolbar,
   ModalController,
@@ -30,6 +29,7 @@ import {
   type MessageHit,
 } from '@trinity/core';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
+import { TrnSpinnerComponent } from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import { lockClosed, serverOutline } from 'ionicons/icons';
 
@@ -72,8 +72,8 @@ interface HighlightPart {
     IonItem,
     IonLabel,
     IonIcon,
-    IonSpinner,
     AvatarComponent,
+    TrnSpinnerComponent,
   ],
   template: `
     <ion-header>
@@ -112,7 +112,7 @@ interface HighlightPart {
             data-testid="load-older"
           >
             @if (loadingHistory()) {
-              <ion-spinner name="dots" slot="start" aria-hidden="true" />
+              <trn-spinner />
             }
             Load older messages
           </ion-button>
@@ -134,7 +134,7 @@ interface HighlightPart {
               data-testid="search-server"
             >
               @if (searching()) {
-                <ion-spinner name="dots" slot="start" aria-hidden="true" />
+                <trn-spinner />
               } @else {
                 <ion-icon
                   name="server-outline"
@@ -191,7 +191,7 @@ interface HighlightPart {
             data-testid="load-more-server"
           >
             @if (searching()) {
-              <ion-spinner name="dots" slot="start" aria-hidden="true" />
+              <trn-spinner />
             }
             Load more results
           </ion-button>

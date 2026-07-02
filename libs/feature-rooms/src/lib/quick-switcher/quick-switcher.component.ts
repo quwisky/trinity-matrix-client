@@ -17,7 +17,6 @@ import {
   IonLabel,
   IonList,
   IonSearchbar,
-  IonSpinner,
   IonTitle,
   IonToolbar,
   ModalController,
@@ -29,6 +28,7 @@ import {
   type SwitcherSelection,
 } from '@trinity/core';
 import { AvatarComponent } from '@trinity/ui';
+import { TrnSpinnerComponent } from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import {
   chatbubbleOutline,
@@ -93,8 +93,8 @@ const KIND_ICON: Record<SwitcherKind, string> = {
     IonItem,
     IonLabel,
     IonIcon,
-    IonSpinner,
     AvatarComponent,
+    TrnSpinnerComponent,
   ],
   template: `
     <ion-header>
@@ -167,7 +167,7 @@ const KIND_ICON: Record<SwitcherKind, string> = {
         } @empty {
           <div class="qs-empty" aria-live="polite">
             @if (searching()) {
-              <ion-spinner name="dots" aria-label="Searching" />
+              <trn-spinner />
             } @else {
               <span class="text-muted-foreground text-xs">{{
                 emptyHint()
