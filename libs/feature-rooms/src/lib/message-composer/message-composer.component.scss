@@ -49,7 +49,12 @@
 
 .composer {
   position: relative;
-  padding: 8px 16px 16px;
+
+  // Bottom padding clears the home indicator (safe-area-inset-bottom). env() is 0
+  // off notched devices and, with the keyboard's native resize mode, while the soft
+  // keyboard is up (the WebView shrinks, hiding the indicator) — so the input sits
+  // flush above the keyboard when typing and above the indicator otherwise.
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
 }
 
 .composer__picker {

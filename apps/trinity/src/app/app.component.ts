@@ -4,14 +4,13 @@ import {
   OnInit,
   inject,
 } from '@angular/core';
+import { Dialog } from '@angular/cdk/dialog';
+import { Location } from '@angular/common';
 import { Router, RouterOutlet } from '@angular/router';
 import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { SwUpdate } from '@angular/service-worker';
-// Platform is still Ionic's (safe-area / keyboard / hardware back) until the native
-// shell work (Phase 4d) swaps it for the Capacitor App/Keyboard/StatusBar plugins.
-import { Platform } from '@ionic/angular/standalone';
 import { getTrinityDesktopBridge } from '@trinity/core';
 import { HlmToaster } from '@trinity/ui-spartan';
 import { VerificationHostComponent } from './verification-host.component';
@@ -25,7 +24,8 @@ import { VerificationHostComponent } from './verification-host.component';
 export class AppComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly swUpdate = inject(SwUpdate);
-  private readonly platform = inject(Platform);
+  private readonly dialog = inject(Dialog);
+  private readonly location = inject(Location);
 
   ngOnInit(): void {
     // Recover from a broken service-worker cache (e.g. storage eviction left an
@@ -47,13 +47,23 @@ export class AppComponent implements OnInit {
     if (!Capacitor.isNativePlatform()) {
       return;
     }
-    // Android hardware back. NOTE (Phase 4d): IonRouterOutlet used to pop
-    // overlays/routes at a higher priority so this lowest-priority handler only
-    // backgrounded the app at the root; with the router-outlet now plain Angular,
-    // route/overlay back-navigation must be wired here (Location.back() / close the
-    // open dialog/drawer) before falling through to minimize. iOS has no hardware
-    // back, so this never fires there.
-    this.platform.backButton.subscribeWithPriority(-1, () => {
+    // Android hardware back button. IonRouterOutlet used to intercept this at a
+    // higher priority to pop overlays/routes, leaving the lowest-priority handler to
+    // only background the app at the root. With a plain Angular router-outlet we own
+    // the whole chain: dismiss the top open CDK overlay (TrnDialog/TrnAlert/ActionSheet
+    // all render through @angular/cdk/dialog) first, then step back through history,
+    // and only minimize when there's nowhere left to go. iOS has no hardware back
+    // button, so this never fires there.
+    void App.addListener('backButton', ({ canGoBack }) => {
+      const overlays = this.dialog.openDialogs;
+      if (overlays.length > 0) {
+        overlays[overlays.length - 1].close();
+        return;
+      }
+      if (canGoBack) {
+        this.location.back();
+        return;
+      }
       void App.minimizeApp();
     });
     void App.addListener('appUrlOpen', (event: URLOpenListenerEvent) =>

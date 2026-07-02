@@ -64,6 +64,31 @@ router-outlet + * {
   flex-direction: column;
 }
 
+/*
+ * Safe-area insets (notch / status bar / home indicator). Ionic's ion-content /
+ * ion-toolbar used to pad content clear of the device chrome automatically; with the
+ * plain shell we do it here. `env(safe-area-inset-*)` resolves to 0 on web and
+ * desktop (and inside a keyboard-resized native WebView), so these helpers are inert
+ * off-device and only pad on notched native devices — index.html sets
+ * `viewport-fit=cover`. Pair `.safe-top` with `min-h-*` (not a fixed `h-*`) so the
+ * bar grows by the inset and its content keeps full height below the cutout.
+ */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-left {
+  padding-left: env(safe-area-inset-left);
+}
+
+.safe-right {
+  padding-right: env(safe-area-inset-right);
+}
+
 /* Respect users who prefer reduced motion. */
 @media (prefers-reduced-motion: reduce) {
   *,

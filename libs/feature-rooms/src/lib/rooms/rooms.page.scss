@@ -4,6 +4,13 @@
   display: flex;
   height: 100%;
   background: var(--trinity-rail);
+
+  // Outer-left column: clear the notch/status bar (top), the left cutout on a
+  // landscape notch (left), and the home indicator (bottom, where the user footer
+  // sits). env() is 0 off notched devices, so this is inert on web/desktop.
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
 }
 
 .main {
@@ -14,6 +21,11 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden; // contain the header + body so the timeline scrolls internally
+  // Outer-right column: fill the top cutout with the chat surface so the toolbar's
+  // content sits below the notch, and keep content clear of a right-side cutout.
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  background: var(--trinity-chat);
 }
 
 .chat-toolbar {
