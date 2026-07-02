@@ -24,7 +24,7 @@ function configure(
 }
 
 function continueButton(host: HTMLElement): HTMLElement {
-  const buttons = [...host.querySelectorAll('ion-button')] as HTMLElement[];
+  const buttons = [...host.querySelectorAll('button[trnBtn]')] as HTMLElement[];
   return buttons.find((b) => b.textContent?.includes('Continue'))!;
 }
 

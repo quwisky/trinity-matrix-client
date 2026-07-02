@@ -11,3 +11,4 @@ export * from './lib/spinner/trn-spinner.component';
 export * from './lib/radio/trn-radio-group.component';
 export * from './lib/radio/trn-radio.component';
 export * from './lib/badge/trn-badge.directive';
+export * from './lib/checkbox/trn-checkbox.component';

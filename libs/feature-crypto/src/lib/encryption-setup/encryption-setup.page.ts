@@ -8,7 +8,6 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import {
@@ -16,12 +15,13 @@ import {
   IonToolbar,
   IonTitle,
   IonContent,
-  IonButton,
-  IonText,
-  IonSpinner,
-  IonCheckbox,
   AlertController,
 } from '@ionic/angular/standalone';
+import {
+  TrnButtonDirective,
+  TrnCheckboxComponent,
+  TrnSpinnerComponent,
+} from '@trinity/ui-spartan';
 import { CryptoService, type PasswordPrompt } from '@trinity/core';
 import { runWithBusy } from '@trinity/ui';
 import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
@@ -39,15 +39,13 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
   templateUrl: 'encryption-setup.page.html',
   styleUrls: ['encryption-setup.page.scss'],
   imports: [
-    FormsModule,
     IonHeader,
     IonToolbar,
     IonTitle,
     IonContent,
-    IonButton,
-    IonText,
-    IonSpinner,
-    IonCheckbox,
+    TrnButtonDirective,
+    TrnCheckboxComponent,
+    TrnSpinnerComponent,
     RecoveryKeyDisplayComponent,
   ],
 })

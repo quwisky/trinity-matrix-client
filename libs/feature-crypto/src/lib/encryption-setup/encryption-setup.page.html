@@ -8,12 +8,10 @@
   @if (recoveryKey(); as key) {
     <!-- Step 2: the key exists — show it once behind a confirm-saved gate. -->
     <h1 #savedHeading tabindex="-1" class="heading">Save your recovery key</h1>
-    <ion-text color="medium">
-      <p>
-        This key restores your encrypted messages on a new device. Store it
-        somewhere safe, like a password manager.
-      </p>
-    </ion-text>
+    <p class="text-muted-foreground">
+      This key restores your encrypted messages on a new device. Store it
+      somewhere safe, like a password manager.
+    </p>
 
     <p class="warning" role="note">
       We'll only show this key once. Without it, you can't recover your message
@@ -22,50 +20,42 @@
 
     <trn-recovery-key-display [recoveryKey]="key" />
 
-    <ion-checkbox
+    <trn-checkbox
       class="confirm"
-      labelPlacement="end"
-      [ngModel]="confirmedSaved()"
-      (ngModelChange)="confirmedSaved.set($event)"
+      [checked]="confirmedSaved()"
+      (checkedChange)="confirmedSaved.set($event)"
     >
       I've saved my recovery key somewhere safe
-    </ion-checkbox>
+    </trn-checkbox>
 
-    <ion-button
-      expand="block"
+    <button
+      trnBtn
+      class="w-full"
       [disabled]="!confirmedSaved()"
       (click)="finish()"
     >
       Continue to Trinity
-    </ion-button>
+    </button>
   } @else {
     <!-- Step 1: introduce the flow and trigger setup. -->
     <h1 class="heading">Secure your messages</h1>
-    <ion-text color="medium">
-      <p>
-        Set up end-to-end encryption so only you and the people you message can
-        read what's sent. We'll generate a recovery key for you to save.
-      </p>
-    </ion-text>
+    <p class="text-muted-foreground">
+      Set up end-to-end encryption so only you and the people you message can
+      read what's sent. We'll generate a recovery key for you to save.
+    </p>
 
-    <ion-button expand="block" [disabled]="busy()" (click)="setUp()">
+    <button trnBtn class="w-full" [disabled]="busy()" (click)="setUp()">
       Set up encryption
-    </ion-button>
+    </button>
   }
 
   @if (busy()) {
-    <div
-      class="ion-text-center ion-padding-top"
-      role="status"
-      aria-live="polite"
-    >
-      <ion-spinner></ion-spinner>
-      <p><ion-text color="medium">Setting up encryption…</ion-text></p>
+    <div class="pt-4 text-center" role="status" aria-live="polite">
+      <trn-spinner />
+      <p class="text-muted-foreground">Setting up encryption…</p>
     </div>
   }
   @if (error(); as message) {
-    <ion-text color="danger">
-      <p role="alert">{{ message }}</p>
-    </ion-text>
+    <p class="text-destructive" role="alert">{{ message }}</p>
   }
 </ion-content>
