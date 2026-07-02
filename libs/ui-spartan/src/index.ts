@@ -14,7 +14,9 @@ export * from '@trinity/helm/badge';
 export * from '@trinity/helm/checkbox';
 export * from '@trinity/helm/progress';
 export * from './lib/toast/trn-toast.service';
-export * from './lib/toast/trn-toast-container.component';
+// Helm sonner toaster — mount <hlm-toaster/> once at the app root; TrnToastService
+// pushes messages to it via ngx-sonner's imperative toast().
+export * from '@trinity/helm/sonner';
 export * from './lib/alert/trn-alert.service';
 export * from './lib/alert/trn-alert-dialog.component';
 export * from './lib/action-sheet/trn-action-sheet.service';

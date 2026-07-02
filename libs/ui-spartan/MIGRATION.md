@@ -14,14 +14,19 @@ no global style sheet is needed) on `@spartan-ng/brain`. `@trinity/ui-spartan`
 re-exports them as the single import surface. Done: **button, input, label, badge,
 checkbox, radio-group, progress, spinner, utils** (`hlm`/`classes`/`provideSpartanHlm`).
 
-The **overlay controllers** (`TrnDialogService`, `TrnAlertService`,
-`TrnToastService`, `TrnActionSheetService`) stay as our **imperative adapters** —
-spartan only ships _declarative_ dialog/alert-dialog/sonner components, and the app
-was built around imperative controllers (the Ionic `*Controller` replacements).
-They now sit on canonical helm primitives (`HlmButton`/`HlmInput` + CDK). The
-generated `@trinity/helm/{dialog,alert-dialog,sonner}` libs are available if we ever
-move overlays to a declarative API. Regenerate/update via
-`nx g @spartan-ng/cli:ui <name>` (config in `components.json`).
+**Toasts run on helm sonner.** `TrnToastService` is now a thin adapter over
+`ngx-sonner`'s imperative `toast()` (a single `<hlm-toaster/>` — the generated
+`@trinity/helm/sonner` `HlmToaster` — is mounted at the app root); its `show()` API
+and call sites are unchanged.
+
+The other **overlay controllers** (`TrnDialogService`, `TrnAlertService`,
+`TrnActionSheetService`) stay as our **imperative adapters** — spartan only ships
+_declarative_ dialog/alert-dialog components, and the app was built around imperative
+controllers (the Ionic `*Controller` replacements). They now sit on canonical helm
+primitives (`HlmButton`/`HlmInput` + CDK). The generated
+`@trinity/helm/{dialog,alert-dialog}` libs are available if we ever move those to a
+declarative API. Regenerate/update via `nx g @spartan-ng/cli:ui <name>` (config in
+`components.json`).
 
 ## Ground rules / setup (done)
 

@@ -1,41 +1,46 @@
 import { TestBed } from '@angular/core/testing';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'ngx-sonner';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrnToastService } from './trn-toast.service';
 
+// TrnToastService is a thin adapter over ngx-sonner's imperative toast().
+vi.mock('ngx-sonner', () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+}));
+
 describe('TrnToastService', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+  let svc: TrnToastService;
 
-  it('shows a toast, mounts the overlay, and auto-dismisses after the duration', () => {
-    const svc = TestBed.inject(TrnToastService);
-    svc.show('Saved', { duration: 1000, variant: 'success' });
-
-    expect(svc.toasts().length).toBe(1);
-    expect(svc.toasts()[0]).toMatchObject({
-      message: 'Saved',
-      variant: 'success',
-    });
-    // The CDK overlay container is mounted into the DOM.
-    expect(document.querySelector('.cdk-overlay-container')).not.toBeNull();
-
-    vi.advanceTimersByTime(1000);
-    expect(svc.toasts().length).toBe(0);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    svc = TestBed.inject(TrnToastService);
   });
 
-  it('keeps a duration:0 toast until dismissed', () => {
-    const svc = TestBed.inject(TrnToastService);
+  it('shows a plain toast with the given message and duration', () => {
+    svc.show('Hi', { duration: 1000 });
+    expect(toast).toHaveBeenCalledWith('Hi', { duration: 1000 });
+  });
+
+  it('defaults to a 3000ms plain toast', () => {
+    svc.show('plain');
+    expect(toast).toHaveBeenCalledWith('plain', { duration: 3000 });
+  });
+
+  it('routes a success variant to toast.success', () => {
+    svc.show('Saved', { variant: 'success' });
+    expect(toast.success).toHaveBeenCalledWith('Saved', { duration: 3000 });
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('routes a destructive variant to toast.error', () => {
+    svc.show('Failed', { variant: 'destructive', duration: 5000 });
+    expect(toast.error).toHaveBeenCalledWith('Failed', { duration: 5000 });
+  });
+
+  it('maps duration 0 (keep until dismissed) to Infinity', () => {
     svc.show('Persistent', { duration: 0 });
-    vi.advanceTimersByTime(10_000);
-    expect(svc.toasts().length).toBe(1);
-
-    svc.dismiss(svc.toasts()[0].id);
-    expect(svc.toasts().length).toBe(0);
-  });
-
-  it('stacks multiple toasts in order', () => {
-    const svc = TestBed.inject(TrnToastService);
-    svc.show('one', { duration: 0 });
-    svc.show('two', { duration: 0 });
-    expect(svc.toasts().map((t) => t.message)).toEqual(['one', 'two']);
+    expect(toast).toHaveBeenCalledWith('Persistent', {
+      duration: Number.POSITIVE_INFINITY,
+    });
   });
 });

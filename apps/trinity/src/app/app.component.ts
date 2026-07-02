@@ -11,13 +11,14 @@ import { Capacitor } from '@capacitor/core';
 import { SwUpdate } from '@angular/service-worker';
 import { IonApp, IonRouterOutlet, Platform } from '@ionic/angular/standalone';
 import { getTrinityDesktopBridge } from '@trinity/core';
+import { HlmToaster } from '@trinity/ui-spartan';
 import { VerificationHostComponent } from './verification-host.component';
 
 @Component({
   selector: 'trn-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'app.component.html',
-  imports: [IonApp, IonRouterOutlet, VerificationHostComponent],
+  imports: [IonApp, IonRouterOutlet, VerificationHostComponent, HlmToaster],
 })
 export class AppComponent implements OnInit {
   private readonly router = inject(Router);
