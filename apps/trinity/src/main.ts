@@ -21,6 +21,7 @@ import { provideSpartanHlm } from '@trinity/helm/utils';
 
 import { routes } from './app/app.routes';
 import { AppComponent } from './app/app.component';
+import { NavigationFocusService } from './app/navigation-focus.service';
 import { environment } from './environments/environment';
 
 // Desktop (hand-rolled Electron) detection. The preload bridge exposes
@@ -42,6 +43,9 @@ bootstrapApplication(AppComponent, {
     provideRouter(routes, withPreloading(PreloadAllModules)),
     // Apply the saved light/dark preference before the first paint.
     provideAppInitializer(() => inject(ThemeService).init()),
+    // Move focus into the entering page on each route change (replaces Ionic's
+    // focus manager) — a11y for screen-reader/keyboard users.
+    provideAppInitializer(() => inject(NavigationFocusService).init()),
     // Let <trn-avatar> resolve mxc avatars to authenticated blob URLs (core).
     {
       provide: AVATAR_RESOLVER,

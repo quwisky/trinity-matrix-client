@@ -14,9 +14,10 @@ import { login, synapseSession } from './support/app.mts';
 // and `provideIonicAngular` with it — from main.ts. The shell now renders a plain
 // Angular `<router-outlet>` (see apps/trinity/src/app/app.component.html) with no
 // StackController/aria-hidden step, so the dead-router failure mode this file guarded
-// against is gone structurally, not just papered over. But the accessibility behavior
-// that rode in on the same config is *also* gone: nothing moves focus into the
-// entering page on navigation any more (see the quarantined test below).
+// against is gone structurally. The accessibility behavior that rode in on the same
+// config — moving focus INTO the entering page on each navigation — is reintroduced
+// by NavigationFocusService (apps/trinity/src/app/navigation-focus.service.ts), wired
+// via provideAppInitializer in main.ts; the second test asserts it.
 const session = synapseSession();
 
 /** Is `document.activeElement` inside the given page component (piercing shadow roots)? */
@@ -57,24 +58,16 @@ test.describe('Route transitions', () => {
     });
   });
 
-  // QUARANTINED — targets behavior that no longer exists (see the file header).
-  // `test.fixme(title, body)` declares the test without running it, so it can't
-  // fail a live run, but it also stays visible (not silently deleted) as a
-  // tracked a11y gap: Ionic used to move focus into the entering page on every
-  // route change for keyboard/screen-reader users; the plain Angular
-  // router-outlet that replaced IonRouterOutlet does not. Left as `test.fixme`
-  // rather than rewritten to assert "focus does NOT move" — a green test
-  // asserting the absence would read as an intentional spec instead of a known
-  // regression to raise with the app owner. Un-fixme (and keep the assertion
-  // below) if/when focus management is reintroduced on the router-outlet.
-  test.fixme('relocates focus into the entering page', async ({ page }) => {
+  // NavigationFocusService moves focus into the entering page after each route
+  // change (replacing Ionic's focus manager). After rooms → settings, focus should
+  // land inside the settings page (its heading), not stay on the toolbar button
+  // that triggered the navigation.
+  test('relocates focus into the entering page', async ({ page }) => {
     await login(page, session);
 
     await page.getByTestId('open-settings').click();
     await page.waitForURL('**/settings', { timeout: 20_000 });
 
-    // Would need the app to explicitly move focus on navigation — nothing does
-    // this today, so this currently sits at `false` indefinitely.
     await expect
       .poll(() => focusInside(page, 'trn-settings'), { timeout: 10_000 })
       .toBe(true);
