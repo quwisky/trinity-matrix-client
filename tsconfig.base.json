@@ -38,10 +38,6 @@
       "@trinity/helm/radio-group": ["./libs/spartan/radio-group/src/index.ts"],
       "@trinity/helm/progress": ["./libs/spartan/progress/src/index.ts"],
       "@trinity/helm/spinner": ["./libs/spartan/spinner/src/index.ts"],
-      "@trinity/helm/dialog": ["./libs/spartan/dialog/src/index.ts"],
-      "@trinity/helm/alert-dialog": [
-        "./libs/spartan/alert-dialog/src/index.ts"
-      ],
       "@trinity/helm/sonner": ["./libs/spartan/sonner/src/index.ts"]
     }
   },
