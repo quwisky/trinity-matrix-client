@@ -21,7 +21,7 @@ import {
 } from '@ionic/angular/standalone';
 import { VerificationService } from '@trinity/core';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
-import { HlmButton, TrnSpinnerComponent } from '@trinity/ui-spartan';
+import { HlmButton, HlmSpinner } from '@trinity/ui-spartan';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -46,7 +46,7 @@ import { SasCompareComponent } from './sas-compare.component';
     IonButtons,
     HlmButton,
     SasCompareComponent,
-    TrnSpinnerComponent,
+    HlmSpinner,
   ],
 })
 export class DeviceVerificationPage {

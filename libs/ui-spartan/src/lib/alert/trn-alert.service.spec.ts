@@ -41,7 +41,7 @@ describe('TrnAlertService', () => {
     const svc = TestBed.inject(TrnAlertService);
     const result = svc.prompt({ header: 'Name', confirmText: 'Create' });
     render();
-    const input = document.querySelector<HTMLInputElement>('input[trnInput]')!;
+    const input = document.querySelector<HTMLInputElement>('input[hlmInput]')!;
     input.value = 'My Space';
     input.dispatchEvent(new Event('input'));
     clickButton('Create');

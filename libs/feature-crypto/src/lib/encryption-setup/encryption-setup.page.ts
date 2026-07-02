@@ -20,7 +20,7 @@ import {
   TrnAlertService,
   HlmButton,
   TrnCheckboxComponent,
-  TrnSpinnerComponent,
+  HlmSpinner,
 } from '@trinity/ui-spartan';
 import { CryptoService, type PasswordPrompt } from '@trinity/core';
 import { runWithBusy } from '@trinity/ui';
@@ -45,7 +45,7 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
     IonContent,
     HlmButton,
     TrnCheckboxComponent,
-    TrnSpinnerComponent,
+    HlmSpinner,
     RecoveryKeyDisplayComponent,
   ],
 })

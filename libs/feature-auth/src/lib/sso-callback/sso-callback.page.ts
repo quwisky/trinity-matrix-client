@@ -10,7 +10,7 @@ import { Location } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { IonContent, IonButton } from '@ionic/angular/standalone';
-import { TrnSpinnerComponent } from '@trinity/ui-spartan';
+import { HlmSpinner } from '@trinity/ui-spartan';
 import { AuthService } from '@trinity/core';
 import { SsoStateStore } from '../sso-state.store';
 
@@ -31,12 +31,12 @@ import { SsoStateStore } from '../sso-state.store';
         </p>
         <ion-button (click)="back()">Back to sign in</ion-button>
       } @else {
-        <trn-spinner />
+        <hlm-spinner />
         <p>Completing sign in…</p>
       }
     </ion-content>
   `,
-  imports: [IonContent, IonButton, TrnSpinnerComponent],
+  imports: [IonContent, IonButton, HlmSpinner],
 })
 export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);

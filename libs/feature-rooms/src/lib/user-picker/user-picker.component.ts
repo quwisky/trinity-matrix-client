@@ -25,8 +25,8 @@ import { AvatarComponent } from '@trinity/ui';
 import {
   DialogRef,
   HlmButton,
-  TrnInputDirective,
-  TrnSpinnerComponent,
+  HlmInput,
+  HlmSpinner,
 } from '@trinity/ui-spartan';
 
 /** Don't hit the directory until the term is at least this long. */
@@ -49,7 +49,7 @@ const MIN_SEARCH_LENGTH = 2;
 @Component({
   selector: 'trn-user-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnSpinnerComponent, HlmButton, TrnInputDirective],
+  imports: [AvatarComponent, HlmSpinner, HlmButton, HlmInput],
   template: `
     <div
       class="flex h-[560px] max-h-[85vh] w-[92vw] max-w-[460px] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
@@ -75,7 +75,7 @@ const MIN_SEARCH_LENGTH = 2;
 
       <div class="border-b border-solid border-border p-3">
         <input
-          trnInput
+          hlmInput
           [placeholder]="placeholder()"
           autocapitalize="off"
           autocorrect="off"
@@ -87,7 +87,7 @@ const MIN_SEARCH_LENGTH = 2;
 
       <div class="flex-1 overflow-y-auto p-2">
         @if (searching()) {
-          <div class="picker-status" aria-live="polite"><trn-spinner /></div>
+          <div class="picker-status" aria-live="polite"><hlm-spinner /></div>
         }
         @for (user of results(); track user.userId) {
           <button

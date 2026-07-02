@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HlmButton } from '@trinity/helm/button';
-import { TrnInputDirective } from '../input/hlm-input.directive';
+import { HlmInput } from '@trinity/helm/input';
 
 /** Payload for {@link TrnAlertDialogComponent}, built by TrnAlertService. */
 export interface AlertDialogData {
@@ -34,7 +34,7 @@ export type AlertDialogResult = boolean | string | null;
   selector: 'trn-alert-dialog',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, TrnInputDirective],
+  imports: [HlmButton, HlmInput],
   template: `
     <div
       class="w-[min(90vw,26rem)] rounded-lg border border-solid border-border bg-card p-6 text-card-foreground shadow-lg"
@@ -47,7 +47,7 @@ export type AlertDialogResult = boolean | string | null;
       }
       @if (data.kind === 'prompt') {
         <input
-          trnInput
+          hlmInput
           class="mt-4"
           [type]="data.inputType ?? 'text'"
           [placeholder]="data.placeholder ?? ''"

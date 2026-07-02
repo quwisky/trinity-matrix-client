@@ -20,11 +20,11 @@
       @if (!baseUrl()) {
         <!-- ── Step 1: Homeserver ──────────────────────────── -->
         <div class="login-card__field">
-          <label trnLabel for="homeserver" class="login-card__label"
+          <label hlmLabel for="homeserver" class="login-card__label"
             >Homeserver</label
           >
           <input
-            trnInput
+            hlmInput
             id="homeserver"
             autocapitalize="off"
             autocorrect="off"
@@ -47,11 +47,11 @@
         <!-- ── Step 2: Username + Password ────────────────── -->
         @if (passwordSupported()) {
           <div class="login-card__field">
-            <label trnLabel for="username" class="login-card__label"
+            <label hlmLabel for="username" class="login-card__label"
               >Username</label
             >
             <input
-              trnInput
+              hlmInput
               id="username"
               autocapitalize="off"
               autocorrect="off"
@@ -62,11 +62,11 @@
           </div>
 
           <div class="login-card__field">
-            <label trnLabel for="password" class="login-card__label"
+            <label hlmLabel for="password" class="login-card__label"
               >Password</label
             >
             <input
-              trnInput
+              hlmInput
               id="password"
               type="password"
               [disabled]="busy()"
@@ -106,7 +106,7 @@
           role="status"
           aria-live="polite"
         >
-          <trn-spinner />
+          <hlm-spinner />
           <p class="text-muted-foreground">Working…</p>
         </div>
       }

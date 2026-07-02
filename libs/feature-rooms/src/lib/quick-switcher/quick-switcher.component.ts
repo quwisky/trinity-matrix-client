@@ -20,8 +20,8 @@ import { AvatarComponent } from '@trinity/ui';
 import {
   DialogRef,
   HlmButton,
-  TrnInputDirective,
-  TrnSpinnerComponent,
+  HlmInput,
+  HlmSpinner,
 } from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import {
@@ -76,13 +76,7 @@ const KIND_ICON: Record<SwitcherKind, string> = {
 @Component({
   selector: 'trn-quick-switcher',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    IonIcon,
-    AvatarComponent,
-    TrnSpinnerComponent,
-    HlmButton,
-    TrnInputDirective,
-  ],
+  imports: [IonIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
   template: `
     <div
       class="flex h-[60vh] max-h-[70vh] w-[92vw] max-w-[560px] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
@@ -99,7 +93,7 @@ const KIND_ICON: Record<SwitcherKind, string> = {
       <div class="border-b border-solid border-border p-3">
         <input
           #searchInput
-          trnInput
+          hlmInput
           placeholder="Search rooms, spaces, people"
           autocapitalize="off"
           autocorrect="off"
@@ -161,7 +155,7 @@ const KIND_ICON: Record<SwitcherKind, string> = {
         } @empty {
           <div class="qs-empty" aria-live="polite">
             @if (searching()) {
-              <trn-spinner />
+              <hlm-spinner />
             } @else {
               <span class="text-muted-foreground text-xs">{{
                 emptyHint()

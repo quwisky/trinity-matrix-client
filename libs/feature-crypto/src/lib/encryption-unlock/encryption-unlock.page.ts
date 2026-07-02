@@ -20,12 +20,7 @@ import {
 } from '@ionic/angular/standalone';
 import { CryptoService } from '@trinity/core';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
-import {
-  HlmButton,
-  TrnInputDirective,
-  TrnLabelDirective,
-  TrnSpinnerComponent,
-} from '@trinity/ui-spartan';
+import { HlmButton, HlmInput, HlmLabel, HlmSpinner } from '@trinity/ui-spartan';
 
 /**
  * New-device unlock (flow B). The account already has secret storage; the user
@@ -46,9 +41,9 @@ import {
     IonTitle,
     IonContent,
     HlmButton,
-    TrnInputDirective,
-    TrnLabelDirective,
-    TrnSpinnerComponent,
+    HlmInput,
+    HlmLabel,
+    HlmSpinner,
   ],
 })
 export class EncryptionUnlockPage {

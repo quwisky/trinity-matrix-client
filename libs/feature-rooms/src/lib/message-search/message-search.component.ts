@@ -19,11 +19,7 @@ import {
   type MessageHit,
 } from '@trinity/core';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
-import {
-  HlmButton,
-  TrnInputDirective,
-  TrnSpinnerComponent,
-} from '@trinity/ui-spartan';
+import { HlmButton, HlmInput, HlmSpinner } from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import { lockClosed, serverOutline } from 'ionicons/icons';
 
@@ -56,13 +52,7 @@ interface HighlightPart {
 @Component({
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    IonIcon,
-    AvatarComponent,
-    TrnSpinnerComponent,
-    HlmButton,
-    TrnInputDirective,
-  ],
+  imports: [IonIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
   template: `
     <div
       class="flex h-screen w-screen flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg md:w-[480px]"
@@ -79,7 +69,7 @@ interface HighlightPart {
       <div class="border-b border-solid border-border p-3">
         <input
           #searchInput
-          trnInput
+          hlmInput
           placeholder="Search this conversation"
           autocapitalize="off"
           autocorrect="off"
@@ -107,7 +97,7 @@ interface HighlightPart {
               data-testid="load-older"
             >
               @if (loadingHistory()) {
-                <trn-spinner />
+                <hlm-spinner />
               }
               Load older messages
             </button>
@@ -130,7 +120,7 @@ interface HighlightPart {
                 data-testid="search-server"
               >
                 @if (searching()) {
-                  <trn-spinner />
+                  <hlm-spinner />
                 } @else {
                   <ion-icon name="server-outline" aria-hidden="true" />
                 }
@@ -192,7 +182,7 @@ interface HighlightPart {
               data-testid="load-more-server"
             >
               @if (searching()) {
-                <trn-spinner />
+                <hlm-spinner />
               }
               Load more results
             </button>

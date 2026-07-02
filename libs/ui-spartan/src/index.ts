@@ -5,9 +5,9 @@
 // components across the app (see MIGRATION.md).
 export * from './lib/core/cn';
 export * from '@trinity/helm/button';
-export * from './lib/input/hlm-input.directive';
-export * from './lib/label/hlm-label.directive';
-export * from './lib/spinner/trn-spinner.component';
+export * from '@trinity/helm/input';
+export * from '@trinity/helm/label';
+export * from '@trinity/helm/spinner';
 export * from './lib/radio/trn-radio-group.component';
 export * from './lib/radio/trn-radio.component';
 export * from './lib/badge/trn-badge.directive';
