@@ -121,9 +121,9 @@ async function setupRoom() {
 // UI helpers (mirrors send-media.mjs / verify-sas.mjs)
 // ---------------------------------------------------------------------------
 
-/** Fill an Ionic <ion-input label="…"> by targeting its inner native input. */
-async function fillIonInput(page, label, value) {
-  const input = page.locator(`ion-input[label="${label}"] input`);
+/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
+async function fillLabeledInput(page, label, value) {
+  const input = page.getByLabel(label);
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
   await input.fill(value);
@@ -133,13 +133,13 @@ async function fillIonInput(page, label, value) {
 async function login(page) {
   log('loading app');
   await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillIonInput(page, 'Homeserver', HS);
+  await fillLabeledInput(page, 'Homeserver', HS);
   await page.getByText('Continue', { exact: true }).click();
   await page
     .getByRole('button', { name: 'Sign in' })
     .waitFor({ timeout: 30_000 });
-  await fillIonInput(page, 'Username', USER);
-  await fillIonInput(page, 'Password', PASS);
+  await fillLabeledInput(page, 'Username', USER);
+  await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL('**/rooms', { timeout: 30_000 });
   log('logged in → /rooms');
@@ -241,7 +241,9 @@ async function main() {
     log('thread modal open');
 
     // Type and send a reply into the thread composer.
-    const threadTextarea = page.locator('ion-modal .composer__input');
+    const threadTextarea = page.locator(
+      '.cdk-dialog-container .composer__input',
+    );
     await threadTextarea.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     await threadTextarea.click();
     await threadTextarea.fill(REPLY_TEXT);
@@ -251,7 +253,7 @@ async function main() {
     // Assert: the reply appears in the thread view.
     log('waiting for reply to appear in thread view');
     const replyInThread = page
-      .locator('ion-modal .msg')
+      .locator('.cdk-dialog-container .msg')
       .filter({ hasText: REPLY_TEXT });
     await replyInThread
       .first()
@@ -295,12 +297,12 @@ async function main() {
 
     // Both the root message and the reply must be present in the thread view.
     await page
-      .locator('ion-modal .msg')
+      .locator('.cdk-dialog-container .msg')
       .filter({ hasText: ROOT_MSG })
       .first()
       .waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     await page
-      .locator('ion-modal .msg')
+      .locator('.cdk-dialog-container .msg')
       .filter({ hasText: REPLY_TEXT })
       .first()
       .waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
@@ -323,7 +325,7 @@ async function main() {
     // Verify the thread view opened: the modal must contain the second message
     // as its root, and no reply rows beyond it (new thread, never sent to).
     await page
-      .locator('ion-modal .msg')
+      .locator('.cdk-dialog-container .msg')
       .filter({ hasText: NO_THREAD_MSG })
       .first()
       .waitFor({ state: 'visible', timeout: STEP_TIMEOUT });

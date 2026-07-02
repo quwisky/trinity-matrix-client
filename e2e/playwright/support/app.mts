@@ -19,13 +19,18 @@ export function synapseSession(): SynapseSession {
   }
 }
 
-/** Fill an Ionic `<ion-input label="…">` by targeting its inner native input. */
-export async function fillIonInput(
+/**
+ * Fill a native `<input hlmInput>` by its associated `<label hlmLabel for="…">`
+ * (post-Ionic replacement for the old `<ion-input label="…">` targeting — every
+ * current call site (login's Homeserver/Username/Password, settings' Display
+ * name) has a real `<label for>` pointing at the input).
+ */
+export async function fillLabeledInput(
   page: Page,
   label: string,
   value: string,
 ): Promise<void> {
-  const input = page.locator(`ion-input[label="${label}"] input`);
+  const input = page.getByLabel(label);
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
   await input.fill(value);
@@ -34,13 +39,13 @@ export async function fillIonInput(
 /** Log in through the UI (homeserver → Continue → credentials → Sign in) → /rooms. */
 export async function login(page: Page, s: SynapseSession): Promise<void> {
   await page.goto('/login', { waitUntil: 'networkidle' });
-  await fillIonInput(page, 'Homeserver', s.hs as string);
+  await fillLabeledInput(page, 'Homeserver', s.hs as string);
   await page.getByText('Continue', { exact: true }).click();
   await page
     .getByRole('button', { name: 'Sign in' })
     .waitFor({ timeout: 30_000 });
-  await fillIonInput(page, 'Username', s.user as string);
-  await fillIonInput(page, 'Password', s.pass as string);
+  await fillLabeledInput(page, 'Username', s.user as string);
+  await fillLabeledInput(page, 'Password', s.pass as string);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL('**/rooms', { timeout: 30_000 });
 }

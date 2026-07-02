@@ -29,7 +29,10 @@
           [size]="64"
         />
         <div class="min-w-0 flex-1">
-          <div class="truncate text-sm font-medium text-foreground">
+          <div
+            class="truncate text-sm font-medium text-foreground"
+            data-testid="profile-display-name"
+          >
             {{ p.displayName || p.userId }}
           </div>
           <div class="truncate text-xs text-muted-foreground">

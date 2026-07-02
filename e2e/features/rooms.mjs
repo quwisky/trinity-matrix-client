@@ -155,9 +155,9 @@ async function poll(fn, { tries = 30, delayMs = 1000 } = {}) {
 // UI helpers
 // ---------------------------------------------------------------------------
 
-/** Fill an Ionic <ion-input label="…"> by targeting its inner native input. */
-async function fillIonInput(page, label, value) {
-  const input = page.locator(`ion-input[label="${label}"] input`);
+/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
+async function fillLabeledInput(page, label, value) {
+  const input = page.getByLabel(label);
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
   await input.fill(value);
@@ -167,24 +167,26 @@ async function fillIonInput(page, label, value) {
 async function login(page) {
   log('loading app');
   await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillIonInput(page, 'Homeserver', HS);
+  await fillLabeledInput(page, 'Homeserver', HS);
   await page.getByText('Continue', { exact: true }).click();
   await page
     .getByRole('button', { name: 'Sign in' })
     .waitFor({ timeout: 30_000 });
-  await fillIonInput(page, 'Username', USER);
-  await fillIonInput(page, 'Password', PASS);
+  await fillLabeledInput(page, 'Username', USER);
+  await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL('**/rooms', { timeout: 30_000 });
   log('logged in → /rooms');
 }
 
 /**
- * Wait for an ion-alert, optionally fill a text input, click a button, then
- * wait for the alert to dismiss. Pass placeholder=null for confirm-only alerts.
+ * Wait for TrnAlertService's confirm/prompt dialog (<trn-alert-dialog> in a CDK
+ * dialog — replaces Ionic's <ion-alert>), optionally fill a text input, click a
+ * button, then wait for the dialog to dismiss. Pass placeholder=null for
+ * confirm-only dialogs.
  */
 async function fillAlertAndConfirm(page, placeholder, value, buttonName) {
-  const alert = page.locator('ion-alert');
+  const alert = page.locator('trn-alert-dialog');
   await alert.waitFor({ state: 'visible', timeout: 15_000 });
   if (placeholder && value) {
     await alert.locator(`input[placeholder="${placeholder}"]`).fill(value);
@@ -194,63 +196,50 @@ async function fillAlertAndConfirm(page, placeholder, value, buttonName) {
 }
 
 /**
- * Wait for an ion-action-sheet to appear, click a named button, then wait for
- * it to dismiss.
+ * Wait for TrnActionSheetService's bottom sheet (<trn-action-sheet> in a CDK
+ * dialog — replaces Ionic's <ion-action-sheet>) to appear, click a named
+ * button, then wait for it to dismiss.
  */
 async function clickActionSheetButton(page, buttonText) {
-  const sheet = page.locator('ion-action-sheet');
+  const sheet = page.locator('trn-action-sheet');
   await sheet.waitFor({ state: 'visible', timeout: 15_000 });
   await sheet.getByRole('button', { name: buttonText }).click();
   await sheet.waitFor({ state: 'detached', timeout: 15_000 });
 }
 
 /**
- * Interact with the UserPickerComponent modal: wait for it to appear, type an
- * MXID into the ion-searchbar (char-by-char to trigger ionInput → Angular
- * updates canConfirm()), wait for the confirm button to become enabled, click
- * it, then wait for the modal to dismiss.
+ * Interact with the UserPickerComponent modal (a CDK dialog — replaces
+ * Ionic's <ion-modal>): wait for it to appear, type an MXID into its native
+ * free-text field (char-by-char so every input event fires and Angular's
+ * canConfirm() computed re-evaluates), click the confirm button, then wait for
+ * the modal to dismiss.
  *
- * The confirm button is the ion-button in ion-buttons[slot="end"] inside the
- * modal header; its text matches `confirmLabelText`.
+ * The confirm button is a plain `<button hlmBtn>` in the modal header whose
+ * text matches `confirmLabelText`; Playwright's click() already waits for it
+ * to lose its `disabled` attribute (actionability), so no manual poll is
+ * needed — `[disabled]="!canConfirm()"` clears once the MXID validates.
  */
 async function fillUserPickerAndConfirm(page, mxid, confirmLabelText) {
-  const modal = page.locator('ion-modal');
+  const modal = page.locator('.cdk-dialog-container');
   await modal.waitFor({ state: 'visible', timeout: 15_000 });
 
-  // ion-searchbar renders a native <input> inside its shadow DOM; Playwright
-  // pierces it automatically with a descendant CSS selector.
-  const searchInput = modal.locator('ion-searchbar input');
+  // UserPickerComponent's free-text field — a native <input hlmInput> with a
+  // fixed default placeholder (no ion-searchbar shadow DOM to pierce anymore).
+  const searchInput = modal.getByPlaceholder('@user:server or a name');
   await searchInput.waitFor({ state: 'visible', timeout: 10_000 });
 
-  // Type character-by-character so Ionic's ionInput event chain fires on every
-  // keystroke; fill() alone may not trigger the web-component observer reliably.
+  // Type character-by-character so every keystroke's (input) event fires and
+  // the term signal — and canConfirm() — update on each one.
   await searchInput.click();
   await page.keyboard.type(mxid, { delay: 30 });
 
-  // Wait for Angular to process ionInput → term signal → canConfirm() = true →
-  // [disabled]="!canConfirm()" removes the disabled attribute from ion-button.
-  // Stencil reflects disabled=false by removing the attribute entirely.
-  await page.waitForFunction(
-    (label) => {
-      const m = document.querySelector('ion-modal');
-      if (!m) return false;
-      for (const b of m.querySelectorAll('ion-button')) {
-        if ((b.textContent ?? '').trim() === label) {
-          return !b.hasAttribute('disabled');
-        }
-      }
-      return false;
-    },
-    confirmLabelText,
-    { timeout: 10_000, polling: 200 },
-  );
+  await modal
+    .getByRole('button', { name: confirmLabelText, exact: true })
+    .click();
 
-  // Confirm button sits in ion-buttons[slot="end"] in the modal toolbar.
-  await modal.locator('ion-buttons[slot="end"] ion-button').click();
-
-  // Wait for the modal to dismiss (animation + onWillDismiss).
+  // Wait for the dialog to dismiss.
   await page.waitForFunction(
-    () => document.querySelectorAll('ion-modal').length === 0,
+    () => document.querySelectorAll('.cdk-dialog-container').length === 0,
     undefined,
     { timeout: 15_000, polling: 200 },
   );
@@ -363,11 +352,11 @@ async function main() {
     // The Home "+" button (aria-label set when spaceActive() is false).
     await page.click('button[aria-label="New room or direct message"]');
 
-    // ion-action-sheet: "New message" with "Create a room" / "Start a direct
+    // trn-action-sheet: "New message" with "Create a room" / "Start a direct
     // message" / "Cancel" buttons.
     await clickActionSheetButton(page, 'Create a room');
 
-    // ion-alert: header "Create a room", input placeholder "Room name".
+    // trn-alert-dialog: header "Create a room", input placeholder "Room name".
     await fillAlertAndConfirm(page, 'Room name', ROOM_NAME, 'Create');
 
     // The room appears in the sidebar channel list once sync delivers it.
@@ -448,7 +437,7 @@ async function main() {
       .first()
       .click();
 
-    // The "Invite people" ion-button is gated on activeRoom() being non-null.
+    // The "Invite people" button is gated on activeRoom() being non-null.
     const inviteBtn = page.getByTestId('invite-people');
     await inviteBtn.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     await inviteBtn.click();
