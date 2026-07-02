@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of } from 'rxjs';
-import { RoomEvent, ThreadEvent } from 'matrix-js-sdk';
+import { RoomEvent, RoomStateEvent, ThreadEvent } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadsService } from './threads.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -278,6 +278,82 @@ describe('ThreadsService', () => {
     expect(msgs.map((m) => m.id)).toEqual(['$root', '$r1']);
     expect(msgs[0].body).toBe('root msg');
     expect(svc.openThreadRootId()).toBe('$root');
+  });
+
+  it('refreshes an in-thread reply preview when the quoted sender loads late', () => {
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
+    const reply = fakeEvent({
+      id: '$r1',
+      sender: '@me:hs',
+      body: 'my reply',
+      replyTo: '$root',
+    });
+    const { svc, room } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
+    ]);
+    // The quoted sender @a:hs isn't in room state yet (lazy loading), then arrives.
+    let aliceLoaded = false;
+    room.getMember = ((id: string) =>
+      id === '@a:hs'
+        ? aliceLoaded
+          ? { name: 'Alice', getMxcAvatarUrl: () => 'mxc://hs/av' }
+          : null
+        : {
+            name: MEMBERS[id] ?? id,
+            getMxcAvatarUrl: () => null,
+          }) as unknown as typeof room.getMember;
+    svc.openThread('!r:hs', '$root');
+
+    const before = svc.threadMessages().find((m) => m.id === '$r1');
+    expect(before?.replyTo?.senderName).toBe('@a:hs'); // mxid fallback
+    expect(before?.replyTo?.senderAvatarMxc).toBeNull();
+
+    // The member's profile arrives; the room re-emits its state Members event.
+    aliceLoaded = true;
+    room.emit(
+      RoomStateEvent.Members,
+      {},
+      {},
+      { roomId: '!r:hs', userId: '@a:hs' },
+    );
+
+    const after = svc.threadMessages().find((m) => m.id === '$r1');
+    expect(after?.replyTo?.senderName).toBe('Alice');
+    expect(after?.replyTo?.senderAvatarMxc).toBe('mxc://hs/av');
+  });
+
+  it('does not re-project the thread when an unreferenced member changes', () => {
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
+    const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'a reply' });
+    const { svc, room } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
+    ]);
+    let memberCalls = 0;
+    const base = room.getMember;
+    room.getMember = (id: string) => {
+      memberCalls++;
+      return base(id);
+    };
+    svc.openThread('!r:hs', '$root');
+    const baseline = memberCalls;
+
+    // A member the thread doesn't render → gated out, no re-projection.
+    room.emit(
+      RoomStateEvent.Members,
+      {},
+      {},
+      { roomId: '!r:hs', userId: '@stranger:hs' },
+    );
+    expect(memberCalls).toBe(baseline);
+
+    // A referenced sender → re-projects.
+    room.emit(
+      RoomStateEvent.Members,
+      {},
+      {},
+      { roomId: '!r:hs', userId: '@a:hs' },
+    );
+    expect(memberCalls).toBeGreaterThan(baseline);
   });
 
   it('excludes m.replace edit events from the thread messages', () => {

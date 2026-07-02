@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of } from 'rxjs';
-import { RoomEvent } from 'matrix-js-sdk';
+import { RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
 import { describe, expect, it } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -416,6 +416,138 @@ describe('TimelineService', () => {
       senderAvatarMxc: null,
       body: 'original text',
     });
+  });
+
+  it('refreshes a reply preview when the quoted sender’s member loads late', () => {
+    const events = [
+      fakeEvent({ id: '$orig', sender: '@a:hs', body: 'original text' }),
+      fakeEvent({
+        id: '$reply',
+        sender: '@me:hs',
+        body: '> <@a:hs> original text\n\nmy reply',
+        replyTo: '$orig',
+      }),
+    ];
+    // The quoted sender isn't in room state yet (lazy loading), then arrives.
+    let aliceLoaded = false;
+    let memberHandler: ((...a: unknown[]) => void) | undefined;
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+      }),
+      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      getMember: (id: string) => {
+        if (id === '@me:hs') {
+          return { name: 'Me', getMxcAvatarUrl: () => null };
+        }
+        return aliceLoaded
+          ? { name: 'Alice', getMxcAvatarUrl: () => 'mxc://hs/av' }
+          : null;
+      },
+      relations: { getChildEventsForEvent: () => undefined },
+      hasEncryptionStateEvent: () => false,
+      on: (ev: string, cb: (...a: unknown[]) => void) => {
+        if (ev === RoomStateEvent.Members) {
+          memberHandler = cb;
+        }
+      },
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: () => Promise.resolve({}),
+      scrollback: () => Promise.resolve(room),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    // Member absent → preview falls back to the raw mxid, no avatar.
+    const before = svc.messages().find((m) => m.id === '$reply');
+    expect(before?.replyTo?.senderName).toBe('@a:hs');
+    expect(before?.replyTo?.senderAvatarMxc).toBeNull();
+
+    // The member's profile arrives; the room re-emits its state Members event.
+    aliceLoaded = true;
+    memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@a:hs' });
+
+    const after = svc.messages().find((m) => m.id === '$reply');
+    expect(after?.replyTo?.senderName).toBe('Alice');
+    expect(after?.replyTo?.senderAvatarMxc).toBe('mxc://hs/av');
+  });
+
+  it('does not re-project when an unreferenced member changes', () => {
+    const events = [fakeEvent({ id: '$1', sender: '@a:hs', body: 'hi' })];
+    let memberCalls = 0;
+    let memberHandler: ((...a: unknown[]) => void) | undefined;
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+      }),
+      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      getMember: (id: string) => {
+        memberCalls++;
+        return {
+          name: id === '@me:hs' ? 'Me' : 'Alice',
+          getMxcAvatarUrl: () => null,
+        };
+      },
+      relations: { getChildEventsForEvent: () => undefined },
+      hasEncryptionStateEvent: () => false,
+      on: (ev: string, cb: (...a: unknown[]) => void) => {
+        if (ev === RoomStateEvent.Members) {
+          memberHandler = cb;
+        }
+      },
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: () => Promise.resolve({}),
+      scrollback: () => Promise.resolve(room),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+    const baseline = memberCalls;
+
+    // A member the timeline doesn't render → gated out, no re-projection.
+    memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@stranger:hs' });
+    expect(memberCalls).toBe(baseline);
+
+    // A rendered sender → re-projects (reads members again).
+    memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@a:hs' });
+    expect(memberCalls).toBeGreaterThan(baseline);
   });
 
   it('marks edited messages and hides the edit events', () => {

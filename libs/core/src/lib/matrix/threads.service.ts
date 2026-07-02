@@ -8,9 +8,12 @@ import {
   NotificationCountType,
   ReceiptType,
   RoomEvent,
+  RoomStateEvent,
   ThreadEvent,
   type MatrixClient,
   type Room,
+  type RoomMember,
+  type RoomState,
   type Thread,
 } from 'matrix-js-sdk';
 import {
@@ -27,6 +30,7 @@ import { MatrixClientService } from './matrix-client.service';
 import { MediaService } from './media.service';
 import {
   buildMessageView,
+  collectMessageSenders,
   initialOf,
   isDisplayableMessage,
   stripReplyFallbackText,
@@ -175,9 +179,30 @@ export class ThreadsService {
   private threadRoom: Room | null = null;
   private threadRoomId: string | null = null;
 
+  // User ids the opened thread renders a member for: each message's sender plus
+  // each reply's quoted sender. Recomputed on every refresh; the member listener
+  // re-maps only when one of these members loads/changes, so a lazy member-load
+  // doesn't re-project the thread once per member.
+  private threadRelevantSenders = new Set<string>();
+
   private readonly onThreadChanged = (): void => this.refreshThread();
   private readonly onThreadDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.threadRoomId) {
+      this.refreshThread();
+    }
+  };
+  // A quoted sender's name/avatar can arrive after its reply (lazy loading),
+  // otherwise leaving the in-thread reply preview stuck on the raw mxid + initials.
+  // Re-map when a member the thread actually references loads or changes.
+  private readonly onThreadMember = (
+    _event: MatrixEvent,
+    _state: RoomState,
+    member: RoomMember,
+  ): void => {
+    if (
+      member.roomId === this.threadRoomId &&
+      this.threadRelevantSenders.has(member.userId)
+    ) {
       this.refreshThread();
     }
   };
@@ -276,6 +301,7 @@ export class ThreadsService {
     // listen there too to re-map the optimistic echo just like the main timeline.
     room.on(ThreadEvent.New, this.onThreadCreated);
     room.on(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
+    room.on(RoomStateEvent.Members, this.onThreadMember);
     client.on(MatrixEventEvent.Decrypted, this.onThreadDecrypted);
     this.refreshThread();
   }
@@ -292,6 +318,7 @@ export class ThreadsService {
     if (room) {
       room.off(ThreadEvent.New, this.onThreadCreated);
       room.off(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
+      room.off(RoomStateEvent.Members, this.onThreadMember);
     }
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(
@@ -303,6 +330,7 @@ export class ThreadsService {
     this.threadRoom = null;
     this.threadRoomId = null;
     this.lastReadEventId = null;
+    this.threadRelevantSenders.clear();
     this._openThreadRootId.set(null);
     this._threadMessages.set([]);
     this._canPaginateThread.set(false);
@@ -639,6 +667,12 @@ export class ThreadsService {
       ordered.push(root);
     }
     ordered.push(...replies);
+
+    const relevant = new Set<string>();
+    for (const e of ordered) {
+      collectMessageSenders(room, e, relevant);
+    }
+    this.threadRelevantSenders = relevant;
 
     this._threadMessages.set(
       ordered.map((e) => buildMessageView(client, room, e)),

@@ -82,7 +82,8 @@ export function buildMessageView(
 ): MessageView {
   const senderId = event.getSender() ?? '';
   const member = room.getMember(senderId);
-  const senderName = member?.name ?? senderId;
+  // `||` (not `??`) so an empty display name still falls back to the mxid.
+  const senderName = member?.name || senderId;
   const decryptionFailed = event.isDecryptionFailure();
   const { body, html, kind, media } = renderBody(event, decryptionFailed);
   return {
@@ -136,7 +137,8 @@ export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
   }
   const sender = target.getSender() ?? '';
   const member = room.getMember(sender);
-  const senderName = member?.name ?? sender;
+  // `||` (not `??`) so an empty display name still falls back to the mxid.
+  const senderName = member?.name || sender;
   const raw = target.isRedacted()
     ? '(message deleted)'
     : stripReplyFallbackText((target.getContent()['body'] as string) ?? '');
@@ -147,6 +149,32 @@ export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
     senderAvatarMxc: member?.getMxcAvatarUrl() ?? null,
     body: raw.replace(/\s+/g, ' ').trim() || '…',
   };
+}
+
+/**
+ * Add the user ids whose room membership a rendered message depends on — the
+ * sender (shown in the header) and, for a reply, the quoted sender shown in the
+ * reply preview — into `into`. A projection uses this to re-map only when a member
+ * it actually references loads or changes its name/avatar, rather than on every
+ * member update in a large room. The reply target's sender is included only when
+ * the target is loaded, which is exactly when a (possibly stale) preview renders.
+ */
+export function collectMessageSenders(
+  room: Room,
+  event: MatrixEvent,
+  into: Set<string>,
+): void {
+  const sender = event.getSender();
+  if (sender) {
+    into.add(sender);
+  }
+  const replyId = event.replyEventId;
+  if (replyId) {
+    const targetSender = room.findEventById(replyId)?.getSender();
+    if (targetSender) {
+      into.add(targetSender);
+    }
+  }
 }
 
 /** Read aggregated reactions for an event from the room's relations. */
