@@ -257,9 +257,11 @@ export class RoomsPage implements OnInit, OnDestroy {
    * (including in the composer) never triggers it. `preventDefault` stops the
    * browser's own Cmd/Ctrl+K. Re-entrancy is guarded in {@link QuickSwitcherService}.
    */
+  // Angular 21 type-checks host listeners; `document:keydown` is typed as the base
+  // `Event`, so accept that and just call the shared `preventDefault`.
   @HostListener('document:keydown.meta.k', ['$event'])
   @HostListener('document:keydown.control.k', ['$event'])
-  onQuickSwitch(event: KeyboardEvent): void {
+  onQuickSwitch(event: Event): void {
     event.preventDefault();
     void this.openSwitcher();
   }

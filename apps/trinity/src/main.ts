@@ -1,5 +1,9 @@
 import { bootstrapApplication } from '@angular/platform-browser';
-import { inject, provideAppInitializer } from '@angular/core';
+import {
+  inject,
+  provideAppInitializer,
+  provideZoneChangeDetection,
+} from '@angular/core';
 import {
   RouteReuseStrategy,
   provideRouter,
@@ -35,6 +39,7 @@ const isElectron =
 
 bootstrapApplication(AppComponent, {
   providers: [
+    provideZoneChangeDetection(),
     { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
     // Move focus into the entering page during a route transition (before the
     // leaving page is `aria-hidden`/`ion-page-hidden`). Without this Ionic's focus
