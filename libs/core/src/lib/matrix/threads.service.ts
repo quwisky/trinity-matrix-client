@@ -173,6 +173,33 @@ export class ThreadsService {
       this.refreshSummaries();
     }
   };
+  // A summary renders each participant's name + avatar (and the root/latest sender
+  // names), all resolved from room membership — which can arrive (lazy loading) or
+  // change after the summary was built. The revision fingerprint deliberately does
+  // NOT walk participant avatars (that would cost a member scan on every refresh),
+  // so instead drop the summaries the changed member takes part in and let
+  // refreshSummaries rebuild just those with the resolved profile. The cached
+  // participant list is the gate: an unreferenced member matches nothing and no
+  // rebuild happens.
+  private readonly onSummariesMember = (
+    _event: MatrixEvent,
+    _state: RoomState,
+    member: RoomMember,
+  ): void => {
+    if (member.roomId !== this.summariesRoomId) {
+      return;
+    }
+    let invalidated = false;
+    for (const [id, entry] of this.summaryCache) {
+      if (entry.summary.participants.some((p) => p.id === member.userId)) {
+        this.summaryCache.delete(id);
+        invalidated = true;
+      }
+    }
+    if (invalidated) {
+      this.refreshSummaries();
+    }
+  };
 
   // --- Opened thread --------------------------------------------------------
   private thread: Thread | null = null;
@@ -240,6 +267,8 @@ export class ThreadsService {
     // change, and Receipt fires when our (or another) read receipt clears them.
     room.on(RoomEvent.UnreadNotifications, this.onSummariesChanged);
     room.on(RoomEvent.Receipt, this.onSummariesChanged);
+    // Participant names/avatars resolve from membership, which can load/change late.
+    room.on(RoomStateEvent.Members, this.onSummariesMember);
     client.on(MatrixEventEvent.Decrypted, this.onSummariesDecrypted);
     this.refreshSummaries();
   }
@@ -254,6 +283,7 @@ export class ThreadsService {
       room.off(RoomEvent.Timeline, this.onSummariesChanged);
       room.off(RoomEvent.UnreadNotifications, this.onSummariesChanged);
       room.off(RoomEvent.Receipt, this.onSummariesChanged);
+      room.off(RoomStateEvent.Members, this.onSummariesMember);
     }
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(
