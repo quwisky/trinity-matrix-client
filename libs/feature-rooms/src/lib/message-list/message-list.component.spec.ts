@@ -93,6 +93,37 @@ describe('MessageListComponent', () => {
     expect(reply.textContent).toContain('original message');
   });
 
+  it('shows the header on a reply even when it continues the same sender', () => {
+    const fixture = TestBed.createComponent(MessageListComponent);
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      {
+        // Same sender, well within the 5-min gap → would normally group as a
+        // continuation, but a reply must keep its own author + avatar.
+        ...msg('$2', '@a:hs', 'Alice', 2000),
+        replyTo: {
+          id: '$orig',
+          senderName: 'Bob',
+          senderInitial: 'B',
+          senderAvatarUrl: null,
+          body: 'original message',
+        },
+      },
+    ]);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement;
+    const rows = el.querySelectorAll('.msg');
+    expect(rows.length).toBe(2);
+    // Both rows carry a header (avatar + author); the reply is not a continuation.
+    expect(el.querySelectorAll('.msg__avatar').length).toBe(2);
+    expect(el.querySelectorAll('.msg--cont').length).toBe(0);
+    expect(rows[1].querySelector('.msg__author')?.textContent).toContain(
+      'Alice',
+    );
+    expect(rows[1].querySelector('.msg__reply')?.textContent).toContain('Bob');
+  });
+
   it('editLastOwn selects the most recent editable own message', () => {
     const fixture = TestBed.createComponent(MessageListComponent);
     fixture.componentRef.setInput('messages', [
