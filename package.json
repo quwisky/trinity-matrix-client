@@ -23,6 +23,7 @@
     "e2e:verify:down": "node e2e/synapse/stop.mjs",
     "e2e:media": "nx build trinity --configuration=development && node e2e/runners/send-media-run.mjs",
     "e2e:threads": "nx build trinity --configuration=development && node e2e/runners/threads-run.mjs",
+    "e2e:reply": "nx build trinity --configuration=development && node e2e/runners/reply-run.mjs",
     "e2e:spaces": "nx build trinity --configuration=development && node e2e/runners/spaces-run.mjs",
     "e2e:rooms": "nx build trinity --configuration=development && node e2e/runners/rooms-run.mjs",
     "e2e:search": "nx build trinity --configuration=development && node e2e/runners/search-run.mjs",

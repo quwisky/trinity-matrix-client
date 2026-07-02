@@ -40,13 +40,14 @@ disposable Synapse. Paths are relative to the repo root, so always invoke via th
 
 ## Scripts
 
-| Command                                       | What it does                                                                                  |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `pnpm smoke:login`                            | Unauthenticated → `/login`, real `.well-known` discovery for matrix.org.                      |
-| `pnpm spike:chromium` / `pnpm spike:webkit`   | In-app E2EE crypto spike.                                                                     |
-| `pnpm e2e:verify`                             | **Two-client device verification (emoji SAS)** — full live flow against a disposable Synapse. |
-| `pnpm e2e:media`                              | **Note-to-self encrypted media send** — pick a file → encrypt → upload → decrypt own echo.    |
-| `pnpm e2e:verify:up` / `pnpm e2e:verify:down` | Bring the Synapse+Caddy harness up / tear it down by hand.                                    |
+| Command                                       | What it does                                                                                                                               |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm smoke:login`                            | Unauthenticated → `/login`, real `.well-known` discovery for matrix.org.                                                                   |
+| `pnpm spike:chromium` / `pnpm spike:webkit`   | In-app E2EE crypto spike.                                                                                                                  |
+| `pnpm e2e:verify`                             | **Two-client device verification (emoji SAS)** — full live flow against a disposable Synapse.                                              |
+| `pnpm e2e:media`                              | **Note-to-self encrypted media send** — pick a file → encrypt → upload → decrypt own echo.                                                 |
+| `pnpm e2e:reply`                              | **Reply header + preview** — a reply keeps its own author/avatar even as a same-sender continuation, and renders the quoted reply preview. |
+| `pnpm e2e:verify:up` / `pnpm e2e:verify:down` | Bring the Synapse+Caddy harness up / tear it down by hand.                                                                                 |
 
 ## `e2e:media` — encrypted media send round-trip
 
