@@ -7,15 +7,17 @@ builds and ships the entire time; `@ionic/angular` is removed last.
 
 ## Ground rules / setup (done)
 
-- **Version pin.** The app is on **Angular 20.3**, so spartan is pinned to
-  `@spartan-ng/brain@0.0.1-alpha.700` (Angular ≥20 <22). Stable spartan `1.x`
-  requires Angular 21 — a separate upgrade, out of scope here.
-- **Tailwind v3.4** with `preflight` **off** (so it never fights Ionic's reset).
-  Helm components that draw a border therefore carry `border-solid` explicitly.
-- **Dark mode** is keyed to `.ion-palette-dark` (the class `ThemeService` toggles
-  on `<html>`), so spartan tokens flip with the rest of the app — no new wiring.
-  Tokens live in `apps/trinity/src/theme/spartan.css`; `--primary` is Trinity
-  blurple so helm buttons match the existing brand accent.
+- **Versions.** The app was upgraded to **Angular 21** (+ CDK 21) so it can run
+  stable **`@spartan-ng/brain@1.0.3`** (Angular ≥21 <23). Nx 23 caps Angular at
+  21, so 21 is the ceiling until Nx bumps. Ionic 8 (peer `>=16`) runs on 21.
+- **Tailwind v4** (CSS-first). `apps/trinity/src/theme/spartan.css` imports only
+  the `theme` + `utilities` layers — **preflight stays out** so it never fights
+  Ionic's reset — so helm components that draw a border carry `border-solid`.
+  `@theme inline` maps tokens to color utilities by reference.
+- **Dark mode** via `@custom-variant dark` keyed to `.ion-palette-dark` (the
+  class `ThemeService` toggles on `<html>`), so spartan tokens flip with the rest
+  of the app — no new wiring. `--primary` is Trinity blurple so helm buttons
+  match the existing brand accent.
 - **`hlm(...)`** (`clsx` + `tailwind-merge`) is the class-merge helper every helm
   primitive routes its host `class` through, so callers override without
   `!important`.

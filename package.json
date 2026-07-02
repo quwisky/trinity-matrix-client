@@ -93,7 +93,7 @@
     "@ctrl/ngx-emoji-mart": "^9.3.0",
     "@ionic/angular": "^8.0.0",
     "@matrix-org/matrix-sdk-crypto-wasm": "^18.3.1",
-    "@spartan-ng/brain": "0.0.1-alpha.700",
+    "@spartan-ng/brain": "1.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.11",
