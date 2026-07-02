@@ -7,24 +7,25 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { DialogRef } from '@angular/cdk/dialog';
 import { Observable } from 'rxjs';
 import {
   IonHeader,
   IonToolbar,
   IonTitle,
   IonContent,
-  IonList,
-  IonItem,
-  IonInput,
-  IonButton,
-  IonButtons,
-  ModalController,
 } from '@ionic/angular/standalone';
 import { CryptoService } from '@trinity/core';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
-import { TrnSpinnerComponent } from '@trinity/ui-spartan';
+import {
+  TrnButtonDirective,
+  TrnInputDirective,
+  TrnLabelDirective,
+  TrnSpinnerComponent,
+} from '@trinity/ui-spartan';
 
 /**
  * New-device unlock (flow B). The account already has secret storage; the user
@@ -39,15 +40,14 @@ import { TrnSpinnerComponent } from '@trinity/ui-spartan';
   styleUrls: ['encryption-unlock.page.scss'],
   imports: [
     FormsModule,
+    NgTemplateOutlet,
     IonHeader,
     IonToolbar,
     IonTitle,
     IonContent,
-    IonList,
-    IonItem,
-    IonInput,
-    IonButton,
-    IonButtons,
+    TrnButtonDirective,
+    TrnInputDirective,
+    TrnLabelDirective,
     TrnSpinnerComponent,
   ],
 })
@@ -55,7 +55,11 @@ export class EncryptionUnlockPage {
   private readonly crypto = inject(CryptoService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  private readonly modalCtrl = inject(ModalController);
+  // Present only when opened as a dialog (desktop); null on the routed page.
+  private readonly dialogRef = inject<DialogRef<void, EncryptionUnlockPage>>(
+    DialogRef,
+    { optional: true },
+  );
   private readonly destroyRef = inject(DestroyRef);
 
   readonly recoveryKey = signal('');
@@ -85,25 +89,19 @@ export class EncryptionUnlockPage {
     this.leave();
   }
 
-  /** Close the modal, or (routed) return to the launch route / /rooms. */
+  /** Close the dialog, or (routed) return to the launch route / /rooms. */
   private leave(): void {
     if (this.asModal()) {
-      // @Outputs aren't bound on ModalController-created components, so dismiss
-      // the host modal ourselves; `closed` stays for any @Output-bound host.
+      // @Outputs aren't bound on dialog-created components, so close the host
+      // dialog ourselves; `closed` stays for any @Output-bound host.
       this.closed.emit();
-      void this.dismissTopModal();
+      this.dialogRef?.close();
       return;
     }
     const returnTo = this.route.snapshot.queryParamMap.get('returnTo');
     void this.router.navigateByUrl(resolveInternalReturnTo(returnTo), {
       replaceUrl: true,
     });
-  }
-
-  /** Dismiss the host modal if one is still presented (guards double-dismiss). */
-  private async dismissTopModal(): Promise<void> {
-    const top = await this.modalCtrl.getTop();
-    await top?.dismiss();
   }
 
   /** Wrap a one-shot action with shared busy/error handling. */

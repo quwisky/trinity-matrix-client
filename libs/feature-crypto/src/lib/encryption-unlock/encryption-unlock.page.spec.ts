@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ModalController } from '@ionic/angular/standalone';
+import { DialogRef } from '@angular/cdk/dialog';
 import { CryptoService } from '@trinity/core';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -11,8 +11,7 @@ function configure(
   returnTo: string | null = null,
 ) {
   const navigateByUrl = vi.fn();
-  const dismiss = vi.fn().mockResolvedValue(true);
-  const getTop = vi.fn().mockResolvedValue({ dismiss });
+  const close = vi.fn();
   TestBed.configureTestingModule({
     imports: [EncryptionUnlockPage],
     providers: [
@@ -28,10 +27,17 @@ function configure(
           },
         },
       },
-      { provide: ModalController, useValue: { getTop } },
+      { provide: DialogRef, useValue: { close } },
     ],
   });
-  return { navigateByUrl, getTop, dismiss };
+  return { navigateByUrl, close };
+}
+
+/** Finds a `<button>` whose trimmed text is exactly `text` (native trnBtn only). */
+function closeButton(host: HTMLElement): HTMLElement | undefined {
+  return [...host.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === 'Close',
+  );
 }
 
 describe('EncryptionUnlockPage', () => {
@@ -91,9 +97,9 @@ describe('EncryptionUnlockPage', () => {
     expect(navigateByUrl).not.toHaveBeenCalled();
   });
 
-  it('dismisses its own modal (and emits close) on success when modal', async () => {
+  it('dismisses its own modal (and emits close) on success when modal', () => {
     const recoverWithKey = vi.fn().mockReturnValue(of(undefined));
-    const { navigateByUrl, getTop, dismiss } = configure(recoverWithKey);
+    const { navigateByUrl, close } = configure(recoverWithKey);
     const fixture = TestBed.createComponent(EncryptionUnlockPage);
     fixture.componentRef.setInput('asModal', true);
     let closed = false;
@@ -104,18 +110,17 @@ describe('EncryptionUnlockPage', () => {
 
     expect(closed).toBe(true);
     expect(navigateByUrl).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(getTop).toHaveBeenCalled());
-    await vi.waitFor(() => expect(dismiss).toHaveBeenCalledOnce());
+    expect(close).toHaveBeenCalled();
   });
 
   it('renders a Close control only in modal mode', () => {
     configure(vi.fn());
     const fixture = TestBed.createComponent(EncryptionUnlockPage);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('ion-buttons')).toBeNull();
+    expect(closeButton(fixture.nativeElement)).toBeUndefined();
 
     fixture.componentRef.setInput('asModal', true);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('ion-buttons')).not.toBeNull();
+    expect(closeButton(fixture.nativeElement)).not.toBeUndefined();
   });
 });

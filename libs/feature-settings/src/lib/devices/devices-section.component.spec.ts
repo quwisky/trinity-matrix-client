@@ -1,13 +1,12 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { ModalController } from '@ionic/angular/standalone';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   EncryptionDialogService,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
-import { TrnAlertService } from '@trinity/ui-spartan';
+import { TrnAlertService, TrnDialogService } from '@trinity/ui-spartan';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
@@ -47,7 +46,7 @@ describe('DevicesSectionComponent', () => {
   let devices: ReturnType<typeof signal<DeviceInfo[]>>;
   let alertConfirm: ReturnType<typeof vi.fn>;
   let alertPrompt: ReturnType<typeof vi.fn>;
-  let modalCreate: ReturnType<typeof vi.fn>;
+  let dialogOpen: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     rename.mockClear();
@@ -58,9 +57,7 @@ describe('DevicesSectionComponent', () => {
     devices = signal<DeviceInfo[]>([CURRENT, OTHER]);
     alertConfirm = vi.fn().mockResolvedValue(true);
     alertPrompt = vi.fn().mockResolvedValue('Tablet');
-    modalCreate = vi
-      .fn()
-      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    dialogOpen = vi.fn();
 
     TestBed.configureTestingModule({
       imports: [DevicesSectionComponent],
@@ -82,7 +79,7 @@ describe('DevicesSectionComponent', () => {
           provide: TrnAlertService,
           useValue: { confirm: alertConfirm, prompt: alertPrompt },
         },
-        { provide: ModalController, useValue: { create: modalCreate } },
+        { provide: TrnDialogService, useValue: { open: dialogOpen } },
         { provide: Router, useValue: { navigate } },
         {
           provide: ENCRYPTION_DIALOG_COMPONENTS,
@@ -166,10 +163,10 @@ describe('DevicesSectionComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/encryption/verify'], {
       queryParams: { returnTo: '/settings' },
     });
-    expect(modalCreate).not.toHaveBeenCalled();
+    expect(dialogOpen).not.toHaveBeenCalled();
   });
 
-  it('opens the verification flow as a modal on the desktop layout', async () => {
+  it('opens the verification flow as a dialog on the desktop layout', async () => {
     stubViewport(true);
     const fixture = TestBed.createComponent(DevicesSectionComponent);
     fixture.detectChanges();
@@ -177,10 +174,11 @@ describe('DevicesSectionComponent', () => {
     fixture.componentInstance.verifyDevices();
 
     await vi.waitFor(() =>
-      expect(modalCreate).toHaveBeenCalledWith(
+      expect(dialogOpen).toHaveBeenCalledWith(
+        StubVerifyPage,
         expect.objectContaining({
-          component: StubVerifyPage,
-          componentProps: { asModal: true },
+          inputs: { asModal: true },
+          disableClose: true,
         }),
       ),
     );

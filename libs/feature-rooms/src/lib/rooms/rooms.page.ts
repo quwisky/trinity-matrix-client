@@ -24,11 +24,11 @@ import {
   IonButton,
   IonIcon,
   MenuController,
-  ModalController,
 } from '@ionic/angular/standalone';
 import {
   TrnActionSheetService,
   TrnAlertService,
+  TrnDialogService,
   TrnToastService,
 } from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
@@ -114,7 +114,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly menu = inject(MenuController);
-  private readonly modalCtrl = inject(ModalController);
+  private readonly dialog = inject(TrnDialogService);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
   private readonly actionSheet = inject(TrnActionSheetService);
@@ -279,7 +279,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    * runs onSelectRoom() → media.releaseAll(), revoking the open modal's pinned blobs.
    */
   async openSwitcher(): Promise<void> {
-    if (await this.modalCtrl.getTop()) {
+    if (this.dialog.hasOpen()) {
       return; // an overlay owns the screen — don't stack the switcher over it
     }
     const selection = await this.switcher.pick();

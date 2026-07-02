@@ -1,126 +1,150 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-title>Verify device</ion-title>
-    <ion-buttons slot="end">
-      <ion-button (click)="cancelAndLeave()" aria-label="Close"
-        >Close</ion-button
-      >
-    </ion-buttons>
-  </ion-toolbar>
-</ion-header>
+@if (asModal()) {
+  <div
+    class="flex max-h-[90vh] w-[92vw] max-w-[420px] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
+  >
+    <div
+      class="flex items-center gap-2 border-b border-solid border-border p-3"
+    >
+      <h2 class="flex-1 text-base font-semibold">Verify device</h2>
+      <button trnBtn variant="ghost" size="sm" (click)="cancelAndLeave()">
+        Close
+      </button>
+    </div>
+    <div class="overflow-y-auto p-4">
+      <ng-container [ngTemplateOutlet]="body" />
+    </div>
+  </div>
+} @else {
+  <ion-header>
+    <ion-toolbar>
+      <ion-title>Verify device</ion-title>
+      <ion-buttons slot="end">
+        <ion-button (click)="cancelAndLeave()" aria-label="Close"
+          >Close</ion-button
+        >
+      </ion-buttons>
+    </ion-toolbar>
+  </ion-header>
 
-<ion-content
-  class="ion-padding"
-  data-testid="verify-page"
-  [attr.data-stage]="active()?.stage ?? 'idle'"
->
-  @if (active(); as v) {
-    @switch (v.stage) {
-      @case ('requested') {
-        @if (v.incoming) {
-          <h1 class="heading">Verify this device?</h1>
+  <ion-content class="ion-padding">
+    <ng-container [ngTemplateOutlet]="body" />
+  </ion-content>
+}
+
+<ng-template #body>
+  <div data-testid="verify-page" [attr.data-stage]="active()?.stage ?? 'idle'">
+    @if (active(); as v) {
+      @switch (v.stage) {
+        @case ('requested') {
+          @if (v.incoming) {
+            <h1 class="heading">Verify this device?</h1>
+            <p class="text-muted-foreground">
+              Another of your sessions wants to verify this one
+              @if (v.otherDeviceId) {
+                (<code>{{ v.otherDeviceId }}</code
+                >)
+              }
+              . Accept to compare a set of emoji.
+            </p>
+            <button
+              trnBtn
+              class="mt-4 w-full"
+              data-testid="verify-accept"
+              [disabled]="busy()"
+              (click)="accept()"
+            >
+              Accept
+            </button>
+            <button
+              trnBtn
+              variant="ghost"
+              class="mt-2 w-full"
+              [disabled]="busy()"
+              (click)="cancelAndLeave()"
+            >
+              Decline
+            </button>
+          } @else {
+            <h1 class="heading">Waiting for your other device…</h1>
+            <p class="text-muted-foreground">
+              Accept the verification request on your other session.
+            </p>
+            <div class="center"><trn-spinner /></div>
+          }
+        }
+        @case ('ready') {
+          <h1 class="heading">Start the emoji check</h1>
           <p class="text-muted-foreground">
-            Another of your sessions wants to verify this one
-            @if (v.otherDeviceId) {
-              (<code>{{ v.otherDeviceId }}</code
-              >)
-            }
-            . Accept to compare a set of emoji.
+            Both sessions are ready. Begin comparing emoji.
           </p>
-          <ion-button
-            expand="block"
-            data-testid="verify-accept"
+          <button
+            trnBtn
+            class="mt-4 w-full"
+            data-testid="verify-start-sas"
             [disabled]="busy()"
-            (click)="accept()"
+            (click)="startSas()"
           >
-            Accept
-          </ion-button>
-          <ion-button
-            expand="block"
-            fill="clear"
-            [disabled]="busy()"
-            (click)="cancelAndLeave()"
-          >
-            Decline
-          </ion-button>
-        } @else {
-          <h1 class="heading">Waiting for your other device…</h1>
-          <p class="text-muted-foreground">
-            Accept the verification request on your other session.
-          </p>
-          <div class="center"><trn-spinner /></div>
+            Start emoji verification
+          </button>
+        }
+        @case ('waiting') {
+          <h1 class="heading">Setting up…</h1>
+          <div class="center" role="status" aria-live="polite">
+            <trn-spinner />
+            <p>
+              <span class="text-muted-foreground">Generating the emoji…</span>
+            </p>
+          </div>
+        }
+        @case ('sas-shown') {
+          <h1 class="heading">Compare the emoji</h1>
+          <trn-sas-compare
+            [emoji]="v.emoji ?? []"
+            [busy]="busy()"
+            (match)="confirm()"
+            (mismatch)="reportMismatch()"
+            (cancelled)="cancelAndLeave()"
+          />
+        }
+        @case ('done') {
+          <div class="center" role="status">
+            <div class="result result--ok" aria-hidden="true">✓</div>
+            <h1 class="heading">Device verified</h1>
+            <p class="text-muted-foreground">
+              This session is now trusted. Your encrypted history will sync.
+            </p>
+            <button trnBtn class="mt-4 w-full" (click)="finish()">Done</button>
+          </div>
+        }
+        @case ('cancelled') {
+          <div class="center" role="status">
+            <div class="result result--bad" aria-hidden="true">⚠️</div>
+            <h1 class="heading">Verification stopped</h1>
+            <p class="text-muted-foreground">{{ v.cancelReason }}</p>
+            <button trnBtn class="mt-4 w-full" (click)="finish()">Close</button>
+          </div>
         }
       }
-      @case ('ready') {
-        <h1 class="heading">Start the emoji check</h1>
-        <p class="text-muted-foreground">
-          Both sessions are ready. Begin comparing emoji.
-        </p>
-        <ion-button
-          expand="block"
-          data-testid="verify-start-sas"
-          [disabled]="busy()"
-          (click)="startSas()"
-        >
-          Start emoji verification
-        </ion-button>
-      }
-      @case ('waiting') {
-        <h1 class="heading">Setting up…</h1>
-        <div class="center" role="status" aria-live="polite">
-          <trn-spinner />
-          <p>
-            <span class="text-muted-foreground">Generating the emoji…</span>
-          </p>
-        </div>
-      }
-      @case ('sas-shown') {
-        <h1 class="heading">Compare the emoji</h1>
-        <trn-sas-compare
-          [emoji]="v.emoji ?? []"
-          [busy]="busy()"
-          (match)="confirm()"
-          (mismatch)="reportMismatch()"
-          (cancelled)="cancelAndLeave()"
-        />
-      }
-      @case ('done') {
-        <div class="center" role="status">
-          <div class="result result--ok" aria-hidden="true">✓</div>
-          <h1 class="heading">Device verified</h1>
-          <p class="text-muted-foreground">
-            This session is now trusted. Your encrypted history will sync.
-          </p>
-          <ion-button expand="block" (click)="finish()">Done</ion-button>
-        </div>
-      }
-      @case ('cancelled') {
-        <div class="center" role="status">
-          <div class="result result--bad" aria-hidden="true">⚠️</div>
-          <h1 class="heading">Verification stopped</h1>
-          <p class="text-muted-foreground">{{ v.cancelReason }}</p>
-          <ion-button expand="block" (click)="finish()">Close</ion-button>
-        </div>
-      }
+    } @else {
+      <!-- Routed entry: nothing in flight yet — offer to start. -->
+      <h1 class="heading">Verify with another device</h1>
+      <p class="text-muted-foreground">
+        Confirm this is really you by comparing a set of emoji with another
+        session that's already signed in — an alternative to your recovery key.
+      </p>
+      <button
+        trnBtn
+        class="mt-4 w-full"
+        data-testid="verify-start"
+        [disabled]="busy()"
+        (click)="start()"
+      >
+        Start verification
+      </button>
     }
-  } @else {
-    <!-- Routed entry: nothing in flight yet — offer to start. -->
-    <h1 class="heading">Verify with another device</h1>
-    <p class="text-muted-foreground">
-      Confirm this is really you by comparing a set of emoji with another
-      session that's already signed in — an alternative to your recovery key.
-    </p>
-    <ion-button
-      expand="block"
-      data-testid="verify-start"
-      [disabled]="busy()"
-      (click)="start()"
-    >
-      Start verification
-    </ion-button>
-  }
 
-  @if (error(); as message) {
-    <p class="text-destructive" role="alert">{{ message }}</p>
-  }
-</ion-content>
+    @if (error(); as message) {
+      <p class="mt-2 text-destructive" role="alert">{{ message }}</p>
+    }
+  </div>
+</ng-template>

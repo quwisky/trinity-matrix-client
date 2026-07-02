@@ -1,7 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ModalController } from '@ionic/angular/standalone';
+import { DialogRef } from '@angular/cdk/dialog';
 import { VerificationService, type VerificationView } from '@trinity/core';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -42,24 +42,24 @@ function configure(
       },
     },
   };
-  // A modal is "presented" so getTop() resolves it; lets us assert the page
-  // dismisses its own host modal in modal mode.
-  const dismiss = vi.fn().mockResolvedValue(true);
-  const getTop = vi.fn().mockResolvedValue({ dismiss });
+  const close = vi.fn();
   TestBed.configureTestingModule({
     imports: [DeviceVerificationPage],
     providers: [
       { provide: VerificationService, useValue: svc },
       { provide: Router, useValue: router },
       { provide: ActivatedRoute, useValue: route },
-      { provide: ModalController, useValue: { getTop } },
+      { provide: DialogRef, useValue: { close } },
     ],
   });
-  return { svc, router, getTop, dismiss };
+  return { svc, router, close };
 }
 
+// Body buttons are native `<button trnBtn>`; the routed header's Close is an
+// `ion-button`; the SAS "They match"/"They don't match"/"Cancel" controls (owned
+// by <trn-sas-compare>, unchanged) are still `ion-button`. Cover both.
 function button(host: HTMLElement, text: string): HTMLElement {
-  return [...host.querySelectorAll('ion-button')].find((b) =>
+  return [...host.querySelectorAll('button, ion-button')].find((b) =>
     b.textContent?.includes(text),
   ) as HTMLElement;
 }
@@ -139,10 +139,8 @@ describe('DeviceVerificationPage', () => {
     });
   });
 
-  it('dismisses its own modal (and emits close) instead of navigating when modal', async () => {
-    const { svc, router, getTop, dismiss } = configure(
-      signal(view({ stage: 'done' })),
-    );
+  it('dismisses its own modal (and emits close) instead of navigating when modal', () => {
+    const { svc, router, close } = configure(signal(view({ stage: 'done' })));
     const fixture = TestBed.createComponent(DeviceVerificationPage);
     fixture.componentRef.setInput('asModal', true);
     let closed = false;
@@ -154,18 +152,16 @@ describe('DeviceVerificationPage', () => {
     expect(svc.dismiss).toHaveBeenCalledOnce();
     expect(closed).toBe(true);
     expect(router.navigateByUrl).not.toHaveBeenCalled();
-    // Dismisses the top modal — but only if one is actually presented.
-    await vi.waitFor(() => expect(getTop).toHaveBeenCalled());
-    await vi.waitFor(() => expect(dismiss).toHaveBeenCalledOnce());
+    expect(close).toHaveBeenCalled();
   });
 
   it('does not touch the modal stack on the routed (non-modal) path', () => {
-    const { getTop } = configure(signal(view({ stage: 'done' })));
+    const { close } = configure(signal(view({ stage: 'done' })));
     const fixture = TestBed.createComponent(DeviceVerificationPage);
     fixture.detectChanges();
 
     button(fixture.nativeElement, 'Done').click();
 
-    expect(getTop).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
   });
 });

@@ -1,58 +1,72 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-title>Verify this device</ion-title>
-    @if (asModal()) {
-      <ion-buttons slot="end">
-        <ion-button (click)="close()" aria-label="Close">Close</ion-button>
-      </ion-buttons>
-    }
-  </ion-toolbar>
-</ion-header>
+@if (asModal()) {
+  <div
+    class="flex max-h-[90vh] w-[92vw] max-w-[420px] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
+  >
+    <div
+      class="flex items-center gap-2 border-b border-solid border-border p-3"
+    >
+      <h2 class="flex-1 text-base font-semibold">Verify this device</h2>
+      <button trnBtn variant="ghost" size="sm" (click)="close()">Close</button>
+    </div>
+    <div class="overflow-y-auto p-4">
+      <ng-container [ngTemplateOutlet]="body" />
+    </div>
+  </div>
+} @else {
+  <ion-header>
+    <ion-toolbar>
+      <ion-title>Verify this device</ion-title>
+    </ion-toolbar>
+  </ion-header>
 
-<ion-content class="ion-padding">
+  <ion-content class="ion-padding">
+    <ng-container [ngTemplateOutlet]="body" />
+  </ion-content>
+}
+
+<ng-template #body>
   <h1 class="heading">Enter your recovery key</h1>
   <p class="text-muted-foreground">
     This device isn't trusted yet. Enter the recovery key you saved when you set
     up encryption to unlock your encrypted messages here.
   </p>
 
-  <ion-list>
-    <ion-item>
-      <ion-input
-        label="Recovery key"
-        labelPlacement="stacked"
-        autocapitalize="off"
-        autocorrect="off"
-        autocomplete="off"
-        placeholder="EsTx xxxx xxxx …"
-        helperText="Paste the key you saved during setup. Spaces don't matter."
-        [disabled]="busy()"
-        [ngModel]="recoveryKey()"
-        (ngModelChange)="recoveryKey.set($event)"
-        (keyup.enter)="unlock()"
-      ></ion-input>
-    </ion-item>
-  </ion-list>
+  <div class="mt-4">
+    <label trnLabel for="recovery-key">Recovery key</label>
+    <input
+      id="recovery-key"
+      trnInput
+      class="mt-1"
+      autocapitalize="off"
+      autocorrect="off"
+      autocomplete="off"
+      placeholder="EsTx xxxx xxxx …"
+      [disabled]="busy()"
+      [ngModel]="recoveryKey()"
+      (ngModelChange)="recoveryKey.set($event)"
+      (keyup.enter)="unlock()"
+    />
+    <p class="mt-1 text-xs text-muted-foreground">
+      Paste the key you saved during setup. Spaces don't matter.
+    </p>
+  </div>
 
-  <ion-button
-    expand="block"
+  <button
+    trnBtn
+    class="mt-4 w-full"
     [disabled]="busy() || !recoveryKey().trim()"
     (click)="unlock()"
   >
     Unlock
-  </ion-button>
+  </button>
 
   @if (busy()) {
-    <div
-      class="ion-text-center ion-padding-top"
-      role="status"
-      aria-live="polite"
-    >
+    <div class="mt-4 text-center" role="status" aria-live="polite">
       <trn-spinner />
       <p class="progress">Unlocking your encrypted messages…</p>
     </div>
   }
   @if (error(); as message) {
-    <p class="text-destructive" role="alert">{{ message }}</p>
+    <p class="mt-2 text-destructive" role="alert">{{ message }}</p>
   }
-</ion-content>
+</ng-template>

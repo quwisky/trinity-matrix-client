@@ -67,4 +67,13 @@ export class TrnDialogService {
     const ref = this.open<R, C>(component, opts);
     return (await firstValueFrom(ref.closed)) ?? null;
   }
+
+  /**
+   * Whether any dialog opened through here is currently presented — the
+   * replacement for Ionic's `ModalController.getTop()` guard (e.g. "don't stack
+   * the quick switcher over an open panel").
+   */
+  hasOpen(): boolean {
+    return this.dialog.openDialogs.length > 0;
+  }
 }

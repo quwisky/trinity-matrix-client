@@ -1,7 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { MenuController, ModalController } from '@ionic/angular/standalone';
+import { MenuController } from '@ionic/angular/standalone';
 import {
   AuthService,
   CryptoService,
@@ -20,6 +20,7 @@ import {
 import {
   TrnActionSheetService,
   TrnAlertService,
+  TrnDialogService,
   TrnToastService,
 } from '@trinity/ui-spartan';
 import { Subject, of, throwError } from 'rxjs';
@@ -110,10 +111,7 @@ describe('RoomsPage action error feedback', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
-        {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
-        },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         { provide: TrnToastService, useValue: { show: toastShow } },
       ],
     });
@@ -286,10 +284,7 @@ describe('RoomsPage space filtering', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
-        {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
-        },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
     });
@@ -377,10 +372,7 @@ describe('RoomsPage space actions', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
-        {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
-        },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         {
           provide: TrnAlertService,
           useValue: { confirm: alertConfirm, prompt: alertPrompt },
@@ -580,10 +572,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
-        {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
-        },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         {
           provide: TrnAlertService,
           useValue: { confirm: vi.fn(), prompt: alertPrompt },
@@ -836,10 +825,7 @@ describe('RoomsPage space hierarchy actions', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
-        {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
-        },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         {
           provide: TrnAlertService,
           useValue: { confirm: alertConfirm, prompt: vi.fn() },
@@ -915,6 +901,7 @@ describe('RoomsPage quick switcher', () => {
   let openSpace: ReturnType<typeof vi.fn>;
   let timelineOpen: ReturnType<typeof vi.fn>;
   let pending: WritableSignal<PendingInvite[]>;
+  let dialogHasOpen: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     pick = vi.fn();
@@ -924,6 +911,7 @@ describe('RoomsPage quick switcher', () => {
     openSpace = vi.fn();
     timelineOpen = vi.fn();
     pending = signal<PendingInvite[]>([]);
+    dialogHasOpen = vi.fn().mockReturnValue(false);
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -983,10 +971,7 @@ describe('RoomsPage quick switcher', () => {
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         { provide: MenuController, useValue: { close: vi.fn() } },
-        {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
-        },
+        { provide: TrnDialogService, useValue: { hasOpen: dialogHasOpen } },
         {
           provide: TrnAlertService,
           useValue: { confirm: vi.fn(), prompt: vi.fn() },
@@ -1077,16 +1062,13 @@ describe('RoomsPage quick switcher', () => {
     page.onQuickSwitch({ preventDefault } as unknown as KeyboardEvent);
 
     expect(preventDefault).toHaveBeenCalled(); // sync — stops the browser's Cmd+K
-    await new Promise((resolve) => setTimeout(resolve)); // settle the getTop() guard
+    await new Promise((resolve) => setTimeout(resolve)); // settle the async openSwitcher()
     expect(pick).toHaveBeenCalled();
   });
 
   it('does not open the switcher over an existing overlay', async () => {
     const page = build();
-    const modalCtrl = TestBed.inject(ModalController);
-    (modalCtrl.getTop as ReturnType<typeof vi.fn>).mockResolvedValue(
-      {} as HTMLIonModalElement,
-    );
+    dialogHasOpen.mockReturnValue(true);
 
     await page.openSwitcher();
 

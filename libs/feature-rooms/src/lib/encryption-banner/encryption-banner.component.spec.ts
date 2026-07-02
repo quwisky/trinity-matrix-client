@@ -1,13 +1,13 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { ModalController } from '@ionic/angular/standalone';
 import { CryptoService, type CryptoStatus } from '@trinity/core';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   EncryptionDialogService,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
+import { TrnDialogService } from '@trinity/ui-spartan';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionBannerComponent } from './encryption-banner.component';
 
@@ -24,15 +24,13 @@ function stubViewport(matches: boolean): void {
 const status = signal<CryptoStatus>('unknown');
 let navigateByUrl: ReturnType<typeof vi.fn>;
 let navigate: ReturnType<typeof vi.fn>;
-let create: ReturnType<typeof vi.fn>;
+let open: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   status.set('unknown');
   navigateByUrl = vi.fn();
   navigate = vi.fn().mockResolvedValue(true);
-  create = vi
-    .fn()
-    .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+  open = vi.fn();
 
   TestBed.configureTestingModule({
     imports: [EncryptionBannerComponent],
@@ -41,7 +39,7 @@ beforeEach(() => {
       EncryptionDialogService,
       { provide: CryptoService, useValue: { status: status.asReadonly() } },
       { provide: Router, useValue: { navigateByUrl, navigate } },
-      { provide: ModalController, useValue: { create } },
+      { provide: TrnDialogService, useValue: { open } },
       {
         provide: ENCRYPTION_DIALOG_COMPONENTS,
         useValue: {
@@ -85,7 +83,7 @@ describe('EncryptionBannerComponent', () => {
 
     clickAction(fixture.nativeElement, 'Set up');
     expect(navigateByUrl).toHaveBeenCalledWith('/encryption/setup');
-    expect(create).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('lists both recovery-key and verify actions for needs-recovery', () => {
@@ -107,18 +105,17 @@ describe('EncryptionBannerComponent', () => {
 
     clickAction(fixture.nativeElement, 'Use recovery key');
     await vi.waitFor(() =>
-      expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          component: StubUnlockPage,
-          componentProps: { asModal: true },
-        }),
-      ),
+      expect(open).toHaveBeenCalledWith(StubUnlockPage, {
+        inputs: { asModal: true },
+        disableClose: true,
+      }),
     );
 
     clickAction(fixture.nativeElement, 'Verify another device');
     await vi.waitFor(() =>
-      expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({ component: StubVerifyPage }),
+      expect(open).toHaveBeenCalledWith(
+        StubVerifyPage,
+        expect.objectContaining({ inputs: { asModal: true } }),
       ),
     );
     expect(navigate).not.toHaveBeenCalled();
@@ -135,6 +132,6 @@ describe('EncryptionBannerComponent', () => {
 
     expect(navigate).toHaveBeenCalledWith(['/encryption/unlock'], {});
     expect(navigate).toHaveBeenCalledWith(['/encryption/verify'], {});
-    expect(create).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 });

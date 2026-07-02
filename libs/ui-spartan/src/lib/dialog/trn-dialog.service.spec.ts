@@ -56,4 +56,15 @@ describe('TrnDialogService', () => {
     ref.componentInstance!.close('done');
     expect(await closed).toBe('done');
   });
+
+  it('reports whether any dialog is currently open (getTop replacement)', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    expect(svc.hasOpen()).toBe(false);
+
+    const ref = svc.open<string, TestDialogComponent>(TestDialogComponent);
+    expect(svc.hasOpen()).toBe(true);
+
+    ref.close();
+    expect(svc.hasOpen()).toBe(false);
+  });
 });

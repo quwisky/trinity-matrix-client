@@ -4,8 +4,9 @@ import {
   effect,
   inject,
 } from '@angular/core';
-import { ModalController } from '@ionic/angular/standalone';
+import type { DialogRef } from '@angular/cdk/dialog';
 import { MatrixClientService, VerificationService } from '@trinity/core';
+import { TrnDialogService } from '@trinity/ui-spartan';
 
 /**
  * App-level, route-independent host for device verification. Incoming requests can
@@ -22,8 +23,8 @@ import { MatrixClientService, VerificationService } from '@trinity/core';
 export class VerificationHostComponent {
   private readonly matrix = inject(MatrixClientService);
   private readonly verification = inject(VerificationService);
-  private readonly modalCtrl = inject(ModalController);
-  private modal: HTMLIonModalElement | null = null;
+  private readonly dialog = inject(TrnDialogService);
+  private ref: DialogRef<void, unknown> | null = null;
 
   constructor() {
     // Connect once the client is live; `connect()` is idempotent and instance-keyed
@@ -34,43 +35,42 @@ export class VerificationHostComponent {
       }
     });
 
-    // Present the modal for an incoming request; dismiss once it's cleared.
+    // Present the dialog for an incoming request; dismiss once it's cleared.
     effect(() => {
       const active = this.verification.active();
       const shouldShow = !!active && active.incoming;
-      if (shouldShow && !this.modal) {
+      if (shouldShow && !this.ref) {
         void this.present();
-      } else if (!shouldShow && this.modal) {
-        void this.dismissModal();
+      } else if (!shouldShow && this.ref) {
+        this.dismissModal();
       }
     });
   }
 
   private async present(): Promise<void> {
-    if (this.modal) {
+    if (this.ref) {
       return;
     }
     // Lazy-load the verification UI so feature-crypto stays out of the main
     // bundle until an incoming request actually needs it.
     const { DeviceVerificationPage } = await import('@trinity/feature-crypto');
-    const modal = await this.modalCtrl.create({
-      component: DeviceVerificationPage,
-      componentProps: { asModal: true },
-      backdropDismiss: false,
-    });
-    // The request may have been cleared while the modal was being created.
+    // The request may have been cleared while the chunk was loading.
     if (!this.verification.active()?.incoming) {
-      await modal.dismiss();
       return;
     }
-    this.modal = modal;
-    void modal.onDidDismiss().then(() => (this.modal = null));
-    await modal.present();
+    // disableClose: the page owns teardown so a backdrop/escape tap can't leave
+    // an in-flight verification dangling.
+    const ref = this.dialog.open<void, unknown>(DeviceVerificationPage, {
+      inputs: { asModal: true },
+      disableClose: true,
+    });
+    this.ref = ref;
+    ref.closed.subscribe(() => (this.ref = null));
   }
 
-  private async dismissModal(): Promise<void> {
-    const modal = this.modal;
-    this.modal = null;
-    await modal?.dismiss();
+  private dismissModal(): void {
+    const ref = this.ref;
+    this.ref = null;
+    ref?.close();
   }
 }

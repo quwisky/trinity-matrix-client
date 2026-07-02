@@ -2,7 +2,6 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
-import { ModalController } from '@ionic/angular/standalone';
 import { MatrixClientService, VerificationService } from '@trinity/core';
 import { describe, expect, it, vi } from 'vitest';
 import { AppComponent } from './app.component';
@@ -12,8 +11,9 @@ vi.mock('@capacitor/browser', () => ({
 }));
 
 // AppComponent's template mounts <trn-verification-host>, which injects these.
+// (It also injects TrnDialogService, but that's providedIn root and never opens a
+// dialog here — active() stays null — so the real one is fine unprovided.)
 const hostProviders = [
-  { provide: ModalController, useValue: { create: vi.fn() } },
   { provide: MatrixClientService, useValue: { syncState: signal(null) } },
   {
     provide: VerificationService,

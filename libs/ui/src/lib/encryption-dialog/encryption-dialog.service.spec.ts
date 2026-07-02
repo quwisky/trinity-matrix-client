@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { ModalController } from '@ionic/angular/standalone';
+import { TrnDialogService } from '@trinity/ui-spartan';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionDialogService } from './encryption-dialog.service';
 import {
@@ -21,14 +21,13 @@ function stubViewport(matches: boolean): void {
 
 function setup(opts: { loaders?: EncryptionDialogLoaders | null } = {}) {
   const navigate = vi.fn().mockResolvedValue(true);
-  const present = vi.fn().mockResolvedValue(undefined);
-  const create = vi.fn().mockResolvedValue({ present });
+  const open = vi.fn();
 
   TestBed.configureTestingModule({
     providers: [
       EncryptionDialogService,
       { provide: Router, useValue: { navigate } },
-      { provide: ModalController, useValue: { create } },
+      { provide: TrnDialogService, useValue: { open } },
       ...(opts.loaders === undefined
         ? [
             {
@@ -43,7 +42,7 @@ function setup(opts: { loaders?: EncryptionDialogLoaders | null } = {}) {
     ],
   });
   const service = TestBed.inject(EncryptionDialogService);
-  return { service, navigate, create, present };
+  return { service, navigate, open };
 }
 
 describe('EncryptionDialogService', () => {
@@ -53,37 +52,34 @@ describe('EncryptionDialogService', () => {
     beforeEach(() => stubViewport(true));
 
     it('opens unlock as a modal (asModal) and does not navigate', async () => {
-      const { service, create, present, navigate } = setup();
+      const { service, open, navigate } = setup();
 
       await service.openUnlock();
 
-      expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          component: StubUnlockPage,
-          componentProps: { asModal: true },
-          backdropDismiss: false,
-        }),
-      );
-      expect(present).toHaveBeenCalledOnce();
+      expect(open).toHaveBeenCalledWith(StubUnlockPage, {
+        inputs: { asModal: true },
+        disableClose: true,
+      });
       expect(navigate).not.toHaveBeenCalled();
     });
 
     it('opens verify as a modal with the verify component', async () => {
-      const { service, create } = setup();
+      const { service, open } = setup();
 
       await service.openVerify({ returnTo: '/settings' });
 
-      expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({ component: StubVerifyPage }),
+      expect(open).toHaveBeenCalledWith(
+        StubVerifyPage,
+        expect.objectContaining({ inputs: { asModal: true } }),
       );
     });
 
     it('falls back to routing when no loaders are wired', async () => {
-      const { service, navigate, create } = setup({ loaders: null });
+      const { service, navigate, open } = setup({ loaders: null });
 
       await service.openVerify();
 
-      expect(create).not.toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
       expect(navigate).toHaveBeenCalledWith(['/encryption/verify'], {});
     });
   });
@@ -92,11 +88,11 @@ describe('EncryptionDialogService', () => {
     beforeEach(() => stubViewport(false));
 
     it('navigates to the unlock route instead of opening a modal', async () => {
-      const { service, navigate, create } = setup();
+      const { service, navigate, open } = setup();
 
       await service.openUnlock();
 
-      expect(create).not.toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
       expect(navigate).toHaveBeenCalledWith(['/encryption/unlock'], {});
     });
 
@@ -113,11 +109,11 @@ describe('EncryptionDialogService', () => {
 
   it('navigates when matchMedia is unavailable (non-DOM context)', async () => {
     vi.stubGlobal('matchMedia', undefined);
-    const { service, navigate, create } = setup();
+    const { service, navigate, open } = setup();
 
     await service.openUnlock();
 
-    expect(create).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith(['/encryption/unlock'], {});
   });
 });
