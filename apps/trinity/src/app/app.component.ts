@@ -4,12 +4,14 @@ import {
   OnInit,
   inject,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterOutlet } from '@angular/router';
 import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { SwUpdate } from '@angular/service-worker';
-import { IonApp, IonRouterOutlet, Platform } from '@ionic/angular/standalone';
+// Platform is still Ionic's (safe-area / keyboard / hardware back) until the native
+// shell work (Phase 4d) swaps it for the Capacitor App/Keyboard/StatusBar plugins.
+import { Platform } from '@ionic/angular/standalone';
 import { getTrinityDesktopBridge } from '@trinity/core';
 import { HlmToaster } from '@trinity/ui-spartan';
 import { VerificationHostComponent } from './verification-host.component';
@@ -18,7 +20,7 @@ import { VerificationHostComponent } from './verification-host.component';
   selector: 'trn-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'app.component.html',
-  imports: [IonApp, IonRouterOutlet, VerificationHostComponent, HlmToaster],
+  imports: [RouterOutlet, VerificationHostComponent, HlmToaster],
 })
 export class AppComponent implements OnInit {
   private readonly router = inject(Router);
@@ -45,10 +47,12 @@ export class AppComponent implements OnInit {
     if (!Capacitor.isNativePlatform()) {
       return;
     }
-    // Android hardware back: IonRouterOutlet (higher priority) pops overlays/routes
-    // first; this lowest-priority handler runs only when nothing was left to pop (the
-    // root), where it backgrounds the app rather than letting the JS-suppressed default
-    // do nothing. iOS has no hardware back, so this never fires there.
+    // Android hardware back. NOTE (Phase 4d): IonRouterOutlet used to pop
+    // overlays/routes at a higher priority so this lowest-priority handler only
+    // backgrounded the app at the root; with the router-outlet now plain Angular,
+    // route/overlay back-navigation must be wired here (Location.back() / close the
+    // open dialog/drawer) before falling through to minimize. iOS has no hardware
+    // back, so this never fires there.
     this.platform.backButton.subscribeWithPriority(-1, () => {
       void App.minimizeApp();
     });

@@ -50,6 +50,20 @@ a:focus-visible,
   outline-offset: 2px;
 }
 
+/*
+ * App-shell layout. <trn-root> is a fixed-height flex column (h-dvh); Angular renders
+ * the routed page as the sibling immediately after <router-outlet>, so make that page
+ * fill the remaining space and be its own flex column (its <header> is shrink-0, its
+ * <main>/body is flex-1 overflow-auto). This replaces Ionic's `.ion-page`, which
+ * `ion-router-outlet` used to apply to every routed host.
+ */
+router-outlet + * {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Respect users who prefer reduced motion. */
 @media (prefers-reduced-motion: reduce) {
   *,

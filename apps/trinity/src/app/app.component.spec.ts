@@ -45,7 +45,7 @@ describe('AppComponent', () => {
           provideRouter([]),
           provideServiceWorker('ngsw-worker.js', { enabled: false }),
           ...hostProviders,
-        ], // ActivatedRoute for IonRouterOutlet + host deps
+        ], // provideRouter powers <router-outlet>; hostProviders for trn-verification-host
       }).compileComponents();
       const cmp = TestBed.createComponent(AppComponent).componentInstance;
       const navigate = vi
