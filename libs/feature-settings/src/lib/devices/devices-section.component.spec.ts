@@ -1,12 +1,13 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { AlertController, ModalController } from '@ionic/angular/standalone';
+import { ModalController } from '@ionic/angular/standalone';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   EncryptionDialogService,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
+import { TrnAlertService } from '@trinity/ui-spartan';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
@@ -18,12 +19,6 @@ class StubVerifyPage {}
 /** Pretend the viewport is (or isn't) the desktop split-pane layout. */
 function stubViewport(matches: boolean): void {
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches }));
-}
-
-interface AlertButton {
-  text: string;
-  role?: string;
-  handler?: (data?: Record<string, string>) => void;
 }
 
 const CURRENT: DeviceInfo = {
@@ -50,7 +45,8 @@ describe('DevicesSectionComponent', () => {
   const disconnect = vi.fn();
   const navigate = vi.fn().mockResolvedValue(true);
   let devices: ReturnType<typeof signal<DeviceInfo[]>>;
-  let alertCreate: ReturnType<typeof vi.fn>;
+  let alertConfirm: ReturnType<typeof vi.fn>;
+  let alertPrompt: ReturnType<typeof vi.fn>;
   let modalCreate: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -60,9 +56,8 @@ describe('DevicesSectionComponent', () => {
     disconnect.mockClear();
     navigate.mockClear();
     devices = signal<DeviceInfo[]>([CURRENT, OTHER]);
-    alertCreate = vi
-      .fn()
-      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    alertConfirm = vi.fn().mockResolvedValue(true);
+    alertPrompt = vi.fn().mockResolvedValue('Tablet');
     modalCreate = vi
       .fn()
       .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
@@ -83,7 +78,10 @@ describe('DevicesSectionComponent', () => {
             disconnect,
           },
         },
-        { provide: AlertController, useValue: { create: alertCreate } },
+        {
+          provide: TrnAlertService,
+          useValue: { confirm: alertConfirm, prompt: alertPrompt },
+        },
         { provide: ModalController, useValue: { create: modalCreate } },
         { provide: Router, useValue: { navigate } },
         {
@@ -98,10 +96,6 @@ describe('DevicesSectionComponent', () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
-
-  function lastAlertButtons(): AlertButton[] {
-    return alertCreate.mock.calls.at(-1)?.[0].buttons as AlertButton[];
-  }
 
   it('lists devices with badges; only non-current devices can be signed out', () => {
     const fixture = TestBed.createComponent(DevicesSectionComponent);
@@ -119,27 +113,47 @@ describe('DevicesSectionComponent', () => {
   });
 
   it('renames a device via the alert', async () => {
+    alertPrompt.mockResolvedValue('Tablet');
     const fixture = TestBed.createComponent(DevicesSectionComponent);
     fixture.detectChanges();
 
     await fixture.componentInstance.rename(OTHER);
-    lastAlertButtons()
-      .find((b) => b.text === 'Save')
-      ?.handler?.({ name: 'Tablet' });
 
+    expect(alertPrompt).toHaveBeenCalled();
     expect(rename).toHaveBeenCalledWith('B', 'Tablet');
   });
 
+  it('does not rename when the prompt is cancelled', async () => {
+    alertPrompt.mockResolvedValue(null);
+    const fixture = TestBed.createComponent(DevicesSectionComponent);
+    fixture.detectChanges();
+
+    await fixture.componentInstance.rename(OTHER);
+
+    expect(rename).not.toHaveBeenCalled();
+  });
+
   it('signs out a device via the destructive alert', async () => {
+    alertConfirm.mockResolvedValue(true);
     const fixture = TestBed.createComponent(DevicesSectionComponent);
     fixture.detectChanges();
 
     await fixture.componentInstance.remove(OTHER);
-    lastAlertButtons()
-      .find((b) => b.role === 'destructive')
-      ?.handler?.();
 
+    expect(alertConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ destructive: true }),
+    );
     expect(del).toHaveBeenCalledWith('B', expect.any(Function));
+  });
+
+  it('does not sign out a device when the confirm is cancelled', async () => {
+    alertConfirm.mockResolvedValue(false);
+    const fixture = TestBed.createComponent(DevicesSectionComponent);
+    fixture.detectChanges();
+
+    await fixture.componentInstance.remove(OTHER);
+
+    expect(del).not.toHaveBeenCalled();
   });
 
   it('navigates to the verification flow on mobile, returning to settings', () => {

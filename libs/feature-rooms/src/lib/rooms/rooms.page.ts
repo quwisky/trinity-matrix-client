@@ -15,7 +15,6 @@ import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
 import {
   ActionSheetController,
-  AlertController,
   IonSplitPane,
   IonMenu,
   IonMenuButton,
@@ -28,7 +27,7 @@ import {
   MenuController,
   ModalController,
 } from '@ionic/angular/standalone';
-import { TrnToastService } from '@trinity/ui-spartan';
+import { TrnAlertService, TrnToastService } from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import {
   chatbubblesOutline,
@@ -114,7 +113,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly menu = inject(MenuController);
   private readonly modalCtrl = inject(ModalController);
   private readonly toast = inject(TrnToastService);
-  private readonly alertCtrl = inject(AlertController);
+  private readonly alert = inject(TrnAlertService);
   private readonly actionSheetCtrl = inject(ActionSheetController);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -339,26 +338,16 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Rail "+": prompt for a name, create the space, then select it on success. */
   async onCreateSpace(): Promise<void> {
     this.spaceError.set(null); // don't carry a stale error into a fresh action
-    const alert = await this.alertCtrl.create({
+    const name = await this.alert.prompt({
       header: 'Create a space',
       message: 'A space groups related rooms, like a Discord server.',
-      inputs: [
-        {
-          name: 'name',
-          placeholder: 'Space name',
-          attributes: { maxlength: 100 },
-        },
-      ],
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Create',
-          handler: (data: { name?: string }) =>
-            this.applyCreateSpace(data.name ?? ''),
-        },
-      ],
+      placeholder: 'Space name',
+      confirmText: 'Create',
+      maxLength: 100,
     });
-    await alert.present();
+    if (name !== null) {
+      this.applyCreateSpace(name);
+    }
   }
 
   /** Sidebar "+": prompt for a name and create a room inside the active space. */
@@ -368,26 +357,16 @@ export class RoomsPage implements OnInit, OnDestroy {
       return; // the affordance is hidden on Home, but guard regardless
     }
     this.spaceError.set(null);
-    const alert = await this.alertCtrl.create({
+    const name = await this.alert.prompt({
       header: 'Create a channel',
       message: `New channels are end-to-end encrypted and added to “${this.activeSpaceName()}”.`,
-      inputs: [
-        {
-          name: 'name',
-          placeholder: 'Channel name',
-          attributes: { maxlength: 100 },
-        },
-      ],
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Create',
-          handler: (data: { name?: string }) =>
-            this.applyCreateChannel(spaceId, data.name ?? ''),
-        },
-      ],
+      placeholder: 'Channel name',
+      confirmText: 'Create',
+      maxLength: 100,
     });
-    await alert.present();
+    if (name !== null) {
+      this.applyCreateChannel(spaceId, name);
+    }
   }
 
   /** Sidebar exit icon: confirm, then leave the active space (back to Home). */
@@ -397,19 +376,16 @@ export class RoomsPage implements OnInit, OnDestroy {
       return;
     }
     this.spaceError.set(null);
-    const alert = await this.alertCtrl.create({
-      header: 'Leave space',
-      message: `Leave “${this.activeSpaceName()}”? Its rooms stay on your account — only the space is left.`,
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Leave',
-          role: 'destructive',
-          handler: () => this.applyLeaveSpace(spaceId),
-        },
-      ],
-    });
-    await alert.present();
+    if (
+      await this.alert.confirm({
+        header: 'Leave space',
+        message: `Leave “${this.activeSpaceName()}”? Its rooms stay on your account — only the space is left.`,
+        confirmText: 'Leave',
+        destructive: true,
+      })
+    ) {
+      this.applyLeaveSpace(spaceId);
+    }
   }
 
   private applyCreateSpace(name: string): void {
@@ -465,19 +441,16 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.spaceError.set(null);
     const name =
       this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this channel';
-    const alert = await this.alertCtrl.create({
-      header: 'Remove from space',
-      message: `Remove “${name}” from “${this.activeSpaceName()}”? You stay in the room — it’s just unlinked from this space.`,
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Remove',
-          role: 'destructive',
-          handler: () => this.applyRemoveFromSpace(spaceId, roomId),
-        },
-      ],
-    });
-    await alert.present();
+    if (
+      await this.alert.confirm({
+        header: 'Remove from space',
+        message: `Remove “${name}” from “${this.activeSpaceName()}”? You stay in the room — it’s just unlinked from this space.`,
+        confirmText: 'Remove',
+        destructive: true,
+      })
+    ) {
+      this.applyRemoveFromSpace(spaceId, roomId);
+    }
   }
 
   private applyRemoveFromSpace(spaceId: string, childId: string): void {
@@ -507,26 +480,16 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Prompt for a name, create a standalone encrypted room, then select it. */
   async onCreateRoom(): Promise<void> {
     this.spaceError.set(null);
-    const alert = await this.alertCtrl.create({
+    const name = await this.alert.prompt({
       header: 'Create a room',
       message: 'New rooms are end-to-end encrypted.',
-      inputs: [
-        {
-          name: 'name',
-          placeholder: 'Room name',
-          attributes: { maxlength: 100 },
-        },
-      ],
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Create',
-          handler: (data: { name?: string }) =>
-            this.applyCreateRoom(data.name ?? ''),
-        },
-      ],
+      placeholder: 'Room name',
+      confirmText: 'Create',
+      maxLength: 100,
     });
-    await alert.present();
+    if (name !== null) {
+      this.applyCreateRoom(name);
+    }
   }
 
   /** Pick a user (MXID or directory), open/reuse a DM with them, then select it. */

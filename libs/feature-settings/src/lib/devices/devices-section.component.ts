@@ -7,7 +7,6 @@ import {
   signal,
 } from '@angular/core';
 import {
-  AlertController,
   IonButton,
   IonIcon,
   IonItem,
@@ -21,7 +20,7 @@ import {
   shieldCheckmarkOutline,
   trashOutline,
 } from 'ionicons/icons';
-import { TrnBadgeDirective } from '@trinity/ui-spartan';
+import { TrnAlertService, TrnBadgeDirective } from '@trinity/ui-spartan';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
 
@@ -48,7 +47,7 @@ import { DevicesService, type DeviceInfo } from '@trinity/core';
 })
 export class DevicesSectionComponent {
   private readonly devicesSvc = inject(DevicesService);
-  private readonly alertCtrl = inject(AlertController);
+  private readonly alert = inject(TrnAlertService);
   private readonly dialogs = inject(EncryptionDialogService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -77,44 +76,30 @@ export class DevicesSectionComponent {
   /** Prompt for a new display name, then rename. */
   async rename(device: DeviceInfo): Promise<void> {
     this.error.set(null); // don't carry a stale error into a fresh action
-    const alert = await this.alertCtrl.create({
+    const name = await this.alert.prompt({
       header: 'Rename device',
-      inputs: [
-        {
-          name: 'name',
-          value: device.displayName,
-          placeholder: 'Device name',
-          attributes: { maxlength: 100 },
-        },
-      ],
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Save',
-          handler: (data: { name?: string }) =>
-            this.applyRename(device.id, data.name ?? ''),
-        },
-      ],
+      placeholder: 'Device name',
+      confirmText: 'Save',
+      value: device.displayName,
+      maxLength: 100,
     });
-    await alert.present();
+    if (name !== null) {
+      this.applyRename(device.id, name);
+    }
   }
 
   /** Confirm, then sign the device out (password UIA handled by the service). */
   async remove(device: DeviceInfo): Promise<void> {
     this.error.set(null);
-    const alert = await this.alertCtrl.create({
+    const confirmed = await this.alert.confirm({
       header: 'Sign out device',
       message: `“${device.displayName}” will be signed out and lose access to your account.`,
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Sign out',
-          role: 'destructive',
-          handler: () => this.applyRemove(device.id),
-        },
-      ],
+      confirmText: 'Sign out',
+      destructive: true,
     });
-    await alert.present();
+    if (confirmed) {
+      this.applyRemove(device.id);
+    }
   }
 
   /**
@@ -149,36 +134,12 @@ export class DevicesSectionComponent {
 
   /** Ask for the account password during a delete UIA (null = cancelled). */
   private promptPassword(): Promise<string | null> {
-    return new Promise((resolve) => {
-      let settled = false;
-      const done = (value: string | null): void => {
-        if (!settled) {
-          settled = true;
-          resolve(value);
-        }
-      };
-      void this.alertCtrl
-        .create({
-          header: 'Confirm your password',
-          message: 'Signing out a device requires your account password.',
-          backdropDismiss: false, // force a button so the promise always settles
-          inputs: [
-            { name: 'password', type: 'password', placeholder: 'Password' },
-          ],
-          buttons: [
-            { text: 'Cancel', role: 'cancel', handler: () => done(null) },
-            {
-              text: 'Confirm',
-              handler: (data: { password?: string }) =>
-                done(data.password ?? ''),
-            },
-          ],
-        })
-        .then((alert) => {
-          // Settle on any dismiss too, so a programmatic close can't strand the promise.
-          void alert.onDidDismiss().then(() => done(null));
-          return alert.present();
-        });
+    return this.alert.prompt({
+      header: 'Confirm your password',
+      message: 'Signing out a device requires your account password.',
+      placeholder: 'Password',
+      confirmText: 'Confirm',
+      inputType: 'password',
     });
   }
 }

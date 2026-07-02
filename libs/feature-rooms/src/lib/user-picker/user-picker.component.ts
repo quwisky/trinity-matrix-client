@@ -46,7 +46,7 @@ const MIN_SEARCH_LENGTH = 2;
  * `@user:server`) with live homeserver user-directory results below it. Presented
  * by {@link UserPickerService}; on a pick it dismisses with the chosen MXID, and on
  * cancel with `null` — it never creates or invites itself, so the page stays the
- * orchestrator (matching the AlertController prompts in `RoomsPage`).
+ * orchestrator (matching the `TrnAlertService` prompts in `RoomsPage`).
  *
  * Config (heading / confirm label / placeholder) arrives through `componentProps`
  * as signal inputs (the app enables Ionic's set-input API). matrix-js-sdk is reached

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { AlertController } from '@ionic/angular/standalone';
 import { CryptoService } from '@trinity/core';
+import { TrnAlertService } from '@trinity/ui-spartan';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { EncryptionSetupPage } from './encryption-setup.page';
@@ -17,7 +17,13 @@ function configure(
     providers: [
       { provide: CryptoService, useValue: { setUp } },
       { provide: Router, useValue: { navigateByUrl } },
-      { provide: AlertController, useValue: { create: vi.fn() } },
+      {
+        provide: TrnAlertService,
+        useValue: {
+          confirm: vi.fn().mockResolvedValue(false),
+          prompt: vi.fn().mockResolvedValue(null),
+        },
+      },
     ],
   });
   return { navigateByUrl };

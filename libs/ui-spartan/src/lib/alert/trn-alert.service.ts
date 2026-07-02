@@ -19,6 +19,8 @@ export interface ConfirmOptions {
 
 export interface PromptOptions extends ConfirmOptions {
   placeholder?: string;
+  /** Mask the input (e.g. for passwords). Default 'text'. */
+  inputType?: 'text' | 'password';
   /** Initial input value. */
   value?: string;
   maxLength?: number;
@@ -62,6 +64,7 @@ export class TrnAlertService {
       cancelText: opts.cancelText ?? 'Cancel',
       destructive: opts.destructive ?? false,
       placeholder: opts.placeholder,
+      inputType: opts.inputType,
       value: opts.value,
       maxLength: opts.maxLength,
     };

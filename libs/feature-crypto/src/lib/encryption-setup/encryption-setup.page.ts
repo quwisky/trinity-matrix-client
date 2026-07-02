@@ -15,9 +15,9 @@ import {
   IonToolbar,
   IonTitle,
   IonContent,
-  AlertController,
 } from '@ionic/angular/standalone';
 import {
+  TrnAlertService,
   TrnButtonDirective,
   TrnCheckboxComponent,
   TrnSpinnerComponent,
@@ -52,7 +52,7 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
 export class EncryptionSetupPage {
   private readonly crypto = inject(CryptoService);
   private readonly router = inject(Router);
-  private readonly alertCtrl = inject(AlertController);
+  private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly busy = signal(false);
@@ -102,30 +102,12 @@ export class EncryptionSetupPage {
    * a fresh password alert. Resolving `null` cancels the whole setup.
    */
   private readonly promptPassword: PasswordPrompt = () =>
-    new Promise<string | null>((resolve) => {
-      void this.alertCtrl
-        .create({
-          header: 'Confirm your password',
-          message: 'Your homeserver needs your password to set up encryption.',
-          backdropDismiss: false,
-          inputs: [
-            {
-              name: 'password',
-              type: 'password',
-              placeholder: 'Password',
-              attributes: { autocomplete: 'current-password' },
-            },
-          ],
-          buttons: [
-            { text: 'Cancel', role: 'cancel', handler: () => resolve(null) },
-            {
-              text: 'Confirm',
-              handler: (value: { password?: string }) =>
-                resolve(value.password ?? null),
-            },
-          ],
-        })
-        .then((alert) => alert.present());
+    this.alert.prompt({
+      header: 'Confirm your password',
+      message: 'Your homeserver needs your password to set up encryption.',
+      placeholder: 'Password',
+      confirmText: 'Confirm',
+      inputType: 'password',
     });
 
   /** Wrap a one-shot action with shared busy/error handling. */

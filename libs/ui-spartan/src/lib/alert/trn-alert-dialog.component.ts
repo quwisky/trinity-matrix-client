@@ -19,6 +19,7 @@ export interface AlertDialogData {
   placeholder?: string;
   value?: string;
   maxLength?: number;
+  inputType?: 'text' | 'password';
 }
 
 /** Result: a confirm resolves boolean; a prompt resolves the string or null. */
@@ -48,6 +49,7 @@ export type AlertDialogResult = boolean | string | null;
         <input
           trnInput
           class="mt-4"
+          [type]="data.inputType ?? 'text'"
           [placeholder]="data.placeholder ?? ''"
           [attr.maxlength]="data.maxLength ?? null"
           [value]="value()"

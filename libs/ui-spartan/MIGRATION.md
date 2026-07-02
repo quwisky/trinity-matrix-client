@@ -44,12 +44,12 @@ builds and ships the entire time; `@ionic/angular` is removed last.
 Ionic's imperative controllers get a thin **adapter service** each, so call sites
 migrate mechanically and behavior (returns, `onWillDismiss`) is preserved:
 
-| Ionic controller        | Sites | Target                              | Adapter                                       |
-| ----------------------- | ----- | ----------------------------------- | --------------------------------------------- |
-| `ModalController`       | 70    | `brain/dialog` (CDK) + `hlm-dialog` | `DialogService.open(cmp, { inputs }) → ref`   |
-| `AlertController`       | 23    | CDK dialog + `TrnAlertDialog`       | `TrnAlertService.confirm()/prompt()` ✅ built |
-| `ToastController`       | 15    | CDK-overlay toast + `hlm-sonner`    | `TrnToastService.show()` ✅ done              |
-| `ActionSheetController` | 10    | `brain/menu` or CDK bottom-sheet    | `ActionSheetService.open()`                   |
+| Ionic controller        | Sites | Target                              | Adapter                                      |
+| ----------------------- | ----- | ----------------------------------- | -------------------------------------------- |
+| `ModalController`       | 70    | `brain/dialog` (CDK) + `hlm-dialog` | `DialogService.open(cmp, { inputs }) → ref`  |
+| `AlertController`       | 23    | CDK dialog + `TrnAlertDialog`       | `TrnAlertService.confirm()/prompt()` ✅ done |
+| `ToastController`       | 15    | CDK-overlay toast + `hlm-sonner`    | `TrnToastService.show()` ✅ done             |
+| `ActionSheetController` | 10    | `brain/menu` or CDK bottom-sheet    | `ActionSheetService.open()`                  |
 
 ## Phased plan
 
