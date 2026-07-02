@@ -15,3 +15,5 @@ export * from './lib/checkbox/trn-checkbox.component';
 export * from './lib/progress/trn-progress.component';
 export * from './lib/toast/trn-toast.service';
 export * from './lib/toast/trn-toast-container.component';
+export * from './lib/alert/trn-alert.service';
+export * from './lib/alert/trn-alert-dialog.component';
