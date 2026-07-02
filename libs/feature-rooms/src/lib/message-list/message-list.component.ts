@@ -10,7 +10,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { AlertController } from '@ionic/angular/standalone';
+import { TrnAlertService } from '@trinity/ui-spartan';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import {
   MessageRowComponent,
@@ -81,7 +81,7 @@ export class MessageListComponent {
   /** Live-region text announcing a newly-arrived incoming message to screen readers. */
   readonly announcement = signal('');
 
-  private readonly alertCtrl = inject(AlertController);
+  private readonly alert = inject(TrnAlertService);
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
   private lastId = '';
 
@@ -282,19 +282,15 @@ export class MessageListComponent {
   }
 
   async onDelete(row: MessageRow): Promise<void> {
-    const alert = await this.alertCtrl.create({
+    const confirmed = await this.alert.confirm({
       header: 'Delete message',
       message: 'Delete this message? This cannot be undone.',
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Delete',
-          role: 'destructive',
-          handler: () => this.deleteMessage.emit(row.id),
-        },
-      ],
+      confirmText: 'Delete',
+      destructive: true,
     });
-    await alert.present();
+    if (confirmed) {
+      this.deleteMessage.emit(row.id);
+    }
   }
 
   /** Composer submit — routes to an edit or reply when active, else a new send. */

@@ -23,12 +23,11 @@ import {
   IonIcon,
   IonContent,
   IonFooter,
-  AlertController,
   ModalController,
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { close } from 'ionicons/icons';
-import { TrnToastService } from '@trinity/ui-spartan';
+import { TrnAlertService, TrnToastService } from '@trinity/ui-spartan';
 import {
   ThreadsService,
   isEditableMessage,
@@ -77,7 +76,7 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly threads = inject(ThreadsService);
   private readonly modalCtrl = inject(ModalController);
-  private readonly alertCtrl = inject(AlertController);
+  private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -235,23 +234,18 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   }
 
   async onDelete(row: MessageRow): Promise<void> {
-    const alert = await this.alertCtrl.create({
+    const confirmed = await this.alert.confirm({
       header: 'Delete message',
       message: 'Delete this message? This cannot be undone.',
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Delete',
-          role: 'destructive',
-          handler: () =>
-            this.runAction(
-              this.threads.redactInThread(row.id),
-              'Could not delete the message.',
-            ),
-        },
-      ],
+      confirmText: 'Delete',
+      destructive: true,
     });
-    await alert.present();
+    if (confirmed) {
+      this.runAction(
+        this.threads.redactInThread(row.id),
+        'Could not delete the message.',
+      );
+    }
   }
 
   /** Scroll the original message into view when its reply preview is clicked. */
