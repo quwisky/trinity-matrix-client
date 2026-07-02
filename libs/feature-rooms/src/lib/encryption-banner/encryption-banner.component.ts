@@ -5,9 +5,10 @@ import {
   inject,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { IonButton, IonIcon } from '@ionic/angular/standalone';
+import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { lockClosed } from 'ionicons/icons';
+import { HlmButton } from '@trinity/ui-spartan';
 import { CryptoService } from '@trinity/core';
 import { EncryptionDialogService } from '@trinity/ui';
 
@@ -33,7 +34,7 @@ interface BannerAction {
   selector: 'trn-encryption-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['encryption-banner.component.scss'],
-  imports: [IonButton, IonIcon],
+  imports: [IonIcon, HlmButton],
   template: `
     @if (visible()) {
       <div class="banner">
@@ -43,14 +44,14 @@ interface BannerAction {
         <span class="banner__text" role="status">{{ message() }}</span>
         <span class="banner__actions">
           @for (action of actions(); track action.kind) {
-            <ion-button
+            <button
+              hlmBtn
               class="banner__action"
-              size="small"
-              fill="solid"
+              size="sm"
               (click)="run(action.kind)"
             >
               {{ action.label }}
-            </ion-button>
+            </button>
           }
         </span>
       </div>

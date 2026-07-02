@@ -4,7 +4,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import { IonButton } from '@ionic/angular/standalone';
+import { HlmButton } from '@trinity/ui-spartan';
 import type { SasEmoji } from '@trinity/core';
 
 /**
@@ -18,7 +18,7 @@ import type { SasEmoji } from '@trinity/core';
   selector: 'trn-sas-compare',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './sas-compare.component.scss',
-  imports: [IonButton],
+  imports: [HlmButton],
   template: `
     <ul class="emoji" aria-label="Compare these emoji with your other device">
       @for (e of emoji(); track $index) {
@@ -34,32 +34,34 @@ import type { SasEmoji } from '@trinity/core';
     </p>
 
     <div class="actions">
-      <ion-button
-        expand="block"
+      <button
+        hlmBtn
+        class="w-full"
         data-testid="sas-match"
         [disabled]="busy()"
         (click)="match.emit()"
       >
         They match
-      </ion-button>
-      <ion-button
-        expand="block"
-        fill="outline"
-        color="danger"
+      </button>
+      <button
+        hlmBtn
+        class="w-full text-destructive"
+        variant="outline"
         data-testid="sas-mismatch"
         [disabled]="busy()"
         (click)="mismatch.emit()"
       >
         They don't match
-      </ion-button>
-      <ion-button
-        expand="block"
-        fill="clear"
+      </button>
+      <button
+        hlmBtn
+        class="w-full"
+        variant="ghost"
         [disabled]="busy()"
         (click)="cancelled.emit()"
       >
         Cancel
-      </ion-button>
+      </button>
     </div>
   `,
 })

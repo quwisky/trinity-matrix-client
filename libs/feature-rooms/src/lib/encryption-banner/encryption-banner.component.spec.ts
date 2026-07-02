@@ -54,7 +54,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 function clickAction(host: HTMLElement, label: string): void {
-  const button = [...host.querySelectorAll('ion-button')].find(
+  const button = [...host.querySelectorAll('button')].find(
     (b) => b.textContent?.trim() === label,
   );
   (button as HTMLElement).click();
@@ -77,7 +77,7 @@ describe('EncryptionBannerComponent', () => {
     const fixture = TestBed.createComponent(EncryptionBannerComponent);
     fixture.detectChanges();
 
-    const buttons = fixture.nativeElement.querySelectorAll('ion-button');
+    const buttons = fixture.nativeElement.querySelectorAll('button');
     expect(buttons.length).toBe(1);
     expect(fixture.nativeElement.textContent).toContain('Set up encryption');
 
@@ -91,9 +91,9 @@ describe('EncryptionBannerComponent', () => {
     const fixture = TestBed.createComponent(EncryptionBannerComponent);
     fixture.detectChanges();
 
-    const labels = [
-      ...fixture.nativeElement.querySelectorAll('ion-button'),
-    ].map((b: HTMLElement) => b.textContent?.trim());
+    const labels = [...fixture.nativeElement.querySelectorAll('button')].map(
+      (b: HTMLElement) => b.textContent?.trim(),
+    );
     expect(labels).toEqual(['Use recovery key', 'Verify another device']);
   });
 

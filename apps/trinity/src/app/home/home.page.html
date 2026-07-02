@@ -19,14 +19,15 @@
     </span>
   </p>
 
-  <ion-button
-    expand="block"
+  <button
+    hlmBtn
+    class="w-full"
     data-testid="run-spike"
     [disabled]="running()"
     (click)="runSpike()"
   >
     {{ running() ? 'Running…' : 'Run crypto spike' }}
-  </ion-button>
+  </button>
 
   @if (result(); as r) {
     <div data-testid="spike-result" [attr.data-ok]="r.ok">

@@ -7,7 +7,8 @@ import {
 } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { DOCUMENT } from '@angular/common';
-import { IonButton, IonIcon } from '@ionic/angular/standalone';
+import { IonIcon } from '@ionic/angular/standalone';
+import { HlmButton } from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import { checkmarkOutline, copyOutline, downloadOutline } from 'ionicons/icons';
 
@@ -25,26 +26,26 @@ const COPIED_FEEDBACK_MS = 2000;
   selector: 'trn-recovery-key-display',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['recovery-key-display.component.scss'],
-  imports: [IonButton, IonIcon],
+  imports: [HlmButton, IonIcon],
   template: `
     <!-- No aria-label: the key text itself must be the accessible content so a
          screen reader can read it. Copy/Download are the reliable capture path. -->
     <code class="key" tabindex="0">{{ recoveryKey() }}</code>
 
     <div class="actions">
-      <ion-button fill="outline" size="small" (click)="copy()">
+      <button hlmBtn variant="outline" size="sm" (click)="copy()">
         <ion-icon
           slot="start"
           [name]="copied() ? 'checkmark-outline' : 'copy-outline'"
           aria-hidden="true"
         />
         {{ copied() ? 'Copied' : 'Copy' }}
-      </ion-button>
+      </button>
       @if (canDownload) {
-        <ion-button fill="outline" size="small" (click)="download()">
+        <button hlmBtn variant="outline" size="sm" (click)="download()">
           <ion-icon slot="start" name="download-outline" aria-hidden="true" />
           Download
-        </ion-button>
+        </button>
       }
     </div>
 
