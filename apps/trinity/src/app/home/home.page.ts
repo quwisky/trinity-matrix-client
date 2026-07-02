@@ -12,7 +12,6 @@ import {
   IonTitle,
   IonContent,
   IonButton,
-  IonText,
 } from '@ionic/angular/standalone';
 import { finalize } from 'rxjs';
 import { CryptoSpikeService, CryptoSpikeResult } from '@trinity/core';
@@ -22,7 +21,7 @@ import { CryptoSpikeService, CryptoSpikeResult } from '@trinity/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'home.page.html',
   styleUrls: ['home.page.scss'],
-  imports: [IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonText],
+  imports: [IonHeader, IonToolbar, IonTitle, IonContent, IonButton],
 })
 export class HomePage {
   private readonly spike = inject(CryptoSpikeService);

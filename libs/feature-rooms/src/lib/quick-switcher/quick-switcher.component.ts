@@ -16,7 +16,6 @@ import {
   IonItem,
   IonLabel,
   IonList,
-  IonNote,
   IonSearchbar,
   IonSpinner,
   IonTitle,
@@ -93,7 +92,6 @@ const KIND_ICON: Record<SwitcherKind, string> = {
     IonList,
     IonItem,
     IonLabel,
-    IonNote,
     IonIcon,
     IonSpinner,
     AvatarComponent,
@@ -162,14 +160,18 @@ const KIND_ICON: Record<SwitcherKind, string> = {
               [name]="kindIcon(result.kind)"
               [attr.aria-label]="kindLabel(result.kind)"
             />
-            <ion-note slot="end">{{ kindLabel(result.kind) }}</ion-note>
+            <span slot="end" class="text-muted-foreground text-xs">{{
+              kindLabel(result.kind)
+            }}</span>
           </ion-item>
         } @empty {
           <div class="qs-empty" aria-live="polite">
             @if (searching()) {
               <ion-spinner name="dots" aria-label="Searching" />
             } @else {
-              <ion-note>{{ emptyHint() }}</ion-note>
+              <span class="text-muted-foreground text-xs">{{
+                emptyHint()
+              }}</span>
             }
           </div>
         }

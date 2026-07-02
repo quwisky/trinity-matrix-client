@@ -16,7 +16,6 @@ import {
   IonContent,
   IonButton,
   IonButtons,
-  IonText,
   IonSpinner,
   ModalController,
 } from '@ionic/angular/standalone';
@@ -43,7 +42,6 @@ import { SasCompareComponent } from './sas-compare.component';
     IonContent,
     IonButton,
     IonButtons,
-    IonText,
     IonSpinner,
     SasCompareComponent,
   ],

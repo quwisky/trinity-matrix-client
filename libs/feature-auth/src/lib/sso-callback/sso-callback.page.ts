@@ -9,12 +9,7 @@ import {
 import { Location } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import {
-  IonContent,
-  IonSpinner,
-  IonText,
-  IonButton,
-} from '@ionic/angular/standalone';
+import { IonContent, IonSpinner, IonButton } from '@ionic/angular/standalone';
 import { AuthService } from '@trinity/core';
 import { SsoStateStore } from '../sso-state.store';
 
@@ -31,7 +26,7 @@ import { SsoStateStore } from '../sso-state.store';
       <h1 class="sr-only">Completing sign in</h1>
       @if (error(); as e) {
         <p>
-          <ion-text color="danger">{{ e }}</ion-text>
+          <span class="text-destructive">{{ e }}</span>
         </p>
         <ion-button (click)="back()">Back to sign in</ion-button>
       } @else {
@@ -40,7 +35,7 @@ import { SsoStateStore } from '../sso-state.store';
       }
     </ion-content>
   `,
-  imports: [IonContent, IonSpinner, IonText, IonButton],
+  imports: [IonContent, IonSpinner, IonButton],
 })
 export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);

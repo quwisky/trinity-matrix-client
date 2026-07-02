@@ -17,7 +17,6 @@ import {
   IonItem,
   IonLabel,
   IonList,
-  IonNote,
   IonSearchbar,
   IonSpinner,
   IonTitle,
@@ -72,7 +71,6 @@ interface HighlightPart {
     IonList,
     IonItem,
     IonLabel,
-    IonNote,
     IonIcon,
     IonSpinner,
     AvatarComponent,
@@ -163,7 +161,7 @@ interface HighlightPart {
             <ion-label>
               <h2>
                 {{ hit.senderName }}
-                <ion-note class="ms-time">{{ formatTime(hit.ts) }}</ion-note>
+                <span class="ms-time">{{ formatTime(hit.ts) }}</span>
               </h2>
               <p class="ms-snippet">
                 @for (part of highlight(hit.snippet); track $index) {
@@ -178,7 +176,7 @@ interface HighlightPart {
           </ion-item>
         } @empty {
           <div class="ms-empty" aria-live="polite">
-            <ion-note>{{ emptyHint() }}</ion-note>
+            <span class="text-muted-foreground text-xs">{{ emptyHint() }}</span>
           </div>
         }
       </ion-list>

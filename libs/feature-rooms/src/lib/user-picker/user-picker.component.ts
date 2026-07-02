@@ -15,7 +15,6 @@ import {
   IonItem,
   IonLabel,
   IonList,
-  IonNote,
   IonSearchbar,
   IonSpinner,
   IonTitle,
@@ -67,7 +66,6 @@ const MIN_SEARCH_LENGTH = 2;
     IonList,
     IonItem,
     IonLabel,
-    IonNote,
     IonSpinner,
     AvatarComponent,
   ],
@@ -125,7 +123,9 @@ const MIN_SEARCH_LENGTH = 2;
         } @empty {
           @if (!searching()) {
             <div class="picker-empty">
-              <ion-note>{{ emptyHint() }}</ion-note>
+              <span class="text-muted-foreground text-xs">{{
+                emptyHint()
+              }}</span>
             </div>
           }
         }

@@ -11,9 +11,9 @@
   color: var(--trinity-text-muted);
 }
 
-ion-note[slot='end'] {
+// The kind label (was ion-note); color now comes from text-muted-foreground.
+span[slot='end'] {
   align-self: center;
-  color: var(--trinity-text-muted);
 }
 
 .qs-empty {

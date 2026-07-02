@@ -13,10 +13,10 @@
 
   <h2>E2EE crypto spike</h2>
   <p>
-    <ion-text color="medium">
+    <span class="text-muted-foreground">
       Verifies that the Rust crypto WASM loads and the crypto store initializes
       in this runtime (browser / WebView / Electron).
-    </ion-text>
+    </span>
   </p>
 
   <ion-button
@@ -32,7 +32,7 @@
     <div data-testid="spike-result" [attr.data-ok]="r.ok">
       @if (r.ok) {
         <p>
-          <ion-text color="success"><strong>PASS</strong></ion-text>
+          <span class="text-success"><strong>PASS</strong></span>
         </p>
         <ul>
           <li>crypto version: {{ r.cryptoVersion }}</li>
@@ -42,7 +42,7 @@
         </ul>
       } @else {
         <p>
-          <ion-text color="danger"><strong>FAIL</strong></ion-text>
+          <span class="text-destructive"><strong>FAIL</strong></span>
         </p>
         <p>{{ r.error }}</p>
       }

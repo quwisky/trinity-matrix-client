@@ -20,7 +20,6 @@ import {
   IonInput,
   IonButton,
   IonButtons,
-  IonText,
   IonSpinner,
   ModalController,
 } from '@ionic/angular/standalone';
@@ -49,7 +48,6 @@ import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
     IonInput,
     IonButton,
     IonButtons,
-    IonText,
     IonSpinner,
   ],
 })

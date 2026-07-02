@@ -11,12 +11,10 @@
 
 <ion-content class="ion-padding">
   <h1 class="heading">Enter your recovery key</h1>
-  <ion-text color="medium">
-    <p>
-      This device isn't trusted yet. Enter the recovery key you saved when you
-      set up encryption to unlock your encrypted messages here.
-    </p>
-  </ion-text>
+  <p class="text-muted-foreground">
+    This device isn't trusted yet. Enter the recovery key you saved when you set
+    up encryption to unlock your encrypted messages here.
+  </p>
 
   <ion-list>
     <ion-item>
@@ -55,8 +53,6 @@
     </div>
   }
   @if (error(); as message) {
-    <ion-text color="danger">
-      <p role="alert">{{ message }}</p>
-    </ion-text>
+    <p class="text-destructive" role="alert">{{ message }}</p>
   }
 </ion-content>
