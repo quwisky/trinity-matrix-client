@@ -7,10 +7,9 @@ import {
 } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { DOCUMENT } from '@angular/common';
-import { IonIcon } from '@ionic/angular/standalone';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideCheck, lucideCopy, lucideDownload } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/ui-spartan';
-import { addIcons } from 'ionicons';
-import { checkmarkOutline, copyOutline, downloadOutline } from 'ionicons/icons';
 
 /** How long the "Copied" affordance stays visible after a successful copy. */
 const COPIED_FEEDBACK_MS = 2000;
@@ -26,7 +25,8 @@ const COPIED_FEEDBACK_MS = 2000;
   selector: 'trn-recovery-key-display',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['recovery-key-display.component.scss'],
-  imports: [HlmButton, IonIcon],
+  imports: [HlmButton, NgIcon],
+  viewProviders: [provideIcons({ lucideCheck, lucideCopy, lucideDownload })],
   template: `
     <!-- No aria-label: the key text itself must be the accessible content so a
          screen reader can read it. Copy/Download are the reliable capture path. -->
@@ -34,16 +34,15 @@ const COPIED_FEEDBACK_MS = 2000;
 
     <div class="actions">
       <button hlmBtn variant="outline" size="sm" (click)="copy()">
-        <ion-icon
-          slot="start"
-          [name]="copied() ? 'checkmark-outline' : 'copy-outline'"
+        <ng-icon
+          [name]="copied() ? 'lucideCheck' : 'lucideCopy'"
           aria-hidden="true"
         />
         {{ copied() ? 'Copied' : 'Copy' }}
       </button>
       @if (canDownload) {
         <button hlmBtn variant="outline" size="sm" (click)="download()">
-          <ion-icon slot="start" name="download-outline" aria-hidden="true" />
+          <ng-icon name="lucideDownload" aria-hidden="true" />
           Download
         </button>
       }
@@ -78,10 +77,6 @@ export class RecoveryKeyDisplayComponent {
 
   /** Native WebViews lack a reliable file download; offer it on web only. */
   readonly canDownload = !Capacitor.isNativePlatform();
-
-  constructor() {
-    addIcons({ checkmarkOutline, copyOutline, downloadOutline });
-  }
 
   /** Copy the key to the clipboard, with transient + announced confirmation. */
   copy(): void {

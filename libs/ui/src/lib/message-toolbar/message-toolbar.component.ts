@@ -5,16 +5,15 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
-  arrowUndoOutline,
-  chatbubblesOutline,
-  copyOutline,
-  happyOutline,
-  pencilOutline,
-  trashOutline,
-} from 'ionicons/icons';
+  lucideCopy,
+  lucideMessagesSquare,
+  lucidePencil,
+  lucideReply,
+  lucideSmile,
+  lucideTrash2,
+} from '@ng-icons/lucide';
 
 /** A small set of one-tap reactions offered by the picker. */
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
@@ -27,9 +26,19 @@ const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
 @Component({
   selector: 'trn-message-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon],
+  imports: [NgIcon],
   templateUrl: './message-toolbar.component.html',
   styleUrl: './message-toolbar.component.scss',
+  viewProviders: [
+    provideIcons({
+      lucideSmile,
+      lucideReply,
+      lucideMessagesSquare,
+      lucideCopy,
+      lucidePencil,
+      lucideTrash2,
+    }),
+  ],
 })
 export class MessageToolbarComponent {
   readonly canEdit = input(false);
@@ -45,17 +54,6 @@ export class MessageToolbarComponent {
 
   readonly quickEmojis = QUICK_EMOJIS;
   readonly pickerOpen = signal(false);
-
-  constructor() {
-    addIcons({
-      arrowUndoOutline,
-      chatbubblesOutline,
-      copyOutline,
-      happyOutline,
-      pencilOutline,
-      trashOutline,
-    });
-  }
 
   pick(emoji: string): void {
     this.react.emit(emoji);

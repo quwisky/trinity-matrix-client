@@ -6,13 +6,12 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
-  createOutline,
-  shieldCheckmarkOutline,
-  trashOutline,
-} from 'ionicons/icons';
+  lucidePencil,
+  lucideShieldCheck,
+  lucideTrash2,
+} from '@ng-icons/lucide';
 import { TrnAlertService, HlmBadge, HlmButton } from '@trinity/ui-spartan';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
@@ -28,7 +27,10 @@ import { DevicesService, type DeviceInfo } from '@trinity/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './devices-section.component.html',
   styleUrl: './devices-section.component.scss',
-  imports: [IonIcon, HlmBadge, HlmButton],
+  imports: [NgIcon, HlmBadge, HlmButton],
+  viewProviders: [
+    provideIcons({ lucidePencil, lucideShieldCheck, lucideTrash2 }),
+  ],
 })
 export class DevicesSectionComponent {
   private readonly devicesSvc = inject(DevicesService);
@@ -46,7 +48,6 @@ export class DevicesSectionComponent {
   );
 
   constructor() {
-    addIcons({ createOutline, shieldCheckmarkOutline, trashOutline });
     runWithBusy(this.devicesSvc.list(), {
       busy: this.loading,
       error: this.error,

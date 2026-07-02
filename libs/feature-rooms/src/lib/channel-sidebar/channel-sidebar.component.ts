@@ -4,16 +4,15 @@ import {
   input,
   output,
 } from '@angular/core';
-import { IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
-  addOutline,
-  checkmarkOutline,
-  closeOutline,
-  exitOutline,
-  personAddOutline,
-  removeCircleOutline,
-} from 'ionicons/icons';
+  lucideCheck,
+  lucideCircleMinus,
+  lucideLogOut,
+  lucidePlus,
+  lucideUserPlus,
+  lucideX,
+} from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
 
@@ -21,7 +20,17 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
 @Component({
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, IonIcon],
+  imports: [AvatarComponent, NgIcon],
+  viewProviders: [
+    provideIcons({
+      lucideCheck,
+      lucideCircleMinus,
+      lucideLogOut,
+      lucidePlus,
+      lucideUserPlus,
+      lucideX,
+    }),
+  ],
   template: `
     <div class="sidebar">
       <header class="sidebar__header">
@@ -34,7 +43,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
               aria-label="Create a channel"
               title="Create a channel"
             >
-              <ion-icon name="add-outline" aria-hidden="true" />
+              <ng-icon name="lucidePlus" aria-hidden="true" />
             </button>
             <button
               class="sidebar__action"
@@ -42,7 +51,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
               aria-label="Invite people to space"
               title="Invite people to space"
             >
-              <ion-icon name="person-add-outline" aria-hidden="true" />
+              <ng-icon name="lucideUserPlus" aria-hidden="true" />
             </button>
             <button
               class="sidebar__action"
@@ -50,7 +59,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
               aria-label="Leave space"
               title="Leave space"
             >
-              <ion-icon name="exit-outline" aria-hidden="true" />
+              <ng-icon name="lucideLogOut" aria-hidden="true" />
             </button>
           } @else {
             <button
@@ -59,7 +68,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
               aria-label="New room or direct message"
               title="New room or direct message"
             >
-              <ion-icon name="add-outline" aria-hidden="true" />
+              <ng-icon name="lucidePlus" aria-hidden="true" />
             </button>
           }
         </div>
@@ -95,7 +104,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
                   [attr.aria-label]="'Accept invite to ' + invite.name"
                   title="Accept"
                 >
-                  <ion-icon name="checkmark-outline" aria-hidden="true" />
+                  <ng-icon name="lucideCheck" aria-hidden="true" />
                 </button>
                 <button
                   class="invite__btn decline"
@@ -103,7 +112,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
                   [attr.aria-label]="'Decline invite to ' + invite.name"
                   title="Decline"
                 >
-                  <ion-icon name="close-outline" aria-hidden="true" />
+                  <ng-icon name="lucideX" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -137,7 +146,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
                 [attr.aria-label]="'Remove ' + room.name + ' from this space'"
                 title="Remove from space"
               >
-                <ion-icon name="remove-circle-outline" aria-hidden="true" />
+                <ng-icon name="lucideCircleMinus" aria-hidden="true" />
               </button>
             }
           </div>
@@ -286,15 +295,4 @@ export class ChannelSidebarComponent {
   readonly acceptInvite = output<string>();
   readonly declineInvite = output<string>();
   readonly logout = output<void>();
-
-  constructor() {
-    addIcons({
-      addOutline,
-      checkmarkOutline,
-      closeOutline,
-      exitOutline,
-      personAddOutline,
-      removeCircleOutline,
-    });
-  }
 }

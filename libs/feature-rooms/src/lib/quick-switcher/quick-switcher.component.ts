@@ -9,7 +9,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { IonIcon } from '@ionic/angular/standalone';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideLock,
+  lucideMail,
+  lucideMessageSquare,
+  lucideUser,
+  lucideUsers,
+} from '@ng-icons/lucide';
 import {
   SearchService,
   type SwitcherKind,
@@ -23,14 +30,6 @@ import {
   HlmInput,
   HlmSpinner,
 } from '@trinity/ui-spartan';
-import { addIcons } from 'ionicons';
-import {
-  chatbubbleOutline,
-  lockClosed,
-  mailOutline,
-  peopleOutline,
-  personOutline,
-} from 'ionicons/icons';
 import {
   debounceTime,
   distinctUntilChanged,
@@ -52,13 +51,13 @@ const KIND_LABEL: Record<SwitcherKind, string> = {
   user: 'Person',
 };
 
-/** Trailing ionicon per kind. */
+/** Trailing lucide icon per kind. */
 const KIND_ICON: Record<SwitcherKind, string> = {
-  room: 'chatbubble-outline',
-  space: 'people-outline',
-  dm: 'person-outline',
-  invite: 'mail-outline',
-  user: 'person-outline',
+  room: 'lucideMessageSquare',
+  space: 'lucideUsers',
+  dm: 'lucideUser',
+  invite: 'lucideMail',
+  user: 'lucideUser',
 };
 
 /**
@@ -76,7 +75,16 @@ const KIND_ICON: Record<SwitcherKind, string> = {
 @Component({
   selector: 'trn-quick-switcher',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
+  imports: [NgIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
+  viewProviders: [
+    provideIcons({
+      lucideLock,
+      lucideMail,
+      lucideMessageSquare,
+      lucideUser,
+      lucideUsers,
+    }),
+  ],
   template: `
     <div
       class="flex h-[60vh] max-h-[70vh] w-[92vw] max-w-[560px] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
@@ -137,13 +145,13 @@ const KIND_ICON: Record<SwitcherKind, string> = {
               }
             </span>
             @if (result.encrypted) {
-              <ion-icon
+              <ng-icon
                 class="qs-lock"
-                name="lock-closed"
+                name="lucideLock"
                 aria-label="Encrypted"
               />
             }
-            <ion-icon
+            <ng-icon
               class="qs-kind"
               [name]="kindIcon(result.kind)"
               [attr.aria-label]="kindLabel(result.kind)"
@@ -225,13 +233,6 @@ export class QuickSwitcherComponent {
   );
 
   constructor() {
-    addIcons({
-      chatbubbleOutline,
-      lockClosed,
-      mailOutline,
-      peopleOutline,
-      personOutline,
-    });
     // Autofocus the field once the dialog has rendered.
     afterNextRender(() => this.searchInput()?.nativeElement.focus());
   }

@@ -11,7 +11,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
-import { IonIcon } from '@ionic/angular/standalone';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideLock, lucideServer } from '@ng-icons/lucide';
 import {
   SearchService,
   TimelineService,
@@ -20,8 +21,6 @@ import {
 } from '@trinity/core';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { HlmButton, HlmInput, HlmSpinner } from '@trinity/ui-spartan';
-import { addIcons } from 'ionicons';
-import { lockClosed, serverOutline } from 'ionicons/icons';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
 interface HighlightPart {
@@ -52,7 +51,8 @@ interface HighlightPart {
 @Component({
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
+  imports: [NgIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
+  viewProviders: [provideIcons({ lucideLock, lucideServer })],
   template: `
     <div
       class="flex h-screen w-screen flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg md:w-[480px]"
@@ -83,7 +83,7 @@ interface HighlightPart {
       <div class="flex-1 overflow-y-auto">
         @if (encrypted()) {
           <div class="ms-banner" data-testid="e2ee-note">
-            <ion-icon name="lock-closed" aria-hidden="true" />
+            <ng-icon name="lucideLock" aria-hidden="true" />
             <span>
               Encrypted room — searching the {{ scanned() }} loaded
               {{ scanned() === 1 ? 'message' : 'messages' }} only.
@@ -122,7 +122,7 @@ interface HighlightPart {
                 @if (searching()) {
                   <hlm-spinner />
                 } @else {
-                  <ion-icon name="server-outline" aria-hidden="true" />
+                  <ng-icon name="lucideServer" aria-hidden="true" />
                 }
                 Search all messages
               </button>
@@ -253,7 +253,6 @@ export class MessageSearchComponent {
   });
 
   constructor() {
-    addIcons({ lockClosed, serverOutline });
     // Autofocus the field once the dialog has rendered.
     afterNextRender(() => this.searchInput()?.nativeElement.focus());
   }

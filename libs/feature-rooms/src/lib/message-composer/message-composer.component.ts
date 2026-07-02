@@ -12,14 +12,13 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { IonIcon } from '@ionic/angular/standalone';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucidePlus, lucideSend, lucideSmile } from '@ng-icons/lucide';
 import {
   HlmProgress,
   HlmProgressIndicator,
   TrnToastService,
 } from '@trinity/ui-spartan';
-import { addIcons } from 'ionicons';
-import { addOutline, happyOutline, send } from 'ionicons/icons';
 import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
 import {
   EmojiService,
@@ -50,7 +49,8 @@ const EMOJI_SUGGESTION_LIMIT = 8;
 @Component({
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, PickerComponent, HlmProgress, HlmProgressIndicator],
+  imports: [NgIcon, PickerComponent, HlmProgress, HlmProgressIndicator],
+  viewProviders: [provideIcons({ lucidePlus, lucideSend, lucideSmile })],
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
 })
@@ -109,7 +109,6 @@ export class MessageComposerComponent {
   private wasReplying = false;
 
   constructor() {
-    addIcons({ addOutline, happyOutline, send });
     // Highlight the first suggestion whenever the result set changes.
     effect(() => {
       this.emojiMatches();

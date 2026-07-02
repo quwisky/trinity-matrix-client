@@ -44,7 +44,7 @@
           data-testid="rename-device"
           (click)="rename(device)"
         >
-          <ion-icon name="create-outline" class="text-lg" />
+          <ng-icon name="lucidePencil" class="text-lg" />
         </button>
         @if (!device.isCurrent) {
           <button
@@ -57,7 +57,7 @@
             data-testid="remove-device"
             (click)="remove(device)"
           >
-            <ion-icon name="trash-outline" class="text-lg" />
+            <ng-icon name="lucideTrash2" class="text-lg" />
           </button>
         }
       </div>
@@ -89,7 +89,7 @@
         data-testid="verify-devices"
         (click)="verifyDevices()"
       >
-        <ion-icon name="shield-checkmark-outline" class="text-lg" />
+        <ng-icon name="lucideShieldCheck" class="text-lg" />
         Verify another session
       </button>
     </div>

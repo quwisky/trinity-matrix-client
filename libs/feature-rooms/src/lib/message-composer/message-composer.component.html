@@ -113,7 +113,7 @@
     [disabled]="uploadProgress() !== null"
     (click)="onAttach()"
   >
-    <ion-icon name="add-outline" aria-hidden="true" />
+    <ng-icon name="lucidePlus" aria-hidden="true" />
   </button>
   <button
     type="button"
@@ -123,7 +123,7 @@
     [attr.aria-expanded]="pickerOpen()"
     (click)="pickerOpen.set(!pickerOpen())"
   >
-    <ion-icon name="happy-outline" aria-hidden="true" />
+    <ng-icon name="lucideSmile" aria-hidden="true" />
   </button>
   <!-- Touch devices have no reliable Enter-to-send, so surface an explicit send
        button there (hidden on pointer devices via CSS). -->
@@ -135,6 +135,6 @@
     [disabled]="!text().trim()"
     (click)="submit()"
   >
-    <ion-icon name="send" aria-hidden="true" />
+    <ng-icon name="lucideSend" aria-hidden="true" />
   </button>
 </div>

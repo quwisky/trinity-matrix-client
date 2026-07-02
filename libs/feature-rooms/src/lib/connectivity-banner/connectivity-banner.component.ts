@@ -4,9 +4,8 @@ import {
   computed,
   inject,
 } from '@angular/core';
-import { IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
-import { cloudOfflineOutline } from 'ionicons/icons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideCloudOff } from '@ng-icons/lucide';
 import { MatrixClientService } from '@trinity/core';
 
 /**
@@ -19,13 +18,14 @@ import { MatrixClientService } from '@trinity/core';
   selector: 'trn-connectivity-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['connectivity-banner.component.scss'],
-  imports: [IonIcon],
+  imports: [NgIcon],
+  viewProviders: [provideIcons({ lucideCloudOff })],
   template: `
     @if (offline()) {
       <div class="conn-banner" role="status">
-        <ion-icon
+        <ng-icon
           class="conn-banner__icon"
-          name="cloud-offline-outline"
+          name="lucideCloudOff"
           aria-hidden="true"
         />
         <span>You’re offline. Reconnecting…</span>
@@ -37,8 +37,4 @@ export class ConnectivityBannerComponent {
   private readonly matrix = inject(MatrixClientService);
 
   readonly offline = computed(() => this.matrix.connectivity() === 'offline');
-
-  constructor() {
-    addIcons({ cloudOfflineOutline });
-  }
 }

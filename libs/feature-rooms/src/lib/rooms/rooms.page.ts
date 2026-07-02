@@ -22,24 +22,22 @@ import {
   IonTitle,
   IonButtons,
   IonButton,
-  IonIcon,
   MenuController,
 } from '@ionic/angular/standalone';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideLock,
+  lucideMessagesSquare,
+  lucideSearch,
+  lucideSettings,
+  lucideUserPlus,
+} from '@ng-icons/lucide';
 import {
   TrnActionSheetService,
   TrnAlertService,
   TrnDialogService,
   TrnToastService,
 } from '@trinity/ui-spartan';
-import { addIcons } from 'ionicons';
-import {
-  chatbubblesOutline,
-  lockClosed,
-  personAddOutline,
-  searchCircleOutline,
-  searchOutline,
-  settingsOutline,
-} from 'ionicons/icons';
 import {
   AuthService,
   CryptoService,
@@ -87,13 +85,22 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
     IonTitle,
     IonButtons,
     IonButton,
-    IonIcon,
+    NgIcon,
     ServerRailComponent,
     ChannelSidebarComponent,
     MemberListComponent,
     MessageListComponent,
     EncryptionBannerComponent,
     ConnectivityBannerComponent,
+  ],
+  viewProviders: [
+    provideIcons({
+      lucideLock,
+      lucideMessagesSquare,
+      lucideSearch,
+      lucideSettings,
+      lucideUserPlus,
+    }),
   ],
 })
 export class RoomsPage implements OnInit, OnDestroy {
@@ -213,14 +220,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   });
 
   constructor() {
-    addIcons({
-      chatbubblesOutline,
-      lockClosed,
-      personAddOutline,
-      searchCircleOutline,
-      searchOutline,
-      settingsOutline,
-    });
     // Space-management failures (create/leave) have no inline echo in the shell, so
     // surface each new error as a danger toast. runWithBusy captures the message
     // into spaceError; this reacts to that signal turning non-null.

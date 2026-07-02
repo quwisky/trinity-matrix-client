@@ -5,9 +5,8 @@ import {
   inject,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
-import { lockClosed } from 'ionicons/icons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideLock } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/ui-spartan';
 import { CryptoService } from '@trinity/core';
 import { EncryptionDialogService } from '@trinity/ui';
@@ -34,11 +33,12 @@ interface BannerAction {
   selector: 'trn-encryption-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['encryption-banner.component.scss'],
-  imports: [IonIcon, HlmButton],
+  imports: [NgIcon, HlmButton],
+  viewProviders: [provideIcons({ lucideLock })],
   template: `
     @if (visible()) {
       <div class="banner">
-        <ion-icon class="banner__icon" name="lock-closed" aria-hidden="true" />
+        <ng-icon class="banner__icon" name="lucideLock" aria-hidden="true" />
         <!-- Live region scoped to the message so the action buttons aren't read
              as part of the polite announcement. -->
         <span class="banner__text" role="status">{{ message() }}</span>
@@ -90,10 +90,6 @@ export class EncryptionBannerComponent {
         return [];
     }
   });
-
-  constructor() {
-    addIcons({ lockClosed });
-  }
 
   /**
    * Trigger a flow. Setup stays a full-page route; unlock/verify go through

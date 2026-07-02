@@ -15,9 +15,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, type Observable } from 'rxjs';
 import { DialogRef } from '@angular/cdk/dialog';
-import { IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
-import { close } from 'ionicons/icons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideX } from '@ng-icons/lucide';
 import {
   TrnAlertService,
   HlmButton,
@@ -53,7 +52,8 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 @Component({
   selector: 'trn-thread-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, HlmButton, MessageRowComponent, MessageComposerComponent],
+  imports: [NgIcon, HlmButton, MessageRowComponent, MessageComposerComponent],
+  viewProviders: [provideIcons({ lucideX })],
   templateUrl: './thread-view.component.html',
   styleUrl: './thread-view.component.scss',
 })
@@ -112,10 +112,6 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   readonly canLoadOlder = this.threads.canPaginateThread;
   /** Whether an older-replies page is currently loading. */
   readonly loadingOlder = this.threads.loadingOlderThread;
-
-  constructor() {
-    addIcons({ close });
-  }
 
   ngOnInit(): void {
     this.threads.openThread(this.roomId(), this.rootEventId());

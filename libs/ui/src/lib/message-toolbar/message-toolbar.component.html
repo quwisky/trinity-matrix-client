@@ -22,7 +22,7 @@
     [attr.aria-expanded]="pickerOpen()"
     (click)="pickerOpen.set(!pickerOpen())"
   >
-    <ion-icon name="happy-outline" aria-hidden="true" />
+    <ng-icon name="lucideSmile" aria-hidden="true" />
   </button>
 
   <button
@@ -32,7 +32,7 @@
     aria-label="Reply"
     (click)="replyMessage.emit()"
   >
-    <ion-icon name="arrow-undo-outline" aria-hidden="true" />
+    <ng-icon name="lucideReply" aria-hidden="true" />
   </button>
 
   @if (canThread()) {
@@ -43,7 +43,7 @@
       aria-label="Reply in thread"
       (click)="openThread.emit()"
     >
-      <ion-icon name="chatbubbles-outline" aria-hidden="true" />
+      <ng-icon name="lucideMessagesSquare" aria-hidden="true" />
     </button>
   }
 
@@ -54,7 +54,7 @@
     aria-label="Copy text"
     (click)="copyMessage.emit()"
   >
-    <ion-icon name="copy-outline" aria-hidden="true" />
+    <ng-icon name="lucideCopy" aria-hidden="true" />
   </button>
 
   @if (canEdit()) {
@@ -65,7 +65,7 @@
       aria-label="Edit message"
       (click)="editMessage.emit()"
     >
-      <ion-icon name="pencil-outline" aria-hidden="true" />
+      <ng-icon name="lucidePencil" aria-hidden="true" />
     </button>
   }
 
@@ -77,7 +77,7 @@
       aria-label="Delete message"
       (click)="deleteMessage.emit()"
     >
-      <ion-icon name="trash-outline" aria-hidden="true" />
+      <ng-icon name="lucideTrash2" aria-hidden="true" />
     </button>
   }
 </div>

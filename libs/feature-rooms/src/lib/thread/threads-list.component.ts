@@ -6,9 +6,8 @@ import {
   input,
 } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
-import { IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
-import { close } from 'ionicons/icons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideX } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import { HlmButton } from '@trinity/ui-spartan';
 import { ThreadsService, type ThreadSummary } from '@trinity/core';
@@ -32,7 +31,8 @@ const MAX_AVATARS = 4;
 @Component({
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, DatePipe, AvatarComponent, HlmButton],
+  imports: [NgIcon, DatePipe, AvatarComponent, HlmButton],
+  viewProviders: [provideIcons({ lucideX })],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',
 })
@@ -49,10 +49,6 @@ export class ThreadsListComponent {
 
   /** Avatars shown per row, capped — the rest collapse into a "+N" chip. */
   readonly maxAvatars = MAX_AVATARS;
-
-  constructor() {
-    addIcons({ close });
-  }
 
   /** Close this list, handing the chosen thread root back to the panel service. */
   openThread(rootEventId: string): void {

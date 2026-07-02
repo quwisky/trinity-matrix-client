@@ -51,7 +51,7 @@
             aria-label="Search (Ctrl/Cmd+K)"
             data-testid="open-switcher"
           >
-            <ion-icon slot="icon-only" name="search-outline" />
+            <ng-icon class="text-xl" name="lucideSearch" />
           </ion-button>
           @if (activeRoom()) {
             <ion-button
@@ -59,21 +59,21 @@
               aria-label="Search messages in this room"
               data-testid="search-messages"
             >
-              <ion-icon slot="icon-only" name="search-circle-outline" />
+              <ng-icon class="text-xl" name="lucideSearch" />
             </ion-button>
             <ion-button
               (click)="onInviteToRoom()"
               aria-label="Invite people"
               data-testid="invite-people"
             >
-              <ion-icon slot="icon-only" name="person-add-outline" />
+              <ng-icon class="text-xl" name="lucideUserPlus" />
             </ion-button>
             <ion-button
               (click)="openThreadsList()"
               aria-label="Threads"
               data-testid="open-threads"
             >
-              <ion-icon slot="icon-only" name="chatbubbles-outline" />
+              <ng-icon class="text-xl" name="lucideMessagesSquare" />
             </ion-button>
           }
           <ion-button
@@ -81,7 +81,7 @@
             aria-label="Settings"
             data-testid="open-settings"
           >
-            <ion-icon slot="icon-only" name="settings-outline" />
+            <ng-icon class="text-xl" name="lucideSettings" />
           </ion-button>
         </ion-buttons>
         <ion-title>
@@ -90,9 +90,9 @@
               <span class="title-hash">#</span>{{ room.name }}
             </span>
             @if (room.encrypted) {
-              <ion-icon
+              <ng-icon
                 class="title-lock"
-                name="lock-closed"
+                name="lucideLock"
                 aria-label="Encrypted room"
               />
             }
