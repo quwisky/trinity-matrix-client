@@ -1,26 +1,15 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  ViewChild,
+  ElementRef,
+  afterNextRender,
   computed,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import {
-  IonButton,
-  IonButtons,
-  IonContent,
-  IonHeader,
-  IonIcon,
-  IonItem,
-  IonLabel,
-  IonList,
-  IonSearchbar,
-  IonTitle,
-  IonToolbar,
-  ModalController,
-} from '@ionic/angular/standalone';
+import { IonIcon } from '@ionic/angular/standalone';
 import {
   SearchService,
   type SwitcherKind,
@@ -28,7 +17,12 @@ import {
   type SwitcherSelection,
 } from '@trinity/core';
 import { AvatarComponent } from '@trinity/ui';
-import { TrnSpinnerComponent } from '@trinity/ui-spartan';
+import {
+  DialogRef,
+  TrnButtonDirective,
+  TrnInputDirective,
+  TrnSpinnerComponent,
+} from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import {
   chatbubbleOutline,
@@ -70,100 +64,100 @@ const KIND_ICON: Record<SwitcherKind, string> = {
 /**
  * Quick-switcher overlay (Ctrl/Cmd+K): a single search field over joined rooms,
  * spaces, DMs, and pending invites, with debounced directory-people results appended.
- * Presented by {@link QuickSwitcherService}; injects {@link SearchService} directly so
- * the aggregation stays in core and nothing is threaded through `componentProps`.
+ * Presented by {@link QuickSwitcherService} as a {@link TrnDialogService} dialog;
+ * injects {@link SearchService} directly so the aggregation stays in core.
  *
  * Local matches are an instant `computed` over the query signal; people are a
  * debounced RxJS stream. Keyboard nav (Up/Down move, Enter select, Esc close) lives on
- * the searchbar host. On a pick it dismisses with the chosen {@link SwitcherSelection},
- * leaving the actual navigation to `RoomsPage`.
+ * the native input. On a pick it closes with the chosen {@link SwitcherSelection},
+ * leaving the actual navigation to `RoomsPage`. The card self-sizes so it works in a
+ * bare CDK dialog (no `ion-modal` host).
  */
 @Component({
   selector: 'trn-quick-switcher',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonButtons,
-    IonButton,
-    IonContent,
-    IonSearchbar,
-    IonList,
-    IonItem,
-    IonLabel,
     IonIcon,
     AvatarComponent,
     TrnSpinnerComponent,
+    TrnButtonDirective,
+    TrnInputDirective,
   ],
   template: `
-    <ion-header>
-      <ion-toolbar>
-        <ion-title>Jump to…</ion-title>
-        <ion-buttons slot="end">
-          <ion-button (click)="dismiss(null)">Cancel</ion-button>
-        </ion-buttons>
-      </ion-toolbar>
-      <ion-toolbar>
-        <ion-searchbar
-          [debounce]="0"
+    <div
+      class="flex h-[60vh] max-h-[70vh] w-[92vw] max-w-[560px] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
+    >
+      <div
+        class="flex items-center gap-2 border-b border-solid border-border p-3"
+      >
+        <h2 class="flex-1 text-base font-semibold">Jump to…</h2>
+        <button trnBtn variant="ghost" size="sm" (click)="dismiss(null)">
+          Cancel
+        </button>
+      </div>
+
+      <div class="border-b border-solid border-border p-3">
+        <input
+          #searchInput
+          trnInput
           placeholder="Search rooms, spaces, people"
           autocapitalize="off"
           autocorrect="off"
           inputmode="text"
-          (ionInput)="onInput($event)"
+          [value]="query()"
+          (input)="onInput($event)"
           (keydown.arrowDown)="move(1, $event)"
           (keydown.arrowUp)="move(-1, $event)"
           (keydown.enter)="choose($event)"
           (keydown.escape)="dismiss(null)"
         />
-      </ion-toolbar>
-    </ion-header>
+      </div>
 
-    <ion-content>
-      <ion-list>
+      <div class="flex-1 overflow-y-auto p-2">
         @for (
           result of results();
           track result.kind + result.id;
           let i = $index
         ) {
-          <ion-item
-            button
-            [class.qs-row--active]="i === highlight()"
+          <button
+            type="button"
+            class="qs-row flex w-full items-center gap-3 rounded-md p-2 text-left hover:bg-accent"
+            [class.bg-accent]="i === highlight()"
             (click)="select(result)"
           >
             <trn-avatar
-              slot="start"
               [mxc]="result.avatarMxc"
               [initial]="result.initial"
               [name]="result.title"
               [size]="40"
               [square]="result.kind === 'space'"
             />
-            <ion-label>
-              <h2>{{ result.title }}</h2>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-medium">{{
+                result.title
+              }}</span>
               @if (result.subtitle) {
-                <p>{{ result.subtitle }}</p>
+                <span class="block truncate text-xs text-muted-foreground">{{
+                  result.subtitle
+                }}</span>
               }
-            </ion-label>
+            </span>
             @if (result.encrypted) {
               <ion-icon
-                slot="end"
                 class="qs-lock"
                 name="lock-closed"
                 aria-label="Encrypted"
               />
             }
             <ion-icon
-              slot="end"
               class="qs-kind"
               [name]="kindIcon(result.kind)"
               [attr.aria-label]="kindLabel(result.kind)"
             />
-            <span slot="end" class="text-muted-foreground text-xs">{{
+            <span class="text-muted-foreground text-xs">{{
               kindLabel(result.kind)
             }}</span>
-          </ion-item>
+          </button>
         } @empty {
           <div class="qs-empty" aria-live="polite">
             @if (searching()) {
@@ -175,16 +169,20 @@ const KIND_ICON: Record<SwitcherKind, string> = {
             }
           </div>
         }
-      </ion-list>
-    </ion-content>
+      </div>
+    </div>
   `,
   styleUrl: './quick-switcher.component.scss',
 })
 export class QuickSwitcherComponent {
-  private readonly modalCtrl = inject(ModalController);
+  private readonly dialogRef =
+    inject<DialogRef<SwitcherSelection | null, QuickSwitcherComponent>>(
+      DialogRef,
+    );
   private readonly search = inject(SearchService);
 
-  @ViewChild(IonSearchbar) private readonly searchbar?: IonSearchbar;
+  private readonly searchInput =
+    viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   /** Current query text, driving both the local computed and the people stream. */
   readonly query = signal('');
@@ -240,17 +238,12 @@ export class QuickSwitcherComponent {
       peopleOutline,
       personOutline,
     });
-  }
-
-  /** Autofocus the field once the modal has finished presenting. */
-  ionViewDidEnter(): void {
-    void this.searchbar?.setFocus();
+    // Autofocus the field once the dialog has rendered.
+    afterNextRender(() => this.searchInput()?.nativeElement.focus());
   }
 
   onInput(event: Event): void {
-    const value =
-      (event as CustomEvent<{ value: string | null }>).detail?.value ?? '';
-    this.query.set(value);
+    this.query.set((event.target as HTMLInputElement).value);
     this.highlight.set(0); // a fresh query re-anchors the highlight to the top
   }
 
@@ -274,13 +267,13 @@ export class QuickSwitcherComponent {
     }
   }
 
-  /** Click/Enter on a row: dismiss with its selection. */
+  /** Click/Enter on a row: close with its selection. */
   select(result: SwitcherResult): void {
     this.dismiss({ kind: result.kind, id: result.id });
   }
 
   dismiss(selection: SwitcherSelection | null): void {
-    void this.modalCtrl.dismiss(selection);
+    this.dialogRef.close(selection);
   }
 
   kindLabel(kind: SwitcherKind): string {

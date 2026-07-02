@@ -1,23 +1,20 @@
 import { Injectable, inject } from '@angular/core';
-import { ModalController } from '@ionic/angular/standalone';
 import type { SwitcherSelection } from '@trinity/core';
+import { TrnDialogService } from '@trinity/ui-spartan';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 
-/** Centered card matching the other Trinity dialogs (see global.scss). */
-const MODAL_CSS_CLASS = 'quick-switcher-modal';
-
 /**
- * Presents the {@link QuickSwitcherComponent} as an Ionic modal and resolves the
- * chosen {@link SwitcherSelection} (or `null` when cancelled). Wraps `ModalController`
- * so `RoomsPage` stays thin and performs the actual jump with the returned selection
- * — mirroring {@link UserPickerService}.
+ * Presents the {@link QuickSwitcherComponent} as a {@link TrnDialogService} dialog
+ * and resolves the chosen {@link SwitcherSelection} (or `null` when cancelled).
+ * Wraps the dialog so `RoomsPage` stays thin and performs the actual jump with the
+ * returned selection — mirroring {@link UserPickerService}.
  *
  * A re-entrancy guard means a repeated Ctrl/Cmd+K while the switcher is already open
- * is a no-op rather than stacking modals.
+ * is a no-op rather than stacking dialogs.
  */
 @Injectable({ providedIn: 'root' })
 export class QuickSwitcherService {
-  private readonly modalCtrl = inject(ModalController);
+  private readonly dialog = inject(TrnDialogService);
   private open = false;
 
   /** Open the switcher; resolves the chosen selection, or null if cancelled/already open. */
@@ -27,13 +24,10 @@ export class QuickSwitcherService {
     }
     this.open = true;
     try {
-      const modal = await this.modalCtrl.create({
-        component: QuickSwitcherComponent,
-        cssClass: MODAL_CSS_CLASS,
-      });
-      await modal.present();
-      const { data } = await modal.onWillDismiss<SwitcherSelection | null>();
-      return data ?? null;
+      return await this.dialog.openAndWait<
+        SwitcherSelection,
+        QuickSwitcherComponent
+      >(QuickSwitcherComponent);
     } finally {
       this.open = false;
     }
