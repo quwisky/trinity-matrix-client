@@ -9,7 +9,6 @@ import {
 import { Location } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { IonContent } from '@ionic/angular/standalone';
 import { HlmButton, HlmSpinner } from '@trinity/ui-spartan';
 import { AuthService } from '@trinity/core';
 import { SsoStateStore } from '../sso-state.store';
@@ -23,7 +22,7 @@ import { SsoStateStore } from '../sso-state.store';
   selector: 'trn-sso-callback',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ion-content class="ion-padding ion-text-center">
+    <main class="flex-1 overflow-y-auto p-4 text-center">
       <h1 class="sr-only">Completing sign in</h1>
       @if (error(); as e) {
         <p>
@@ -34,9 +33,9 @@ import { SsoStateStore } from '../sso-state.store';
         <hlm-spinner />
         <p>Completing sign in…</p>
       }
-    </ion-content>
+    </main>
   `,
-  imports: [IonContent, HlmButton, HlmSpinner],
+  imports: [HlmButton, HlmSpinner],
 })
 export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);

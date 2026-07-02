@@ -11,14 +11,6 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
 import { Observable } from 'rxjs';
-import {
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonContent,
-  IonButton,
-  IonButtons,
-} from '@ionic/angular/standalone';
 import { VerificationService } from '@trinity/core';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
 import { HlmButton, HlmSpinner } from '@trinity/ui-spartan';
@@ -36,18 +28,7 @@ import { SasCompareComponent } from './sas-compare.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './device-verification.page.html',
   styleUrl: './device-verification.page.scss',
-  imports: [
-    NgTemplateOutlet,
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonContent,
-    IonButton,
-    IonButtons,
-    HlmButton,
-    SasCompareComponent,
-    HlmSpinner,
-  ],
+  imports: [NgTemplateOutlet, HlmButton, SasCompareComponent, HlmSpinner],
 })
 export class DeviceVerificationPage {
   private readonly verification = inject(VerificationService);

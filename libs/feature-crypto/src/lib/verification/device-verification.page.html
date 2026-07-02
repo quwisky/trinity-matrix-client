@@ -15,20 +15,18 @@
     </div>
   </div>
 } @else {
-  <ion-header>
-    <ion-toolbar>
-      <ion-title>Verify device</ion-title>
-      <ion-buttons slot="end">
-        <ion-button (click)="cancelAndLeave()" aria-label="Close"
-          >Close</ion-button
-        >
-      </ion-buttons>
-    </ion-toolbar>
-  </ion-header>
+  <header
+    class="flex h-14 shrink-0 items-center gap-2 border-b border-solid border-border px-3"
+  >
+    <h1 class="flex-1 truncate text-base font-semibold">Verify device</h1>
+    <button hlmBtn variant="ghost" size="sm" (click)="cancelAndLeave()">
+      Close
+    </button>
+  </header>
 
-  <ion-content class="ion-padding">
+  <main class="flex-1 overflow-y-auto p-4">
     <ng-container [ngTemplateOutlet]="body" />
-  </ion-content>
+  </main>
 }
 
 <ng-template #body>

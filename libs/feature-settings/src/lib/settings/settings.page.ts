@@ -1,3 +1,4 @@
+import { Location } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -8,14 +9,8 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import {
-  IonBackButton,
-  IonButtons,
-  IonContent,
-  IonHeader,
-  IonTitle,
-  IonToolbar,
-} from '@ionic/angular/standalone';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideArrowLeft } from '@ng-icons/lucide';
 import {
   HlmButton,
   HlmInput,
@@ -44,12 +39,7 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
   imports: [
     AvatarComponent,
     DevicesSectionComponent,
-    IonBackButton,
-    IonButtons,
-    IonContent,
-    IonHeader,
-    IonTitle,
-    IonToolbar,
+    NgIcon,
     HlmButton,
     HlmInput,
     HlmLabel,
@@ -57,11 +47,13 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
     HlmRadio,
     HlmRadioIndicator,
   ],
+  viewProviders: [provideIcons({ lucideArrowLeft })],
 })
 export class SettingsPage {
   readonly theme = inject(ThemeService);
   private readonly profileSvc = inject(ProfileService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly location = inject(Location);
 
   readonly profile = this.profileSvc.profile;
   readonly nameDraft = signal('');
@@ -92,6 +84,11 @@ export class SettingsPage {
       error: this.error,
       destroyRef: this.destroyRef,
     }).subscribe((profile) => this.nameDraft.set(profile.displayName));
+  }
+
+  /** Navigate back within the app-shell history. */
+  goBack(): void {
+    this.location.back();
   }
 
   /** Apply + persist the chosen appearance when the radio group changes. */

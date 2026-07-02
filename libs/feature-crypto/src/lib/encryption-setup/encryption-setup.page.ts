@@ -11,12 +11,6 @@ import {
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import {
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonContent,
-} from '@ionic/angular/standalone';
-import {
   TrnAlertService,
   HlmButton,
   HlmCheckbox,
@@ -38,16 +32,7 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'encryption-setup.page.html',
   styleUrls: ['encryption-setup.page.scss'],
-  imports: [
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonContent,
-    HlmButton,
-    HlmCheckbox,
-    HlmSpinner,
-    RecoveryKeyDisplayComponent,
-  ],
+  imports: [HlmButton, HlmCheckbox, HlmSpinner, RecoveryKeyDisplayComponent],
 })
 export class EncryptionSetupPage {
   private readonly crypto = inject(CryptoService);

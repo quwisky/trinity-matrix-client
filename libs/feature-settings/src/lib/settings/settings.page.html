@@ -1,13 +1,19 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-buttons slot="start">
-      <ion-back-button defaultHref="/rooms" />
-    </ion-buttons>
-    <ion-title>Settings</ion-title>
-  </ion-toolbar>
-</ion-header>
+<header
+  class="flex h-14 shrink-0 items-center gap-2 border-b border-solid border-border px-3"
+>
+  <button
+    hlmBtn
+    variant="ghost"
+    size="icon"
+    aria-label="Back"
+    (click)="goBack()"
+  >
+    <ng-icon name="lucideArrowLeft" />
+  </button>
+  <h1 class="flex-1 truncate text-base font-semibold">Settings</h1>
+</header>
 
-<ion-content>
+<main class="flex-1 overflow-y-auto">
   <div>
     <h2
       class="px-4 pt-5 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
@@ -122,4 +128,4 @@
   </div>
 
   <trn-devices-section />
-</ion-content>
+</main>

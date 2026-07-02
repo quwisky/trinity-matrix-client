@@ -1,3 +1,4 @@
+import { Location } from '@angular/common';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
@@ -64,7 +65,7 @@ describe('SettingsPage', () => {
         },
         // The devices section's "Verify a device" goes through EncryptionDialogService,
         // which injects the root-provided TrnDialogService — no test provider needed.
-        // Real router providers — Ionic's NavController (ion-back-button) needs them.
+        // Real router providers — Location.back() (the shell back button) needs them.
         provideRouter([]),
       ],
     });
@@ -83,6 +84,21 @@ describe('SettingsPage', () => {
     );
     expect(systemInput?.checked).toBe(true);
     expect(el.textContent).toContain('dark'); // resolved-theme note
+  });
+
+  it('navigates back via the shell header back button', () => {
+    const fixture = TestBed.createComponent(SettingsPage);
+    fixture.detectChanges();
+    const back = vi
+      .spyOn(TestBed.inject(Location), 'back')
+      .mockImplementation(() => undefined);
+
+    const button = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLButtonElement>('header button[aria-label=Back]');
+    button?.click();
+
+    expect(back).toHaveBeenCalled();
   });
 
   it('applies the chosen theme on change', () => {

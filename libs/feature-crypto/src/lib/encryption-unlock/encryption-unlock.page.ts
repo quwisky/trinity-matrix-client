@@ -12,12 +12,6 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
 import { Observable } from 'rxjs';
-import {
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonContent,
-} from '@ionic/angular/standalone';
 import { CryptoService } from '@trinity/core';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
 import { HlmButton, HlmInput, HlmLabel, HlmSpinner } from '@trinity/ui-spartan';
@@ -36,10 +30,6 @@ import { HlmButton, HlmInput, HlmLabel, HlmSpinner } from '@trinity/ui-spartan';
   imports: [
     FormsModule,
     NgTemplateOutlet,
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonContent,
     HlmButton,
     HlmInput,
     HlmLabel,
