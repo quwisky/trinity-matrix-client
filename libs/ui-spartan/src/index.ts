@@ -3,7 +3,8 @@
 // Owned, in-repo helm components built on @spartan-ng/brain primitives + Angular
 // CDK, styled with Tailwind design tokens. These progressively replace the Ionic
 // components across the app (see MIGRATION.md).
-export * from './lib/core/cn';
+// The canonical spartan class-merge helper (hlm/classes) + provideSpartanHlm.
+export * from '@trinity/helm/utils';
 export * from '@trinity/helm/button';
 export * from '@trinity/helm/input';
 export * from '@trinity/helm/label';

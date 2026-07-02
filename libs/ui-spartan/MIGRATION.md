@@ -5,6 +5,24 @@
 tokens). Ionic and spartan **coexist** while we migrate lib-by-lib so the app
 builds and ships the entire time; `@ionic/angular` is removed last.
 
+## Canonical helm (via `@spartan-ng/cli`)
+
+The leaf primitives are now the **CLI-generated canonical helm** components (not
+hand-rolled): `@spartan-ng/cli@1.0.3` generated them under `libs/spartan/*`
+(aliases `@trinity/helm/*`, nova style with the utilities inlined at generation, so
+no global style sheet is needed) on `@spartan-ng/brain`. `@trinity/ui-spartan`
+re-exports them as the single import surface. Done: **button, input, label, badge,
+checkbox, radio-group, progress, spinner, utils** (`hlm`/`classes`/`provideSpartanHlm`).
+
+The **overlay controllers** (`TrnDialogService`, `TrnAlertService`,
+`TrnToastService`, `TrnActionSheetService`) stay as our **imperative adapters** —
+spartan only ships _declarative_ dialog/alert-dialog/sonner components, and the app
+was built around imperative controllers (the Ionic `*Controller` replacements).
+They now sit on canonical helm primitives (`HlmButton`/`HlmInput` + CDK). The
+generated `@trinity/helm/{dialog,alert-dialog,sonner}` libs are available if we ever
+move overlays to a declarative API. Regenerate/update via
+`nx g @spartan-ng/cli:ui <name>` (config in `components.json`).
+
 ## Ground rules / setup (done)
 
 - **Versions.** The app was upgraded to **Angular 21** (+ CDK 21) so it can run

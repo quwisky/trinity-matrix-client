@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { hlm } from '../core/cn';
+import { hlm } from '@trinity/helm/utils';
 import { TrnToastService, type ToastVariant } from './trn-toast.service';
 
 /**
