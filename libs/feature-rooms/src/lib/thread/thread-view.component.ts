@@ -25,10 +25,10 @@ import {
   IonFooter,
   AlertController,
   ModalController,
-  ToastController,
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { close } from 'ionicons/icons';
+import { TrnToastService } from '@trinity/ui-spartan';
 import {
   ThreadsService,
   isEditableMessage,
@@ -78,7 +78,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly threads = inject(ThreadsService);
   private readonly modalCtrl = inject(ModalController);
   private readonly alertCtrl = inject(AlertController);
-  private readonly toast = inject(ToastController);
+  private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly roomId = input.required<string>();
@@ -268,13 +268,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     });
   }
 
-  private async showError(message: string): Promise<void> {
-    const toast = await this.toast.create({
-      message,
-      duration: 4000,
-      color: 'danger',
-      position: 'bottom',
-    });
-    await toast.present();
+  private showError(message: string): void {
+    this.toast.show(message, { duration: 4000, variant: 'destructive' });
   }
 }

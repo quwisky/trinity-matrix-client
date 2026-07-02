@@ -6,7 +6,6 @@ import {
   AlertController,
   MenuController,
   ModalController,
-  ToastController,
 } from '@ionic/angular/standalone';
 import {
   AuthService,
@@ -23,6 +22,7 @@ import {
   type SpaceChildRoom,
   type SpaceSummary,
 } from '@trinity/core';
+import { TrnToastService } from '@trinity/ui-spartan';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
@@ -50,12 +50,11 @@ function invitesProvider(over: Partial<Record<string, unknown>> = {}) {
 // many child components); we only exercise the action handlers' error feedback.
 describe('RoomsPage action error feedback', () => {
   let edit: ReturnType<typeof vi.fn>;
-  let create: ReturnType<typeof vi.fn>;
+  let toastShow: ReturnType<typeof vi.fn>;
   let sendMedia: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
-    const present = vi.fn().mockResolvedValue(undefined);
-    create = vi.fn().mockResolvedValue({ present });
+    toastShow = vi.fn();
     edit = vi.fn();
     sendMedia = vi.fn(() => of(undefined));
     TestBed.configureTestingModule({
@@ -116,7 +115,7 @@ describe('RoomsPage action error feedback', () => {
           provide: ModalController,
           useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
         },
-        { provide: ToastController, useValue: { create } },
+        { provide: TrnToastService, useValue: { show: toastShow } },
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -128,8 +127,9 @@ describe('RoomsPage action error feedback', () => {
 
     page.onEdit({ id: '$1', body: 'x' });
 
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ color: 'danger' }),
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
     );
   });
 
@@ -139,7 +139,7 @@ describe('RoomsPage action error feedback', () => {
 
     page.onEdit({ id: '$1', body: 'x' });
 
-    expect(create).not.toHaveBeenCalled();
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('opens the threads-list panel for the active room', () => {
@@ -184,7 +184,7 @@ describe('RoomsPage action error feedback', () => {
 
     stream.complete();
     expect(page.uploadProgress()).toBeNull(); // cleared by finalize on success
-    expect(create).not.toHaveBeenCalled(); // no error toast
+    expect(toastShow).not.toHaveBeenCalled(); // no error toast
   });
 
   it('clears uploadProgress and toasts when a media send fails', () => {
@@ -198,8 +198,9 @@ describe('RoomsPage action error feedback', () => {
     stream.error(new Error('upload failed'));
 
     expect(page.uploadProgress()).toBeNull(); // finalize clears on error too
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ color: 'danger' }),
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
     );
   });
 });
@@ -290,7 +291,7 @@ describe('RoomsPage space filtering', () => {
           provide: ModalController,
           useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
         },
-        { provide: ToastController, useValue: { create: vi.fn() } },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -385,10 +386,7 @@ describe('RoomsPage space actions', () => {
           useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
         },
         { provide: AlertController, useValue: { create } },
-        {
-          provide: ToastController,
-          useValue: { create: vi.fn().mockResolvedValue({ present: vi.fn() }) },
-        },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -483,7 +481,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     handler?: (data?: unknown) => unknown;
   }
   let alertCreate: ReturnType<typeof vi.fn>;
-  let toastCreate: ReturnType<typeof vi.fn>;
+  let toastShow: ReturnType<typeof vi.fn>;
   let pick: ReturnType<typeof vi.fn>;
   let createRoom: ReturnType<typeof vi.fn>;
   let createDirectMessage: ReturnType<typeof vi.fn>;
@@ -509,9 +507,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     alertCreate = vi
       .fn()
       .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
-    toastCreate = vi
-      .fn()
-      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    toastShow = vi.fn();
     pick = vi.fn();
     createRoom = vi.fn(() => of('!room:hs'));
     createDirectMessage = vi.fn(() => of('!dm:hs'));
@@ -584,7 +580,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         },
         { provide: AlertController, useValue: { create: alertCreate } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
-        { provide: ToastController, useValue: { create: toastCreate } },
+        { provide: TrnToastService, useValue: { show: toastShow } },
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -643,8 +639,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     await page.onInviteToRoom();
 
     expect(inviteUser).toHaveBeenCalledWith('!r:hs', '@bob:hs');
-    expect(toastCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ color: 'success' }),
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'success' }),
     );
   });
 
@@ -659,7 +656,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     // runWithBusy records the message in spaceError (the shell's effect toasts it,
     // like the create-space path); no success toast on failure.
     expect(page.spaceError()).toBe('forbidden');
-    expect(toastCreate).not.toHaveBeenCalled();
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('does not invite when the picker is cancelled', async () => {
@@ -848,10 +845,7 @@ describe('RoomsPage space hierarchy actions', () => {
           useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
         },
         { provide: AlertController, useValue: { create: alertCreate } },
-        {
-          provide: ToastController,
-          useValue: { create: vi.fn().mockResolvedValue({ present: vi.fn() }) },
-        },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -993,10 +987,7 @@ describe('RoomsPage quick switcher', () => {
         },
         { provide: AlertController, useValue: { create: vi.fn() } },
         { provide: ActionSheetController, useValue: { create: vi.fn() } },
-        {
-          provide: ToastController,
-          useValue: { create: vi.fn().mockResolvedValue({ present: vi.fn() }) },
-        },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
     });
     return TestBed.inject(RoomsPage);

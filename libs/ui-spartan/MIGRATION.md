@@ -48,7 +48,7 @@ migrate mechanically and behavior (returns, `onWillDismiss`) is preserved:
 | ----------------------- | ----- | ----------------------------------------- | ------------------------------------------- |
 | `ModalController`       | 70    | `brain/dialog` (CDK) + `hlm-dialog`       | `DialogService.open(cmp, { inputs }) → ref` |
 | `AlertController`       | 23    | `brain/alert-dialog` + `hlm-alert-dialog` | `AlertService.confirm()/prompt()`           |
-| `ToastController`       | 15    | CDK-overlay toast + `hlm-sonner`          | `TrnToastService.show()` ✅ built           |
+| `ToastController`       | 15    | CDK-overlay toast + `hlm-sonner`          | `TrnToastService.show()` ✅ done            |
 | `ActionSheetController` | 10    | `brain/menu` or CDK bottom-sheet          | `ActionSheetService.open()`                 |
 
 ## Phased plan

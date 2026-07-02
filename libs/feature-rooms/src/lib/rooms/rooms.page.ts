@@ -27,8 +27,8 @@ import {
   IonIcon,
   MenuController,
   ModalController,
-  ToastController,
 } from '@ionic/angular/standalone';
+import { TrnToastService } from '@trinity/ui-spartan';
 import { addIcons } from 'ionicons';
 import {
   chatbubblesOutline,
@@ -113,7 +113,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly menu = inject(MenuController);
   private readonly modalCtrl = inject(ModalController);
-  private readonly toast = inject(ToastController);
+  private readonly toast = inject(TrnToastService);
   private readonly alertCtrl = inject(AlertController);
   private readonly actionSheetCtrl = inject(ActionSheetController);
   private readonly destroyRef = inject(DestroyRef);
@@ -714,24 +714,12 @@ export class RoomsPage implements OnInit, OnDestroy {
     });
   }
 
-  private async showError(message: string): Promise<void> {
-    const toast = await this.toast.create({
-      message,
-      duration: 4000,
-      color: 'danger',
-      position: 'bottom',
-    });
-    await toast.present();
+  private showError(message: string): void {
+    this.toast.show(message, { duration: 4000, variant: 'destructive' });
   }
 
-  private async showSuccess(message: string): Promise<void> {
-    const toast = await this.toast.create({
-      message,
-      duration: 3000,
-      color: 'success',
-      position: 'bottom',
-    });
-    await toast.present();
+  private showSuccess(message: string): void {
+    this.toast.show(message, { duration: 3000, variant: 'success' });
   }
 
   goToSettings(): void {
