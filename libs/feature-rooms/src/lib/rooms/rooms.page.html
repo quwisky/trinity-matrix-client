@@ -1,107 +1,143 @@
-<ion-split-pane contentId="main-content" when="md">
-  <ion-menu contentId="main-content" type="overlay">
-    <div class="shell-side">
-      <trn-server-rail
-        [spaces]="spaces.spaces()"
-        [activeSpaceId]="activeSpaceId()"
-        (selectSpace)="onSelectSpace($event)"
-        (createSpace)="onCreateSpace()"
-      />
-      <trn-channel-sidebar
-        [spaceName]="activeSpaceName()"
-        [spaceActive]="activeSpaceId() !== null"
-        [rooms]="visibleRooms()"
-        [joinableRooms]="spaces.notJoinedRooms()"
-        [childSpaces]="spaces.childSpaces()"
-        [childrenLoading]="spaces.childrenLoading()"
-        [childrenError]="spaces.childrenError()"
-        [invites]="invites.pendingInvites()"
-        [activeRoomId]="activeRoomId()"
-        [userName]="userName()"
-        [userId]="userId()"
-        [userInitial]="userInitial()"
-        [userAvatarMxc]="userAvatarMxc()"
-        (selectRoom)="onSelectRoom($event)"
-        (newChat)="onNewChat()"
-        (createRoom)="onCreateChannel()"
-        (inviteToSpace)="onInviteToSpace()"
-        (leaveSpace)="onLeaveSpace()"
-        (joinRoom)="onJoinChild($event)"
-        (removeRoom)="onRemoveFromSpace($event)"
-        (openChildSpace)="onSelectSpace($event)"
-        (acceptInvite)="onAcceptInvite($event)"
-        (declineInvite)="onDeclineInvite($event)"
-        (logout)="logout()"
-      />
-    </div>
-  </ion-menu>
+<div class="flex h-full">
+  <!-- Mobile drawer backdrop (below md the side pane slides over the content). -->
+  @if (drawerOpen()) {
+    <div
+      class="fixed inset-0 z-30 bg-black/50 md:hidden"
+      (click)="closeDrawer()"
+      aria-hidden="true"
+    ></div>
+  }
 
-  <div class="main" id="main-content">
+  <!-- Server rail + channel sidebar: a static column at md+, a slide-in drawer below. -->
+  <aside
+    class="shell-side fixed inset-y-0 left-0 z-40 w-[312px] shrink-0 -translate-x-full transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-none"
+    [class.translate-x-0]="drawerOpen()"
+  >
+    <trn-server-rail
+      [spaces]="spaces.spaces()"
+      [activeSpaceId]="activeSpaceId()"
+      (selectSpace)="onSelectSpace($event)"
+      (createSpace)="onCreateSpace()"
+    />
+    <trn-channel-sidebar
+      [spaceName]="activeSpaceName()"
+      [spaceActive]="activeSpaceId() !== null"
+      [rooms]="visibleRooms()"
+      [joinableRooms]="spaces.notJoinedRooms()"
+      [childSpaces]="spaces.childSpaces()"
+      [childrenLoading]="spaces.childrenLoading()"
+      [childrenError]="spaces.childrenError()"
+      [invites]="invites.pendingInvites()"
+      [activeRoomId]="activeRoomId()"
+      [userName]="userName()"
+      [userId]="userId()"
+      [userInitial]="userInitial()"
+      [userAvatarMxc]="userAvatarMxc()"
+      (selectRoom)="onSelectRoom($event)"
+      (newChat)="onNewChat()"
+      (createRoom)="onCreateChannel()"
+      (inviteToSpace)="onInviteToSpace()"
+      (leaveSpace)="onLeaveSpace()"
+      (joinRoom)="onJoinChild($event)"
+      (removeRoom)="onRemoveFromSpace($event)"
+      (openChildSpace)="onSelectSpace($event)"
+      (acceptInvite)="onAcceptInvite($event)"
+      (declineInvite)="onDeclineInvite($event)"
+      (logout)="logout()"
+    />
+  </aside>
+
+  <div class="main">
     <trn-connectivity-banner />
     <trn-encryption-banner />
 
-    <ion-header>
-      <ion-toolbar class="chat-toolbar">
-        <ion-buttons slot="start">
-          <ion-menu-button></ion-menu-button>
-        </ion-buttons>
-        <ion-buttons slot="end">
-          <ion-button
-            (click)="openSwitcher()"
-            aria-label="Search (Ctrl/Cmd+K)"
-            data-testid="open-switcher"
-          >
-            <ng-icon class="text-xl" name="lucideSearch" />
-          </ion-button>
-          @if (activeRoom()) {
-            <ion-button
-              (click)="openMessageSearch()"
-              aria-label="Search messages in this room"
-              data-testid="search-messages"
-            >
-              <ng-icon class="text-xl" name="lucideSearch" />
-            </ion-button>
-            <ion-button
-              (click)="onInviteToRoom()"
-              aria-label="Invite people"
-              data-testid="invite-people"
-            >
-              <ng-icon class="text-xl" name="lucideUserPlus" />
-            </ion-button>
-            <ion-button
-              (click)="openThreadsList()"
-              aria-label="Threads"
-              data-testid="open-threads"
-            >
-              <ng-icon class="text-xl" name="lucideMessagesSquare" />
-            </ion-button>
+    <header
+      class="chat-toolbar flex h-14 shrink-0 items-center gap-1 border-b border-solid border-border px-2"
+    >
+      <button
+        hlmBtn
+        variant="ghost"
+        size="icon"
+        class="md:hidden"
+        (click)="toggleDrawer()"
+        aria-label="Open navigation"
+        data-testid="open-menu"
+      >
+        <ng-icon class="text-xl" name="lucideMenu" />
+      </button>
+
+      <h1
+        class="flex min-w-0 flex-1 items-center gap-1 px-1 text-base font-semibold"
+      >
+        @if (activeRoom(); as room) {
+          <span role="heading" aria-level="1" class="truncate">
+            <span class="title-hash">#</span>{{ room.name }}
+          </span>
+          @if (room.encrypted) {
+            <ng-icon
+              class="title-lock"
+              name="lucideLock"
+              aria-label="Encrypted room"
+            />
           }
-          <ion-button
-            (click)="goToSettings()"
-            aria-label="Settings"
-            data-testid="open-settings"
-          >
-            <ng-icon class="text-xl" name="lucideSettings" />
-          </ion-button>
-        </ion-buttons>
-        <ion-title>
-          @if (activeRoom(); as room) {
-            <span role="heading" aria-level="1">
-              <span class="title-hash">#</span>{{ room.name }}
-            </span>
-            @if (room.encrypted) {
-              <ng-icon
-                class="title-lock"
-                name="lucideLock"
-                aria-label="Encrypted room"
-              />
-            }
-          } @else {
-            Trinity
-          }
-        </ion-title>
-      </ion-toolbar>
-    </ion-header>
+        } @else {
+          Trinity
+        }
+      </h1>
+
+      <button
+        hlmBtn
+        variant="ghost"
+        size="icon"
+        (click)="openSwitcher()"
+        aria-label="Search (Ctrl/Cmd+K)"
+        data-testid="open-switcher"
+      >
+        <ng-icon class="text-xl" name="lucideSearch" />
+      </button>
+      @if (activeRoom()) {
+        <button
+          hlmBtn
+          variant="ghost"
+          size="icon"
+          (click)="openMessageSearch()"
+          aria-label="Search messages in this room"
+          data-testid="search-messages"
+        >
+          <ng-icon class="text-xl" name="lucideSearch" />
+        </button>
+        <button
+          hlmBtn
+          variant="ghost"
+          size="icon"
+          (click)="onInviteToRoom()"
+          aria-label="Invite people"
+          data-testid="invite-people"
+        >
+          <ng-icon class="text-xl" name="lucideUserPlus" />
+        </button>
+        <button
+          hlmBtn
+          variant="ghost"
+          size="icon"
+          (click)="openThreadsList()"
+          aria-label="Threads"
+          data-testid="open-threads"
+        >
+          <ng-icon class="text-xl" name="lucideMessagesSquare" />
+        </button>
+      }
+      <button
+        hlmBtn
+        variant="ghost"
+        size="icon"
+        (click)="goToSettings()"
+        aria-label="Settings"
+        data-testid="open-settings"
+      >
+        <ng-icon class="text-xl" name="lucideSettings" />
+      </button>
+    </header>
 
     <div class="chat-body">
       @if (activeRoom(); as room) {
@@ -125,7 +161,7 @@
         />
         <trn-member-list class="chat-members" [members]="members()" />
       } @else {
-        <main class="chat-empty">
+        <div class="chat-empty">
           <div class="hero">
             <div class="hero__badge">#</div>
             <h1 class="hero__title">{{ syncLabel() }}</h1>
@@ -133,8 +169,8 @@
               Select a channel on the left to get started.
             </p>
           </div>
-        </main>
+        </div>
       }
     </div>
   </div>
-</ion-split-pane>
+</div>

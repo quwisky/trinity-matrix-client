@@ -13,26 +13,17 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
-import {
-  IonSplitPane,
-  IonMenu,
-  IonMenuButton,
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonButtons,
-  IonButton,
-  MenuController,
-} from '@ionic/angular/standalone';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideLock,
+  lucideMenu,
   lucideMessagesSquare,
   lucideSearch,
   lucideSettings,
   lucideUserPlus,
 } from '@ng-icons/lucide';
 import {
+  HlmButton,
   TrnActionSheetService,
   TrnAlertService,
   TrnDialogService,
@@ -68,7 +59,8 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
- * responsive `ion-split-pane`/`ion-menu`), the read timeline, and a member list.
+ * responsive Tailwind drawer — static column at md+, slide-in below), the read
+ * timeline, and a member list.
  * Wired to live synced rooms via `RoomsService` + `TimelineService`.
  */
 @Component({
@@ -77,14 +69,7 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
   imports: [
-    IonSplitPane,
-    IonMenu,
-    IonMenuButton,
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonButtons,
-    IonButton,
+    HlmButton,
     NgIcon,
     ServerRailComponent,
     ChannelSidebarComponent,
@@ -96,6 +81,7 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
   viewProviders: [
     provideIcons({
       lucideLock,
+      lucideMenu,
       lucideMessagesSquare,
       lucideSearch,
       lucideSettings,
@@ -120,7 +106,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly notifications = inject(NotificationService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-  private readonly menu = inject(MenuController);
   private readonly dialog = inject(TrnDialogService);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
@@ -129,6 +114,8 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   readonly activeSpaceId = signal<string | null>(null);
   readonly activeRoomId = signal<string | null>(null);
+  /** Whether the side pane is shown as an overlay drawer (below the md breakpoint). */
+  readonly drawerOpen = signal(false);
   /**
    * Event id the message list should scroll to, set when in-room search resolves a
    * hit. Bound to the list's `jumpToId`; reset to null first so re-selecting the same
@@ -590,7 +577,17 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.activeRoomId.set(id);
     this.timeline.open(id);
     this.threads.open(id); // project this room's thread summaries for indicators
-    void this.menu.close(); // collapse the drawer on mobile (fire-and-forget)
+    this.closeDrawer(); // collapse the drawer on mobile after picking a room
+  }
+
+  /** Toggle the mobile navigation drawer (no-op visual at md+, where it's static). */
+  toggleDrawer(): void {
+    this.drawerOpen.update((open) => !open);
+  }
+
+  /** Close the mobile navigation drawer. */
+  closeDrawer(): void {
+    this.drawerOpen.set(false);
   }
 
   /** Open the thread rooted at `rootEventId` (raised by a message's indicator). */

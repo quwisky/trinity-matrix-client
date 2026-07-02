@@ -1,7 +1,6 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { MenuController } from '@ionic/angular/standalone';
 import {
   AuthService,
   CryptoService,
@@ -110,7 +109,6 @@ describe('RoomsPage action error feedback', () => {
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
         { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         { provide: TrnToastService, useValue: { show: toastShow } },
       ],
@@ -283,7 +281,6 @@ describe('RoomsPage space filtering', () => {
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
         { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
@@ -371,7 +368,6 @@ describe('RoomsPage space actions', () => {
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
         { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         {
           provide: TrnAlertService,
@@ -571,7 +567,6 @@ describe('RoomsPage room / DM / invite actions', () => {
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
         { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         {
           provide: TrnAlertService,
@@ -824,7 +819,6 @@ describe('RoomsPage space hierarchy actions', () => {
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
         { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         {
           provide: TrnAlertService,
@@ -970,7 +964,6 @@ describe('RoomsPage quick switcher', () => {
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
         { provide: TrnDialogService, useValue: { hasOpen: dialogHasOpen } },
         {
           provide: TrnAlertService,
