@@ -3,7 +3,7 @@
 <main class="flex-1 overflow-y-auto p-4">
   @if (recoveryKey(); as key) {
     <!-- Step 2: the key exists — show it once behind a confirm-saved gate. -->
-    <h1 #savedHeading tabindex="-1" class="heading">Save your recovery key</h1>
+    <h2 #savedHeading tabindex="-1" class="heading">Save your recovery key</h2>
     <p class="text-muted-foreground">
       This key restores your encrypted messages on a new device. Store it
       somewhere safe, like a password manager.
@@ -36,7 +36,7 @@
     </button>
   } @else {
     <!-- Step 1: introduce the flow and trigger setup. -->
-    <h1 class="heading">Secure your messages</h1>
+    <h2 class="heading">Secure your messages</h2>
     <p class="text-muted-foreground">
       Set up end-to-end encryption so only you and the people you message can
       read what's sent. We'll generate a recovery key for you to save.

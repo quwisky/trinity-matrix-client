@@ -38,7 +38,7 @@
       @switch (v.stage) {
         @case ('requested') {
           @if (v.incoming) {
-            <h1 class="heading">Verify this device?</h1>
+            <h2 class="heading">Verify this device?</h2>
             <p class="text-muted-foreground">
               Another of your sessions wants to verify this one
               @if (v.otherDeviceId) {
@@ -66,7 +66,7 @@
               Decline
             </button>
           } @else {
-            <h1 class="heading">Waiting for your other device…</h1>
+            <h2 class="heading">Waiting for your other device…</h2>
             <p class="text-muted-foreground">
               Accept the verification request on your other session.
             </p>
@@ -74,7 +74,7 @@
           }
         }
         @case ('ready') {
-          <h1 class="heading">Start the emoji check</h1>
+          <h2 class="heading">Start the emoji check</h2>
           <p class="text-muted-foreground">
             Both sessions are ready. Begin comparing emoji.
           </p>
@@ -89,7 +89,7 @@
           </button>
         }
         @case ('waiting') {
-          <h1 class="heading">Setting up…</h1>
+          <h2 class="heading">Setting up…</h2>
           <div class="center" role="status" aria-live="polite">
             <hlm-spinner />
             <p>
@@ -98,7 +98,7 @@
           </div>
         }
         @case ('sas-shown') {
-          <h1 class="heading">Compare the emoji</h1>
+          <h2 class="heading">Compare the emoji</h2>
           <trn-sas-compare
             [emoji]="v.emoji ?? []"
             [busy]="busy()"
@@ -110,7 +110,7 @@
         @case ('done') {
           <div class="center" role="status">
             <div class="result result--ok" aria-hidden="true">✓</div>
-            <h1 class="heading">Device verified</h1>
+            <h2 class="heading">Device verified</h2>
             <p class="text-muted-foreground">
               This session is now trusted. Your encrypted history will sync.
             </p>
@@ -120,7 +120,7 @@
         @case ('cancelled') {
           <div class="center" role="status">
             <div class="result result--bad" aria-hidden="true">⚠️</div>
-            <h1 class="heading">Verification stopped</h1>
+            <h2 class="heading">Verification stopped</h2>
             <p class="text-muted-foreground">{{ v.cancelReason }}</p>
             <button hlmBtn class="mt-4 w-full" (click)="finish()">Close</button>
           </div>
@@ -128,7 +128,7 @@
       }
     } @else {
       <!-- Routed entry: nothing in flight yet — offer to start. -->
-      <h1 class="heading">Verify with another device</h1>
+      <h2 class="heading">Verify with another device</h2>
       <p class="text-muted-foreground">
         Confirm this is really you by comparing a set of emoji with another
         session that's already signed in — an alternative to your recovery key.
