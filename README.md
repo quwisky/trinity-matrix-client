@@ -2,7 +2,7 @@
 
 [![status-badge](https://crow.qwky.eu/api/v1/badges/2/status.svg)](https://crow.qwky.eu/repos/2)
 
-A multiplatform [Matrix](https://matrix.org) client built with **Ionic + Angular**,
+A multiplatform [Matrix](https://matrix.org) client built with **Angular + spartan-ng**,
 running from a single codebase on **Web (PWA), iOS, Android, and Desktop (Electron)**.
 End-to-end encryption is a first-class, in-MVP feature.
 
@@ -31,8 +31,11 @@ End-to-end encryption is a first-class, in-MVP feature.
 ## Tech stack
 
 - **Monorepo:** Nx 23 (apps/libs, task graph + caching, enforced module boundaries)
-- **UI:** Ionic 8 + Angular 20 (standalone components, signals)
-- **Native:** Capacitor 8 (iOS via SPM, Android) + Electron (planned) for desktop
+- **UI:** Angular 21 (standalone components, signals) + **spartan-ng** — Brain
+  (headless `@spartan-ng/brain`) + Helm (styled, copied into `libs/spartan/*`,
+  aliased `@trinity/helm/*`) on **Tailwind CSS v4**
+- **Native:** Capacitor 8 (iOS via SPM, Android) + a hand-rolled Electron desktop
+  shell (`electron/`) for Windows/macOS/Linux
 - **Protocol:** `matrix-js-sdk` 41
 - **E2EE:** `@matrix-org/matrix-sdk-crypto-wasm` (Rust crypto / Vodozemac)
 - **State:** Angular signals (UI state) + RxJS Observables (async service APIs)
@@ -107,16 +110,21 @@ libs/
                       (light/dark/system theme), profile (name + avatar), and
                       device management (sign-out/verify)  [type:feature]
   ui/                 @trinity/ui — reusable presentational components (avatar +
-                      mxc resolver token, emoji picker, message toolbar); no
-                      core/state deps  [type:ui]
+                      mxc resolver token, banner, page header, media bubble,
+                      message toolbar, encryption-dialog service); may use
+                      @trinity/helm/* but no core/state deps  [type:ui]
+  spartan/*           @trinity/helm/* — styled spartan-ng Helm components over
+                      headless Brain primitives (button, input, card, overlay,
+                      dropdown-menu, …), generated via @spartan-ng/cli  [type:ui]
 e2e/playwright/     @nx/playwright app-journey specs (run: nx e2e trinity-e2e)
 e2e/                  standalone crypto/protocol harnesses (serve www/)
 android/ ios/         Capacitor native projects (webDir: www)
 www/                  web build output
 ```
 
-Boundaries: features may depend on `core` and `ui`; `ui` is presentational-only
-(no `core`/state deps); `core` depends on nothing; the app may depend on anything.
+Boundaries: features may depend on `core`, `ui`, and the Helm UI libs
+(`@trinity/helm/*`); `ui` is presentational-only (may use `@trinity/helm/*`, no
+`core`/state deps); `core` depends on nothing; the app may depend on anything.
 New shared libs are added when first needed. Each component/page lives in its own directory
 (`name/name.component.ts` + `.html`/`.scss`/`.spec.ts`). See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the rationale and data flow.

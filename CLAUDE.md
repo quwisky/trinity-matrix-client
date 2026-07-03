@@ -4,12 +4,13 @@ Guidance for Claude Code in this repository. This file loads into every session.
 
 ## Project
 
-**Trinity** — a cross-platform **Matrix** client with first-class end-to-end encryption, built with **Ionic + Angular + Capacitor + Electron** and targeting **iOS, Android, desktop (Windows/macOS/Linux), and web/PWA** from a single codebase. A Discord-style shell (Spaces as a server rail, rooms, members) over `matrix-js-sdk` + Rust crypto (WASM).
+**Trinity** — a cross-platform **Matrix** client with first-class end-to-end encryption, built with **Angular + spartan-ng + Capacitor + Electron** and targeting **iOS, Android, desktop (Windows/macOS/Linux), and web/PWA** from a single codebase. A Discord-style shell (Spaces as a server rail, rooms, members) over `matrix-js-sdk` + Rust crypto (WASM).
 
 ## Stack
 
-- **Ionic Framework** (Angular integration) — UI components and theming
 - **Angular** — standalone components, signals, typed reactive forms, `inject()`
+- **spartan-ng** — UI: headless **Brain** primitives (`@spartan-ng/brain`) + styled **Helm** components copied into `libs/spartan/*` (aliased `@trinity/helm/*`), added via `@spartan-ng/cli`
+- **Tailwind CSS v4** + Angular **CDK** — styling/theming (`theme/spartan.css` + `theme/variables.scss`) and overlays/dialogs
 - **Capacitor** — native bridge for iOS/Android, device plugins
 - **Electron** — desktop runtime for Windows/macOS/Linux (main/renderer/preload, packaging, auto-update)
 - **Vitest** + Angular **TestBed** — unit/component tests
@@ -24,7 +25,7 @@ Specialized agents live in `.claude/agents/`. Route work to them proactively:
 | App structure, routing, services, state, scaffolding a feature                                  | `ionic-angular-architect` |
 | Device APIs, native plugins, permissions, platform differences, `capacitor.config`, `cap sync`  | `capacitor-native`        |
 | Desktop runtime, Electron main/preload, IPC, native menus, packaging, code signing, auto-update | `electron-desktop`        |
-| Styling, theming, Ionic components, responsive layout, accessibility                            | `ionic-ui-designer`       |
+| Styling, theming, spartan-ng/Helm components, responsive layout, accessibility                  | `ionic-ui-designer`       |
 | Unit/component tests for components, services, guards, pipes                                    | `angular-test-engineer`   |
 | End-to-end user journeys and regression coverage                                                | `e2e-test-engineer`       |
 | Slowness, bundle size, startup time, pre-release tuning                                         | `mobile-performance`      |
@@ -42,8 +43,8 @@ Orchestration defaults:
 - Signals for local and computed state; RxJS for streams and async orchestration. Bridge with `toSignal`/`toObservable`.
 - `inject()` over constructor injection; typed reactive forms; no `any`.
 - Structure as `core/` (singletons, guards, interceptors), `shared/` (reusable UI), and `feature/` folders that own their routes and lazy-load.
-- Theme via Ionic CSS variables and `theme/variables.scss`; no hard-coded colors or `!important`.
-- Centralize platform branching behind a service (`Platform` from `@ionic/angular`), not ad-hoc `Capacitor.getPlatform()` checks scattered through components. Treat desktop (Electron) as a first-class branch alongside ios/android/web.
+- Theme via Tailwind v4 (`theme/spartan.css`) and the trinity CSS custom-property tokens in `theme/variables.scss`; no hard-coded colors or `!important`.
+- Centralize platform branching behind a service (Capacitor's `isNativePlatform()` + the `trinityDesktop`/Electron marker), not ad-hoc `Capacitor.getPlatform()` checks scattered through components. Treat desktop (Electron) as a first-class branch alongside ios/android/web.
 
 ## Cross-platform guardrails
 
@@ -51,7 +52,7 @@ Orchestration defaults:
 - Never store secrets or tokens in `localStorage` or `Preferences` — use secure storage backed by Keychain/Keystore.
 - Run `npx cap sync` after any native dependency or config change; call out when a native rebuild is required.
 - Handle the Android hardware back button, safe-area insets, and keyboard/status-bar differences explicitly.
-- Respect both Ionic (`ionViewWillEnter`/`ionViewDidLeave`) and Angular lifecycle hooks — don't conflate them.
+- Use Angular lifecycle hooks and Router events (the Ionic page lifecycles are gone); route-change focus is handled centrally by `NavigationFocusService`.
 - On desktop (Electron), keep `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true`; expose only a minimal preload API via `contextBridge` and validate all IPC in the main process.
 - Detect desktop at runtime and don't call mobile-only Capacitor plugins there — provide a desktop/Electron equivalent or a web fallback.
 - Sign and notarize desktop builds; ship auto-updates only over a signed, signature-verified channel.
