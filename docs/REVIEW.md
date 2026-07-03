@@ -93,10 +93,10 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
 **Test coverage**
 
 - [ ] **`AuthService` has zero unit tests** —
-      [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts). Discovery (+ fallback
-  - slash-strip), MXID localpart extraction, password login, SSO URL/token exchange,
-    and logout are only ever mocked. _Fix: add `auth.service.spec.ts` with a mocked
-    `createClient`/`AutoDiscovery`._
+      [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts). Discovery (with
+      fallback and slash-strip), MXID localpart extraction, password login, SSO
+      URL/token exchange, and logout are only ever mocked. _Fix: add
+      `auth.service.spec.ts` with a mocked `createClient`/`AutoDiscovery`._
 
 ## 🟢 Low / polish
 
