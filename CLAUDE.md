@@ -22,17 +22,17 @@ Specialized agents live in `.claude/agents/`. Route work to them proactively:
 
 | When the task is about…                                                                         | Delegate to               |
 |-------------------------------------------------------------------------------------------------|---------------------------|
-| App structure, routing, services, state, scaffolding a feature                                  | `ionic-angular-architect` |
+| App structure, routing, services, state, scaffolding a feature                                  | `angular-architect`       |
 | Device APIs, native plugins, permissions, platform differences, `capacitor.config`, `cap sync`  | `capacitor-native`        |
 | Desktop runtime, Electron main/preload, IPC, native menus, packaging, code signing, auto-update | `electron-desktop`        |
-| Styling, theming, spartan-ng/Helm components, responsive layout, accessibility                  | `ionic-ui-designer`       |
+| Styling, theming, spartan-ng/Helm components, responsive layout, accessibility                  | `ui-designer`             |
 | Unit/component tests for components, services, guards, pipes                                    | `angular-test-engineer`   |
 | End-to-end user journeys and regression coverage                                                | `e2e-test-engineer`       |
 | Slowness, bundle size, startup time, pre-release tuning                                         | `mobile-performance`      |
 
 Orchestration defaults:
 
-- For a new feature, start with `ionic-angular-architect` for structure, implement, then hand off to `angular-test-engineer` for coverage.
+- For a new feature, start with `angular-architect` for structure, implement, then hand off to `angular-test-engineer` for coverage.
 - For anything touching a device API, consult `capacitor-native` first so web fallbacks and permissions are handled.
 - After non-trivial code changes, proactively run `angular-test-engineer`; before a release, run `mobile-performance`.
 - Keep verbose work (test runs, bundle analysis, codebase exploration) inside subagents so the main context stays clean.
