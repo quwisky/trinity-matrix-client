@@ -15,6 +15,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucidePlus, lucideSend, lucideSmile } from '@ng-icons/lucide';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
+import { HlmTextarea } from '@trinity/helm/textarea';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
@@ -50,6 +51,7 @@ const EMOJI_SUGGESTION_LIMIT = 8;
   imports: [
     NgIcon,
     HlmTooltip,
+    HlmTextarea,
     PickerComponent,
     HlmProgress,
     HlmProgressIndicator,

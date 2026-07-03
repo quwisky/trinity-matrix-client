@@ -197,6 +197,14 @@
   resize: none;
   max-height: 200px;
 
+  // hlmTextarea ships form-textarea sizing (min-h-16, display:flex,
+  // field-sizing:content); the composer is a single-row-that-grows chat input
+  // (height driven by autoGrow()), so neutralise those. This block is unlayered
+  // and so wins over hlm's @layer utilities.
+  min-height: 0;
+  display: block;
+  field-sizing: fixed;
+
   // Symmetric 44px insets clear the leading attach button and the trailing
   // emoji button so text never slides under either.
   padding: 11px 44px;
@@ -212,10 +220,6 @@
     color: var(--trinity-text-muted);
   }
 
-  // Keyboard focus gets a visible ring (inset, to sit inside the rounded field);
-  // pointer focus stays clean via :focus-visible.
-  &:focus-visible {
-    outline: 2px solid var(--trinity-accent);
-    outline-offset: -2px;
-  }
+  // Focus ring comes from hlmTextarea (spartan focus-visible:ring), consistent
+  // with the app's other inputs — no bespoke outline here.
 }
