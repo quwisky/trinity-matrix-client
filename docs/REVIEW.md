@@ -64,14 +64,14 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
       The prefill effect only fired on the false→true edge of `editing()`, so re-targeting
       Edit A → Edit B (without saving) left A's text in the field — Enter overwrote B with
       A's body. _Fixed_ so the effect re-fills when the target's `draft` changes.
-- [ ] **Authenticated-media probe is never invalidated across an account/homeserver
-      switch** — [media.service.ts:398](../libs/core/src/lib/matrix/media.service.ts).
+- [x] **Authenticated-media probe is never invalidated across an account/homeserver
+      switch** _(fixed)_ — [media.service.ts:398](../libs/core/src/lib/matrix/media.service.ts).
       `supportsAuthedMedia()` memoizes `isVersionSupported('v1.11')` on the root singleton;
       `releaseAll()` clears the blob cache but leaves it. Log out of a legacy homeserver
       → into an authed-media-only one, and every image/file/video/audio 401s for the whole
       session (no legacy→authed fallback). _Fix: reset `authedMedia` in `releaseAll()` and
       call `media.releaseAll()` on logout/login alongside `avatars.releaseAll()`._
-- [ ] **Timeline force-scrolls to the bottom on every incoming message** —
+- [x] **Timeline force-scrolls to the bottom on every incoming message** _(fixed)_ —
       [message-list.component.ts:185](../libs/feature-rooms/src/lib/message-list/message-list.component.ts).
       `stickToBottom` has no "is the user near the bottom?" gate, so a message arriving
       while the user reads scrollback yanks them down. _Fix: capture proximity to the
@@ -84,31 +84,33 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
       `trn-page-header` `<h1>` plus a content `<h1 class="heading">`. _Fixed_ by demoting
       the content headings to `<h2>` (styled by class, so unchanged visually); the shared
       `#body` templates stay consistent in the modal branch too.
-- [ ] **Media lightbox has no keyboard/focus management** —
+- [x] **Media lightbox has no keyboard/focus management** _(fixed)_ —
       [media-attachment.component.ts:44](../libs/feature-rooms/src/lib/media-attachment/media-attachment.component.ts).
-      A hand-rolled `role="dialog" aria-modal="true"` closes only on backdrop click — no
-      Escape, no focus move/trap/restore. _Fix: add Escape + focus management, or present
-      it through `TrnDialogService` (CDK Dialog gives all three for free)._
+      A hand-rolled `role="dialog" aria-modal="true"` closed only on backdrop click. _Fixed_
+      with Escape-to-close, focus-into-dialog on open, and focus-restore to the trigger on
+      close. (A full focus trap / CDK-Dialog migration remains a possible follow-up.)
 
 **Test coverage**
 
-- [ ] **`AuthService` has zero unit tests** —
-      [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts). Discovery (with
-      fallback and slash-strip), MXID localpart extraction, password login, SSO
-      URL/token exchange, and logout are only ever mocked. _Fix: add
-      `auth.service.spec.ts` with a mocked `createClient`/`AutoDiscovery`._
+- [x] **`AuthService` had zero unit tests** _(fixed)_ —
+      [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts). Added
+      `auth.service.spec.ts` covering discovery (base-url + trailing-slash strip, the
+      `https://<domain>` fallback, MXID → domain extraction, failed-discovery throw) and
+      SSO-URL building, mocking `AutoDiscovery`/`createClient`. Password/token login and
+      logout still lean on the SDK and could grow further coverage.
 
 ## 🟢 Low / polish
 
 **Security**
 
-- [ ] **Access token can persist to plaintext with no user-visible signal** —
+- [ ] **Access token can persist to plaintext with no user-visible signal** _(deferred —
+      needs a UX call on where/how to surface the warning)_ —
       [secure-storage.service.ts:117](../libs/core/src/lib/storage/secure-storage.service.ts).
       `select()` falls back to the web backend (Preferences/localStorage, `isSecure:false`)
       on desktop too when `safeStorage`/keyring is unavailable; `isSecure()` is computed but
       never surfaced. _Fix: warn at login (or gate "remember me") when the resolved backend
       is insecure._
-- [ ] **`SecretStorageKeyService.set()` doesn't zero the previous 4S buffer** _(plausible)_
+- [x] **`SecretStorageKeyService.set()` didn't zero the previous 4S buffer** _(fixed)_
       — [secret-storage-key.service.ts:23](../libs/core/src/lib/matrix/secret-storage-key.service.ts).
       `clear()` zeroes the key, but `set()` reassigns without wiping the buffer it replaces
       when the key is set more than once during bootstrap/recovery. _Fix: `this.privateKey?.fill(0)`
@@ -120,7 +122,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
       — [electron/src/scheme.ts:91](../electron/src/scheme.ts). `decodeURIComponent(pathname)`
       ran before the try; `trinity://app/%` rejected the handler. _Fixed_ by guarding the
       decode and returning a 400.
-- [ ] **`verification-host` can open two modals** _(plausible)_ —
+- [x] **`verification-host` could open two modals** _(fixed)_ —
       [verification-host.component.ts:42](../apps/trinity/src/app/verification-host.component.ts).
       `this.ref` (a plain field, not a signal) is set only after `await import(...)`, so two
       effect runs during the dynamic import can both enter `present()`. _Fix: set a
@@ -128,42 +130,43 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
 
 **Accessibility**
 
-- [ ] **Server rail: active space/Home not exposed to assistive tech** —
+- [x] **Server rail: active space/Home not exposed to assistive tech** _(fixed)_ —
       [server-rail.component.ts:35](../libs/feature-rooms/src/lib/server-rail/server-rail.component.ts).
       Selection is conveyed only visually. _Fix: add `aria-current` to the active pill._
-- [ ] **Reaction toolbar lacks name + control association** —
+- [x] **Reaction toolbar lacked name + control association** _(fixed)_ —
       [message-toolbar.component.html:16](../libs/ui/src/lib/message-toolbar/message-toolbar.component.html).
       No `aria-label`, no `aria-controls`/focus management on the picker toggle.
-- [ ] **Inline `<audio>`/`<video>` have no accessible name** —
+- [x] **Inline `<audio>`/`<video>` had no accessible name** _(fixed)_ —
       [media-bubble.component.ts:57](../libs/ui/src/lib/media-bubble/media-bubble.component.ts).
       _Fix: `[attr.aria-label]="filename()"` on the media elements._
 
 **Performance**
 
-- [ ] **`pendingDecryption` grows unbounded for permanent UTDs** —
+- [x] **`pendingDecryption` grew unbounded for permanent UTDs** _(fixed)_ —
       [notification.service.ts:84](../libs/core/src/lib/matrix/notification.service.ts).
       Events that never decrypt are never evicted. _Fix: cap/evict like `notified`._
-- [ ] **No timeline virtualization** _(plausible)_ —
+- [ ] **No timeline virtualization** _(plausible; deferred — a substantial feature
+      needing its own design + perf pass)_ —
       [message-list.component.html:10](../libs/feature-rooms/src/lib/message-list/message-list.component.html).
       Every loaded event stays in the DOM; long rooms + backfill accumulate hundreds of
       rows. _Fix: CDK Virtual Scroll with an auto/dynamic item-size strategy._
 
 **Test coverage**
 
-- [ ] **`authGuard` has no unit test** —
-      [auth.guard.ts](../libs/core/src/lib/guards/auth.guard.ts). The already-initialized
-      short-circuit, session-restore, and init-failure→`/login` branches are untested.
-- [ ] **Security-critical Electron modules have no tests** —
+- [x] **`authGuard` had no unit test** _(fixed)_ —
+      [auth.guard.ts](../libs/core/src/lib/guards/auth.guard.ts). Added `auth.guard.spec.ts`
+      covering the already-initialized short-circuit, session-restore, no-session redirect,
+      and init-failure→`/login` branches.
+- [ ] **Security-critical Electron modules have no tests** _(deferred — Electron test
+      harness is a separate setup)_ —
       `scheme.ts` (path-traversal), `window.ts` (nav hardening), `deep-link.ts` (scheme
       validation). Only `notification-payload` and `secure-store` have specs.
 
-## Recommended order
+## Remaining (open)
 
-1. **Authed-media reset** (Medium correctness) — one-line singleton reset + two call
-   sites; unblocks all media on a homeserver switch.
-2. **Timeline auto-scroll gating** (Medium correctness) — proximity check before
-   force-scroll; high day-to-day annoyance.
-3. **Media lightbox a11y** (Medium) — route it through `TrnDialogService`.
-4. **`AuthService` + `authGuard` tests** (Medium/Low coverage) — critical, currently
-   untested paths.
-5. The remaining Low items as polish.
+Everything above except three items has been fixed (with tests where testable):
+
+- **Access-token plaintext warning** — needs a UX decision on where/how to surface the
+  insecure-backend signal at login.
+- **Timeline virtualization** — a substantial feature; warrants its own design + perf pass.
+- **Electron module tests** — worth adding, but the Electron test harness is separate setup.
