@@ -7,60 +7,56 @@ import {
   input,
   signal,
 } from '@angular/core';
+import {
+  HlmAvatar,
+  HlmAvatarFallback,
+  HlmAvatarImage,
+} from '@trinity/helm/avatar';
 import { AVATAR_RESOLVER } from './avatar-resolver';
 
 /**
- * Discord-style avatar: best-effort image with a colored initials fallback. Bind
+ * Discord-style avatar over the spartan {@link HlmAvatar}: the image shows once it
+ * loads (BrnAvatar swaps to the initials fallback while loading or on error). Bind
  * either a ready `url`, or an `mxc` which is resolved via the injected
  * {@link AVATAR_RESOLVER} (authenticated blob URL) when one is provided.
+ *
+ * The helm avatar is fixed-size, circular, and neutral-filled, so `size` (arbitrary
+ * px), `square` (rounded-rect for spaces), and the name-hashed fallback colour are
+ * applied as inline styles, which win over hlm's utility classes.
  */
 @Component({
   selector: 'trn-avatar',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [HlmAvatar, HlmAvatarImage, HlmAvatarFallback],
   template: `
-    @if (src() && !failed()) {
-      <img
-        class="avatar"
-        [class.avatar--square]="square()"
-        [style.width.px]="size()"
-        [style.height.px]="size()"
-        [src]="src()"
-        [alt]="name()"
-        (error)="failed.set(true)"
-      />
-    } @else {
+    <hlm-avatar
+      [style.width.px]="size()"
+      [style.height.px]="size()"
+      [style.borderRadius]="square() ? '30%' : null"
+    >
+      @if (src()) {
+        <img
+          hlmAvatarImage
+          [src]="src()"
+          [alt]="name()"
+          [style.borderRadius]="square() ? '30%' : null"
+        />
+      }
       <span
-        class="avatar avatar--fallback"
-        [class.avatar--square]="square()"
-        [style.width.px]="size()"
-        [style.height.px]="size()"
-        [style.font-size.px]="size() * 0.4"
+        hlmAvatarFallback
+        class="leading-none font-semibold"
         [style.background]="color()"
+        [style.color]="'#fff'"
+        [style.font-size.px]="size() * 0.4"
+        [style.borderRadius]="square() ? '30%' : null"
         >{{ initial() }}</span
       >
-    }
+    </hlm-avatar>
   `,
   styles: [
     `
       :host {
         display: inline-flex;
-      }
-      .avatar {
-        border-radius: 50%;
-        object-fit: cover;
-        flex: 0 0 auto;
-      }
-      .avatar--square {
-        border-radius: 30%;
-      }
-      .avatar--fallback {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        color: #fff;
-        font-weight: 600;
-        line-height: 1;
-        user-select: none;
       }
     `,
   ],
@@ -76,7 +72,6 @@ export class AvatarComponent {
 
   private readonly resolver = inject(AVATAR_RESOLVER, { optional: true });
 
-  readonly failed = signal(false);
   /** URL resolved from `mxc` via the resolver (null until resolved / no resolver). */
   private readonly resolvedUrl = signal<string | null>(null);
 
@@ -103,13 +98,10 @@ export class AvatarComponent {
 
   constructor() {
     // Re-resolve when the bound avatar changes (instances are reused across @for
-    // rows). Reset the error/resolved state, then resolve `mxc` via the resolver
-    // when both are present; the subscription is torn down on the next run/destroy.
+    // rows); the subscription is torn down on the next run/destroy.
     effect((onCleanup) => {
       const mxc = this.mxc();
       const size = this.size();
-      this.url(); // track so a direct-url change also resets the error state
-      this.failed.set(false);
       this.resolvedUrl.set(null);
       if (mxc && this.resolver) {
         const sub = this.resolver(mxc, size).subscribe((resolved) =>
