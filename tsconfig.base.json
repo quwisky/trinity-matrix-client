@@ -38,7 +38,8 @@
       "@trinity/helm/progress": ["./libs/spartan/progress/src/index.ts"],
       "@trinity/helm/spinner": ["./libs/spartan/spinner/src/index.ts"],
       "@trinity/helm/sonner": ["./libs/spartan/sonner/src/index.ts"],
-      "@trinity/helm/overlay": ["./libs/spartan/overlay/src/index.ts"]
+      "@trinity/helm/overlay": ["./libs/spartan/overlay/src/index.ts"],
+      "@trinity/helm/tooltip": ["./libs/spartan/tooltip/src/index.ts"]
     }
   },
   "angularCompilerOptions": {

@@ -17,7 +17,7 @@
   <button
     type="button"
     class="toolbar__btn"
-    title="Add reaction"
+    hlmTooltip="Add reaction"
     aria-label="Add reaction"
     [attr.aria-expanded]="pickerOpen()"
     (click)="pickerOpen.set(!pickerOpen())"
@@ -28,7 +28,7 @@
   <button
     type="button"
     class="toolbar__btn"
-    title="Reply"
+    hlmTooltip="Reply"
     aria-label="Reply"
     (click)="replyMessage.emit()"
   >
@@ -39,7 +39,7 @@
     <button
       type="button"
       class="toolbar__btn"
-      title="Reply in thread"
+      hlmTooltip="Reply in thread"
       aria-label="Reply in thread"
       (click)="openThread.emit()"
     >
@@ -50,7 +50,7 @@
   <button
     type="button"
     class="toolbar__btn"
-    title="Copy text"
+    hlmTooltip="Copy text"
     aria-label="Copy text"
     (click)="copyMessage.emit()"
   >
@@ -61,7 +61,7 @@
     <button
       type="button"
       class="toolbar__btn"
-      title="Edit"
+      hlmTooltip="Edit"
       aria-label="Edit message"
       (click)="editMessage.emit()"
     >
@@ -73,7 +73,7 @@
     <button
       type="button"
       class="toolbar__btn toolbar__btn--danger"
-      title="Delete"
+      hlmTooltip="Delete"
       aria-label="Delete message"
       (click)="deleteMessage.emit()"
     >

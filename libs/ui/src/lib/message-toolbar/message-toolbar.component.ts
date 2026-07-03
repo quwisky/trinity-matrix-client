@@ -6,6 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import {
   lucideCopy,
   lucideMessagesSquare,
@@ -26,7 +27,7 @@ const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
 @Component({
   selector: 'trn-message-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon],
+  imports: [NgIcon, HlmTooltip],
   templateUrl: './message-toolbar.component.html',
   styleUrl: './message-toolbar.component.scss',
   viewProviders: [

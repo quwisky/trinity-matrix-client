@@ -15,6 +15,7 @@ import {
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { HlmBadge } from '@trinity/helm/badge';
 import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
 
@@ -29,7 +30,7 @@ import { DevicesService, type DeviceInfo } from '@trinity/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './devices-section.component.html',
   styleUrl: './devices-section.component.scss',
-  imports: [NgIcon, HlmBadge, HlmButton],
+  imports: [NgIcon, HlmBadge, HlmButton, HlmTooltip],
   viewProviders: [
     provideIcons({ lucidePencil, lucideShieldCheck, lucideTrash2 }),
   ],

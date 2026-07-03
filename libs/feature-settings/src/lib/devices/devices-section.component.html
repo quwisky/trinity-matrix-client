@@ -1,6 +1,6 @@
 <div>
   <h2
-    class="px-4 pt-5 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
   >
     Devices
   </h2>
@@ -40,6 +40,7 @@
           variant="ghost"
           size="icon"
           [disabled]="busy()"
+          [hlmTooltip]="'Rename ' + device.displayName"
           [attr.aria-label]="'Rename ' + device.displayName"
           data-testid="rename-device"
           (click)="rename(device)"
@@ -53,6 +54,7 @@
             size="icon"
             class="text-destructive"
             [disabled]="busy()"
+            [hlmTooltip]="'Sign out ' + device.displayName"
             [attr.aria-label]="'Sign out ' + device.displayName"
             data-testid="remove-device"
             (click)="remove(device)"

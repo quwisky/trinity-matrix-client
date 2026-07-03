@@ -85,7 +85,7 @@
   <button
     type="button"
     class="composer__attach"
-    title="Attach"
+    hlmTooltip="Attach"
     aria-label="Attach a file"
     data-testid="composer-attach"
     [disabled]="uploadProgress() !== null"
@@ -118,7 +118,7 @@
   <button
     type="button"
     class="composer__emoji"
-    title="Emoji"
+    hlmTooltip="Emoji"
     aria-label="Insert emoji"
     [attr.aria-expanded]="pickerOpen()"
     (click)="pickerOpen.set(!pickerOpen())"
@@ -130,7 +130,7 @@
   <button
     type="button"
     class="composer__send"
-    title="Send"
+    hlmTooltip="Send"
     aria-label="Send message"
     [disabled]="!text().trim()"
     (click)="submit()"

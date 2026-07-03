@@ -61,6 +61,7 @@
         size="icon"
         class="md:hidden"
         (click)="toggleDrawer()"
+        hlmTooltip="Open navigation"
         aria-label="Open navigation"
         data-testid="open-menu"
       >
@@ -91,6 +92,7 @@
         variant="ghost"
         size="icon"
         (click)="openSwitcher()"
+        hlmTooltip="Search (Ctrl/Cmd+K)"
         aria-label="Search (Ctrl/Cmd+K)"
         data-testid="open-switcher"
       >
@@ -102,6 +104,7 @@
           variant="ghost"
           size="icon"
           (click)="openMessageSearch()"
+          hlmTooltip="Search messages in this room"
           aria-label="Search messages in this room"
           data-testid="search-messages"
         >
@@ -112,6 +115,7 @@
           variant="ghost"
           size="icon"
           (click)="onInviteToRoom()"
+          hlmTooltip="Invite people"
           aria-label="Invite people"
           data-testid="invite-people"
         >
@@ -122,6 +126,7 @@
           variant="ghost"
           size="icon"
           (click)="openThreadsList()"
+          hlmTooltip="Threads"
           aria-label="Threads"
           data-testid="open-threads"
         >
@@ -133,6 +138,7 @@
         variant="ghost"
         size="icon"
         (click)="goToSettings()"
+        hlmTooltip="Settings"
         aria-label="Settings"
         data-testid="open-settings"
       >

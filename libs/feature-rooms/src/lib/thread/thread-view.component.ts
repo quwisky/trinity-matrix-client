@@ -19,6 +19,7 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideX } from '@ng-icons/lucide';
 import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import {
   ThreadsService,
   isEditableMessage,
@@ -49,7 +50,13 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 @Component({
   selector: 'trn-thread-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, HlmButton, MessageRowComponent, MessageComposerComponent],
+  imports: [
+    NgIcon,
+    HlmButton,
+    HlmTooltip,
+    MessageRowComponent,
+    MessageComposerComponent,
+  ],
   viewProviders: [provideIcons({ lucideX })],
   templateUrl: './thread-view.component.html',
   styleUrl: './thread-view.component.scss',

@@ -12,6 +12,7 @@ import {
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideArrowLeft } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import {
@@ -41,6 +42,7 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
     DevicesSectionComponent,
     NgIcon,
     HlmButton,
+    HlmTooltip,
     HlmInput,
     HlmLabel,
     HlmRadioGroup,

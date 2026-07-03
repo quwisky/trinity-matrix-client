@@ -23,6 +23,7 @@ import {
   lucideUserPlus,
 } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import {
   TrnActionSheetService,
   TrnAlertService,
@@ -70,6 +71,7 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
   styleUrls: ['rooms.page.scss'],
   imports: [
     HlmButton,
+    HlmTooltip,
     NgIcon,
     ServerRailComponent,
     ChannelSidebarComponent,

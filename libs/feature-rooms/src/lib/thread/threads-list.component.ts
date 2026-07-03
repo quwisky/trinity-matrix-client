@@ -10,6 +10,7 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideX } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import { ThreadsService, type ThreadSummary } from '@trinity/core';
 
 /** Most participant avatars shown per row before the "+N" overflow chip. */
@@ -31,7 +32,7 @@ const MAX_AVATARS = 4;
 @Component({
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, DatePipe, AvatarComponent, HlmButton],
+  imports: [NgIcon, DatePipe, AvatarComponent, HlmButton, HlmTooltip],
   viewProviders: [provideIcons({ lucideX })],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',

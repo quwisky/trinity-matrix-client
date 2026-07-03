@@ -15,6 +15,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucidePlus, lucideSend, lucideSmile } from '@ng-icons/lucide';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
 import {
@@ -46,7 +47,13 @@ const EMOJI_SUGGESTION_LIMIT = 8;
 @Component({
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, PickerComponent, HlmProgress, HlmProgressIndicator],
+  imports: [
+    NgIcon,
+    HlmTooltip,
+    PickerComponent,
+    HlmProgress,
+    HlmProgressIndicator,
+  ],
   viewProviders: [provideIcons({ lucidePlus, lucideSend, lucideSmile })],
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
