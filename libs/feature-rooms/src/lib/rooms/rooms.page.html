@@ -170,7 +170,9 @@
         <div class="chat-empty">
           <div class="hero">
             <div class="hero__badge">#</div>
-            <h1 class="hero__title">{{ syncLabel() }}</h1>
+            <!-- h2, not h1: the toolbar (trn-page-header) already owns the page's
+                 single <h1> ("Trinity" here when no room is active). -->
+            <h2 class="hero__title">{{ syncLabel() }}</h2>
             <p class="hero__meta">
               Select a channel on the left to get started.
             </p>
