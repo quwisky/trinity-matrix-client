@@ -18,12 +18,7 @@ import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
  */
 
 export type MessageKind =
-  | 'text'
-  | 'emote'
-  | 'notice'
-  | 'redacted'
-  | 'unsupported'
-  | MediaKind;
+  'text' | 'emote' | 'notice' | 'redacted' | 'unsupported' | MediaKind;
 
 /** An aggregated reaction (`m.annotation`) on a message. */
 export interface ReactionView {

@@ -22,10 +22,7 @@ import { runPasswordUia, type PasswordPrompt } from './password-uia';
  *                     user must unlock it with their recovery key / passphrase.
  */
 export type CryptoStatus =
-  | 'unknown'
-  | 'ready'
-  | 'needs-setup'
-  | 'needs-recovery';
+  'unknown' | 'ready' | 'needs-setup' | 'needs-recovery';
 
 /**
  * The account-level secret layer on top of {@link MatrixClientService}: bootstraps

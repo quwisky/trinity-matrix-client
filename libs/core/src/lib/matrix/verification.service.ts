@@ -15,12 +15,7 @@ import { MatrixClientService } from './matrix-client.service';
 
 /** UI-facing stage of the active verification (maps the SDK's numeric phase). */
 export type VerificationStage =
-  | 'requested'
-  | 'ready'
-  | 'sas-shown'
-  | 'waiting'
-  | 'done'
-  | 'cancelled';
+  'requested' | 'ready' | 'sas-shown' | 'waiting' | 'done' | 'cancelled';
 
 /** One Short-Authentication-String emoji: the glyph plus its English name. */
 export interface SasEmoji {
