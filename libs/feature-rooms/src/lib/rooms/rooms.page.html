@@ -71,7 +71,7 @@
         class="flex min-w-0 flex-1 items-center gap-1 px-1 text-base font-semibold"
       >
         @if (activeRoom(); as room) {
-          <span role="heading" aria-level="1" class="truncate">
+          <span class="truncate">
             <span class="title-hash">#</span>{{ room.name }}
           </span>
           @if (room.encrypted) {

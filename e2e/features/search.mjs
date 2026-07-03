@@ -372,10 +372,10 @@ async function main() {
     log('switcher modal dismissed ✓');
 
     // The room header's heading should now show the active room name (still
-    // `span[role="heading"]` post-migration — see rooms.page.html).
+    // the rooms toolbar h1 — see rooms.page.html).
     await page.waitForFunction(
       (name) => {
-        const el = document.querySelector('span[role="heading"]');
+        const el = document.querySelector('header h1');
         return !!el && el.textContent.includes(name);
       },
       ROOM_A,
@@ -522,11 +522,11 @@ async function main() {
 
     // The room header's heading should show BOB's name (localpart or full
     // MXID — both contain BOB_USER's localpart, e.g.
-    // "@bob-1mxxxxxx:localhost" ⊇ "bob-1mxxxxxx"). Still `span[role="heading"]`
+    // "@bob-1mxxxxxx:localhost" ⊇ "bob-1mxxxxxx"). Still the toolbar h1
     // post-migration — see rooms.page.html.
     await page.waitForFunction(
       (bobUser) => {
-        const el = document.querySelector('span[role="heading"]');
+        const el = document.querySelector('header h1');
         return (
           !!el && el.textContent.toLowerCase().includes(bobUser.toLowerCase())
         );
