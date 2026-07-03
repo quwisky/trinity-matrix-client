@@ -75,6 +75,40 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('new text');
   });
 
+  it('refreshes the field when the edit target changes while still editing', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('editing', true);
+    fixture.componentRef.setInput('editTargetId', '$a');
+    fixture.componentRef.setInput('draft', 'body A');
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    expect(cmp.text()).toBe('body A');
+
+    // Re-target to another message (id changes) — the field must show B's body,
+    // not keep A's (else Enter would overwrite B with A).
+    fixture.componentRef.setInput('editTargetId', '$b');
+    fixture.componentRef.setInput('draft', 'body B');
+    fixture.detectChanges();
+    expect(cmp.text()).toBe('body B');
+  });
+
+  it('does not clobber typed text when the same target body mutates mid-edit', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('editing', true);
+    fixture.componentRef.setInput('editTargetId', '$a');
+    fixture.componentRef.setInput('draft', 'hello');
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    cmp.text.set('hello world'); // user has typed an in-progress edit
+
+    // Same target ($a), but its body changes in the timeline (redaction / a
+    // concurrent multi-device edit / a late echo). The field must NOT be
+    // overwritten — the re-fill keys on the target id, not the body.
+    fixture.componentRef.setInput('draft', '(message deleted)');
+    fixture.detectChanges();
+    expect(cmp.text()).toBe('hello world');
+  });
+
   it('emits editLast on Up arrow only when empty and not editing', () => {
     const fixture = TestBed.createComponent(MessageComposerComponent);
     fixture.detectChanges();

@@ -9,6 +9,7 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -66,6 +67,13 @@ export class MessageComposerComponent {
   readonly placeholder = input('');
   readonly editing = input(false);
   readonly draft = input('');
+  /**
+   * Id of the message being edited (null when not editing). The prefill keys on
+   * this — not on {@link draft} — so re-targeting to a different message refreshes
+   * the field, while a mid-edit body change of the *same* target (redaction, a
+   * concurrent multi-device edit, a late echo) never clobbers in-progress text.
+   */
+  readonly editTargetId = input<string | null>(null);
   /** Sender name of the message being replied to, or '' when not replying. */
   readonly replyingTo = input('');
   /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
@@ -112,6 +120,7 @@ export class MessageComposerComponent {
   private readonly emojiService = inject(EmojiService);
   private readonly theme = inject(ThemeService);
   private wasEditing = false;
+  private wasEditTargetId: string | null = null;
   private wasReplying = false;
 
   constructor() {
@@ -128,11 +137,17 @@ export class MessageComposerComponent {
       }
       this.wasReplying = replying;
     });
-    // Prefill on entering edit mode; clear on leaving it.
+    // Prefill on entering edit mode, or when the edit TARGET changes while still
+    // editing (a different message was selected). Keyed on editTargetId — not the
+    // draft body — and draft() is read untracked, so a mid-edit body change of the
+    // same target (redaction, concurrent multi-device edit, a late echo) neither
+    // fires this effect nor overwrites the user's in-progress text. Clear on
+    // leaving edit mode. Typing never re-fires this (it updates `text`, unread here).
     effect(() => {
       const editing = this.editing();
-      if (editing && !this.wasEditing) {
-        this.text.set(this.draft());
+      const targetId = this.editTargetId();
+      if (editing && (!this.wasEditing || targetId !== this.wasEditTargetId)) {
+        this.text.set(untracked(() => this.draft()));
         queueMicrotask(() => {
           const el = this.textarea()?.nativeElement;
           el?.focus();
@@ -144,6 +159,7 @@ export class MessageComposerComponent {
         queueMicrotask(() => this.autoGrow());
       }
       this.wasEditing = editing;
+      this.wasEditTargetId = targetId;
     });
   }
 

@@ -47,6 +47,7 @@
     <trn-message-composer
       placeholder="Reply…"
       [editing]="editingId() !== null"
+      [editTargetId]="editingId()"
       [draft]="editingDraft()"
       [replyingTo]="replyingToName()"
       [uploadProgress]="uploadProgress()"
