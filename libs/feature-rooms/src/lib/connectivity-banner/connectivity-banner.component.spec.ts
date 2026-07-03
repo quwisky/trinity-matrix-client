@@ -20,7 +20,7 @@ describe('ConnectivityBannerComponent', () => {
     });
   });
 
-  const banner = (el: HTMLElement) => el.querySelector('.conn-banner');
+  const banner = (el: HTMLElement) => el.querySelector('trn-banner');
 
   it('renders nothing while online', () => {
     const fixture = TestBed.createComponent(ConnectivityBannerComponent);
