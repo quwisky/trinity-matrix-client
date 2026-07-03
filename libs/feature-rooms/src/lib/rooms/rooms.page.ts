@@ -20,6 +20,7 @@ import {
   lucideMessagesSquare,
   lucideSearch,
   lucideUserPlus,
+  lucideUsers,
 } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
@@ -86,6 +87,7 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
       lucideMessagesSquare,
       lucideSearch,
       lucideUserPlus,
+      lucideUsers,
     }),
   ],
 })
@@ -116,6 +118,8 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly activeRoomId = signal<string | null>(null);
   /** Whether the side pane is shown as an overlay drawer (below the md breakpoint). */
   readonly drawerOpen = signal(false);
+  /** Whether the right-hand member list is shown (toggled from the toolbar). */
+  readonly membersOpen = signal(true);
   /**
    * Event id the message list should scroll to, set when in-room search resolves a
    * hit. Bound to the list's `jumpToId`; reset to null first so re-selecting the same
@@ -588,6 +592,16 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Close the mobile navigation drawer. */
   closeDrawer(): void {
     this.drawerOpen.set(false);
+  }
+
+  /** Show/hide the right-hand member list from the toolbar. */
+  toggleMembers(): void {
+    this.membersOpen.update((open) => !open);
+  }
+
+  /** Hide the member list (raised by its own close button). */
+  closeMembers(): void {
+    this.membersOpen.set(false);
   }
 
   /** Open the thread rooted at `rootEventId` (raised by a message's indicator). */

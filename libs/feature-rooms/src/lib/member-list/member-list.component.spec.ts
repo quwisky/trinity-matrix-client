@@ -22,4 +22,17 @@ describe('MemberListComponent', () => {
     ).toContain('2');
     expect(rows[0].textContent).toContain('Alice');
   });
+
+  it('emits closed when the header close button is clicked', () => {
+    const fixture = TestBed.createComponent(MemberListComponent);
+    fixture.detectChanges();
+
+    let closed = false;
+    fixture.componentInstance.closed.subscribe(() => (closed = true));
+    fixture.nativeElement
+      .querySelector('[data-testid="close-members"]')
+      .click();
+
+    expect(closed).toBe(true);
+  });
 });

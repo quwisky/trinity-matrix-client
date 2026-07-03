@@ -1232,6 +1232,25 @@ describe('RoomsPage mobile nav drawer', () => {
     expect(page.drawerOpen()).toBe(false);
   });
 
+  it('shows the member list by default and toggleMembers flips it', () => {
+    const page = build();
+    expect(page.membersOpen()).toBe(true);
+
+    page.toggleMembers();
+    expect(page.membersOpen()).toBe(false);
+
+    page.toggleMembers();
+    expect(page.membersOpen()).toBe(true);
+  });
+
+  it('closeMembers hides the member list', () => {
+    const page = build();
+
+    page.closeMembers();
+
+    expect(page.membersOpen()).toBe(false);
+  });
+
   it('onSelectRoom collapses an open drawer after picking a room', () => {
     const page = build();
     page.toggleDrawer();

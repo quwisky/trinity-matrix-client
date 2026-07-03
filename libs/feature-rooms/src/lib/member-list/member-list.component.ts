@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+  output,
+} from '@angular/core';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideX } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import type { MemberSummary } from '@trinity/core';
 
@@ -6,10 +13,22 @@ import type { MemberSummary } from '@trinity/core';
 @Component({
   selector: 'trn-member-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent],
+  imports: [AvatarComponent, NgIcon],
+  viewProviders: [provideIcons({ lucideX })],
   template: `
     <aside class="members">
-      <div class="category">Members — {{ members().length }}</div>
+      <div class="members__header">
+        <span class="category">Members — {{ members().length }}</span>
+        <button
+          class="members__close"
+          (click)="closed.emit()"
+          aria-label="Close member list"
+          title="Close member list"
+          data-testid="close-members"
+        >
+          <ng-icon name="lucideX" aria-hidden="true" />
+        </button>
+      </div>
       @for (member of members(); track member.userId) {
         <div class="member" [title]="member.userId">
           <trn-avatar
@@ -27,4 +46,6 @@ import type { MemberSummary } from '@trinity/core';
 })
 export class MemberListComponent {
   readonly members = input<MemberSummary[]>([]);
+  /** Hide the member list; the toolbar's members toggle reopens it. */
+  readonly closed = output<void>();
 }

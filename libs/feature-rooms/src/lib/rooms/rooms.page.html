@@ -123,6 +123,18 @@
         >
           <ng-icon class="text-xl" name="lucideMessagesSquare" />
         </button>
+        <button
+          hlmBtn
+          variant="ghost"
+          size="icon"
+          (click)="toggleMembers()"
+          [attr.aria-pressed]="membersOpen()"
+          hlmTooltip="Members"
+          aria-label="Members"
+          data-testid="toggle-members"
+        >
+          <ng-icon class="text-xl" name="lucideUsers" />
+        </button>
       }
     </header>
 
@@ -146,7 +158,13 @@
           (react)="onReact($event)"
           (reply)="onReply($event)"
         />
-        <trn-member-list class="chat-members" [members]="members()" />
+        @if (membersOpen()) {
+          <trn-member-list
+            class="chat-members"
+            [members]="members()"
+            (closed)="closeMembers()"
+          />
+        }
       } @else {
         <div class="chat-empty">
           <div class="hero">
