@@ -20,6 +20,7 @@ import type { SpaceSummary } from '@trinity/core';
           class="pill home"
           [class.round]="activeSpaceId() === null"
           (click)="selectSpace.emit(null)"
+          [attr.aria-current]="activeSpaceId() === null ? 'true' : null"
           aria-label="Home"
           title="Home"
         >
@@ -35,6 +36,7 @@ import type { SpaceSummary } from '@trinity/core';
           <button
             class="pill"
             (click)="selectSpace.emit(space.id)"
+            [attr.aria-current]="activeSpaceId() === space.id ? 'true' : null"
             [attr.aria-label]="space.name"
             [title]="space.name"
           >

@@ -19,6 +19,10 @@ import {
 /** A small set of one-tap reactions offered by the picker. */
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
 
+/** Per-instance id source so each row's reaction toggle → picker association
+ * (aria-controls) is unique — the toolbar is rendered once per message row. */
+let nextPickerId = 0;
+
 /**
  * Discord-style floating action toolbar revealed when hovering a message.
  * React is always available (a quick-emoji picker); copy too; edit and delete
@@ -55,6 +59,8 @@ export class MessageToolbarComponent {
 
   readonly quickEmojis = QUICK_EMOJIS;
   readonly pickerOpen = signal(false);
+  /** Unique id linking the reaction toggle to its picker via aria-controls. */
+  readonly pickerId = `trn-reaction-picker-${nextPickerId++}`;
 
   pick(emoji: string): void {
     this.react.emit(emoji);

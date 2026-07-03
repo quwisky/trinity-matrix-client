@@ -1,5 +1,9 @@
 @if (pickerOpen()) {
-  <div class="toolbar__picker">
+  <div
+    class="toolbar__picker"
+    [id]="pickerId"
+    (keydown.escape)="pickerOpen.set(false)"
+  >
     @for (emoji of quickEmojis; track emoji) {
       <button
         type="button"
@@ -13,13 +17,15 @@
   </div>
 }
 
-<div class="toolbar" role="toolbar">
+<div class="toolbar" role="toolbar" aria-label="Message actions">
   <button
     type="button"
     class="toolbar__btn"
     hlmTooltip="Add reaction"
     aria-label="Add reaction"
     [attr.aria-expanded]="pickerOpen()"
+    [attr.aria-controls]="pickerOpen() ? pickerId : null"
+    (keydown.escape)="pickerOpen.set(false)"
     (click)="pickerOpen.set(!pickerOpen())"
   >
     <ng-icon name="lucideSmile" aria-hidden="true" />
