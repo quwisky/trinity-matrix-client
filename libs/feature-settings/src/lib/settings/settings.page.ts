@@ -20,7 +20,7 @@ import {
   HlmRadioGroup,
   HlmRadioIndicator,
 } from '@trinity/helm/radio-group';
-import { AvatarComponent, runWithBusy } from '@trinity/ui';
+import { AvatarComponent, PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import {
   ProfileService,
   ThemeService,
@@ -39,6 +39,7 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
   styleUrl: './settings.page.scss',
   imports: [
     AvatarComponent,
+    PageHeaderComponent,
     DevicesSectionComponent,
     NgIcon,
     HlmButton,

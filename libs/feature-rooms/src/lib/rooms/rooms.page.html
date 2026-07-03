@@ -54,10 +54,9 @@
     <trn-connectivity-banner />
     <trn-encryption-banner />
 
-    <header
-      class="chat-toolbar flex h-14 shrink-0 items-center gap-1 border-b border-solid border-border px-2"
-    >
+    <trn-page-header variant="chat">
       <button
+        trnHeaderLeading
         hlmBtn
         variant="ghost"
         size="icon"
@@ -70,9 +69,9 @@
         <ng-icon class="text-xl" name="lucideMenu" />
       </button>
 
-      <h1
-        class="flex min-w-0 flex-1 items-center gap-1 px-1 text-base font-semibold"
-      >
+      <!-- Projected into the shell's single <h1>: inline spans + icon only, no
+           nested heading. rooms' scoped .title-hash/.title-lock still apply. -->
+      <ng-container trnHeaderTitle>
         @if (activeRoom(); as room) {
           <span class="truncate">
             <span class="title-hash">#</span>{{ room.name }}
@@ -87,56 +86,58 @@
         } @else {
           Trinity
         }
-      </h1>
+      </ng-container>
 
-      @if (activeRoom()) {
-        <button
-          hlmBtn
-          variant="ghost"
-          size="icon"
-          (click)="openMessageSearch()"
-          hlmTooltip="Search messages in this room"
-          aria-label="Search messages in this room"
-          data-testid="search-messages"
-        >
-          <ng-icon class="text-xl" name="lucideSearch" />
-        </button>
-        <button
-          hlmBtn
-          variant="ghost"
-          size="icon"
-          (click)="onInviteToRoom()"
-          hlmTooltip="Invite people"
-          aria-label="Invite people"
-          data-testid="invite-people"
-        >
-          <ng-icon class="text-xl" name="lucideUserPlus" />
-        </button>
-        <button
-          hlmBtn
-          variant="ghost"
-          size="icon"
-          (click)="openThreadsList()"
-          hlmTooltip="Threads"
-          aria-label="Threads"
-          data-testid="open-threads"
-        >
-          <ng-icon class="text-xl" name="lucideMessagesSquare" />
-        </button>
-        <button
-          hlmBtn
-          variant="ghost"
-          size="icon"
-          (click)="toggleMembers()"
-          [attr.aria-pressed]="membersOpen()"
-          hlmTooltip="Members"
-          aria-label="Members"
-          data-testid="toggle-members"
-        >
-          <ng-icon class="text-xl" name="lucideUsers" />
-        </button>
-      }
-    </header>
+      <ng-container trnHeaderActions>
+        @if (activeRoom()) {
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
+            (click)="openMessageSearch()"
+            hlmTooltip="Search messages in this room"
+            aria-label="Search messages in this room"
+            data-testid="search-messages"
+          >
+            <ng-icon class="text-xl" name="lucideSearch" />
+          </button>
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
+            (click)="onInviteToRoom()"
+            hlmTooltip="Invite people"
+            aria-label="Invite people"
+            data-testid="invite-people"
+          >
+            <ng-icon class="text-xl" name="lucideUserPlus" />
+          </button>
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
+            (click)="openThreadsList()"
+            hlmTooltip="Threads"
+            aria-label="Threads"
+            data-testid="open-threads"
+          >
+            <ng-icon class="text-xl" name="lucideMessagesSquare" />
+          </button>
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
+            (click)="toggleMembers()"
+            [attr.aria-pressed]="membersOpen()"
+            hlmTooltip="Members"
+            aria-label="Members"
+            data-testid="toggle-members"
+          >
+            <ng-icon class="text-xl" name="lucideUsers" />
+          </button>
+        }
+      </ng-container>
+    </trn-page-header>
 
     <div class="chat-body">
       @if (activeRoom(); as room) {

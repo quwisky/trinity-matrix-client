@@ -15,7 +15,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmSpinner } from '@trinity/helm/spinner';
 import { CryptoService, type PasswordPrompt } from '@trinity/core';
-import { runWithBusy } from '@trinity/ui';
+import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
 
 /**
@@ -30,7 +30,13 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'encryption-setup.page.html',
   styleUrls: ['encryption-setup.page.scss'],
-  imports: [HlmButton, HlmCheckbox, HlmSpinner, RecoveryKeyDisplayComponent],
+  imports: [
+    PageHeaderComponent,
+    HlmButton,
+    HlmCheckbox,
+    HlmSpinner,
+    RecoveryKeyDisplayComponent,
+  ],
 })
 export class EncryptionSetupPage {
   private readonly crypto = inject(CryptoService);

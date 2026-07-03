@@ -28,12 +28,9 @@
   background: var(--trinity-chat);
 }
 
-.chat-toolbar {
-  background: var(--trinity-chat);
-  color: var(--trinity-text-bright);
-  font-weight: 600;
-}
-
+// The toolbar surface now comes from <trn-page-header variant="chat"> (which
+// carries bg-[var(--trinity-chat)] and the toolbar text color). The room-name
+// title is still projected from here, so these scoped title styles stay.
 .title-hash {
   color: var(--trinity-text-muted);
   margin-right: 4px;

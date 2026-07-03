@@ -13,7 +13,11 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
 import { Observable } from 'rxjs';
 import { CryptoService } from '@trinity/core';
-import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
+import {
+  PageHeaderComponent,
+  resolveInternalReturnTo,
+  runWithBusy,
+} from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
@@ -33,6 +37,7 @@ import { HlmSpinner } from '@trinity/helm/spinner';
   imports: [
     FormsModule,
     NgTemplateOutlet,
+    PageHeaderComponent,
     HlmButton,
     HlmInput,
     HlmLabel,

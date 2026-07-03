@@ -12,7 +12,11 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
 import { Observable } from 'rxjs';
 import { VerificationService } from '@trinity/core';
-import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
+import {
+  PageHeaderComponent,
+  resolveInternalReturnTo,
+  runWithBusy,
+} from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmSpinner } from '@trinity/helm/spinner';
 import { SasCompareComponent } from './sas-compare.component';
@@ -29,7 +33,13 @@ import { SasCompareComponent } from './sas-compare.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './device-verification.page.html',
   styleUrl: './device-verification.page.scss',
-  imports: [NgTemplateOutlet, HlmButton, SasCompareComponent, HlmSpinner],
+  imports: [
+    NgTemplateOutlet,
+    PageHeaderComponent,
+    HlmButton,
+    SasCompareComponent,
+    HlmSpinner,
+  ],
 })
 export class DeviceVerificationPage {
   private readonly verification = inject(VerificationService);

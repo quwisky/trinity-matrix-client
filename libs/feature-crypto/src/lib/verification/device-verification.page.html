@@ -15,14 +15,17 @@
     </div>
   </div>
 } @else {
-  <header
-    class="safe-top flex min-h-14 shrink-0 items-center gap-2 border-b border-solid border-border px-3"
-  >
-    <h1 class="flex-1 truncate text-base font-semibold">Verify device</h1>
-    <button hlmBtn variant="ghost" size="sm" (click)="cancelAndLeave()">
+  <trn-page-header title="Verify device">
+    <button
+      trnHeaderActions
+      hlmBtn
+      variant="ghost"
+      size="sm"
+      (click)="cancelAndLeave()"
+    >
       Close
     </button>
-  </header>
+  </trn-page-header>
 
   <main class="flex-1 overflow-y-auto p-4">
     <ng-container [ngTemplateOutlet]="body" />

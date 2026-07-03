@@ -46,7 +46,7 @@ import {
   type SpaceChildRoom,
   type SwitcherSelection,
 } from '@trinity/core';
-import { runWithBusy } from '@trinity/ui';
+import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
@@ -70,6 +70,7 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
   imports: [
+    PageHeaderComponent,
     HlmButton,
     HlmTooltip,
     NgIcon,
