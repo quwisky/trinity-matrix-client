@@ -109,6 +109,12 @@
       "skillPath": "scss-best-practices/SKILL.md",
       "computedHash": "16ac9e8bf135304254a358776c5fac043799c1c3ac40221da1338ee972506de5"
     },
+    "spartan": {
+      "source": "spartan-ng/spartan",
+      "sourceType": "github",
+      "skillPath": "skills/spartan/SKILL.md",
+      "computedHash": "126d1eba31bef1c33c37ce3675bc20d0e74a5c2f42625d7837d5c8fae25234e5"
+    },
     "typescript-advanced-types": {
       "source": "wshobson/agents",
       "sourceType": "github",
