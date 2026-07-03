@@ -1,5 +1,10 @@
-ion-content {
-  --background: var(--trinity-chat);
+// The settings page sits on the app's content surface (--trinity-chat), matching
+// the rooms main pane and thread panels (was ion-content's --background before the
+// Ionic removal). The header + main are transparent, so painting the host covers
+// both; without it the page falls back to the shell's darker bg-background, which
+// reads noticeably off against the rest of the app in dark mode.
+:host {
+  background: var(--trinity-chat);
 }
 
 .setting-note {
