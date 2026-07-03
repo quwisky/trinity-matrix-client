@@ -8,6 +8,7 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/helm/overlay';
@@ -47,6 +48,13 @@ export class MessageListComponent {
   readonly loadingOlder = input(false);
   readonly canLoadOlder = input(false);
   readonly roomName = input('');
+  /**
+   * Active room id. The list instance is reused across room switches (it stays
+   * mounted under `@if (activeRoom())`), so a change here resets the per-room
+   * UI + scroll state — otherwise a pending edit/reply target, the last-seen id,
+   * and the backfill anchors would leak into the next room.
+   */
+  readonly roomId = input<string | null>(null);
   /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
   readonly uploadProgress = input<number | null>(null);
   /**
@@ -140,6 +148,26 @@ export class MessageListComponent {
   });
 
   constructor() {
+    // Reset per-room state when the active room changes. Declared FIRST so it
+    // runs before the anchoring effect below (effects fire in creation order):
+    // clearing lastId lets that effect treat the new room as a fresh load rather
+    // than announcing another room's newest message. Also drops any pending
+    // edit/reply target so the next plain send in the new room isn't routed as a
+    // stale cross-room edit/reply.
+    effect(() => {
+      this.roomId();
+      untracked(() => {
+        this.editingId.set(null);
+        this.replyingToId.set(null);
+        this.announcement.set('');
+        this.lastId = '';
+        this.lastBackfillOldestId = '';
+        this.backfillRounds = 0;
+        this.pendingPrepend = false;
+        this.rowCache.clear();
+      });
+    });
+
     effect(() => {
       const msgs = this.messages();
       const el = this.scrollEl()?.nativeElement;
