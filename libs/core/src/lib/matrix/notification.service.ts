@@ -64,6 +64,11 @@ export class NotificationService {
   /** Bound on {@link notified} so it can't grow without limit on a long session. */
   private static readonly NOTIFIED_CAP = 500;
 
+  /** Bound on {@link pendingDecryption}: permanent UTDs (a megolm session that
+   * never arrives) are kept pending on purpose for a later retry, so evict the
+   * oldest past this cap rather than letting the set grow for the whole session. */
+  private static readonly PENDING_DECRYPTION_CAP = 500;
+
   private readonly onTimeline = (
     event: MatrixEvent,
     room: Room | undefined,
@@ -82,6 +87,15 @@ export class NotificationService {
         const id = event.getId();
         if (id) {
           this.pendingDecryption.add(id);
+          if (
+            this.pendingDecryption.size >
+            NotificationService.PENDING_DECRYPTION_CAP
+          ) {
+            const oldest = this.pendingDecryption.values().next().value;
+            if (oldest !== undefined) {
+              this.pendingDecryption.delete(oldest);
+            }
+          }
         }
         return;
       }
