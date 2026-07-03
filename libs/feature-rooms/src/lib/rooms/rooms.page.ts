@@ -687,7 +687,16 @@ export class RoomsPage implements OnInit, OnDestroy {
     void this.router.navigateByUrl('/settings');
   }
 
-  logout(): void {
+  async logout(): Promise<void> {
+    const confirmed = await this.alert.confirm({
+      header: 'Log out',
+      message: 'Log out of Trinity on this device?',
+      confirmText: 'Log out',
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
     this.auth
       .logout()
       .pipe(takeUntilDestroyed(this.destroyRef))

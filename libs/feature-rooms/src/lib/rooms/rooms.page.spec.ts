@@ -470,6 +470,31 @@ describe('RoomsPage space actions', () => {
     expect(alertConfirm).not.toHaveBeenCalled();
     expect(leaveSpace).not.toHaveBeenCalled();
   });
+
+  it('logs out and navigates to /login after confirming', async () => {
+    const page = build();
+    alertConfirm.mockResolvedValue(true);
+    const auth = TestBed.inject(AuthService);
+    const router = TestBed.inject(Router);
+
+    await page.logout();
+
+    expect(alertConfirm).toHaveBeenCalled();
+    expect(auth.logout).toHaveBeenCalled();
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/login', {
+      replaceUrl: true,
+    });
+  });
+
+  it('does not log out when the confirm is cancelled', async () => {
+    const page = build();
+    alertConfirm.mockResolvedValue(false);
+    const auth = TestBed.inject(AuthService);
+
+    await page.logout();
+
+    expect(auth.logout).not.toHaveBeenCalled();
+  });
 });
 
 // Room / DM creation, invites, and accept/decline. The page picks a user (modal),
