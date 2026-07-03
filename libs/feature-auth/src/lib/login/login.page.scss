@@ -33,28 +33,36 @@
   }
 }
 
-// Card surface:
-// Mobile: fills the viewport — no radius, no shadow.
+// Card surface (spartan hlmCard):
+// The hlm card supplies the surface (bg-card / ring / rounded / padding); we
+// override it to the Discord palette and drive its internal rhythm via
+// --card-spacing (header + content horizontal padding, card vertical padding,
+// and the header↔content gap all read this token).
+// Mobile: fills the viewport — no radius, no ring/shadow (edge-to-edge).
 // Desktop: fixed-width rounded card with a subtle elevation shadow.
 .login-card {
+  --card-spacing: 24px;
+
   background: var(--trinity-sidebar);
-  padding: 48px 24px 40px;
   flex: 1;
+  border-radius: 0;
+  box-shadow: none; // drop the hlm 1px ring on the full-bleed mobile surface
 
   @media (min-width: 480px) {
+    --card-spacing: 32px;
+
     width: 420px;
     max-width: 100%;
     flex: none;
     border-radius: var(--trinity-radius);
-    box-shadow: 0 8px 32px rgb(0 0 0 / 24%);
-    padding: 32px 40px 40px;
+    box-shadow: 0 8px 32px rgb(0 0 0 / 24%); // elevation; also replaces the ring
   }
 }
 
-// Branding: Trinity wordmark + dynamic subtitle.
+// Branding: Trinity wordmark + dynamic subtitle. Spacing to the form below is
+// handled by the hlm card's header↔content gap.
 .login-card__brand {
   text-align: center;
-  margin-bottom: 28px;
 }
 
 .login-card__wordmark {

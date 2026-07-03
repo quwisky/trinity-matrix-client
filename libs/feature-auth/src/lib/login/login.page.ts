@@ -11,6 +11,7 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { Observable, map, switchMap } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
+import { HlmCardImports } from '@trinity/helm/card';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { HlmSpinner } from '@trinity/helm/spinner';
@@ -23,7 +24,14 @@ import { SsoStateStore } from '../sso-state.store';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'login.page.html',
   styleUrl: 'login.page.scss',
-  imports: [FormsModule, HlmButton, HlmInput, HlmLabel, HlmSpinner],
+  imports: [
+    FormsModule,
+    HlmButton,
+    HlmCardImports,
+    HlmInput,
+    HlmLabel,
+    HlmSpinner,
+  ],
 })
 export class LoginPage {
   private readonly auth = inject(AuthService);
