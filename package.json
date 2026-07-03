@@ -1,8 +1,7 @@
 {
   "name": "trinity",
   "version": "0.0.1",
-  "author": "Ionic Framework",
-  "homepage": "https://ionicframework.com/",
+  "author": "quwisky <quwisky@qwky.eu>",
   "scripts": {
     "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project — run: corepack enable && pnpm install'); process.exit(1); }\"",
     "postinstall": "node -e \"process.platform==='darwin' && require('child_process').execSync('pnpm run electron:sign:dev', {stdio: 'inherit'})\"",
@@ -159,5 +158,5 @@
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^3.2.6"
   },
-  "description": "An Ionic project"
+  "description": "Trinity — a cross-platform Matrix client with end-to-end encryption (Angular, spartan.ng, Capacitor, Electron)"
 }
