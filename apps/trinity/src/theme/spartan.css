@@ -24,56 +24,56 @@
 @custom-variant dark (&:where(.ion-palette-dark, .ion-palette-dark *));
 
 :root {
-  --background: hsl(0 0% 100%);
-  --foreground: hsl(240 10% 3.9%);
-  --card: hsl(0 0% 100%);
-  --card-foreground: hsl(240 10% 3.9%);
-  --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(240 10% 3.9%);
-  --primary: hsl(235 86% 65%);
-  --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(240 4.8% 95.9%);
-  --secondary-foreground: hsl(240 5.9% 10%);
-  --muted: hsl(240 4.8% 95.9%);
-  --muted-foreground: hsl(240 3.8% 46.1%);
-  --accent: hsl(240 4.8% 95.9%);
-  --accent-foreground: hsl(240 5.9% 10%);
-  --destructive: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(0 0% 98%);
-  --success: hsl(145 63% 42%);
-  --success-foreground: hsl(0 0% 100%);
-  --warning: hsl(38 92% 50%);
-  --warning-foreground: hsl(20 14% 4%);
-  --border: hsl(240 5.9% 90%);
-  --input: hsl(240 5.9% 90%);
-  --ring: hsl(235 86% 65%);
+  --background: hsl(0deg 0% 100%);
+  --foreground: hsl(240deg 10% 3.9%);
+  --card: hsl(0deg 0% 100%);
+  --card-foreground: hsl(240deg 10% 3.9%);
+  --popover: hsl(0deg 0% 100%);
+  --popover-foreground: hsl(240deg 10% 3.9%);
+  --primary: hsl(235deg 86% 65%);
+  --primary-foreground: hsl(0deg 0% 100%);
+  --secondary: hsl(240deg 4.8% 95.9%);
+  --secondary-foreground: hsl(240deg 5.9% 10%);
+  --muted: hsl(240deg 4.8% 95.9%);
+  --muted-foreground: hsl(240deg 3.8% 46.1%);
+  --accent: hsl(240deg 4.8% 95.9%);
+  --accent-foreground: hsl(240deg 5.9% 10%);
+  --destructive: hsl(0deg 84.2% 60.2%);
+  --destructive-foreground: hsl(0deg 0% 98%);
+  --success: hsl(145deg 63% 42%);
+  --success-foreground: hsl(0deg 0% 100%);
+  --warning: hsl(38deg 92% 50%);
+  --warning-foreground: hsl(20deg 14% 4%);
+  --border: hsl(240deg 5.9% 90%);
+  --input: hsl(240deg 5.9% 90%);
+  --ring: hsl(235deg 86% 65%);
   --radius: 0.5rem;
 }
 
 .ion-palette-dark {
-  --background: hsl(240 10% 3.9%);
-  --foreground: hsl(0 0% 98%);
-  --card: hsl(240 10% 3.9%);
-  --card-foreground: hsl(0 0% 98%);
-  --popover: hsl(240 10% 3.9%);
-  --popover-foreground: hsl(0 0% 98%);
-  --primary: hsl(235 86% 65%);
-  --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(240 3.7% 15.9%);
-  --secondary-foreground: hsl(0 0% 98%);
-  --muted: hsl(240 3.7% 15.9%);
-  --muted-foreground: hsl(240 5% 64.9%);
-  --accent: hsl(240 3.7% 15.9%);
-  --accent-foreground: hsl(0 0% 98%);
-  --destructive: hsl(0 62.8% 30.6%);
-  --destructive-foreground: hsl(0 0% 98%);
-  --success: hsl(145 58% 45%);
-  --success-foreground: hsl(0 0% 100%);
-  --warning: hsl(38 92% 50%);
-  --warning-foreground: hsl(20 14% 4%);
-  --border: hsl(240 3.7% 15.9%);
-  --input: hsl(240 3.7% 15.9%);
-  --ring: hsl(235 86% 65%);
+  --background: hsl(240deg 10% 3.9%);
+  --foreground: hsl(0deg 0% 98%);
+  --card: hsl(240deg 10% 3.9%);
+  --card-foreground: hsl(0deg 0% 98%);
+  --popover: hsl(240deg 10% 3.9%);
+  --popover-foreground: hsl(0deg 0% 98%);
+  --primary: hsl(235deg 86% 65%);
+  --primary-foreground: hsl(0deg 0% 100%);
+  --secondary: hsl(240deg 3.7% 15.9%);
+  --secondary-foreground: hsl(0deg 0% 98%);
+  --muted: hsl(240deg 3.7% 15.9%);
+  --muted-foreground: hsl(240deg 5% 64.9%);
+  --accent: hsl(240deg 3.7% 15.9%);
+  --accent-foreground: hsl(0deg 0% 98%);
+  --destructive: hsl(0deg 62.8% 30.6%);
+  --destructive-foreground: hsl(0deg 0% 98%);
+  --success: hsl(145deg 58% 45%);
+  --success-foreground: hsl(0deg 0% 100%);
+  --warning: hsl(38deg 92% 50%);
+  --warning-foreground: hsl(20deg 14% 4%);
+  --border: hsl(240deg 3.7% 15.9%);
+  --input: hsl(240deg 3.7% 15.9%);
+  --ring: hsl(235deg 86% 65%);
 }
 
 @theme inline {
@@ -103,6 +103,7 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
   /*
    * Indeterminate progress sweep. HlmProgressIndicator toggles
    * `.animate-indeterminate` when BrnProgress has no value; this animation drives
@@ -115,6 +116,7 @@
   0% {
     transform: translateX(-100%) scaleX(0.4);
   }
+
   100% {
     transform: translateX(250%) scaleX(0.4);
   }
