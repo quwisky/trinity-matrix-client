@@ -27,6 +27,13 @@ import {
 const AUTO_LOAD_THRESHOLD_PX = 150;
 
 /**
+ * Treat the viewport as "at the bottom" within this many px of the end, so an
+ * incoming live message still auto-scrolls when the user is effectively pinned to
+ * the newest message (accounts for sub-pixel rounding and a partially-visible row).
+ */
+const NEAR_BOTTOM_PX = 120;
+
+/**
  * Safety cap on consecutive auto-backfill rounds for one fill sequence, so the
  * effect can never spin even if the "did older history arrive?" check is fooled.
  * Each round pulls ~SCROLLBACK events, so this is far more than any viewport needs.
@@ -92,6 +99,9 @@ export class MessageListComponent {
   private readonly alert = inject(TrnAlertService);
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
   private lastId = '';
+  /** Whether the user is scrolled to (or near) the bottom — gates auto-scroll on
+   * incoming messages. Starts true so the first load and each new room stick. */
+  private atBottom = true;
 
   // Scroll-anchoring state while older history is being prepended.
   private pendingPrepend = false;
@@ -164,6 +174,7 @@ export class MessageListComponent {
         this.lastBackfillOldestId = '';
         this.backfillRounds = 0;
         this.pendingPrepend = false;
+        this.atBottom = true;
         this.rowCache.clear();
       });
     });
@@ -189,7 +200,8 @@ export class MessageListComponent {
       }
 
       const hadPrevious = !!this.lastId;
-      const newest = msgs[msgs.length - 1]?.id ?? '';
+      const latest = msgs[msgs.length - 1];
+      const newest = latest?.id ?? '';
       const newestChanged = !!newest && newest !== this.lastId;
       this.lastId = newest || this.lastId;
       if (newestChanged) {
@@ -197,7 +209,6 @@ export class MessageListComponent {
         this.backfillRounds = 0;
         // Announce a genuinely-new incoming message (not our own, not the first
         // load) so screen-reader users hear it without watching the timeline.
-        const latest = msgs[msgs.length - 1];
         if (
           hadPrevious &&
           latest &&
@@ -208,9 +219,13 @@ export class MessageListComponent {
           this.announcement.set(`${latest.senderName}: ${latest.body}`);
         }
       }
-      // Keep the newest message in view on open, on live messages, and while
-      // backfilling older history.
-      const stickToBottom = newestChanged || this.backfilling;
+      // Auto-scroll to the newest message on open, when the user sends their own
+      // message, or when a live message arrives while they're already at the
+      // bottom — but NOT when an incoming message lands while they've scrolled up
+      // to read history. Also stick while backfilling older history.
+      const stickToBottom =
+        (newestChanged && (this.atBottom || !!latest?.isOwn)) ||
+        this.backfilling;
 
       requestAnimationFrame(() => {
         if (stickToBottom) {
@@ -256,12 +271,14 @@ export class MessageListComponent {
   /** Auto-load older history once the user scrolls near the top. */
   onScroll(): void {
     const el = this.scrollEl()?.nativeElement;
-    if (
-      !el ||
-      this.pendingPrepend ||
-      this.loadingOlder() ||
-      !this.canLoadOlder()
-    ) {
+    if (!el) {
+      return;
+    }
+    // Track whether the user is pinned to (or near) the bottom so the anchoring
+    // effect only auto-scrolls incoming messages when they're already there.
+    this.atBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    if (this.pendingPrepend || this.loadingOlder() || !this.canLoadOlder()) {
       return;
     }
     if (el.scrollTop < AUTO_LOAD_THRESHOLD_PX) {
