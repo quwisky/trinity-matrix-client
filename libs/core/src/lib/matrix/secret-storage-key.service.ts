@@ -21,6 +21,13 @@ export class SecretStorageKeyService {
 
   /** Cache the unlocked key for a key id (after generate or unlock). */
   set(keyId: string, privateKey: Uint8Array<ArrayBuffer>): void {
+    // Zero the outgoing buffer before replacing it — set() can run more than once
+    // during bootstrap/recovery (e.g. cacheSecretStorageKey right after a manual
+    // set), and the old value is the account recovery key. Skip when it's the same
+    // buffer, which would wipe the incoming key too.
+    if (this.privateKey && this.privateKey !== privateKey) {
+      this.privateKey.fill(0);
+    }
     this.keyId = keyId;
     this.privateKey = privateKey;
   }
