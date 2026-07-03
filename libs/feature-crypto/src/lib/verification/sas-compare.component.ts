@@ -4,7 +4,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import { HlmButton } from '@trinity/ui-spartan';
+import { HlmButton } from '@trinity/helm/button';
 import type { SasEmoji } from '@trinity/core';
 
 /**

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { CryptoService } from '@trinity/core';
-import { TrnAlertService } from '@trinity/ui-spartan';
+import { TrnAlertService } from '@trinity/helm/overlay';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { EncryptionSetupPage } from './encryption-setup.page';

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService } from '@trinity/ui-spartan';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { MessageSearchComponent } from './message-search.component';
 
 /**

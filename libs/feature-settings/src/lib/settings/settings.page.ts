@@ -11,14 +11,14 @@ import {
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideArrowLeft } from '@ng-icons/lucide';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmLabel } from '@trinity/helm/label';
 import {
-  HlmButton,
-  HlmInput,
-  HlmLabel,
   HlmRadio,
   HlmRadioGroup,
   HlmRadioIndicator,
-} from '@trinity/ui-spartan';
+} from '@trinity/helm/radio-group';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import {
   ProfileService,

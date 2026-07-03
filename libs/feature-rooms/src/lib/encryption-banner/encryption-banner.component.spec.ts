@@ -7,7 +7,7 @@ import {
   EncryptionDialogService,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
-import { TrnDialogService } from '@trinity/ui-spartan';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionBannerComponent } from './encryption-banner.component';
 

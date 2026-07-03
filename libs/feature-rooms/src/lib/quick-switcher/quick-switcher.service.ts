@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import type { SwitcherSelection } from '@trinity/core';
-import { TrnDialogService } from '@trinity/ui-spartan';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 
 /**

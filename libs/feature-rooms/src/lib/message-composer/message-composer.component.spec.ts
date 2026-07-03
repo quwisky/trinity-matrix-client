@@ -4,7 +4,7 @@ import { throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import { ThemeService } from '@trinity/core';
-import { TrnToastService } from '@trinity/ui-spartan';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { MessageComposerComponent } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 

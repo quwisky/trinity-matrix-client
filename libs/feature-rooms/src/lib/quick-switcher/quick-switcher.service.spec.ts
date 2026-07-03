@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import type { SwitcherSelection } from '@trinity/core';
-import { TrnDialogService } from '@trinity/ui-spartan';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 import { QuickSwitcherService } from './quick-switcher.service';

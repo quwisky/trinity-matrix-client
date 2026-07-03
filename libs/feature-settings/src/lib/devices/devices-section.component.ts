@@ -12,7 +12,9 @@ import {
   lucideShieldCheck,
   lucideTrash2,
 } from '@ng-icons/lucide';
-import { TrnAlertService, HlmBadge, HlmButton } from '@trinity/ui-spartan';
+import { TrnAlertService } from '@trinity/helm/overlay';
+import { HlmBadge } from '@trinity/helm/badge';
+import { HlmButton } from '@trinity/helm/button';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
 

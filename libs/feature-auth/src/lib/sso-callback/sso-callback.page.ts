@@ -9,7 +9,8 @@ import {
 import { Location } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { HlmButton, HlmSpinner } from '@trinity/ui-spartan';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { AuthService } from '@trinity/core';
 import { SsoStateStore } from '../sso-state.store';
 

@@ -22,12 +22,10 @@ import {
   type UserSearchResult,
 } from '@trinity/core';
 import { AvatarComponent } from '@trinity/ui';
-import {
-  DialogRef,
-  HlmButton,
-  HlmInput,
-  HlmSpinner,
-} from '@trinity/ui-spartan';
+import { DialogRef } from '@trinity/helm/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmSpinner } from '@trinity/helm/spinner';
 
 /** Don't hit the directory until the term is at least this long. */
 const MIN_SEARCH_LENGTH = 2;

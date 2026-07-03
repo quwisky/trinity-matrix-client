@@ -1,5 +1,5 @@
 /*
- * spartan.ng design tokens + Tailwind v4 for @trinity/ui-spartan.
+ * spartan.ng design tokens + Tailwind v4 for the helm libs (@trinity/helm/*).
  *
  * Loaded as its own entry in the app's `styles` (see project.json). Now that Ionic
  * is gone, Tailwind's `preflight` is the app's base reset (box-sizing, margin/padding

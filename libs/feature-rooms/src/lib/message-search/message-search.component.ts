@@ -20,7 +20,9 @@ import {
   type MessageHit,
 } from '@trinity/core';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
-import { HlmButton, HlmInput, HlmSpinner } from '@trinity/ui-spartan';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmSpinner } from '@trinity/helm/spinner';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
 interface HighlightPart {

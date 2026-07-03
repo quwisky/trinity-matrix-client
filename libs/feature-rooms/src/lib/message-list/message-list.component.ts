@@ -10,7 +10,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { TrnAlertService } from '@trinity/ui-spartan';
+import { TrnAlertService } from '@trinity/helm/overlay';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import {
   MessageRowComponent,

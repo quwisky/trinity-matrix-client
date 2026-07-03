@@ -2,12 +2,9 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { describe, expect, it } from 'vitest';
-// Imported straight from the owning helm libs (not the `@trinity/ui-spartan`
-// barrel that re-exports them) — this file lives inside ui-spartan itself, and
-// @nx/enforce-module-boundaries treats importing a project's own path alias as a
-// self-import to flag/autofix, which crashes on this workspace's plugin version.
-// These are the same symbols ui-spartan's index.ts re-exports, so coverage is
-// identical from the app's point of view.
+// Imported straight from the owning helm libs (libs/spartan/*). These focused
+// smoke tests live in the overlay lib because it's the one spartan lib with a
+// working Vitest target; the helm component libs themselves are lint/build-only.
 import { badgeVariants } from '@trinity/helm/badge';
 import { buttonVariants, HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';

@@ -14,11 +14,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucidePlus, lucideSend, lucideSmile } from '@ng-icons/lucide';
-import {
-  HlmProgress,
-  HlmProgressIndicator,
-  TrnToastService,
-} from '@trinity/ui-spartan';
+import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
 import {
   EmojiService,

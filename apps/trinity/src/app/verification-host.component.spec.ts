@@ -5,7 +5,7 @@ import {
   VerificationService,
   type VerificationView,
 } from '@trinity/core';
-import { TrnDialogService } from '@trinity/ui-spartan';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { VerificationHostComponent } from './verification-host.component';

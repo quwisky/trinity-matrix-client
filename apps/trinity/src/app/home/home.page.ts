@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
-import { HlmButton } from '@trinity/ui-spartan';
+import { HlmButton } from '@trinity/helm/button';
 import { CryptoSpikeService, CryptoSpikeResult } from '@trinity/core';
 
 @Component({

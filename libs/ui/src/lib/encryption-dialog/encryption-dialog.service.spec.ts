@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { TrnDialogService } from '@trinity/ui-spartan';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionDialogService } from './encryption-dialog.service';
 import {

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { TrnDialogService } from '@trinity/ui-spartan';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
 import { MessageSearchService } from './message-search.service';

@@ -7,7 +7,7 @@ import {
 import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideLock } from '@ng-icons/lucide';
-import { HlmButton } from '@trinity/ui-spartan';
+import { HlmButton } from '@trinity/helm/button';
 import { CryptoService } from '@trinity/core';
 import { EncryptionDialogService } from '@trinity/ui';
 

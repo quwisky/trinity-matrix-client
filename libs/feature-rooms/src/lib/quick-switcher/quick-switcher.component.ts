@@ -24,12 +24,10 @@ import {
   type SwitcherSelection,
 } from '@trinity/core';
 import { AvatarComponent } from '@trinity/ui';
-import {
-  DialogRef,
-  HlmButton,
-  HlmInput,
-  HlmSpinner,
-} from '@trinity/ui-spartan';
+import { DialogRef } from '@trinity/helm/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import {
   debounceTime,
   distinctUntilChanged,

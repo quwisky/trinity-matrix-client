@@ -21,7 +21,7 @@ import {
   TrnAlertService,
   TrnDialogService,
   TrnToastService,
-} from '@trinity/ui-spartan';
+} from '@trinity/helm/overlay';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';

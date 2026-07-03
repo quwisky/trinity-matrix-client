@@ -22,13 +22,13 @@ import {
   lucideSettings,
   lucideUserPlus,
 } from '@ng-icons/lucide';
+import { HlmButton } from '@trinity/helm/button';
 import {
-  HlmButton,
   TrnActionSheetService,
   TrnAlertService,
   TrnDialogService,
   TrnToastService,
-} from '@trinity/ui-spartan';
+} from '@trinity/helm/overlay';
 import {
   AuthService,
   CryptoService,

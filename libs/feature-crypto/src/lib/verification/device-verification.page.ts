@@ -13,7 +13,8 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { Observable } from 'rxjs';
 import { VerificationService } from '@trinity/core';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
-import { HlmButton, HlmSpinner } from '@trinity/ui-spartan';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**

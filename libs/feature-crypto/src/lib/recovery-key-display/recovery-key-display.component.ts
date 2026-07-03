@@ -9,7 +9,7 @@ import { Capacitor } from '@capacitor/core';
 import { DOCUMENT } from '@angular/common';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideCheck, lucideCopy, lucideDownload } from '@ng-icons/lucide';
-import { HlmButton } from '@trinity/ui-spartan';
+import { HlmButton } from '@trinity/helm/button';
 
 /** How long the "Copied" affordance stays visible after a successful copy. */
 const COPIED_FEEDBACK_MS = 2000;

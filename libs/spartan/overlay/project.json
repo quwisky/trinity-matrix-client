@@ -1,8 +1,8 @@
 {
-  "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "name": "ui-spartan",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "overlay",
   "projectType": "library",
-  "sourceRoot": "libs/ui-spartan/src",
+  "sourceRoot": "libs/spartan/overlay/src",
   "prefix": "trn",
   "tags": ["type:ui", "scope:trinity"],
   "targets": {
@@ -10,7 +10,7 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "vitest run",
-        "cwd": "libs/ui-spartan"
+        "cwd": "libs/spartan/overlay"
       },
       "configurations": {
         "watch": {

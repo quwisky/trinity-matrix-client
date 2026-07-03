@@ -10,12 +10,10 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
-import {
-  TrnAlertService,
-  HlmButton,
-  HlmCheckbox,
-  HlmSpinner,
-} from '@trinity/ui-spartan';
+import { TrnAlertService } from '@trinity/helm/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { CryptoService, type PasswordPrompt } from '@trinity/core';
 import { runWithBusy } from '@trinity/ui';
 import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';

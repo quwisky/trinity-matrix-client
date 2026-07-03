@@ -17,11 +17,8 @@ import { finalize, type Observable } from 'rxjs';
 import { DialogRef } from '@angular/cdk/dialog';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideX } from '@ng-icons/lucide';
-import {
-  TrnAlertService,
-  HlmButton,
-  TrnToastService,
-} from '@trinity/ui-spartan';
+import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
+import { HlmButton } from '@trinity/helm/button';
 import {
   ThreadsService,
   isEditableMessage,

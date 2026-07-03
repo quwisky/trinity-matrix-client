@@ -6,7 +6,7 @@ import {
   EncryptionDialogService,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
-import { TrnAlertService, TrnDialogService } from '@trinity/ui-spartan';
+import { TrnAlertService, TrnDialogService } from '@trinity/helm/overlay';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
