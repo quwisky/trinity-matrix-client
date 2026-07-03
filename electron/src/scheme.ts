@@ -87,8 +87,15 @@ export function isAppUrl(url: string): boolean {
  */
 export function registerAppProtocol(): void {
   protocol.handle(APP_SCHEME, async (request) => {
-    const { pathname } = new URL(request.url);
-    let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
+    let rel: string;
+    try {
+      const { pathname } = new URL(request.url);
+      rel = decodeURIComponent(pathname).replace(/^\/+/, '');
+    } catch {
+      // Malformed percent-encoding in the path (e.g. `%` or `%zz`) makes
+      // decodeURIComponent throw — reject rather than crash the handler.
+      return new Response('Bad Request', { status: 400 });
+    }
     if (rel === '') {
       rel = 'index.html';
     }
