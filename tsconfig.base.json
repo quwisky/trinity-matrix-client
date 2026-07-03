@@ -43,7 +43,8 @@
       "@trinity/helm/dropdown-menu": [
         "./libs/spartan/dropdown-menu/src/index.ts"
       ],
-      "@trinity/helm/avatar": ["./libs/spartan/avatar/src/index.ts"]
+      "@trinity/helm/avatar": ["./libs/spartan/avatar/src/index.ts"],
+      "@trinity/helm/textarea": ["./libs/spartan/textarea/src/index.ts"]
     }
   },
   "angularCompilerOptions": {
