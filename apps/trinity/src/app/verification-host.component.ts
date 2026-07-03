@@ -25,6 +25,9 @@ export class VerificationHostComponent {
   private readonly verification = inject(VerificationService);
   private readonly dialog = inject(TrnDialogService);
   private ref: DialogRef<void, unknown> | null = null;
+  /** Synchronous in-flight guard: `ref` is only set after the lazy import, so
+   * without this a second effect run during the import opens a second modal. */
+  private presenting = false;
 
   constructor() {
     // Connect once the client is live; `connect()` is idempotent and instance-keyed
@@ -48,24 +51,30 @@ export class VerificationHostComponent {
   }
 
   private async present(): Promise<void> {
-    if (this.ref) {
+    if (this.ref || this.presenting) {
       return;
     }
-    // Lazy-load the verification UI so feature-crypto stays out of the main
-    // bundle until an incoming request actually needs it.
-    const { DeviceVerificationPage } = await import('@trinity/feature-crypto');
-    // The request may have been cleared while the chunk was loading.
-    if (!this.verification.active()?.incoming) {
-      return;
+    this.presenting = true;
+    try {
+      // Lazy-load the verification UI so feature-crypto stays out of the main
+      // bundle until an incoming request actually needs it.
+      const { DeviceVerificationPage } =
+        await import('@trinity/feature-crypto');
+      // The request may have been cleared while the chunk was loading.
+      if (!this.verification.active()?.incoming) {
+        return;
+      }
+      // disableClose: the page owns teardown so a backdrop/escape tap can't leave
+      // an in-flight verification dangling.
+      const ref = this.dialog.open<void, unknown>(DeviceVerificationPage, {
+        inputs: { asModal: true },
+        disableClose: true,
+      });
+      this.ref = ref;
+      ref.closed.subscribe(() => (this.ref = null));
+    } finally {
+      this.presenting = false;
     }
-    // disableClose: the page owns teardown so a backdrop/escape tap can't leave
-    // an in-flight verification dangling.
-    const ref = this.dialog.open<void, unknown>(DeviceVerificationPage, {
-      inputs: { asModal: true },
-      disableClose: true,
-    });
-    this.ref = ref;
-    ref.closed.subscribe(() => (this.ref = null));
   }
 
   private dismissModal(): void {
