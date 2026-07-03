@@ -196,6 +196,17 @@ describe('ChannelSidebarComponent', () => {
     expect(loggedOut).toBe(true);
   });
 
+  it('emits openSettings from the user-panel settings button', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.detectChanges();
+
+    let opened = false;
+    fixture.componentInstance.openSettings.subscribe(() => (opened = true));
+    fixture.nativeElement.querySelector('.userbar__settings').click();
+
+    expect(opened).toBe(true);
+  });
+
   it('lists not-yet-joined channels and emits joinRoom with the child', () => {
     const fixture = TestBed.createComponent(ChannelSidebarComponent);
     fixture.componentRef.setInput('spaceActive', true);

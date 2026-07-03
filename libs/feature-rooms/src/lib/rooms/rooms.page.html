@@ -44,6 +44,7 @@
       (openChildSpace)="onSelectSpace($event)"
       (acceptInvite)="onAcceptInvite($event)"
       (declineInvite)="onDeclineInvite($event)"
+      (openSettings)="goToSettings()"
       (logout)="logout()"
     />
   </aside>
@@ -133,17 +134,6 @@
           <ng-icon class="text-xl" name="lucideMessagesSquare" />
         </button>
       }
-      <button
-        hlmBtn
-        variant="ghost"
-        size="icon"
-        (click)="goToSettings()"
-        hlmTooltip="Settings"
-        aria-label="Settings"
-        data-testid="open-settings"
-      >
-        <ng-icon class="text-xl" name="lucideSettings" />
-      </button>
     </header>
 
     <div class="chat-body">

@@ -19,7 +19,6 @@ import {
   lucideMenu,
   lucideMessagesSquare,
   lucideSearch,
-  lucideSettings,
   lucideUserPlus,
 } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
@@ -86,7 +85,6 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
       lucideMenu,
       lucideMessagesSquare,
       lucideSearch,
-      lucideSettings,
       lucideUserPlus,
     }),
   ],

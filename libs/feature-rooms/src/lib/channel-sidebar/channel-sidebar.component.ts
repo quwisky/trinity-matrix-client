@@ -10,6 +10,7 @@ import {
   lucideCircleMinus,
   lucideLogOut,
   lucidePlus,
+  lucideSettings,
   lucideUserPlus,
   lucideX,
 } from '@ng-icons/lucide';
@@ -27,6 +28,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
       lucideCircleMinus,
       lucideLogOut,
       lucidePlus,
+      lucideSettings,
       lucideUserPlus,
       lucideX,
     }),
@@ -244,6 +246,15 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
           <span class="userbar__handle">{{ userId() }}</span>
         </div>
         <button
+          class="userbar__settings"
+          (click)="openSettings.emit()"
+          aria-label="Settings"
+          title="Settings"
+          data-testid="open-settings"
+        >
+          <ng-icon name="lucideSettings" />
+        </button>
+        <button
           class="userbar__logout"
           (click)="logout.emit()"
           aria-label="Log out"
@@ -294,5 +305,7 @@ export class ChannelSidebarComponent {
   /** Accept / decline a pending invite by room id. */
   readonly acceptInvite = output<string>();
   readonly declineInvite = output<string>();
+  /** User-panel gear — open the settings page. */
+  readonly openSettings = output<void>();
   readonly logout = output<void>();
 }

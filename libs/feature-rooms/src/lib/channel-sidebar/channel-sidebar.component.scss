@@ -313,6 +313,7 @@
   color: var(--trinity-text-muted);
 }
 
+.userbar__settings,
 .userbar__logout {
   @include interactive-row;
 

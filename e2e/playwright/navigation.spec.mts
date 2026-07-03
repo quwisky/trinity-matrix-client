@@ -43,14 +43,15 @@ test.describe('Route transitions', () => {
     'requires the disposable Synapse homeserver (Docker)',
   );
 
-  test('navigates from rooms to settings via the toolbar button', async ({
+  test('navigates from rooms to settings via the settings button', async ({
     page,
   }) => {
     await login(page, session);
 
-    // rooms → settings via the toolbar button. This is what the removed-behavior
-    // test below used to drive; kept as a real (still-true) regression check that
-    // the plain router-outlet completes the transition — no dead router.
+    // rooms → settings via the user-panel settings button (in the sidebar user
+    // bar). This is what the removed-behavior test below used to drive; kept as a
+    // real (still-true) regression check that the plain router-outlet completes
+    // the transition — no dead router.
     await page.getByTestId('open-settings').click();
     await page.waitForURL('**/settings', { timeout: 20_000 });
     await expect(page.locator('trn-settings')).toBeVisible({
@@ -60,7 +61,7 @@ test.describe('Route transitions', () => {
 
   // NavigationFocusService moves focus into the entering page after each route
   // change (replacing Ionic's focus manager). After rooms → settings, focus should
-  // land inside the settings page (its heading), not stay on the toolbar button
+  // land inside the settings page (its heading), not stay on the settings button
   // that triggered the navigation.
   test('relocates focus into the entering page', async ({ page }) => {
     await login(page, session);
