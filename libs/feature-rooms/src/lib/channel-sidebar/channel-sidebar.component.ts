@@ -4,6 +4,13 @@ import {
   input,
   output,
 } from '@angular/core';
+import {
+  HlmDropdownMenu,
+  HlmDropdownMenuItem,
+  HlmDropdownMenuLabel,
+  HlmDropdownMenuSeparator,
+  HlmDropdownMenuTrigger,
+} from '@trinity/helm/dropdown-menu';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideCheck,
@@ -21,7 +28,15 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
 @Component({
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, NgIcon],
+  imports: [
+    AvatarComponent,
+    NgIcon,
+    HlmDropdownMenuTrigger,
+    HlmDropdownMenu,
+    HlmDropdownMenuItem,
+    HlmDropdownMenuLabel,
+    HlmDropdownMenuSeparator,
+  ],
   viewProviders: [
     provideIcons({
       lucideCheck,
@@ -235,16 +250,25 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
       </div>
 
       <footer class="userbar">
-        <trn-avatar
-          [mxc]="userAvatarMxc()"
-          [initial]="userInitial()"
-          [name]="userName()"
-          [size]="32"
-        />
-        <div class="userbar__id">
-          <span class="userbar__name">{{ userName() }}</span>
-          <span class="userbar__handle">{{ userId() }}</span>
-        </div>
+        <button
+          class="userbar__trigger"
+          [hlmDropdownMenuTrigger]="accountMenu"
+          side="top"
+          align="start"
+          aria-label="Account menu"
+          data-testid="user-menu-trigger"
+        >
+          <trn-avatar
+            [mxc]="userAvatarMxc()"
+            [initial]="userInitial()"
+            [name]="userName()"
+            [size]="32"
+          />
+          <div class="userbar__id">
+            <span class="userbar__name">{{ userName() }}</span>
+            <span class="userbar__handle">{{ userId() }}</span>
+          </div>
+        </button>
         <button
           class="userbar__settings"
           (click)="openSettings.emit()"
@@ -254,15 +278,23 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
         >
           <ng-icon name="lucideSettings" />
         </button>
-        <button
-          class="userbar__logout"
-          (click)="logout.emit()"
-          aria-label="Log out"
-          title="Log out"
-        >
-          ⏻
-        </button>
       </footer>
+
+      <ng-template #accountMenu>
+        <div hlmDropdownMenu>
+          <div hlmDropdownMenuLabel class="truncate">{{ userName() }}</div>
+          <div hlmDropdownMenuSeparator></div>
+          <button
+            hlmDropdownMenuItem
+            variant="destructive"
+            (triggered)="logout.emit()"
+            data-testid="logout"
+          >
+            <ng-icon name="lucideLogOut" />
+            Log out
+          </button>
+        </div>
+      </ng-template>
     </div>
   `,
   styleUrl: './channel-sidebar.component.scss',

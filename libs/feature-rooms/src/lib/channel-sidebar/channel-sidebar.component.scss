@@ -291,6 +291,18 @@
   background: var(--trinity-sidebar-header);
 }
 
+.userbar__trigger {
+  @include interactive-row;
+
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  text-align: left;
+}
+
 .userbar__id {
   display: flex;
   flex-direction: column;
@@ -313,8 +325,7 @@
   color: var(--trinity-text-muted);
 }
 
-.userbar__settings,
-.userbar__logout {
+.userbar__settings {
   @include interactive-row;
 
   font-size: 18px;

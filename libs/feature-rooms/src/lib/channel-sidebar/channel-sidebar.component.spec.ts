@@ -185,15 +185,26 @@ describe('ChannelSidebarComponent', () => {
     expect(fixture.nativeElement.querySelector('.invite')).toBeNull();
   });
 
-  it('emits logout when the logout button is clicked', () => {
+  it('emits logout from the account menu opened via the user bar', () => {
     const fixture = TestBed.createComponent(ChannelSidebarComponent);
     fixture.detectChanges();
 
     let loggedOut = false;
     fixture.componentInstance.logout.subscribe(() => (loggedOut = true));
-    fixture.nativeElement.querySelector('.userbar__logout').click();
+
+    // Open the account menu from the user-bar trigger, then trigger Log out
+    // (the item lives in a CDK menu rendered into the overlay container).
+    fixture.nativeElement.querySelector('.userbar__trigger').click();
+    fixture.detectChanges();
+
+    const logoutItem = document.querySelector<HTMLElement>(
+      '[data-testid="logout"]',
+    );
+    expect(logoutItem).toBeTruthy();
+    logoutItem?.click();
 
     expect(loggedOut).toBe(true);
+    fixture.destroy();
   });
 
   it('emits openSettings from the user-panel settings button', () => {
