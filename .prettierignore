@@ -21,3 +21,8 @@ pnpm-lock.yaml
 .claude
 CLAUDE.md
 skills-lock.json
+
+# Canonical @spartan-ng/cli-generated helm directives — leave them in the
+# generator's own class order so a re-sync doesn't fight prettier-plugin-tailwindcss.
+# (Only the generated hlm-*.ts; the hand-authored trn-* overlay adapters stay formatted.)
+libs/spartan/**/hlm-*.ts

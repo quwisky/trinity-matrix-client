@@ -13,7 +13,7 @@ export class HlmProgress {
   constructor() {
     classes(
       () =>
-        'relative inline-flex h-1 w-full overflow-hidden rounded-full bg-muted',
+        'bg-muted h-1 rounded-full relative inline-flex w-full overflow-hidden',
     );
   }
 }
