@@ -42,7 +42,8 @@
       "@trinity/helm/tooltip": ["./libs/spartan/tooltip/src/index.ts"],
       "@trinity/helm/dropdown-menu": [
         "./libs/spartan/dropdown-menu/src/index.ts"
-      ]
+      ],
+      "@trinity/helm/avatar": ["./libs/spartan/avatar/src/index.ts"]
     }
   },
   "angularCompilerOptions": {
