@@ -154,7 +154,7 @@ const KIND_ICON: Record<SwitcherKind, string> = {
               [name]="kindIcon(result.kind)"
               [attr.aria-label]="kindLabel(result.kind)"
             />
-            <span class="text-muted-foreground text-xs">{{
+            <span class="text-xs text-muted-foreground">{{
               kindLabel(result.kind)
             }}</span>
           </button>
@@ -163,7 +163,7 @@ const KIND_ICON: Record<SwitcherKind, string> = {
             @if (searching()) {
               <hlm-spinner />
             } @else {
-              <span class="text-muted-foreground text-xs">{{
+              <span class="text-xs text-muted-foreground">{{
                 emptyHint()
               }}</span>
             }

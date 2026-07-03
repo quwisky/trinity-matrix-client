@@ -111,7 +111,7 @@ const MIN_SEARCH_LENGTH = 2;
         } @empty {
           @if (!searching()) {
             <div class="picker-empty">
-              <span class="text-muted-foreground text-xs">{{
+              <span class="text-xs text-muted-foreground">{{
                 emptyHint()
               }}</span>
             </div>

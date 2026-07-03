@@ -166,7 +166,7 @@ interface HighlightPart {
             </button>
           } @empty {
             <div class="ms-empty" aria-live="polite">
-              <span class="text-muted-foreground text-xs">{{
+              <span class="text-xs text-muted-foreground">{{
                 emptyHint()
               }}</span>
             </div>

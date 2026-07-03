@@ -39,7 +39,7 @@ export type AlertDialogResult = boolean | string | null;
     <div
       class="w-[min(90vw,26rem)] rounded-lg border border-solid border-border bg-card p-6 text-card-foreground shadow-lg"
     >
-      <h2 class="text-lg font-semibold leading-none tracking-tight">
+      <h2 class="text-lg leading-none font-semibold tracking-tight">
         {{ data.header }}
       </h2>
       @if (data.message) {
