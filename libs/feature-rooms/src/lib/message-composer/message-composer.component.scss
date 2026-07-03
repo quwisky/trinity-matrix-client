@@ -121,7 +121,12 @@
 .composer__attach {
   position: absolute;
   right: 24px;
-  bottom: 24px;
+
+  // Vertically centre the 28px button on the textarea's single-row resting
+  // height (measured: bottom:24 sat 6.5px low; 30px centres it). Track the
+  // safe-area inset so it stays centred when the composer's bottom padding
+  // grows on notched devices (matches `.composer`'s padding-bottom).
+  bottom: calc(30px + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -144,9 +149,11 @@
   }
 }
 
-// Attach sits just left of the emoji button.
+// Attach sits at the inline-start, before the textarea (mirrors the emoji
+// button's `right: 24px` inset on the trailing edge).
 .composer__attach {
-  right: 52px;
+  right: auto;
+  left: 24px;
 }
 
 // Explicit send affordance for touch devices (Enter-to-send is unreliable on
@@ -159,7 +166,7 @@
   .composer__send {
     position: absolute;
     right: 80px;
-    bottom: 24px;
+    bottom: calc(30px + env(safe-area-inset-bottom));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -189,7 +196,10 @@
   box-sizing: border-box;
   resize: none;
   max-height: 200px;
-  padding: 11px 44px 11px 14px;
+
+  // Symmetric 44px insets clear the leading attach button and the trailing
+  // emoji button so text never slides under either.
+  padding: 11px 44px;
   border: none;
   border-radius: 8px;
   background: var(--trinity-sidebar);

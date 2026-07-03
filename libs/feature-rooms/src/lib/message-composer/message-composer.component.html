@@ -74,6 +74,25 @@
       }
     </ul>
   }
+  <input
+    #fileInput
+    type="file"
+    class="composer__file-input"
+    data-testid="composer-file-input"
+    hidden
+    (change)="onFilePicked($event)"
+  />
+  <button
+    type="button"
+    class="composer__attach"
+    title="Attach"
+    aria-label="Attach a file"
+    data-testid="composer-attach"
+    [disabled]="uploadProgress() !== null"
+    (click)="onAttach()"
+  >
+    <ng-icon name="lucidePlus" aria-hidden="true" />
+  </button>
   <textarea
     #ta
     class="composer__input"
@@ -96,25 +115,6 @@
     (blur)="onBlur()"
     (paste)="onPaste($event)"
   ></textarea>
-  <input
-    #fileInput
-    type="file"
-    class="composer__file-input"
-    data-testid="composer-file-input"
-    hidden
-    (change)="onFilePicked($event)"
-  />
-  <button
-    type="button"
-    class="composer__attach"
-    title="Attach"
-    aria-label="Attach a file"
-    data-testid="composer-attach"
-    [disabled]="uploadProgress() !== null"
-    (click)="onAttach()"
-  >
-    <ng-icon name="lucidePlus" aria-hidden="true" />
-  </button>
   <button
     type="button"
     class="composer__emoji"
