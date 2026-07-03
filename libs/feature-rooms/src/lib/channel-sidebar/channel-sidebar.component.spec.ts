@@ -218,6 +218,19 @@ describe('ChannelSidebarComponent', () => {
     expect(opened).toBe(true);
   });
 
+  it('emits openSwitcher from the header search button', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.detectChanges();
+
+    let opened = false;
+    fixture.componentInstance.openSwitcher.subscribe(() => (opened = true));
+    fixture.nativeElement
+      .querySelector('[data-testid="open-switcher"]')
+      .click();
+
+    expect(opened).toBe(true);
+  });
+
   it('lists not-yet-joined channels and emits joinRoom with the child', () => {
     const fixture = TestBed.createComponent(ChannelSidebarComponent);
     fixture.componentRef.setInput('spaceActive', true);

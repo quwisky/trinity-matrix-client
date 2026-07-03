@@ -15,6 +15,7 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideCheck,
   lucideCircleMinus,
+  lucideCommand,
   lucideLogOut,
   lucidePlus,
   lucideSettings,
@@ -41,6 +42,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
     provideIcons({
       lucideCheck,
       lucideCircleMinus,
+      lucideCommand,
       lucideLogOut,
       lucidePlus,
       lucideSettings,
@@ -53,6 +55,15 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
       <header class="sidebar__header">
         <span class="sidebar__title">{{ spaceName() }}</span>
         <div class="sidebar__actions">
+          <button
+            class="sidebar__action"
+            (click)="openSwitcher.emit()"
+            aria-label="Search (Ctrl/Cmd+K)"
+            title="Search (Ctrl/Cmd+K)"
+            data-testid="open-switcher"
+          >
+            <ng-icon name="lucideCommand" aria-hidden="true" />
+          </button>
           @if (spaceActive()) {
             <button
               class="sidebar__action"
@@ -337,6 +348,8 @@ export class ChannelSidebarComponent {
   /** Accept / decline a pending invite by room id. */
   readonly acceptInvite = output<string>();
   readonly declineInvite = output<string>();
+  /** Header search icon — open the global quick switcher (Ctrl/Cmd+K). */
+  readonly openSwitcher = output<void>();
   /** User-panel gear — open the settings page. */
   readonly openSettings = output<void>();
   readonly logout = output<void>();

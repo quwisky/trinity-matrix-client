@@ -35,6 +35,7 @@
       [userInitial]="userInitial()"
       [userAvatarMxc]="userAvatarMxc()"
       (selectRoom)="onSelectRoom($event)"
+      (openSwitcher)="openSwitcher()"
       (newChat)="onNewChat()"
       (createRoom)="onCreateChannel()"
       (inviteToSpace)="onInviteToSpace()"
@@ -88,17 +89,6 @@
         }
       </h1>
 
-      <button
-        hlmBtn
-        variant="ghost"
-        size="icon"
-        (click)="openSwitcher()"
-        hlmTooltip="Search (Ctrl/Cmd+K)"
-        aria-label="Search (Ctrl/Cmd+K)"
-        data-testid="open-switcher"
-      >
-        <ng-icon class="text-xl" name="lucideSearch" />
-      </button>
       @if (activeRoom()) {
         <button
           hlmBtn
