@@ -21,7 +21,7 @@ import { type MessageRow } from '../message-row/message-row.component';
 /**
  * Shared domain logic for the room timeline, independent of scroll strategy: the
  * inputs/outputs, the edit/reply state + action handlers, and the Discord-style row
- * grouping. {@link MessageListComponent} (plain scroll) and
+ * grouping. {@link SimpleMessageListComponent} (plain scroll) and
  * {@link VirtualMessageListComponent} (windowed) extend this and add only their own
  * scroll container, effects and template — the feature flag selects which one the
  * room renders. Kept an abstract `@Directive()` (no selector) so Angular wires the

@@ -49,7 +49,7 @@ const SMALL_LIST_ROWS = 80;
 /**
  * Windowed (virtualized) variant of the room timeline: renders only the rows in (and
  * near) the viewport plus top/bottom spacer divs, bounding the DOM in long rooms.
- * Selected in place of {@link MessageListComponent} when the experimental
+ * Selected in place of {@link SimpleMessageListComponent} when the experimental
  * virtualized-timeline flag is on; shared logic lives in {@link MessageListBase}.
  *
  * Trade-off vs the plain list: native in-page find (Ctrl-F), linear screen-reader
@@ -73,7 +73,7 @@ export class VirtualMessageListComponent extends MessageListBase {
   private prevScrollHeight = 0;
   private prevScrollTop = 0;
 
-  // Backfill state — see MessageListComponent for the rationale (tracked by oldest id).
+  // Backfill state — see SimpleMessageListComponent for the rationale (tracked by oldest id).
   private backfilling = false;
   private lastBackfillOldestId = '';
   private backfillRounds = 0;

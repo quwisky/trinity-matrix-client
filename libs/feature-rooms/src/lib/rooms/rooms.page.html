@@ -165,7 +165,7 @@
             (reply)="onReply($event)"
           />
         } @else {
-          <trn-message-list
+          <trn-simple-message-list
             [messages]="timeline.messages()"
             [threadSummaries]="threads.summaries()"
             [loadingOlder]="timeline.loadingOlder()"

@@ -54,7 +54,7 @@ import { MessageSearchService } from '../message-search/message-search.service';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
-import { MessageListComponent } from '../message-list/message-list/message-list.component';
+import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
@@ -79,7 +79,7 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
     ServerRailComponent,
     ChannelSidebarComponent,
     MemberListComponent,
-    MessageListComponent,
+    SimpleMessageListComponent,
     VirtualMessageListComponent,
     EncryptionBannerComponent,
     ConnectivityBannerComponent,

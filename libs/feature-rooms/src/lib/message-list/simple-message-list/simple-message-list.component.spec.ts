@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
 import { TrnAlertService } from '@trinity/helm/overlay';
-import { MessageListComponent } from './message-list.component';
+import { SimpleMessageListComponent } from './simple-message-list.component';
 
 function msg(id: string, senderId: string, senderName: string, ts: number) {
   return {
@@ -23,13 +23,13 @@ function msg(id: string, senderId: string, senderName: string, ts: number) {
   };
 }
 
-describe('MessageListComponent', () => {
+describe('SimpleMessageListComponent', () => {
   beforeEach(() =>
-    TestBed.configureTestingModule({ imports: [MessageListComponent] }),
+    TestBed.configureTestingModule({ imports: [SimpleMessageListComponent] }),
   );
 
   it('renders a row per message and groups consecutive senders', () => {
-    const fixture = TestBed.createComponent(MessageListComponent);
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
     fixture.componentRef.setInput('messages', [
       msg('$1', '@a:hs', 'Alice', 1000),
       msg('$2', '@a:hs', 'Alice', 2000), // same sender → continuation
@@ -45,7 +45,7 @@ describe('MessageListComponent', () => {
   });
 
   it('resets the edit/reply target and suppresses announcements on room change', () => {
-    const fixture = TestBed.createComponent(MessageListComponent);
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
     fixture.componentRef.setInput('roomId', '!a:hs');
     fixture.componentRef.setInput('messages', [
       msg('$1', '@a:hs', 'Alice', 1000),
@@ -71,7 +71,7 @@ describe('MessageListComponent', () => {
   });
 
   it('renders formatted markdown via innerHTML', () => {
-    const fixture = TestBed.createComponent(MessageListComponent);
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
     fixture.componentRef.setInput('messages', [
       {
         id: '$1',
@@ -99,7 +99,7 @@ describe('MessageListComponent', () => {
   });
 
   it('renders a reply preview above a reply message', () => {
-    const fixture = TestBed.createComponent(MessageListComponent);
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
     fixture.componentRef.setInput('messages', [
       {
         ...msg('$1', '@a:hs', 'Alice', 1000),
@@ -121,7 +121,7 @@ describe('MessageListComponent', () => {
   });
 
   it('shows the header on a reply even when it continues the same sender', () => {
-    const fixture = TestBed.createComponent(MessageListComponent);
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
     fixture.componentRef.setInput('messages', [
       msg('$1', '@a:hs', 'Alice', 1000),
       {
@@ -152,7 +152,7 @@ describe('MessageListComponent', () => {
   });
 
   it('editLastOwn selects the most recent editable own message', () => {
-    const fixture = TestBed.createComponent(MessageListComponent);
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
     fixture.componentRef.setInput('messages', [
       { ...msg('$1', '@me:hs', 'Me', 1000), isOwn: true },
       { ...msg('$2', '@b:hs', 'Bob', 2000) }, // not own → skip
@@ -178,7 +178,7 @@ describe('MessageListComponent', () => {
       jumped = this;
     });
 
-    const fixture = TestBed.createComponent(MessageListComponent);
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
     fixture.componentRef.setInput('messages', [
       msg('$1', '@a:hs', 'Alice', 1000),
       msg('$2', '@b:hs', 'Bob', 2000),
@@ -193,7 +193,7 @@ describe('MessageListComponent', () => {
   });
 
   it('emits loadOlder when scrolled near the top (and history remains)', () => {
-    const fixture = TestBed.createComponent(MessageListComponent);
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
     fixture.componentRef.setInput('canLoadOlder', true);
     fixture.detectChanges();
 
@@ -208,7 +208,7 @@ describe('MessageListComponent', () => {
   });
 
   it('does not auto-load when there is no more history', () => {
-    const fixture = TestBed.createComponent(MessageListComponent);
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
     fixture.componentRef.setInput('canLoadOlder', false);
     fixture.detectChanges();
 
@@ -222,7 +222,7 @@ describe('MessageListComponent', () => {
   });
 
   it('announces a new incoming message, but not the first load or own messages', () => {
-    const fixture = TestBed.createComponent(MessageListComponent);
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
     fixture.detectChanges(); // resolve the scroll viewchild
     const cmp = fixture.componentInstance;
 
@@ -261,7 +261,7 @@ describe('MessageListComponent', () => {
     afterEach(() => vi.unstubAllGlobals());
 
     it('keeps backfilling while older history arrives, even if the count stays equal, then stops', () => {
-      const fixture = TestBed.createComponent(MessageListComponent);
+      const fixture = TestBed.createComponent(SimpleMessageListComponent);
       fixture.componentRef.setInput('canLoadOlder', true);
       fixture.detectChanges(); // resolve the scroll viewchild
 
@@ -315,7 +315,7 @@ describe('MessageListComponent', () => {
     });
 
     function make() {
-      const fixture = TestBed.createComponent(MessageListComponent);
+      const fixture = TestBed.createComponent(SimpleMessageListComponent);
       fixture.detectChanges();
       return fixture.componentInstance;
     }

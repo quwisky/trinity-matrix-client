@@ -27,13 +27,13 @@ const MAX_BACKFILL_ROUNDS = 20;
  * virtualized-timeline flag is on. Shared logic lives in {@link MessageListBase}.
  */
 @Component({
-  selector: 'trn-message-list',
+  selector: 'trn-simple-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MessageComposerComponent, MessageRowComponent],
-  templateUrl: './message-list.component.html',
-  styleUrl: './message-list.component.scss',
+  templateUrl: './simple-message-list.component.html',
+  styleUrl: './simple-message-list.component.scss',
 })
-export class MessageListComponent extends MessageListBase {
+export class SimpleMessageListComponent extends MessageListBase {
   private lastId = '';
   /** Whether the user is scrolled to (or near) the bottom — gates auto-scroll on
    * incoming messages. Starts true so the first load and each new room stick. */
