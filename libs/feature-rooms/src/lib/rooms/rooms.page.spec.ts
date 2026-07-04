@@ -217,6 +217,7 @@ describe('RoomsPage space filtering', () => {
       hasUnread: unread > 0,
       lastMessage: '',
       activityTs: 0,
+      favourite: false,
     };
   }
 
@@ -487,6 +488,7 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
       hasUnread: unread > 0,
       lastMessage: '',
       activityTs: 0,
+      favourite: false,
     };
   }
 
@@ -1059,6 +1061,7 @@ describe('RoomsPage space hierarchy actions', () => {
                 hasUnread: false,
                 lastMessage: '',
                 activityTs: 0,
+                favourite: false,
               },
             ]),
             revision: signal(0),

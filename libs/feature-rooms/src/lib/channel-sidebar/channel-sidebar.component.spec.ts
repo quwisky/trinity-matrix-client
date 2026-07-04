@@ -17,6 +17,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     hasUnread: false,
     lastMessage: '',
     activityTs: 0,
+    favourite: false,
     ...over,
   };
 }
@@ -343,18 +344,28 @@ describe('ChannelSidebarComponent', () => {
     fixture.componentRef.setInput('rooms', [
       room({ id: '!a:hs', name: 'general' }),
     ]);
-    // No space active → no remove affordance.
+    // No space active → the kebab menu offers no "Remove from space" item.
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.channel__remove')).toBeNull();
+    const kebab = (): HTMLElement =>
+      fixture.nativeElement.querySelector('.channel__menu');
+    kebab().click(); // open
+    fixture.detectChanges();
+    expect(document.querySelector('[data-testid="room-remove"]')).toBeNull();
+    kebab().click(); // close before re-rendering the menu
+    fixture.detectChanges();
 
     fixture.componentRef.setInput('spaceActive', true);
     fixture.detectChanges();
 
     let removed: string | undefined;
     fixture.componentInstance.removeRoom.subscribe((id) => (removed = id));
-    fixture.nativeElement.querySelector('.channel__remove').click();
+    // Open the row's kebab menu (rendered into the overlay) and remove.
+    kebab().click();
+    fixture.detectChanges();
+    document.querySelector<HTMLElement>('[data-testid="room-remove"]')?.click();
 
     expect(removed).toBe('!a:hs');
+    fixture.destroy();
   });
 
   it('shows loading then error states for the space hierarchy', () => {

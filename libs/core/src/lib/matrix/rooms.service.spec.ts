@@ -32,11 +32,14 @@ function fakeRoom(opts: {
   highlight?: number;
   activity?: number;
   encrypted?: boolean;
+  favourite?: boolean;
   events?: ReturnType<typeof timelineEvent>[];
 }) {
   return {
     roomId: opts.roomId,
     name: opts.name,
+    // Mirror matrix-js-sdk's `Room.tags`; `m.favourite` drives the favourite flag.
+    tags: opts.favourite ? { 'm.favourite': {} } : {},
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,

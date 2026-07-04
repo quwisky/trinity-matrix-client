@@ -57,6 +57,8 @@ export interface RoomSummary {
   lastMessage: string;
   /** Last-activity timestamp (ms), used to order the list by recency. */
   activityTs: number;
+  /** Whether the room carries the `m.favourite` tag — favourite to the top of the list. */
+  favourite: boolean;
 }
 
 /** A joined member shown in the member list. */
@@ -173,6 +175,9 @@ export class RoomsService {
     // its count clears. (UnreadNotifications is Room-only, not re-emitted here.)
     client.on(MatrixEventEvent.Decrypted, this.onClientEvent);
     client.on(RoomEvent.Receipt, this.onClientEvent);
+    // Room tags (e.g. `m.favourite`, the favourite flag) can change from another device;
+    // rebuild so a remote favourite/unfavourite re-partitions and re-sorts the list live.
+    client.on(RoomEvent.Tags, this.onClientEvent);
     // Membership-only revision (drives the member list); RoomState.members and
     // MyMembership are the events that change who is in a room (or their profile).
     client.on(RoomStateEvent.Members, this.onMembershipEvent);
@@ -192,6 +197,7 @@ export class RoomsService {
     client.off(RoomEvent.MyMembership, this.onClientEvent);
     client.off(MatrixEventEvent.Decrypted, this.onClientEvent);
     client.off(RoomEvent.Receipt, this.onClientEvent);
+    client.off(RoomEvent.Tags, this.onClientEvent);
     client.off(RoomStateEvent.Members, this.onMembershipEvent);
     client.off(RoomEvent.MyMembership, this.onMembershipEvent);
     this.connectedClient = null;
@@ -253,6 +259,32 @@ export class RoomsService {
       .sort((a, b) => this.memberCollator.compare(a.name, b.name));
     this.memberCache.set(roomId, { sig, list });
     return list;
+  }
+
+  /**
+   * Favourite (or unfavourite) a room by writing/clearing the standard Matrix `m.favourite`
+   * room tag — persisted in account data and synced across devices (interops with
+   * Element). Fire-and-forget: the write is async and its promise resolves OUTSIDE
+   * Angular's zone, so the post-write {@link refresh} is re-entered via `zone.run`
+   * (the `RoomEvent.Tags` listener also rebuilds, but the explicit refresh makes the
+   * local change land immediately). Failures are logged, not thrown.
+   */
+  setFavourite(roomId: string, favourite: boolean): void {
+    if (!this.matrix.isInitialized) {
+      return;
+    }
+    const client = this.matrix.instance;
+    const write = favourite
+      ? client.setRoomTag(roomId, 'm.favourite', {})
+      : client.deleteRoomTag(roomId, 'm.favourite');
+    write
+      .then(() => this.zone.run(() => this.refresh()))
+      .catch((err: unknown) =>
+        console.error(
+          `Failed to ${favourite ? 'favourite' : 'unfavourite'} room ${roomId}`,
+          err,
+        ),
+      );
   }
 
   /**
@@ -424,9 +456,12 @@ export class RoomsService {
         // Spaces are rendered in the server rail, not as channels in the room list.
         .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
         .map((r) => this.toRoom(r))
-        // Most recently active first; fall back to name for quiet rooms.
+        // Favourite rooms first, then most recently active; fall back to name.
         .sort(
-          (a, b) => b.activityTs - a.activityTs || a.name.localeCompare(b.name),
+          (a, b) =>
+            Number(b.favourite) - Number(a.favourite) ||
+            b.activityTs - a.activityTs ||
+            a.name.localeCompare(b.name),
         ),
     );
     // Flatten `m.direct` to the set of DM room ids so the read model can tag DMs.
@@ -464,6 +499,7 @@ export class RoomsService {
       hasUnread: unreadCount > 0,
       lastMessage: lastMessageOf(room),
       activityTs: room.getLastActiveTimestamp(),
+      favourite: room.tags?.['m.favourite'] !== undefined,
     };
   }
 
