@@ -405,6 +405,69 @@ describe('RoomsPage space filtering', () => {
     expect(page.spaceUnread()['!s:hs']).toBe(5); // only a(5) remains
     expect(page.roomsUnread()).toBe(2); // still just c(2) — b was already excluded
   });
+
+  it('a spaceless room disappears from the Rooms view once a space claims it', () => {
+    const page = build();
+    page.onShowRooms();
+    // Before: only '!c:hs' is spaceless non-DM.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
+    expect(page.roomsUnread()).toBe(2);
+
+    const spaces = TestBed.inject(SpacesService)
+      .spaces as unknown as WritableSignal<SpaceSummary[]>;
+    // '!s:hs' now also claims '!c:hs' (e.g. it was just added as a child).
+    spaces.update((list) =>
+      list.map((s) =>
+        s.id === '!s:hs'
+          ? { ...s, childRoomIds: [...s.childRoomIds, '!c:hs'] }
+          : s,
+      ),
+    );
+
+    expect(page.visibleRooms()).toEqual([]); // '!c:hs' is now space-owned
+    expect(page.roomsUnread()).toBe(0); // its unread leaves the Rooms badge too
+  });
+
+  it('a space child reappears in the Rooms view once its space no longer lists it', () => {
+    const page = build();
+    page.onShowRooms();
+    // '!b:hs' is owned by '!s:hs' — hidden from the Rooms view.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
+    expect(page.roomsUnread()).toBe(2);
+
+    const spaces = TestBed.inject(SpacesService)
+      .spaces as unknown as WritableSignal<SpaceSummary[]>;
+    // The space is removed entirely (as leaving it would surface via sync).
+    spaces.set([]);
+
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs', '!b:hs']);
+    expect(page.roomsUnread()).toBe(5); // c(2) + b(3), now both spaceless
+  });
+
+  it('a room owned by two spaces is still excluded once it is dropped from only one', () => {
+    const page = build();
+    const spaces = TestBed.inject(SpacesService)
+      .spaces as unknown as WritableSignal<SpaceSummary[]>;
+    // '!b:hs' is now a child of both '!s:hs' and a second space '!t:hs'.
+    spaces.update((list) => [...list, spaceSummary('!t:hs', ['!b:hs'])]);
+    page.onShowRooms();
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // b still hidden
+
+    // Dropping '!b:hs' from '!s:hs' alone must not surface it — '!t:hs' still owns it.
+    spaces.update((list) =>
+      list.map((s) =>
+        s.id === '!s:hs'
+          ? {
+              ...s,
+              childRoomIds: s.childRoomIds.filter((id) => id !== '!b:hs'),
+            }
+          : s,
+      ),
+    );
+
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // still hidden
+    expect(page.roomsUnread()).toBe(2); // b's unread stays off the Rooms badge
+  });
 });
 
 // A mixed scenario exercising several distinct spaces (each with its own unread
