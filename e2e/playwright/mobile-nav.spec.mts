@@ -189,14 +189,14 @@ test.describe('Mobile navigation drawer', () => {
     await expect(shellSide(page)).toBeInViewport();
 
     // The backdrop (`data-testid="drawer-backdrop"`) covers the *whole* viewport
-    // (`inset-0`) while the drawer is open, but the 312px-wide aside sits above it
+    // (`inset-0`) while the drawer is open, but the 352px-wide aside sits above it
     // (z-40 vs z-30) over the left portion. Click well to the right of the
-    // aside's width (x=350 of the 390px viewport) so the hit-test actually lands
+    // aside's width (x=371 of the 390px viewport) so the hit-test actually lands
     // on the backdrop, not the drawer itself — tapping it (not a room) must close
     // the drawer and leave Home (no active room) untouched.
     await page
       .getByTestId('drawer-backdrop')
-      .click({ position: { x: 350, y: 400 } });
+      .click({ position: { x: 371, y: 400 } });
 
     await expect(shellSide(page)).not.toBeInViewport();
     await expect(page.getByText('Trinity', { exact: true })).toBeVisible();

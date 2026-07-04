@@ -3,12 +3,12 @@
 .sidebar {
   @include column(var(--trinity-sidebar));
 
-  width: 240px;
+  width: 280px;
 }
 
 .sidebar__header {
-  height: 48px;
-  flex: 0 0 48px;
+  height: 56px;
+  flex: 0 0 56px;
   display: flex;
   align-items: center;
   gap: 8px;
