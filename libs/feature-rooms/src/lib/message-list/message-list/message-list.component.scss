@@ -1,4 +1,4 @@
-@use '../styles/mixins' as *;
+@use '../../styles/mixins' as *;
 
 :host {
   flex: 1;
@@ -17,16 +17,6 @@
   flex: 1;
   min-height: 0;
   padding: 16px 16px 8px;
-
-  // Windowing keeps the read position via manual scrollTop math, so disable native
-  // scroll anchoring rather than letting it fight the changing spacer heights.
-  overflow-anchor: none;
-}
-
-// Spacers standing in for the off-screen rows above/below the window. Must not
-// shrink in the flex column.
-.vpad {
-  flex: 0 0 auto;
 }
 
 .load-older {

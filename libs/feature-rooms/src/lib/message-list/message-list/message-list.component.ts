@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, effect } from '@angular/core';
-import { MessageComposerComponent } from '../message-composer/message-composer.component';
-import { MessageRowComponent } from '../message-row/message-row.component';
-import { MessageListBase } from './message-list-base';
+import { MessageComposerComponent } from '../../message-composer/message-composer.component';
+import { MessageRowComponent } from '../../message-row/message-row.component';
+import { MessageListBase } from '../message-list-base';
 
 /** Trigger older-history loading when the scroll top gets within this many px. */
 const AUTO_LOAD_THRESHOLD_PX = 150;
