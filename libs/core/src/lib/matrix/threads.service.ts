@@ -33,13 +33,13 @@ import {
   collectMessageSenders,
   initialOf,
   isDisplayableMessage,
-  stripReplyFallbackText,
   type MessageView,
 } from './message-view';
 import {
   annotationContent,
   editMessageContent,
   mediaCaptionFields,
+  messagePreview,
   myReactionId,
   renderMarkdown,
   replyMessageContent,
@@ -764,7 +764,7 @@ export class ThreadsService {
     let rootPreview: string | null = null;
     let rootSenderName: string | null = null;
     if (root) {
-      rootPreview = previewText(root);
+      rootPreview = messagePreview(root);
       const sender = root.getSender() ?? '';
       rootSenderName = room.getMember(sender)?.name ?? sender;
     }
@@ -777,7 +777,7 @@ export class ThreadsService {
     // falls back to the root when every reply is redacted).
     if (latest && latest.getId() !== thread.id) {
       latestReplyTs = latest.getTs();
-      latestReplyPreview = previewText(latest);
+      latestReplyPreview = messagePreview(latest);
       const sender = latest.getSender() ?? '';
       latestReplySenderName = room.getMember(sender)?.name ?? sender;
     }
@@ -891,17 +891,4 @@ function participantsOf(room: Room, thread: Thread): ThreadParticipant[] {
     }
   }
   return participants;
-}
-
-/** Short, single-line preview of a reply for the thread indicator. */
-function previewText(event: MatrixEvent): string {
-  if (event.isDecryptionFailure()) {
-    return '⚠️ Unable to decrypt';
-  }
-  if (event.isRedacted()) {
-    return '(message deleted)';
-  }
-  const content = event.getContent();
-  const body = stripReplyFallbackText((content['body'] as string) ?? '');
-  return body.replace(/\s+/g, ' ').trim() || '…';
 }

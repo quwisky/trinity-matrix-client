@@ -15,6 +15,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     unreadCount: 0,
     highlightCount: 0,
     hasUnread: false,
+    lastMessage: '',
     activityTs: 0,
     ...over,
   };
@@ -69,7 +70,34 @@ describe('ChannelSidebarComponent', () => {
     expect(roomId).toBe('!a:hs');
   });
 
-  it('marks unread rooms and shows a mention badge / unread dot', () => {
+  it('renders a messenger-style row: avatar, name, and last-message preview', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [
+      room({ name: 'general', lastMessage: 'hey there' }),
+    ]);
+    fixture.detectChanges();
+
+    const channel = fixture.nativeElement.querySelector('.channel');
+    // Discord-style hash prefix is gone; a room avatar takes its place.
+    expect(channel.querySelector('.channel__hash')).toBeNull();
+    expect(channel.querySelector('trn-avatar')).not.toBeNull();
+    expect(channel.querySelector('.channel__name').textContent).toContain(
+      'general',
+    );
+    expect(channel.querySelector('.channel__preview').textContent).toContain(
+      'hey there',
+    );
+  });
+
+  it('omits the preview line when a room has no last message', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [room({ lastMessage: '' })]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.channel__preview')).toBeNull();
+  });
+
+  it('shows a mention count, a muted unread count, and caps at 99+', () => {
     const fixture = TestBed.createComponent(ChannelSidebarComponent);
     fixture.componentRef.setInput('rooms', [
       room({
@@ -83,7 +111,7 @@ describe('ChannelSidebarComponent', () => {
         id: '!u:hs',
         name: 'unread',
         hasUnread: true,
-        unreadCount: 1,
+        unreadCount: 128,
         highlightCount: 0,
       }),
       room({ id: '!r:hs', name: 'read' }),
@@ -91,11 +119,42 @@ describe('ChannelSidebarComponent', () => {
     fixture.detectChanges();
 
     const el = fixture.nativeElement;
-    const badges = el.querySelectorAll('.channel__badge');
-    expect(badges.length).toBe(1); // only the mention room
-    expect(badges[0].textContent.trim()).toBe('2');
-    expect(el.querySelectorAll('.channel__dot').length).toBe(1); // plain unread
+    // The mention room shows the red mention badge with the highlight count.
+    const mention = el.querySelector(
+      '.channel__badge:not(.channel__badge--muted)',
+    );
+    expect(mention.textContent.trim()).toBe('2');
+    // The plain-unread room shows a muted count badge, capped Discord-style.
+    const muted = el.querySelector('.channel__badge--muted');
+    expect(muted.textContent.trim()).toBe('99+');
+    // No bare dots anymore — every unread room carries a count.
+    expect(el.querySelectorAll('.channel__dot').length).toBe(0);
     expect(el.querySelectorAll('.channel.unread').length).toBe(2);
+  });
+
+  it('caps badgeLabel exactly at the 99/100 boundary', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.badgeLabel(99)).toBe('99');
+    expect(fixture.componentInstance.badgeLabel(100)).toBe('99+');
+  });
+
+  it('shows the exact uncapped unread count on a muted badge', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [
+      room({
+        id: '!u:hs',
+        name: 'unread',
+        hasUnread: true,
+        unreadCount: 7,
+        highlightCount: 0,
+      }),
+    ]);
+    fixture.detectChanges();
+
+    const muted = fixture.nativeElement.querySelector('.channel__badge--muted');
+    expect(muted.textContent.trim()).toBe('7');
   });
 
   it('shows only the new-chat affordance on Home (no space actions)', () => {

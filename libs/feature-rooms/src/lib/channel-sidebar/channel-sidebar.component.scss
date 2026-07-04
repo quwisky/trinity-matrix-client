@@ -143,10 +143,9 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 8px;
+  gap: 8px;
+  padding: 5px 8px;
   margin-top: 1px;
-  font-size: 15px;
   text-align: left;
 
   &.active {
@@ -154,31 +153,44 @@
     color: var(--trinity-text-bright);
   }
 
-  // Unread rooms read brighter and bolder (Discord-style).
+  // Unread rooms read brighter and bolder (messenger-style emphasis).
   &.unread {
     color: var(--trinity-text-bright);
-
-    .channel__hash {
-      color: var(--trinity-text-bright);
-    }
 
     .channel__name {
       font-weight: 600;
     }
+
+    .channel__preview {
+      color: var(--trinity-text);
+    }
   }
 }
 
-.channel__hash {
-  color: var(--trinity-text-muted);
-  font-size: 18px;
-  line-height: 1;
+.channel__avatar {
+  flex: 0 0 auto;
+}
+
+.channel__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
 }
 
 .channel__name {
   @include ellipsis;
 
-  flex: 1;
   min-width: 0;
+  font-size: 15px;
+}
+
+.channel__preview {
+  @include ellipsis;
+
+  min-width: 0;
+  font-size: 12px;
+  color: var(--trinity-text-muted);
 }
 
 .channel__badge {
@@ -193,14 +205,12 @@
   font-weight: 700;
   line-height: 16px;
   text-align: center;
-}
 
-.channel__dot {
-  flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--trinity-text-bright);
+  // Ordinary unread (no mention) reads as a neutral count, not the red alert.
+  &--muted {
+    background: var(--trinity-text-muted);
+    color: var(--trinity-bg);
+  }
 }
 
 .channel__remove {

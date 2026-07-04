@@ -30,6 +30,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     unreadCount: 0,
     highlightCount: 0,
     hasUnread: false,
+    lastMessage: '',
     activityTs: 0,
     ...over,
   };

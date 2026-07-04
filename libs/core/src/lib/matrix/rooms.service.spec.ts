@@ -6,6 +6,21 @@ import { RoomsService } from './rooms.service';
 import { MatrixClientService } from './matrix-client.service';
 import { describe, expect, it, vi } from 'vitest';
 
+// A live-timeline event shaped like the bits messagePreview() reads.
+function timelineEvent(over: {
+  type?: string;
+  body?: string;
+  redacted?: boolean;
+  decryptionFailure?: boolean;
+}) {
+  return {
+    getType: () => over.type ?? 'm.room.message',
+    getContent: () => ({ body: over.body ?? '' }),
+    isRedacted: () => over.redacted ?? false,
+    isDecryptionFailure: () => over.decryptionFailure ?? false,
+  };
+}
+
 // Minimal fakes shaped like the bits of matrix-js-sdk that RoomsService reads.
 function fakeRoom(opts: {
   roomId: string;
@@ -17,6 +32,7 @@ function fakeRoom(opts: {
   highlight?: number;
   activity?: number;
   encrypted?: boolean;
+  events?: ReturnType<typeof timelineEvent>[];
 }) {
   return {
     roomId: opts.roomId,
@@ -30,6 +46,7 @@ function fakeRoom(opts: {
     getUnreadNotificationCount: (type?: string) =>
       type === 'highlight' ? (opts.highlight ?? 0) : (opts.unread ?? 0),
     getLastActiveTimestamp: () => opts.activity ?? 0,
+    getLiveTimeline: () => ({ getEvents: () => opts.events ?? [] }),
     currentState: {
       getStateEvents: (type: string, stateKey?: string) => {
         if (type === 'm.space.child' && stateKey === undefined) {
@@ -112,6 +129,27 @@ describe('RoomsService', () => {
   it('derives an uppercase initial without the leading sigil', () => {
     const svc = setup([fakeRoom({ roomId: '!a:hs', name: '#general' })]);
     expect(svc.rooms()[0].initial).toBe('G');
+  });
+
+  it('previews the most recent message and skips non-message events', () => {
+    const svc = setup([
+      fakeRoom({
+        roomId: '!a:hs',
+        name: 'general',
+        events: [
+          timelineEvent({ body: 'older message' }),
+          timelineEvent({ body: 'newest message' }),
+          // A trailing state event must not be picked as the preview.
+          timelineEvent({ type: 'm.room.member', body: 'joined' }),
+        ],
+      }),
+    ]);
+    expect(svc.rooms()[0].lastMessage).toBe('newest message');
+  });
+
+  it('falls back to an empty preview when a room has no messages', () => {
+    const svc = setup([fakeRoom({ roomId: '!a:hs', name: 'quiet' })]);
+    expect(svc.rooms()[0].lastMessage).toBe('');
   });
 
   it('flags rooms with encryption enabled', () => {

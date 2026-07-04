@@ -5,6 +5,7 @@ import {
   MsgType,
   RelationType,
   type MatrixClient,
+  type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
 import { marked } from 'marked';
@@ -168,6 +169,24 @@ export function myReactionId(
     (e) => !e.isRedacted() && e.getSender() === myId,
   );
   return mine?.getId() ?? null;
+}
+
+/**
+ * Short, single-line preview of a message event's text — feeds both the main
+ * timeline's thread indicator and the room list's muted last-message line.
+ * Handles undecryptable and redacted events, strips any rich-reply fallback quote,
+ * collapses whitespace, and returns '…' when nothing renders.
+ */
+export function messagePreview(event: MatrixEvent): string {
+  if (event.isDecryptionFailure()) {
+    return '⚠️ Unable to decrypt';
+  }
+  if (event.isRedacted()) {
+    return '(message deleted)';
+  }
+  const content = event.getContent();
+  const body = stripReplyFallbackText((content['body'] as string) ?? '');
+  return body.replace(/\s+/g, ' ').trim() || '…';
 }
 
 /** Plain-text content of an HTML string (to detect whether markdown added formatting). */
