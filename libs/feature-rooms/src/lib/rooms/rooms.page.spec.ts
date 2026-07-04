@@ -360,6 +360,154 @@ describe('RoomsPage space filtering', () => {
     // space !s:hs children [a, b] → a(5) + b(3) = 8.
     expect(page.spaceUnread()['!s:hs']).toBe(8);
   });
+
+  it('re-derives homeUnread/roomsUnread when a room unreadCount changes underneath', () => {
+    const page = build();
+    expect(page.homeUnread()).toBe(5); // a(5)
+    expect(page.roomsUnread()).toBe(5); // c(2) + b(3)
+
+    const rooms = TestBed.inject(RoomsService)
+      .rooms as unknown as WritableSignal<RoomSummary[]>;
+    rooms.update((list) =>
+      list.map((r) => (r.id === '!c:hs' ? { ...r, unreadCount: 20 } : r)),
+    );
+
+    expect(page.roomsUnread()).toBe(23); // c(20) + b(3)
+    expect(page.homeUnread()).toBe(5); // DM total untouched
+  });
+
+  it('re-derives spaceUnread when a room is added to the tracked room list', () => {
+    const page = build();
+    expect(page.spaceUnread()['!s:hs']).toBe(8); // a(5) + b(3)
+
+    const rooms = TestBed.inject(RoomsService)
+      .rooms as unknown as WritableSignal<RoomSummary[]>;
+    // A new message pushes bravo's unread up, as would a real sync refresh.
+    rooms.update((list) =>
+      list.map((r) => (r.id === '!b:hs' ? { ...r, unreadCount: 30 } : r)),
+    );
+
+    expect(page.spaceUnread()['!s:hs']).toBe(35); // a(5) + b(30)
+  });
+
+  it('re-derives the aggregates when a room is removed from the list', () => {
+    const page = build();
+    expect(page.spaceUnread()['!s:hs']).toBe(8);
+    expect(page.roomsUnread()).toBe(5);
+
+    const rooms = TestBed.inject(RoomsService)
+      .rooms as unknown as WritableSignal<RoomSummary[]>;
+    rooms.update((list) => list.filter((r) => r.id !== '!b:hs'));
+
+    expect(page.spaceUnread()['!s:hs']).toBe(5); // only a(5) remains
+    expect(page.roomsUnread()).toBe(2); // only c(2) remains
+  });
+});
+
+// A mixed scenario exercising several distinct spaces (each with its own unread
+// total) alongside a DM/non-DM split in the same room set, all in one pass.
+describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
+  function roomSummary(id: string, name: string, unread = 0): RoomSummary {
+    return {
+      id,
+      name,
+      initial: name[0].toUpperCase(),
+      avatarMxc: null,
+      topic: '',
+      memberCount: 0,
+      encrypted: false,
+      unreadCount: unread,
+      highlightCount: 0,
+      hasUnread: unread > 0,
+      activityTs: 0,
+    };
+  }
+
+  function spaceSummary(id: string, childRoomIds: string[]): SpaceSummary {
+    return { id, name: id, initial: 'S', avatarMxc: null, childRoomIds };
+  }
+
+  function build(): RoomsPage {
+    const rooms = [
+      roomSummary('!dm:hs', 'dm-with-bob', 4), // a direct message
+      roomSummary('!a:hs', 'alpha', 5), // space 1's only child
+      roomSummary('!b:hs', 'bravo', 3), // space 2's child
+      roomSummary('!c:hs', 'charlie', 7), // space 2's other child
+    ];
+    const childRoomIds = vi.fn((id: string | null) => {
+      if (id === '!s1:hs') return ['!a:hs'];
+      if (id === '!s2:hs') return ['!b:hs', '!c:hs'];
+      return [];
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        {
+          provide: RoomsService,
+          useValue: {
+            connect: vi.fn(),
+            rooms: signal(rooms),
+            directRoomIds: signal(new Set(['!dm:hs'])),
+            revision: signal(0),
+            membersOf: () => [],
+          },
+        },
+        {
+          provide: SpacesService,
+          useValue: {
+            connect: vi.fn(),
+            openSpace: vi.fn(),
+            spaces: signal([
+              spaceSummary('!s1:hs', ['!a:hs']),
+              spaceSummary('!s2:hs', ['!b:hs', '!c:hs']),
+            ]),
+            childRoomIds,
+          },
+        },
+        { provide: TimelineService, useValue: { close: vi.fn() } },
+        {
+          provide: MatrixClientService,
+          useValue: {
+            isInitialized: true,
+            instance: { getUserId: () => '@me:hs', getUser: () => null },
+          },
+        },
+        { provide: CryptoService, useValue: { connect: vi.fn() } },
+        {
+          provide: ThreadsService,
+          useValue: { close: vi.fn(), closeThread: vi.fn() },
+        },
+        {
+          provide: ThreadPanelService,
+          useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        invitesProvider(),
+        { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
+        { provide: MessageSearchService, useValue: { search: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
+        {
+          provide: AuthService,
+          useValue: { logout: vi.fn(() => of(undefined)) },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
+      ],
+    });
+    return TestBed.inject(RoomsPage);
+  }
+
+  it('keeps each space total independent and splits DM vs non-DM totals', () => {
+    const page = build();
+
+    expect(page.spaceUnread()).toEqual({
+      '!s1:hs': 5, // alpha only
+      '!s2:hs': 10, // bravo(3) + charlie(7)
+    });
+    expect(page.homeUnread()).toBe(4); // the DM only
+    expect(page.roomsUnread()).toBe(15); // a(5) + b(3) + c(7), DM excluded
+  });
 });
 
 // Create-space / create-channel / leave-space: the page prompts via TrnAlertService

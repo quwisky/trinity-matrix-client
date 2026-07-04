@@ -147,4 +147,40 @@ describe('ServerRailComponent', () => {
       fixture.nativeElement.querySelector('.item .badge')?.textContent?.trim(),
     ).toBe('99+');
   });
+
+  it('shows a distinct badge value per space pill among several spaces', () => {
+    const fixture = TestBed.createComponent(ServerRailComponent);
+    fixture.componentRef.setInput('spaces', [
+      space({ id: '!a:hs', name: 'Alpha' }),
+      space({ id: '!b:hs', name: 'Bravo' }),
+      space({ id: '!c:hs', name: 'Charlie' }),
+    ]);
+    fixture.componentRef.setInput('spaceUnread', {
+      '!a:hs': 1,
+      '!b:hs': 0,
+      '!c:hs': 42,
+    });
+    fixture.detectChanges();
+
+    // order: Home, Rooms, a, b, c, add
+    const items = fixture.nativeElement.querySelectorAll('.item');
+    expect(items[2].querySelector('.badge')?.textContent?.trim()).toBe('1');
+    expect(items[3].querySelector('.badge')).toBeNull(); // zero → hidden
+    expect(items[4].querySelector('.badge')?.textContent?.trim()).toBe('42');
+  });
+
+  it('hides a space badge once its count transitions to 0 via a setInput change', () => {
+    const fixture = TestBed.createComponent(ServerRailComponent);
+    fixture.componentRef.setInput('spaces', [space({ id: '!s:hs' })]);
+    fixture.componentRef.setInput('spaceUnread', { '!s:hs': 6 });
+    fixture.detectChanges();
+
+    const spaceItem = () => fixture.nativeElement.querySelectorAll('.item')[2];
+    expect(spaceItem().querySelector('.badge')?.textContent?.trim()).toBe('6');
+
+    fixture.componentRef.setInput('spaceUnread', { '!s:hs': 0 });
+    fixture.detectChanges();
+
+    expect(spaceItem().querySelector('.badge')).toBeNull();
+  });
 });

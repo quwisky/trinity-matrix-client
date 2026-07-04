@@ -109,4 +109,22 @@ describe('AppBadgeService', () => {
       flush();
     }).not.toThrow();
   });
+
+  it('prefers the Electron bridge over native and the Web Badging API when all are present', () => {
+    const setBadgeCount = vi.fn();
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      setBadgeCount,
+    };
+    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+    const set = vi.fn();
+    const setAppBadge = vi.fn(() => Promise.resolve());
+    (navigator as BadgingNavigator).setAppBadge = setAppBadge;
+
+    const { flush } = setup(5, { set });
+    flush();
+
+    expect(setBadgeCount).toHaveBeenLastCalledWith(5);
+    expect(set).not.toHaveBeenCalled(); // native mobile badge not touched
+    expect(setAppBadge).not.toHaveBeenCalled(); // Web Badging API not touched
+  });
 });

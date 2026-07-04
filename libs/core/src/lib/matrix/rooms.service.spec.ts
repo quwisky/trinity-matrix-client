@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { ClientEvent } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -156,6 +157,75 @@ describe('RoomsService', () => {
     expect(svc.rooms().map((r) => r.id)).toEqual(['!b:hs']); // not frozen on A
     expect(clientA.off).toHaveBeenCalled(); // old listeners detached
     expect(clientB.on).toHaveBeenCalled(); // new client wired
+  });
+
+  it('recomputes totalUnread when a sync event refreshes an updated unread count', async () => {
+    // A mutable "room" so the fake client can report a bumped unread count on
+    // the next refresh, the same way a real Room's counters change in place.
+    const unread = { count: 2 };
+    const room = fakeRoom({ roomId: '!a:hs', name: 'a' });
+    room.getUnreadNotificationCount = (type?: string) =>
+      type === 'highlight' ? 0 : unread.count;
+    const handlers = new Map<string, () => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [room],
+      on: (event: string, cb: () => void) => handlers.set(event, cb),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    svc.connect();
+    expect(svc.totalUnread()).toBe(2);
+
+    unread.count = 9; // e.g. a new message arrives
+    handlers.get(ClientEvent.Sync)?.(); // sync fires; refresh is coalesced onto a microtask
+    await Promise.resolve();
+
+    expect(svc.totalUnread()).toBe(9);
+  });
+
+  it('recomputes totalUnread when a room is added to the synced list', async () => {
+    let currentRooms = [fakeRoom({ roomId: '!a:hs', name: 'a', unread: 2 })];
+    const handlers = new Map<string, () => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => currentRooms,
+      on: (event: string, cb: () => void) => handlers.set(event, cb),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    svc.connect();
+    expect(svc.totalUnread()).toBe(2);
+
+    currentRooms = [
+      ...currentRooms,
+      fakeRoom({ roomId: '!b:hs', name: 'b', unread: 5 }),
+    ];
+    handlers.get(ClientEvent.Room)?.();
+    await Promise.resolve();
+
+    expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
+    expect(svc.totalUnread()).toBe(7);
   });
 
   it('ignores a repeat connect() for the same client', () => {
