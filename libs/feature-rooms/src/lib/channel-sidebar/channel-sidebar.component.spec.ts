@@ -15,6 +15,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     unreadCount: 0,
     highlightCount: 0,
     hasUnread: false,
+    lastMessage: '',
     activityTs: 0,
     ...over,
   };
@@ -67,6 +68,33 @@ describe('ChannelSidebarComponent', () => {
     fixture.componentInstance.selectRoom.subscribe((id) => (roomId = id));
     channels[0].click();
     expect(roomId).toBe('!a:hs');
+  });
+
+  it('renders a messenger-style row: avatar, name, and last-message preview', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [
+      room({ name: 'general', lastMessage: 'hey there' }),
+    ]);
+    fixture.detectChanges();
+
+    const channel = fixture.nativeElement.querySelector('.channel');
+    // Discord-style hash prefix is gone; a room avatar takes its place.
+    expect(channel.querySelector('.channel__hash')).toBeNull();
+    expect(channel.querySelector('trn-avatar')).not.toBeNull();
+    expect(channel.querySelector('.channel__name').textContent).toContain(
+      'general',
+    );
+    expect(channel.querySelector('.channel__preview').textContent).toContain(
+      'hey there',
+    );
+  });
+
+  it('omits the preview line when a room has no last message', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [room({ lastMessage: '' })]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.channel__preview')).toBeNull();
   });
 
   it('marks unread rooms and shows a mention badge / unread dot', () => {

@@ -343,8 +343,14 @@ test.describe('Message notifications', () => {
 
     // Tie the "no notification" assertion to real app state: wait for the live
     // message to actually render in the open timeline (proof the event was
-    // processed), then assert the notification count didn't move.
-    await expect(page.getByText(body, { exact: true })).toBeVisible({
+    // processed), then assert the notification count didn't move. Scoped to
+    // the open timeline (`.scroll`) rather than the whole page — the sidebar's
+    // `.channel__preview` row (ChannelSidebarComponent's last-message preview)
+    // mirrors the same body text, which would otherwise make this locator
+    // strict-mode-ambiguous.
+    await expect(
+      page.locator('.scroll').getByText(body, { exact: true }),
+    ).toBeVisible({
       timeout: 15_000,
     });
 

@@ -215,6 +215,7 @@ describe('RoomsPage space filtering', () => {
       unreadCount: unread,
       highlightCount: 0,
       hasUnread: unread > 0,
+      lastMessage: '',
       activityTs: 0,
     };
   }
@@ -419,6 +420,7 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
       unreadCount: unread,
       highlightCount: 0,
       hasUnread: unread > 0,
+      lastMessage: '',
       activityTs: 0,
     };
   }
@@ -987,6 +989,7 @@ describe('RoomsPage space hierarchy actions', () => {
                 unreadCount: 0,
                 highlightCount: 0,
                 hasUnread: false,
+                lastMessage: '',
                 activityTs: 0,
               },
             ]),

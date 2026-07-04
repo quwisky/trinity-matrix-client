@@ -73,7 +73,12 @@ test.describe('Timeline virtualization', () => {
       .first()
       .click();
 
-    const rows = page.locator('.scroll trn-message-row');
+    // Scoped to the open timeline rather than the whole page — the sidebar's
+    // `.channel__preview` row (ChannelSidebarComponent's last-message preview)
+    // mirrors the same "seeded message N" text, which would otherwise make a
+    // page-wide getByText strict-mode-ambiguous.
+    const timeline = page.locator('.scroll');
+    const rows = timeline.locator('trn-message-row');
     await expect(rows.first()).toBeVisible({ timeout: 30_000 });
 
     // The flag selected the windowed component (not the simple one).
@@ -82,7 +87,7 @@ test.describe('Timeline virtualization', () => {
 
     // Opens pinned to the bottom: the newest seeded message is on screen.
     await expect(
-      page.getByText(`seeded message ${SEED - 1}`, { exact: true }),
+      timeline.getByText(`seeded message ${SEED - 1}`, { exact: true }),
     ).toBeVisible();
 
     // Page the whole room in by scrolling to the top until the oldest arrives
@@ -90,8 +95,10 @@ test.describe('Timeline virtualization', () => {
     await expect
       .poll(
         async () => {
-          await page.locator('.scroll').evaluate((el) => (el.scrollTop = 0));
-          return page.getByText('seeded message 0', { exact: true }).count();
+          await timeline.evaluate((el) => (el.scrollTop = 0));
+          return timeline
+            .getByText('seeded message 0', { exact: true })
+            .count();
         },
         { timeout: 60_000, intervals: [400] },
       )
@@ -110,17 +117,15 @@ test.describe('Timeline virtualization', () => {
 
     // At the top, the newest is windowed out of the DOM…
     expect(
-      await page
+      await timeline
         .getByText(`seeded message ${SEED - 1}`, { exact: true })
         .count(),
     ).toBe(0);
 
     // …and scrolling back to the bottom brings it back (and drops the oldest).
-    await page
-      .locator('.scroll')
-      .evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await timeline.evaluate((el) => (el.scrollTop = el.scrollHeight));
     await expect(
-      page.getByText(`seeded message ${SEED - 1}`, { exact: true }),
+      timeline.getByText(`seeded message ${SEED - 1}`, { exact: true }),
     ).toBeVisible();
     expect(await rows.count()).toBeLessThan(MAX_RENDERED);
   });

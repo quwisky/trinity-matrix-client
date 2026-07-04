@@ -13,6 +13,7 @@ import {
 } from 'matrix-js-sdk';
 import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
+import { messagePreview } from './message-content';
 import {
   isValidUserId,
   roomEncryptionInitialState,
@@ -52,6 +53,8 @@ export interface RoomSummary {
   highlightCount: number;
   /** Convenience flag: there are unread notifications. */
   hasUnread: boolean;
+  /** Single-line preview of the room's most recent message (`''` when none). */
+  lastMessage: string;
   /** Last-activity timestamp (ms), used to order the list by recency. */
   activityTs: number;
 }
@@ -459,6 +462,7 @@ export class RoomsService {
       unreadCount,
       highlightCount,
       hasUnread: unreadCount > 0,
+      lastMessage: lastMessageOf(room),
       activityTs: room.getLastActiveTimestamp(),
     };
   }
@@ -478,4 +482,20 @@ export class RoomsService {
 function initialOf(name: string): string {
   const stripped = name.replace(/^[#@!]+/, '').trim();
   return (stripped[0] ?? '?').toUpperCase();
+}
+
+/**
+ * Single-line preview of the room's most recent `m.room.message`, or `''` when the
+ * room has no message in its live timeline. The timeline is walked back-to-front so
+ * membership/state events between messages are skipped. `getLiveTimeline` is called
+ * optionally since not every Room stub (unit fakes) exposes it.
+ */
+function lastMessageOf(room: Room): string {
+  const events = room.getLiveTimeline?.()?.getEvents() ?? [];
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].getType() === EventType.RoomMessage) {
+      return messagePreview(events[i]);
+    }
+  }
+  return '';
 }
