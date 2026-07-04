@@ -203,7 +203,7 @@ describe('RoomsPage action error feedback', () => {
 // The channel sidebar is fed by `visibleRooms()`: Home shows only direct messages, the
 // Rooms view shows non-DM rooms, a selected space shows only its joined children.
 describe('RoomsPage space filtering', () => {
-  function roomSummary(id: string, name: string): RoomSummary {
+  function roomSummary(id: string, name: string, unread = 0): RoomSummary {
     return {
       id,
       name,
@@ -212,9 +212,9 @@ describe('RoomsPage space filtering', () => {
       topic: '',
       memberCount: 0,
       encrypted: false,
-      unreadCount: 0,
+      unreadCount: unread,
       highlightCount: 0,
-      hasUnread: false,
+      hasUnread: unread > 0,
       activityTs: 0,
     };
   }
@@ -226,9 +226,9 @@ describe('RoomsPage space filtering', () => {
   function build(): RoomsPage {
     // Home recency order is c, a, b; the space orders its children a, b.
     const rooms = [
-      roomSummary('!c:hs', 'charlie'),
-      roomSummary('!a:hs', 'alpha'),
-      roomSummary('!b:hs', 'bravo'),
+      roomSummary('!c:hs', 'charlie', 2),
+      roomSummary('!a:hs', 'alpha', 5),
+      roomSummary('!b:hs', 'bravo', 3),
     ];
     const childRoomIds = vi.fn((id: string | null) =>
       id === '!s:hs' ? ['!a:hs', '!b:hs'] : [],
@@ -346,6 +346,19 @@ describe('RoomsPage space filtering', () => {
     expect(page.roomsView()).toBe(false);
     expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']); // DMs
     expect(page.sidebarTitle()).toBe('Direct Messages');
+  });
+
+  it('sums unread notifications for the Home (DMs) and Rooms rail badges', () => {
+    const page = build();
+    // directRoomIds = {!a:hs}; DMs: a(5). Non-DM: c(2) + b(3) = 5.
+    expect(page.homeUnread()).toBe(5);
+    expect(page.roomsUnread()).toBe(5);
+  });
+
+  it('sums unread notifications per space for the space-pill badges', () => {
+    const page = build();
+    // space !s:hs children [a, b] → a(5) + b(3) = 8.
+    expect(page.spaceUnread()['!s:hs']).toBe(8);
   });
 });
 

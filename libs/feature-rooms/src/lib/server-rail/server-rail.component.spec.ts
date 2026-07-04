@@ -117,4 +117,34 @@ describe('ServerRailComponent', () => {
     expect(items[0].classList.contains('active')).toBe(false); // Home no longer active
     expect(items[1].classList.contains('active')).toBe(true); // Rooms active
   });
+
+  it('shows unread badges on the Home, Rooms and space pills', () => {
+    const fixture = TestBed.createComponent(ServerRailComponent);
+    fixture.componentRef.setInput('spaces', [space({ id: '!s:hs' })]);
+    fixture.componentRef.setInput('homeUnread', 3);
+    fixture.componentRef.setInput('roomsUnread', 7);
+    fixture.componentRef.setInput('spaceUnread', { '!s:hs': 12 });
+    fixture.detectChanges();
+
+    // order: Home, Rooms, space, add
+    const items = fixture.nativeElement.querySelectorAll('.item');
+    expect(items[0].querySelector('.badge')?.textContent?.trim()).toBe('3');
+    expect(items[1].querySelector('.badge')?.textContent?.trim()).toBe('7');
+    expect(items[2].querySelector('.badge')?.textContent?.trim()).toBe('12');
+  });
+
+  it('hides a pill badge when its unread count is zero', () => {
+    const fixture = TestBed.createComponent(ServerRailComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.badge')).toBeNull();
+  });
+
+  it('caps a pill badge at 99+', () => {
+    const fixture = TestBed.createComponent(ServerRailComponent);
+    fixture.componentRef.setInput('homeUnread', 250);
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('.item .badge')?.textContent?.trim(),
+    ).toBe('99+');
+  });
 });

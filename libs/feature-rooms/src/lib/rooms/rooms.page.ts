@@ -184,6 +184,34 @@ export class RoomsPage implements OnInit, OnDestroy {
     return this.activeSpaceId() ? this.activeSpaceName() : 'Direct Messages';
   });
 
+  /** Total unread notifications across direct-message rooms (Home rail badge). */
+  readonly homeUnread = computed(() => {
+    const direct = this.rooms.directRoomIds();
+    return this.rooms
+      .rooms()
+      .reduce((sum, r) => (direct.has(r.id) ? sum + r.unreadCount : sum), 0);
+  });
+
+  /** Total unread notifications across non-DM rooms (Rooms rail badge). */
+  readonly roomsUnread = computed(() => {
+    const direct = this.rooms.directRoomIds();
+    return this.rooms
+      .rooms()
+      .reduce((sum, r) => (direct.has(r.id) ? sum : sum + r.unreadCount), 0);
+  });
+
+  /** Unread notifications summed per space, keyed by space id (space-pill badges). */
+  readonly spaceUnread = computed<Record<string, number>>(() => {
+    const byId = new Map(this.rooms.rooms().map((r) => [r.id, r] as const));
+    const totals: Record<string, number> = {};
+    for (const space of this.spaces.spaces()) {
+      totals[space.id] = this.spaces
+        .childRoomIds(space.id)
+        .reduce((sum, id) => sum + (byId.get(id)?.unreadCount ?? 0), 0);
+    }
+    return totals;
+  });
+
   readonly activeRoom = computed(() => {
     const id = this.activeRoomId();
     return id ? (this.rooms.rooms().find((r) => r.id === id) ?? null) : null;

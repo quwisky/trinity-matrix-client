@@ -34,6 +34,13 @@ import type { SpaceSummary } from '@trinity/core';
         >
           <ng-icon name="lucideHouse" aria-hidden="true" />
         </button>
+        @if (homeUnread() > 0) {
+          <span
+            class="badge"
+            [attr.aria-label]="badgeLabel(homeUnread()) + ' unread'"
+            >{{ badgeLabel(homeUnread()) }}</span
+          >
+        }
       </div>
 
       <div class="item" [class.active]="roomsActive()">
@@ -48,11 +55,19 @@ import type { SpaceSummary } from '@trinity/core';
         >
           <ng-icon name="lucideDoorOpen" aria-hidden="true" />
         </button>
+        @if (roomsUnread() > 0) {
+          <span
+            class="badge"
+            [attr.aria-label]="badgeLabel(roomsUnread()) + ' unread'"
+            >{{ badgeLabel(roomsUnread()) }}</span
+          >
+        }
       </div>
 
       <div class="separator"></div>
 
       @for (space of spaces(); track space.id) {
+        @let spaceUnreadCount = spaceUnread()[space.id] ?? 0;
         <div
           class="item"
           [class.active]="activeSpaceId() === space.id && !roomsActive()"
@@ -75,6 +90,13 @@ import type { SpaceSummary } from '@trinity/core';
               [size]="48"
             />
           </button>
+          @if (spaceUnreadCount > 0) {
+            <span
+              class="badge"
+              [attr.aria-label]="badgeLabel(spaceUnreadCount) + ' unread'"
+              >{{ badgeLabel(spaceUnreadCount) }}</span
+            >
+          }
         </div>
       }
 
@@ -98,9 +120,20 @@ export class ServerRailComponent {
   readonly activeSpaceId = input<string | null>(null);
   /** Whether the Rooms view is active (drives the Rooms pill's active state). */
   readonly roomsActive = input(false);
+  /** Total unread notifications across direct-message rooms (Home badge). */
+  readonly homeUnread = input(0);
+  /** Total unread notifications across non-DM rooms (Rooms badge). */
+  readonly roomsUnread = input(0);
+  /** Per-space total unread notifications, keyed by space id (space-pill badge). */
+  readonly spaceUnread = input<Record<string, number>>({});
   readonly selectSpace = output<string | null>();
   /** The "+" pill at the end of the rail — raise the create-a-space flow. */
   readonly createSpace = output<void>();
   /** Show the Rooms view (non-DM rooms). */
   readonly showRooms = output<void>();
+
+  /** Cap an unread count for a pill badge, Discord-style ("99+"). */
+  badgeLabel(count: number): string {
+    return count > 99 ? '99+' : String(count);
+  }
 }

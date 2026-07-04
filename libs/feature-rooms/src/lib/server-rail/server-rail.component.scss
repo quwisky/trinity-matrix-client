@@ -45,6 +45,26 @@
   height: 20px;
 }
 
+// Unread-count badge pinned to a pill's top-right. The rail-coloured ring lifts
+// it off the pill (Discord-style); pointer-events:none keeps clicks on the pill.
+.badge {
+  position: absolute;
+  top: -2px;
+  right: 8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ed4245;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--trinity-rail);
+  pointer-events: none;
+}
+
 .item.active .indicator {
   height: 40px;
 }
