@@ -64,6 +64,10 @@ export interface MessageView {
   kind: MessageKind;
   /** Media attachment for image/file/video/audio messages, else null. */
   media: MediaPayload | null;
+  /** MSC2530 caption text on a media message (else null). */
+  caption: string | null;
+  /** Sanitized HTML for a rich media caption (else null). */
+  captionHtml: string | null;
 }
 
 /**
@@ -80,7 +84,14 @@ export function buildMessageView(
   // `||` (not `??`) so an empty display name still falls back to the mxid.
   const senderName = member?.name || senderId;
   const decryptionFailed = event.isDecryptionFailure();
-  const { body, html, kind, media } = renderBody(event, decryptionFailed);
+  const {
+    body,
+    html,
+    kind,
+    media,
+    caption = null,
+    captionHtml = null,
+  } = renderBody(event, decryptionFailed);
   return {
     id: event.getId() ?? '',
     senderId,
@@ -98,6 +109,8 @@ export function buildMessageView(
     status: mapStatus(event.status),
     kind,
     media,
+    caption,
+    captionHtml,
   };
 }
 
@@ -356,6 +369,8 @@ interface RenderedBody {
   html: string | null;
   kind: MessageKind;
   media: MediaPayload | null;
+  caption?: string | null;
+  captionHtml?: string | null;
 }
 
 function renderBody(
@@ -413,7 +428,20 @@ function renderBody(
           media: null,
         };
       }
-      return { body: media.filename, html: null, kind: media.kind, media };
+      // MSC2530: a `filename` distinct from `body` marks `body` as a caption —
+      // render it alongside the media (rich when the sender formatted it).
+      const captioned =
+        typeof content['filename'] === 'string' &&
+        !!text &&
+        text !== media.filename;
+      return {
+        body: media.filename,
+        html: null,
+        kind: media.kind,
+        media,
+        caption: captioned ? text : null,
+        captionHtml: captioned ? html : null,
+      };
     }
     default:
       return {
