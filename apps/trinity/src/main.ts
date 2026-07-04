@@ -11,7 +11,12 @@ import {
 } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
-import { AvatarService, PUSH_CONFIG, ThemeService } from '@trinity/core';
+import {
+  AvatarService,
+  FeatureFlagsService,
+  PUSH_CONFIG,
+  ThemeService,
+} from '@trinity/core';
 import {
   AVATAR_RESOLVER,
   ENCRYPTION_DIALOG_COMPONENTS,
@@ -43,6 +48,8 @@ bootstrapApplication(AppComponent, {
     provideRouter(routes, withPreloading(PreloadAllModules)),
     // Apply the saved light/dark preference before the first paint.
     provideAppInitializer(() => inject(ThemeService).init()),
+    // Load persisted experimental feature flags (e.g. virtualized timeline).
+    provideAppInitializer(() => inject(FeatureFlagsService).init()),
     // Move focus into the entering page on each route change (replaces Ionic's
     // focus manager) — a11y for screen-reader/keyboard users.
     provideAppInitializer(() => inject(NavigationFocusService).init()),
