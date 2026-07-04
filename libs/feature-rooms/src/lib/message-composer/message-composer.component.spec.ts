@@ -1,25 +1,21 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ToastController } from '@ionic/angular/standalone';
 import { throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import { ThemeService } from '@trinity/core';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { MessageComposerComponent } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 
 describe('MessageComposerComponent', () => {
-  let toastCreate: ReturnType<typeof vi.fn>;
+  let toastShow: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    toastCreate = vi
-      .fn()
-      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    toastShow = vi.fn();
     TestBed.configureTestingModule({
       imports: [MessageComposerComponent],
-      providers: [
-        { provide: ToastController, useValue: { create: toastCreate } },
-      ],
+      providers: [{ provide: TrnToastService, useValue: { show: toastShow } }],
     });
   });
 
@@ -77,6 +73,40 @@ describe('MessageComposerComponent', () => {
     expect(submitted).toBe('new text');
     // The parent ends edit mode (clears via editing → false); composer keeps text.
     expect(cmp.text()).toBe('new text');
+  });
+
+  it('refreshes the field when the edit target changes while still editing', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('editing', true);
+    fixture.componentRef.setInput('editTargetId', '$a');
+    fixture.componentRef.setInput('draft', 'body A');
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    expect(cmp.text()).toBe('body A');
+
+    // Re-target to another message (id changes) — the field must show B's body,
+    // not keep A's (else Enter would overwrite B with A).
+    fixture.componentRef.setInput('editTargetId', '$b');
+    fixture.componentRef.setInput('draft', 'body B');
+    fixture.detectChanges();
+    expect(cmp.text()).toBe('body B');
+  });
+
+  it('does not clobber typed text when the same target body mutates mid-edit', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('editing', true);
+    fixture.componentRef.setInput('editTargetId', '$a');
+    fixture.componentRef.setInput('draft', 'hello');
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    cmp.text.set('hello world'); // user has typed an in-progress edit
+
+    // Same target ($a), but its body changes in the timeline (redaction / a
+    // concurrent multi-device edit / a late echo). The field must NOT be
+    // overwritten — the re-fill keys on the target id, not the body.
+    fixture.componentRef.setInput('draft', '(message deleted)');
+    fixture.detectChanges();
+    expect(cmp.text()).toBe('hello world');
   });
 
   it('emits editLast on Up arrow only when empty and not editing', () => {
@@ -212,13 +242,11 @@ describe('MessageComposerComponent', () => {
     fixture.detectChanges();
 
     fixture.componentInstance.onAttach();
-    await Promise.resolve(); // let the error handler's toast.create settle
+    await Promise.resolve(); // let the error handler's toast settle
 
-    expect(toastCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        color: 'danger',
-        message: expect.stringContaining('Photo access is denied'),
-      }),
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.stringContaining('Photo access is denied'),
+      expect.objectContaining({ variant: 'destructive', duration: 4000 }),
     );
   });
 
@@ -228,10 +256,7 @@ describe('MessageComposerComponent', () => {
     const cmp = fixture.componentInstance;
     const el = fixture.nativeElement as HTMLElement;
     const wrapper = () => el.querySelector('[data-testid=upload-progress]');
-    const bar = () =>
-      el.querySelector('ion-progress-bar') as
-        | (HTMLElement & { value: number; type: string })
-        | null;
+    const bar = () => el.querySelector('hlm-progress') as HTMLElement | null;
 
     // Idle: no progress UI.
     expect(wrapper()).toBeNull();
@@ -241,8 +266,9 @@ describe('MessageComposerComponent', () => {
     fixture.detectChanges();
     expect(wrapper()).not.toBeNull();
     expect(bar()).not.toBeNull();
-    expect(bar()?.value).toBeCloseTo(0.42, 5);
-    expect(bar()?.type).toBe('determinate');
+    // Determinate → the fraction is exposed as a 0–100 percentage on aria-valuenow
+    // (helm/BrnProgress uses a 0–max scale with max defaulting to 100).
+    expect(Number(bar()?.getAttribute('aria-valuenow'))).toBeCloseTo(42, 5);
     expect(wrapper()?.textContent).toContain('42%');
     expect(cmp.uploadPercent()).toBe(42);
 
@@ -250,7 +276,8 @@ describe('MessageComposerComponent', () => {
     fixture.componentRef.setInput('uploadProgress', 0);
     fixture.detectChanges();
     expect(wrapper()).not.toBeNull();
-    expect(bar()?.type).toBe('indeterminate');
+    // Indeterminate → no aria-valuenow.
+    expect(bar()?.getAttribute('aria-valuenow')).toBeNull();
     expect(wrapper()?.textContent).not.toContain('%');
 
     // Upload finished → null clears the bar (and re-enables the attach button).

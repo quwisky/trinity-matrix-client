@@ -5,11 +5,11 @@ import {
   inject,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { IonButton, IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
-import { lockClosed } from 'ionicons/icons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideLock } from '@ng-icons/lucide';
+import { HlmButton } from '@trinity/helm/button';
 import { CryptoService } from '@trinity/core';
-import { EncryptionDialogService } from '@trinity/ui';
+import { BannerComponent, EncryptionDialogService } from '@trinity/ui';
 
 /** Which encryption flow a banner action triggers. */
 type BannerActionKind = 'setup' | 'unlock' | 'verify';
@@ -33,27 +33,26 @@ interface BannerAction {
   selector: 'trn-encryption-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['encryption-banner.component.scss'],
-  imports: [IonButton, IonIcon],
+  imports: [NgIcon, HlmButton, BannerComponent],
+  viewProviders: [provideIcons({ lucideLock })],
   template: `
     @if (visible()) {
-      <div class="banner">
-        <ion-icon class="banner__icon" name="lock-closed" aria-hidden="true" />
-        <!-- Live region scoped to the message so the action buttons aren't read
-             as part of the polite announcement. -->
-        <span class="banner__text" role="status">{{ message() }}</span>
-        <span class="banner__actions">
+      <trn-banner tone="accent">
+        <ng-icon trnBannerIcon name="lucideLock" aria-hidden="true" />
+        {{ message() }}
+        <span trnBannerActions>
           @for (action of actions(); track action.kind) {
-            <ion-button
+            <button
+              hlmBtn
               class="banner__action"
-              size="small"
-              fill="solid"
+              size="sm"
               (click)="run(action.kind)"
             >
               {{ action.label }}
-            </ion-button>
+            </button>
           }
         </span>
-      </div>
+      </trn-banner>
     }
   `,
 })
@@ -89,10 +88,6 @@ export class EncryptionBannerComponent {
         return [];
     }
   });
-
-  constructor() {
-    addIcons({ lockClosed });
-  }
 
   /**
    * Trigger a flow. Setup stays a full-page route; unlock/verify go through

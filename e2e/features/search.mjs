@@ -4,7 +4,7 @@
 //
 //   1. Quick Switcher → jump to a room: seed two rooms; open the switcher (click
 //      open-switcher button or Ctrl/Cmd+K); type one room's name; a result row
-//      appears; click it → the room is open (ion-title shows its name).
+//      appears; click it → the room is open (the header heading shows its name).
 //
 //   2. In-room message search → jump to a message: open a plaintext room seeded
 //      with several messages (one with a distinctive token); click search-messages;
@@ -161,9 +161,9 @@ async function poll(fn, { tries = 30, delayMs = 1000 } = {}) {
 // UI helpers
 // ---------------------------------------------------------------------------
 
-/** Fill an Ionic <ion-input label="…"> by targeting its inner native input. */
-async function fillIonInput(page, label, value) {
-  const input = page.locator(`ion-input[label="${label}"] input`);
+/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
+async function fillLabeledInput(page, label, value) {
+  const input = page.getByLabel(label);
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
   await input.fill(value);
@@ -173,31 +173,32 @@ async function fillIonInput(page, label, value) {
 async function login(page) {
   log('loading app');
   await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillIonInput(page, 'Homeserver', HS);
+  await fillLabeledInput(page, 'Homeserver', HS);
   await page.getByText('Continue', { exact: true }).click();
   await page
     .getByRole('button', { name: 'Sign in' })
     .waitFor({ timeout: 30_000 });
-  await fillIonInput(page, 'Username', USER);
-  await fillIonInput(page, 'Password', PASS);
+  await fillLabeledInput(page, 'Username', USER);
+  await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL('**/rooms', { timeout: 30_000 });
   log('logged in → /rooms');
 }
 
 /**
- * Open an ion-modal, interact with it, then wait for it to dismiss.
- * Returns the modal locator so callers can scope further queries to it.
+ * Open a CDK dialog (quick-switcher / message-search — replaces Ionic's
+ * <ion-modal>), interact with it, then wait for it to dismiss. Returns the
+ * dialog locator so callers can scope further queries to it.
  */
 async function waitForModal(page) {
-  const modal = page.locator('ion-modal');
+  const modal = page.locator('.cdk-dialog-container');
   await modal.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
   return modal;
 }
 
 async function waitForModalGone(page) {
   await page.waitForFunction(
-    () => document.querySelectorAll('ion-modal').length === 0,
+    () => document.querySelectorAll('.cdk-dialog-container').length === 0,
     undefined,
     { timeout: STEP_TIMEOUT, polling: 200 },
   );
@@ -351,15 +352,17 @@ async function main() {
     const modal1 = await waitForModal(page);
     log('quick-switcher modal open');
 
-    // Type ROOM_A into the ion-searchbar (click the inner native input, then
-    // keyboard.type so Ionic's ionInput event fires on every keystroke).
-    const switcherInput1 = modal1.locator('ion-searchbar input');
+    // Type ROOM_A into the quick-switcher's native search input (click it, then
+    // keyboard.type so every (input) event fires on every keystroke).
+    const switcherInput1 = modal1.getByPlaceholder(
+      'Search rooms, spaces, people',
+    );
     await switcherInput1.waitFor({ state: 'visible', timeout: 10_000 });
     await switcherInput1.click();
     await page.keyboard.type(ROOM_A, { delay: 30 });
 
     // A result row for ROOM_A should appear immediately (local computed match).
-    const resultA = modal1.locator('ion-item').filter({ hasText: ROOM_A });
+    const resultA = modal1.locator('.qs-row').filter({ hasText: ROOM_A });
     await resultA.first().waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     log(`result row "${ROOM_A}" visible in switcher ✓`);
 
@@ -368,16 +371,17 @@ async function main() {
     await waitForModalGone(page);
     log('switcher modal dismissed ✓');
 
-    // ion-title should now show the active room name.
+    // The room header's heading should now show the active room name (still
+    // the rooms toolbar h1 — see rooms.page.html).
     await page.waitForFunction(
       (name) => {
-        const el = document.querySelector('ion-title span[role="heading"]');
+        const el = document.querySelector('header h1');
         return !!el && el.textContent.includes(name);
       },
       ROOM_A,
       { timeout: STEP_TIMEOUT, polling: 200 },
     );
-    log(`ion-title shows "${ROOM_A}" ✓`);
+    log(`room header shows "${ROOM_A}" ✓`);
     log('PASS scenario 1');
 
     // ── SCENARIO 2: In-room message search → jump to TOKEN message ─────────
@@ -402,8 +406,8 @@ async function main() {
     const modal2 = await waitForModal(page);
     log('message-search modal open');
 
-    // Type the distinctive token into the searchbar.
-    const searchInput2 = modal2.locator('ion-searchbar input');
+    // Type the distinctive token into the message-search's native input.
+    const searchInput2 = modal2.getByPlaceholder('Search this conversation');
     await searchInput2.waitFor({ state: 'visible', timeout: 10_000 });
     await searchInput2.click();
     await page.keyboard.type(TOKEN, { delay: 30 });
@@ -469,24 +473,27 @@ async function main() {
 
     // Type BOB_USER (e.g. "bob-1mxxxxxx") to trigger the debounced directory
     // search — the term is >2 chars so searchPeople() fires after 250 ms.
-    const switcherInput3 = modal3.locator('ion-searchbar input');
+    const switcherInput3 = modal3.getByPlaceholder(
+      'Search rooms, spaces, people',
+    );
     await switcherInput3.waitFor({ state: 'visible', timeout: 10_000 });
     await switcherInput3.click();
     await page.keyboard.type(BOB_USER, { delay: 30 });
 
-    // Wait for a result row whose trailing ion-note reads "Person" (kind='user').
-    // The note is light-DOM slot content of ion-item, accessible via trn-quick-switcher.
+    // Wait for a result row (.qs-row) whose trailing kind-label span reads
+    // "Person" (kind='user') — the label is a plain <span>, no longer an
+    // <ion-note>, but still light-DOM content of trn-quick-switcher.
     await page.waitForFunction(
       (bobUser) => {
         const qs = document.querySelector('trn-quick-switcher');
         if (!qs) return false;
-        const items = [...qs.querySelectorAll('ion-item')];
-        for (const item of items) {
-          const hasPersonNote = [...item.querySelectorAll('ion-note')].some(
+        const rows = [...qs.querySelectorAll('.qs-row')];
+        for (const row of rows) {
+          const hasPersonLabel = [...row.querySelectorAll('span')].some(
             (n) => n.textContent?.trim() === 'Person',
           );
-          const hasUserText = item.textContent?.includes(bobUser);
-          if (hasPersonNote && hasUserText) return true;
+          const hasUserText = row.textContent?.includes(bobUser);
+          if (hasPersonLabel && hasUserText) return true;
         }
         return false;
       },
@@ -496,8 +503,8 @@ async function main() {
     log(`directory "Person" result for BOB ("${BOB_USER}") visible ✓`);
 
     // Click the Person result to start the DM.
-    const personResult = modal3.locator('ion-item').filter({
-      has: page.locator('ion-note', { hasText: 'Person' }),
+    const personResult = modal3.locator('.qs-row').filter({
+      has: page.getByText('Person', { exact: true }),
     });
     await personResult.first().click();
 
@@ -513,11 +520,13 @@ async function main() {
     );
     log('DM channel appeared in sidebar ✓');
 
-    // ion-title should show BOB's name (localpart or full MXID — both contain
-    // BOB_USER's localpart, e.g. "@bob-1mxxxxxx:localhost" ⊇ "bob-1mxxxxxx").
+    // The room header's heading should show BOB's name (localpart or full
+    // MXID — both contain BOB_USER's localpart, e.g.
+    // "@bob-1mxxxxxx:localhost" ⊇ "bob-1mxxxxxx"). Still the toolbar h1
+    // post-migration — see rooms.page.html.
     await page.waitForFunction(
       (bobUser) => {
-        const el = document.querySelector('ion-title span[role="heading"]');
+        const el = document.querySelector('header h1');
         return (
           !!el && el.textContent.toLowerCase().includes(bobUser.toLowerCase())
         );
@@ -525,7 +534,7 @@ async function main() {
       BOB_USER,
       { timeout: STEP_TIMEOUT, polling: 300 },
     );
-    log(`ion-title shows BOB identifier ✓`);
+    log(`room header shows BOB identifier ✓`);
     log('PASS scenario 3');
 
     // -----------------------------------------------------------------------

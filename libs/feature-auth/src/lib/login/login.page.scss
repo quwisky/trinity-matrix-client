@@ -33,28 +33,36 @@
   }
 }
 
-// Card surface:
-// Mobile: fills the viewport — no radius, no shadow.
+// Card surface (spartan hlmCard):
+// The hlm card supplies the surface (bg-card / ring / rounded / padding); we
+// override it to the Discord palette and drive its internal rhythm via
+// --card-spacing (header + content horizontal padding, card vertical padding,
+// and the header↔content gap all read this token).
+// Mobile: fills the viewport — no radius, no ring/shadow (edge-to-edge).
 // Desktop: fixed-width rounded card with a subtle elevation shadow.
 .login-card {
+  --card-spacing: 24px;
+
   background: var(--trinity-sidebar);
-  padding: 48px 24px 40px;
   flex: 1;
+  border-radius: 0;
+  box-shadow: none; // drop the hlm 1px ring on the full-bleed mobile surface
 
   @media (min-width: 480px) {
+    --card-spacing: 32px;
+
     width: 420px;
     max-width: 100%;
     flex: none;
     border-radius: var(--trinity-radius);
-    box-shadow: 0 8px 32px rgb(0 0 0 / 24%);
-    padding: 32px 40px 40px;
+    box-shadow: 0 8px 32px rgb(0 0 0 / 24%); // elevation; also replaces the ring
   }
 }
 
-// Branding: Trinity wordmark + dynamic subtitle.
+// Branding: Trinity wordmark + dynamic subtitle. Spacing to the form below is
+// handled by the hlm card's header↔content gap.
 .login-card__brand {
   text-align: center;
-  margin-bottom: 28px;
 }
 
 .login-card__wordmark {
@@ -84,34 +92,25 @@
   margin-bottom: 16px;
 }
 
-// ion-input: Discord-style rounded fill box with blurple focus ring and
-// uppercase / muted stacked label.
-// CSS custom-properties cascade through shadow-DOM so setting them on the host
-// is the correct Ionic theming approach.
-// ::part(label) is the shadow part exported by ion-input in Ionic 8 for the
-// label element. Angular's emulated encapsulation appends its content attribute
-// to the host selector, which is valid with ::part().
-ion-input {
-  --background: var(--trinity-active);
-  --border-width: 0;
-  --border-radius: var(--trinity-radius);
-  --color: var(--trinity-text-bright);
-  --highlight-color-focused: var(--trinity-accent);
-  --padding-start: 12px;
-  --padding-end: 12px;
-  --padding-top: 10px;
-  --padding-bottom: 10px;
-  --placeholder-color: var(--trinity-text-muted);
-  --placeholder-opacity: 1;
+// Stacked field label (trnLabel) — uppercase / muted, matching the prior Ionic
+// look. View-encapsulation specificity beats the trnLabel Tailwind utilities.
+.login-card__label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--trinity-text-muted);
+}
 
-  &::part(label) {
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--trinity-text-muted);
-    margin-bottom: 8px;
-  }
+// Native field (trnInput) — Discord-style filled box on the card surface so it
+// reads consistently in light + dark; the spartan border/ring stays for focus.
+.login-card__field input {
+  width: 100%;
+  background: var(--trinity-active);
+  color: var(--trinity-text-bright);
+  border-color: transparent;
 }
 
 // Primary action buttons (Continue / Sign in) — default to --ion-color-primary

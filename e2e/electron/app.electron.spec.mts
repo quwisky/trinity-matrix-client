@@ -22,7 +22,7 @@ test('boots the app over the trinity:// custom scheme', async () => {
     .poll(() => page.evaluate(() => location.origin))
     .toBe('trinity://app');
   // Unauthenticated → the login screen renders (proves the SPA + assets loaded).
-  await expect(page.locator('ion-input[label="Homeserver"]')).toBeVisible();
+  await expect(page.getByLabel('Homeserver')).toBeVisible();
 });
 
 test('initializes without renderer crashes (crypto WASM loads)', async () => {

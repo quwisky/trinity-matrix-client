@@ -37,9 +37,9 @@ const SETUP_TIMEOUT = 90_000;
 
 const log = (m) => console.log(`[verify] ${m}`);
 
-/** Fill an Ionic <ion-input label="…"> by targeting its inner native input. */
-async function fillIonInput(page, label, value) {
-  const input = page.locator(`ion-input[label="${label}"] input`);
+/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
+async function fillLabeledInput(page, label, value) {
+  const input = page.getByLabel(label);
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
   await input.fill(value);
@@ -75,15 +75,15 @@ async function login(page, who) {
   await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
   await page.waitForURL('**/login', { timeout: 15_000 });
 
-  await fillIonInput(page, 'Homeserver', HS);
+  await fillLabeledInput(page, 'Homeserver', HS);
   await page.getByText('Continue', { exact: true }).click();
 
   // Discovery + loginFlows resolve, then the password form appears.
   await page
     .getByRole('button', { name: 'Sign in' })
     .waitFor({ timeout: 30_000 });
-  await fillIonInput(page, 'Username', USER);
-  await fillIonInput(page, 'Password', PASS);
+  await fillLabeledInput(page, 'Username', USER);
+  await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   await page.waitForURL('**/rooms', { timeout: 30_000 });
@@ -101,10 +101,11 @@ async function setUpEncryption(page) {
   await page.getByRole('button', { name: 'Set up encryption' }).click();
 
   // UIA is *conditional*: depending on the Synapse build / account state the
-  // bootstrap may pop an Ionic password alert, or proceed straight to the recovery
-  // key. Race the two — only fill the password if the alert actually appears, then
-  // fall through to waiting for the recovery key either way.
-  const alert = page.locator('ion-alert');
+  // bootstrap may pop the TrnAlertService password dialog (<trn-alert-dialog> in
+  // a CDK dialog — replaces Ionic's <ion-alert>), or proceed straight to the
+  // recovery key. Race the two — only fill the password if the dialog actually
+  // appears, then fall through to waiting for the recovery key either way.
+  const alert = page.locator('trn-alert-dialog');
   const key = page.locator('code.key');
   const appeared = await Promise.race([
     alert

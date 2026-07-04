@@ -83,9 +83,9 @@ async function createEncryptedRoom() {
   return roomId;
 }
 
-/** Fill an Ionic <ion-input label="…"> by targeting its inner native input. */
-async function fillIonInput(page, label, value) {
-  const input = page.locator(`ion-input[label="${label}"] input`);
+/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
+async function fillLabeledInput(page, label, value) {
+  const input = page.getByLabel(label);
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
   await input.fill(value);
@@ -95,13 +95,13 @@ async function fillIonInput(page, label, value) {
 async function login(page) {
   log('loading app');
   await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillIonInput(page, 'Homeserver', HS);
+  await fillLabeledInput(page, 'Homeserver', HS);
   await page.getByText('Continue', { exact: true }).click();
   await page
     .getByRole('button', { name: 'Sign in' })
     .waitFor({ timeout: 30_000 });
-  await fillIonInput(page, 'Username', USER);
-  await fillIonInput(page, 'Password', PASS);
+  await fillLabeledInput(page, 'Username', USER);
+  await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL('**/rooms', { timeout: 30_000 });
   log('logged in → /rooms');
@@ -113,7 +113,9 @@ async function setUpEncryption(page) {
   await page.goto(`${APP}/encryption/setup`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Set up encryption' }).click();
 
-  const alert = page.locator('ion-alert');
+  // TrnAlertService's UIA password prompt — a CDK dialog hosting
+  // <trn-alert-dialog> (replaces Ionic's <ion-alert>).
+  const alert = page.locator('trn-alert-dialog');
   const key = page.locator('code.key');
   const appeared = await Promise.race([
     alert

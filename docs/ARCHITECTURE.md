@@ -9,10 +9,12 @@ roadmap see [../PLAN.md](../PLAN.md); for dependency specifics see [../STACK.md]
    services in `@trinity/core` (`libs/core/src/lib/matrix/`). This keeps the SDK
    swappable and the UI testable.
 2. **`@trinity/core` is framework-of-the-app logic**, the `@trinity/feature-*` libs are
-   screens, and `@trinity/ui` holds reusable presentational components (no state/SDK
-   deps). Dependencies point inward: `feature-* → {core, ui}` and `ui → ui` only,
-   never the reverse — enforced by `@nx/enforce-module-boundaries` (project `tags` in
-   each `project.json`).
+   screens, `@trinity/ui` holds reusable presentational components (no state/SDK deps),
+   and `@trinity/helm/*` is the styled **spartan-ng Helm** layer — headless **Brain**
+   primitives (`@spartan-ng/brain`) + Tailwind, copied into `libs/spartan/*` and tagged
+   `type:ui`. Dependencies point inward: `feature-* → {core, ui, helm}` and
+   `ui → {ui, helm}` only, never the reverse — enforced by
+   `@nx/enforce-module-boundaries` (project `tags` in each `project.json`).
 3. **Reactive state is exposed as Angular signals.** SDK `EventEmitter` streams are
    bridged into signals inside the core services, so components stay zone-friendly
    and change detection is cheap. Services expose state as read-only signals
@@ -22,13 +24,13 @@ roadmap see [../PLAN.md](../PLAN.md); for dependency specifics see [../STACK.md]
    with `takeUntilDestroyed`. Signals are for state, Observables for one-shot actions.
 
 ```
-            @trinity/feature-* (pages, containers)
-              /                              \
-             v                                v
-    @trinity/ui                      @trinity/core (services, guards)
-  (presentational)                            |
-                                              v
-                                     matrix-js-sdk + crypto WASM
+          @trinity/feature-* (pages, containers)
+           /             |                       \
+          v              v                        v
+   @trinity/ui ──►  @trinity/helm/*      @trinity/core (services, guards)
+ (presentational)  (spartan Brain +               |
+                    Helm, Tailwind)               v
+                                        matrix-js-sdk + crypto WASM
 ```
 
 ## @trinity/core — matrix
@@ -67,8 +69,10 @@ roadmap see [../PLAN.md](../PLAN.md); for dependency specifics see [../STACK.md]
   routes through only when a client is live, attempting a one-time session **restore**
   first, otherwise redirecting to `/login`.
 - [theme/theme.service.ts](../libs/core/src/lib/theme/theme.service.ts) — light/dark/system
-  theme preference (persisted), toggling the Ionic `.ion-palette-dark` class and the native
-  status-bar style. Drives the Settings _Appearance_ section.
+  theme preference (persisted), toggling the retained `.ion-palette-dark` marker class on
+  `<html>` (a leftover name — no Ionic behind it; the dark palette is defined by the
+  trinity/spartan Tailwind tokens) and the native status-bar style. Drives the Settings
+  _Appearance_ section.
 
 ## State management
 
@@ -106,7 +110,8 @@ store would hold the projected view plus UI / selection state.
   startup fails), so rooms and timelines are cached for fast startup and offline reads.
   The store is destroyed on logout/reset so a prior account's cache can't linger.
 - **Connectivity signal.** A `connectivity` signal derived from `SyncState` drives the
-  offline banner in the rooms shell.
+  offline banner in the rooms shell — rendered, like the encryption prompt, through the
+  shared `<trn-banner>` (`@trinity/ui`).
 - **Service worker (web/PWA only).** `@angular/service-worker` (`apps/trinity/ngsw-config.json`,
   **production builds only**) precaches the app shell + the crypto WASM (`/assets/crypto/`),
   giving the web target the same offline cold start native/desktop get from bundled assets.
@@ -182,18 +187,20 @@ Defined in [app.routes.ts](../apps/trinity/src/app/app.routes.ts), all lazy-load
 | `/encryption/verify` | device verification (emoji SAS)         | `authGuard` |
 | `/spike`             | dev E2EE crypto spike                   | —           |
 
+Every routed page builds its top bar from the shared `<trn-page-header>` shell
+(`@trinity/ui`) — one `<header>` / one `<h1>`, with a `page` or `chat` variant and
+projected leading / title / actions slots.
+
 On the **desktop/wide split-pane layout** (≥`md`), `/encryption/unlock` and
-`/encryption/verify` are presented as **Ionic modals** rather than routed pages — the
-`EncryptionDialogService` (`@trinity/ui`) decides modal-vs-route from the `md` breakpoint
-and lazy-loads the page components via the `ENCRYPTION_DIALOG_COMPONENTS` token (wired in
-`main.ts`, so `ui`/`core` never import `feature-crypto`); the routes remain the canonical
-deep-link / mobile target. `provideIonicAngular` is configured with
-`focusManagerPriority` (moves focus into the entering page during a transition, before
-the leaving one is `aria-hidden` — fixes an `IonRouterOutlet` lock, ionic#30240) and
-`useSetInputAPI: true` (so modal `componentProps` set signal inputs via `setInput()`
-instead of clobbering the getter). Production builds disable `optimization.styles.inlineCritical`
-— its deferred stylesheet `onload` never fires over the `trinity://` scheme, which broke
-the desktop dark theme.
+`/encryption/verify` are presented as **Angular CDK dialogs** (via the helm overlay
+`TrnDialogService`) rather than routed pages — the `EncryptionDialogService` (`@trinity/ui`)
+decides modal-vs-route from the `md` breakpoint and lazy-loads the page components via the
+`ENCRYPTION_DIALOG_COMPONENTS` token (wired in `main.ts`, so `ui`/`core` never import
+`feature-crypto`); the routes remain the canonical deep-link / mobile target. Focus is
+relocated into the entering page on each route change by `NavigationFocusService` (wired in
+`main.ts`, replacing Ionic's focus manager). Production builds disable
+`optimization.styles.inlineCritical` — its deferred stylesheet `onload` never fires over the
+`trinity://` scheme, which broke the desktop dark theme.
 
 ## Authentication flow
 
@@ -280,7 +287,8 @@ Decisions:
 The `@trinity/feature-crypto` lib drives the two flows above:
 
 - **`EncryptionSetupPage`** (`/encryption/setup`) — runs `setUp`, answering the UIA
-  password challenge via an Ionic alert, then shows the recovery key **once** behind an
+  password challenge via the spartan `TrnAlertService` prompt (helm overlay), then shows
+  the recovery key **once** behind an
   "I've saved it" confirm gate. The key lives only in a component signal (never persisted)
   and is dropped on continue.
 - **`EncryptionUnlockPage`** (`/encryption/unlock`) — a recovery-key field that calls

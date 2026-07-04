@@ -1,20 +1,10 @@
-ion-content {
-  --background: var(--trinity-chat);
-}
-
-ion-list {
-  background: transparent;
-}
-
-ion-list-header {
-  color: var(--trinity-text-muted);
-  font-weight: 600;
-}
-
-ion-item {
-  --background: transparent;
-  --color: var(--trinity-text);
-  --border-color: var(--trinity-divider);
+// The settings page sits on the app's content surface (--trinity-chat), matching
+// the rooms main pane and thread panels (was ion-content's --background before the
+// Ionic removal). The header + main are transparent, so painting the host covers
+// both; without it the page falls back to the shell's darker bg-background, which
+// reads noticeably off against the rest of the app in dark mode.
+:host {
+  background: var(--trinity-chat);
 }
 
 .setting-note {
@@ -24,20 +14,7 @@ ion-item {
   font-size: 13px;
 }
 
-// Gap between the Profile and Appearance sections.
-ion-list + ion-list {
-  margin-top: 12px;
-}
-
-ion-label h2 {
-  color: var(--trinity-text-bright);
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0;
-}
-
-ion-label p {
-  color: var(--trinity-text-muted);
-  font-size: 13px;
-  margin: 0;
+// Error variant — the spartan destructive token (defined in theme/spartan.css).
+.setting-note--error {
+  color: var(--destructive);
 }

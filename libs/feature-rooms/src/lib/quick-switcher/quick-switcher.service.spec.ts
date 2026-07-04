@@ -1,73 +1,55 @@
 import { TestBed } from '@angular/core/testing';
-import { ModalController } from '@ionic/angular/standalone';
 import type { SwitcherSelection } from '@trinity/core';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 import { QuickSwitcherService } from './quick-switcher.service';
 
 describe('QuickSwitcherService', () => {
-  let create: ReturnType<typeof vi.fn>;
-  let present: ReturnType<typeof vi.fn>;
+  let openAndWait: ReturnType<typeof vi.fn>;
   let svc: QuickSwitcherService;
 
   beforeEach(() => {
-    present = vi.fn().mockResolvedValue(undefined);
-    create = vi.fn();
+    openAndWait = vi.fn();
     TestBed.configureTestingModule({
       providers: [
         QuickSwitcherService,
-        { provide: ModalController, useValue: { create } },
+        { provide: TrnDialogService, useValue: { openAndWait } },
       ],
     });
     svc = TestBed.inject(QuickSwitcherService);
   });
 
-  it('presents the switcher modal and resolves the chosen selection', async () => {
+  it('opens the switcher dialog and resolves the chosen selection', async () => {
     const selection: SwitcherSelection = { kind: 'space', id: '!s:hs' };
-    create.mockResolvedValue({
-      present,
-      onWillDismiss: () => Promise.resolve({ data: selection }),
-    });
+    openAndWait.mockResolvedValue(selection);
 
     const result = await svc.pick();
 
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        component: QuickSwitcherComponent,
-        cssClass: 'quick-switcher-modal',
-      }),
-    );
-    expect(present).toHaveBeenCalled();
+    expect(openAndWait).toHaveBeenCalledWith(QuickSwitcherComponent);
     expect(result).toEqual(selection);
   });
 
   it('resolves null when dismissed without a selection', async () => {
-    create.mockResolvedValue({
-      present,
-      onWillDismiss: () => Promise.resolve({ data: undefined }),
-    });
-
+    openAndWait.mockResolvedValue(null);
     expect(await svc.pick()).toBeNull();
   });
 
   it('ignores a repeat trigger while a switcher is already open', async () => {
-    // The deferred is built up front so its resolver exists regardless of when the
-    // first pick reaches onWillDismiss (avoids a microtask-ordering race in the test).
-    let release!: (value: { data: SwitcherSelection | null }) => void;
-    const dismissed = new Promise<{ data: SwitcherSelection | null }>(
-      (resolve) => {
-        release = resolve;
-      },
-    );
-    create.mockResolvedValue({ present, onWillDismiss: () => dismissed });
+    // Controlled pending promise so the first pick stays open across the re-entry.
+    let release!: (value: SwitcherSelection | null) => void;
+    const dismissed = new Promise<SwitcherSelection | null>((resolve) => {
+      release = resolve;
+    });
+    openAndWait.mockReturnValue(dismissed);
 
-    const first = svc.pick(); // opens; stays pending on onWillDismiss
-    const second = await svc.pick(); // re-entrant: no second modal
+    const first = svc.pick(); // opens; stays pending
+    const second = await svc.pick(); // re-entrant: no second dialog
 
     expect(second).toBeNull();
-    expect(create).toHaveBeenCalledTimes(1);
+    expect(openAndWait).toHaveBeenCalledTimes(1);
 
-    release({ data: { kind: 'room', id: '!r:hs' } });
+    release({ kind: 'room', id: '!r:hs' });
     await expect(first).resolves.toEqual({ kind: 'room', id: '!r:hs' });
   });
 });

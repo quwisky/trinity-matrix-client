@@ -5,9 +5,8 @@ import {
   input,
   output,
 } from '@angular/core';
-import { IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
-import { chatbubblesOutline } from 'ionicons/icons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideMessagesSquare } from '@ng-icons/lucide';
 import { AvatarComponent, MessageToolbarComponent } from '@trinity/ui';
 import type { MessageView, ThreadSummary } from '@trinity/core';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
@@ -35,11 +34,12 @@ export interface MessageRow extends MessageView {
   imports: [
     AvatarComponent,
     DatePipe,
-    IonIcon,
+    NgIcon,
     MediaAttachmentComponent,
     MessageReactionsComponent,
     MessageToolbarComponent,
   ],
+  viewProviders: [provideIcons({ lucideMessagesSquare })],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',
 })
@@ -67,10 +67,6 @@ export class MessageRowComponent {
   readonly jumpReply = output<string>();
   /** The thread indicator was clicked — open the thread for this root event id. */
   readonly openThread = output<string>();
-
-  constructor() {
-    addIcons({ chatbubblesOutline });
-  }
 
   /** Accessible label for the thread indicator button (incl. any unread count). */
   threadLabel(summary: ThreadSummary): string {

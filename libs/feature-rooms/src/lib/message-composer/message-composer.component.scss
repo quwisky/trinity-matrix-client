@@ -35,10 +35,8 @@
   gap: 8px;
   padding: 4px 16px;
 
-  ion-progress-bar {
+  trn-progress {
     flex: 1;
-
-    --progress-background: var(--trinity-accent);
   }
 }
 
@@ -51,7 +49,12 @@
 
 .composer {
   position: relative;
-  padding: 8px 16px 16px;
+
+  // Bottom padding clears the home indicator (safe-area-inset-bottom). env() is 0
+  // off notched devices and, with the keyboard's native resize mode, while the soft
+  // keyboard is up (the WebView shrinks, hiding the indicator) — so the input sits
+  // flush above the keyboard when typing and above the indicator otherwise.
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
 }
 
 .composer__picker {
@@ -118,7 +121,12 @@
 .composer__attach {
   position: absolute;
   right: 24px;
-  bottom: 24px;
+
+  // Vertically centre the 28px button on the textarea's single-row resting
+  // height (measured: bottom:24 sat 6.5px low; 30px centres it). Track the
+  // safe-area inset so it stays centred when the composer's bottom padding
+  // grows on notched devices (matches `.composer`'s padding-bottom).
+  bottom: calc(30px + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -141,9 +149,11 @@
   }
 }
 
-// Attach sits just left of the emoji button.
+// Attach sits at the inline-start, before the textarea (mirrors the emoji
+// button's `right: 24px` inset on the trailing edge).
 .composer__attach {
-  right: 52px;
+  right: auto;
+  left: 24px;
 }
 
 // Explicit send affordance for touch devices (Enter-to-send is unreliable on
@@ -156,7 +166,7 @@
   .composer__send {
     position: absolute;
     right: 80px;
-    bottom: 24px;
+    bottom: calc(30px + env(safe-area-inset-bottom));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -186,7 +196,18 @@
   box-sizing: border-box;
   resize: none;
   max-height: 200px;
-  padding: 11px 44px 11px 14px;
+
+  // hlmTextarea ships form-textarea sizing (min-h-16, display:flex,
+  // field-sizing:content); the composer is a single-row-that-grows chat input
+  // (height driven by autoGrow()), so neutralise those. This block is unlayered
+  // and so wins over hlm's @layer utilities.
+  min-height: 0;
+  display: block;
+  field-sizing: fixed;
+
+  // Symmetric 44px insets clear the leading attach button and the trailing
+  // emoji button so text never slides under either.
+  padding: 11px 44px;
   border: none;
   border-radius: 8px;
   background: var(--trinity-sidebar);
@@ -199,10 +220,6 @@
     color: var(--trinity-text-muted);
   }
 
-  // Keyboard focus gets a visible ring (inset, to sit inside the rounded field);
-  // pointer focus stays clean via :focus-visible.
-  &:focus-visible {
-    outline: 2px solid var(--trinity-accent);
-    outline-offset: -2px;
-  }
+  // Focus ring comes from hlmTextarea (spartan focus-visible:ring), consistent
+  // with the app's other inputs — no bespoke outline here.
 }

@@ -34,6 +34,8 @@
         "styles": [
           "apps/trinity/src/global.scss",
           "apps/trinity/src/theme/variables.scss",
+          "apps/trinity/src/theme/spartan.css",
+          "node_modules/@angular/cdk/overlay-prebuilt.css",
           "node_modules/@ctrl/ngx-emoji-mart/picker.css"
         ],
         "scripts": []
@@ -48,8 +50,8 @@
             },
             {
               "type": "anyComponentStyle",
-              "maximumWarning": "5kb",
-              "maximumError": "6kb"
+              "maximumWarning": "6kb",
+              "maximumError": "8kb"
             }
           ],
           "fileReplacements": [

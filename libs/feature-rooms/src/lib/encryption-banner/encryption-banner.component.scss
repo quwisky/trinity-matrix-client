@@ -2,40 +2,7 @@
   display: block;
 }
 
-.banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  background: var(--trinity-accent);
-  color: #fff;
-  font-size: 14px;
-}
-
-.banner__icon {
-  font-size: 18px;
-  flex: 0 0 auto;
-}
-
-.banner__text {
-  flex: 1;
-  min-width: 0;
-}
-
-.banner__actions {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
+// Layout comes from trn-banner; only the action buttons stay component-scoped.
 .banner__action {
   flex: 0 0 auto;
-
-  --background: rgb(255 255 255 / 16%);
-  --background-hover: rgb(255 255 255 / 26%);
-  --background-activated: rgb(255 255 255 / 30%);
-  --color: #fff;
-  --box-shadow: none;
 }

@@ -1,11 +1,23 @@
 import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession } from './support/app.mts';
 
-// Regression for the IonRouterOutlet transition lock (ionic-framework#30240): a route
-// transition must relocate focus INTO the entering page, otherwise a control activated
-// to trigger the navigation stays focused inside the LEAVING page when it's aria-hidden,
-// which stalls the transition on recent Chromium/Electron (blank page + dead router).
-// Guards the `focusManagerPriority` config in apps/trinity/src/main.ts.
+// Historical context: this file used to guard the IonRouterOutlet transition lock
+// (ionic-framework#30240) — a route transition had to relocate focus INTO the
+// entering page, otherwise a control that triggered the navigation stayed focused
+// inside the LEAVING page; once IonRouterOutlet's StackController set aria-hidden on
+// that page, recent Chromium/Electron would refuse to hide a focused subtree and the
+// transition promise stalled (blank entering page + dead router). Ionic supplied the
+// fix via `provideIonicAngular({ focusManagerPriority: […] })` in
+// apps/trinity/src/main.ts (commit 58dab21).
+//
+// Phase 4e ("build(shell): remove @ionic entirely", commit fb2be88) dropped Ionic —
+// and `provideIonicAngular` with it — from main.ts. The shell now renders a plain
+// Angular `<router-outlet>` (see apps/trinity/src/app/app.component.html) with no
+// StackController/aria-hidden step, so the dead-router failure mode this file guarded
+// against is gone structurally. The accessibility behavior that rode in on the same
+// config — moving focus INTO the entering page on each navigation — is reintroduced
+// by NavigationFocusService (apps/trinity/src/app/navigation-focus.service.ts), wired
+// via provideAppInitializer in main.ts; the second test asserts it.
 const session = synapseSession();
 
 /** Is `document.activeElement` inside the given page component (piercing shadow roots)? */
@@ -31,15 +43,32 @@ test.describe('Route transitions', () => {
     'requires the disposable Synapse homeserver (Docker)',
   );
 
+  test('navigates from rooms to settings via the settings button', async ({
+    page,
+  }) => {
+    await login(page, session);
+
+    // rooms → settings via the user-panel settings button (in the sidebar user
+    // bar). This is what the removed-behavior test below used to drive; kept as a
+    // real (still-true) regression check that the plain router-outlet completes
+    // the transition — no dead router.
+    await page.getByTestId('open-settings').click();
+    await page.waitForURL('**/settings', { timeout: 20_000 });
+    await expect(page.locator('trn-settings')).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
+  // NavigationFocusService moves focus into the entering page after each route
+  // change (replacing Ionic's focus manager). After rooms → settings, focus should
+  // land inside the settings page (its heading), not stay on the settings button
+  // that triggered the navigation.
   test('relocates focus into the entering page', async ({ page }) => {
     await login(page, session);
 
-    // rooms → settings via the toolbar button (a focus-retaining activation).
     await page.getByTestId('open-settings').click();
     await page.waitForURL('**/settings', { timeout: 20_000 });
 
-    // Ionic's focus manager must move focus into the entering page on afterTransition;
-    // without the config it stays on body / the activating control in the leaving page.
     await expect
       .poll(() => focusInside(page, 'trn-settings'), { timeout: 10_000 })
       .toBe(true);

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { ModalController } from '@ionic/angular/standalone';
+import { DialogRef } from '@angular/cdk/dialog';
 import { SearchService, type SwitcherResult } from '@trinity/core';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -29,7 +29,7 @@ describe('QuickSwitcherComponent', () => {
   let searchPeople: ReturnType<typeof vi.fn>;
 
   function setInput(value: string, instance: QuickSwitcherComponent): void {
-    instance.onInput({ detail: { value } } as unknown as Event);
+    instance.onInput({ target: { value } } as unknown as Event);
   }
 
   function keyEvent(): {
@@ -47,7 +47,7 @@ describe('QuickSwitcherComponent', () => {
     TestBed.configureTestingModule({
       imports: [QuickSwitcherComponent],
       providers: [
-        { provide: ModalController, useValue: { dismiss } },
+        { provide: DialogRef, useValue: { close: dismiss } },
         { provide: SearchService, useValue: { localResults, searchPeople } },
       ],
     });
@@ -58,7 +58,7 @@ describe('QuickSwitcherComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.results()).toEqual(LOCAL);
-    expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(
+    expect(fixture.nativeElement.querySelectorAll('.qs-row').length).toBe(
       LOCAL.length,
     );
   });

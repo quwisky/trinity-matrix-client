@@ -5,54 +5,61 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
 ## Pinned versions (latest on npm, 2026-06-26)
 
-| Package                              | Version | Notes                                                                                   |
-| ------------------------------------ | ------- | --------------------------------------------------------------------------------------- |
-| `@angular/core`                      | 20.3.25 | Standalone + signals; Ionic 8 supports Angular 16+                                      |
-| `@ionic/angular`                     | 8.8.12  | 8.8 is the final Ionic 8 minor; Ionic 9 in development                                  |
-| `@capacitor/core`                    | 8.4.1   | Capacitor 8: SPM default on iOS, edge-to-edge Android                                   |
-| `electron` + `electron-builder`      | 42 / 26 | Hand-rolled desktop shell in `electron/` (own package.json); see Electron desktop below |
-| `matrix-js-sdk`                      | 41.8.0  | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                       |
-| `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1  | Rust crypto WASM bindings; E2EE backend                                                 |
-| `@capacitor/app`                     | 8.1.0   | App URL-open events — native SSO deep-link callback                                     |
-| `@capacitor/browser`                 | 8.0.3   | System browser for native SSO (keeps the app webview alive)                             |
-| `@capacitor/camera`                  | 8.2.0   | Native photo/gallery picker for sending media (web `<input>` fallback)                  |
-| `@capacitor/filesystem`              | 8.1.2   | Write a downloaded attachment to cache before sharing it (native save)                  |
-| `@capacitor/share`                   | 8.0.1   | Native OS save/share sheet for downloads (web `<a download>` fallback)                  |
-| `@capacitor/status-bar`              | 8.0.2   | Sets the native status-bar style to match the light/dark theme                          |
-| `@angular/service-worker`            | 20.3.25 | PWA service worker (production web): precaches the app shell + crypto WASM for offline  |
-| `@capacitor/push-notifications`      | 8.1.1   | FCM/APNs device token for the Matrix pusher (see [docs/PUSH.md](docs/PUSH.md))          |
-| `matrix-encrypt-attachment`          | —       | Removed (unmaintained since 2022); ported into `@trinity/core` `attachment-crypto.ts`   |
-| `marked`                             | 18.0.5  | Markdown → HTML for the composer/timeline                                               |
-| `dompurify`                          | 3.4.11  | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                              |
+| Package                              | Version   | Notes                                                                                                          |
+| ------------------------------------ | --------- | -------------------------------------------------------------------------------------------------------------- |
+| `@angular/core`                      | 21.2.9    | Standalone + signals; typed reactive forms                                                                     |
+| `@spartan-ng/brain` + `/cli`         | 1.0.4     | Headless UI primitives (Brain); styled Helm layer copied into `libs/spartan/*` (`@trinity/helm/*`) via the CLI |
+| `@angular/cdk`                       | 21.2.14   | Overlay/Dialog behind the helm overlays (dialog/tooltip/dropdown/sonner) + encryption modals                   |
+| `tailwindcss` + `tw-animate-css`     | 4.3 / 1.4 | Styling + theming (`theme/spartan.css` + `theme/variables.scss`); base reset is Tailwind preflight             |
+| `@ng-icons/{core,lucide}`            | 32.2.0    | Icon components (`<ng-icon name="lucide…">`) used across the UI                                                |
+| `@capacitor/core`                    | 8.4.1     | Capacitor 8: SPM default on iOS, edge-to-edge Android                                                          |
+| `electron` + `electron-builder`      | 42 / 26   | Hand-rolled desktop shell in `electron/` (own package.json); see Electron desktop below                        |
+| `matrix-js-sdk`                      | 41.8.0    | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                                              |
+| `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1    | Rust crypto WASM bindings; E2EE backend                                                                        |
+| `@capacitor/app`                     | 8.1.0     | App URL-open events — native SSO deep-link callback                                                            |
+| `@capacitor/browser`                 | 8.0.3     | System browser for native SSO (keeps the app webview alive)                                                    |
+| `@capacitor/camera`                  | 8.2.0     | Native photo/gallery picker for sending media (web `<input>` fallback)                                         |
+| `@capacitor/filesystem`              | 8.1.2     | Write a downloaded attachment to cache before sharing it (native save)                                         |
+| `@capacitor/share`                   | 8.0.1     | Native OS save/share sheet for downloads (web `<a download>` fallback)                                         |
+| `@capacitor/status-bar`              | 8.0.2     | Sets the native status-bar style to match the light/dark theme                                                 |
+| `@angular/service-worker`            | 21.2.9    | PWA service worker (production web): precaches the app shell + crypto WASM for offline                         |
+| `@capacitor/push-notifications`      | 8.1.1     | FCM/APNs device token for the Matrix pusher (see [docs/PUSH.md](docs/PUSH.md))                                 |
+| `matrix-encrypt-attachment`          | —         | Removed (unmaintained since 2022); ported into `@trinity/core` `attachment-crypto.ts`                          |
+| `marked`                             | 18.0.5    | Markdown → HTML for the composer/timeline                                                                      |
+| `dompurify`                          | 3.4.11    | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                                                     |
 
-> Versions moved since the original plan draft: Capacitor is on **8** (not 6),
-> Ionic on **8.8**. Angular is pinned at **20.3** (the Ionic 8 scaffold targets 20,
-> not the newer npm-latest line).
+> Versions moved since the original plan draft: Capacitor is on **8** (not 6); the
+> UI layer moved **off Ionic to spartan-ng** (Brain + Helm) on **Tailwind v4**; and
+> Angular is on **21.2**.
 
 ## Dev tooling & quality gates
 
-| Package                                           | Version       | Notes                                                         |
-| ------------------------------------------------- | ------------- | ------------------------------------------------------------- |
-| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.0.1        | Monorepo task graph, caching, module boundaries               |
-| `@nx/playwright` + `@playwright/test`             | 23.0.1 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium) |
-| `vitest` + `@analogjs/*`                          | 3 / 2.6.2     | Unit tests; the Analog plugin compiles Angular for Vite       |
-| `vite`, `vite-tsconfig-paths`, `jsdom`            | 6 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env      |
-| `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 20.7 / 8  | Flat config (`eslint.config.mjs`) + module boundaries         |
-| `prettier`                                        | 3.8           | `singleQuote`; Angular parser forced for `*.page.html`        |
-| `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                     |
-| `@commitlint/{cli,config-angular}`                | 21            | `commit-msg` hook; Angular commit convention                  |
-| `husky` + `lint-staged`                           | 9 / 17        | `pre-commit` (lint/format staged) + `commit-msg` hooks        |
-| `typescript`                                      | 5.9           | `moduleResolution: bundler`; aliases in `tsconfig.base.json`  |
-| `@types/node`                                     | 22            | Node globals for `vite.config.ts` + the spec tsconfigs        |
+| Package                                           | Version       | Notes                                                                |
+| ------------------------------------------------- | ------------- | -------------------------------------------------------------------- |
+| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.0.1        | Monorepo task graph, caching, module boundaries                      |
+| `@nx/playwright` + `@playwright/test`             | 23.0.1 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium)        |
+| `vitest` + `@analogjs/*`                          | 3 / 2.6.2     | Unit tests; the Analog plugin compiles Angular for Vite              |
+| `vite`, `vite-tsconfig-paths`, `jsdom`            | 6 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env             |
+| `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 20.7 / 8  | Flat config (`eslint.config.mjs`) + module boundaries                |
+| `prettier` (+ `prettier-plugin-tailwindcss`)      | 3.9 / 0.8     | `singleQuote`; Angular parser for `*.page.html`; Tailwind class sort |
+| `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                            |
+| `@commitlint/{cli,config-angular}`                | 21            | `commit-msg` hook; Angular commit convention                         |
+| `husky` + `lint-staged`                           | 9 / 17        | `pre-commit` (lint/format staged) + `commit-msg` hooks               |
+| `typescript`                                      | 5.9           | `moduleResolution: bundler`; aliases in `tsconfig.base.json`         |
+| `@types/node`                                     | 22            | Node globals for `vite.config.ts` + the spec tsconfigs               |
 
-## Ionic + Angular (standalone)
+## spartan-ng (Brain + Helm) + Angular (standalone)
 
-- Create with the Ionic CLI and select **Standalone Components** when prompted.
-- Import all Ionic pieces from `@ionic/angular/standalone` (components, directives,
-  providers, types) — enables treeshaking.
-- Bootstrap via `bootstrapApplication(...)` and call `provideIonicAngular()` in
-  providers **even if no config is passed**.
-- Use lazy-loaded standalone routes per feature.
+- UI is **spartan-ng**: headless **Brain** primitives (`@spartan-ng/brain`) plus
+  styled **Helm** components copied into `libs/spartan/*` and aliased `@trinity/helm/*`.
+  Add/regenerate components with `@spartan-ng/cli` (config in root `components.json`);
+  the copied Helm code is owned in-repo and customizable.
+- Bootstrap via `bootstrapApplication(...)` with `provideSpartanHlm()` (configures the
+  Angular CDK overlay) + `provideRouter(routes, withPreloading(PreloadAllModules))`.
+- Styling/theming is **Tailwind CSS v4** (`theme/spartan.css` imports the layers; trinity
+  design tokens in `theme/variables.scss`); the base reset is Tailwind preflight.
+- Use lazy-loaded standalone routes per feature; route-change focus is relocated into the
+  entering page by `NavigationFocusService` (replaces Ionic's focus manager).
 
 ## Capacitor 8
 
@@ -151,7 +158,7 @@ the architecture changes — find out before building UI on top.
 
 ## Sources
 
-- Ionic: https://ionicframework.com/docs/angular/overview , https://ionic.io/blog/announcing-ionic-framework-8-8
+- spartan-ng: https://www.spartan.ng , https://www.spartan.ng/documentation/introduction
 - Capacitor: https://ionic.io/blog/announcing-capacitor-8 , https://capacitorjs.com/
 - matrix-js-sdk: https://github.com/matrix-org/matrix-js-sdk , https://matrix-org-matrix-js-sdk.mintlify.app/guides/encryption-overview
 - crypto-wasm: https://www.npmjs.com/package/@matrix-org/matrix-sdk-crypto-wasm , https://github.com/matrix-org/matrix-sdk-crypto-wasm

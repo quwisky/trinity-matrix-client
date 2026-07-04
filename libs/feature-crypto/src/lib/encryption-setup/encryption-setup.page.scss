@@ -16,7 +16,8 @@
 }
 
 .confirm {
-  display: block;
+  // Layout (flex/alignment/gap) comes from the utility classes on the label;
+  // this scoped rule only contributes the section's spacing and text color.
   margin: 20px 0;
   color: var(--trinity-text);
 }

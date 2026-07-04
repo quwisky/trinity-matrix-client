@@ -34,7 +34,7 @@ describe('SasCompareComponent', () => {
     fixture.componentInstance.cancelled.subscribe(() => events.push('cancel'));
 
     const buttons = [
-      ...fixture.nativeElement.querySelectorAll('ion-button'),
+      ...fixture.nativeElement.querySelectorAll('button'),
     ] as HTMLElement[];
     buttons
       .find(

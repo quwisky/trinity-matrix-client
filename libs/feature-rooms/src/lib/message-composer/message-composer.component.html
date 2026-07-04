@@ -16,11 +16,12 @@
 
 @if (uploadProgress() !== null) {
   <div class="composer__upload" data-testid="upload-progress">
-    <ion-progress-bar
-      [type]="uploadDeterminate() ? 'determinate' : 'indeterminate'"
-      [value]="uploadProgress() ?? 0"
+    <hlm-progress
+      [value]="uploadDeterminate() ? (uploadProgress() ?? 0) * 100 : null"
       aria-label="Uploading attachment"
-    />
+    >
+      <hlm-progress-indicator />
+    </hlm-progress>
     <span class="composer__upload-label" aria-live="polite">
       Uploading…{{ uploadDeterminate() ? ' ' + uploadPercent() + '%' : '' }}
     </span>
@@ -73,8 +74,28 @@
       }
     </ul>
   }
+  <input
+    #fileInput
+    type="file"
+    class="composer__file-input"
+    data-testid="composer-file-input"
+    hidden
+    (change)="onFilePicked($event)"
+  />
+  <button
+    type="button"
+    class="composer__attach"
+    hlmTooltip="Attach"
+    aria-label="Attach a file"
+    data-testid="composer-attach"
+    [disabled]="uploadProgress() !== null"
+    (click)="onAttach()"
+  >
+    <ng-icon name="lucidePlus" aria-hidden="true" />
+  </button>
   <textarea
     #ta
+    hlmTextarea
     class="composer__input"
     rows="1"
     [value]="text()"
@@ -95,45 +116,26 @@
     (blur)="onBlur()"
     (paste)="onPaste($event)"
   ></textarea>
-  <input
-    #fileInput
-    type="file"
-    class="composer__file-input"
-    data-testid="composer-file-input"
-    hidden
-    (change)="onFilePicked($event)"
-  />
-  <button
-    type="button"
-    class="composer__attach"
-    title="Attach"
-    aria-label="Attach a file"
-    data-testid="composer-attach"
-    [disabled]="uploadProgress() !== null"
-    (click)="onAttach()"
-  >
-    <ion-icon name="add-outline" aria-hidden="true" />
-  </button>
   <button
     type="button"
     class="composer__emoji"
-    title="Emoji"
+    hlmTooltip="Emoji"
     aria-label="Insert emoji"
     [attr.aria-expanded]="pickerOpen()"
     (click)="pickerOpen.set(!pickerOpen())"
   >
-    <ion-icon name="happy-outline" aria-hidden="true" />
+    <ng-icon name="lucideSmile" aria-hidden="true" />
   </button>
   <!-- Touch devices have no reliable Enter-to-send, so surface an explicit send
        button there (hidden on pointer devices via CSS). -->
   <button
     type="button"
     class="composer__send"
-    title="Send"
+    hlmTooltip="Send"
     aria-label="Send message"
     [disabled]="!text().trim()"
     (click)="submit()"
   >
-    <ion-icon name="send" aria-hidden="true" />
+    <ng-icon name="lucideSend" aria-hidden="true" />
   </button>
 </div>

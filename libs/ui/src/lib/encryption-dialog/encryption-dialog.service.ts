@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { ModalController } from '@ionic/angular/standalone';
+import type { Type } from '@angular/core';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogKind,
@@ -14,9 +15,6 @@ export interface EncryptionDialogOptions {
    */
   returnTo?: string;
 }
-
-/** Centered auto-height card for the desktop modals (see global.scss). */
-const MODAL_CSS_CLASS = 'encryption-dialog-modal';
 
 /** Matches `<ion-split-pane when="md">` in the rooms shell (Ionic `md` = 768px). */
 const DESKTOP_QUERY = '(min-width: 768px)';
@@ -38,7 +36,7 @@ const DESKTOP_QUERY = '(min-width: 768px)';
 @Injectable({ providedIn: 'root' })
 export class EncryptionDialogService {
   private readonly router = inject(Router);
-  private readonly modalCtrl = inject(ModalController);
+  private readonly dialog = inject(TrnDialogService);
   private readonly components = inject(ENCRYPTION_DIALOG_COMPONENTS, {
     optional: true,
   });
@@ -60,16 +58,13 @@ export class EncryptionDialogService {
   ): Promise<void> {
     const load = this.components?.[kind];
     if (load && this.isDesktopLayout()) {
-      const component = await load();
-      const modal = await this.modalCtrl.create({
-        component,
-        componentProps: { asModal: true },
-        cssClass: MODAL_CSS_CLASS,
-        // Force the in-modal Close control: a backdrop tap must not leave an
-        // in-flight verification dangling, so the page owns clean teardown.
-        backdropDismiss: false,
+      const component = (await load()) as Type<unknown>;
+      // Force the in-dialog Close control: a backdrop/escape tap must not leave an
+      // in-flight verification dangling, so the page owns clean teardown.
+      this.dialog.open(component, {
+        inputs: { asModal: true },
+        disableClose: true,
       });
-      await modal.present();
       return;
     }
     await this.router.navigate(

@@ -1,22 +1,16 @@
-// Pin the desktop side pane to exactly rail (72) + sidebar (240) so it matches
-// the content width — otherwise the split-pane reserves --side-max-width (28%)
-// and the surplus shows as a gap. --width below applies to the mobile drawer.
-ion-split-pane {
-  --side-min-width: 312px;
-  --side-max-width: 312px;
-  --side-width: 312px;
-  --border: none;
-}
-
-ion-menu {
-  --width: 312px;
-  --max-width: 312px;
-  --background: var(--trinity-rail);
-}
-
+// Server rail (72) + channel sidebar (240) = 312px. A static column at md+ and a
+// slide-in drawer below (the fixed/translate classes live on the template's <aside>).
 .shell-side {
   display: flex;
   height: 100%;
+  background: var(--trinity-rail);
+
+  // Outer-left column: clear the notch/status bar (top), the left cutout on a
+  // landscape notch (left), and the home indicator (bottom, where the user footer
+  // sits). env() is 0 off notched devices, so this is inert on web/desktop.
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
 }
 
 .main {
@@ -27,16 +21,16 @@ ion-menu {
   flex-direction: column;
   height: 100%;
   overflow: hidden; // contain the header + body so the timeline scrolls internally
+  // Outer-right column: fill the top cutout with the chat surface so the toolbar's
+  // content sits below the notch, and keep content clear of a right-side cutout.
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  background: var(--trinity-chat);
 }
 
-.chat-toolbar {
-  --background: var(--trinity-chat);
-  --color: var(--trinity-text-bright);
-  --border-color: var(--trinity-divider);
-
-  font-weight: 600;
-}
-
+// The toolbar surface now comes from <trn-page-header variant="chat"> (which
+// carries bg-[var(--trinity-chat)] and the toolbar text color). The room-name
+// title is still projected from here, so these scoped title styles stay.
 .title-hash {
   color: var(--trinity-text-muted);
   margin-right: 4px;

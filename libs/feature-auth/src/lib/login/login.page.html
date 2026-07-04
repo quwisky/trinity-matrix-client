@@ -1,116 +1,126 @@
-<ion-content class="login-page">
+<main class="login-page flex-1 overflow-y-auto">
   <!-- Visually hidden page title for assistive technology. -->
   <h1 class="sr-only">Sign in to Trinity</h1>
 
   <div class="login-wrapper">
-    <div class="login-card">
+    <section hlmCard class="login-card">
       <!-- ── Branding ───────────────────────────────────────── -->
-      <div class="login-card__brand">
-        <h2 class="login-card__wordmark">Trinity</h2>
+      <div hlmCardHeader class="login-card__brand">
+        <h2 hlmCardTitle class="login-card__wordmark">Trinity</h2>
         @if (!baseUrl()) {
-          <p class="login-card__subtitle">
+          <p hlmCardDescription class="login-card__subtitle">
             Welcome back! Enter your homeserver to continue.
           </p>
         } @else {
-          <p class="login-card__subtitle">Sign in to your account</p>
+          <p hlmCardDescription class="login-card__subtitle">
+            Sign in to your account
+          </p>
           <p class="login-card__homeserver">{{ baseUrl() }}</p>
         }
       </div>
 
-      @if (!baseUrl()) {
-        <!-- ── Step 1: Homeserver ──────────────────────────── -->
-        <div class="login-card__field">
-          <ion-input
-            label="Homeserver"
-            labelPlacement="stacked"
-            fill="solid"
-            autocapitalize="off"
-            autocorrect="off"
-            placeholder="matrix.org"
-            [disabled]="busy()"
-            [ngModel]="homeserverInput()"
-            (ngModelChange)="homeserverInput.set($event)"
-          ></ion-input>
-        </div>
-
-        <ion-button
-          class="login-card__submit"
-          expand="block"
-          [disabled]="busy()"
-          (click)="discover()"
-        >
-          Continue
-        </ion-button>
-      } @else {
-        <!-- ── Step 2: Username + Password ────────────────── -->
-        @if (passwordSupported()) {
+      <div hlmCardContent>
+        @if (!baseUrl()) {
+          <!-- ── Step 1: Homeserver ──────────────────────────── -->
           <div class="login-card__field">
-            <ion-input
-              label="Username"
-              labelPlacement="stacked"
-              fill="solid"
+            <label hlmLabel for="homeserver" class="login-card__label"
+              >Homeserver</label
+            >
+            <input
+              hlmInput
+              id="homeserver"
               autocapitalize="off"
               autocorrect="off"
+              placeholder="matrix.org"
               [disabled]="busy()"
-              [ngModel]="username()"
-              (ngModelChange)="username.set($event)"
-            ></ion-input>
+              [ngModel]="homeserverInput()"
+              (ngModelChange)="homeserverInput.set($event)"
+            />
           </div>
 
-          <div class="login-card__field">
-            <ion-input
-              label="Password"
-              labelPlacement="stacked"
-              fill="solid"
-              type="password"
+          <button
+            hlmBtn
+            class="login-card__submit w-full"
+            [disabled]="busy()"
+            (click)="discover()"
+          >
+            Continue
+          </button>
+        } @else {
+          <!-- ── Step 2: Username + Password ────────────────── -->
+          @if (passwordSupported()) {
+            <div class="login-card__field">
+              <label hlmLabel for="username" class="login-card__label"
+                >Username</label
+              >
+              <input
+                hlmInput
+                id="username"
+                autocapitalize="off"
+                autocorrect="off"
+                [disabled]="busy()"
+                [ngModel]="username()"
+                (ngModelChange)="username.set($event)"
+              />
+            </div>
+
+            <div class="login-card__field">
+              <label hlmLabel for="password" class="login-card__label"
+                >Password</label
+              >
+              <input
+                hlmInput
+                id="password"
+                type="password"
+                [disabled]="busy()"
+                [ngModel]="password()"
+                (ngModelChange)="password.set($event)"
+              />
+            </div>
+
+            <button
+              hlmBtn
+              class="login-card__submit w-full"
               [disabled]="busy()"
-              [ngModel]="password()"
-              (ngModelChange)="password.set($event)"
-            ></ion-input>
+              (click)="loginPassword()"
+            >
+              Sign in
+            </button>
+          }
+
+          <!-- ── Step 2b: SSO ───────────────────────────────── -->
+          @if (ssoSupported()) {
+            <button
+              hlmBtn
+              variant="outline"
+              class="login-card__sso w-full"
+              [disabled]="busy()"
+              (click)="startSso()"
+            >
+              Continue with SSO
+            </button>
+          }
+        }
+
+        <!-- ── Loading state ──────────────────────────────────── -->
+        @if (busy()) {
+          <div
+            class="login-card__busy text-center"
+            role="status"
+            aria-live="polite"
+          >
+            <hlm-spinner />
+            <p class="text-muted-foreground">Working…</p>
           </div>
-
-          <ion-button
-            class="login-card__submit"
-            expand="block"
-            [disabled]="busy()"
-            (click)="loginPassword()"
-          >
-            Sign in
-          </ion-button>
         }
 
-        <!-- ── Step 2b: SSO ───────────────────────────────── -->
-        @if (ssoSupported()) {
-          <ion-button
-            class="login-card__sso"
-            expand="block"
-            fill="outline"
-            [disabled]="busy()"
-            (click)="startSso()"
-          >
-            Continue with SSO
-          </ion-button>
+        <!-- ── Error state ────────────────────────────────────── -->
+        @if (error(); as message) {
+          <p class="login-card__error text-destructive" role="alert">
+            {{ message }}
+          </p>
         }
-      }
-
-      <!-- ── Loading state ──────────────────────────────────── -->
-      @if (busy()) {
-        <div
-          class="login-card__busy ion-text-center"
-          role="status"
-          aria-live="polite"
-        >
-          <ion-spinner></ion-spinner>
-          <p><ion-text color="medium">Working…</ion-text></p>
-        </div>
-      }
-
-      <!-- ── Error state ────────────────────────────────────── -->
-      @if (error(); as message) {
-        <p class="login-card__error">
-          <ion-text color="danger" role="alert">{{ message }}</ion-text>
-        </p>
-      }
-    </div>
+      </div>
+    </section>
   </div>
-</ion-content>
+</main>

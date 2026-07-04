@@ -1,5 +1,8 @@
 {
   "singleQuote": true,
+  "plugins": ["prettier-plugin-tailwindcss"],
+  "tailwindStylesheet": "apps/trinity/src/theme/spartan.css",
+  "tailwindFunctions": ["hlm", "cva", "classes", "cn", "clsx", "twMerge"],
   "overrides": [
     {
       "files": "*.page.html",

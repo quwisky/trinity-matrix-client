@@ -313,6 +313,11 @@ export class MediaService {
     this.cache.clear();
     this.inFlight.clear();
     this.pinned.clear();
+    // Re-probe authed-media support on the next request: after a logout→login the
+    // new account's homeserver may differ (e.g. legacy vs authenticated-only), and
+    // a stale `false` would keep requesting the unauthenticated endpoint (401/404
+    // with no fallback), breaking all media for the session.
+    this.authedMedia = null;
   }
 
   /** Pick the bytes to fetch for a variant, preferring an event-supplied thumbnail. */

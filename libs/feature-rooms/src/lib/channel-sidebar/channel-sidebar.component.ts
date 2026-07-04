@@ -4,16 +4,24 @@ import {
   input,
   output,
 } from '@angular/core';
-import { IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
 import {
-  addOutline,
-  checkmarkOutline,
-  closeOutline,
-  exitOutline,
-  personAddOutline,
-  removeCircleOutline,
-} from 'ionicons/icons';
+  HlmDropdownMenu,
+  HlmDropdownMenuItem,
+  HlmDropdownMenuLabel,
+  HlmDropdownMenuSeparator,
+  HlmDropdownMenuTrigger,
+} from '@trinity/helm/dropdown-menu';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideCheck,
+  lucideCircleMinus,
+  lucideCommand,
+  lucideLogOut,
+  lucidePlus,
+  lucideSettings,
+  lucideUserPlus,
+  lucideX,
+} from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
 
@@ -21,12 +29,41 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
 @Component({
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, IonIcon],
+  imports: [
+    AvatarComponent,
+    NgIcon,
+    HlmDropdownMenuTrigger,
+    HlmDropdownMenu,
+    HlmDropdownMenuItem,
+    HlmDropdownMenuLabel,
+    HlmDropdownMenuSeparator,
+  ],
+  viewProviders: [
+    provideIcons({
+      lucideCheck,
+      lucideCircleMinus,
+      lucideCommand,
+      lucideLogOut,
+      lucidePlus,
+      lucideSettings,
+      lucideUserPlus,
+      lucideX,
+    }),
+  ],
   template: `
     <div class="sidebar">
       <header class="sidebar__header">
         <span class="sidebar__title">{{ spaceName() }}</span>
         <div class="sidebar__actions">
+          <button
+            class="sidebar__action"
+            (click)="openSwitcher.emit()"
+            aria-label="Search (Ctrl/Cmd+K)"
+            title="Search (Ctrl/Cmd+K)"
+            data-testid="open-switcher"
+          >
+            <ng-icon name="lucideCommand" aria-hidden="true" />
+          </button>
           @if (spaceActive()) {
             <button
               class="sidebar__action"
@@ -34,7 +71,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
               aria-label="Create a channel"
               title="Create a channel"
             >
-              <ion-icon name="add-outline" aria-hidden="true" />
+              <ng-icon name="lucidePlus" aria-hidden="true" />
             </button>
             <button
               class="sidebar__action"
@@ -42,7 +79,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
               aria-label="Invite people to space"
               title="Invite people to space"
             >
-              <ion-icon name="person-add-outline" aria-hidden="true" />
+              <ng-icon name="lucideUserPlus" aria-hidden="true" />
             </button>
             <button
               class="sidebar__action"
@@ -50,7 +87,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
               aria-label="Leave space"
               title="Leave space"
             >
-              <ion-icon name="exit-outline" aria-hidden="true" />
+              <ng-icon name="lucideLogOut" aria-hidden="true" />
             </button>
           } @else {
             <button
@@ -59,7 +96,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
               aria-label="New room or direct message"
               title="New room or direct message"
             >
-              <ion-icon name="add-outline" aria-hidden="true" />
+              <ng-icon name="lucidePlus" aria-hidden="true" />
             </button>
           }
         </div>
@@ -95,7 +132,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
                   [attr.aria-label]="'Accept invite to ' + invite.name"
                   title="Accept"
                 >
-                  <ion-icon name="checkmark-outline" aria-hidden="true" />
+                  <ng-icon name="lucideCheck" aria-hidden="true" />
                 </button>
                 <button
                   class="invite__btn decline"
@@ -103,7 +140,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
                   [attr.aria-label]="'Decline invite to ' + invite.name"
                   title="Decline"
                 >
-                  <ion-icon name="close-outline" aria-hidden="true" />
+                  <ng-icon name="lucideX" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -137,7 +174,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
                 [attr.aria-label]="'Remove ' + room.name + ' from this space'"
                 title="Remove from space"
               >
-                <ion-icon name="remove-circle-outline" aria-hidden="true" />
+                <ng-icon name="lucideCircleMinus" aria-hidden="true" />
               </button>
             }
           </div>
@@ -224,25 +261,51 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
       </div>
 
       <footer class="userbar">
-        <trn-avatar
-          [mxc]="userAvatarMxc()"
-          [initial]="userInitial()"
-          [name]="userName()"
-          [size]="32"
-        />
-        <div class="userbar__id">
-          <span class="userbar__name">{{ userName() }}</span>
-          <span class="userbar__handle">{{ userId() }}</span>
-        </div>
         <button
-          class="userbar__logout"
-          (click)="logout.emit()"
-          aria-label="Log out"
-          title="Log out"
+          class="userbar__trigger"
+          [hlmDropdownMenuTrigger]="accountMenu"
+          side="top"
+          align="start"
+          aria-label="Account menu"
+          data-testid="user-menu-trigger"
         >
-          ⏻
+          <trn-avatar
+            [mxc]="userAvatarMxc()"
+            [initial]="userInitial()"
+            [name]="userName()"
+            [size]="32"
+          />
+          <div class="userbar__id">
+            <span class="userbar__name">{{ userName() }}</span>
+            <span class="userbar__handle">{{ userId() }}</span>
+          </div>
+        </button>
+        <button
+          class="userbar__settings"
+          (click)="openSettings.emit()"
+          aria-label="Settings"
+          title="Settings"
+          data-testid="open-settings"
+        >
+          <ng-icon name="lucideSettings" />
         </button>
       </footer>
+
+      <ng-template #accountMenu>
+        <div hlmDropdownMenu>
+          <div hlmDropdownMenuLabel class="truncate">{{ userName() }}</div>
+          <div hlmDropdownMenuSeparator></div>
+          <button
+            hlmDropdownMenuItem
+            variant="destructive"
+            (triggered)="logout.emit()"
+            data-testid="logout"
+          >
+            <ng-icon name="lucideLogOut" />
+            Log out
+          </button>
+        </div>
+      </ng-template>
     </div>
   `,
   styleUrl: './channel-sidebar.component.scss',
@@ -285,16 +348,9 @@ export class ChannelSidebarComponent {
   /** Accept / decline a pending invite by room id. */
   readonly acceptInvite = output<string>();
   readonly declineInvite = output<string>();
+  /** Header search icon — open the global quick switcher (Ctrl/Cmd+K). */
+  readonly openSwitcher = output<void>();
+  /** User-panel gear — open the settings page. */
+  readonly openSettings = output<void>();
   readonly logout = output<void>();
-
-  constructor() {
-    addIcons({
-      addOutline,
-      checkmarkOutline,
-      closeOutline,
-      exitOutline,
-      personAddOutline,
-      removeCircleOutline,
-    });
-  }
 }

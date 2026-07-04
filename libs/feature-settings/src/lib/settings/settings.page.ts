@@ -1,3 +1,4 @@
+import { Location } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -8,24 +9,18 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideArrowLeft } from '@ng-icons/lucide';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmLabel } from '@trinity/helm/label';
 import {
-  IonBackButton,
-  IonButton,
-  IonButtons,
-  IonContent,
-  IonHeader,
-  IonInput,
-  IonItem,
-  IonLabel,
-  IonList,
-  IonListHeader,
-  IonNote,
-  IonRadio,
-  IonRadioGroup,
-  IonTitle,
-  IonToolbar,
-} from '@ionic/angular/standalone';
-import { AvatarComponent, runWithBusy } from '@trinity/ui';
+  HlmRadio,
+  HlmRadioGroup,
+  HlmRadioIndicator,
+} from '@trinity/helm/radio-group';
+import { AvatarComponent, PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import {
   ProfileService,
   ThemeService,
@@ -44,28 +39,24 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
   styleUrl: './settings.page.scss',
   imports: [
     AvatarComponent,
+    PageHeaderComponent,
     DevicesSectionComponent,
-    IonBackButton,
-    IonButton,
-    IonButtons,
-    IonContent,
-    IonHeader,
-    IonInput,
-    IonItem,
-    IonLabel,
-    IonList,
-    IonListHeader,
-    IonNote,
-    IonRadio,
-    IonRadioGroup,
-    IonTitle,
-    IonToolbar,
+    NgIcon,
+    HlmButton,
+    HlmTooltip,
+    HlmInput,
+    HlmLabel,
+    HlmRadioGroup,
+    HlmRadio,
+    HlmRadioIndicator,
   ],
+  viewProviders: [provideIcons({ lucideArrowLeft })],
 })
 export class SettingsPage {
   readonly theme = inject(ThemeService);
   private readonly profileSvc = inject(ProfileService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly location = inject(Location);
 
   readonly profile = this.profileSvc.profile;
   readonly nameDraft = signal('');
@@ -98,17 +89,18 @@ export class SettingsPage {
     }).subscribe((profile) => this.nameDraft.set(profile.displayName));
   }
 
+  /** Navigate back within the app-shell history. */
+  goBack(): void {
+    this.location.back();
+  }
+
   /** Apply + persist the chosen appearance when the radio group changes. */
-  onThemeChange(event: Event): void {
-    const value = (event as CustomEvent<{ value: ThemePreference }>).detail
-      .value;
-    this.theme.setPreference(value);
+  onThemeChange(value: string): void {
+    this.theme.setPreference(value as ThemePreference);
   }
 
   onNameInput(event: Event): void {
-    this.nameDraft.set(
-      (event as CustomEvent<{ value: string | null }>).detail.value ?? '',
-    );
+    this.nameDraft.set((event.target as HTMLInputElement).value);
   }
 
   saveName(): void {

@@ -1,38 +1,29 @@
-<ion-header [translucent]="true">
-  <ion-toolbar>
-    <ion-title>Trinity</ion-title>
-  </ion-toolbar>
-</ion-header>
+<trn-page-header title="Trinity" />
 
-<ion-content [fullscreen]="true" class="ion-padding">
-  <ion-header collapse="condense">
-    <ion-toolbar>
-      <ion-title size="large">Trinity</ion-title>
-    </ion-toolbar>
-  </ion-header>
-
+<main class="flex-1 overflow-y-auto p-4">
   <h2>E2EE crypto spike</h2>
   <p>
-    <ion-text color="medium">
+    <span class="text-muted-foreground">
       Verifies that the Rust crypto WASM loads and the crypto store initializes
       in this runtime (browser / WebView / Electron).
-    </ion-text>
+    </span>
   </p>
 
-  <ion-button
-    expand="block"
+  <button
+    hlmBtn
+    class="w-full"
     data-testid="run-spike"
     [disabled]="running()"
     (click)="runSpike()"
   >
     {{ running() ? 'Running…' : 'Run crypto spike' }}
-  </ion-button>
+  </button>
 
   @if (result(); as r) {
     <div data-testid="spike-result" [attr.data-ok]="r.ok">
       @if (r.ok) {
         <p>
-          <ion-text color="success"><strong>PASS</strong></ion-text>
+          <span class="text-success"><strong>PASS</strong></span>
         </p>
         <ul>
           <li>crypto version: {{ r.cryptoVersion }}</li>
@@ -42,10 +33,10 @@
         </ul>
       } @else {
         <p>
-          <ion-text color="danger"><strong>FAIL</strong></ion-text>
+          <span class="text-destructive"><strong>FAIL</strong></span>
         </p>
         <p>{{ r.error }}</p>
       }
     </div>
   }
-</ion-content>
+</main>

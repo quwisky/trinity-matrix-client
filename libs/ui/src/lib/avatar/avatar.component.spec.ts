@@ -4,51 +4,41 @@ import { vi } from 'vitest';
 import { AvatarComponent } from './avatar.component';
 import { AVATAR_RESOLVER } from './avatar-resolver';
 
+// The image-shows-once-loaded / falls-back-on-error swap is BrnAvatar's job (and
+// needs a real image load, which jsdom can't do), so these cover the component's
+// own contract: the resolved `src`, and the initials fallback that renders while
+// there's no image. The rendered image path is verified in the browser (e2e).
 describe('AvatarComponent', () => {
   beforeEach(() =>
     TestBed.configureTestingModule({ imports: [AvatarComponent] }),
   );
 
-  it('renders the initials fallback when no url is given', () => {
+  const fallback = (host: HTMLElement) =>
+    host.querySelector('[data-slot="avatar-fallback"]');
+
+  it('shows the initials fallback when no image source is given', () => {
     const fixture = TestBed.createComponent(AvatarComponent);
     fixture.componentRef.setInput('initial', 'A');
     fixture.componentRef.setInput('name', 'Alice');
     fixture.detectChanges();
 
-    const fallback = fixture.nativeElement.querySelector('.avatar--fallback');
-    expect(fallback).toBeTruthy();
-    expect(fallback.textContent.trim()).toBe('A');
+    expect(fixture.componentInstance.src()).toBeNull();
+    const fb = fallback(fixture.nativeElement);
+    expect(fb).toBeTruthy();
+    expect(fb?.textContent?.trim()).toBe('A');
   });
 
-  it('renders an image when a url is provided', () => {
+  it('uses the direct url as the image source', () => {
     const fixture = TestBed.createComponent(AvatarComponent);
     fixture.componentRef.setInput('url', 'https://hs.example/avatar.png');
     fixture.detectChanges();
 
-    const img = fixture.nativeElement.querySelector('img.avatar');
-    expect(img.getAttribute('src')).toBe('https://hs.example/avatar.png');
+    expect(fixture.componentInstance.src()).toBe(
+      'https://hs.example/avatar.png',
+    );
   });
 
-  it('falls back to initials after the image fails to load', () => {
-    const fixture = TestBed.createComponent(AvatarComponent);
-    fixture.componentRef.setInput('url', 'https://hs.example/broken.png');
-    fixture.componentRef.setInput('initial', 'B');
-    fixture.detectChanges();
-
-    fixture.nativeElement
-      .querySelector('img.avatar')
-      .dispatchEvent(new Event('error'));
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('img.avatar')).toBeNull();
-    expect(
-      fixture.nativeElement
-        .querySelector('.avatar--fallback')
-        .textContent.trim(),
-    ).toBe('B');
-  });
-
-  it('resolves an mxc via the resolver and shows the resolved url', () => {
+  it('resolves an mxc via the resolver and uses the resolved url', () => {
     const resolver = vi.fn(() => of('blob:resolved'));
     TestBed.configureTestingModule({
       providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
@@ -59,9 +49,7 @@ describe('AvatarComponent', () => {
     fixture.detectChanges();
 
     expect(resolver).toHaveBeenCalledWith('mxc://hs/a', 64);
-    expect(
-      fixture.nativeElement.querySelector('img.avatar').getAttribute('src'),
-    ).toBe('blob:resolved');
+    expect(fixture.componentInstance.src()).toBe('blob:resolved');
   });
 
   it('falls back to initials when the resolver yields null', () => {
@@ -73,11 +61,7 @@ describe('AvatarComponent', () => {
     fixture.componentRef.setInput('initial', 'C');
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('img.avatar')).toBeNull();
-    expect(
-      fixture.nativeElement
-        .querySelector('.avatar--fallback')
-        .textContent.trim(),
-    ).toBe('C');
+    expect(fixture.componentInstance.src()).toBeNull();
+    expect(fallback(fixture.nativeElement)?.textContent?.trim()).toBe('C');
   });
 });

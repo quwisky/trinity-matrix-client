@@ -5,19 +5,12 @@ import {
   inject,
   input,
 } from '@angular/core';
-import {
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonButtons,
-  IonButton,
-  IonIcon,
-  IonContent,
-  ModalController,
-} from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
-import { close } from 'ionicons/icons';
+import { DialogRef } from '@angular/cdk/dialog';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideX } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import { ThreadsService, type ThreadSummary } from '@trinity/core';
 
 /** Most participant avatars shown per row before the "+N" overflow chip. */
@@ -30,32 +23,24 @@ const MAX_AVATARS = 4;
  * {@link ThreadsService.threadList} (already projected for the active room by the
  * rooms shell), so it reacts to new threads, replies, and unread changes.
  *
- * Presented as an Ionic modal (desktop side panel / mobile full-screen) by
- * {@link ThreadPanelService}; `roomId` arrives as a signal input. Tapping a row
- * dismisses this modal with the chosen root id, and the panel service re-opens it
- * as a {@link ThreadViewComponent} — keeping this component free of any thread-open
- * dependency (and the two modals from stacking).
+ * Presented via {@link ThreadPanelService} as a right-aligned side panel (desktop) /
+ * full-screen (mobile) {@link TrnDialogService} dialog; `roomId` arrives as a signal
+ * input. Tapping a row closes this dialog with the chosen root id, and the panel
+ * service re-opens it as a {@link ThreadViewComponent} — keeping this component free
+ * of any thread-open dependency (and the two panels from stacking).
  */
 @Component({
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonButtons,
-    IonButton,
-    IonIcon,
-    IonContent,
-    DatePipe,
-    AvatarComponent,
-  ],
+  imports: [NgIcon, DatePipe, AvatarComponent, HlmButton, HlmTooltip],
+  viewProviders: [provideIcons({ lucideX })],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',
 })
 export class ThreadsListComponent {
   private readonly threadsSvc = inject(ThreadsService);
-  private readonly modalCtrl = inject(ModalController);
+  private readonly dialogRef =
+    inject<DialogRef<string | undefined, ThreadsListComponent>>(DialogRef);
 
   /** The room whose threads are listed (used by the panel to re-open a thread). */
   readonly roomId = input.required<string>();
@@ -66,18 +51,14 @@ export class ThreadsListComponent {
   /** Avatars shown per row, capped — the rest collapse into a "+N" chip. */
   readonly maxAvatars = MAX_AVATARS;
 
-  constructor() {
-    addIcons({ close });
-  }
-
-  /** Dismiss this list, handing the chosen thread root back to the panel service. */
+  /** Close this list, handing the chosen thread root back to the panel service. */
   openThread(rootEventId: string): void {
-    void this.modalCtrl.dismiss(rootEventId);
+    this.dialogRef.close(rootEventId);
   }
 
   /** Close the panel without opening a thread. */
   close(): void {
-    void this.modalCtrl.dismiss();
+    this.dialogRef.close();
   }
 
   /** Accessible label for a row's unread badge. */

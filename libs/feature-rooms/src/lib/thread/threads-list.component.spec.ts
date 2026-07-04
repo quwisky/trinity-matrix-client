@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ModalController } from '@ionic/angular/standalone';
+import { DialogRef } from '@angular/cdk/dialog';
 import { ThreadsService, type ThreadSummary } from '@trinity/core';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadsListComponent } from './threads-list.component';
@@ -29,7 +29,7 @@ function build(threads: ThreadSummary[] = []) {
     imports: [ThreadsListComponent],
     providers: [
       { provide: ThreadsService, useValue: { threadList } },
-      { provide: ModalController, useValue: { dismiss } },
+      { provide: DialogRef, useValue: { close: dismiss } },
     ],
   });
   const fixture = TestBed.createComponent(ThreadsListComponent);
@@ -96,7 +96,7 @@ describe('ThreadsListComponent', () => {
     ).toBeNull();
   });
 
-  it('dismisses with the chosen thread-root id when a row is tapped', () => {
+  it('closes with the chosen thread-root id when a row is tapped', () => {
     const { fixture, dismiss } = build([summary({ rootEventId: '$pick' })]);
     fixture.detectChanges();
 
@@ -105,7 +105,7 @@ describe('ThreadsListComponent', () => {
     expect(dismiss).toHaveBeenCalledWith('$pick');
   });
 
-  it('dismisses with no payload when closed', () => {
+  it('closes with no payload when closed', () => {
     const { fixture, dismiss } = build([summary()]);
     fixture.detectChanges();
 

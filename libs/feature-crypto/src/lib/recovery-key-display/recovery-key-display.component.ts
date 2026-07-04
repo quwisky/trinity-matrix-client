@@ -7,9 +7,9 @@ import {
 } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { DOCUMENT } from '@angular/common';
-import { IonButton, IonIcon } from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
-import { checkmarkOutline, copyOutline, downloadOutline } from 'ionicons/icons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideCheck, lucideCopy, lucideDownload } from '@ng-icons/lucide';
+import { HlmButton } from '@trinity/helm/button';
 
 /** How long the "Copied" affordance stays visible after a successful copy. */
 const COPIED_FEEDBACK_MS = 2000;
@@ -25,26 +25,26 @@ const COPIED_FEEDBACK_MS = 2000;
   selector: 'trn-recovery-key-display',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['recovery-key-display.component.scss'],
-  imports: [IonButton, IonIcon],
+  imports: [HlmButton, NgIcon],
+  viewProviders: [provideIcons({ lucideCheck, lucideCopy, lucideDownload })],
   template: `
     <!-- No aria-label: the key text itself must be the accessible content so a
          screen reader can read it. Copy/Download are the reliable capture path. -->
     <code class="key" tabindex="0">{{ recoveryKey() }}</code>
 
     <div class="actions">
-      <ion-button fill="outline" size="small" (click)="copy()">
-        <ion-icon
-          slot="start"
-          [name]="copied() ? 'checkmark-outline' : 'copy-outline'"
+      <button hlmBtn variant="outline" size="sm" (click)="copy()">
+        <ng-icon
+          [name]="copied() ? 'lucideCheck' : 'lucideCopy'"
           aria-hidden="true"
         />
         {{ copied() ? 'Copied' : 'Copy' }}
-      </ion-button>
+      </button>
       @if (canDownload) {
-        <ion-button fill="outline" size="small" (click)="download()">
-          <ion-icon slot="start" name="download-outline" aria-hidden="true" />
+        <button hlmBtn variant="outline" size="sm" (click)="download()">
+          <ng-icon name="lucideDownload" aria-hidden="true" />
           Download
-        </ion-button>
+        </button>
       }
     </div>
 
@@ -77,10 +77,6 @@ export class RecoveryKeyDisplayComponent {
 
   /** Native WebViews lack a reliable file download; offer it on web only. */
   readonly canDownload = !Capacitor.isNativePlatform();
-
-  constructor() {
-    addIcons({ checkmarkOutline, copyOutline, downloadOutline });
-  }
 
   /** Copy the key to the clipboard, with transient + announced confirmation. */
   copy(): void {

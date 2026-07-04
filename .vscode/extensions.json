@@ -1,3 +1,7 @@
 {
-  "recommendations": ["Webnative.webnative", "ms-playwright.playwright"]
+  "recommendations": [
+    "Webnative.webnative",
+    "ms-playwright.playwright",
+    "esbenp.prettier-vscode"
+  ]
 }

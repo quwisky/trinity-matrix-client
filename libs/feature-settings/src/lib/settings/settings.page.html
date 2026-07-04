@@ -1,62 +1,87 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-buttons slot="start">
-      <ion-back-button defaultHref="/rooms" />
-    </ion-buttons>
-    <ion-title>Settings</ion-title>
-  </ion-toolbar>
-</ion-header>
+<trn-page-header title="Settings">
+  <button
+    trnHeaderLeading
+    hlmBtn
+    variant="ghost"
+    size="icon"
+    hlmTooltip="Back"
+    aria-label="Back"
+    (click)="goBack()"
+  >
+    <ng-icon name="lucideArrowLeft" />
+  </button>
+</trn-page-header>
 
-<ion-content>
-  <ion-list>
-    <ion-list-header>Profile</ion-list-header>
+<main class="flex-1 overflow-y-auto">
+  <div>
+    <h2
+      class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+    >
+      Profile
+    </h2>
     @if (profile(); as p) {
-      <ion-item lines="none">
+      <div class="flex items-center gap-3 px-4 py-2">
         <trn-avatar
-          slot="start"
           [mxc]="p.avatarMxc"
           [name]="p.displayName || p.userId"
           [initial]="initial()"
           [size]="64"
         />
-        <ion-label>
-          <h2>{{ p.displayName || p.userId }}</h2>
-          <p>{{ p.userId }}</p>
-        </ion-label>
-        <ion-button
-          slot="end"
-          fill="clear"
-          size="small"
+        <div class="min-w-0 flex-1">
+          <div
+            class="truncate text-sm font-medium text-foreground"
+            data-testid="profile-display-name"
+          >
+            {{ p.displayName || p.userId }}
+          </div>
+          <div class="truncate text-xs text-muted-foreground">
+            {{ p.userId }}
+          </div>
+        </div>
+        <button
+          hlmBtn
+          variant="ghost"
+          size="sm"
+          class="ml-auto shrink-0"
           [disabled]="savingAvatar()"
           (click)="pickAvatar()"
           data-testid="change-avatar"
         >
           {{ savingAvatar() ? 'Uploading…' : 'Change' }}
-        </ion-button>
-      </ion-item>
-      <ion-item>
-        <ion-input
-          label="Display name"
-          labelPlacement="stacked"
-          [value]="nameDraft()"
-          (ionInput)="onNameInput($event)"
-          data-testid="display-name-input"
-        />
-        <ion-button
-          slot="end"
-          size="small"
+        </button>
+      </div>
+      <div
+        class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
+      >
+        <div class="min-w-0 flex-1">
+          <label hlmLabel for="display-name">Display name</label>
+          <input
+            id="display-name"
+            hlmInput
+            class="mt-1"
+            [value]="nameDraft()"
+            (input)="onNameInput($event)"
+            data-testid="display-name-input"
+          />
+        </div>
+        <button
+          hlmBtn
+          size="sm"
+          class="ml-auto shrink-0"
           [disabled]="savingName() || !nameDirty()"
           (click)="saveName()"
           data-testid="save-name"
         >
           Save
-        </ion-button>
-      </ion-item>
+        </button>
+      </div>
     } @else if (loading()) {
-      <ion-item lines="none"><ion-label>Loading profile…</ion-label></ion-item>
+      <div class="px-4 py-2 text-sm text-muted-foreground">
+        Loading profile…
+      </div>
     }
     @if (error(); as e) {
-      <ion-note color="danger" class="setting-note">{{ e }}</ion-note>
+      <p class="setting-note setting-note--error">{{ e }}</p>
     }
     <input
       #avatarInput
@@ -66,30 +91,43 @@
       data-testid="avatar-input"
       (change)="onAvatarPicked($event)"
     />
-  </ion-list>
+  </div>
 
-  <ion-list>
-    <ion-list-header>Appearance</ion-list-header>
-    <ion-radio-group
-      [value]="theme.preference()"
-      (ionChange)="onThemeChange($event)"
+  <div>
+    <h2
+      class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
     >
-      <ion-item>
-        <ion-radio value="system" data-testid="theme-system">
-          Use system setting
-        </ion-radio>
-      </ion-item>
-      <ion-item>
-        <ion-radio value="light" data-testid="theme-light">Light</ion-radio>
-      </ion-item>
-      <ion-item>
-        <ion-radio value="dark" data-testid="theme-dark">Dark</ion-radio>
-      </ion-item>
-    </ion-radio-group>
-    <ion-note class="setting-note">
-      Showing the {{ theme.resolved() }} theme.
-    </ion-note>
-  </ion-list>
+      Appearance
+    </h2>
+    <hlm-radio-group
+      class="px-4 py-2"
+      [value]="theme.preference()"
+      (valueChange)="onThemeChange($event)"
+    >
+      <label
+        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+        data-testid="theme-system"
+      >
+        <hlm-radio value="system"><hlm-radio-indicator /></hlm-radio>
+        Use system setting
+      </label>
+      <label
+        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+        data-testid="theme-light"
+      >
+        <hlm-radio value="light"><hlm-radio-indicator /></hlm-radio>
+        Light
+      </label>
+      <label
+        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+        data-testid="theme-dark"
+      >
+        <hlm-radio value="dark"><hlm-radio-indicator /></hlm-radio>
+        Dark
+      </label>
+    </hlm-radio-group>
+    <p class="setting-note">Showing the {{ theme.resolved() }} theme.</p>
+  </div>
 
   <trn-devices-section />
-</ion-content>
+</main>

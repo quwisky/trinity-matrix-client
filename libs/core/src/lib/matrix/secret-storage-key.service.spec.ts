@@ -72,6 +72,21 @@ describe('SecretStorageKeyService', () => {
     ).toEqual(['new', newKey]);
   });
 
+  it('zeroes the previous key buffer when set() overwrites it', () => {
+    const first = new Uint8Array([1, 2, 3]);
+    keys.set('a', first);
+    keys.set('b', new Uint8Array([4, 5, 6]));
+    // The replaced buffer (the account recovery key) is wiped, not just dropped.
+    expect(Array.from(first)).toEqual([0, 0, 0]);
+  });
+
+  it('does not zero the incoming buffer when set() re-sets the same reference', () => {
+    const key = new Uint8Array([1, 2, 3]);
+    keys.set('a', key);
+    keys.set('a', key);
+    expect(Array.from(key)).toEqual([1, 2, 3]);
+  });
+
   it('forgets and zeroes the key on clear()', async () => {
     const key = new Uint8Array([1, 2, 3]);
     keys.set('abc', key);

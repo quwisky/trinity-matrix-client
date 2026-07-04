@@ -7,21 +7,18 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
+import { DialogRef } from '@angular/cdk/dialog';
 import { Observable } from 'rxjs';
-import {
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonContent,
-  IonButton,
-  IonButtons,
-  IonText,
-  IonSpinner,
-  ModalController,
-} from '@ionic/angular/standalone';
 import { VerificationService } from '@trinity/core';
-import { resolveInternalReturnTo, runWithBusy } from '@trinity/ui';
+import {
+  PageHeaderComponent,
+  resolveInternalReturnTo,
+  runWithBusy,
+} from '@trinity/ui';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -37,22 +34,22 @@ import { SasCompareComponent } from './sas-compare.component';
   templateUrl: './device-verification.page.html',
   styleUrl: './device-verification.page.scss',
   imports: [
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonContent,
-    IonButton,
-    IonButtons,
-    IonText,
-    IonSpinner,
+    NgTemplateOutlet,
+    PageHeaderComponent,
+    HlmButton,
     SasCompareComponent,
+    HlmSpinner,
   ],
 })
 export class DeviceVerificationPage {
   private readonly verification = inject(VerificationService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  private readonly modalCtrl = inject(ModalController);
+  // Present only when opened as a dialog (incoming request); null on the routed page.
+  private readonly dialogRef = inject<DialogRef<void, DeviceVerificationPage>>(
+    DialogRef,
+    { optional: true },
+  );
   private readonly destroyRef = inject(DestroyRef);
 
   /** The active verification view (null until one starts). */
@@ -101,13 +98,13 @@ export class DeviceVerificationPage {
 
   private leave(): void {
     if (this.asModal()) {
-      // @Outputs aren't bound on ModalController-created components, so dismiss
-      // the host modal ourselves; `closed` is still emitted for any future
-      // @Output-bound host. The incoming-request modal is owned by
-      // VerificationHostComponent, which closes it once `active()` clears — the
-      // getTop() guard below keeps that from double-dismissing.
+      // @Outputs aren't bound on dialog-created components, so close the host
+      // dialog ourselves; `closed` is still emitted for any @Output-bound host.
+      // The incoming-request dialog is also owned by VerificationHostComponent,
+      // which closes it once `active()` clears — CDK's close() is idempotent, so
+      // either path (or both) tears the dialog down exactly once.
       this.closed.emit();
-      void this.dismissTopModal();
+      this.dialogRef?.close();
       return;
     }
     // Return to where the flow was launched from (e.g. /settings), defaulting to
@@ -116,16 +113,6 @@ export class DeviceVerificationPage {
     void this.router.navigateByUrl(resolveInternalReturnTo(returnTo), {
       replaceUrl: true,
     });
-  }
-
-  /**
-   * Dismiss the modal that hosts us, if one is still presented. Guarded via
-   * `getTop()` so we never double-dismiss when VerificationHostComponent has
-   * already closed the incoming-request modal after `active()` cleared.
-   */
-  private async dismissTopModal(): Promise<void> {
-    const top = await this.modalCtrl.getTop();
-    await top?.dismiss();
   }
 
   private run(action: Observable<void>): void {

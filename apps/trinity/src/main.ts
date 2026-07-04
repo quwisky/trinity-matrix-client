@@ -1,15 +1,14 @@
 import { bootstrapApplication } from '@angular/platform-browser';
-import { inject, provideAppInitializer } from '@angular/core';
 import {
-  RouteReuseStrategy,
+  inject,
+  provideAppInitializer,
+  provideZoneChangeDetection,
+} from '@angular/core';
+import {
   provideRouter,
   withPreloading,
   PreloadAllModules,
 } from '@angular/router';
-import {
-  IonicRouteStrategy,
-  provideIonicAngular,
-} from '@ionic/angular/standalone';
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
 import { AvatarService, PUSH_CONFIG, ThemeService } from '@trinity/core';
@@ -18,9 +17,11 @@ import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
+import { provideSpartanHlm } from '@trinity/helm/utils';
 
 import { routes } from './app/app.routes';
 import { AppComponent } from './app/app.component';
+import { NavigationFocusService } from './app/navigation-focus.service';
 import { environment } from './environments/environment';
 
 // Desktop (hand-rolled Electron) detection. The preload bridge exposes
@@ -35,26 +36,16 @@ const isElectron =
 
 bootstrapApplication(AppComponent, {
   providers: [
-    { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
-    // Move focus into the entering page during a route transition (before the
-    // leaving page is `aria-hidden`/`ion-page-hidden`). Without this Ionic's focus
-    // manager is a no-op, so a control activated by keyboard/click keeps DOM focus
-    // inside the leaving page; recent Chromium (Electron) then blocks the aria-hidden
-    // on that focused subtree and the IonRouterOutlet transition promise stalls —
-    // a blank entering page + a dead router (ionic-framework#30240). Relocating focus
-    // removes the focused-descendant condition for every transition (and improves a11y).
-    provideIonicAngular({
-      focusManagerPriority: ['content', 'heading', 'banner'],
-      // Inject modal/popover `componentProps` via Angular's setInput() instead of
-      // Object.assign. Without this, presenting a component with signal inputs (e.g.
-      // DeviceVerificationPage/EncryptionUnlockPage `asModal = input()`) overwrites the
-      // input GETTER with the raw value, so `this.asModal()` throws and the modal can't
-      // dismiss. setInput sets the signal correctly.
-      useSetInputAPI: true,
-    }),
+    provideZoneChangeDetection(),
+    // Spartan/helm CDK-overlay default: disable Angular 21's usePopover so helm
+    // dialogs/tooltips render above position:fixed elements (e.g. the toaster).
+    provideSpartanHlm(),
     provideRouter(routes, withPreloading(PreloadAllModules)),
     // Apply the saved light/dark preference before the first paint.
     provideAppInitializer(() => inject(ThemeService).init()),
+    // Move focus into the entering page on each route change (replaces Ionic's
+    // focus manager) — a11y for screen-reader/keyboard users.
+    provideAppInitializer(() => inject(NavigationFocusService).init()),
     // Let <trn-avatar> resolve mxc avatars to authenticated blob URLs (core).
     {
       provide: AVATAR_RESOLVER,

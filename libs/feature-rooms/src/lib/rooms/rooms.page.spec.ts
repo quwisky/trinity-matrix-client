@@ -2,13 +2,6 @@ import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import {
-  ActionSheetController,
-  AlertController,
-  MenuController,
-  ModalController,
-  ToastController,
-} from '@ionic/angular/standalone';
-import {
   AuthService,
   CryptoService,
   InvitesService,
@@ -23,6 +16,12 @@ import {
   type SpaceChildRoom,
   type SpaceSummary,
 } from '@trinity/core';
+import {
+  TrnActionSheetService,
+  TrnAlertService,
+  TrnDialogService,
+  TrnToastService,
+} from '@trinity/helm/overlay';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
@@ -50,12 +49,11 @@ function invitesProvider(over: Partial<Record<string, unknown>> = {}) {
 // many child components); we only exercise the action handlers' error feedback.
 describe('RoomsPage action error feedback', () => {
   let edit: ReturnType<typeof vi.fn>;
-  let create: ReturnType<typeof vi.fn>;
+  let toastShow: ReturnType<typeof vi.fn>;
   let sendMedia: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
-    const present = vi.fn().mockResolvedValue(undefined);
-    create = vi.fn().mockResolvedValue({ present });
+    toastShow = vi.fn();
     edit = vi.fn();
     sendMedia = vi.fn(() => of(undefined));
     TestBed.configureTestingModule({
@@ -105,18 +103,14 @@ describe('RoomsPage action error feedback', () => {
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
-        {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
-        },
-        { provide: ToastController, useValue: { create } },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
+        { provide: TrnToastService, useValue: { show: toastShow } },
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -128,8 +122,9 @@ describe('RoomsPage action error feedback', () => {
 
     page.onEdit({ id: '$1', body: 'x' });
 
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ color: 'danger' }),
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
     );
   });
 
@@ -139,7 +134,7 @@ describe('RoomsPage action error feedback', () => {
 
     page.onEdit({ id: '$1', body: 'x' });
 
-    expect(create).not.toHaveBeenCalled();
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('opens the threads-list panel for the active room', () => {
@@ -184,7 +179,7 @@ describe('RoomsPage action error feedback', () => {
 
     stream.complete();
     expect(page.uploadProgress()).toBeNull(); // cleared by finalize on success
-    expect(create).not.toHaveBeenCalled(); // no error toast
+    expect(toastShow).not.toHaveBeenCalled(); // no error toast
   });
 
   it('clears uploadProgress and toasts when a media send fails', () => {
@@ -198,8 +193,9 @@ describe('RoomsPage action error feedback', () => {
     stream.error(new Error('upload failed'));
 
     expect(page.uploadProgress()).toBeNull(); // finalize clears on error too
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ color: 'danger' }),
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
     );
   });
 });
@@ -279,18 +275,14 @@ describe('RoomsPage space filtering', () => {
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
-        {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
-        },
-        { provide: ToastController, useValue: { create: vi.fn() } },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -318,21 +310,18 @@ describe('RoomsPage space filtering', () => {
   });
 });
 
-// Create-space / create-channel / leave-space: the page prompts via AlertController
+// Create-space / create-channel / leave-space: the page prompts via TrnAlertService
 // and delegates to SpacesService, handling the success navigation + error state.
 describe('RoomsPage space actions', () => {
-  interface AlertButton {
-    text: string;
-    handler?: (data?: unknown) => unknown;
-  }
-  let create: ReturnType<typeof vi.fn>;
+  let alertPrompt: ReturnType<typeof vi.fn>;
+  let alertConfirm: ReturnType<typeof vi.fn>;
   let createSpace: ReturnType<typeof vi.fn>;
   let createRoomInSpace: ReturnType<typeof vi.fn>;
   let leaveSpace: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
-    const present = vi.fn().mockResolvedValue(undefined);
-    create = vi.fn().mockResolvedValue({ present });
+    alertPrompt = vi.fn().mockResolvedValue(null);
+    alertConfirm = vi.fn().mockResolvedValue(false);
     createSpace = vi.fn(() => of('!new:hs'));
     createRoomInSpace = vi.fn(() => of('!room:hs'));
     leaveSpace = vi.fn(() => of(undefined));
@@ -373,38 +362,28 @@ describe('RoomsPage space actions', () => {
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
+          provide: TrnAlertService,
+          useValue: { confirm: alertConfirm, prompt: alertPrompt },
         },
-        { provide: AlertController, useValue: { create } },
-        {
-          provide: ToastController,
-          useValue: { create: vi.fn().mockResolvedValue({ present: vi.fn() }) },
-        },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
     });
     return TestBed.inject(RoomsPage);
   }
 
-  /** Invoke the most recent alert's button handler by label (simulating a tap). */
-  function tapButton(text: string, data?: unknown): void {
-    const opts = create.mock.calls.at(-1)?.[0] as { buttons: AlertButton[] };
-    opts.buttons.find((b) => b.text === text)?.handler?.(data);
-  }
-
   it('creates a space and selects it on success', async () => {
     const page = build();
+    alertPrompt.mockResolvedValue('My Space');
 
     await page.onCreateSpace();
-    tapButton('Create', { name: 'My Space' });
 
     expect(createSpace).toHaveBeenCalledWith({ name: 'My Space' });
     expect(page.activeSpaceId()).toBe('!new:hs');
@@ -412,19 +391,28 @@ describe('RoomsPage space actions', () => {
 
   it('does not create a space for an empty name', async () => {
     const page = build();
+    alertPrompt.mockResolvedValue('   ');
 
     await page.onCreateSpace();
-    tapButton('Create', { name: '   ' });
+
+    expect(createSpace).not.toHaveBeenCalled();
+  });
+
+  it('does not create a space when the prompt is cancelled', async () => {
+    const page = build();
+    alertPrompt.mockResolvedValue(null);
+
+    await page.onCreateSpace();
 
     expect(createSpace).not.toHaveBeenCalled();
   });
 
   it('surfaces a create-space failure in spaceError', async () => {
     const page = build();
+    alertPrompt.mockResolvedValue('My Space');
     createSpace.mockReturnValue(throwError(() => new Error('boom')));
 
     await page.onCreateSpace();
-    tapButton('Create', { name: 'My Space' });
 
     expect(page.spaceError()).toBe('boom');
     expect(page.activeSpaceId()).toBeNull(); // not selected on failure
@@ -433,9 +421,9 @@ describe('RoomsPage space actions', () => {
   it('creates a channel in the active space', async () => {
     const page = build();
     page.activeSpaceId.set('!s:hs');
+    alertPrompt.mockResolvedValue('general');
 
     await page.onCreateChannel();
-    tapButton('Create', { name: 'general' });
 
     expect(createRoomInSpace).toHaveBeenCalledWith('!s:hs', {
       name: 'general',
@@ -448,19 +436,29 @@ describe('RoomsPage space actions', () => {
 
     await page.onCreateChannel();
 
-    expect(create).not.toHaveBeenCalled();
+    expect(alertPrompt).not.toHaveBeenCalled();
     expect(createRoomInSpace).not.toHaveBeenCalled();
   });
 
   it('leaves the active space and returns to Home on success', async () => {
     const page = build();
     page.activeSpaceId.set('!s:hs');
+    alertConfirm.mockResolvedValue(true);
 
     await page.onLeaveSpace();
-    tapButton('Leave');
 
     expect(leaveSpace).toHaveBeenCalledWith('!s:hs');
     expect(page.activeSpaceId()).toBeNull();
+  });
+
+  it('does not leave when the confirm is cancelled', async () => {
+    const page = build();
+    page.activeSpaceId.set('!s:hs');
+    alertConfirm.mockResolvedValue(false);
+
+    await page.onLeaveSpace();
+
+    expect(leaveSpace).not.toHaveBeenCalled();
   });
 
   it('does not prompt to leave on Home (no active space)', async () => {
@@ -469,8 +467,33 @@ describe('RoomsPage space actions', () => {
 
     await page.onLeaveSpace();
 
-    expect(create).not.toHaveBeenCalled();
+    expect(alertConfirm).not.toHaveBeenCalled();
     expect(leaveSpace).not.toHaveBeenCalled();
+  });
+
+  it('logs out and navigates to /login after confirming', async () => {
+    const page = build();
+    alertConfirm.mockResolvedValue(true);
+    const auth = TestBed.inject(AuthService);
+    const router = TestBed.inject(Router);
+
+    await page.logout();
+
+    expect(alertConfirm).toHaveBeenCalled();
+    expect(auth.logout).toHaveBeenCalled();
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/login', {
+      replaceUrl: true,
+    });
+  });
+
+  it('does not log out when the confirm is cancelled', async () => {
+    const page = build();
+    alertConfirm.mockResolvedValue(false);
+    const auth = TestBed.inject(AuthService);
+
+    await page.logout();
+
+    expect(auth.logout).not.toHaveBeenCalled();
   });
 });
 
@@ -478,12 +501,8 @@ describe('RoomsPage space actions', () => {
 // prompts for a name (alert), or reads a pending invite, then delegates to the
 // services and handles selection + success/error toasts.
 describe('RoomsPage room / DM / invite actions', () => {
-  interface AlertButton {
-    text: string;
-    handler?: (data?: unknown) => unknown;
-  }
-  let alertCreate: ReturnType<typeof vi.fn>;
-  let toastCreate: ReturnType<typeof vi.fn>;
+  let alertPrompt: ReturnType<typeof vi.fn>;
+  let toastShow: ReturnType<typeof vi.fn>;
   let pick: ReturnType<typeof vi.fn>;
   let createRoom: ReturnType<typeof vi.fn>;
   let createDirectMessage: ReturnType<typeof vi.fn>;
@@ -506,12 +525,8 @@ describe('RoomsPage room / DM / invite actions', () => {
   }
 
   function build(): RoomsPage {
-    alertCreate = vi
-      .fn()
-      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
-    toastCreate = vi
-      .fn()
-      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    alertPrompt = vi.fn().mockResolvedValue(null);
+    toastShow = vi.fn();
     pick = vi.fn();
     createRoom = vi.fn(() => of('!room:hs'));
     createDirectMessage = vi.fn(() => of('!dm:hs'));
@@ -577,31 +592,23 @@ describe('RoomsPage room / DM / invite actions', () => {
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
+          provide: TrnAlertService,
+          useValue: { confirm: vi.fn(), prompt: alertPrompt },
         },
-        { provide: AlertController, useValue: { create: alertCreate } },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
-        { provide: ToastController, useValue: { create: toastCreate } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
+        { provide: TrnToastService, useValue: { show: toastShow } },
       ],
     });
     return TestBed.inject(RoomsPage);
   }
 
-  function tapAlert(text: string, data?: unknown): void {
-    const opts = alertCreate.mock.calls.at(-1)?.[0] as {
-      buttons: AlertButton[];
-    };
-    opts.buttons.find((b) => b.text === text)?.handler?.(data);
-  }
-
   it('creates an encrypted room from the name prompt and selects it', async () => {
     const page = build();
+    alertPrompt.mockResolvedValue('general');
 
     await page.onCreateRoom();
-    tapAlert('Create', { name: 'general' });
 
     expect(createRoom).toHaveBeenCalledWith({ name: 'general' });
     expect(page.activeRoomId()).toBe('!room:hs');
@@ -609,9 +616,9 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('does not create a room for an empty name', async () => {
     const page = build();
+    alertPrompt.mockResolvedValue('   ');
 
     await page.onCreateRoom();
-    tapAlert('Create', { name: '   ' });
 
     expect(createRoom).not.toHaveBeenCalled();
   });
@@ -643,8 +650,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     await page.onInviteToRoom();
 
     expect(inviteUser).toHaveBeenCalledWith('!r:hs', '@bob:hs');
-    expect(toastCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ color: 'success' }),
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'success' }),
     );
   });
 
@@ -659,7 +667,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     // runWithBusy records the message in spaceError (the shell's effect toasts it,
     // like the create-space path); no success toast on failure.
     expect(page.spaceError()).toBe('forbidden');
-    expect(toastCreate).not.toHaveBeenCalled();
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('does not invite when the picker is cancelled', async () => {
@@ -713,13 +721,13 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('opens the new-chat action sheet on Home', async () => {
     const page = build();
-    const sheetCreate = TestBed.inject(ActionSheetController)
-      .create as ReturnType<typeof vi.fn>;
-    sheetCreate.mockResolvedValue({ present: vi.fn() });
+    const sheetOpen = TestBed.inject(TrnActionSheetService).open as ReturnType<
+      typeof vi.fn
+    >;
 
-    await page.onNewChat();
+    page.onNewChat();
 
-    expect(sheetCreate).toHaveBeenCalledWith(
+    expect(sheetOpen).toHaveBeenCalledWith(
       expect.objectContaining({
         buttons: expect.arrayContaining([
           expect.objectContaining({ text: 'Create a room' }),
@@ -734,11 +742,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 // removing a joined child delegate to SpacesService (the live read model + sync
 // surface the result, so the page only fires the SDK-backed call).
 describe('RoomsPage space hierarchy actions', () => {
-  interface AlertButton {
-    text: string;
-    handler?: (data?: unknown) => unknown;
-  }
-  let alertCreate: ReturnType<typeof vi.fn>;
+  let alertConfirm: ReturnType<typeof vi.fn>;
   let openSpace: ReturnType<typeof vi.fn>;
   let joinRoom: ReturnType<typeof vi.fn>;
   let removeRoomFromSpace: ReturnType<typeof vi.fn>;
@@ -760,9 +764,7 @@ describe('RoomsPage space hierarchy actions', () => {
   }
 
   function build(): RoomsPage {
-    alertCreate = vi
-      .fn()
-      .mockResolvedValue({ present: vi.fn().mockResolvedValue(undefined) });
+    alertConfirm = vi.fn().mockResolvedValue(false);
     openSpace = vi.fn();
     joinRoom = vi.fn(() => of(undefined));
     removeRoomFromSpace = vi.fn(() => of(undefined));
@@ -836,32 +838,21 @@ describe('RoomsPage space hierarchy actions', () => {
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
         { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
         {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
         {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
+          provide: TrnAlertService,
+          useValue: { confirm: alertConfirm, prompt: vi.fn() },
         },
-        { provide: AlertController, useValue: { create: alertCreate } },
-        {
-          provide: ToastController,
-          useValue: { create: vi.fn().mockResolvedValue({ present: vi.fn() }) },
-        },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
     });
     return TestBed.inject(RoomsPage);
-  }
-
-  function tapAlert(text: string): void {
-    const opts = alertCreate.mock.calls.at(-1)?.[0] as {
-      buttons: AlertButton[];
-    };
-    opts.buttons.find((b) => b.text === text)?.handler?.();
   }
 
   it('loads the hierarchy when a space is selected (and clears it for Home)', () => {
@@ -886,15 +877,25 @@ describe('RoomsPage space hierarchy actions', () => {
   it('confirms then removes a joined child from the active space', async () => {
     const page = build();
     page.activeSpaceId.set('!s:hs');
+    alertConfirm.mockResolvedValue(true);
 
     await page.onRemoveFromSpace('!c:hs');
+
     // The confirmation names the channel and the space.
-    expect(alertCreate).toHaveBeenCalledWith(
+    expect(alertConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ header: 'Remove from space' }),
     );
-    tapAlert('Remove');
-
     expect(removeRoomFromSpace).toHaveBeenCalledWith('!s:hs', '!c:hs');
+  });
+
+  it('does not remove when the confirm is cancelled', async () => {
+    const page = build();
+    page.activeSpaceId.set('!s:hs');
+    alertConfirm.mockResolvedValue(false);
+
+    await page.onRemoveFromSpace('!c:hs');
+
+    expect(removeRoomFromSpace).not.toHaveBeenCalled();
   });
 
   it('does not prompt to remove on Home (no active space)', async () => {
@@ -903,7 +904,7 @@ describe('RoomsPage space hierarchy actions', () => {
 
     await page.onRemoveFromSpace('!c:hs');
 
-    expect(alertCreate).not.toHaveBeenCalled();
+    expect(alertConfirm).not.toHaveBeenCalled();
     expect(removeRoomFromSpace).not.toHaveBeenCalled();
   });
 });
@@ -919,6 +920,7 @@ describe('RoomsPage quick switcher', () => {
   let openSpace: ReturnType<typeof vi.fn>;
   let timelineOpen: ReturnType<typeof vi.fn>;
   let pending: WritableSignal<PendingInvite[]>;
+  let dialogHasOpen: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     pick = vi.fn();
@@ -928,6 +930,7 @@ describe('RoomsPage quick switcher', () => {
     openSpace = vi.fn();
     timelineOpen = vi.fn();
     pending = signal<PendingInvite[]>([]);
+    dialogHasOpen = vi.fn().mockReturnValue(false);
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -986,17 +989,13 @@ describe('RoomsPage quick switcher', () => {
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: MenuController, useValue: { close: vi.fn() } },
+        { provide: TrnDialogService, useValue: { hasOpen: dialogHasOpen } },
         {
-          provide: ModalController,
-          useValue: { getTop: vi.fn().mockResolvedValue(undefined) },
+          provide: TrnAlertService,
+          useValue: { confirm: vi.fn(), prompt: vi.fn() },
         },
-        { provide: AlertController, useValue: { create: vi.fn() } },
-        { provide: ActionSheetController, useValue: { create: vi.fn() } },
-        {
-          provide: ToastController,
-          useValue: { create: vi.fn().mockResolvedValue({ present: vi.fn() }) },
-        },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -1081,16 +1080,13 @@ describe('RoomsPage quick switcher', () => {
     page.onQuickSwitch({ preventDefault } as unknown as KeyboardEvent);
 
     expect(preventDefault).toHaveBeenCalled(); // sync — stops the browser's Cmd+K
-    await new Promise((resolve) => setTimeout(resolve)); // settle the getTop() guard
+    await new Promise((resolve) => setTimeout(resolve)); // settle the async openSwitcher()
     expect(pick).toHaveBeenCalled();
   });
 
   it('does not open the switcher over an existing overlay', async () => {
     const page = build();
-    const modalCtrl = TestBed.inject(ModalController);
-    (modalCtrl.getTop as ReturnType<typeof vi.fn>).mockResolvedValue(
-      {} as HTMLIonModalElement,
-    );
+    dialogHasOpen.mockReturnValue(true);
 
     await page.openSwitcher();
 
@@ -1128,5 +1124,145 @@ describe('RoomsPage quick switcher', () => {
 
     expect(messageSearch).not.toHaveBeenCalled();
     expect(page.messageSearchTarget()).toBeNull();
+  });
+});
+
+// The channel sidebar renders as a static column at md+ and an overlay drawer
+// below that breakpoint. `drawerOpen` tracks the overlay's visibility; picking a
+// room (mobile's primary path to the sidebar) should collapse it again.
+describe('RoomsPage mobile nav drawer', () => {
+  let timelineOpen: ReturnType<typeof vi.fn>;
+  let threadsOpen: ReturnType<typeof vi.fn>;
+  let releaseAll: ReturnType<typeof vi.fn>;
+
+  function build(): RoomsPage {
+    timelineOpen = vi.fn();
+    threadsOpen = vi.fn();
+    releaseAll = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        {
+          provide: RoomsService,
+          useValue: {
+            connect: vi.fn(),
+            rooms: signal<RoomSummary[]>([]),
+            revision: signal(0),
+            membersOf: () => [],
+          },
+        },
+        {
+          provide: SpacesService,
+          useValue: {
+            connect: vi.fn(),
+            openSpace: vi.fn(),
+            spaces: signal<SpaceSummary[]>([]),
+            childRoomIds: () => [],
+          },
+        },
+        {
+          provide: TimelineService,
+          useValue: { open: timelineOpen, close: vi.fn() },
+        },
+        { provide: MediaService, useValue: { releaseAll } },
+        {
+          provide: MatrixClientService,
+          useValue: {
+            isInitialized: true,
+            instance: { getUserId: () => '@me:hs', getUser: () => null },
+          },
+        },
+        { provide: CryptoService, useValue: { connect: vi.fn() } },
+        {
+          provide: ThreadsService,
+          useValue: { open: threadsOpen, close: vi.fn(), closeThread: vi.fn() },
+        },
+        {
+          provide: ThreadPanelService,
+          useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        invitesProvider(),
+        { provide: UserPickerService, useValue: { pick: vi.fn() } },
+        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
+        { provide: MessageSearchService, useValue: { search: vi.fn() } },
+        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
+        {
+          provide: AuthService,
+          useValue: { logout: vi.fn(() => of(undefined)) },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
+        { provide: TrnToastService, useValue: { show: vi.fn() } },
+      ],
+    });
+    return TestBed.inject(RoomsPage);
+  }
+
+  it('starts closed', () => {
+    const page = build();
+
+    expect(page.drawerOpen()).toBe(false);
+  });
+
+  it('toggleDrawer flips the open state', () => {
+    const page = build();
+
+    page.toggleDrawer();
+    expect(page.drawerOpen()).toBe(true);
+
+    page.toggleDrawer();
+    expect(page.drawerOpen()).toBe(false);
+  });
+
+  it('closeDrawer forces the drawer closed regardless of its current state', () => {
+    const page = build();
+    page.toggleDrawer();
+    expect(page.drawerOpen()).toBe(true);
+
+    page.closeDrawer();
+
+    expect(page.drawerOpen()).toBe(false);
+  });
+
+  it('closeDrawer is a no-op when already closed', () => {
+    const page = build();
+
+    page.closeDrawer();
+
+    expect(page.drawerOpen()).toBe(false);
+  });
+
+  it('shows the member list by default and toggleMembers flips it', () => {
+    const page = build();
+    expect(page.membersOpen()).toBe(true);
+
+    page.toggleMembers();
+    expect(page.membersOpen()).toBe(false);
+
+    page.toggleMembers();
+    expect(page.membersOpen()).toBe(true);
+  });
+
+  it('closeMembers hides the member list', () => {
+    const page = build();
+
+    page.closeMembers();
+
+    expect(page.membersOpen()).toBe(false);
+  });
+
+  it('onSelectRoom collapses an open drawer after picking a room', () => {
+    const page = build();
+    page.toggleDrawer();
+    expect(page.drawerOpen()).toBe(true);
+
+    page.onSelectRoom('!r:hs');
+
+    expect(page.drawerOpen()).toBe(false);
+    // The existing room-switch behavior keeps working alongside the new collapse.
+    expect(page.activeRoomId()).toBe('!r:hs');
+    expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
+    expect(threadsOpen).toHaveBeenCalledWith('!r:hs');
+    expect(releaseAll).toHaveBeenCalled();
   });
 });

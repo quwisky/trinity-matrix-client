@@ -3,7 +3,7 @@
 // Validates everything that does NOT need a live homeserver, so the verify-sas.mjs
 // selectors and routing are exercised even where Docker/Synapse is unavailable:
 //   1. the dev build serves and the SPA boots
-//   2. /login renders the homeserver ion-input + "Continue" button
+//   2. /login renders the homeserver input (labeled "Homeserver") + "Continue" button
 //   3. after typing a homeserver and clicking Continue, an *invalid* host still
 //      drives discovery (proving the form wiring + serve fallback work)
 //   4. /encryption/verify (behind authGuard) is reachable as a route and the
@@ -42,9 +42,9 @@ try {
   check('app boots and redirects to /login when unauthenticated', true);
 
   // 2. Login step-1 controls resolve.
-  const hsInput = page.locator('ion-input[label="Homeserver"] input');
+  const hsInput = page.getByLabel('Homeserver');
   await hsInput.waitFor({ state: 'visible', timeout: 10_000 });
-  check('homeserver ion-input resolves', await hsInput.isVisible());
+  check('homeserver input resolves', await hsInput.isVisible());
 
   const continueBtn = page.getByText('Continue', { exact: true });
   check('Continue button resolves', await continueBtn.isVisible());

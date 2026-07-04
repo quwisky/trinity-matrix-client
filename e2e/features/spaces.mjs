@@ -122,9 +122,9 @@ async function findRoomIdByName(token, name, isSpace) {
 // UI helpers (mirrors threads.mjs / send-media.mjs)
 // ---------------------------------------------------------------------------
 
-/** Fill an Ionic <ion-input label="…"> by targeting its inner native input. */
-async function fillIonInput(page, label, value) {
-  const input = page.locator(`ion-input[label="${label}"] input`);
+/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
+async function fillLabeledInput(page, label, value) {
+  const input = page.getByLabel(label);
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
   await input.fill(value);
@@ -134,25 +134,27 @@ async function fillIonInput(page, label, value) {
 async function login(page) {
   log('loading app');
   await page.goto(`${APP}/login`, { waitUntil: 'networkidle' });
-  await fillIonInput(page, 'Homeserver', HS);
+  await fillLabeledInput(page, 'Homeserver', HS);
   await page.getByText('Continue', { exact: true }).click();
   await page
     .getByRole('button', { name: 'Sign in' })
     .waitFor({ timeout: 30_000 });
-  await fillIonInput(page, 'Username', USER);
-  await fillIonInput(page, 'Password', PASS);
+  await fillLabeledInput(page, 'Username', USER);
+  await fillLabeledInput(page, 'Password', PASS);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL('**/rooms', { timeout: 30_000 });
   log('logged in → /rooms');
 }
 
 /**
- * Interact with an ion-alert: wait for it to animate in, optionally fill the
- * text input identified by `placeholder`, click `buttonName`, then wait for the
- * alert to dismiss. Pass `placeholder=null` for confirmation-only alerts (Leave).
+ * Interact with TrnAlertService's confirm/prompt dialog (<trn-alert-dialog> in
+ * a CDK dialog — replaces Ionic's <ion-alert>): wait for it to appear,
+ * optionally fill the text input identified by `placeholder`, click
+ * `buttonName`, then wait for the dialog to dismiss. Pass `placeholder=null`
+ * for confirmation-only dialogs (Leave).
  */
 async function fillAlertAndConfirm(page, placeholder, value, buttonName) {
-  const alert = page.locator('ion-alert');
+  const alert = page.locator('trn-alert-dialog');
   await alert.waitFor({ state: 'visible', timeout: 15_000 });
   if (placeholder && value) {
     await alert.locator(`input[placeholder="${placeholder}"]`).fill(value);

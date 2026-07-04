@@ -1,18 +1,6 @@
-.qs-row--active {
-  --background: var(--trinity-active);
-}
-
-.qs-kind {
-  margin-inline-start: 8px;
-  color: var(--trinity-text-muted);
-}
-
+// Trailing kind + lock icons (ng-icon) — muted to match the subtitle.
+.qs-kind,
 .qs-lock {
-  color: var(--trinity-text-muted);
-}
-
-ion-note[slot='end'] {
-  align-self: center;
   color: var(--trinity-text-muted);
 }
 

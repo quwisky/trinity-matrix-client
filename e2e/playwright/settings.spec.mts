@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, fillIonInput, synapseSession } from './support/app.mts';
+import { login, fillLabeledInput, synapseSession } from './support/app.mts';
 
 // Authenticated journeys through Settings — the work landed this session: theme
 // switching, profile editing, and device management. They need a live homeserver,
@@ -33,11 +33,11 @@ test.describe('Settings', () => {
 
   test('edits and saves the display name', async ({ page }) => {
     const name = `E2E ${Date.now()}`;
-    await fillIonInput(page, 'Display name', name);
+    await fillLabeledInput(page, 'Display name', name);
     await page.getByTestId('save-name').click();
 
     // The profile header reflects the persisted name (Save round-trips the HS).
-    await expect(page.locator('ion-list h2').first()).toHaveText(name, {
+    await expect(page.getByTestId('profile-display-name')).toHaveText(name, {
       timeout: 20_000,
     });
   });

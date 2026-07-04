@@ -8,21 +8,6 @@ import {
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
-  IonButton,
-  IonButtons,
-  IonContent,
-  IonHeader,
-  IonItem,
-  IonLabel,
-  IonList,
-  IonNote,
-  IonSearchbar,
-  IonSpinner,
-  IonTitle,
-  IonToolbar,
-  ModalController,
-} from '@ionic/angular/standalone';
-import {
   catchError,
   debounceTime,
   distinctUntilChanged,
@@ -37,112 +22,116 @@ import {
   type UserSearchResult,
 } from '@trinity/core';
 import { AvatarComponent } from '@trinity/ui';
+import { DialogRef } from '@trinity/helm/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmSpinner } from '@trinity/helm/spinner';
 
 /** Don't hit the directory until the term is at least this long. */
 const MIN_SEARCH_LENGTH = 2;
 
 /**
- * Modal user picker for the invite and DM flows. Combines a free-text Matrix-ID
+ * Dialog user picker for the invite and DM flows. Combines a free-text Matrix-ID
  * field (the always-available minimum — the Confirm action accepts a typed
  * `@user:server`) with live homeserver user-directory results below it. Presented
- * by {@link UserPickerService}; on a pick it dismisses with the chosen MXID, and on
- * cancel with `null` — it never creates or invites itself, so the page stays the
- * orchestrator (matching the AlertController prompts in `RoomsPage`).
+ * by {@link UserPickerService} as a {@link TrnDialogService} dialog; on a pick it
+ * closes with the chosen MXID, and on cancel with `null` — it never creates or
+ * invites itself, so the page stays the orchestrator (matching the
+ * `TrnAlertService` prompts in `RoomsPage`).
  *
- * Config (heading / confirm label / placeholder) arrives through `componentProps`
- * as signal inputs (the app enables Ionic's set-input API). matrix-js-sdk is reached
- * only through {@link RoomsService.searchUsers}.
+ * Config (heading / confirm label / placeholder) arrives as signal inputs (set by
+ * TrnDialogService). matrix-js-sdk is reached only through
+ * {@link RoomsService.searchUsers}. The card self-sizes so it works in a bare CDK
+ * dialog (no `ion-modal` host).
  */
 @Component({
   selector: 'trn-user-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonButtons,
-    IonButton,
-    IonContent,
-    IonSearchbar,
-    IonList,
-    IonItem,
-    IonLabel,
-    IonNote,
-    IonSpinner,
-    AvatarComponent,
-  ],
+  imports: [AvatarComponent, HlmSpinner, HlmButton, HlmInput],
   template: `
-    <ion-header>
-      <ion-toolbar>
-        <ion-buttons slot="start">
-          <ion-button (click)="cancel()">Cancel</ion-button>
-        </ion-buttons>
-        <ion-title>{{ title() }}</ion-title>
-        <ion-buttons slot="end">
-          <ion-button
-            [strong]="true"
-            [disabled]="!canConfirm()"
-            (click)="confirmTyped()"
-          >
-            {{ confirmLabel() }}
-          </ion-button>
-        </ion-buttons>
-      </ion-toolbar>
-      <ion-toolbar>
-        <ion-searchbar
+    <div
+      class="flex h-[560px] max-h-[85vh] w-[92vw] max-w-[460px] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
+    >
+      <div
+        class="flex items-center gap-2 border-b border-solid border-border p-3"
+      >
+        <button hlmBtn variant="ghost" size="sm" (click)="cancel()">
+          Cancel
+        </button>
+        <h2 class="flex-1 truncate text-center text-base font-semibold">
+          {{ title() }}
+        </h2>
+        <button
+          hlmBtn
+          size="sm"
+          [disabled]="!canConfirm()"
+          (click)="confirmTyped()"
+        >
+          {{ confirmLabel() }}
+        </button>
+      </div>
+
+      <div class="border-b border-solid border-border p-3">
+        <input
+          hlmInput
           [placeholder]="placeholder()"
-          [debounce]="0"
           autocapitalize="off"
           autocorrect="off"
           inputmode="text"
-          (ionInput)="onInput($event)"
+          [value]="term()"
+          (input)="onInput($event)"
         />
-      </ion-toolbar>
-    </ion-header>
+      </div>
 
-    <ion-content>
-      @if (searching()) {
-        <div class="picker-status" aria-live="polite">
-          <ion-spinner name="dots" aria-label="Searching" />
-        </div>
-      }
-
-      <ion-list>
+      <div class="flex-1 overflow-y-auto p-2">
+        @if (searching()) {
+          <div class="picker-status" aria-live="polite"><hlm-spinner /></div>
+        }
         @for (user of results(); track user.userId) {
-          <ion-item button (click)="choose(user.userId)">
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 rounded-md p-2 text-left hover:bg-accent"
+            (click)="choose(user.userId)"
+          >
             <trn-avatar
-              slot="start"
               [mxc]="user.avatarMxc"
               [initial]="initialOf(user.displayName)"
               [name]="user.displayName"
               [size]="36"
             />
-            <ion-label>
-              <h2>{{ user.displayName }}</h2>
-              <p>{{ user.userId }}</p>
-            </ion-label>
-          </ion-item>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-medium">{{
+                user.displayName
+              }}</span>
+              <span class="block truncate text-xs text-muted-foreground">{{
+                user.userId
+              }}</span>
+            </span>
+          </button>
         } @empty {
           @if (!searching()) {
             <div class="picker-empty">
-              <ion-note>{{ emptyHint() }}</ion-note>
+              <span class="text-xs text-muted-foreground">{{
+                emptyHint()
+              }}</span>
             </div>
           }
         }
-      </ion-list>
-    </ion-content>
+      </div>
+    </div>
   `,
   styleUrl: './user-picker.component.scss',
 })
 export class UserPickerComponent {
-  private readonly modalCtrl = inject(ModalController);
+  private readonly dialogRef =
+    inject<DialogRef<string | null, UserPickerComponent>>(DialogRef);
   private readonly rooms = inject(RoomsService);
 
-  /** Modal heading (e.g. "Start a direct message"). */
+  /** Dialog heading (e.g. "Start a direct message"). */
   readonly title = input('Find people');
   /** Confirm-button label for the typed-MXID path (e.g. "Invite"). */
   readonly confirmLabel = input('Select');
-  /** Searchbar placeholder. */
+  /** Search placeholder. */
   readonly placeholder = input('@user:server or a name');
 
   /** Current free-text term, driving both validation and the live search. */
@@ -189,25 +178,23 @@ export class UserPickerComponent {
   );
 
   onInput(event: Event): void {
-    const value =
-      (event as CustomEvent<{ value: string | null }>).detail?.value ?? '';
-    this.term.set(value);
+    this.term.set((event.target as HTMLInputElement).value);
   }
 
   /** Pick a directory result. */
   choose(userId: string): void {
-    void this.modalCtrl.dismiss(userId);
+    this.dialogRef.close(userId);
   }
 
   /** Confirm the typed MXID (enabled only when it's a valid `@user:server`). */
   confirmTyped(): void {
     if (this.canConfirm()) {
-      void this.modalCtrl.dismiss(this.term().trim());
+      this.dialogRef.close(this.term().trim());
     }
   }
 
   cancel(): void {
-    void this.modalCtrl.dismiss(null);
+    this.dialogRef.close(null);
   }
 
   /** First visible character (sans sigil), uppercased, for the avatar fallback. */

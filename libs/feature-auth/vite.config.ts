@@ -19,8 +19,5 @@ export default defineConfig(() => ({
     setupFiles: ['src/test-setup.ts'],
     include: ['src/**/*.spec.ts'],
     reporters: ['default'],
-    // @ionic/core ships ESM inside a CJS package; inline it so Vitest transforms
-    // it (needed once components render Ionic web components like <ion-icon>).
-    server: { deps: { inline: [/@ionic/, /ionicons/] } },
   },
 }));

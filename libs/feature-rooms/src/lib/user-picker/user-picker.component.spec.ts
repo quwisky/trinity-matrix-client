@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { ModalController } from '@ionic/angular/standalone';
+import { DialogRef } from '@angular/cdk/dialog';
 import { RoomsService, type UserSearchResult } from '@trinity/core';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,7 +14,7 @@ describe('UserPickerComponent', () => {
   let searchUsers: ReturnType<typeof vi.fn>;
 
   function setInput(value: string, instance: UserPickerComponent): void {
-    instance.onInput({ detail: { value } } as unknown as Event);
+    instance.onInput({ target: { value } } as unknown as Event);
   }
 
   beforeEach(() => {
@@ -23,7 +23,7 @@ describe('UserPickerComponent', () => {
     TestBed.configureTestingModule({
       imports: [UserPickerComponent],
       providers: [
-        { provide: ModalController, useValue: { dismiss } },
+        { provide: DialogRef, useValue: { close: dismiss } },
         { provide: RoomsService, useValue: { searchUsers } },
       ],
     });

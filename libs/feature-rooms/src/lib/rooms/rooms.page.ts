@@ -13,31 +13,23 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
+import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
-  ActionSheetController,
-  AlertController,
-  IonSplitPane,
-  IonMenu,
-  IonMenuButton,
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonButtons,
-  IonButton,
-  IonIcon,
-  MenuController,
-  ModalController,
-  ToastController,
-} from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
+  lucideLock,
+  lucideMenu,
+  lucideMessagesSquare,
+  lucideSearch,
+  lucideUserPlus,
+  lucideUsers,
+} from '@ng-icons/lucide';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import {
-  chatbubblesOutline,
-  lockClosed,
-  personAddOutline,
-  searchCircleOutline,
-  searchOutline,
-  settingsOutline,
-} from 'ionicons/icons';
+  TrnActionSheetService,
+  TrnAlertService,
+  TrnDialogService,
+  TrnToastService,
+} from '@trinity/helm/overlay';
 import {
   AuthService,
   CryptoService,
@@ -54,7 +46,7 @@ import {
   type SpaceChildRoom,
   type SwitcherSelection,
 } from '@trinity/core';
-import { runWithBusy } from '@trinity/ui';
+import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
@@ -68,7 +60,8 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
- * responsive `ion-split-pane`/`ion-menu`), the read timeline, and a member list.
+ * responsive Tailwind drawer — static column at md+, slide-in below), the read
+ * timeline, and a member list.
  * Wired to live synced rooms via `RoomsService` + `TimelineService`.
  */
 @Component({
@@ -77,21 +70,26 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
   imports: [
-    IonSplitPane,
-    IonMenu,
-    IonMenuButton,
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonButtons,
-    IonButton,
-    IonIcon,
+    PageHeaderComponent,
+    HlmButton,
+    HlmTooltip,
+    NgIcon,
     ServerRailComponent,
     ChannelSidebarComponent,
     MemberListComponent,
     MessageListComponent,
     EncryptionBannerComponent,
     ConnectivityBannerComponent,
+  ],
+  viewProviders: [
+    provideIcons({
+      lucideLock,
+      lucideMenu,
+      lucideMessagesSquare,
+      lucideSearch,
+      lucideUserPlus,
+      lucideUsers,
+    }),
   ],
 })
 export class RoomsPage implements OnInit, OnDestroy {
@@ -111,15 +109,18 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly notifications = inject(NotificationService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-  private readonly menu = inject(MenuController);
-  private readonly modalCtrl = inject(ModalController);
-  private readonly toast = inject(ToastController);
-  private readonly alertCtrl = inject(AlertController);
-  private readonly actionSheetCtrl = inject(ActionSheetController);
+  private readonly dialog = inject(TrnDialogService);
+  private readonly toast = inject(TrnToastService);
+  private readonly alert = inject(TrnAlertService);
+  private readonly actionSheet = inject(TrnActionSheetService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly activeSpaceId = signal<string | null>(null);
   readonly activeRoomId = signal<string | null>(null);
+  /** Whether the side pane is shown as an overlay drawer (below the md breakpoint). */
+  readonly drawerOpen = signal(false);
+  /** Whether the right-hand member list is shown (toggled from the toolbar). */
+  readonly membersOpen = signal(true);
   /**
    * Event id the message list should scroll to, set when in-room search resolves a
    * hit. Bound to the list's `jumpToId`; reset to null first so re-selecting the same
@@ -211,14 +212,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   });
 
   constructor() {
-    addIcons({
-      chatbubblesOutline,
-      lockClosed,
-      personAddOutline,
-      searchCircleOutline,
-      searchOutline,
-      settingsOutline,
-    });
     // Space-management failures (create/leave) have no inline echo in the shell, so
     // surface each new error as a danger toast. runWithBusy captures the message
     // into spaceError; this reacts to that signal turning non-null.
@@ -257,9 +250,11 @@ export class RoomsPage implements OnInit, OnDestroy {
    * (including in the composer) never triggers it. `preventDefault` stops the
    * browser's own Cmd/Ctrl+K. Re-entrancy is guarded in {@link QuickSwitcherService}.
    */
+  // Angular 21 type-checks host listeners; `document:keydown` is typed as the base
+  // `Event`, so accept that and just call the shared `preventDefault`.
   @HostListener('document:keydown.meta.k', ['$event'])
   @HostListener('document:keydown.control.k', ['$event'])
-  onQuickSwitch(event: KeyboardEvent): void {
+  onQuickSwitch(event: Event): void {
     event.preventDefault();
     void this.openSwitcher();
   }
@@ -275,7 +270,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    * runs onSelectRoom() → media.releaseAll(), revoking the open modal's pinned blobs.
    */
   async openSwitcher(): Promise<void> {
-    if (await this.modalCtrl.getTop()) {
+    if (this.dialog.hasOpen()) {
       return; // an overlay owns the screen — don't stack the switcher over it
     }
     const selection = await this.switcher.pick();
@@ -337,26 +332,16 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Rail "+": prompt for a name, create the space, then select it on success. */
   async onCreateSpace(): Promise<void> {
     this.spaceError.set(null); // don't carry a stale error into a fresh action
-    const alert = await this.alertCtrl.create({
+    const name = await this.alert.prompt({
       header: 'Create a space',
       message: 'A space groups related rooms, like a Discord server.',
-      inputs: [
-        {
-          name: 'name',
-          placeholder: 'Space name',
-          attributes: { maxlength: 100 },
-        },
-      ],
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Create',
-          handler: (data: { name?: string }) =>
-            this.applyCreateSpace(data.name ?? ''),
-        },
-      ],
+      placeholder: 'Space name',
+      confirmText: 'Create',
+      maxLength: 100,
     });
-    await alert.present();
+    if (name !== null) {
+      this.applyCreateSpace(name);
+    }
   }
 
   /** Sidebar "+": prompt for a name and create a room inside the active space. */
@@ -366,26 +351,16 @@ export class RoomsPage implements OnInit, OnDestroy {
       return; // the affordance is hidden on Home, but guard regardless
     }
     this.spaceError.set(null);
-    const alert = await this.alertCtrl.create({
+    const name = await this.alert.prompt({
       header: 'Create a channel',
       message: `New channels are end-to-end encrypted and added to “${this.activeSpaceName()}”.`,
-      inputs: [
-        {
-          name: 'name',
-          placeholder: 'Channel name',
-          attributes: { maxlength: 100 },
-        },
-      ],
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Create',
-          handler: (data: { name?: string }) =>
-            this.applyCreateChannel(spaceId, data.name ?? ''),
-        },
-      ],
+      placeholder: 'Channel name',
+      confirmText: 'Create',
+      maxLength: 100,
     });
-    await alert.present();
+    if (name !== null) {
+      this.applyCreateChannel(spaceId, name);
+    }
   }
 
   /** Sidebar exit icon: confirm, then leave the active space (back to Home). */
@@ -395,19 +370,16 @@ export class RoomsPage implements OnInit, OnDestroy {
       return;
     }
     this.spaceError.set(null);
-    const alert = await this.alertCtrl.create({
-      header: 'Leave space',
-      message: `Leave “${this.activeSpaceName()}”? Its rooms stay on your account — only the space is left.`,
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Leave',
-          role: 'destructive',
-          handler: () => this.applyLeaveSpace(spaceId),
-        },
-      ],
-    });
-    await alert.present();
+    if (
+      await this.alert.confirm({
+        header: 'Leave space',
+        message: `Leave “${this.activeSpaceName()}”? Its rooms stay on your account — only the space is left.`,
+        confirmText: 'Leave',
+        destructive: true,
+      })
+    ) {
+      this.applyLeaveSpace(spaceId);
+    }
   }
 
   private applyCreateSpace(name: string): void {
@@ -463,19 +435,16 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.spaceError.set(null);
     const name =
       this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this channel';
-    const alert = await this.alertCtrl.create({
-      header: 'Remove from space',
-      message: `Remove “${name}” from “${this.activeSpaceName()}”? You stay in the room — it’s just unlinked from this space.`,
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Remove',
-          role: 'destructive',
-          handler: () => this.applyRemoveFromSpace(spaceId, roomId),
-        },
-      ],
-    });
-    await alert.present();
+    if (
+      await this.alert.confirm({
+        header: 'Remove from space',
+        message: `Remove “${name}” from “${this.activeSpaceName()}”? You stay in the room — it’s just unlinked from this space.`,
+        confirmText: 'Remove',
+        destructive: true,
+      })
+    ) {
+      this.applyRemoveFromSpace(spaceId, roomId);
+    }
   }
 
   private applyRemoveFromSpace(spaceId: string, childId: string): void {
@@ -487,8 +456,8 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   /** Home "+": choose between creating a room and starting a DM. */
-  async onNewChat(): Promise<void> {
-    const sheet = await this.actionSheetCtrl.create({
+  onNewChat(): void {
+    this.actionSheet.open({
       header: 'New message',
       buttons: [
         { text: 'Create a room', handler: () => void this.onCreateRoom() },
@@ -499,32 +468,21 @@ export class RoomsPage implements OnInit, OnDestroy {
         { text: 'Cancel', role: 'cancel' },
       ],
     });
-    await sheet.present();
   }
 
   /** Prompt for a name, create a standalone encrypted room, then select it. */
   async onCreateRoom(): Promise<void> {
     this.spaceError.set(null);
-    const alert = await this.alertCtrl.create({
+    const name = await this.alert.prompt({
       header: 'Create a room',
       message: 'New rooms are end-to-end encrypted.',
-      inputs: [
-        {
-          name: 'name',
-          placeholder: 'Room name',
-          attributes: { maxlength: 100 },
-        },
-      ],
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Create',
-          handler: (data: { name?: string }) =>
-            this.applyCreateRoom(data.name ?? ''),
-        },
-      ],
+      placeholder: 'Room name',
+      confirmText: 'Create',
+      maxLength: 100,
     });
-    await alert.present();
+    if (name !== null) {
+      this.applyCreateRoom(name);
+    }
   }
 
   /** Pick a user (MXID or directory), open/reuse a DM with them, then select it. */
@@ -624,7 +582,27 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.activeRoomId.set(id);
     this.timeline.open(id);
     this.threads.open(id); // project this room's thread summaries for indicators
-    void this.menu.close(); // collapse the drawer on mobile (fire-and-forget)
+    this.closeDrawer(); // collapse the drawer on mobile after picking a room
+  }
+
+  /** Toggle the mobile navigation drawer (no-op visual at md+, where it's static). */
+  toggleDrawer(): void {
+    this.drawerOpen.update((open) => !open);
+  }
+
+  /** Close the mobile navigation drawer. */
+  closeDrawer(): void {
+    this.drawerOpen.set(false);
+  }
+
+  /** Show/hide the right-hand member list from the toolbar. */
+  toggleMembers(): void {
+    this.membersOpen.update((open) => !open);
+  }
+
+  /** Hide the member list (raised by its own close button). */
+  closeMembers(): void {
+    this.membersOpen.set(false);
   }
 
   /** Open the thread rooted at `rootEventId` (raised by a message's indicator). */
@@ -712,31 +690,28 @@ export class RoomsPage implements OnInit, OnDestroy {
     });
   }
 
-  private async showError(message: string): Promise<void> {
-    const toast = await this.toast.create({
-      message,
-      duration: 4000,
-      color: 'danger',
-      position: 'bottom',
-    });
-    await toast.present();
+  private showError(message: string): void {
+    this.toast.show(message, { duration: 4000, variant: 'destructive' });
   }
 
-  private async showSuccess(message: string): Promise<void> {
-    const toast = await this.toast.create({
-      message,
-      duration: 3000,
-      color: 'success',
-      position: 'bottom',
-    });
-    await toast.present();
+  private showSuccess(message: string): void {
+    this.toast.show(message, { duration: 3000, variant: 'success' });
   }
 
   goToSettings(): void {
     void this.router.navigateByUrl('/settings');
   }
 
-  logout(): void {
+  async logout(): Promise<void> {
+    const confirmed = await this.alert.confirm({
+      header: 'Log out',
+      message: 'Log out of Trinity on this device?',
+      confirmText: 'Log out',
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
     this.auth
       .logout()
       .pipe(takeUntilDestroyed(this.destroyRef))

@@ -8,22 +8,14 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
-import {
-  IonHeader,
-  IonToolbar,
-  IonTitle,
-  IonContent,
-  IonButton,
-  IonText,
-  IonSpinner,
-  IonCheckbox,
-  AlertController,
-} from '@ionic/angular/standalone';
+import { TrnAlertService } from '@trinity/helm/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { CryptoService, type PasswordPrompt } from '@trinity/core';
-import { runWithBusy } from '@trinity/ui';
+import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
 
 /**
@@ -39,22 +31,17 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
   templateUrl: 'encryption-setup.page.html',
   styleUrls: ['encryption-setup.page.scss'],
   imports: [
-    FormsModule,
-    IonHeader,
-    IonToolbar,
-    IonTitle,
-    IonContent,
-    IonButton,
-    IonText,
-    IonSpinner,
-    IonCheckbox,
+    PageHeaderComponent,
+    HlmButton,
+    HlmCheckbox,
+    HlmSpinner,
     RecoveryKeyDisplayComponent,
   ],
 })
 export class EncryptionSetupPage {
   private readonly crypto = inject(CryptoService);
   private readonly router = inject(Router);
-  private readonly alertCtrl = inject(AlertController);
+  private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly busy = signal(false);
@@ -104,30 +91,12 @@ export class EncryptionSetupPage {
    * a fresh password alert. Resolving `null` cancels the whole setup.
    */
   private readonly promptPassword: PasswordPrompt = () =>
-    new Promise<string | null>((resolve) => {
-      void this.alertCtrl
-        .create({
-          header: 'Confirm your password',
-          message: 'Your homeserver needs your password to set up encryption.',
-          backdropDismiss: false,
-          inputs: [
-            {
-              name: 'password',
-              type: 'password',
-              placeholder: 'Password',
-              attributes: { autocomplete: 'current-password' },
-            },
-          ],
-          buttons: [
-            { text: 'Cancel', role: 'cancel', handler: () => resolve(null) },
-            {
-              text: 'Confirm',
-              handler: (value: { password?: string }) =>
-                resolve(value.password ?? null),
-            },
-          ],
-        })
-        .then((alert) => alert.present());
+    this.alert.prompt({
+      header: 'Confirm your password',
+      message: 'Your homeserver needs your password to set up encryption.',
+      placeholder: 'Password',
+      confirmText: 'Confirm',
+      inputType: 'password',
     });
 
   /** Wrap a one-shot action with shared busy/error handling. */

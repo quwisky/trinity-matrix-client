@@ -9,12 +9,8 @@ import {
 import { Location } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import {
-  IonContent,
-  IonSpinner,
-  IonText,
-  IonButton,
-} from '@ionic/angular/standalone';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { AuthService } from '@trinity/core';
 import { SsoStateStore } from '../sso-state.store';
 
@@ -27,20 +23,20 @@ import { SsoStateStore } from '../sso-state.store';
   selector: 'trn-sso-callback',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ion-content class="ion-padding ion-text-center">
+    <main class="flex-1 overflow-y-auto p-4 text-center">
       <h1 class="sr-only">Completing sign in</h1>
       @if (error(); as e) {
         <p>
-          <ion-text color="danger">{{ e }}</ion-text>
+          <span class="text-destructive">{{ e }}</span>
         </p>
-        <ion-button (click)="back()">Back to sign in</ion-button>
+        <button hlmBtn (click)="back()">Back to sign in</button>
       } @else {
-        <ion-spinner name="dots"></ion-spinner>
+        <hlm-spinner />
         <p>Completing sign in…</p>
       }
-    </ion-content>
+    </main>
   `,
-  imports: [IonContent, IonSpinner, IonText, IonButton],
+  imports: [HlmButton, HlmSpinner],
 })
 export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);

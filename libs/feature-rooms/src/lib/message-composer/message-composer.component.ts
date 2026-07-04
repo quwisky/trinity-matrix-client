@@ -9,16 +9,16 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import {
-  IonIcon,
-  IonProgressBar,
-  ToastController,
-} from '@ionic/angular/standalone';
-import { addIcons } from 'ionicons';
-import { addOutline, happyOutline, send } from 'ionicons/icons';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucidePlus, lucideSend, lucideSmile } from '@ng-icons/lucide';
+import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
+import { HlmTextarea } from '@trinity/helm/textarea';
+import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
 import {
   EmojiService,
@@ -49,7 +49,15 @@ const EMOJI_SUGGESTION_LIMIT = 8;
 @Component({
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonIcon, IonProgressBar, PickerComponent],
+  imports: [
+    NgIcon,
+    HlmTooltip,
+    HlmTextarea,
+    PickerComponent,
+    HlmProgress,
+    HlmProgressIndicator,
+  ],
+  viewProviders: [provideIcons({ lucidePlus, lucideSend, lucideSmile })],
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
 })
@@ -59,6 +67,13 @@ export class MessageComposerComponent {
   readonly placeholder = input('');
   readonly editing = input(false);
   readonly draft = input('');
+  /**
+   * Id of the message being edited (null when not editing). The prefill keys on
+   * this — not on {@link draft} — so re-targeting to a different message refreshes
+   * the field, while a mid-edit body change of the *same* target (redaction, a
+   * concurrent multi-device edit, a late echo) never clobbers in-progress text.
+   */
+  readonly editTargetId = input<string | null>(null);
   /** Sender name of the message being replied to, or '' when not replying. */
   readonly replyingTo = input('');
   /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
@@ -99,16 +114,16 @@ export class MessageComposerComponent {
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('fileInput');
   private readonly picker = inject(MediaPickerService);
-  private readonly toast = inject(ToastController);
+  private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly emojiSearch = inject(EmojiSearch);
   private readonly emojiService = inject(EmojiService);
   private readonly theme = inject(ThemeService);
   private wasEditing = false;
+  private wasEditTargetId: string | null = null;
   private wasReplying = false;
 
   constructor() {
-    addIcons({ addOutline, happyOutline, send });
     // Highlight the first suggestion whenever the result set changes.
     effect(() => {
       this.emojiMatches();
@@ -122,11 +137,17 @@ export class MessageComposerComponent {
       }
       this.wasReplying = replying;
     });
-    // Prefill on entering edit mode; clear on leaving it.
+    // Prefill on entering edit mode, or when the edit TARGET changes while still
+    // editing (a different message was selected). Keyed on editTargetId — not the
+    // draft body — and draft() is read untracked, so a mid-edit body change of the
+    // same target (redaction, concurrent multi-device edit, a late echo) neither
+    // fires this effect nor overwrites the user's in-progress text. Clear on
+    // leaving edit mode. Typing never re-fires this (it updates `text`, unread here).
     effect(() => {
       const editing = this.editing();
-      if (editing && !this.wasEditing) {
-        this.text.set(this.draft());
+      const targetId = this.editTargetId();
+      if (editing && (!this.wasEditing || targetId !== this.wasEditTargetId)) {
+        this.text.set(untracked(() => this.draft()));
         queueMicrotask(() => {
           const el = this.textarea()?.nativeElement;
           el?.focus();
@@ -138,6 +159,7 @@ export class MessageComposerComponent {
         queueMicrotask(() => this.autoGrow());
       }
       this.wasEditing = editing;
+      this.wasEditTargetId = targetId;
     });
   }
 
@@ -320,15 +342,11 @@ export class MessageComposerComponent {
   }
 
   /** Surface a gallery-picker failure (notably denied photo access) as a toast. */
-  private async showAttachError(err: unknown): Promise<void> {
-    const toast = await this.toast.create({
-      message:
-        err instanceof Error ? err.message : 'Could not open the gallery.',
-      duration: 4000,
-      color: 'danger',
-      position: 'bottom',
-    });
-    await toast.present();
+  private showAttachError(err: unknown): void {
+    this.toast.show(
+      err instanceof Error ? err.message : 'Could not open the gallery.',
+      { duration: 4000, variant: 'destructive' },
+    );
   }
 
   /** Hidden file input change → emit the picked file, then reset for re-picking. */

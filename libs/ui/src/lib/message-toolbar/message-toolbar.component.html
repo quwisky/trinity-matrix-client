@@ -1,5 +1,9 @@
 @if (pickerOpen()) {
-  <div class="toolbar__picker">
+  <div
+    class="toolbar__picker"
+    [id]="pickerId"
+    (keydown.escape)="pickerOpen.set(false)"
+  >
     @for (emoji of quickEmojis; track emoji) {
       <button
         type="button"
@@ -13,59 +17,61 @@
   </div>
 }
 
-<div class="toolbar" role="toolbar">
+<div class="toolbar" role="toolbar" aria-label="Message actions">
   <button
     type="button"
     class="toolbar__btn"
-    title="Add reaction"
+    hlmTooltip="Add reaction"
     aria-label="Add reaction"
     [attr.aria-expanded]="pickerOpen()"
+    [attr.aria-controls]="pickerOpen() ? pickerId : null"
+    (keydown.escape)="pickerOpen.set(false)"
     (click)="pickerOpen.set(!pickerOpen())"
   >
-    <ion-icon name="happy-outline" aria-hidden="true" />
+    <ng-icon name="lucideSmile" aria-hidden="true" />
   </button>
 
   <button
     type="button"
     class="toolbar__btn"
-    title="Reply"
+    hlmTooltip="Reply"
     aria-label="Reply"
     (click)="replyMessage.emit()"
   >
-    <ion-icon name="arrow-undo-outline" aria-hidden="true" />
+    <ng-icon name="lucideReply" aria-hidden="true" />
   </button>
 
   @if (canThread()) {
     <button
       type="button"
       class="toolbar__btn"
-      title="Reply in thread"
+      hlmTooltip="Reply in thread"
       aria-label="Reply in thread"
       (click)="openThread.emit()"
     >
-      <ion-icon name="chatbubbles-outline" aria-hidden="true" />
+      <ng-icon name="lucideMessagesSquare" aria-hidden="true" />
     </button>
   }
 
   <button
     type="button"
     class="toolbar__btn"
-    title="Copy text"
+    hlmTooltip="Copy text"
     aria-label="Copy text"
     (click)="copyMessage.emit()"
   >
-    <ion-icon name="copy-outline" aria-hidden="true" />
+    <ng-icon name="lucideCopy" aria-hidden="true" />
   </button>
 
   @if (canEdit()) {
     <button
       type="button"
       class="toolbar__btn"
-      title="Edit"
+      hlmTooltip="Edit"
       aria-label="Edit message"
       (click)="editMessage.emit()"
     >
-      <ion-icon name="pencil-outline" aria-hidden="true" />
+      <ng-icon name="lucidePencil" aria-hidden="true" />
     </button>
   }
 
@@ -73,11 +79,11 @@
     <button
       type="button"
       class="toolbar__btn toolbar__btn--danger"
-      title="Delete"
+      hlmTooltip="Delete"
       aria-label="Delete message"
       (click)="deleteMessage.emit()"
     >
-      <ion-icon name="trash-outline" aria-hidden="true" />
+      <ng-icon name="lucideTrash2" aria-hidden="true" />
     </button>
   }
 </div>

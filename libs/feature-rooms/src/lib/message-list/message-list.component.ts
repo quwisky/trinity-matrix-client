@@ -8,9 +8,10 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
-import { AlertController } from '@ionic/angular/standalone';
+import { TrnAlertService } from '@trinity/helm/overlay';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import {
   MessageRowComponent,
@@ -24,6 +25,13 @@ import {
 
 /** Trigger older-history loading when the scroll top gets within this many px. */
 const AUTO_LOAD_THRESHOLD_PX = 150;
+
+/**
+ * Treat the viewport as "at the bottom" within this many px of the end, so an
+ * incoming live message still auto-scrolls when the user is effectively pinned to
+ * the newest message (accounts for sub-pixel rounding and a partially-visible row).
+ */
+const NEAR_BOTTOM_PX = 120;
 
 /**
  * Safety cap on consecutive auto-backfill rounds for one fill sequence, so the
@@ -47,6 +55,13 @@ export class MessageListComponent {
   readonly loadingOlder = input(false);
   readonly canLoadOlder = input(false);
   readonly roomName = input('');
+  /**
+   * Active room id. The list instance is reused across room switches (it stays
+   * mounted under `@if (activeRoom())`), so a change here resets the per-room
+   * UI + scroll state — otherwise a pending edit/reply target, the last-seen id,
+   * and the backfill anchors would leak into the next room.
+   */
+  readonly roomId = input<string | null>(null);
   /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
   readonly uploadProgress = input<number | null>(null);
   /**
@@ -81,9 +96,12 @@ export class MessageListComponent {
   /** Live-region text announcing a newly-arrived incoming message to screen readers. */
   readonly announcement = signal('');
 
-  private readonly alertCtrl = inject(AlertController);
+  private readonly alert = inject(TrnAlertService);
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
   private lastId = '';
+  /** Whether the user is scrolled to (or near) the bottom — gates auto-scroll on
+   * incoming messages. Starts true so the first load and each new room stick. */
+  private atBottom = true;
 
   // Scroll-anchoring state while older history is being prepended.
   private pendingPrepend = false;
@@ -140,6 +158,27 @@ export class MessageListComponent {
   });
 
   constructor() {
+    // Reset per-room state when the active room changes. Declared FIRST so it
+    // runs before the anchoring effect below (effects fire in creation order):
+    // clearing lastId lets that effect treat the new room as a fresh load rather
+    // than announcing another room's newest message. Also drops any pending
+    // edit/reply target so the next plain send in the new room isn't routed as a
+    // stale cross-room edit/reply.
+    effect(() => {
+      this.roomId();
+      untracked(() => {
+        this.editingId.set(null);
+        this.replyingToId.set(null);
+        this.announcement.set('');
+        this.lastId = '';
+        this.lastBackfillOldestId = '';
+        this.backfillRounds = 0;
+        this.pendingPrepend = false;
+        this.atBottom = true;
+        this.rowCache.clear();
+      });
+    });
+
     effect(() => {
       const msgs = this.messages();
       const el = this.scrollEl()?.nativeElement;
@@ -161,7 +200,8 @@ export class MessageListComponent {
       }
 
       const hadPrevious = !!this.lastId;
-      const newest = msgs[msgs.length - 1]?.id ?? '';
+      const latest = msgs[msgs.length - 1];
+      const newest = latest?.id ?? '';
       const newestChanged = !!newest && newest !== this.lastId;
       this.lastId = newest || this.lastId;
       if (newestChanged) {
@@ -169,7 +209,6 @@ export class MessageListComponent {
         this.backfillRounds = 0;
         // Announce a genuinely-new incoming message (not our own, not the first
         // load) so screen-reader users hear it without watching the timeline.
-        const latest = msgs[msgs.length - 1];
         if (
           hadPrevious &&
           latest &&
@@ -180,9 +219,13 @@ export class MessageListComponent {
           this.announcement.set(`${latest.senderName}: ${latest.body}`);
         }
       }
-      // Keep the newest message in view on open, on live messages, and while
-      // backfilling older history.
-      const stickToBottom = newestChanged || this.backfilling;
+      // Auto-scroll to the newest message on open, when the user sends their own
+      // message, or when a live message arrives while they're already at the
+      // bottom — but NOT when an incoming message lands while they've scrolled up
+      // to read history. Also stick while backfilling older history.
+      const stickToBottom =
+        (newestChanged && (this.atBottom || !!latest?.isOwn)) ||
+        this.backfilling;
 
       requestAnimationFrame(() => {
         if (stickToBottom) {
@@ -228,12 +271,14 @@ export class MessageListComponent {
   /** Auto-load older history once the user scrolls near the top. */
   onScroll(): void {
     const el = this.scrollEl()?.nativeElement;
-    if (
-      !el ||
-      this.pendingPrepend ||
-      this.loadingOlder() ||
-      !this.canLoadOlder()
-    ) {
+    if (!el) {
+      return;
+    }
+    // Track whether the user is pinned to (or near) the bottom so the anchoring
+    // effect only auto-scrolls incoming messages when they're already there.
+    this.atBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    if (this.pendingPrepend || this.loadingOlder() || !this.canLoadOlder()) {
       return;
     }
     if (el.scrollTop < AUTO_LOAD_THRESHOLD_PX) {
@@ -282,19 +327,15 @@ export class MessageListComponent {
   }
 
   async onDelete(row: MessageRow): Promise<void> {
-    const alert = await this.alertCtrl.create({
+    const confirmed = await this.alert.confirm({
       header: 'Delete message',
       message: 'Delete this message? This cannot be undone.',
-      buttons: [
-        { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Delete',
-          role: 'destructive',
-          handler: () => this.deleteMessage.emit(row.id),
-        },
-      ],
+      confirmText: 'Delete',
+      destructive: true,
     });
-    await alert.present();
+    if (confirmed) {
+      this.deleteMessage.emit(row.id);
+    }
   }
 
   /** Composer submit — routes to an edit or reply when active, else a new send. */

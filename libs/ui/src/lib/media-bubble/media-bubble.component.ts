@@ -54,7 +54,12 @@ export type MediaBubbleKind = 'image' | 'file' | 'video' | 'audio';
       </button>
     } @else if (kind() === 'video') {
       @if (src()) {
-        <video class="media media--video" controls [src]="src()"></video>
+        <video
+          class="media media--video"
+          controls
+          [src]="src()"
+          [attr.aria-label]="'Video: ' + filename()"
+        ></video>
       } @else {
         <span
           class="media media--video media__skeleton"
@@ -63,7 +68,12 @@ export type MediaBubbleKind = 'image' | 'file' | 'video' | 'audio';
       }
     } @else if (kind() === 'audio') {
       @if (src()) {
-        <audio class="media media--audio" controls [src]="src()"></audio>
+        <audio
+          class="media media--audio"
+          controls
+          [src]="src()"
+          [attr.aria-label]="'Audio: ' + filename()"
+        ></audio>
       } @else {
         <span class="media__loading">Loading audio…</span>
       }

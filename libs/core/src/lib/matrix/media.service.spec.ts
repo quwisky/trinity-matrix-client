@@ -165,6 +165,20 @@ describe('MediaService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('re-probes authed-media support after releaseAll (account/homeserver switch)', async () => {
+    const { svc, client } = setup();
+    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'));
+    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/b'), 'full'));
+    // The v1.11 capability probe is cached across resolves — one call so far.
+    expect(client.isVersionSupported).toHaveBeenCalledTimes(1);
+
+    // A logout→login can switch homeservers; releaseAll must drop the cached
+    // probe so the next resolve re-checks (a stale result would break all media).
+    svc.releaseAll();
+    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
+    expect(client.isVersionSupported).toHaveBeenCalledTimes(2);
+  });
+
   it('uses the legacy media endpoint without an Authorization header when v1.11 is unsupported', async () => {
     const { svc } = setup({
       isVersionSupported: vi.fn().mockResolvedValue(false),

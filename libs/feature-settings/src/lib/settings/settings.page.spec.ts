@@ -1,7 +1,7 @@
+import { Location } from '@angular/common';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { AlertController, ModalController } from '@ionic/angular/standalone';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -63,11 +63,9 @@ describe('SettingsPage', () => {
             disconnect: vi.fn(),
           },
         },
-        { provide: AlertController, useValue: { create: vi.fn() } },
         // The devices section's "Verify a device" goes through EncryptionDialogService,
-        // which injects ModalController.
-        { provide: ModalController, useValue: { create: vi.fn() } },
-        // Real router providers — Ionic's NavController (ion-back-button) needs them.
+        // which injects the root-provided TrnDialogService — no test provider needed.
+        // Real router providers — Location.back() (the shell back button) needs them.
         provideRouter([]),
       ],
     });
@@ -78,22 +76,36 @@ describe('SettingsPage', () => {
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelectorAll('ion-radio').length).toBe(3);
+    expect(el.querySelectorAll('hlm-radio').length).toBe(3);
     expect(el.querySelector('[data-testid=theme-system]')).not.toBeNull();
-    const group = el.querySelector('ion-radio-group') as
-      | (HTMLElement & { value: string })
-      | null;
-    expect(group?.value).toBe('system');
+    // The bound preference ('system') is reflected on the native radio input.
+    const systemInput = el.querySelector<HTMLInputElement>(
+      '[data-testid=theme-system] input',
+    );
+    expect(systemInput?.checked).toBe(true);
     expect(el.textContent).toContain('dark'); // resolved-theme note
+  });
+
+  it('navigates back via the shell header back button', () => {
+    const fixture = TestBed.createComponent(SettingsPage);
+    fixture.detectChanges();
+    const back = vi
+      .spyOn(TestBed.inject(Location), 'back')
+      .mockImplementation(() => undefined);
+
+    const button = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLButtonElement>('header button[aria-label=Back]');
+    button?.click();
+
+    expect(back).toHaveBeenCalled();
   });
 
   it('applies the chosen theme on change', () => {
     const fixture = TestBed.createComponent(SettingsPage);
     fixture.detectChanges();
 
-    fixture.componentInstance.onThemeChange(
-      new CustomEvent('ionChange', { detail: { value: 'light' } }),
-    );
+    fixture.componentInstance.onThemeChange('light');
 
     expect(setPreference).toHaveBeenCalledWith('light');
   });
@@ -106,6 +118,17 @@ describe('SettingsPage', () => {
     expect(el.textContent).toContain('Alice');
     expect(el.textContent).toContain('@me:hs');
     expect(fixture.componentInstance.nameDraft()).toBe('Alice'); // seeded by load()
+  });
+
+  it('updates the draft name from a native input event', () => {
+    const fixture = TestBed.createComponent(SettingsPage);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    // The handler now reads a native <input>'s value (not an ionInput CustomEvent).
+    cmp.onNameInput({ target: { value: 'Carol' } } as unknown as Event);
+
+    expect(cmp.nameDraft()).toBe('Carol');
   });
 
   it('saves an edited display name', () => {

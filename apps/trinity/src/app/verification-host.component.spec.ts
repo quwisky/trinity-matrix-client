@@ -1,11 +1,12 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ModalController } from '@ionic/angular/standalone';
 import {
   MatrixClientService,
   VerificationService,
   type VerificationView,
 } from '@trinity/core';
+import { TrnDialogService } from '@trinity/helm/overlay';
+import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { VerificationHostComponent } from './verification-host.component';
 
@@ -25,22 +26,18 @@ function setup() {
   const syncState = signal<string | null>(null);
   const active = signal<VerificationView | null>(null);
   const connect = vi.fn();
-  const create = vi.fn().mockResolvedValue({
-    present: vi.fn().mockResolvedValue(undefined),
-    dismiss: vi.fn().mockResolvedValue(undefined),
-    onDidDismiss: vi.fn().mockResolvedValue(undefined),
-  });
+  const open = vi.fn().mockReturnValue({ closed: new Subject() });
   TestBed.configureTestingModule({
     imports: [VerificationHostComponent],
     providers: [
       { provide: MatrixClientService, useValue: { syncState } },
       { provide: VerificationService, useValue: { active, connect } },
-      { provide: ModalController, useValue: { create } },
+      { provide: TrnDialogService, useValue: { open } },
     ],
   });
   const fixture = TestBed.createComponent(VerificationHostComponent);
   fixture.detectChanges();
-  return { fixture, syncState, active, connect, create };
+  return { fixture, syncState, active, connect, open };
 }
 
 describe('VerificationHostComponent', () => {
@@ -55,24 +52,30 @@ describe('VerificationHostComponent', () => {
   });
 
   it('presents a modal for an incoming verification request', async () => {
-    const { fixture, active, create } = setup();
+    const { fixture, active, open } = setup();
 
     active.set(incoming());
     fixture.detectChanges();
-    // present() lazy-imports the verification page before creating the modal.
-    await vi.waitFor(() => expect(create).toHaveBeenCalled());
+    // present() lazy-imports the verification page before opening the dialog.
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
 
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ componentProps: { asModal: true } }),
+    // The page is lazy-loaded (dynamic import), so a static import here would trip
+    // the module-boundary lint — assert on the class shape, not the identity.
+    expect(open).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        inputs: { asModal: true },
+        disableClose: true,
+      }),
     );
   });
 
   it('does not present a modal for a self-initiated (outgoing) request', () => {
-    const { fixture, active, create } = setup();
+    const { fixture, active, open } = setup();
 
     active.set({ ...incoming(), incoming: false });
     fixture.detectChanges();
 
-    expect(create).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 });

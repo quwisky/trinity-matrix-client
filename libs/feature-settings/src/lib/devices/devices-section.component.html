@@ -1,83 +1,99 @@
-<ion-list>
-  <ion-list-header>Devices</ion-list-header>
+<div>
+  <h2
+    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+  >
+    Devices
+  </h2>
 
   @for (device of devices(); track device.id) {
-    <ion-item lines="full">
-      <ion-label>
-        <h2>
+    <div
+      class="flex items-center gap-3 border-b border-solid border-border px-4 py-2"
+      data-testid="device-row"
+    >
+      <div class="min-w-0 flex-1">
+        <div
+          class="flex flex-wrap items-center gap-1.5 text-sm font-medium text-foreground"
+        >
           <span class="device-name">{{ device.displayName }}</span>
           @if (device.isCurrent) {
-            <ion-badge color="primary">This device</ion-badge>
+            <span hlmBadge>This device</span>
           }
           @if (device.isVerified) {
-            <ion-badge color="success">Verified</ion-badge>
+            <span hlmBadge variant="success">Verified</span>
           } @else {
-            <ion-badge color="warning">Unverified</ion-badge>
+            <span hlmBadge variant="warning">Unverified</span>
           }
-        </h2>
-        <p>{{ device.id }}</p>
+        </div>
+        <div class="truncate text-xs text-muted-foreground">
+          {{ device.id }}
+        </div>
         @if (device.lastSeenIp) {
-          <p>Last seen from {{ device.lastSeenIp }}</p>
+          <div class="truncate text-xs text-muted-foreground">
+            Last seen from {{ device.lastSeenIp }}
+          </div>
         }
-      </ion-label>
+      </div>
 
-      <ion-button
-        slot="end"
-        fill="clear"
-        size="small"
-        [disabled]="busy()"
-        [attr.aria-label]="'Rename ' + device.displayName"
-        data-testid="rename-device"
-        (click)="rename(device)"
-      >
-        <ion-icon slot="icon-only" name="create-outline" />
-      </ion-button>
-      @if (!device.isCurrent) {
-        <ion-button
-          slot="end"
-          fill="clear"
-          size="small"
-          color="danger"
+      <div class="ml-auto flex shrink-0 items-center gap-1">
+        <button
+          hlmBtn
+          variant="ghost"
+          size="icon"
           [disabled]="busy()"
-          [attr.aria-label]="'Sign out ' + device.displayName"
-          data-testid="remove-device"
-          (click)="remove(device)"
+          [hlmTooltip]="'Rename ' + device.displayName"
+          [attr.aria-label]="'Rename ' + device.displayName"
+          data-testid="rename-device"
+          (click)="rename(device)"
         >
-          <ion-icon slot="icon-only" name="trash-outline" />
-        </ion-button>
-      }
-    </ion-item>
+          <ng-icon name="lucidePencil" class="text-lg" />
+        </button>
+        @if (!device.isCurrent) {
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
+            class="text-destructive"
+            [disabled]="busy()"
+            [hlmTooltip]="'Sign out ' + device.displayName"
+            [attr.aria-label]="'Sign out ' + device.displayName"
+            data-testid="remove-device"
+            (click)="remove(device)"
+          >
+            <ng-icon name="lucideTrash2" class="text-lg" />
+          </button>
+        }
+      </div>
+    </div>
   } @empty {
     @if (loading()) {
-      <ion-item lines="none" aria-live="polite">
-        <ion-label>Loading devices…</ion-label>
-      </ion-item>
+      <div class="px-4 py-2 text-sm text-muted-foreground" aria-live="polite">
+        Loading devices…
+      </div>
     }
   }
 
   @if (error(); as e) {
-    <ion-note
-      color="danger"
-      class="setting-note"
+    <p
+      class="setting-note setting-note--error"
       role="alert"
       aria-live="assertive"
     >
       {{ e }}
-    </ion-note>
+    </p>
   }
 
   @if (hasUnverified()) {
-    <ion-item lines="none">
-      <ion-button
-        slot="start"
-        fill="clear"
-        size="small"
+    <div class="px-4 py-2">
+      <button
+        hlmBtn
+        variant="ghost"
+        size="sm"
         data-testid="verify-devices"
         (click)="verifyDevices()"
       >
-        <ion-icon slot="start" name="shield-checkmark-outline" />
+        <ng-icon name="lucideShieldCheck" class="text-lg" />
         Verify another session
-      </ion-button>
-    </ion-item>
+      </button>
+    </div>
   }
-</ion-list>
+</div>

@@ -43,6 +43,32 @@ describe('MessageListComponent', () => {
     expect(el.textContent).toContain('body $2');
   });
 
+  it('resets the edit/reply target and suppresses announcements on room change', () => {
+    const fixture = TestBed.createComponent(MessageListComponent);
+    fixture.componentRef.setInput('roomId', '!a:hs');
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+    ]);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    // In-progress reply in room A.
+    cmp.replyingToId.set('$1');
+    expect(cmp.replyingToId()).toBe('$1');
+
+    // Switch to room B: the stale target must clear (else the next plain send is
+    // routed as a cross-room reply), and B's newest must NOT be announced as a
+    // live incoming message (lastId was reset, so it reads as a fresh load).
+    fixture.componentRef.setInput('roomId', '!b:hs');
+    fixture.componentRef.setInput('messages', [
+      msg('$9', '@b:hs', 'Bob', 5000),
+    ]);
+    fixture.detectChanges();
+
+    expect(cmp.replyingToId()).toBeNull();
+    expect(cmp.announcement()).toBe('');
+  });
+
   it('renders formatted markdown via innerHTML', () => {
     const fixture = TestBed.createComponent(MessageListComponent);
     fixture.componentRef.setInput('messages', [

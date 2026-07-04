@@ -1,41 +1,12 @@
 /*
  * App Global CSS
  * ----------------------------------------------------------------------------
- * Put style rules here that you want to apply globally. These styles are for
- * the entire app and not just one component. Additionally, this file can be
- * used as an entry point to import other CSS/Sass files to be included in the
- * output CSS.
- * For more information on global stylesheets, visit the documentation:
- * https://ionicframework.com/docs/layout/global-stylesheets
+ * Global styles for the whole app. Ionic is fully removed: the base reset now comes
+ * from Tailwind's preflight (imported in theme/spartan.css) and the design tokens
+ * from theme/variables.scss. Dark mode is still keyed off the `.ion-palette-dark`
+ * class ThemeService toggles on <html> (variables.scss + spartan.css define the
+ * dark ramp under it) — the class name is kept purely as that marker.
  */
-
-/* Core CSS required for Ionic components to work properly */
-@import '@ionic/angular/css/core.css';
-
-/* Basic CSS for apps built with Ionic */
-@import '@ionic/angular/css/normalize.css';
-@import '@ionic/angular/css/structure.css';
-@import '@ionic/angular/css/typography.css';
-@import '@ionic/angular/css/display.css';
-
-/* Optional CSS utils that can be commented out */
-@import '@ionic/angular/css/padding.css';
-@import '@ionic/angular/css/float-elements.css';
-@import '@ionic/angular/css/text-alignment.css';
-@import '@ionic/angular/css/text-transformation.css';
-@import '@ionic/angular/css/flex-utils.css';
-
-/**
- * Ionic Dark Mode
- * -----------------------------------------------------
- * For more info, please see:
- * https://ionicframework.com/docs/theming/dark-mode
- */
-
-/* Class-based dark palette: Ionic's dark tokens apply only under `.ion-palette-dark`
- * (toggled on <html> by ThemeService). With the class absent, Ionic's light defaults
- * apply — so light mode works without us re-deriving Ionic's full token ramp. */
-@import '@ionic/angular/css/palettes/dark.class.css';
 
 /*
  * Keyboard-focus baseline. The custom Discord-style controls strip native
@@ -50,6 +21,45 @@ a:focus-visible,
   outline-offset: 2px;
 }
 
+/*
+ * App-shell layout. <trn-root> is a fixed-height flex column (h-dvh); Angular renders
+ * the routed page as the sibling immediately after <router-outlet>, so make that page
+ * fill the remaining space and be its own flex column (its <header> is shrink-0, its
+ * <main>/body is flex-1 overflow-auto). This replaces Ionic's `.ion-page`, which
+ * `ion-router-outlet` used to apply to every routed host.
+ */
+router-outlet + * {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Safe-area insets (notch / status bar / home indicator). Ionic's ion-content /
+ * ion-toolbar used to pad content clear of the device chrome automatically; with the
+ * plain shell we do it here. `env(safe-area-inset-*)` resolves to 0 on web and
+ * desktop (and inside a keyboard-resized native WebView), so these helpers are inert
+ * off-device and only pad on notched native devices — index.html sets
+ * `viewport-fit=cover`. Pair `.safe-top` with `min-h-*` (not a fixed `h-*`) so the
+ * bar grows by the inset and its content keeps full height below the cutout.
+ */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-left {
+  padding-left: env(safe-area-inset-left);
+}
+
+.safe-right {
+  padding-right: env(safe-area-inset-right);
+}
+
 /* Respect users who prefer reduced motion. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -59,83 +69,6 @@ a:focus-visible,
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
-  }
-}
-
-/*
- * Self-initiated encryption flows (unlock / verify) presented as modals on the
- * desktop split-pane layout (EncryptionDialogService). A centered, auto-height
- * card sized to its content — Ionic supplies the rest of the modal chrome.
- */
-.encryption-dialog-modal {
-  --width: 420px;
-  --max-width: 92vw;
-  --height: auto;
-  --max-height: 90vh;
-  --border-radius: 12px;
-}
-
-/*
- * Read-only thread view (ThreadPanelService). On the wide split-pane layout
- * (the same `md`/768px breakpoint as the rooms shell) it is a full-height,
- * right-aligned side panel; below that it falls back to Ionic's default
- * full-screen modal on mobile.
- */
-.thread-modal {
-  @media (min-width: 768px) {
-    --width: 480px;
-    --max-width: 92vw;
-    --height: 100%;
-    --border-radius: 0;
-
-    justify-content: flex-end;
-  }
-}
-
-/*
- * Invite / DM user picker (UserPickerService). A sized card on the wide split-pane
- * layout (the same `md`/768px breakpoint as the rooms shell) tall enough to show a
- * few directory results; below that it falls back to Ionic's full-screen modal.
- */
-.user-picker-modal {
-  @media (min-width: 768px) {
-    --width: 460px;
-    --max-width: 92vw;
-    --height: 560px;
-    --max-height: 90vh;
-    --border-radius: 12px;
-  }
-}
-
-/*
- * Quick switcher (QuickSwitcherService) — the Ctrl/Cmd+K "jump to" overlay. On the
- * wide split-pane layout (the same `md`/768px breakpoint as the rooms shell) it is a
- * centered card tall enough to show a handful of ranked results; below that it falls
- * back to Ionic's full-screen modal on mobile.
- */
-.quick-switcher-modal {
-  @media (min-width: 768px) {
-    --width: 560px;
-    --max-width: 92vw;
-    --height: 60vh;
-    --max-height: 70vh;
-    --border-radius: 12px;
-  }
-}
-
-/*
- * In-room message search (MessageSearchService). Same full-height right-side panel as
- * the thread modal on the wide split-pane layout (the `md`/768px breakpoint), falling
- * back to Ionic's full-screen modal on mobile.
- */
-.message-search-modal {
-  @media (min-width: 768px) {
-    --width: 480px;
-    --max-width: 92vw;
-    --height: 100%;
-    --border-radius: 0;
-
-    justify-content: flex-end;
   }
 }
 
