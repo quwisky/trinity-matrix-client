@@ -50,6 +50,15 @@
 .composer {
   position: relative;
 
+  // Lay the attach button, input and emoji/send buttons out as a single row.
+  // `flex-end` keeps the buttons pinned to the last line as the textarea grows
+  // (Discord-style), and on a single row their matched height centres them on the
+  // text — no hand-measured offsets. The floating picker/suggestion overlays are
+  // `position: absolute`, so they stay out of this flow.
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+
   // Bottom padding clears the home indicator (safe-area-inset-bottom). env() is 0
   // off notched devices and, with the keyboard's native resize mode, while the soft
   // keyboard is up (the WebView shrinks, hiding the indicator) — so the input sits
@@ -117,21 +126,19 @@
   white-space: nowrap;
 }
 
+// Attach, emoji and send are inline controls in the composer row. Each is sized
+// to the textarea's single-row resting height so its icon centres on one line;
+// the row's `align-items: flex-end` then keeps them on the last line as the
+// textarea grows. They carry no background, so the box is just the hit target.
+.composer__attach,
 .composer__emoji,
-.composer__attach {
-  position: absolute;
-  right: 24px;
-
-  // Vertically centre the 28px button on the textarea's single-row resting
-  // height (measured: bottom:24 sat 6.5px low; 30px centres it). Track the
-  // safe-area inset so it stays centred when the composer's bottom padding
-  // grows on notched devices (matches `.composer`'s padding-bottom).
-  bottom: calc(30px + env(safe-area-inset-bottom));
+.composer__send {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   border: none;
   border-radius: 6px;
   background: none;
@@ -149,50 +156,28 @@
   }
 }
 
-// Attach sits at the inline-start, before the textarea (mirrors the emoji
-// button's `right: 24px` inset on the trailing edge).
-.composer__attach {
-  right: auto;
-  left: 24px;
-}
-
 // Explicit send affordance for touch devices (Enter-to-send is unreliable on
-// mobile keyboards). Hidden on pointer devices, where Enter sends.
+// mobile keyboards); hidden on pointer devices, where Enter sends. Accent-tinted,
+// and dimmed rather than faded when there's nothing to send.
 .composer__send {
   display: none;
+  color: var(--trinity-accent);
+
+  &:disabled {
+    color: var(--trinity-text-muted);
+    opacity: 1;
+  }
 }
 
 @media (hover: none) {
   .composer__send {
-    position: absolute;
-    right: 80px;
-    bottom: calc(30px + env(safe-area-inset-bottom));
     display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    border-radius: 6px;
-    background: none;
-    color: var(--trinity-accent);
-    font-size: 20px;
-    cursor: pointer;
-
-    &:disabled {
-      color: var(--trinity-text-muted);
-      cursor: default;
-    }
-  }
-
-  // Reserve room for both buttons so text never slides under them.
-  .composer__input {
-    padding-right: 84px;
   }
 }
 
 .composer__input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
   resize: none;
   max-height: 200px;
@@ -205,9 +190,9 @@
   display: block;
   field-sizing: fixed;
 
-  // Symmetric 44px insets clear the leading attach button and the trailing
-  // emoji button so text never slides under either.
-  padding: 11px 44px;
+  // The attach/emoji buttons are flex siblings now, not overlays, so the input
+  // only needs its own comfortable padding.
+  padding: 11px 14px;
   border: none;
   border-radius: 8px;
   background: var(--trinity-sidebar);
