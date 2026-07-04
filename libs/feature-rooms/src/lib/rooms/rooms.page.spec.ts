@@ -200,6 +200,49 @@ describe('RoomsPage action error feedback', () => {
     expect(panel.openList).not.toHaveBeenCalled();
   });
 
+  it('onTogglePin pins an unpinned message', () => {
+    const page = build();
+    const pinned = TestBed.inject(PinnedMessagesService);
+    (pinned.isPinned as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+    page.onTogglePin('$1');
+
+    expect(pinned.pin).toHaveBeenCalledWith('$1');
+    expect(pinned.unpin).not.toHaveBeenCalled();
+  });
+
+  it('onTogglePin unpins an already-pinned message', () => {
+    const page = build();
+    const pinned = TestBed.inject(PinnedMessagesService);
+    (pinned.isPinned as ReturnType<typeof vi.fn>).mockReturnValue(true);
+
+    page.onTogglePin('$1');
+
+    expect(pinned.unpin).toHaveBeenCalledWith('$1');
+    expect(pinned.pin).not.toHaveBeenCalled();
+  });
+
+  it('openPinnedPanel jumps the timeline to the chosen pinned message', async () => {
+    const page = build();
+    const panel = TestBed.inject(PinnedPanelService);
+    (panel.openPanel as ReturnType<typeof vi.fn>).mockResolvedValue('$evt:hs');
+
+    await page.openPinnedPanel();
+
+    expect(panel.openPanel).toHaveBeenCalled();
+    expect(page.messageSearchTarget()).toBe('$evt:hs');
+  });
+
+  it('openPinnedPanel does not jump when the panel is cancelled', async () => {
+    const page = build();
+    const panel = TestBed.inject(PinnedPanelService);
+    (panel.openPanel as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    await page.openPinnedPanel();
+
+    expect(page.messageSearchTarget()).toBeNull();
+  });
+
   const pngFile = () =>
     new File([new Uint8Array([1])], 'pic.png', { type: 'image/png' });
 
