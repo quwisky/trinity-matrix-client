@@ -10,10 +10,14 @@
   gap: 8px;
 }
 
+// A visible section divider on the rail. `--trinity-divider` is tuned for the lighter
+// sidebar/chat surfaces and is near-invisible on the darker rail, so use `--trinity-active`
+// (the selected-pill color), which contrasts against the rail in both themes. Full pill
+// width (48px) so it reads as a line, not a dot.
 .separator {
-  width: 32px;
+  width: 48px;
   height: 2px;
-  background: var(--trinity-divider);
+  background: var(--trinity-active);
   border-radius: 1px;
   margin: 2px 0;
 }
@@ -86,6 +90,14 @@
 .pill.add:hover {
   background: var(--trinity-green);
   color: var(--trinity-text-bright);
+}
+
+// Rooms pill: accent-filled on hover and while its view is active
+// (`.item.active`), matching the Home pill.
+.pill.rooms:hover,
+.item.active .pill.rooms {
+  background: var(--trinity-accent);
+  color: #fff;
 }
 
 trn-avatar {
