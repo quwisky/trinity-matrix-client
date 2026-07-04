@@ -47,6 +47,7 @@ vi.mock('./notifications', () => ({
   registerNotificationIpc: vi.fn(),
 }));
 vi.mock('./secure-store-ipc', () => ({ registerSecureStoreIpc: vi.fn() }));
+vi.mock('./dock-badge', () => ({ registerDockBadge: vi.fn() }));
 vi.mock('./deep-link', () => ({
   deepLinkFromArgv: vi.fn(),
   deliverDeepLink: vi.fn(),
@@ -58,6 +59,7 @@ import { session } from 'electron';
 import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
 import { installMatrixCors } from './cors';
 import { createWindow } from './window';
+import { registerDockBadge } from './dock-badge';
 
 /** First invocation-order tick of a mock (a global monotonic counter in vitest,
  * so it's comparable ACROSS different mocks). */
@@ -86,6 +88,10 @@ describe('main bootstrap', () => {
   it('installs the CORS shim on session.defaultSession', () => {
     expect(installMatrixCors).toHaveBeenCalledTimes(1);
     expect(installMatrixCors).toHaveBeenCalledWith(session.defaultSession);
+  });
+
+  it('registers the dock-badge IPC handler at startup', () => {
+    expect(registerDockBadge).toHaveBeenCalledTimes(1);
   });
 
   it('installs CORS AFTER registerAppProtocol and BEFORE createWindow', () => {

@@ -14,6 +14,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
 import {
   AvatarService,
+  AppBadgeService,
   FeatureFlagsService,
   PUSH_CONFIG,
   ThemeService,
@@ -56,6 +57,11 @@ bootstrapApplication(AppComponent, {
     provideAppInitializer(() => inject(ThemeService).init()),
     // Load persisted experimental feature flags (e.g. virtualized timeline).
     provideAppInitializer(() => inject(FeatureFlagsService).init()),
+    // Instantiate the dock-badge service so its unread-total effect is live for
+    // the whole session (desktop-only by feature detection; a no-op elsewhere).
+    provideAppInitializer(() => {
+      inject(AppBadgeService);
+    }),
     // Move focus into the entering page on each route change (replaces Ionic's
     // focus manager) — a11y for screen-reader/keyboard users.
     provideAppInitializer(() => inject(NavigationFocusService).init()),

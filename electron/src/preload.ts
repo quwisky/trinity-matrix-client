@@ -31,6 +31,9 @@ import type { IpcRendererEvent } from 'electron';
 const DEEP_LINK_CHANNEL = 'deep-link';
 const SHOW_NOTIFICATION_CHANNEL = 'show-notification';
 const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
+// Mirrors dock-badge.ts's SET_BADGE_COUNT_CHANNEL (kept in sync by string value,
+// as with SHOW_NOTIFICATION_CHANNEL / NOTIFICATION_CLICK_CHANNEL above).
+const SET_BADGE_COUNT_CHANNEL = 'set-badge-count';
 
 /** Payload accepted by `showNotification`; mirrors core's `DesktopNotification`. */
 interface ShowNotificationPayload {
@@ -95,6 +98,16 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
       tag: typeof tag === 'string' ? tag : undefined,
       roomId,
     });
+  },
+
+  // Push the app-wide unread total to the main process for the dock/launcher
+  // badge. Only forwarded when it's an actual number; the main process re-validates
+  // and clamps before calling app.setBadgeCount (0 clears the badge).
+  setBadgeCount(count: number): void {
+    if (typeof count !== 'number') {
+      return;
+    }
+    ipcRenderer.send(SET_BADGE_COUNT_CHANNEL, count);
   },
 
   // Subscribe to native-notification clicks. Only the roomId string is handed to

@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   EventType,
@@ -118,6 +118,14 @@ export class RoomsService {
 
   private readonly _rooms = signal<RoomSummary[]>([]);
   readonly rooms = this._rooms.asReadonly();
+
+  /**
+   * App-wide unread total: the sum of every joined room's unread notification
+   * count. Drives the app-icon badge on every platform (see AppBadgeService).
+   */
+  readonly totalUnread = computed(() =>
+    this.rooms().reduce((sum, r) => sum + r.unreadCount, 0),
+  );
 
   /**
    * Room ids the `m.direct` account-data map records as direct messages, recomputed

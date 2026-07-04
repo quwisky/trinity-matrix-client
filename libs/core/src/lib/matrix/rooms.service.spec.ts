@@ -103,6 +103,8 @@ describe('RoomsService', () => {
       hasUnread: true,
     });
     expect(mid.hasUnread).toBe(false);
+    // totalUnread is the app-wide sum of every room's unread count.
+    expect(svc.totalUnread()).toBe(3);
   });
 
   it('derives an uppercase initial without the leading sigil', () => {

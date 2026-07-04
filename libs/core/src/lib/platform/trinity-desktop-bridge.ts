@@ -39,6 +39,16 @@ export interface TrinityDesktopBridge {
   onNotificationClick?: (callback: (roomId: string) => void) => () => void;
 
   /**
+   * Push the app-wide unread total to the MAIN process, which sets the macOS
+   * dock badge (and the Linux launcher count where supported) via
+   * `app.setBadgeCount`. The value is validated + clamped in main (finite number,
+   * floored, `[0, 9999]`; `0` clears it); a malformed payload is silently ignored.
+   * A no-op where unsupported (Windows has no numeric taskbar badge without an
+   * overlay icon).
+   */
+  setBadgeCount?: (count: number) => void;
+
+  /**
    * OS-keychain-backed secret storage in the MAIN process (Electron `safeStorage`).
    * The renderer never touches the keyring or the on-disk ciphertext — it only asks
    * main to get/set/delete a key. `set` resolves `false` when the OS keychain is

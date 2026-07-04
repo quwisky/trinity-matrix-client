@@ -14,6 +14,7 @@ import {
   registerNotificationIpc,
 } from './notifications';
 import { registerSecureStoreIpc } from './secure-store-ipc';
+import { registerDockBadge } from './dock-badge';
 import {
   deepLinkFromArgv,
   deliverDeepLink,
@@ -98,6 +99,10 @@ if (!app.requestSingleInstanceLock()) {
     createTray();
     registerNotificationIpc();
     registerSecureStoreIpc();
+    // Dock/launcher unread badge: the renderer pushes its unread total, which
+    // main validates + clamps before app.setBadgeCount. Drives the macOS dock
+    // (and Linux launcher); a no-op on Windows without an overlay icon.
+    registerDockBadge();
     maybeSendStartupTestNotification(); // dev-only, gated on TRINITY_NOTIFY_TEST
 
     // Block any extra web contents (e.g. from a future webview) at creation.
