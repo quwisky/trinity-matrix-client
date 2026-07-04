@@ -70,6 +70,10 @@ test.describe('Timeline virtualization', () => {
     const rows = page.locator('.scroll trn-message-row');
     await expect(rows.first()).toBeVisible({ timeout: 30_000 });
 
+    // The flag selected the windowed component (not the plain one).
+    await expect(page.locator('trn-virtual-message-list')).toBeVisible();
+    expect(await page.locator('trn-message-list').count()).toBe(0);
+
     // Opens pinned to the bottom: the newest seeded message is on screen.
     await expect(
       page.getByText(`seeded message ${SEED - 1}`, { exact: true }),

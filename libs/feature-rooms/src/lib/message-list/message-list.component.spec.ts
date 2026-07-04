@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
+import { TrnAlertService } from '@trinity/helm/overlay';
 import { MessageListComponent } from './message-list.component';
 
 function msg(id: string, senderId: string, senderName: string, ts: number) {
@@ -294,6 +295,95 @@ describe('MessageListComponent', () => {
       ]);
       fixture.detectChanges();
       expect(emits).toBe(2);
+    });
+  });
+
+  // Handlers provided by MessageListBase (shared with VirtualMessageListComponent),
+  // exercised here through the plain component.
+  describe('shared behaviour (base)', () => {
+    const confirm = vi.fn();
+    const row = (id: string) => ({
+      ...msg(id, '@a:hs', 'A', 1),
+      showHeader: true,
+    });
+
+    beforeEach(() => {
+      confirm.mockReset();
+      TestBed.configureTestingModule({
+        providers: [{ provide: TrnAlertService, useValue: { confirm } }],
+      });
+    });
+
+    function make() {
+      const fixture = TestBed.createComponent(MessageListComponent);
+      fixture.detectChanges();
+      return fixture.componentInstance;
+    }
+
+    it('routes a plain submit to send', () => {
+      const cmp = make();
+      let sent: string | null = null;
+      cmp.send.subscribe((t) => (sent = t));
+      cmp.onSubmit('hello');
+      expect(sent).toBe('hello');
+    });
+
+    it('routes a submit to editMessage while editing, then clears the target', () => {
+      const cmp = make();
+      let edited: { id: string; body: string } | null = null;
+      cmp.editMessage.subscribe((e) => (edited = e));
+      cmp.editingId.set('$7');
+      cmp.onSubmit('fixed');
+      expect(edited).toEqual({ id: '$7', body: 'fixed' });
+      expect(cmp.editingId()).toBeNull();
+    });
+
+    it('routes a submit to reply while replying, then clears the target', () => {
+      const cmp = make();
+      let replied: { id: string; body: string } | null = null;
+      cmp.reply.subscribe((e) => (replied = e));
+      cmp.replyingToId.set('$3');
+      cmp.onSubmit('re');
+      expect(replied).toEqual({ id: '$3', body: 're' });
+      expect(cmp.replyingToId()).toBeNull();
+    });
+
+    it('makes startEdit and startReply mutually exclusive', () => {
+      const cmp = make();
+      cmp.replyingToId.set('$1');
+      cmp.startEdit(row('$2'));
+      expect(cmp.editingId()).toBe('$2');
+      expect(cmp.replyingToId()).toBeNull();
+
+      cmp.editingId.set('$9');
+      cmp.startReply(row('$3'));
+      expect(cmp.replyingToId()).toBe('$3');
+      expect(cmp.editingId()).toBeNull();
+    });
+
+    it('deletes only when the confirm dialog is accepted', async () => {
+      const cmp = make();
+      const deleted: string[] = [];
+      cmp.deleteMessage.subscribe((id) => deleted.push(id));
+
+      confirm.mockResolvedValueOnce(false);
+      await cmp.onDelete(row('$1'));
+      expect(deleted).toEqual([]);
+
+      confirm.mockResolvedValueOnce(true);
+      await cmp.onDelete(row('$2'));
+      expect(deleted).toEqual(['$2']);
+    });
+
+    it('copies a message body to the clipboard', () => {
+      const cmp = make();
+      const writeText = vi.fn();
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      });
+      cmp.onCopy(row('$1'));
+      expect(writeText).toHaveBeenCalledWith('body $1');
     });
   });
 });

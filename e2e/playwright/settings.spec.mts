@@ -52,4 +52,33 @@ test.describe('Settings', () => {
       timeout: 30_000,
     });
   });
+
+  test('toggles and persists the virtualized-timeline flag', async ({
+    page,
+  }) => {
+    // Capacitor Preferences stores non-secret prefs in localStorage under this key.
+    const KEY = 'CapacitorStorage.trinity.flags.virtual-timeline';
+    const read = () => page.evaluate((k) => localStorage.getItem(k), KEY);
+
+    const checkbox = page
+      .getByTestId('flag-virtual-timeline')
+      .locator('hlm-checkbox');
+    await expect(checkbox).toBeVisible();
+    expect(await read()).not.toBe('true'); // off by default
+
+    await checkbox.click();
+    await expect.poll(read).toBe('true'); // persisted to Preferences
+
+    // Survives a reload (FeatureFlagsService.init reads it back at startup).
+    await page.reload();
+    await page.waitForURL('**/settings', { timeout: 20_000 });
+    expect(await read()).toBe('true');
+
+    // Toggling back off persists too.
+    await page
+      .getByTestId('flag-virtual-timeline')
+      .locator('hlm-checkbox')
+      .click();
+    await expect.poll(read).toBe('false');
+  });
 });

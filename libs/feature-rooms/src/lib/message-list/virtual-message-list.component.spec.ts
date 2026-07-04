@@ -197,4 +197,112 @@ describe('VirtualMessageListComponent', () => {
     expect(cmp.replyingToId()).toBeNull();
     expect(cmp.announcement()).toBe('');
   });
+
+  it('handles an empty timeline', () => {
+    const fixture = TestBed.createComponent(VirtualMessageListComponent);
+    fixture.componentRef.setInput('messages', []);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    expect(cmp.windowedRows()).toEqual([]);
+    expect(cmp.topPad()).toBe(0);
+    expect(cmp.bottomPad()).toBe(0);
+    expect(fixture.nativeElement.querySelector('.empty')).not.toBeNull();
+  });
+
+  it('jumps synchronously to an already-rendered row', () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const fixture = TestBed.createComponent(VirtualMessageListComponent);
+    fixture.componentRef.setInput('messages', many(10)); // short → all rendered
+    fixture.detectChanges();
+
+    fixture.componentInstance.jumpTo('$5');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a no-op when jumping to an unloaded event', () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const fixture = TestBed.createComponent(VirtualMessageListComponent);
+    fixture.componentRef.setInput('messages', many(10));
+    fixture.detectChanges();
+
+    fixture.componentInstance.jumpTo('$nope');
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('re-pins to the newest message after a room switch', () => {
+    const fixture = TestBed.createComponent(VirtualMessageListComponent);
+    fixture.componentRef.setInput('roomId', '!a:hs');
+    fixture.componentRef.setInput('messages', many(200));
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    // Scroll up in room A → not pinned (bottom spacer appears).
+    const scroll = fixture.nativeElement.querySelector(
+      '.scroll',
+    ) as HTMLElement;
+    let st = 2000;
+    Object.defineProperty(scroll, 'scrollTop', {
+      get: () => st,
+      set: (v: number) => (st = v),
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'clientHeight', {
+      value: 600,
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'scrollHeight', {
+      value: 200 * EST,
+      configurable: true,
+    });
+    cmp.onScroll();
+    fixture.detectChanges();
+    expect(cmp.bottomPad()).toBeGreaterThan(0);
+
+    // Switch rooms → the reset re-pins to the bottom.
+    fixture.componentRef.setInput('roomId', '!b:hs');
+    fixture.componentRef.setInput('messages', many(200));
+    fixture.detectChanges();
+    expect(cmp.bottomPad()).toBe(0);
+    expect(cmp.windowedRows().at(-1)?.id).toBe('$199');
+  });
+
+  it('tracks at-bottom vs scrolled-up from the scroll position', () => {
+    const fixture = TestBed.createComponent(VirtualMessageListComponent);
+    fixture.componentRef.setInput('messages', many(200));
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    const scroll = fixture.nativeElement.querySelector(
+      '.scroll',
+    ) as HTMLElement;
+    let st = 0;
+    Object.defineProperty(scroll, 'scrollTop', {
+      get: () => st,
+      set: (v: number) => (st = v),
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'clientHeight', {
+      value: 600,
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'scrollHeight', {
+      value: 200 * EST,
+      configurable: true,
+    });
+
+    // Scrolled up → not pinned → a bottom spacer stands in for the rest.
+    st = 1000;
+    cmp.onScroll();
+    fixture.detectChanges();
+    expect(cmp.bottomPad()).toBeGreaterThan(0);
+
+    // Near the bottom → pinned → no bottom spacer.
+    st = 200 * EST - 600;
+    cmp.onScroll();
+    fixture.detectChanges();
+    expect(cmp.bottomPad()).toBe(0);
+  });
 });
