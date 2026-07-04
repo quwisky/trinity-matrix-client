@@ -170,11 +170,17 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
                 }
               </div>
               @if (room.highlightCount > 0) {
-                <span class="channel__badge" aria-label="Unread mentions">{{
-                  room.highlightCount
-                }}</span>
+                <span
+                  class="channel__badge"
+                  [attr.aria-label]="room.highlightCount + ' unread mentions'"
+                  >{{ badgeLabel(room.highlightCount) }}</span
+                >
               } @else if (room.hasUnread) {
-                <span class="channel__dot" aria-label="Unread"></span>
+                <span
+                  class="channel__badge channel__badge--muted"
+                  [attr.aria-label]="room.unreadCount + ' unread messages'"
+                  >{{ badgeLabel(room.unreadCount) }}</span
+                >
               }
             </button>
             @if (spaceActive()) {
@@ -363,4 +369,9 @@ export class ChannelSidebarComponent {
   /** User-panel gear — open the settings page. */
   readonly openSettings = output<void>();
   readonly logout = output<void>();
+
+  /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
+  badgeLabel(count: number): string {
+    return count > 99 ? '99+' : String(count);
+  }
 }

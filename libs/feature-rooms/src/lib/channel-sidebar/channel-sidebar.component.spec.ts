@@ -97,7 +97,7 @@ describe('ChannelSidebarComponent', () => {
     expect(fixture.nativeElement.querySelector('.channel__preview')).toBeNull();
   });
 
-  it('marks unread rooms and shows a mention badge / unread dot', () => {
+  it('shows a mention count, a muted unread count, and caps at 99+', () => {
     const fixture = TestBed.createComponent(ChannelSidebarComponent);
     fixture.componentRef.setInput('rooms', [
       room({
@@ -111,7 +111,7 @@ describe('ChannelSidebarComponent', () => {
         id: '!u:hs',
         name: 'unread',
         hasUnread: true,
-        unreadCount: 1,
+        unreadCount: 128,
         highlightCount: 0,
       }),
       room({ id: '!r:hs', name: 'read' }),
@@ -119,10 +119,16 @@ describe('ChannelSidebarComponent', () => {
     fixture.detectChanges();
 
     const el = fixture.nativeElement;
-    const badges = el.querySelectorAll('.channel__badge');
-    expect(badges.length).toBe(1); // only the mention room
-    expect(badges[0].textContent.trim()).toBe('2');
-    expect(el.querySelectorAll('.channel__dot').length).toBe(1); // plain unread
+    // The mention room shows the red mention badge with the highlight count.
+    const mention = el.querySelector(
+      '.channel__badge:not(.channel__badge--muted)',
+    );
+    expect(mention.textContent.trim()).toBe('2');
+    // The plain-unread room shows a muted count badge, capped Discord-style.
+    const muted = el.querySelector('.channel__badge--muted');
+    expect(muted.textContent.trim()).toBe('99+');
+    // No bare dots anymore — every unread room carries a count.
+    expect(el.querySelectorAll('.channel__dot').length).toBe(0);
     expect(el.querySelectorAll('.channel.unread').length).toBe(2);
   });
 
