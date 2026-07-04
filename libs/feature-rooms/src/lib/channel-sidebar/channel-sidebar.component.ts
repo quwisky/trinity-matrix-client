@@ -147,7 +147,6 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
           }
         }
 
-        <div class="category">Text Channels</div>
         @for (room of rooms(); track room.id) {
           <div class="channel-row">
             <button
