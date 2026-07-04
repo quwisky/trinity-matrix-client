@@ -78,6 +78,12 @@ export class TimelineService {
   readonly canLoadOlder = this._canLoadOlder.asReadonly();
 
   private roomId: string | null = null;
+
+  /** The room currently open in the timeline, or null when none is. Lets other
+   * services (e.g. NotificationService) tell whether the user is viewing a room. */
+  get openRoomId(): string | null {
+    return this.roomId;
+  }
   private room: Room | null = null;
 
   // Per-event projection cache keyed by event id. Each entry stores the view model
