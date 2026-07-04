@@ -2,24 +2,29 @@ import { Location } from '@angular/common';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { By } from '@angular/platform-browser';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DevicesService,
+  FeatureFlagsService,
   ProfileService,
   ThemeService,
   type ResolvedTheme,
   type ThemePreference,
   type UserProfile,
 } from '@trinity/core';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { SettingsPage } from './settings.page';
 
 describe('SettingsPage', () => {
   const setPreference = vi.fn();
+  const setVirtualTimeline = vi.fn();
   const setDisplayName = vi.fn(() => of(undefined));
   const setAvatar = vi.fn(() => of(undefined));
   let preference: ReturnType<typeof signal<ThemePreference>>;
   let resolved: ReturnType<typeof signal<ResolvedTheme>>;
+  let virtualTimeline: ReturnType<typeof signal<boolean>>;
   let profile: ReturnType<typeof signal<UserProfile | null>>;
 
   const PROFILE: UserProfile = {
@@ -31,10 +36,12 @@ describe('SettingsPage', () => {
 
   beforeEach(() => {
     setPreference.mockReset();
+    setVirtualTimeline.mockReset();
     setDisplayName.mockClear();
     setAvatar.mockClear();
     preference = signal<ThemePreference>('system');
     resolved = signal<ResolvedTheme>('dark');
+    virtualTimeline = signal(false);
     profile = signal<UserProfile | null>(PROFILE);
     TestBed.configureTestingModule({
       imports: [SettingsPage],
@@ -42,6 +49,10 @@ describe('SettingsPage', () => {
         {
           provide: ThemeService,
           useValue: { preference, resolved, setPreference },
+        },
+        {
+          provide: FeatureFlagsService,
+          useValue: { virtualTimeline, setVirtualTimeline },
         },
         {
           provide: ProfileService,
@@ -108,6 +119,27 @@ describe('SettingsPage', () => {
     fixture.componentInstance.onThemeChange('light');
 
     expect(setPreference).toHaveBeenCalledWith('light');
+  });
+
+  it('reflects and toggles the virtualized-timeline flag', () => {
+    const fixture = TestBed.createComponent(SettingsPage);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(
+      el.querySelector('[data-testid=flag-virtual-timeline]'),
+    ).not.toBeNull();
+    const checkbox = fixture.debugElement.query(By.directive(HlmCheckbox));
+    expect(checkbox.componentInstance.checked()).toBe(false); // off by default
+
+    // The checkbox reflects the persisted signal.
+    virtualTimeline.set(true);
+    fixture.detectChanges();
+    expect(checkbox.componentInstance.checked()).toBe(true);
+
+    // Toggling emits checkedChange → the flag is persisted.
+    checkbox.componentInstance.checkedChange.emit(false);
+    expect(setVirtualTimeline).toHaveBeenCalledWith(false);
   });
 
   it('renders the profile and seeds the editable name', () => {
