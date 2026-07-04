@@ -7,6 +7,7 @@ import {
   InvitesService,
   MatrixClientService,
   MediaService,
+  PinnedMessagesService,
   RoomsService,
   SpacesService,
   ThreadsService,
@@ -26,6 +27,7 @@ import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { ThreadPanelService } from '../thread/thread-panel.service';
+import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
@@ -98,6 +100,23 @@ describe('RoomsPage action error feedback', () => {
         {
           provide: ThreadPanelService,
           useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        {
+          provide: PinnedMessagesService,
+          useValue: {
+            open: vi.fn(),
+            close: vi.fn(),
+            isPinned: vi.fn(() => false),
+            pin: vi.fn(),
+            unpin: vi.fn(),
+            canPin: signal(false),
+            pinnedEventIds: signal<string[]>([]),
+            pinnedMessages: signal([]),
+          },
+        },
+        {
+          provide: PinnedPanelService,
+          useValue: { openPanel: vi.fn(async () => null) },
         },
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
@@ -179,6 +198,68 @@ describe('RoomsPage action error feedback', () => {
     page.openThreadsList();
 
     expect(panel.openList).not.toHaveBeenCalled();
+  });
+
+  it('onTogglePin pins an unpinned message', () => {
+    const page = build();
+    const pinned = TestBed.inject(PinnedMessagesService);
+    (pinned.isPinned as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+    page.onTogglePin('$1');
+
+    expect(pinned.pin).toHaveBeenCalledWith('$1');
+    expect(pinned.unpin).not.toHaveBeenCalled();
+  });
+
+  it('onTogglePin unpins an already-pinned message', () => {
+    const page = build();
+    const pinned = TestBed.inject(PinnedMessagesService);
+    (pinned.isPinned as ReturnType<typeof vi.fn>).mockReturnValue(true);
+
+    page.onTogglePin('$1');
+
+    expect(pinned.unpin).toHaveBeenCalledWith('$1');
+    expect(pinned.pin).not.toHaveBeenCalled();
+  });
+
+  it('openPinnedPanel jumps the timeline to the chosen pinned message', async () => {
+    const page = build();
+    const panel = TestBed.inject(PinnedPanelService);
+    (panel.openPanel as ReturnType<typeof vi.fn>).mockResolvedValue('$evt:hs');
+
+    await page.openPinnedPanel();
+
+    expect(panel.openPanel).toHaveBeenCalled();
+    expect(page.messageSearchTarget()).toBe('$evt:hs');
+    expect(page.jumpRequest()).toBe(1);
+  });
+
+  it('openPinnedPanel bumps jumpRequest again when the SAME message is re-picked', async () => {
+    // The bug: re-selecting the same pinned row must still re-trigger a jump —
+    // messageSearchTarget alone is a no-op signal write (Object.is), so the list
+    // only re-fires because jumpRequest keeps incrementing.
+    const page = build();
+    const panel = TestBed.inject(PinnedPanelService);
+    (panel.openPanel as ReturnType<typeof vi.fn>).mockResolvedValue('$evt:hs');
+
+    await page.openPinnedPanel();
+    expect(page.jumpRequest()).toBe(1);
+
+    await page.openPinnedPanel();
+
+    expect(page.messageSearchTarget()).toBe('$evt:hs');
+    expect(page.jumpRequest()).toBe(2);
+  });
+
+  it('openPinnedPanel does not jump when the panel is cancelled', async () => {
+    const page = build();
+    const panel = TestBed.inject(PinnedPanelService);
+    (panel.openPanel as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    await page.openPinnedPanel();
+
+    expect(page.messageSearchTarget()).toBeNull();
+    expect(page.jumpRequest()).toBe(0);
   });
 
   const pngFile = () =>
@@ -297,6 +378,23 @@ describe('RoomsPage space filtering', () => {
         {
           provide: ThreadPanelService,
           useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        {
+          provide: PinnedMessagesService,
+          useValue: {
+            open: vi.fn(),
+            close: vi.fn(),
+            isPinned: vi.fn(() => false),
+            pin: vi.fn(),
+            unpin: vi.fn(),
+            canPin: signal(false),
+            pinnedEventIds: signal<string[]>([]),
+            pinnedMessages: signal([]),
+          },
+        },
+        {
+          provide: PinnedPanelService,
+          useValue: { openPanel: vi.fn(async () => null) },
         },
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
@@ -575,6 +673,23 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
           provide: ThreadPanelService,
           useValue: { open: vi.fn(), openList: vi.fn() },
         },
+        {
+          provide: PinnedMessagesService,
+          useValue: {
+            open: vi.fn(),
+            close: vi.fn(),
+            isPinned: vi.fn(() => false),
+            pin: vi.fn(),
+            unpin: vi.fn(),
+            canPin: signal(false),
+            pinnedEventIds: signal<string[]>([]),
+            pinnedMessages: signal([]),
+          },
+        },
+        {
+          provide: PinnedPanelService,
+          useValue: { openPanel: vi.fn(async () => null) },
+        },
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
@@ -653,6 +768,23 @@ describe('RoomsPage space actions', () => {
         {
           provide: ThreadPanelService,
           useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        {
+          provide: PinnedMessagesService,
+          useValue: {
+            open: vi.fn(),
+            close: vi.fn(),
+            isPinned: vi.fn(() => false),
+            pin: vi.fn(),
+            unpin: vi.fn(),
+            canPin: signal(false),
+            pinnedEventIds: signal<string[]>([]),
+            pinnedMessages: signal([]),
+          },
+        },
+        {
+          provide: PinnedPanelService,
+          useValue: { openPanel: vi.fn(async () => null) },
         },
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
@@ -882,6 +1014,23 @@ describe('RoomsPage room / DM / invite actions', () => {
         {
           provide: ThreadPanelService,
           useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        {
+          provide: PinnedMessagesService,
+          useValue: {
+            open: vi.fn(),
+            close: vi.fn(),
+            isPinned: vi.fn(() => false),
+            pin: vi.fn(),
+            unpin: vi.fn(),
+            canPin: signal(false),
+            pinnedEventIds: signal<string[]>([]),
+            pinnedMessages: signal([]),
+          },
+        },
+        {
+          provide: PinnedPanelService,
+          useValue: { openPanel: vi.fn(async () => null) },
         },
         {
           provide: AuthService,
@@ -1132,6 +1281,23 @@ describe('RoomsPage space hierarchy actions', () => {
           provide: ThreadPanelService,
           useValue: { open: vi.fn(), openList: vi.fn() },
         },
+        {
+          provide: PinnedMessagesService,
+          useValue: {
+            open: vi.fn(),
+            close: vi.fn(),
+            isPinned: vi.fn(() => false),
+            pin: vi.fn(),
+            unpin: vi.fn(),
+            canPin: signal(false),
+            pinnedEventIds: signal<string[]>([]),
+            pinnedMessages: signal([]),
+          },
+        },
+        {
+          provide: PinnedPanelService,
+          useValue: { openPanel: vi.fn(async () => null) },
+        },
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },
         { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
@@ -1283,6 +1449,23 @@ describe('RoomsPage quick switcher', () => {
           useValue: { open: vi.fn(), openList: vi.fn() },
         },
         {
+          provide: PinnedMessagesService,
+          useValue: {
+            open: vi.fn(),
+            close: vi.fn(),
+            isPinned: vi.fn(() => false),
+            pin: vi.fn(),
+            unpin: vi.fn(),
+            canPin: signal(false),
+            pinnedEventIds: signal<string[]>([]),
+            pinnedMessages: signal([]),
+          },
+        },
+        {
+          provide: PinnedPanelService,
+          useValue: { openPanel: vi.fn(async () => null) },
+        },
+        {
           provide: AuthService,
           useValue: { logout: vi.fn(() => of(undefined)) },
         },
@@ -1402,6 +1585,23 @@ describe('RoomsPage quick switcher', () => {
 
     expect(messageSearch).toHaveBeenCalledWith('!r:hs');
     expect(page.messageSearchTarget()).toBe('$evt:hs');
+    expect(page.jumpRequest()).toBe(1);
+  });
+
+  it('in-room search bumps jumpRequest again when the SAME hit is re-picked', async () => {
+    // Same crux as the pinned panel: picking the identical hit twice must still
+    // re-fire the jump, which only happens because jumpRequest keeps incrementing.
+    const page = build();
+    page.onSelectRoom('!r:hs');
+    messageSearch.mockResolvedValue('$evt:hs');
+
+    await page.openMessageSearch();
+    expect(page.jumpRequest()).toBe(1);
+
+    await page.openMessageSearch();
+
+    expect(page.messageSearchTarget()).toBe('$evt:hs');
+    expect(page.jumpRequest()).toBe(2);
   });
 
   it('does not jump when in-room search is cancelled', async () => {
@@ -1412,6 +1612,7 @@ describe('RoomsPage quick switcher', () => {
     await page.openMessageSearch();
 
     expect(page.messageSearchTarget()).toBeNull();
+    expect(page.jumpRequest()).toBe(0);
   });
 
   it('does not open in-room search when no room is active', async () => {
@@ -1478,6 +1679,23 @@ describe('RoomsPage mobile nav drawer', () => {
         {
           provide: ThreadPanelService,
           useValue: { open: vi.fn(), openList: vi.fn() },
+        },
+        {
+          provide: PinnedMessagesService,
+          useValue: {
+            open: vi.fn(),
+            close: vi.fn(),
+            isPinned: vi.fn(() => false),
+            pin: vi.fn(),
+            unpin: vi.fn(),
+            canPin: signal(false),
+            pinnedEventIds: signal<string[]>([]),
+            pinnedMessages: signal([]),
+          },
+        },
+        {
+          provide: PinnedPanelService,
+          useValue: { openPanel: vi.fn(async () => null) },
         },
         invitesProvider(),
         { provide: UserPickerService, useValue: { pick: vi.fn() } },

@@ -1,0 +1,52 @@
+<div
+  class="flex h-screen w-screen flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg md:w-[480px]"
+>
+  <div class="flex items-center gap-2 border-b border-solid border-border p-3">
+    <h2 class="flex-1 text-base font-semibold">Pinned messages</h2>
+    <button
+      hlmBtn
+      variant="ghost"
+      size="icon"
+      (click)="close()"
+      hlmTooltip="Close pinned messages"
+      aria-label="Close pinned messages"
+    >
+      <ng-icon name="lucideX" class="text-xl" />
+    </button>
+  </div>
+
+  <div class="pinned flex-1 overflow-y-auto">
+    @for (p of pinned(); track p.id) {
+      <div class="pin-item">
+        <button
+          type="button"
+          class="pin-item__main"
+          (click)="jumpTo(p.id)"
+          [attr.aria-label]="'Jump to pinned message from ' + p.senderName"
+        >
+          <div class="pin-item__head">
+            <span class="pin-item__author">{{ p.senderName }}</span>
+            <span class="pin-item__time">{{ p.ts | date: 'short' }}</span>
+          </div>
+          <div class="pin-item__body">{{ p.body }}</div>
+        </button>
+
+        @if (canPin()) {
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
+            class="pin-item__unpin"
+            (click)="unpin(p.id)"
+            hlmTooltip="Unpin message"
+            [attr.aria-label]="'Unpin message from ' + p.senderName"
+          >
+            <ng-icon name="lucidePinOff" />
+          </button>
+        }
+      </div>
+    } @empty {
+      <div class="pinned__empty">No pinned messages in this channel yet.</div>
+    }
+  </div>
+</div>

@@ -240,10 +240,12 @@ export class VirtualMessageListComponent extends MessageListBase {
       });
     });
 
-    // Scroll to an externally-requested event (search jump). jumpTo reads ids()/
-    // prefix(); run it untracked so this fires only on a NEW jumpToId — not on every
-    // timeline/height change, which would keep yanking the viewport back.
+    // Scroll to an externally-requested event (search / reply / pinned-panel jump).
+    // jumpTo reads ids()/prefix(); run it untracked so this fires only on a NEW jump
+    // request — not on every timeline/height change, which would keep yanking the
+    // viewport back. jumpToNonce makes a repeat request to the same id re-fire.
     effect(() => {
+      this.jumpToNonce();
       const id = this.jumpToId();
       if (id) {
         untracked(() => this.jumpTo(id));
@@ -478,6 +480,7 @@ export class VirtualMessageListComponent extends MessageListBase {
     const existing = el.querySelector(`[data-mid="${messageId}"]`);
     if (existing) {
       existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.flash(existing);
       return;
     }
     el.scrollTop = Math.max(
@@ -488,10 +491,11 @@ export class VirtualMessageListComponent extends MessageListBase {
     );
     this.scrollTop.set(el.scrollTop);
     afterNextRender(
-      () =>
-        el
-          .querySelector(`[data-mid="${messageId}"]`)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      () => {
+        const target = el.querySelector(`[data-mid="${messageId}"]`);
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        this.flash(target);
+      },
       { injector: this.injector },
     );
   }

@@ -134,10 +134,12 @@ export class SimpleMessageListComponent extends MessageListBase {
       });
     });
 
-    // Scroll to an externally-requested event (in-room search jump). Runs after the
-    // anchoring effect above so the row is in the DOM; reuses jumpTo, so it's a no-op
-    // when the event isn't loaded.
+    // Scroll to an externally-requested event (search / reply / pinned-panel jump).
+    // Runs after the anchoring effect above so the row is in the DOM; reuses jumpTo,
+    // so it's a no-op when the event isn't loaded. Reads jumpToNonce so re-requesting
+    // the same id re-fires (an unchanged jumpToId alone wouldn't).
     effect(() => {
+      this.jumpToNonce();
       const id = this.jumpToId();
       if (id) {
         this.jumpTo(id);
@@ -175,10 +177,13 @@ export class SimpleMessageListComponent extends MessageListBase {
     }
   }
 
-  /** Scroll the original message into view when its reply preview is clicked. */
+  /** Scroll a message into view (reply preview, in-room search, or pinned panel) and
+   * briefly highlight it. */
   jumpTo(messageId: string): void {
-    this.scrollEl()
-      ?.nativeElement.querySelector(`[data-mid="${messageId}"]`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const el = this.scrollEl()?.nativeElement.querySelector(
+      `[data-mid="${messageId}"]`,
+    );
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    this.flash(el);
   }
 }

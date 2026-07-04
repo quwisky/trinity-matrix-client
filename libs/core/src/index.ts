@@ -12,6 +12,7 @@ export {
 } from './lib/matrix/transient-errors';
 export * from './lib/error/trinity-error-handler';
 export * from './lib/matrix/threads.service';
+export * from './lib/matrix/pinned-messages.service';
 export { isEditableMessage } from './lib/matrix/message-view';
 export * from './lib/matrix/media.model';
 export * from './lib/matrix/media.service';

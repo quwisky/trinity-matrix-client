@@ -43,6 +43,27 @@
   vertical-align: middle;
 }
 
+// The pinned-messages header button carries a small count badge in its corner.
+.header-pin {
+  position: relative;
+}
+
+.header-pin__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--trinity-accent);
+  color: var(--primary-foreground);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
 .chat-body {
   flex: 1;
   display: flex;

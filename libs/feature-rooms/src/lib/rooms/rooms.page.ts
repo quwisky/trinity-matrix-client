@@ -18,6 +18,7 @@ import {
   lucideLock,
   lucideMenu,
   lucideMessagesSquare,
+  lucidePin,
   lucideSearch,
   lucideUserPlus,
   lucideUsers,
@@ -38,6 +39,7 @@ import {
   MediaService,
   NotificationService,
   FeatureFlagsService,
+  PinnedMessagesService,
   PushService,
   RoomsService,
   SpacesService,
@@ -59,6 +61,7 @@ import { VirtualMessageListComponent } from '../message-list/virtual-message-lis
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { ThreadPanelService } from '../thread/thread-panel.service';
+import { PinnedPanelService } from '../pinned/pinned-panel.service';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -89,6 +92,7 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
       lucideLock,
       lucideMenu,
       lucideMessagesSquare,
+      lucidePin,
       lucideSearch,
       lucideUserPlus,
       lucideUsers,
@@ -101,8 +105,10 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
   readonly threads = inject(ThreadsService);
+  readonly pinned = inject(PinnedMessagesService);
   readonly flags = inject(FeatureFlagsService);
   private readonly threadPanel = inject(ThreadPanelService);
+  private readonly pinnedPanel = inject(PinnedPanelService);
   private readonly userPicker = inject(UserPickerService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly messageSearch = inject(MessageSearchService);
@@ -129,11 +135,13 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Whether the right-hand member list is shown (toggled from the toolbar). */
   readonly membersOpen = signal(true);
   /**
-   * Event id the message list should scroll to, set when in-room search resolves a
-   * hit. Bound to the list's `jumpToId`; reset to null first so re-selecting the same
-   * message re-triggers the jump.
+   * Event id the message list should scroll to, set by in-room search, a reply
+   * preview, or the pinned panel. Bound to the list's `jumpToId`, paired with
+   * {@link jumpRequest} so re-selecting the SAME message still re-triggers the jump.
    */
   readonly messageSearchTarget = signal<string | null>(null);
+  /** Bumped on every jump request so the list re-jumps even to an unchanged target. */
+  readonly jumpRequest = signal(0);
   /** Attachment upload fraction in [0, 1] while a send is uploading, else null. */
   readonly uploadProgress = signal<number | null>(null);
 
@@ -310,6 +318,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.timeline.close();
     this.threads.close();
     this.threads.closeThread();
+    this.pinned.close();
     this.invites.disconnect();
     this.media.releaseAll();
   }
@@ -375,8 +384,8 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /**
    * Open in-room message search for the active room and, on a chosen hit, jump the
-   * timeline to that event. Resetting the target to null first guarantees the list's
-   * jump effect re-fires even when the same message is picked again.
+   * timeline to that event. Bumping jumpRequest guarantees the list's jump effect
+   * re-fires even when the same message is picked again.
    */
   async openMessageSearch(): Promise<void> {
     const roomId = this.activeRoomId();
@@ -387,8 +396,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (!eventId) {
       return; // cancelled / already open
     }
-    this.messageSearchTarget.set(null);
     this.messageSearchTarget.set(eventId);
+    this.jumpRequest.update((n) => n + 1);
   }
 
   onSelectSpace(id: string | null): void {
@@ -665,6 +674,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.activeRoomId.set(id);
     this.timeline.open(id);
     this.threads.open(id); // project this room's thread summaries for indicators
+    this.pinned.open(id); // project this room's pinned messages
     this.closeDrawer(); // collapse the drawer on mobile after picking a room
   }
 
@@ -702,6 +712,29 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (roomId) {
       void this.threadPanel.openList(roomId);
     }
+  }
+
+  /** Pin or unpin a message from its overflow menu, resolving which by current state. */
+  onTogglePin(eventId: string): void {
+    if (this.pinned.isPinned(eventId)) {
+      this.pinned.unpin(eventId);
+    } else {
+      this.pinned.pin(eventId);
+    }
+  }
+
+  /**
+   * Open the pinned-messages panel for the active room and, on a chosen row, jump the
+   * timeline to that event. Bumping jumpRequest guarantees the list's jump effect
+   * re-fires even when the same message is picked again (as in-room search does).
+   */
+  async openPinnedPanel(): Promise<void> {
+    const eventId = await this.pinnedPanel.openPanel();
+    if (!eventId) {
+      return; // cancelled / already open / just closed
+    }
+    this.messageSearchTarget.set(eventId);
+    this.jumpRequest.update((n) => n + 1);
   }
 
   loadOlder(): void {

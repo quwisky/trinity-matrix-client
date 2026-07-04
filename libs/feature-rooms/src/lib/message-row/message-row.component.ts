@@ -52,6 +52,10 @@ export class MessageRowComponent {
   readonly editable = input(false);
   /** Whether the current user may delete this message. */
   readonly deletable = input(false);
+  /** Whether the current user may pin/unpin this message (room permission). */
+  readonly canPin = input(false);
+  /** Whether this message is currently pinned. */
+  readonly pinned = input(false);
   /** Hide the hover toolbar + retry affordance (view-only thread panel). */
   readonly readOnly = input(false);
   /** Offer "Reply in thread" in the toolbar — false inside a thread (no nesting). */
@@ -63,6 +67,8 @@ export class MessageRowComponent {
   readonly copyMessage = output<void>();
   readonly editMessage = output<void>();
   readonly deleteMessage = output<void>();
+  /** Pin/unpin was chosen from the overflow menu (host resolves which, given `pinned`). */
+  readonly togglePin = output<void>();
   readonly retry = output<void>();
   /** The reply preview was clicked — jump to the quoted event id. */
   readonly jumpReply = output<string>();

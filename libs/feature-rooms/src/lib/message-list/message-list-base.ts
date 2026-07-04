@@ -32,6 +32,10 @@ export abstract class MessageListBase {
   readonly messages = input<MessageView[]>([]);
   /** Thread summaries keyed by root event id, for the per-row thread indicator. */
   readonly threadSummaries = input<Record<string, ThreadSummary>>({});
+  /** Whether the current user may pin/unpin in this room (drives the per-row Pin item). */
+  readonly canPin = input(false);
+  /** Currently-pinned event ids, for the per-row pinned state. */
+  readonly pinnedIds = input<readonly string[]>([]);
   readonly loadingOlder = input(false);
   readonly canLoadOlder = input(false);
   readonly roomName = input('');
@@ -48,9 +52,18 @@ export abstract class MessageListBase {
    * A no-op when the event isn't in the loaded timeline.
    */
   readonly jumpToId = input<string | null>(null);
+  /**
+   * Bumped by the host on every jump request. Paired with {@link jumpToId} so that
+   * re-requesting the SAME event id (e.g. clicking the same pinned message twice)
+   * still changes an input and re-fires the jump effect — an unchanged `jumpToId`
+   * alone would be an Object.is no-op and never re-run.
+   */
+  readonly jumpToNonce = input(0);
   readonly loadOlder = output<void>();
   /** Open the thread rooted at this event id (raised by a row's indicator). */
   readonly openThread = output<string>();
+  /** Pin or unpin this event id (host resolves which, given its current pinned state). */
+  readonly togglePin = output<string>();
   readonly send = output<string>();
   readonly sendMedia = output<{ file: File; caption: string }>();
   readonly retry = output<string>();
@@ -135,6 +148,28 @@ export abstract class MessageListBase {
     this.rowCache.clear();
   }
 
+  /**
+   * Briefly highlight a just-jumped-to message row (after `jumpTo` scrolls it into
+   * view) so the eye lands on it. Resets any in-flight flash with a forced reflow so a
+   * repeat jump to the same row re-triggers the animation, and self-clears on
+   * `animationend`.
+   */
+  protected flash(el: Element | null | undefined): void {
+    if (!el) {
+      return;
+    }
+    el.classList.remove('msg--flash');
+    void (el as HTMLElement).offsetWidth; // reflow to restart the CSS animation
+    el.classList.add('msg--flash');
+    el.addEventListener(
+      'animationend',
+      () => el.classList.remove('msg--flash'),
+      {
+        once: true,
+      },
+    );
+  }
+
   startEdit(row: MessageRow): void {
     this.replyingToId.set(null);
     this.editingId.set(row.id);
@@ -148,6 +183,11 @@ export abstract class MessageListBase {
   /** A message the current user can still edit (own, confirmed, text — not media). */
   isEditable(m: MessageView): boolean {
     return isEditableMessage(m);
+  }
+
+  /** Whether a row's event id is currently pinned. */
+  isPinned(id: string): boolean {
+    return this.pinnedIds().includes(id);
   }
 
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
