@@ -188,6 +188,17 @@ describe('NotificationService', () => {
     expect(MockNotification.instances).toHaveLength(0);
   });
 
+  it('notifies for the open room when the window is unfocused (not actually looking)', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false); // window unfocused…
+    const { svc, client, timeline } = setup();
+    timeline.openRoomId = '!r:hs'; // …even though this very room is "open"
+    svc.connect();
+
+    timelineHandler(client)(event(), room, false, false, live);
+
+    expect(MockNotification.instances).toHaveLength(1);
+  });
+
   it('notifies for a message to a different (not open) room even while focused', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const { svc, client, timeline } = setup();
