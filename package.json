@@ -4,7 +4,6 @@
   "author": "quwisky <quwisky@qwky.eu>",
   "scripts": {
     "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project — run: corepack enable && pnpm install'); process.exit(1); }\"",
-    "postinstall": "node -e \"process.platform==='darwin' && require('child_process').execSync('pnpm run electron:sign:dev', {stdio: 'inherit'})\"",
     "prepare": "husky",
     "format": "nx format:write --all",
     "format:check": "nx format:check --all",
@@ -28,7 +27,7 @@
     "e2e:search": "nx build trinity --configuration=development && node e2e/runners/search-run.mjs",
     "e2e:emoji": "nx build trinity --configuration=development && node e2e/runners/emoji-run.mjs",
     "electron:install": "pnpm -C electron install",
-    "electron:build": "pnpm run build && pnpm -C electron run build",
+    "electron:build": "pnpm run build && pnpm -C electron run build && pnpm run electron:sign:dev",
     "electron:start": "pnpm run electron:build && pnpm -C electron run start",
     "electron:package": "pnpm run electron:build && pnpm -C electron run package",
     "electron:package:mac": "pnpm run electron:build && pnpm -C electron run package:mac",

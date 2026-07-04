@@ -12,7 +12,7 @@
     "test": "vitest run",
     "start": "electron .",
     "package": "electron-builder",
-    "package:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+    "package:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac && codesign --force --deep --sign \"trinity-dev\" release/mac-arm64/Trinity.app",
     "package:mac:signed": "electron-builder --mac",
     "package:linux": "electron-builder --linux",
     "package:win": "electron-builder --win",
