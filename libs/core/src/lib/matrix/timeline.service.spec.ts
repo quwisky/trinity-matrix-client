@@ -763,6 +763,46 @@ describe('TimelineService', () => {
         size: 1234,
         filename: 'pic.png',
       });
+      expect(m.caption).toBeNull(); // no MSC2530 filename → no caption
+    });
+
+    it('projects an MSC2530 caption alongside a media message', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$capimg',
+          sender: '@a:hs',
+          msgtype: 'm.image',
+          body: 'look at this', // body is the caption when filename is present
+          filename: 'pic.png',
+          url: 'mxc://hs/abc',
+          info: { mimetype: 'image/png' },
+        }),
+      ]);
+
+      const m = svc.messages()[0];
+      expect(m.media?.filename).toBe('pic.png'); // real name, not the caption
+      expect(m.caption).toBe('look at this');
+      expect(m.captionHtml).toBeNull(); // plain caption
+    });
+
+    it('projects a rich (markdown) MSC2530 caption', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$richcap',
+          sender: '@a:hs',
+          msgtype: 'm.image',
+          body: 'look **here**',
+          format: 'org.matrix.custom.html',
+          formattedBody: '<p>look <strong>here</strong></p>',
+          filename: 'pic.png',
+          url: 'mxc://hs/abc',
+          info: { mimetype: 'image/png' },
+        }),
+      ]);
+
+      const m = svc.messages()[0];
+      expect(m.caption).toBe('look **here**');
+      expect(m.captionHtml).toContain('<strong>here</strong>'); // sanitized rich caption
     });
 
     it('projects an m.file event to a file MediaPayload', () => {
@@ -834,7 +874,7 @@ describe('TimelineService', () => {
       const sent: unknown[][] = [];
       const svc = setup([], sent); // encrypted = false
 
-      await firstValueFrom(svc.sendMedia(png()));
+      await firstValueFrom(svc.sendMedia(png(), ''));
 
       expect(sent[0][0]).toBe('message');
       const content = sent[0][1] as Record<string, unknown>;
@@ -842,13 +882,28 @@ describe('TimelineService', () => {
       expect(content['url']).toBe('mxc://hs/up');
       expect(content['file']).toBeUndefined();
       expect(content['info']).toMatchObject({ mimetype: 'image/png' });
+      expect(content['body']).toBe('pic.png'); // no caption → body is the filename
+      expect(content['filename']).toBeUndefined();
+    });
+
+    it('sends a caption as an MSC2530 body + filename (rich when formatted)', async () => {
+      const sent: unknown[][] = [];
+      const svc = setup([], sent);
+
+      await firstValueFrom(svc.sendMedia(png(), 'a **bold** caption'));
+
+      const content = sent[0][1] as Record<string, unknown>;
+      expect(content['body']).toBe('a **bold** caption'); // body carries the caption
+      expect(content['filename']).toBe('pic.png'); // real file name preserved
+      expect(content['format']).toBe('org.matrix.custom.html');
+      expect(content['formatted_body']).toContain('<strong>bold</strong>');
     });
 
     it('sends an encrypted file media event in an E2EE room', async () => {
       const sent: unknown[][] = [];
       const svc = setup([], sent, {}, true); // encrypted = true
 
-      await firstValueFrom(svc.sendMedia(png()));
+      await firstValueFrom(svc.sendMedia(png(), ''));
 
       const content = sent[0][1] as Record<string, unknown>;
       expect(content['url']).toBeUndefined();
@@ -862,6 +917,7 @@ describe('TimelineService', () => {
       await firstValueFrom(
         svc.sendMedia(
           new File([], 'empty.bin', { type: 'application/octet-stream' }),
+          '',
         ),
       );
 

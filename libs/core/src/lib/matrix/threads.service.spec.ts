@@ -694,6 +694,7 @@ describe('ThreadsService', () => {
           new File([new Uint8Array([1, 2, 3, 4])], 'pic.png', {
             type: 'image/png',
           }),
+          '',
         ),
       );
 
@@ -702,6 +703,25 @@ describe('ThreadsService', () => {
       const content = sent[0][2] as Record<string, unknown>;
       expect(content['msgtype']).toBe('m.image');
       expect(content['url']).toBe('mxc://hs/up');
+      expect(content['body']).toBe('pic.png'); // no caption → body is the filename
+      expect(content['filename']).toBeUndefined();
+    });
+
+    it('sends a caption with thread media as MSC2530 body + filename', async () => {
+      const { svc, sent } = openedThread();
+
+      await firstValueFrom(
+        svc.sendMediaToThread(
+          new File([new Uint8Array([1, 2, 3, 4])], 'pic.png', {
+            type: 'image/png',
+          }),
+          'in-thread caption',
+        ),
+      );
+
+      const content = sent[0][2] as Record<string, unknown>;
+      expect(content['body']).toBe('in-thread caption'); // body carries the caption
+      expect(content['filename']).toBe('pic.png'); // real name preserved
     });
 
     it('retries a failed thread echo via resendEvent', () => {

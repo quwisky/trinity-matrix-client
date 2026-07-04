@@ -43,6 +43,30 @@ export function renderMarkdown(
   return { formatted: htmlToText(html).trim() !== text, html };
 }
 
+/**
+ * MSC2530 caption fields for a media message. With a caption, `body` carries the
+ * caption text (rich when markdown formats it) and `filename` preserves the real
+ * file name; without one, `body` is the file name (the pre-caption behaviour).
+ */
+export function mediaCaptionFields(
+  sanitizer: DomSanitizer,
+  filename: string,
+  caption: string,
+): Record<string, string> {
+  const text = caption.trim();
+  if (!text) {
+    return { body: filename };
+  }
+  const md = renderMarkdown(sanitizer, text);
+  return {
+    body: text,
+    filename,
+    ...(md.formatted
+      ? { format: 'org.matrix.custom.html', formatted_body: md.html }
+      : {}),
+  };
+}
+
 /** `m.text` content: rich (HTML) when markdown formatted it, else plain text. */
 export function textMessageContent(text: string, md: RenderedMarkdown) {
   return md.formatted

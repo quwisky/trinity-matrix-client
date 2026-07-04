@@ -39,6 +39,7 @@ import {
 import {
   annotationContent,
   editMessageContent,
+  mediaCaptionFields,
   myReactionId,
   renderMarkdown,
   replyMessageContent,
@@ -502,6 +503,7 @@ export class ThreadsService {
    */
   sendMediaToThread(
     file: File,
+    caption: string,
     progress?: (fraction: number) => void,
   ): Observable<void> {
     const ctx = this.threadContext();
@@ -518,7 +520,7 @@ export class ThreadsService {
           switchMap(() => {
             const content = {
               msgtype: media.msgtype,
-              body: media.body,
+              ...mediaCaptionFields(this.sanitizer, media.body, caption),
               info: media.info,
               ...(media.file ? { file: media.file } : { url: media.mxc }),
             };

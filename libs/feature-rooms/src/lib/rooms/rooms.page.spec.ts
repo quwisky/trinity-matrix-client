@@ -165,13 +165,13 @@ describe('RoomsPage action error feedback', () => {
     const stream = new Subject<void>();
     let progressCb: ((fraction: number) => void) | undefined;
     sendMedia.mockImplementation(
-      (_file: File, cb?: (fraction: number) => void) => {
+      (_file: File, _caption: string, cb?: (fraction: number) => void) => {
         progressCb = cb;
         return stream.asObservable();
       },
     );
 
-    page.onSendMedia(pngFile());
+    page.onSendMedia({ file: pngFile(), caption: '' });
     expect(page.uploadProgress()).toBe(0); // reset to 0 on start
 
     progressCb?.(0.5);
@@ -187,7 +187,7 @@ describe('RoomsPage action error feedback', () => {
     const stream = new Subject<void>();
     sendMedia.mockReturnValue(stream.asObservable());
 
-    page.onSendMedia(pngFile());
+    page.onSendMedia({ file: pngFile(), caption: '' });
     expect(page.uploadProgress()).toBe(0);
 
     stream.error(new Error('upload failed'));

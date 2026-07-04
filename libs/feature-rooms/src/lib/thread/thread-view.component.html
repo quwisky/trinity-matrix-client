@@ -46,6 +46,7 @@
   <div class="thread__footer">
     <trn-message-composer
       placeholder="Reply…"
+      [roomId]="rootEventId()"
       [editing]="editingId() !== null"
       [editTargetId]="editingId()"
       [draft]="editingDraft()"

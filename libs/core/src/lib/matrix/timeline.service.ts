@@ -34,6 +34,7 @@ import {
 import {
   annotationContent,
   editMessageContent,
+  mediaCaptionFields,
   myReactionId,
   renderMarkdown,
   replyMessageContent,
@@ -216,6 +217,7 @@ export class TimelineService {
    */
   sendMedia(
     file: File,
+    caption: string,
     progress?: (fraction: number) => void,
   ): Observable<void> {
     const room = this.room;
@@ -228,7 +230,7 @@ export class TimelineService {
       switchMap((media) => {
         const content = {
           msgtype: media.msgtype,
-          body: media.body,
+          ...mediaCaptionFields(this.sanitizer, media.body, caption),
           info: media.info,
           ...(media.file ? { file: media.file } : { url: media.mxc }),
         };

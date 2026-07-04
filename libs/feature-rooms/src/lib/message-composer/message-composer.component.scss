@@ -47,6 +47,53 @@
   font-variant-numeric: tabular-nums;
 }
 
+// Staged attachment awaiting a caption (shown above the input until sent).
+.composer__pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 8px;
+  padding: 6px 8px;
+  border-radius: var(--trinity-radius);
+  background: var(--trinity-sidebar);
+}
+
+.composer__pending-thumb {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.composer__pending-icon {
+  display: flex;
+  flex-shrink: 0;
+  font-size: 20px;
+  color: var(--trinity-text-muted);
+}
+
+.composer__pending-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--trinity-text);
+}
+
+.composer__pending-remove {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  font-size: 14px;
+  color: var(--trinity-text-muted);
+
+  &:hover {
+    color: var(--trinity-text);
+  }
+}
+
 .composer {
   position: relative;
 
