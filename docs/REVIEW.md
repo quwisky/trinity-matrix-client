@@ -103,12 +103,13 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
 
 **Security**
 
-- [ ] **Access token can persist to plaintext with no user-visible signal** _(deferred —
-      needs a UX call on where/how to surface the warning)_ —
+- [x] **Access token could persist to plaintext with no signal** _(fixed — diagnostic)_ —
       [secure-storage.service.ts:117](../libs/core/src/lib/storage/secure-storage.service.ts).
-      `select()` falls back to the web backend (Preferences/localStorage, `isSecure:false`)
-      on desktop too when `safeStorage`/keyring is unavailable; `isSecure()` is computed but
-      never surfaced. _Fix: warn at login (or gate "remember me") when the resolved backend
+      `select()` now `console.warn`s when it falls back to plaintext on a platform that
+      should have a keychain (Electron/native keyring failure) — the anomalous case — while
+      staying quiet on plain web (the documented norm). A **user-facing** prompt/banner
+      remains a product-owned follow-up. Original detail: `isSecure()` was computed but
+      never consumed. _Fix: warn at login (or gate "remember me") when the resolved backend
       is insecure._
 - [x] **`SecretStorageKeyService.set()` didn't zero the previous 4S buffer** _(fixed)_
       — [secret-storage-key.service.ts:23](../libs/core/src/lib/matrix/secret-storage-key.service.ts).
@@ -157,16 +158,20 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
       [auth.guard.ts](../libs/core/src/lib/guards/auth.guard.ts). Added `auth.guard.spec.ts`
       covering the already-initialized short-circuit, session-restore, no-session redirect,
       and init-failure→`/login` branches.
-- [ ] **Security-critical Electron modules have no tests** _(deferred — Electron test
-      harness is a separate setup)_ —
-      `scheme.ts` (path-traversal), `window.ts` (nav hardening), `deep-link.ts` (scheme
-      validation). Only `notification-payload` and `secure-store` have specs.
+- [x] **Security-critical Electron modules now have tests** _(fixed)_ —
+      Added `scheme.spec.ts` (content-type mapping, external-origin rejection, the
+      `%2f`-encoded path-traversal 403 + malformed-`%` 400 guards), `window.spec.ts`
+      (`hardenContents`: window.open denied, external nav prevented + opened externally,
+      webview attachment blocked), and `deep-link.spec.ts` (`deepLinkFromArgv`, and
+      `deliverDeepLink` ignoring any non-`eu.qwky.trinity://` scheme).
 
 ## Remaining (open)
 
-Everything above except three items has been fixed (with tests where testable):
+One item is left open — a genuine feature, not a quick fix:
 
-- **Access-token plaintext warning** — needs a UX decision on where/how to surface the
-  insecure-backend signal at login.
-- **Timeline virtualization** — a substantial feature; warrants its own design + perf pass.
-- **Electron module tests** — worth adding, but the Electron test harness is separate setup.
+- **Timeline virtualization** — retrofitting CDK Virtual Scroll into the message list is
+  a substantial feature: rows are variable-height (needs an autosize strategy), and it
+  must be reconciled with the existing scroll-anchoring (backfill prepend math, `jumpTo`,
+  the `atBottom` gate) — none of which is verifiable headlessly (jsdom has no layout). It
+  warrants its own design + on-device perf/scroll verification rather than a risky
+  bundled change to the tuned timeline.
