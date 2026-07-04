@@ -252,6 +252,22 @@ describe('VirtualMessageListComponent', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
+  it('re-jumps to the same id when jumpToNonce is bumped', () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const fixture = TestBed.createComponent(VirtualMessageListComponent);
+    fixture.componentRef.setInput('messages', many(10)); // short → all rendered
+    fixture.componentRef.setInput('jumpToId', '$5');
+    fixture.componentRef.setInput('jumpToNonce', 1);
+    fixture.detectChanges();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    // Repeat request to the same id (next nonce) must re-fire the jump effect.
+    fixture.componentRef.setInput('jumpToNonce', 2);
+    fixture.detectChanges();
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
   it('flashes an already-rendered row on jump (in-window path)', () => {
     Element.prototype.scrollIntoView = vi.fn();
     const fixture = TestBed.createComponent(VirtualMessageListComponent);

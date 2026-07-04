@@ -231,6 +231,24 @@ describe('RoomsPage action error feedback', () => {
 
     expect(panel.openPanel).toHaveBeenCalled();
     expect(page.messageSearchTarget()).toBe('$evt:hs');
+    expect(page.jumpRequest()).toBe(1);
+  });
+
+  it('openPinnedPanel bumps jumpRequest again when the SAME message is re-picked', async () => {
+    // The bug: re-selecting the same pinned row must still re-trigger a jump —
+    // messageSearchTarget alone is a no-op signal write (Object.is), so the list
+    // only re-fires because jumpRequest keeps incrementing.
+    const page = build();
+    const panel = TestBed.inject(PinnedPanelService);
+    (panel.openPanel as ReturnType<typeof vi.fn>).mockResolvedValue('$evt:hs');
+
+    await page.openPinnedPanel();
+    expect(page.jumpRequest()).toBe(1);
+
+    await page.openPinnedPanel();
+
+    expect(page.messageSearchTarget()).toBe('$evt:hs');
+    expect(page.jumpRequest()).toBe(2);
   });
 
   it('openPinnedPanel does not jump when the panel is cancelled', async () => {
@@ -241,6 +259,7 @@ describe('RoomsPage action error feedback', () => {
     await page.openPinnedPanel();
 
     expect(page.messageSearchTarget()).toBeNull();
+    expect(page.jumpRequest()).toBe(0);
   });
 
   const pngFile = () =>
@@ -1566,6 +1585,23 @@ describe('RoomsPage quick switcher', () => {
 
     expect(messageSearch).toHaveBeenCalledWith('!r:hs');
     expect(page.messageSearchTarget()).toBe('$evt:hs');
+    expect(page.jumpRequest()).toBe(1);
+  });
+
+  it('in-room search bumps jumpRequest again when the SAME hit is re-picked', async () => {
+    // Same crux as the pinned panel: picking the identical hit twice must still
+    // re-fire the jump, which only happens because jumpRequest keeps incrementing.
+    const page = build();
+    page.onSelectRoom('!r:hs');
+    messageSearch.mockResolvedValue('$evt:hs');
+
+    await page.openMessageSearch();
+    expect(page.jumpRequest()).toBe(1);
+
+    await page.openMessageSearch();
+
+    expect(page.messageSearchTarget()).toBe('$evt:hs');
+    expect(page.jumpRequest()).toBe(2);
   });
 
   it('does not jump when in-room search is cancelled', async () => {
@@ -1576,6 +1612,7 @@ describe('RoomsPage quick switcher', () => {
     await page.openMessageSearch();
 
     expect(page.messageSearchTarget()).toBeNull();
+    expect(page.jumpRequest()).toBe(0);
   });
 
   it('does not open in-room search when no room is active', async () => {

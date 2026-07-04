@@ -52,6 +52,13 @@ export abstract class MessageListBase {
    * A no-op when the event isn't in the loaded timeline.
    */
   readonly jumpToId = input<string | null>(null);
+  /**
+   * Bumped by the host on every jump request. Paired with {@link jumpToId} so that
+   * re-requesting the SAME event id (e.g. clicking the same pinned message twice)
+   * still changes an input and re-fires the jump effect — an unchanged `jumpToId`
+   * alone would be an Object.is no-op and never re-run.
+   */
+  readonly jumpToNonce = input(0);
   readonly loadOlder = output<void>();
   /** Open the thread rooted at this event id (raised by a row's indicator). */
   readonly openThread = output<string>();

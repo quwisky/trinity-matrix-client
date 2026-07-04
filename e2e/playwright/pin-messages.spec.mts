@@ -32,6 +32,21 @@ const REG_SECRET = 'trinity-e2e-shared-secret';
 
 const OTHER_BODY = 'just chatting';
 const PIN_BODY = 'pin me please';
+const REPEAT_PIN_BODY = 'pin me twice please';
+
+// How much live filler traffic to flood the room with for the repeat-jump
+// regression, below. Comfortably past whatever a 1280x720 viewport's worth of
+// compact message rows can show at once (real overflow, not a guess), and — more
+// importantly — pushed *after* the reader is already logged in and the room is
+// open, so every filler message lands as ordinary live sync traffic in the
+// client's already-open (uncapped) live timeline, rather than via the initial
+// `/sync`, which `MatrixClientService` caps at `initialSyncLimit: 20` — history
+// beyond that window only loads via an explicit scroll-to-top backfill (see
+// timeline-virtualization.spec.mts). Seeding this many *before* login would put
+// the target outside that window — not just scrolled off, but genuinely unloaded
+// — and PinnedMessagesPanelComponent → MessageListBase.jumpTo() only scrolls to
+// an event already in the rendered DOM; it never fetches context for a jump.
+const FILLER_COUNT = 32;
 
 interface ApiUser {
   token: string;
@@ -123,6 +138,70 @@ async function seedPinRoom(
   return {
     reader: { available: true, hs, user: readerUser, pass: readerPass },
     roomName,
+  };
+}
+
+/**
+ * Register a fresh reader, have them create their own plain room, post one lead-in
+ * message then the pin target — both trivially inside the client's ~20-event
+ * initial-sync window — and pin the target directly via the CS API's
+ * `m.room.pinned_events` state event (same shape `PinnedMessagesService.write`
+ * sends), skipping the hover/⋯/"Pin message" UI flow the other test in this file
+ * already covers. Returns the reader's own API session (token + roomId) too, so the
+ * caller can flood the room with *live* filler traffic once the reader is logged in
+ * and the room is open — see {@link FILLER_COUNT}'s comment for why that has to
+ * happen post-login rather than here.
+ */
+async function seedRepeatJumpPinRoom(
+  request: APIRequestContext,
+  hs: string,
+  runId: string,
+): Promise<{
+  reader: SynapseSession;
+  roomName: string;
+  roomId: string;
+  api: ApiUser;
+}> {
+  const readerUser = `pin-repeat-reader-${runId}`;
+  const readerPass = `reader-pass-${runId}`;
+  const roomName = `Pin Repeat E2E ${runId}`;
+
+  await registerUser(request, readerUser, readerPass);
+  const reader = await apiLogin(request, hs, readerUser, readerPass);
+
+  const roomId = await request
+    .post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: reader.headers,
+      data: { name: roomName, preset: 'private_chat' },
+    })
+    .then((r) => r.json())
+    .then((j) => j.room_id as string);
+
+  await request.put(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/pin-repeat-lead-${runId}`,
+    { headers: reader.headers, data: { msgtype: 'm.text', body: OTHER_BODY } },
+  );
+  const targetEventId = await request
+    .put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/pin-repeat-target-${runId}`,
+      {
+        headers: reader.headers,
+        data: { msgtype: 'm.text', body: REPEAT_PIN_BODY },
+      },
+    )
+    .then((r) => r.json())
+    .then((j) => j.event_id as string);
+
+  await request.put(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.pinned_events/`,
+    { headers: reader.headers, data: { pinned: [targetEventId] } },
+  );
+
+  return {
+    reader: { available: true, hs, user: readerUser, pass: readerPass },
+    roomName,
+    roomId,
+    api: reader,
   };
 }
 
@@ -225,5 +304,114 @@ test.describe('Pin messages', () => {
 
     await page.getByRole('button', { name: 'Close pinned messages' }).click();
     await expect(badge).toHaveCount(0, { timeout: 30_000 });
+  });
+
+  // Regression for a fixed bug: clicking a pinned row jumped the timeline the
+  // FIRST time, but a second click on the SAME row silently did nothing, because
+  // RoomsPage.messageSearchTarget is a signal — setting it to the same event id
+  // twice in a row is a no-op, so MessageListBase's jump effect never re-fired. The
+  // fix pairs it with `jumpRequest`, a nonce bumped on every panel jump (and
+  // in-room search jump), which the list's jump effect also reads so a repeat
+  // request to the SAME id still re-triggers `jumpTo()`. This test proves the
+  // SECOND jump to an unchanged target works, not just the first.
+  test('re-jumping to the SAME pinned message a second time still scrolls it into view', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}pr`;
+
+    const { reader, roomName, roomId, api } = await seedRepeatJumpPinRoom(
+      request,
+      hs,
+      runId,
+    );
+
+    await login(page, reader);
+
+    await page.getByTestId('rail-rooms').click();
+
+    const channel = page.locator('.channel', { hasText: roomName });
+    await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await channel.first().click();
+
+    await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
+
+    const targetRow = page.locator('.scroll .msg[data-mid]', {
+      hasText: REPEAT_PIN_BODY,
+    });
+    // Sanity check: it's genuinely loaded before the flood (trivially true here,
+    // with only two messages so far) — not itself the regression assertion.
+    await targetRow.first().waitFor({ state: 'visible', timeout: 15_000 });
+
+    // Flood the room with live filler traffic — see FILLER_COUNT's comment for why
+    // this runs post-login rather than as part of seeding. Sequential + awaited to
+    // match the seeding style already used across this suite and
+    // timeline-virtualization.spec.mts.
+    const lastFillerBody = `pin-repeat filler ${runId} ${FILLER_COUNT - 1}`;
+    for (let i = 0; i < FILLER_COUNT; i++) {
+      await request.put(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/pin-repeat-filler-${runId}-${i}`,
+        {
+          headers: api.headers,
+          data: {
+            msgtype: 'm.text',
+            body: `pin-repeat filler ${runId} ${i}`,
+          },
+        },
+      );
+    }
+
+    // The flood lands via live sync and the list's stick-to-bottom effect (the user
+    // hasn't scrolled up, so it's still "at bottom") rides it down — the last filler
+    // arrives on screen, and the target (now dozens of rows above) scrolls out.
+    const lastFillerRow = page.locator('.scroll .msg[data-mid]', {
+      hasText: lastFillerBody,
+    });
+    await expect(lastFillerRow.first()).toBeInViewport({ timeout: 30_000 });
+    await expect(targetRow.first()).not.toBeInViewport({ timeout: 15_000 });
+
+    const pinButton = page.getByTestId('open-pinned');
+    const heading = page.getByRole('heading', { name: 'Pinned messages' });
+    const pinRow = page.locator('.pin-item', { hasText: REPEAT_PIN_BODY });
+
+    // --- First jump: the target is currently out of view — this must bring it
+    // into view (unremarkable on its own; the point is proving the SECOND jump,
+    // below, does too). ---
+    await pinButton.click();
+    await expect(heading).toBeVisible({ timeout: 10_000 });
+    await expect(pinRow).toBeVisible({ timeout: 10_000 });
+    await pinRow.locator('.pin-item__main').click();
+
+    await expect(targetRow.first()).toHaveClass(/msg--flash/, {
+      timeout: 1_500,
+    });
+    // The panel's dialog resolves on jump, closing it — and PinnedPanelService's
+    // re-entrancy guard (`this.open`) only clears once that resolve's `finally`
+    // runs, so wait for it to be fully hidden before re-opening it below.
+    await expect(heading).toBeHidden({ timeout: 10_000 });
+    await expect(targetRow.first()).toBeInViewport({ timeout: 15_000 });
+
+    // --- Scroll back away from the target so it's out of view again, exactly as
+    // it was before the first jump. ---
+    await page
+      .locator('.scroll')
+      .evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await expect(targetRow.first()).not.toBeInViewport({ timeout: 15_000 });
+
+    // --- Second jump to the SAME event id — the regression assertion. Before the
+    // fix, `messageSearchTarget` was already set to this id, so setting it again
+    // was a signal no-op and the list's jump effect never re-ran: the target
+    // stayed off screen. ---
+    await pinButton.click();
+    await expect(heading).toBeVisible({ timeout: 10_000 });
+    await expect(pinRow).toBeVisible({ timeout: 10_000 });
+    await pinRow.locator('.pin-item__main').click();
+
+    await expect(targetRow.first()).toHaveClass(/msg--flash/, {
+      timeout: 1_500,
+    });
+    await expect(heading).toBeHidden({ timeout: 10_000 });
+    await expect(targetRow.first()).toBeInViewport({ timeout: 15_000 });
   });
 });

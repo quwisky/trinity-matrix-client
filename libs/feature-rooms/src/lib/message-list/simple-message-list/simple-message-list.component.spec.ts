@@ -192,6 +192,29 @@ describe('SimpleMessageListComponent', () => {
     expect((jumped as unknown as Element).getAttribute('data-mid')).toBe('$2');
   });
 
+  it('re-jumps to the same id when jumpToNonce is bumped', () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    const fixture = TestBed.createComponent(SimpleMessageListComponent);
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges(); // render the rows first (the jump reads the DOM)
+
+    fixture.componentRef.setInput('jumpToId', '$2');
+    fixture.componentRef.setInput('jumpToNonce', 1);
+    fixture.detectChanges();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    // Same id, next nonce (as a repeat pinned/search selection does) must re-fire —
+    // an unchanged jumpToId alone would be an Object.is no-op and never re-run.
+    fixture.componentRef.setInput('jumpToNonce', 2);
+    fixture.detectChanges();
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
   it('flashes the jumped-to row', () => {
     Element.prototype.scrollIntoView = vi.fn();
 
