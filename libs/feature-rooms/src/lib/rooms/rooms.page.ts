@@ -18,6 +18,7 @@ import {
   lucideLock,
   lucideMenu,
   lucideMessagesSquare,
+  lucidePin,
   lucideSearch,
   lucideUserPlus,
   lucideUsers,
@@ -38,6 +39,7 @@ import {
   MediaService,
   NotificationService,
   FeatureFlagsService,
+  PinnedMessagesService,
   PushService,
   RoomsService,
   SpacesService,
@@ -59,6 +61,7 @@ import { VirtualMessageListComponent } from '../message-list/virtual-message-lis
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { ThreadPanelService } from '../thread/thread-panel.service';
+import { PinnedPanelService } from '../pinned/pinned-panel.service';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -89,6 +92,7 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
       lucideLock,
       lucideMenu,
       lucideMessagesSquare,
+      lucidePin,
       lucideSearch,
       lucideUserPlus,
       lucideUsers,
@@ -101,8 +105,10 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
   readonly threads = inject(ThreadsService);
+  readonly pinned = inject(PinnedMessagesService);
   readonly flags = inject(FeatureFlagsService);
   private readonly threadPanel = inject(ThreadPanelService);
+  private readonly pinnedPanel = inject(PinnedPanelService);
   private readonly userPicker = inject(UserPickerService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly messageSearch = inject(MessageSearchService);
@@ -310,6 +316,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.timeline.close();
     this.threads.close();
     this.threads.closeThread();
+    this.pinned.close();
     this.invites.disconnect();
     this.media.releaseAll();
   }
@@ -665,6 +672,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.activeRoomId.set(id);
     this.timeline.open(id);
     this.threads.open(id); // project this room's thread summaries for indicators
+    this.pinned.open(id); // project this room's pinned messages
     this.closeDrawer(); // collapse the drawer on mobile after picking a room
   }
 
@@ -702,6 +710,29 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (roomId) {
       void this.threadPanel.openList(roomId);
     }
+  }
+
+  /** Pin or unpin a message from its overflow menu, resolving which by current state. */
+  onTogglePin(eventId: string): void {
+    if (this.pinned.isPinned(eventId)) {
+      this.pinned.unpin(eventId);
+    } else {
+      this.pinned.pin(eventId);
+    }
+  }
+
+  /**
+   * Open the pinned-messages panel for the active room and, on a chosen row, jump the
+   * timeline to that event. Resetting the target to null first guarantees the list's
+   * jump effect re-fires even when the same message is picked again (as in-room search does).
+   */
+  async openPinnedPanel(): Promise<void> {
+    const eventId = await this.pinnedPanel.openPanel();
+    if (!eventId) {
+      return; // cancelled / already open / just closed
+    }
+    this.messageSearchTarget.set(null);
+    this.messageSearchTarget.set(eventId);
   }
 
   loadOlder(): void {

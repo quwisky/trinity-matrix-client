@@ -56,34 +56,57 @@
   <button
     type="button"
     class="toolbar__btn"
-    hlmTooltip="Copy text"
-    aria-label="Copy text"
-    (click)="copyMessage.emit()"
+    [hlmDropdownMenuTrigger]="moreMenu"
+    align="end"
+    hlmTooltip="More actions"
+    aria-label="More actions"
+    data-testid="msg-more"
   >
-    <ng-icon name="lucideCopy" aria-hidden="true" />
+    <ng-icon name="lucideEllipsis" aria-hidden="true" />
   </button>
-
-  @if (canEdit()) {
-    <button
-      type="button"
-      class="toolbar__btn"
-      hlmTooltip="Edit"
-      aria-label="Edit message"
-      (click)="editMessage.emit()"
-    >
-      <ng-icon name="lucidePencil" aria-hidden="true" />
-    </button>
-  }
-
-  @if (canDelete()) {
-    <button
-      type="button"
-      class="toolbar__btn toolbar__btn--danger"
-      hlmTooltip="Delete"
-      aria-label="Delete message"
-      (click)="deleteMessage.emit()"
-    >
-      <ng-icon name="lucideTrash2" aria-hidden="true" />
-    </button>
-  }
 </div>
+
+<ng-template #moreMenu>
+  <div hlmDropdownMenu>
+    @if (canPin()) {
+      <button
+        hlmDropdownMenuItem
+        (triggered)="togglePin.emit()"
+        data-testid="msg-pin"
+      >
+        <ng-icon name="lucidePin" />
+        {{ pinned() ? 'Unpin message' : 'Pin message' }}
+      </button>
+    }
+    <button
+      hlmDropdownMenuItem
+      (triggered)="copyMessage.emit()"
+      data-testid="msg-copy"
+    >
+      <ng-icon name="lucideCopy" />
+      Copy text
+    </button>
+    @if (canEdit()) {
+      <button
+        hlmDropdownMenuItem
+        (triggered)="editMessage.emit()"
+        data-testid="msg-edit"
+      >
+        <ng-icon name="lucidePencil" />
+        Edit message
+      </button>
+    }
+    @if (canDelete()) {
+      <div hlmDropdownMenuSeparator></div>
+      <button
+        hlmDropdownMenuItem
+        variant="destructive"
+        (triggered)="deleteMessage.emit()"
+        data-testid="msg-delete"
+      >
+        <ng-icon name="lucideTrash2" />
+        Delete message
+      </button>
+    }
+  </div>
+</ng-template>

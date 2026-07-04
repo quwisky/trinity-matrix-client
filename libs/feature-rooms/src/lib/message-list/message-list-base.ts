@@ -32,6 +32,10 @@ export abstract class MessageListBase {
   readonly messages = input<MessageView[]>([]);
   /** Thread summaries keyed by root event id, for the per-row thread indicator. */
   readonly threadSummaries = input<Record<string, ThreadSummary>>({});
+  /** Whether the current user may pin/unpin in this room (drives the per-row Pin item). */
+  readonly canPin = input(false);
+  /** Currently-pinned event ids, for the per-row pinned state. */
+  readonly pinnedIds = input<readonly string[]>([]);
   readonly loadingOlder = input(false);
   readonly canLoadOlder = input(false);
   readonly roomName = input('');
@@ -51,6 +55,8 @@ export abstract class MessageListBase {
   readonly loadOlder = output<void>();
   /** Open the thread rooted at this event id (raised by a row's indicator). */
   readonly openThread = output<string>();
+  /** Pin or unpin this event id (host resolves which, given its current pinned state). */
+  readonly togglePin = output<string>();
   readonly send = output<string>();
   readonly sendMedia = output<{ file: File; caption: string }>();
   readonly retry = output<string>();
@@ -148,6 +154,11 @@ export abstract class MessageListBase {
   /** A message the current user can still edit (own, confirmed, text — not media). */
   isEditable(m: MessageView): boolean {
     return isEditableMessage(m);
+  }
+
+  /** Whether a row's event id is currently pinned. */
+  isPinned(id: string): boolean {
+    return this.pinnedIds().includes(id);
   }
 
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
