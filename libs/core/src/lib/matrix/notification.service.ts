@@ -10,6 +10,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from './matrix-client.service';
+import { TimelineService } from './timeline.service';
 import { getTrinityDesktopBridge } from '../platform/trinity-desktop-bridge';
 
 /** Max characters of message body shown in a notification. */
@@ -29,9 +30,10 @@ const PREVIEW_LIMIT = 140;
  *  - **Web / PWA:** the renderer Web `Notification` API (with permission prompt).
  *
  * Either way it only fires for **live** events (not backfill), from someone other
- * than us, while the window is **unfocused**, and only when the user's push rules
- * say to notify (`getPushActionsForEvent().notify` — respects mutes /
- * mentions-only). A click focuses the window and opens the app.
+ * than us, when the user isn't looking at that room (the window is unfocused, or a
+ * different room is open), and only when the user's push rules say to notify
+ * (`getPushActionsForEvent().notify` — respects mutes / mentions-only). A click
+ * focuses the window and opens the app.
  *
  * For E2EE rooms the `RoomEvent.Timeline` emit carries ciphertext (the preview
  * would be generic and push rules would run against the encrypted payload, so
@@ -44,6 +46,7 @@ export class NotificationService {
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
   private readonly zone = inject(NgZone);
+  private readonly timeline = inject(TimelineService);
 
   /** The client the listener is attached to, so disconnect targets the same one. */
   private connectedClient: MatrixClient | null = null;
@@ -196,8 +199,12 @@ export class NotificationService {
     if (event.getSender() === client.getUserId()) {
       return; // our own message
     }
-    if (typeof document !== 'undefined' && document.hasFocus()) {
-      return; // the user is already looking at the app
+    // Suppress only when the user is actually looking at THIS room: the window is
+    // focused AND it's the room currently open in the timeline. A message to any
+    // other (background) channel still notifies while the app is focused.
+    const focused = typeof document !== 'undefined' && document.hasFocus();
+    if (focused && room.roomId === this.timeline.openRoomId) {
+      return;
     }
     // The Web permission gate only applies to the Web backend; the desktop
     // bridge has no permission concept (the main process owns delivery).

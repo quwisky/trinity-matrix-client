@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { NgZone } from '@angular/core';
+import { ClientEvent, MatrixEventEvent } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -103,6 +105,8 @@ describe('RoomsService', () => {
       hasUnread: true,
     });
     expect(mid.hasUnread).toBe(false);
+    // totalUnread is the app-wide sum of every room's unread count.
+    expect(svc.totalUnread()).toBe(3);
   });
 
   it('derives an uppercase initial without the leading sigil', () => {
@@ -154,6 +158,143 @@ describe('RoomsService', () => {
     expect(svc.rooms().map((r) => r.id)).toEqual(['!b:hs']); // not frozen on A
     expect(clientA.off).toHaveBeenCalled(); // old listeners detached
     expect(clientB.on).toHaveBeenCalled(); // new client wired
+  });
+
+  it('recomputes totalUnread when a sync event refreshes an updated unread count', async () => {
+    // A mutable "room" so the fake client can report a bumped unread count on
+    // the next refresh, the same way a real Room's counters change in place.
+    const unread = { count: 2 };
+    const room = fakeRoom({ roomId: '!a:hs', name: 'a' });
+    room.getUnreadNotificationCount = (type?: string) =>
+      type === 'highlight' ? 0 : unread.count;
+    const handlers = new Map<string, () => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [room],
+      on: (event: string, cb: () => void) => handlers.set(event, cb),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    svc.connect();
+    expect(svc.totalUnread()).toBe(2);
+
+    unread.count = 9; // e.g. a new message arrives
+    handlers.get(ClientEvent.Sync)?.(); // sync fires; refresh is coalesced onto a microtask
+    await Promise.resolve();
+
+    expect(svc.totalUnread()).toBe(9);
+  });
+
+  it('refreshes unread on MatrixEventEvent.Decrypted (encrypted message decrypts late)', async () => {
+    const unread = { count: 0 };
+    const room = fakeRoom({ roomId: '!a:hs', name: 'a' });
+    room.getUnreadNotificationCount = (type?: string) =>
+      type === 'highlight' ? 0 : unread.count;
+    const handlers = new Map<string, () => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [room],
+      on: (event: string, cb: () => void) => handlers.set(event, cb),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    svc.connect();
+    expect(svc.totalUnread()).toBe(0);
+
+    // The count only settles once the ciphertext decrypts, which fires Decrypted
+    // (not a fresh Sync) — relying on Sync alone would drop the increment.
+    unread.count = 1;
+    handlers.get(MatrixEventEvent.Decrypted)?.();
+    await Promise.resolve();
+
+    expect(svc.totalUnread()).toBe(1);
+  });
+
+  it('runs listener-driven refreshes inside the Angular zone (badges surface immediately)', async () => {
+    const room = fakeRoom({ roomId: '!a:hs', name: 'a' });
+    const handlers = new Map<string, () => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [room],
+      on: (event: string, cb: () => void) => handlers.set(event, cb),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    const zone = TestBed.inject(NgZone);
+    svc.connect();
+
+    // Matrix client events fire OUTSIDE Angular's zone; the coalesced refresh must
+    // re-enter it, or change detection (and the rail + dock unread badges) wouldn't
+    // run until the next incidental tick — up to a ~30s /sync poll later.
+    const runSpy = vi.spyOn(zone, 'run');
+    handlers.get(ClientEvent.Sync)?.();
+    await Promise.resolve();
+
+    expect(runSpy).toHaveBeenCalled();
+  });
+
+  it('recomputes totalUnread when a room is added to the synced list', async () => {
+    let currentRooms = [fakeRoom({ roomId: '!a:hs', name: 'a', unread: 2 })];
+    const handlers = new Map<string, () => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => currentRooms,
+      on: (event: string, cb: () => void) => handlers.set(event, cb),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    svc.connect();
+    expect(svc.totalUnread()).toBe(2);
+
+    currentRooms = [
+      ...currentRooms,
+      fakeRoom({ roomId: '!b:hs', name: 'b', unread: 5 }),
+    ];
+    handlers.get(ClientEvent.Room)?.();
+    await Promise.resolve();
+
+    expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
+    expect(svc.totalUnread()).toBe(7);
   });
 
   it('ignores a repeat connect() for the same client', () => {

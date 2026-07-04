@@ -80,6 +80,9 @@ importers:
       '@capacitor/status-bar':
         specifier: 8.0.2
         version: 8.0.2(@capacitor/core@8.4.1)
+      '@capawesome/capacitor-badge':
+        specifier: 8.0.2
+        version: 8.0.2(@capacitor/core@8.4.1)
       '@ctrl/ngx-emoji-mart':
         specifier: ^9.3.0
         version: 9.3.0(@angular/core@21.2.9(@angular/compiler@21.2.9)(rxjs@7.8.2)(zone.js@0.15.1))
@@ -1356,6 +1359,11 @@ packages:
 
   '@capacitor/synapse@1.0.4':
     resolution: {integrity: sha512-/C1FUo8/OkKuAT4nCIu/34ny9siNHr9qtFezu4kxm6GY1wNFxrCFWjfYx5C1tUhVGz3fxBABegupkpjXvjCHrw==}
+
+  '@capawesome/capacitor-badge@8.0.2':
+    resolution: {integrity: sha512-4ZnRyFvViaokupdrOi3OkoBurH+23hnxni+PYq5C1ObNLYbhty/WK8BzMtndCv0S47XjGBLjQ9DJsYj3JDVxGQ==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
 
   '@colordx/core@5.5.0':
     resolution: {integrity: sha512-3PxTH8itZzltK0U9jTwVVnjLXvnDYuq3m+QXsHkENxWiPRh4WaoLcs1SQjqgZ55kS+QyirpH5BVwzP2gMVG6EQ==}
@@ -11099,6 +11107,10 @@ snapshots:
       '@capacitor/core': 8.4.1
 
   '@capacitor/synapse@1.0.4': {}
+
+  '@capawesome/capacitor-badge@8.0.2(@capacitor/core@8.4.1)':
+    dependencies:
+      '@capacitor/core': 8.4.1
 
   '@colordx/core@5.5.0': {}
 

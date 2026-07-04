@@ -40,6 +40,11 @@ extraResources:
     to: build/trinityTray.png
   - from: build/trinityTrayTemplate.png
     to: build/trinityTrayTemplate.png
+  # Windows taskbar unread-overlay badge (red dot). setOverlayIcon needs a real
+  # file resolvable via process.resourcesPath — see resolveOverlayIcon() in
+  # src/dock-badge.ts. macOS/Linux ignore it (they use app.setBadgeCount).
+  - from: build/unreadOverlay.png
+    to: build/unreadOverlay.png
 
 directories:
   output: release

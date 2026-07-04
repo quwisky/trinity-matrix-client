@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of } from 'rxjs';
 import { RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from './matrix-client.service';
 import { MediaService, type UploadedMedia } from './media.service';
@@ -177,6 +177,13 @@ function setup(
 }
 
 describe('TimelineService', () => {
+  beforeEach(() => {
+    // Viewing a room = the window is focused (the normal case). markRead only acks
+    // while focused; the unfocused / refocus paths are exercised explicitly below.
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
   it('maps message events to views and drops non-messages', () => {
     const svc = setup([
       fakeEvent({ id: '$1', sender: '@alice:hs', body: 'hi' }),
@@ -679,6 +686,195 @@ describe('TimelineService', () => {
 
     expect(received).toHaveLength(1);
     expect(received[0].getId()).toBe('$a'); // not the pending echo
+  });
+
+  it('does not ack the open room while the window is unfocused (badge accrues)', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false); // app not in focus
+    const received: { getId: () => string }[] = [];
+    const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+      }),
+      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+      relations: { getChildEventsForEvent: () => undefined },
+      on: () => {},
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: (e: { getId: () => string }) => {
+        received.push(e);
+        return Promise.resolve({});
+      },
+      scrollback: () => Promise.resolve(room),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    expect(received).toHaveLength(0); // unfocused → held back so unread accrues
+  });
+
+  it('re-acks the open room when the window regains focus', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
+    const received: { getId: () => string }[] = [];
+    const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+      }),
+      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+      relations: { getChildEventsForEvent: () => undefined },
+      on: () => {},
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: (e: { getId: () => string }) => {
+        received.push(e);
+        return Promise.resolve({});
+      },
+      scrollback: () => Promise.resolve(room),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+    expect(received).toHaveLength(0); // unfocused: not acked yet
+
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true); // user returns
+    window.dispatchEvent(new Event('focus')); // → onFocus → markRead
+
+    expect(received.map((e) => e.getId())).toEqual(['$a']);
+  });
+
+  it('close() removes the focus listener so a closed room is not re-acked on focus', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
+    const received: { getId: () => string }[] = [];
+    const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+      }),
+      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+      relations: { getChildEventsForEvent: () => undefined },
+      on: () => {},
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: (e: { getId: () => string }) => {
+        received.push(e);
+        return Promise.resolve({});
+      },
+      scrollback: () => Promise.resolve(room),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+    expect(received).toHaveLength(0); // unfocused: not acked yet
+
+    svc.close();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true); // user returns
+    window.dispatchEvent(new Event('focus')); // no room is open — must be a no-op
+
+    expect(received).toHaveLength(0); // the closed room is never re-acked
+  });
+
+  it('re-acks with the latest live event on refocus, not a stale snapshot', () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
+    const received: { getId: () => string }[] = [];
+    const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+      }),
+      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+      relations: { getChildEventsForEvent: () => undefined },
+      on: () => {},
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: (e: { getId: () => string }) => {
+        received.push(e);
+        return Promise.resolve({});
+      },
+      scrollback: () => Promise.resolve(room),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+    expect(received).toHaveLength(0); // unfocused: not acked yet
+
+    // The live timeline gains a newer event while still unfocused (no refresh
+    // is triggered for it in this scenario — e.g. it arrived just before focus).
+    events.push(fakeEvent({ id: '$b', sender: '@a:hs', body: 'yo' }));
+
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true); // user returns
+    window.dispatchEvent(new Event('focus')); // → onFocus → markRead(live timeline)
+
+    expect(received.map((e) => e.getId())).toEqual(['$b']); // targets the newer event
   });
 
   it('re-acks a live message in the open room, deduped across refreshes', () => {

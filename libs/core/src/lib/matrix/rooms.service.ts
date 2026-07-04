@@ -1,7 +1,8 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   EventType,
+  MatrixEventEvent,
   NotificationCountType,
   Preset,
   RoomEvent,
@@ -74,6 +75,7 @@ export interface MemberSummary {
 @Injectable({ providedIn: 'root' })
 export class RoomsService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly zone = inject(NgZone);
 
   /**
    * The client we currently have listeners on. The client is recreated on every
@@ -104,7 +106,9 @@ export class RoomsService {
   private readonly _memberRevision = signal(0);
   readonly memberRevision = this._memberRevision.asReadonly();
   private readonly onMembershipEvent = (): void =>
-    this._memberRevision.update((n) => n + 1);
+    // Matrix events fire outside Angular's zone; re-enter so the signal write
+    // triggers change detection (mirrors scheduleRefresh below).
+    this.zone.run(() => this._memberRevision.update((n) => n + 1));
 
   // Memoized member projection: a cached, sorted list per room keyed by a cheap
   // fingerprint of its joined members, plus one shared collator (avoids spinning up
@@ -118,6 +122,14 @@ export class RoomsService {
 
   private readonly _rooms = signal<RoomSummary[]>([]);
   readonly rooms = this._rooms.asReadonly();
+
+  /**
+   * App-wide unread total: the sum of every joined room's unread notification
+   * count. Drives the app-icon badge on every platform (see AppBadgeService).
+   */
+  readonly totalUnread = computed(() =>
+    this.rooms().reduce((sum, r) => sum + r.unreadCount, 0),
+  );
 
   /**
    * Room ids the `m.direct` account-data map records as direct messages, recomputed
@@ -150,8 +162,13 @@ export class RoomsService {
     client.on(ClientEvent.Room, this.onClientEvent);
     client.on(RoomEvent.Name, this.onClientEvent);
     client.on(RoomEvent.MyMembership, this.onClientEvent);
-    // Keep unread badges live: new-message increments arrive via Sync above;
-    // Receipt fires when a room is read and its unread count clears.
+    // Keep unread badges live. In an encrypted room the notification count is
+    // only recomputed once the message DECRYPTS (async), which lands after the
+    // Sync that carried the ciphertext — so relying on Sync alone drops those
+    // increments. Decrypted (re-emitted at the client) fires when that happens,
+    // so we re-read the now-updated count. Receipt fires when a room is read and
+    // its count clears. (UnreadNotifications is Room-only, not re-emitted here.)
+    client.on(MatrixEventEvent.Decrypted, this.onClientEvent);
     client.on(RoomEvent.Receipt, this.onClientEvent);
     // Membership-only revision (drives the member list); RoomState.members and
     // MyMembership are the events that change who is in a room (or their profile).
@@ -170,6 +187,7 @@ export class RoomsService {
     client.off(ClientEvent.Room, this.onClientEvent);
     client.off(RoomEvent.Name, this.onClientEvent);
     client.off(RoomEvent.MyMembership, this.onClientEvent);
+    client.off(MatrixEventEvent.Decrypted, this.onClientEvent);
     client.off(RoomEvent.Receipt, this.onClientEvent);
     client.off(RoomStateEvent.Members, this.onMembershipEvent);
     client.off(RoomEvent.MyMembership, this.onMembershipEvent);
@@ -194,7 +212,12 @@ export class RoomsService {
     queueMicrotask(() => {
       this.refreshScheduled = false;
       if (this.connectedClient) {
-        this.refresh();
+        // Matrix client events (and thus this microtask) run OUTSIDE Angular's
+        // zone, so the signal writes in refresh() wouldn't schedule change
+        // detection — the room list and unread badges would then only update on
+        // the next incidental zone tick, up to a full ~30s /sync poll later.
+        // Re-enter the zone so unread changes surface immediately.
+        this.zone.run(() => this.refresh());
       }
     });
   }

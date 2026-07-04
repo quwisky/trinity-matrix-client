@@ -27,6 +27,8 @@ export * from './lib/matrix/crypto.service';
 export * from './lib/matrix/password-uia';
 export * from './lib/matrix/verification.service';
 export * from './lib/platform/trinity-desktop-bridge';
+export * from './lib/platform/app-badge.service';
+export * from './lib/platform/mobile-badge.service';
 export * from './lib/storage/session-storage.service';
 export * from './lib/theme/theme.service';
 export * from './lib/settings/feature-flags.service';

@@ -20,12 +20,12 @@ const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 const ROOM_NAME = `Mobile drawer ${Date.now()}`;
 
-/** CS-API password login (bypasses the UI) — returns an access token. */
+/** CS-API password login (bypasses the UI) — returns the access token + user id. */
 async function apiLogin(
   hs: string,
   user: string,
   pass: string,
-): Promise<string> {
+): Promise<{ token: string; userId: string }> {
   const res = await fetch(`${hs}/_matrix/client/v3/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -38,20 +38,31 @@ async function apiLogin(
   if (!res.ok) {
     throw new Error(`CS-API login failed: ${res.status} ${await res.text()}`);
   }
-  return ((await res.json()) as { access_token: string }).access_token;
+  const json = (await res.json()) as { access_token: string; user_id: string };
+  return { token: json.access_token, userId: json.user_id };
 }
 
 /**
- * Seed a plain room via the CS API so the sidebar has a real channel to tap.
- * Deliberately bypasses the create-room UI (the header "+" action sheet + alert
- * dialog) — that flow is already covered end to end by e2e/features/rooms.mjs;
- * this file only needs *a* room to exercise the drawer's open/select/close
- * mechanics, and seeding it before `login()` means it's already part of the
- * account's initial sync rather than something each test has to wait to arrive.
+ * Seed a room via the CS API so the sidebar has a real channel to tap, and mark
+ * it as a direct message (`m.direct` account data) so it renders in the
+ * server rail's default Home view. Deliberately bypasses the create-room UI
+ * (the header "+" action sheet + alert dialog) — that flow is already covered
+ * end to end by e2e/features/rooms.mjs; this file only needs *a* room to
+ * exercise the drawer's open/select/close mechanics, and seeding it before
+ * `login()` means it's already part of the account's initial sync rather than
+ * something each test has to wait to arrive.
+ *
+ * The server rail's Home pill shows direct-message rooms only (non-DM rooms
+ * live under the Rooms pill, `data-testid="rail-rooms"` — see
+ * RoomsPage.visibleRooms()); RoomsService derives `directRoomIds` from the
+ * account's `m.direct` map, so tagging the seeded room there is what makes it
+ * show up without switching views (which the mobile drawer tests, running the
+ * closed-drawer assertion first, don't want to have to do).
  */
 async function seedRoom(
   hs: string,
   token: string,
+  userId: string,
   name: string,
 ): Promise<void> {
   const res = await fetch(`${hs}/_matrix/client/v3/createRoom`, {
@@ -65,6 +76,27 @@ async function seedRoom(
   if (!res.ok) {
     throw new Error(
       `CS-API createRoom failed: ${res.status} ${await res.text()}`,
+    );
+  }
+  const { room_id: roomId } = (await res.json()) as { room_id: string };
+
+  // Tag the room as a DM against a placeholder peer (the peer never needs to
+  // exist/join — m.direct is just account data mapping a user id to room ids;
+  // RoomsService only reads the map's values to build directRoomIds).
+  const dmRes = await fetch(
+    `${hs}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/m.direct`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ '@ghost:localhost': [roomId] }),
+    },
+  );
+  if (!dmRes.ok) {
+    throw new Error(
+      `CS-API m.direct account_data failed: ${dmRes.status} ${await dmRes.text()}`,
     );
   }
 }
@@ -83,12 +115,12 @@ test.describe('Mobile navigation drawer', () => {
   // Seed once for the whole file (shared account, same as navigation/settings
   // specs) — every test below just needs *a* room to tap.
   test.beforeAll(async () => {
-    const token = await apiLogin(
+    const { token, userId } = await apiLogin(
       session.hs as string,
       session.user as string,
       session.pass as string,
     );
-    await seedRoom(session.hs as string, token, ROOM_NAME);
+    await seedRoom(session.hs as string, token, userId, ROOM_NAME);
   });
 
   test.beforeEach(async ({ page }) => {
@@ -99,7 +131,7 @@ test.describe('Mobile navigation drawer', () => {
     page,
   }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
-    await channel.first().waitFor({ state: 'attached', timeout: 20_000 });
+    await channel.first().waitFor({ state: 'attached', timeout: 30_000 });
 
     // `data-testid="open-menu"` carries `md:hidden` on the button — only visible
     // below the `md` breakpoint.
@@ -132,7 +164,7 @@ test.describe('Mobile navigation drawer', () => {
     page,
   }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
-    await channel.first().waitFor({ state: 'attached', timeout: 20_000 });
+    await channel.first().waitFor({ state: 'attached', timeout: 30_000 });
 
     await page.getByTestId('open-menu').click();
     await expect(shellSide(page)).toBeInViewport();
@@ -151,7 +183,7 @@ test.describe('Mobile navigation drawer', () => {
     page,
   }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
-    await channel.first().waitFor({ state: 'attached', timeout: 20_000 });
+    await channel.first().waitFor({ state: 'attached', timeout: 30_000 });
 
     await page.getByTestId('open-menu').click();
     await expect(shellSide(page)).toBeInViewport();
