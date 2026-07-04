@@ -322,7 +322,14 @@ describe('CryptoService', () => {
   describe('lifecycle and resilience', () => {
     it('does not reject when a crypto call fails during refresh', async () => {
       const { svc, crypto } = setup({ defaultKeyId: 'k' });
-      crypto.isCrossSigningReady.mockRejectedValue(new Error('transient'));
+      // Model a real async SDK failure: a pending promise that rejects on the next
+      // tick. `mockRejectedValue` returns a *synchronously* pre-rejected promise,
+      // which trips zone.js's unhandled-rejection tracker in the window before
+      // `Promise.all` attaches its handler — logging noise for an error the service
+      // provably swallows (the assertion below).
+      crypto.isCrossSigningReady.mockImplementation(async () => {
+        throw new Error('transient');
+      });
       await expect(firstValueFrom(svc.refresh())).resolves.toBeUndefined();
     });
 
