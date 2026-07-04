@@ -1,5 +1,6 @@
-import { app } from 'electron';
+import { app, session } from 'electron';
 import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
+import { installMatrixCors } from './cors';
 import { buildMenu } from './menu';
 import {
   createWindow,
@@ -86,6 +87,12 @@ if (!app.requestSingleInstanceLock()) {
     app.setAppUserModelId(APP_USER_MODEL_ID);
 
     registerAppProtocol();
+    // Inject permissive CORS headers on the renderer's outbound homeserver
+    // traffic BEFORE the window loads its URL. The main window uses no
+    // `partition`, so it runs on session.defaultSession — the same session
+    // registerAppProtocol() serves `trinity://app` from. Scoped to remote
+    // http(s) only; see cors.ts (does not weaken webSecurity/sandbox/isolation).
+    installMatrixCors(session.defaultSession);
     buildMenu();
     createWindow();
     createTray();
