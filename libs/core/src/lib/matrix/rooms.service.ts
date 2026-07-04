@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   EventType,
@@ -74,6 +74,7 @@ export interface MemberSummary {
 @Injectable({ providedIn: 'root' })
 export class RoomsService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly zone = inject(NgZone);
 
   /**
    * The client we currently have listeners on. The client is recreated on every
@@ -104,7 +105,9 @@ export class RoomsService {
   private readonly _memberRevision = signal(0);
   readonly memberRevision = this._memberRevision.asReadonly();
   private readonly onMembershipEvent = (): void =>
-    this._memberRevision.update((n) => n + 1);
+    // Matrix events fire outside Angular's zone; re-enter so the signal write
+    // triggers change detection (mirrors scheduleRefresh below).
+    this.zone.run(() => this._memberRevision.update((n) => n + 1));
 
   // Memoized member projection: a cached, sorted list per room keyed by a cheap
   // fingerprint of its joined members, plus one shared collator (avoids spinning up
@@ -202,7 +205,12 @@ export class RoomsService {
     queueMicrotask(() => {
       this.refreshScheduled = false;
       if (this.connectedClient) {
-        this.refresh();
+        // Matrix client events (and thus this microtask) run OUTSIDE Angular's
+        // zone, so the signal writes in refresh() wouldn't schedule change
+        // detection — the room list and unread badges would then only update on
+        // the next incidental zone tick, up to a full ~30s /sync poll later.
+        // Re-enter the zone so unread changes surface immediately.
+        this.zone.run(() => this.refresh());
       }
     });
   }

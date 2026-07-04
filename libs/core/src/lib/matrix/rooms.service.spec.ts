@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { NgZone } from '@angular/core';
 import { ClientEvent } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
@@ -192,6 +193,39 @@ describe('RoomsService', () => {
     await Promise.resolve();
 
     expect(svc.totalUnread()).toBe(9);
+  });
+
+  it('runs listener-driven refreshes inside the Angular zone (badges surface immediately)', async () => {
+    const room = fakeRoom({ roomId: '!a:hs', name: 'a' });
+    const handlers = new Map<string, () => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [room],
+      on: (event: string, cb: () => void) => handlers.set(event, cb),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    const zone = TestBed.inject(NgZone);
+    svc.connect();
+
+    // Matrix client events fire OUTSIDE Angular's zone; the coalesced refresh must
+    // re-enter it, or change detection (and the rail + dock unread badges) wouldn't
+    // run until the next incidental tick — up to a ~30s /sync poll later.
+    const runSpy = vi.spyOn(zone, 'run');
+    handlers.get(ClientEvent.Sync)?.();
+    await Promise.resolve();
+
+    expect(runSpy).toHaveBeenCalled();
   });
 
   it('recomputes totalUnread when a room is added to the synced list', async () => {
