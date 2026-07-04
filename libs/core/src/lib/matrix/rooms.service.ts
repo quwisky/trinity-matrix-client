@@ -2,6 +2,7 @@ import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   EventType,
+  MatrixEventEvent,
   NotificationCountType,
   Preset,
   RoomEvent,
@@ -161,8 +162,13 @@ export class RoomsService {
     client.on(ClientEvent.Room, this.onClientEvent);
     client.on(RoomEvent.Name, this.onClientEvent);
     client.on(RoomEvent.MyMembership, this.onClientEvent);
-    // Keep unread badges live: new-message increments arrive via Sync above;
-    // Receipt fires when a room is read and its unread count clears.
+    // Keep unread badges live. In an encrypted room the notification count is
+    // only recomputed once the message DECRYPTS (async), which lands after the
+    // Sync that carried the ciphertext — so relying on Sync alone drops those
+    // increments. Decrypted (re-emitted at the client) fires when that happens,
+    // so we re-read the now-updated count. Receipt fires when a room is read and
+    // its count clears. (UnreadNotifications is Room-only, not re-emitted here.)
+    client.on(MatrixEventEvent.Decrypted, this.onClientEvent);
     client.on(RoomEvent.Receipt, this.onClientEvent);
     // Membership-only revision (drives the member list); RoomState.members and
     // MyMembership are the events that change who is in a room (or their profile).
@@ -181,6 +187,7 @@ export class RoomsService {
     client.off(ClientEvent.Room, this.onClientEvent);
     client.off(RoomEvent.Name, this.onClientEvent);
     client.off(RoomEvent.MyMembership, this.onClientEvent);
+    client.off(MatrixEventEvent.Decrypted, this.onClientEvent);
     client.off(RoomEvent.Receipt, this.onClientEvent);
     client.off(RoomStateEvent.Members, this.onMembershipEvent);
     client.off(RoomEvent.MyMembership, this.onMembershipEvent);

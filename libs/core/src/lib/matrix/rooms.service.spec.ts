@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { NgZone } from '@angular/core';
-import { ClientEvent } from 'matrix-js-sdk';
+import { ClientEvent, MatrixEventEvent } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -193,6 +193,41 @@ describe('RoomsService', () => {
     await Promise.resolve();
 
     expect(svc.totalUnread()).toBe(9);
+  });
+
+  it('refreshes unread on MatrixEventEvent.Decrypted (encrypted message decrypts late)', async () => {
+    const unread = { count: 0 };
+    const room = fakeRoom({ roomId: '!a:hs', name: 'a' });
+    room.getUnreadNotificationCount = (type?: string) =>
+      type === 'highlight' ? 0 : unread.count;
+    const handlers = new Map<string, () => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [room],
+      on: (event: string, cb: () => void) => handlers.set(event, cb),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    svc.connect();
+    expect(svc.totalUnread()).toBe(0);
+
+    // The count only settles once the ciphertext decrypts, which fires Decrypted
+    // (not a fresh Sync) — relying on Sync alone would drop the increment.
+    unread.count = 1;
+    handlers.get(MatrixEventEvent.Decrypted)?.();
+    await Promise.resolve();
+
+    expect(svc.totalUnread()).toBe(1);
   });
 
   it('runs listener-driven refreshes inside the Angular zone (badges surface immediately)', async () => {
