@@ -62,6 +62,12 @@ test.describe('Timeline virtualization', () => {
     );
 
     await login(page, session);
+
+    // The seeded room is a plain (non-DM) room, so it lives under the Rooms
+    // pill's view, not the default Home view (which shows direct messages
+    // only — see RoomsPage.visibleRooms()). Switch to Rooms before looking
+    // for its channel row.
+    await page.getByTestId('rail-rooms').click();
     await page
       .locator('.channel', { hasText: 'Virtualization E2E' })
       .first()
