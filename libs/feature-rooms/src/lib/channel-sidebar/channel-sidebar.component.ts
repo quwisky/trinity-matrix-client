@@ -1,9 +1,11 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   input,
   output,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
@@ -16,9 +18,11 @@ import {
   lucideCheck,
   lucideCircleMinus,
   lucideCommand,
+  lucideEllipsisVertical,
   lucideLogOut,
   lucidePlus,
   lucideSettings,
+  lucideStar,
   lucideUserPlus,
   lucideX,
 } from '@ng-icons/lucide';
@@ -32,6 +36,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
   imports: [
     AvatarComponent,
     NgIcon,
+    NgTemplateOutlet,
     HlmDropdownMenuTrigger,
     HlmDropdownMenu,
     HlmDropdownMenuItem,
@@ -43,9 +48,11 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
       lucideCheck,
       lucideCircleMinus,
       lucideCommand,
+      lucideEllipsisVertical,
       lucideLogOut,
       lucidePlus,
       lucideSettings,
+      lucideStar,
       lucideUserPlus,
       lucideX,
     }),
@@ -147,54 +154,27 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
           }
         }
 
-        @for (room of rooms(); track room.id) {
-          <div class="channel-row">
-            <button
-              class="channel"
-              [class.active]="activeRoomId() === room.id"
-              [class.unread]="room.hasUnread"
-              (click)="selectRoom.emit(room.id)"
-              [title]="room.name"
-            >
-              <trn-avatar
-                class="channel__avatar"
-                [mxc]="room.avatarMxc"
-                [initial]="room.initial"
-                [name]="room.name"
-                [size]="36"
-              />
-              <div class="channel__text">
-                <span class="channel__name">{{ room.name }}</span>
-                @if (room.lastMessage) {
-                  <span class="channel__preview">{{ room.lastMessage }}</span>
-                }
-              </div>
-              @if (room.highlightCount > 0) {
-                <span
-                  class="channel__badge"
-                  [attr.aria-label]="room.highlightCount + ' unread mentions'"
-                  >{{ badgeLabel(room.highlightCount) }}</span
-                >
-              } @else if (room.hasUnread) {
-                <span
-                  class="channel__badge channel__badge--muted"
-                  [attr.aria-label]="room.unreadCount + ' unread messages'"
-                  >{{ badgeLabel(room.unreadCount) }}</span
-                >
-              }
-            </button>
-            @if (spaceActive()) {
-              <button
-                class="channel__remove"
-                (click)="removeRoom.emit(room.id)"
-                [attr.aria-label]="'Remove ' + room.name + ' from this space'"
-                title="Remove from space"
-              >
-                <ng-icon name="lucideCircleMinus" aria-hidden="true" />
-              </button>
-            }
-          </div>
-        } @empty {
+        @if (favouriteRooms().length) {
+          <div class="category">Favourites</div>
+          @for (room of favouriteRooms(); track room.id) {
+            <ng-container
+              [ngTemplateOutlet]="roomRow"
+              [ngTemplateOutletContext]="{ $implicit: room }"
+            />
+          }
+          @if (otherRooms().length) {
+            <div class="sidebar__divider" role="separator"></div>
+          }
+        }
+
+        @for (room of otherRooms(); track room.id) {
+          <ng-container
+            [ngTemplateOutlet]="roomRow"
+            [ngTemplateOutletContext]="{ $implicit: room }"
+          />
+        }
+
+        @if (!rooms().length) {
           <p class="empty">No channels here yet.</p>
         }
 
@@ -307,6 +287,81 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
         </button>
       </footer>
 
+      <ng-template #roomRow let-room>
+        <div class="channel-row">
+          <button
+            class="channel"
+            [class.active]="activeRoomId() === room.id"
+            [class.unread]="room.hasUnread"
+            (click)="selectRoom.emit(room.id)"
+            [title]="room.name"
+          >
+            <trn-avatar
+              class="channel__avatar"
+              [mxc]="room.avatarMxc"
+              [initial]="room.initial"
+              [name]="room.name"
+              [size]="36"
+            />
+            <div class="channel__text">
+              <span class="channel__name">{{ room.name }}</span>
+              @if (room.lastMessage) {
+                <span class="channel__preview">{{ room.lastMessage }}</span>
+              }
+            </div>
+            @if (room.highlightCount > 0) {
+              <span
+                class="channel__badge"
+                [attr.aria-label]="room.highlightCount + ' unread mentions'"
+                >{{ badgeLabel(room.highlightCount) }}</span
+              >
+            } @else if (room.hasUnread) {
+              <span
+                class="channel__badge channel__badge--muted"
+                [attr.aria-label]="room.unreadCount + ' unread messages'"
+                >{{ badgeLabel(room.unreadCount) }}</span
+              >
+            }
+          </button>
+          <button
+            class="channel__menu"
+            [hlmDropdownMenuTrigger]="roomMenu"
+            align="end"
+            [attr.aria-label]="'Options for ' + room.name"
+            title="Room options"
+          >
+            <ng-icon name="lucideEllipsisVertical" aria-hidden="true" />
+          </button>
+        </div>
+
+        <ng-template #roomMenu>
+          <div hlmDropdownMenu>
+            <button
+              hlmDropdownMenuItem
+              (triggered)="
+                setFavourite.emit({ id: room.id, favourite: !room.favourite })
+              "
+              data-testid="room-favourite"
+            >
+              <ng-icon name="lucideStar" />
+              {{ room.favourite ? 'Unfavourite' : 'Favourite' }}
+            </button>
+            @if (spaceActive()) {
+              <div hlmDropdownMenuSeparator></div>
+              <button
+                hlmDropdownMenuItem
+                variant="destructive"
+                (triggered)="removeRoom.emit(room.id)"
+                data-testid="room-remove"
+              >
+                <ng-icon name="lucideCircleMinus" />
+                Remove from space
+              </button>
+            }
+          </div>
+        </ng-template>
+      </ng-template>
+
       <ng-template #accountMenu>
         <div hlmDropdownMenu>
           <div hlmDropdownMenuLabel class="truncate">{{ userName() }}</div>
@@ -331,6 +386,18 @@ export class ChannelSidebarComponent {
   /** Whether a space (not Home) is selected — gates the header space actions. */
   readonly spaceActive = input(false);
   readonly rooms = input<RoomSummary[]>([]);
+  /**
+   * Favourite rooms (`m.favourite`), rendered under a "Favourite" header. The service
+   * already sorts favourite-first, so a stable partition keeps activity order within
+   * each group.
+   */
+  readonly favouriteRooms = computed(() =>
+    this.rooms().filter((r) => r.favourite),
+  );
+  /** The rest of the rooms, rendered below the favourite group. */
+  readonly otherRooms = computed(() =>
+    this.rooms().filter((r) => !r.favourite),
+  );
   /** Not-yet-joined channels of the active space (the "More Channels" list). */
   readonly joinableRooms = input<SpaceChildRoom[]>([]);
   /** Sub-spaces of the active space (joined → Open, otherwise Join). */
@@ -359,6 +426,8 @@ export class ChannelSidebarComponent {
   readonly joinRoom = output<SpaceChildRoom>();
   /** Remove (unlink) a joined channel from the active space, by room id. */
   readonly removeRoom = output<string>();
+  /** Favourite / unfavourite a room (writes the `m.favourite` tag), by room id + target state. */
+  readonly setFavourite = output<{ id: string; favourite: boolean }>();
   /** Open a joined sub-space (select it in the rail), by room id. */
   readonly openChildSpace = output<string>();
   /** Accept / decline a pending invite by room id. */

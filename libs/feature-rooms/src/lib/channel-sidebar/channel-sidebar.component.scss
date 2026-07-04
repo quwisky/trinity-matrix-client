@@ -61,6 +61,13 @@
   padding: 12px 8px 4px;
 }
 
+// Separates the Favourites group from the rooms below it.
+.sidebar__divider {
+  height: 1px;
+  margin: 8px 8px 4px;
+  background: var(--trinity-divider);
+}
+
 .invite {
   display: flex;
   align-items: center;
@@ -123,15 +130,18 @@
   }
 }
 
-// Row wrapper so a joined channel can carry a (hover-revealed) remove action
+// Row wrapper so a joined channel can carry a (hover-revealed) options menu
 // alongside the selectable channel button without nesting buttons.
 .channel-row {
   display: flex;
   align-items: center;
   gap: 2px;
 
-  &:hover .channel__remove,
-  &:focus-within .channel__remove {
+  // Reveal the kebab on hover/focus, and keep it visible while its menu is open
+  // (the CDK menu overlay lives outside this row, so focus-within won't cover it).
+  &:hover .channel__menu,
+  &:focus-within .channel__menu,
+  .channel__menu[aria-expanded='true'] {
     opacity: 1;
   }
 }
@@ -213,7 +223,7 @@
   }
 }
 
-.channel__remove {
+.channel__menu {
   @include interactive-row;
 
   flex: 0 0 auto;
@@ -226,7 +236,7 @@
   opacity: 0;
 
   &:hover {
-    color: var(--destructive);
+    color: var(--trinity-text-bright);
   }
 }
 

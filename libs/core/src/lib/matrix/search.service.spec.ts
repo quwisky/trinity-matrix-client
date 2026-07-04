@@ -32,6 +32,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     hasUnread: false,
     lastMessage: '',
     activityTs: 0,
+    favourite: false,
     ...over,
   };
 }

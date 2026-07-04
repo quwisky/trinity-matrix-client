@@ -525,6 +525,11 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
   }
 
+  /** Sidebar kebab Favourite/Unfavourite: write (or clear) the room's `m.favourite` tag. */
+  onSetFavourite({ id, favourite }: { id: string; favourite: boolean }): void {
+    this.rooms.setFavourite(id, favourite);
+  }
+
   private applyRemoveFromSpace(spaceId: string, childId: string): void {
     runWithBusy(this.spaces.removeRoomFromSpace(spaceId, childId), {
       busy: this.spaceBusy,
