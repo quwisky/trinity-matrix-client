@@ -20,6 +20,8 @@ import {
   buildPrefixSums,
   computeWindow,
   offsetOf,
+  scrollCompensation,
+  type HeightChange,
   type WindowResult,
 } from './virtual-window';
 
@@ -172,10 +174,12 @@ export class VirtualMessageListComponent extends MessageListBase {
           if (idx >= 0) {
             // A raw scrollHeight delta is contaminated by the estimated spacer for
             // the (unrendered) prepended rows, so restore the reference row to its
-            // captured viewport offset via its computed offset.
+            // captured viewport offset via its computed offset (past the padding).
             el.scrollTop = Math.max(
               0,
-              offsetOf(this.prefix(), idx) - anchorOffset,
+              this.rowsRegionTop(el) +
+                offsetOf(this.prefix(), idx) -
+                anchorOffset,
             );
           } else {
             el.scrollTop = el.scrollHeight - prevHeight + prevTop;
@@ -338,6 +342,24 @@ export class VirtualMessageListComponent extends MessageListBase {
   }
 
   /**
+   * Content offset of the row region (the first `.vpad` spacer) from the scroll
+   * origin — the `.scroll` padding plus any `.load-older` banner rendered above the
+   * rows. `offsetOf()` measures from the top of that region while `scrollTop` is
+   * physical, so this bridges the two coordinate systems.
+   */
+  private rowsRegionTop(el: HTMLElement): number {
+    const firstVpad = el.querySelector('.vpad');
+    if (!firstVpad) {
+      return 0;
+    }
+    return (
+      firstVpad.getBoundingClientRect().top -
+      el.getBoundingClientRect().top +
+      el.scrollTop
+    );
+  }
+
+  /**
    * Observe the `.msg` box of every rendered row (adding new ones, dropping rows
    * that left the window). Observing a fresh element fires an immediate callback with
    * its size — that's how newly-rendered rows get measured.
@@ -383,7 +405,7 @@ export class VirtualMessageListComponent extends MessageListBase {
     const prefixSnapshot = this.prefix(); // pre-update offsets
     const idList = this.ids();
     const st = el.scrollTop;
-    let aboveDelta = 0;
+    const changes: HeightChange[] = [];
     let changed = false;
     for (const entry of entries) {
       const mid = this.observed.get(entry.target);
@@ -398,18 +420,14 @@ export class VirtualMessageListComponent extends MessageListBase {
       }
       this.measured.set(mid, newH);
       changed = true;
-      // While scrolled up, any change to a row ABOVE the fold shoves the read
-      // position (native anchoring is off): both a genuine reflow AND a first
-      // estimate→real measurement of a row entering from the top overscan (spacer →
-      // real element). Compensate it against its pre-update height (the estimate for
-      // a first measurement). When pinned to the bottom we re-stick below instead, so
-      // skip the delta there — shifting would un-pin.
-      if (!atBottom) {
-        const idx = idList.indexOf(mid);
-        const effPrior = prior ?? ESTIMATED_ROW_HEIGHT_PX;
-        if (idx >= 0 && offsetOf(prefixSnapshot, idx) + effPrior <= st) {
-          aboveDelta += newH - effPrior;
-        }
+      const idx = idList.indexOf(mid);
+      if (idx >= 0) {
+        // `prior` is the pre-update height — the estimate for a first measurement.
+        changes.push({
+          index: idx,
+          prior: prior ?? ESTIMATED_ROW_HEIGHT_PX,
+          next: newH,
+        });
       }
     }
     if (!changed) {
@@ -420,9 +438,22 @@ export class VirtualMessageListComponent extends MessageListBase {
         // Stay pinned to the newest message as measured heights settle.
         el.scrollTop = el.scrollHeight;
         this.scrollTop.set(el.scrollTop);
-      } else if (aboveDelta !== 0) {
-        el.scrollTop = Math.max(0, st + aboveDelta);
-        this.scrollTop.set(el.scrollTop);
+      } else {
+        // While scrolled up, a change to a row ABOVE the fold shoves the read
+        // position (native anchoring is off) — a genuine reflow OR a first
+        // estimate→real measurement of an overscan row entering from the top.
+        // Compensate in the same coordinate space as scrollTop (past the padding +
+        // load-older banner).
+        const delta = scrollCompensation(
+          changes,
+          prefixSnapshot,
+          st,
+          this.rowsRegionTop(el),
+        );
+        if (delta !== 0) {
+          el.scrollTop = Math.max(0, st + delta);
+          this.scrollTop.set(el.scrollTop);
+        }
       }
       this.heightVersion.update((v) => v + 1);
     });
@@ -451,7 +482,9 @@ export class VirtualMessageListComponent extends MessageListBase {
     }
     el.scrollTop = Math.max(
       0,
-      offsetOf(this.prefix(), idx) - el.clientHeight / 2,
+      this.rowsRegionTop(el) +
+        offsetOf(this.prefix(), idx) -
+        el.clientHeight / 2,
     );
     this.scrollTop.set(el.scrollTop);
     afterNextRender(

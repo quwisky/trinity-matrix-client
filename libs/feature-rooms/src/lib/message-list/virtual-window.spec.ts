@@ -5,6 +5,7 @@ import {
   indexAtOffset,
   offsetOf,
   rowHeight,
+  scrollCompensation,
   type RowHeights,
   type WindowInput,
 } from './virtual-window';
@@ -158,6 +159,66 @@ describe('virtual-window', () => {
       const r = run({ scrollTop: 100_000, viewportHeight: 100 });
       expect(r.endIndex).toBe(99);
       expect(r.bottomPadPx).toBe(0);
+    });
+  });
+
+  describe('scrollCompensation', () => {
+    // 100 rows × 10px each; prefix offsets 0, 10, …, 1000.
+    const prefix = buildPrefixSums(ids(100), heights({}, 10));
+
+    it('is 0 when nothing above the fold changed', () => {
+      // Row 50 (offset 500) is below scrollTop 100 — not above the fold.
+      expect(
+        scrollCompensation(
+          [{ index: 50, prior: 10, next: 30 }],
+          prefix,
+          100,
+          0,
+        ),
+      ).toBe(0);
+    });
+
+    it('compensates by the delta for a row fully above the fold', () => {
+      // Row 2 (offset 20, bottom 30 ≤ 100) grows by 40.
+      expect(
+        scrollCompensation([{ index: 2, prior: 10, next: 50 }], prefix, 100, 0),
+      ).toBe(40);
+    });
+
+    it('sums deltas across above-fold rows and ignores in-view ones', () => {
+      expect(
+        scrollCompensation(
+          [
+            { index: 1, prior: 10, next: 30 }, // above → +20
+            { index: 3, prior: 10, next: 5 }, // above (shrink) → -5
+            { index: 80, prior: 10, next: 100 }, // below the fold → ignored
+          ],
+          prefix,
+          100,
+          0,
+        ),
+      ).toBe(15);
+    });
+
+    it('accounts for regionTop (padding + load-older banner) at the fold', () => {
+      // Row 8 (offset 80, bottom 90): above scrollTop 100 with no region offset…
+      expect(
+        scrollCompensation([{ index: 8, prior: 10, next: 30 }], prefix, 100, 0),
+      ).toBe(20);
+      // …but with a 52px region offset (16 padding + 36 banner) its physical bottom
+      // is 142 > 100, so it straddles the fold and must NOT be compensated.
+      expect(
+        scrollCompensation(
+          [{ index: 8, prior: 10, next: 30 }],
+          prefix,
+          100,
+          52,
+        ),
+      ).toBe(0);
+    });
+
+    it('is empty-safe', () => {
+      expect(scrollCompensation([], prefix, 100, 0)).toBe(0);
     });
   });
 });

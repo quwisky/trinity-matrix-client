@@ -71,6 +71,41 @@ export function offsetOf(prefix: Float64Array, index: number): number {
   return prefix[clamped];
 }
 
+/** A rendered row that just changed height, with its PRE-change height. */
+export interface HeightChange {
+  readonly index: number;
+  /** Height before the change (the estimate for a first measurement). */
+  readonly prior: number;
+  readonly next: number;
+}
+
+/**
+ * How much to shift `scrollTop` to keep the read position stable after some rendered
+ * rows changed height, when the user is scrolled up (not pinned to the bottom). A row
+ * fully ABOVE the fold that grows or shrinks shoves everything below it — including
+ * the viewport — by its delta, so those deltas are summed.
+ *
+ * `prefix` are the PRE-change offsets. `regionTop` is the content offset of the row
+ * region from the scroll origin — the `.scroll` padding plus any load-older banner
+ * rendered above the rows — so the above-the-fold test is done in the same coordinate
+ * system as the physical `scrollTop`. Returns 0 when nothing above the fold changed.
+ */
+export function scrollCompensation(
+  changes: readonly HeightChange[],
+  prefix: Float64Array,
+  scrollTop: number,
+  regionTop: number,
+): number {
+  let delta = 0;
+  for (const c of changes) {
+    // Physical bottom edge of the row before the change.
+    if (regionTop + offsetOf(prefix, c.index) + c.prior <= scrollTop) {
+      delta += c.next - c.prior;
+    }
+  }
+  return delta;
+}
+
 /**
  * Index of the row that contains vertical offset `y` — the largest `i` in
  * `[0, N-1]` with `prefix[i] <= y`. A row spans `[prefix[i], prefix[i+1])`, so an
