@@ -1,5 +1,6 @@
-import { type MatrixClient } from 'matrix-js-sdk';
+import { HTTPError, type MatrixClient } from 'matrix-js-sdk';
 import { Observable, from, of, switchMap, throwError } from 'rxjs';
+import { retryTransient } from './transient-errors';
 
 /** Server-thumbnail dimensions, or null to fetch the resource as-is. */
 export type MediaResize = { w: number; h: number } | null;
@@ -68,7 +69,16 @@ export function fetchMediaBytes(
     switchMap((res) =>
       res.ok
         ? from(res.arrayBuffer())
-        : throwError(() => new Error(`Media fetch failed (${res.status})`)),
+        : // Throw an HTTPError carrying the status so retryTransient recognises a
+          // transient 503/5xx/429 and retries with backoff before the caller's
+          // catchError falls back (a plain Error would be treated as terminal).
+          throwError(
+            () =>
+              new HTTPError(`Media fetch failed (${res.status})`, res.status),
+          ),
     ),
+    // Retry a flaky homeserver a few times before the avatar/media services'
+    // existing catchError renders the placeholder.
+    retryTransient(),
   );
 }

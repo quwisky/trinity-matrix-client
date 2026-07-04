@@ -6,6 +6,11 @@ export * from './lib/matrix/invites.service';
 export * from './lib/matrix/search.service';
 export { isValidUserId } from './lib/matrix/room-create';
 export * from './lib/matrix/timeline.service';
+export {
+  isTransientMatrixError,
+  retryTransient,
+} from './lib/matrix/transient-errors';
+export * from './lib/error/trinity-error-handler';
 export * from './lib/matrix/threads.service';
 export { isEditableMessage } from './lib/matrix/message-view';
 export * from './lib/matrix/media.model';

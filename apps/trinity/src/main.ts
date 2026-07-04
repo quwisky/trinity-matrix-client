@@ -1,5 +1,6 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import {
+  ErrorHandler,
   inject,
   provideAppInitializer,
   provideZoneChangeDetection,
@@ -16,6 +17,7 @@ import {
   FeatureFlagsService,
   PUSH_CONFIG,
   ThemeService,
+  TrinityErrorHandler,
 } from '@trinity/core';
 import {
   AVATAR_RESOLVER,
@@ -42,6 +44,10 @@ const isElectron =
 bootstrapApplication(AppComponent, {
   providers: [
     provideZoneChangeDetection(),
+    // Quiet transient homeserver noise (503s / dropped connections during the
+    // initial-sync request burst) so SDK-internal rejections don't spam the
+    // console as ERROR; genuine errors still reach the default handler.
+    { provide: ErrorHandler, useClass: TrinityErrorHandler },
     // Spartan/helm CDK-overlay default: disable Angular 21's usePopover so helm
     // dialogs/tooltips render above position:fixed elements (e.g. the toaster).
     provideSpartanHlm(),

@@ -133,21 +133,30 @@ describe('AvatarService', () => {
   });
 
   it('does not cache a transient failure — a later resolve retries', async () => {
-    const { svc } = setup();
-    // Both attempts fail this time (offline blip).
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 502,
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-    } as unknown as Response);
-    await expect(
-      firstValueFrom(svc.resolve('mxc://hs/blip')),
-    ).resolves.toBeNull();
+    // A 502 is transient, so fetchMediaBytes now retries with backoff before the
+    // service falls back to null. Drive the timers so the test doesn't wait on
+    // real backoff delays.
+    vi.useFakeTimers();
+    try {
+      const { svc } = setup();
+      // Both attempts fail this time (offline blip).
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 502,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      } as unknown as Response);
+      const pending = firstValueFrom(svc.resolve('mxc://hs/blip'));
+      await vi.runAllTimersAsync(); // exhaust the retry backoff
+      await expect(pending).resolves.toBeNull();
 
-    // Network recovers; resolving the same avatar must refetch, not replay null.
-    fetchMock.mockResolvedValue(okResponse());
-    const url = await firstValueFrom(svc.resolve('mxc://hs/blip'));
-    expect(url).toBe('blob:av-1');
+      // Network recovers; resolving the same avatar must refetch, not replay null.
+      fetchMock.mockResolvedValue(okResponse());
+      const recovered = firstValueFrom(svc.resolve('mxc://hs/blip'));
+      await vi.runAllTimersAsync();
+      await expect(recovered).resolves.toBe('blob:av-1');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('releaseAll revokes every cached avatar URL and clears the cache', async () => {
