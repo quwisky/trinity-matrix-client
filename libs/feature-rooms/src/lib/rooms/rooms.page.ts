@@ -636,14 +636,14 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
-  onSendMedia(file: File): void {
+  onSendMedia({ file, caption }: { file: File; caption: string }): void {
     // The upload phase has no echo, so drive a determinate progress bar from the
     // upload fraction and surface a failure as a toast. Once the event is sent the
     // SDK echo + retry path takes over (like onSend). finalize() clears the bar on
     // success, error, or unsubscribe — runAction has no such hook, so subscribe here.
     this.uploadProgress.set(0);
     this.timeline
-      .sendMedia(file, (fraction) => this.uploadProgress.set(fraction))
+      .sendMedia(file, caption, (fraction) => this.uploadProgress.set(fraction))
       .pipe(
         finalize(() => this.uploadProgress.set(null)),
         takeUntilDestroyed(this.destroyRef),

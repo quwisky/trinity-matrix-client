@@ -1,6 +1,12 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, expect, it, beforeEach } from 'vitest';
-import type { ThreadSummary } from '@trinity/core';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { of } from 'rxjs';
+import {
+  MediaService,
+  type MediaPayload,
+  type ThreadSummary,
+} from '@trinity/core';
+import { FileSaveService } from '../media-save/file-save.service';
 import { MessageRowComponent, type MessageRow } from './message-row.component';
 
 function row(overrides: Partial<MessageRow> = {}): MessageRow {
@@ -21,7 +27,24 @@ function row(overrides: Partial<MessageRow> = {}): MessageRow {
     status: null,
     kind: 'text',
     media: null,
+    caption: null,
+    captionHtml: null,
     showHeader: true,
+    ...overrides,
+  };
+}
+
+/** A download-only file attachment — `kind:'file'` skips the async thumbnail
+ * resolve, so the row renders synchronously in jsdom. */
+function fileMedia(overrides: Partial<MediaPayload> = {}): MediaPayload {
+  return {
+    kind: 'file',
+    mxc: 'mxc://hs/doc',
+    file: null,
+    filename: 'doc.pdf',
+    mimeType: 'application/pdf',
+    thumbnailMxc: null,
+    thumbnailFile: null,
     ...overrides,
   };
 }
@@ -45,8 +68,74 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
 
 describe('MessageRowComponent', () => {
   beforeEach(() =>
-    TestBed.configureTestingModule({ imports: [MessageRowComponent] }),
+    TestBed.configureTestingModule({
+      imports: [MessageRowComponent],
+      // The media branch renders <trn-media-attachment>, which injects these.
+      providers: [
+        {
+          provide: MediaService,
+          useValue: {
+            resolveMedia: () => of(null),
+            downloadMedia: () => of({ blob: new Blob(), filename: 'doc.pdf' }),
+            pin: vi.fn(),
+            unpin: vi.fn(),
+          },
+        },
+        { provide: FileSaveService, useValue: { save: () => of(undefined) } },
+      ],
+    }),
   );
+
+  it('renders a plain caption below a media attachment', () => {
+    const fixture = TestBed.createComponent(MessageRowComponent);
+    fixture.componentRef.setInput(
+      'row',
+      row({ kind: 'file', media: fileMedia(), caption: 'look at this' }),
+    );
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement;
+    expect(el.querySelector('trn-media-attachment')).toBeTruthy();
+    expect(el.querySelector('.msg__text')?.textContent).toContain(
+      'look at this',
+    );
+  });
+
+  it('renders a rich (HTML) caption below a media attachment', () => {
+    const fixture = TestBed.createComponent(MessageRowComponent);
+    fixture.componentRef.setInput(
+      'row',
+      row({
+        kind: 'file',
+        media: fileMedia(),
+        caption: 'look here',
+        captionHtml: '<strong>look here</strong>',
+      }),
+    );
+    fixture.detectChanges();
+
+    const html = fixture.nativeElement.querySelector('.msg__text--html');
+    expect(html?.innerHTML).toContain('<strong>look here</strong>');
+  });
+
+  it('renders no caption text for an uncaptioned media message', () => {
+    const fixture = TestBed.createComponent(MessageRowComponent);
+    fixture.componentRef.setInput(
+      'row',
+      row({
+        kind: 'file',
+        media: fileMedia(),
+        caption: null,
+        captionHtml: null,
+      }),
+    );
+    fixture.detectChanges();
+
+    expect(
+      fixture.nativeElement.querySelector('trn-media-attachment'),
+    ).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.msg__text')).toBeNull();
+  });
 
   it('renders the message body and the hover toolbar', () => {
     const fixture = TestBed.createComponent(MessageRowComponent);

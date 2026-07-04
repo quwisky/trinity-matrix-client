@@ -44,6 +44,14 @@
       </div>
       @if (r.media) {
         <trn-media-attachment class="msg__media" [media]="r.media" />
+        @if (r.captionHtml) {
+          <div
+            class="msg__text msg__text--html"
+            [innerHTML]="r.captionHtml"
+          ></div>
+        } @else if (r.caption) {
+          <p class="msg__text">{{ r.caption }}</p>
+        }
       } @else if (r.html) {
         <div class="msg__text msg__text--html" [innerHTML]="r.html"></div>
       } @else {
@@ -61,6 +69,14 @@
     <div class="msg__body">
       @if (r.media) {
         <trn-media-attachment class="msg__media" [media]="r.media" />
+        @if (r.captionHtml) {
+          <div
+            class="msg__text msg__text--cont msg__text--html"
+            [innerHTML]="r.captionHtml"
+          ></div>
+        } @else if (r.caption) {
+          <p class="msg__text msg__text--cont">{{ r.caption }}</p>
+        }
       } @else if (r.html) {
         <div
           class="msg__text msg__text--cont msg__text--html"

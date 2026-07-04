@@ -14,7 +14,12 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucidePlus, lucideSend, lucideSmile } from '@ng-icons/lucide';
+import {
+  lucidePaperclip,
+  lucidePlus,
+  lucideSend,
+  lucideSmile,
+} from '@ng-icons/lucide';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
 import { HlmTextarea } from '@trinity/helm/textarea';
 import { HlmTooltip } from '@trinity/helm/tooltip';
@@ -57,7 +62,9 @@ const EMOJI_SUGGESTION_LIMIT = 8;
     HlmProgress,
     HlmProgressIndicator,
   ],
-  viewProviders: [provideIcons({ lucidePlus, lucideSend, lucideSmile })],
+  viewProviders: [
+    provideIcons({ lucidePaperclip, lucidePlus, lucideSend, lucideSmile }),
+  ],
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
 })
@@ -74,17 +81,26 @@ export class MessageComposerComponent {
    * concurrent multi-device edit, a late echo) never clobbers in-progress text.
    */
   readonly editTargetId = input<string | null>(null);
+  /** Active room/thread id. A change discards any staged (unsent) attachment —
+   * the composer instance is reused across rooms, so it must not leak. */
+  readonly roomId = input<string | null>(null);
   /** Sender name of the message being replied to, or '' when not replying. */
   readonly replyingTo = input('');
   /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
   readonly uploadProgress = input<number | null>(null);
   readonly submitText = output<string>();
-  readonly submitMedia = output<File>();
+  /** A staged attachment plus its optional caption, emitted on submit. */
+  readonly submitMedia = output<{ file: File; caption: string }>();
   readonly cancelEdit = output<void>();
   readonly cancelReply = output<void>();
   readonly editLast = output<void>();
 
   readonly text = signal('');
+  /** A picked/pasted attachment held for a caption, sent on the next submit
+   * (Enter / send button) — not uploaded immediately. */
+  readonly pendingFile = signal<File | null>(null);
+  /** Object URL previewing a staged image, else null (revoked on clear/destroy). */
+  readonly pendingPreview = signal<string | null>(null);
   readonly pickerOpen = signal(false);
   /** Match the emoji picker's chrome to the app's active theme. */
   readonly isDarkMode = computed(() => this.theme.resolved() === 'dark');
@@ -123,7 +139,22 @@ export class MessageComposerComponent {
   private wasEditTargetId: string | null = null;
   private wasReplying = false;
 
+  private wasRoomId: string | null | undefined = undefined;
+
   constructor() {
+    // Revoke a staged image's preview object URL on teardown.
+    this.destroyRef.onDestroy(() => this.setPreview(null));
+
+    // Drop a staged (unsent) attachment when the room/thread changes — it was
+    // staged to send here, and the reused composer must not carry it elsewhere.
+    effect(() => {
+      const id = this.roomId();
+      if (id !== this.wasRoomId) {
+        this.wasRoomId = id;
+        untracked(() => this.clearPending());
+      }
+    });
+
     // Highlight the first suggestion whenever the result set changes.
     effect(() => {
       this.emojiMatches();
@@ -214,8 +245,26 @@ export class MessageComposerComponent {
     this.emojiQuery.set(null);
   }
 
-  /** Emit the current text (shared by Enter and the send button). */
+  /** Send on Enter / the send button: a staged attachment (with the text as its
+   * caption) takes precedence, else the plain text message. */
   submit(): void {
+    // A staged attachment sends as media with the text as its caption. Never mixes
+    // with an edit (attach is disabled while editing), so edit mode ignores it.
+    const file = this.editing() ? null : this.pendingFile();
+    if (file) {
+      this.submitMedia.emit({ file, caption: this.text().trim() });
+      // A media send carries no reply relation, so end any active reply — else
+      // the banner lingers and the next plain message silently replies to a
+      // now-stale target.
+      if (this.replyingTo()) {
+        this.cancelReply.emit();
+      }
+      this.clearPending();
+      this.text.set('');
+      this.emojiQuery.set(null);
+      queueMicrotask(() => this.autoGrow());
+      return;
+    }
     const value = this.text().trim();
     if (!value) {
       return;
@@ -328,7 +377,7 @@ export class MessageComposerComponent {
         .subscribe({
           next: (file) => {
             if (file) {
-              this.submitMedia.emit(file);
+              this.stagePending(file);
             }
           },
           // A user-cancel resolves to null above; this catches a denied photo
@@ -349,14 +398,39 @@ export class MessageComposerComponent {
     );
   }
 
-  /** Hidden file input change → emit the picked file, then reset for re-picking. */
+  /** Hidden file input change → stage the picked file, then reset for re-picking. */
   onFilePicked(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (file) {
-      this.submitMedia.emit(file);
+      this.stagePending(file);
     }
     input.value = ''; // let the same file be picked again
+  }
+
+  /** Hold a picked/pasted file for a caption instead of sending immediately.
+   * A preview object URL is made for images and revoked when it's replaced. */
+  private stagePending(file: File): void {
+    this.setPreview(
+      file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+    );
+    this.pendingFile.set(file);
+    queueMicrotask(() => this.textarea()?.nativeElement.focus());
+  }
+
+  /** Drop the staged attachment (× button, Escape, or after it's sent). */
+  clearPending(): void {
+    this.setPreview(null);
+    this.pendingFile.set(null);
+  }
+
+  /** Swap the preview object URL, revoking the previous one. */
+  private setPreview(url: string | null): void {
+    const prev = this.pendingPreview();
+    if (prev && prev !== url) {
+      URL.revokeObjectURL(prev);
+    }
+    this.pendingPreview.set(url);
   }
 
   /**
@@ -366,8 +440,9 @@ export class MessageComposerComponent {
    * paste is left untouched.
    */
   onPaste(event: ClipboardEvent): void {
-    // One upload at a time (matches the disabled attach button); let text paste through.
-    if (this.uploadProgress() !== null) {
+    // While editing, attachments are disabled (an edit can't become media), so
+    // let the paste fall through to the textarea. Also one upload at a time.
+    if (this.editing() || this.uploadProgress() !== null) {
       return;
     }
     const data = event.clipboardData;
@@ -386,7 +461,7 @@ export class MessageComposerComponent {
     }
     if (image) {
       event.preventDefault(); // don't also drop the raw image into the textarea
-      this.submitMedia.emit(image);
+      this.stagePending(image);
     }
   }
 
@@ -397,6 +472,10 @@ export class MessageComposerComponent {
     }
     if (this.pickerOpen()) {
       this.pickerOpen.set(false);
+      return;
+    }
+    if (this.pendingFile()) {
+      this.clearPending();
       return;
     }
     if (this.replyingTo()) {
@@ -431,8 +510,8 @@ export class MessageComposerComponent {
       return;
     }
     // Empty composer + Up arrow → edit the last message (Discord-style).
-    // Otherwise let the key move the cursor normally.
-    if (this.editing() || this.text().length > 0) {
+    // Otherwise (editing, typed text, or a staged attachment) move the cursor.
+    if (this.editing() || this.text().length > 0 || this.pendingFile()) {
       return;
     }
     event.preventDefault();

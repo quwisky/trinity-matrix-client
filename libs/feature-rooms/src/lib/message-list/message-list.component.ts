@@ -74,7 +74,7 @@ export class MessageListComponent {
   /** Open the thread rooted at this event id (raised by a row's indicator). */
   readonly openThread = output<string>();
   readonly send = output<string>();
-  readonly sendMedia = output<File>();
+  readonly sendMedia = output<{ file: File; caption: string }>();
   readonly retry = output<string>();
   readonly editMessage = output<{ id: string; body: string }>();
   readonly deleteMessage = output<string>();

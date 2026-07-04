@@ -13,6 +13,9 @@ describe('MessageComposerComponent', () => {
 
   beforeEach(() => {
     toastShow = vi.fn();
+    // jsdom has no object-URL API; stub it for the staged-image preview.
+    URL.createObjectURL = vi.fn(() => 'blob:preview');
+    URL.revokeObjectURL = vi.fn();
     TestBed.configureTestingModule({
       imports: [MessageComposerComponent],
       providers: [{ provide: TrnToastService, useValue: { show: toastShow } }],
@@ -186,13 +189,13 @@ describe('MessageComposerComponent', () => {
     expect(cancelled).toBe(true);
   });
 
-  it('emits submitMedia with the picked file and resets the input for re-picking', () => {
+  it('stages a picked file and sends it with the typed caption on submit', () => {
     const fixture = TestBed.createComponent(MessageComposerComponent);
     fixture.detectChanges();
     const cmp = fixture.componentInstance;
 
-    let emitted: File | undefined;
-    cmp.submitMedia.subscribe((f) => (emitted = f));
+    let emitted: { file: File; caption: string } | undefined;
+    cmp.submitMedia.subscribe((e) => (emitted = e));
 
     const file = new File([new Uint8Array([1])], 'pic.png', {
       type: 'image/png',
@@ -206,8 +209,17 @@ describe('MessageComposerComponent', () => {
     });
     input.dispatchEvent(new Event('change'));
 
-    expect(emitted).toBe(file);
+    // Staged, not sent immediately; the input resets so the same file re-picks.
+    expect(cmp.pendingFile()).toBe(file);
+    expect(emitted).toBeUndefined();
     expect(input.value).toBe('');
+
+    // A caption + Enter sends the file and caption together, then clears.
+    cmp.text.set('nice shot');
+    cmp.submit();
+    expect(emitted).toEqual({ file, caption: 'nice shot' });
+    expect(cmp.pendingFile()).toBeNull();
+    expect(cmp.text()).toBe('');
   });
 
   it('opens the hidden file input on attach (web fallback)', () => {
@@ -368,13 +380,13 @@ describe('MessageComposerComponent', () => {
     return { event, preventDefault };
   }
 
-  it('sends a pasted image as an attachment and prevents the default paste', () => {
+  it('stages a pasted image (preventing the default paste) and sends on submit', () => {
     const fixture = TestBed.createComponent(MessageComposerComponent);
     fixture.detectChanges();
     const cmp = fixture.componentInstance;
 
-    let emitted: File | undefined;
-    cmp.submitMedia.subscribe((f) => (emitted = f));
+    let emitted: { file: File; caption: string } | undefined;
+    cmp.submitMedia.subscribe((e) => (emitted = e));
     const file = new File([new Uint8Array([1])], 'paste.png', {
       type: 'image/png',
     });
@@ -382,17 +394,19 @@ describe('MessageComposerComponent', () => {
 
     cmp.onPaste(event);
 
-    expect(emitted).toBe(file);
+    expect(cmp.pendingFile()).toBe(file);
     expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(emitted).toBeUndefined();
+
+    cmp.submit(); // no caption typed
+    expect(emitted).toEqual({ file, caption: '' });
   });
 
-  it('sends a pasted image exposed only via clipboard items (WebKit fallback)', () => {
+  it('stages a pasted image exposed only via clipboard items (WebKit fallback)', () => {
     const fixture = TestBed.createComponent(MessageComposerComponent);
     fixture.detectChanges();
     const cmp = fixture.componentInstance;
 
-    let emitted: File | undefined;
-    cmp.submitMedia.subscribe((f) => (emitted = f));
     const file = new File([new Uint8Array([1])], 'paste.png', {
       type: 'image/png',
     });
@@ -402,7 +416,131 @@ describe('MessageComposerComponent', () => {
 
     cmp.onPaste(event);
 
-    expect(emitted).toBe(file);
+    expect(cmp.pendingFile()).toBe(file);
+  });
+
+  it('discards a staged attachment when the room changes', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('roomId', '!a:hs');
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    const file = new File([new Uint8Array([1])], 'pic.png', {
+      type: 'image/png',
+    });
+    cmp.onPaste(pasteEvent({ files: [file] }).event);
+    expect(cmp.pendingFile()).toBe(file);
+
+    // Switch room — the file was staged for room A and must not leak into B.
+    fixture.componentRef.setInput('roomId', '!b:hs');
+    fixture.detectChanges();
+    expect(cmp.pendingFile()).toBeNull();
+  });
+
+  it('Escape discards a staged attachment', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    const file = new File([new Uint8Array([1])], 'pic.png', {
+      type: 'image/png',
+    });
+    cmp.onPaste(pasteEvent({ files: [file] }).event);
+    expect(cmp.pendingFile()).toBe(file);
+
+    cmp.onEscape();
+    expect(cmp.pendingFile()).toBeNull();
+  });
+
+  it('ends an active reply when a staged attachment is sent', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('replyingTo', 'Alice');
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    let cancelledReply = false;
+    cmp.cancelReply.subscribe(() => (cancelledReply = true));
+    let emitted: { file: File; caption: string } | undefined;
+    cmp.submitMedia.subscribe((e) => (emitted = e));
+
+    const file = new File([new Uint8Array([1])], 'pic.png', {
+      type: 'image/png',
+    });
+    cmp.onPaste(pasteEvent({ files: [file] }).event);
+    cmp.submit();
+
+    // Media carries no reply relation, so the reply banner must be cleared
+    // (otherwise the next plain message would silently reply to Alice).
+    expect(emitted).toEqual({ file, caption: '' });
+    expect(cancelledReply).toBe(true);
+  });
+
+  it('does not stage a pasted image while editing (paste falls through)', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.componentRef.setInput('editing', true);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    const file = new File([new Uint8Array([1])], 'x.png', {
+      type: 'image/png',
+    });
+    const { event, preventDefault } = pasteEvent({ files: [file] });
+    cmp.onPaste(event);
+
+    expect(cmp.pendingFile()).toBeNull();
+    expect(preventDefault).not.toHaveBeenCalled(); // browser pastes normally
+  });
+
+  it('does not edit-last on ArrowUp when a file is staged', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    const file = new File([new Uint8Array([1])], 'x.png', {
+      type: 'image/png',
+    });
+    cmp.onPaste(pasteEvent({ files: [file] }).event);
+
+    let count = 0;
+    cmp.editLast.subscribe(() => count++);
+    cmp.onArrowUp(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+    expect(count).toBe(0); // staged file suppresses the edit-last shortcut
+  });
+
+  it('clearPending drops a staged attachment', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+
+    const file = new File([new Uint8Array([1])], 'x.png', {
+      type: 'image/png',
+    });
+    cmp.onPaste(pasteEvent({ files: [file] }).event);
+    expect(cmp.pendingFile()).not.toBeNull();
+
+    cmp.clearPending();
+    expect(cmp.pendingFile()).toBeNull();
+    expect(cmp.pendingPreview()).toBeNull();
+  });
+
+  it('enables the send button with a staged file even when the text is empty', () => {
+    const fixture = TestBed.createComponent(MessageComposerComponent);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    const send = () =>
+      fixture.nativeElement.querySelector(
+        '.composer__send',
+      ) as HTMLButtonElement;
+
+    expect(send().disabled).toBe(true); // empty text, no attachment
+
+    const file = new File([new Uint8Array([1])], 'x.png', {
+      type: 'image/png',
+    });
+    cmp.onPaste(pasteEvent({ files: [file] }).event);
+    fixture.detectChanges();
+
+    expect(send().disabled).toBe(false); // a staged file is enough to send
   });
 
   it('lets a non-image (text) paste through untouched', () => {

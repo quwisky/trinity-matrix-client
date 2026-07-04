@@ -164,10 +164,12 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     }
   }
 
-  onSendMedia(file: File): void {
+  onSendMedia({ file, caption }: { file: File; caption: string }): void {
     this.uploadProgress.set(0);
     this.threads
-      .sendMediaToThread(file, (fraction) => this.uploadProgress.set(fraction))
+      .sendMediaToThread(file, caption, (fraction) =>
+        this.uploadProgress.set(fraction),
+      )
       .pipe(
         finalize(() => this.uploadProgress.set(null)),
         takeUntilDestroyed(this.destroyRef),

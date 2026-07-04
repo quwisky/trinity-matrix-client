@@ -28,6 +28,30 @@
   </div>
 }
 
+@if (pendingFile(); as file) {
+  <div class="composer__pending" data-testid="composer-pending">
+    @if (pendingPreview(); as src) {
+      <img class="composer__pending-thumb" [src]="src" alt="" />
+    } @else {
+      <span class="composer__pending-icon" aria-hidden="true">
+        <ng-icon name="lucidePaperclip" />
+      </span>
+    }
+    <span class="composer__pending-name" [title]="file.name">{{
+      file.name
+    }}</span>
+    <button
+      type="button"
+      class="composer__pending-remove"
+      aria-label="Remove attachment"
+      data-testid="composer-pending-remove"
+      (click)="clearPending()"
+    >
+      ✕
+    </button>
+  </div>
+}
+
 <div class="composer">
   @if (pickerOpen()) {
     <emoji-mart
@@ -88,7 +112,7 @@
     hlmTooltip="Attach"
     aria-label="Attach a file"
     data-testid="composer-attach"
-    [disabled]="uploadProgress() !== null"
+    [disabled]="uploadProgress() !== null || editing()"
     (click)="onAttach()"
   >
     <ng-icon name="lucidePlus" aria-hidden="true" />
@@ -100,7 +124,11 @@
     rows="1"
     [value]="text()"
     [placeholder]="
-      editing() ? 'Edit message…' : placeholder() || 'Message #' + roomName()
+      pendingFile()
+        ? 'Add a caption…'
+        : editing()
+          ? 'Edit message…'
+          : placeholder() || 'Message #' + roomName()
     "
     aria-autocomplete="list"
     [attr.aria-controls]="emojiOpen() ? 'emoji-suggestions' : null"
@@ -133,7 +161,7 @@
     class="composer__send"
     hlmTooltip="Send"
     aria-label="Send message"
-    [disabled]="!text().trim()"
+    [disabled]="!text().trim() && !pendingFile()"
     (click)="submit()"
   >
     <ng-icon name="lucideSend" aria-hidden="true" />
