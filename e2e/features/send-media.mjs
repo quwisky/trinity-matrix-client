@@ -1,11 +1,13 @@
-// Send-media (encrypted upload) e2e — note-to-self.
+// Send-media (encrypted upload + MSC2530 caption) e2e — note-to-self.
 //
 // Drives the real send path against a live homeserver: create an E2EE room via
 // the CS API, log into the app as that user, set up encryption, open the room,
-// pick a file through the composer's hidden <input>, and assert the app renders
-// its OWN sent attachment — i.e. it uploaded the ciphertext, then downloaded and
-// DECRYPTED it back into an <img> (data-media-state="ready"). One context is
-// enough: a device decrypts the media it sent itself.
+// pick a file through the composer's hidden <input> — which STAGES it for a
+// caption (not an immediate upload) — type a markdown caption, press Enter, and
+// assert the app renders its OWN sent attachment (uploaded ciphertext, then
+// downloaded + DECRYPTED back into an <img>, data-media-state="ready") WITH the
+// caption rendered below it (markdown applied). One context is enough: a device
+// decrypts the media + caption it sent itself.
 //
 // Env (same as verify-sas):
 //   TRINITY_HS    default https://localhost:8448 (bundled Synapse+Caddy)
@@ -168,13 +170,27 @@ async function main() {
     const channel = page.locator('.channel', { hasText: ROOM_NAME });
     await channel.first().click({ timeout: 60_000 });
 
-    // Pick a file through the composer's hidden <input> (no native dialog).
-    log('attaching a 1×1 PNG via the composer file input');
+    // Stage a file through the composer's hidden <input> — it's HELD for a
+    // caption, not uploaded immediately.
+    log('staging a 1×1 PNG via the composer file input');
     await page.getByTestId('composer-file-input').setInputFiles({
       name: 'pixel.png',
       mimeType: 'image/png',
       buffer: PNG_1x1,
     });
+    // The staged-attachment chip appears; nothing is sent yet.
+    await page
+      .getByTestId('composer-pending')
+      .waitFor({ state: 'visible', timeout: 15_000 });
+    log('attachment staged (preview chip shown, not yet uploaded) ✓');
+
+    // Type a markdown caption and press Enter — sends file + caption as ONE
+    // message (MSC2530: body=caption, filename=pixel.png).
+    const composer = page.locator('textarea.composer__input');
+    await composer.click();
+    await composer.fill('hello **caption** e2e');
+    await composer.press('Enter');
+    log('typed a caption and pressed Enter');
 
     // The app uploads the ciphertext, sends m.image, renders the echo, then
     // downloads + decrypts its own attachment back into the bubble.
@@ -192,6 +208,59 @@ async function main() {
     log(
       `media bubble ready (kind=${await bubble.getAttribute('data-media-kind')}) ✓`,
     );
+
+    // The caption renders below the media with markdown applied
+    // (**caption** → <strong>) — proving the MSC2530 caption round-trips.
+    const captionStrong = page.locator('.msg__text--html strong', {
+      hasText: 'caption',
+    });
+    await captionStrong.waitFor({ state: 'visible', timeout: 15_000 });
+    const captionText = await page
+      .locator('.msg__body', { has: page.locator('.msg__media') })
+      .locator('.msg__text')
+      .first()
+      .innerText();
+    if (!captionText.includes('hello') || !captionText.includes('e2e')) {
+      throw new Error(`caption text not found below media: "${captionText}"`);
+    }
+    log(`caption rendered below the media ("${captionText.trim()}") ✓`);
+
+    // The staged chip is gone once sent.
+    await page
+      .getByTestId('composer-pending')
+      .waitFor({ state: 'detached', timeout: 10_000 });
+    log('staged chip cleared after send ✓');
+
+    // Second send: an attachment with NO caption — Enter on an empty caption
+    // still sends, and no caption text is rendered.
+    log('staging a second file with no caption');
+    await page.getByTestId('composer-file-input').setInputFiles({
+      name: 'plain.png',
+      mimeType: 'image/png',
+      buffer: PNG_1x1,
+    });
+    await page
+      .getByTestId('composer-pending')
+      .waitFor({ state: 'visible', timeout: 15_000 });
+    await page.locator('textarea.composer__input').press('Enter');
+
+    // Both media bubbles resolve; the caption count stays at 1 (the first send).
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll(
+          '[data-testid="media-bubble"][data-media-state="ready"]',
+        ).length >= 2,
+      undefined,
+      { timeout: 60_000, polling: 250 },
+    );
+    const captionCount = await page
+      .locator('.msg__text--html')
+      .filter({ hasText: 'caption' })
+      .count();
+    if (captionCount !== 1) {
+      throw new Error(`expected exactly 1 caption, found ${captionCount}`);
+    }
+    log('second (uncaptioned) media sent — no stray caption ✓');
 
     console.log('\nRESULT: PASS');
     exit = 0;
