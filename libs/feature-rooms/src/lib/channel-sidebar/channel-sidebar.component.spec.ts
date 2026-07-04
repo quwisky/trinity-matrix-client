@@ -339,6 +339,92 @@ describe('ChannelSidebarComponent', () => {
     expect(joined?.roomId).toBe('!n:hs');
   });
 
+  it('renders a Favourites header with favourite rows grouped above the rest', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [
+      room({ id: '!a:hs', name: 'alpha' }),
+      room({ id: '!f:hs', name: 'favourite-room', favourite: true }),
+      room({ id: '!b:hs', name: 'bravo' }),
+    ]);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement;
+    const categories = [...el.querySelectorAll('.category')].map(
+      (c: HTMLElement) => c.textContent,
+    );
+    expect(categories).toContain('Favourites');
+
+    const channels = [...el.querySelectorAll('.channel__name')].map(
+      (n: HTMLElement) => n.textContent,
+    );
+    // The favourite room renders first (under "Favourites"); the rest keep their order.
+    expect(channels).toEqual(['favourite-room', 'alpha', 'bravo']);
+  });
+
+  it('omits the Favourites header when no room is favourited', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [
+      room({ id: '!a:hs', name: 'alpha' }),
+      room({ id: '!b:hs', name: 'bravo' }),
+    ]);
+    fixture.detectChanges();
+
+    const categories = [
+      ...fixture.nativeElement.querySelectorAll('.category'),
+    ].map((c: HTMLElement) => c.textContent);
+    expect(categories).not.toContain('Favourites');
+  });
+
+  it('emits setFavourite to favourite a non-favourite room via the kebab menu', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [
+      room({ id: '!a:hs', name: 'general', favourite: false }),
+    ]);
+    fixture.detectChanges();
+
+    let emitted: { id: string; favourite: boolean } | undefined;
+    fixture.componentInstance.setFavourite.subscribe((e) => (emitted = e));
+
+    const kebab: HTMLElement =
+      fixture.nativeElement.querySelector('.channel__menu');
+    kebab.click(); // open the menu (rendered into the CDK overlay)
+    fixture.detectChanges();
+
+    const favouriteItem = document.querySelector<HTMLElement>(
+      '[data-testid="room-favourite"]',
+    );
+    expect(favouriteItem?.textContent).toContain('Favourite');
+    favouriteItem?.click();
+
+    expect(emitted).toEqual({ id: '!a:hs', favourite: true });
+    fixture.destroy();
+  });
+
+  it('emits setFavourite to unfavourite a favourite room via the kebab menu', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [
+      room({ id: '!a:hs', name: 'general', favourite: true }),
+    ]);
+    fixture.detectChanges();
+
+    let emitted: { id: string; favourite: boolean } | undefined;
+    fixture.componentInstance.setFavourite.subscribe((e) => (emitted = e));
+
+    const kebab: HTMLElement =
+      fixture.nativeElement.querySelector('.channel__menu');
+    kebab.click();
+    fixture.detectChanges();
+
+    const favouriteItem = document.querySelector<HTMLElement>(
+      '[data-testid="room-favourite"]',
+    );
+    expect(favouriteItem?.textContent).toContain('Unfavourite');
+    favouriteItem?.click();
+
+    expect(emitted).toEqual({ id: '!a:hs', favourite: false });
+    fixture.destroy();
+  });
+
   it('emits removeRoom for a joined channel only while a space is active', () => {
     const fixture = TestBed.createComponent(ChannelSidebarComponent);
     fixture.componentRef.setInput('rooms', [

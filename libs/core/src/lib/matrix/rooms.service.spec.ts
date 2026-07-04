@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { NgZone } from '@angular/core';
-import { ClientEvent, MatrixEventEvent } from 'matrix-js-sdk';
+import { ClientEvent, MatrixEventEvent, RoomEvent } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -165,6 +165,56 @@ describe('RoomsService', () => {
     );
     expect(byId['!e:hs']).toBe(true);
     expect(byId['!p:hs']).toBe(false);
+  });
+
+  it('flags a room carrying the m.favourite tag as favourite', () => {
+    const svc = setup([
+      fakeRoom({ roomId: '!f:hs', name: 'starred', favourite: true }),
+      fakeRoom({ roomId: '!p:hs', name: 'plain' }),
+    ]);
+    const byId = Object.fromEntries(
+      svc.rooms().map((r) => [r.id, r.favourite]),
+    );
+    expect(byId['!f:hs']).toBe(true);
+    expect(byId['!p:hs']).toBe(false);
+  });
+
+  it('floats a favourite room above a more recently active non-favourite one', () => {
+    const svc = setup([
+      // Most recently active, but not favourited.
+      fakeRoom({ roomId: '!new:hs', name: 'zulu', activity: 500 }),
+      // Older, but favourited — favourite-first beats activityTs.
+      fakeRoom({
+        roomId: '!fav:hs',
+        name: 'alpha',
+        activity: 100,
+        favourite: true,
+      }),
+      fakeRoom({ roomId: '!old:hs', name: 'bravo', activity: 50 }),
+    ]);
+    expect(svc.rooms().map((r) => r.id)).toEqual([
+      '!fav:hs',
+      '!new:hs',
+      '!old:hs',
+    ]);
+  });
+
+  it('falls back to name when two favourite rooms tie on activity', () => {
+    const svc = setup([
+      fakeRoom({
+        roomId: '!z:hs',
+        name: 'zulu',
+        activity: 100,
+        favourite: true,
+      }),
+      fakeRoom({
+        roomId: '!a:hs',
+        name: 'alpha',
+        activity: 100,
+        favourite: true,
+      }),
+    ]);
+    expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs', '!z:hs']);
   });
 
   it('rewires onto a new client after re-login instead of freezing', () => {
@@ -623,5 +673,93 @@ describe('RoomsService directRoomIds', () => {
 
   it('yields an empty set when m.direct is empty', () => {
     expect(setup({}).directRoomIds().size).toBe(0);
+  });
+});
+
+// setFavourite writes/clears the `m.favourite` room tag; the read model refreshes
+// once the write resolves. A remote favourite change (another device) arrives as a
+// RoomEvent.Tags on the client and is coalesced into a refresh like any other listener.
+describe('RoomsService setFavourite', () => {
+  function setup(initialFavourite: boolean) {
+    let currentRooms = [
+      fakeRoom({
+        roomId: '!a:hs',
+        name: 'general',
+        favourite: initialFavourite,
+      }),
+    ];
+    const setRoomTag = vi.fn().mockResolvedValue({});
+    const deleteRoomTag = vi.fn().mockResolvedValue({});
+    const handlers = new Map<string, () => void>();
+    const client = {
+      getRooms: () => currentRooms,
+      setRoomTag,
+      deleteRoomTag,
+      on: (event: string, cb: () => void) => handlers.set(event, cb),
+      off: vi.fn(),
+    };
+    const matrix = {
+      isInitialized: true,
+      instance: client,
+    } as unknown as MatrixClientService;
+
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsService,
+        { provide: MatrixClientService, useValue: matrix },
+      ],
+    });
+    const svc = TestBed.inject(RoomsService);
+    svc.connect();
+    return {
+      svc,
+      setRoomTag,
+      deleteRoomTag,
+      handlers,
+      setRooms: (rooms: ReturnType<typeof fakeRoom>[]) => {
+        currentRooms = rooms;
+      },
+    };
+  }
+
+  it('favouriting a room writes the m.favourite tag and refreshes on resolve', async () => {
+    const { svc, setRoomTag, deleteRoomTag, setRooms } = setup(false);
+    // The real server would now report the tag on the next read; simulate that
+    // so the post-write refresh picks up the change.
+    setRooms([fakeRoom({ roomId: '!a:hs', name: 'general', favourite: true })]);
+
+    svc.setFavourite('!a:hs', true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setRoomTag).toHaveBeenCalledWith('!a:hs', 'm.favourite', {});
+    expect(deleteRoomTag).not.toHaveBeenCalled();
+    expect(svc.rooms()[0].favourite).toBe(true);
+  });
+
+  it('unfavouriting a room deletes the m.favourite tag and refreshes on resolve', async () => {
+    const { svc, setRoomTag, deleteRoomTag, setRooms } = setup(true);
+    setRooms([
+      fakeRoom({ roomId: '!a:hs', name: 'general', favourite: false }),
+    ]);
+
+    svc.setFavourite('!a:hs', false);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(deleteRoomTag).toHaveBeenCalledWith('!a:hs', 'm.favourite');
+    expect(setRoomTag).not.toHaveBeenCalled();
+    expect(svc.rooms()[0].favourite).toBe(false);
+  });
+
+  it('rebuilds the list on a RoomEvent.Tags (remote favourite change from another device)', async () => {
+    const { svc, handlers, setRooms } = setup(false);
+    expect(svc.rooms()[0].favourite).toBe(false);
+
+    setRooms([fakeRoom({ roomId: '!a:hs', name: 'general', favourite: true })]);
+    handlers.get(RoomEvent.Tags)?.();
+    await Promise.resolve();
+
+    expect(svc.rooms()[0].favourite).toBe(true);
   });
 });

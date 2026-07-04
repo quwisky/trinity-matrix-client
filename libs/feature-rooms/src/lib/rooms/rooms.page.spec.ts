@@ -137,6 +137,30 @@ describe('RoomsPage action error feedback', () => {
     expect(toastShow).not.toHaveBeenCalled();
   });
 
+  it('onSetFavourite favourites a room by delegating to RoomsService.setFavourite', () => {
+    const page = build();
+    const rooms = TestBed.inject(RoomsService);
+    const setFavourite = vi.fn();
+    (rooms as unknown as { setFavourite: typeof setFavourite }).setFavourite =
+      setFavourite;
+
+    page.onSetFavourite({ id: '!r:hs', favourite: true });
+
+    expect(setFavourite).toHaveBeenCalledWith('!r:hs', true);
+  });
+
+  it('onSetFavourite unfavourites a room by delegating to RoomsService.setFavourite', () => {
+    const page = build();
+    const rooms = TestBed.inject(RoomsService);
+    const setFavourite = vi.fn();
+    (rooms as unknown as { setFavourite: typeof setFavourite }).setFavourite =
+      setFavourite;
+
+    page.onSetFavourite({ id: '!r:hs', favourite: false });
+
+    expect(setFavourite).toHaveBeenCalledWith('!r:hs', false);
+  });
+
   it('opens the threads-list panel for the active room', () => {
     const page = build();
     page.activeRoomId.set('!r:hs');
