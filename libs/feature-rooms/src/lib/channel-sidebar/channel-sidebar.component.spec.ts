@@ -132,6 +132,31 @@ describe('ChannelSidebarComponent', () => {
     expect(el.querySelectorAll('.channel.unread').length).toBe(2);
   });
 
+  it('caps badgeLabel exactly at the 99/100 boundary', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.badgeLabel(99)).toBe('99');
+    expect(fixture.componentInstance.badgeLabel(100)).toBe('99+');
+  });
+
+  it('shows the exact uncapped unread count on a muted badge', () => {
+    const fixture = TestBed.createComponent(ChannelSidebarComponent);
+    fixture.componentRef.setInput('rooms', [
+      room({
+        id: '!u:hs',
+        name: 'unread',
+        hasUnread: true,
+        unreadCount: 7,
+        highlightCount: 0,
+      }),
+    ]);
+    fixture.detectChanges();
+
+    const muted = fixture.nativeElement.querySelector('.channel__badge--muted');
+    expect(muted.textContent.trim()).toBe('7');
+  });
+
   it('shows only the new-chat affordance on Home (no space actions)', () => {
     const fixture = TestBed.createComponent(ChannelSidebarComponent);
     fixture.detectChanges(); // spaceActive defaults to false
