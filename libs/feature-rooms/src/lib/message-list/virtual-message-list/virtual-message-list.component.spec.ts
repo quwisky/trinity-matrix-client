@@ -175,7 +175,10 @@ describe('VirtualMessageListComponent', () => {
     fixture.detectChanges();
 
     expect(cmp.windowedRows().some((r) => r.id === target)).toBe(true);
-    expect(scroll.querySelector(`[data-mid="${target}"]`)).not.toBeNull();
+    const row = scroll.querySelector(`[data-mid="${target}"]`);
+    expect(row).not.toBeNull();
+    // Flashed by the deferred afterNextRender path, once the row is on-screen.
+    expect(row?.classList.contains('msg--flash')).toBe(true);
   });
 
   it('does not re-jump when the timeline changes after a jump', () => {
@@ -247,6 +250,18 @@ describe('VirtualMessageListComponent', () => {
 
     fixture.componentInstance.jumpTo('$5');
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it('flashes an already-rendered row on jump (in-window path)', () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const fixture = TestBed.createComponent(VirtualMessageListComponent);
+    fixture.componentRef.setInput('messages', many(10)); // short → all rendered
+    fixture.detectChanges();
+
+    fixture.componentInstance.jumpTo('$5');
+
+    const row = fixture.nativeElement.querySelector('[data-mid="$5"]');
+    expect(row.classList.contains('msg--flash')).toBe(true);
   });
 
   it('is a no-op when jumping to an unloaded event', () => {

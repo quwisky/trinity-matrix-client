@@ -141,6 +141,28 @@ export abstract class MessageListBase {
     this.rowCache.clear();
   }
 
+  /**
+   * Briefly highlight a just-jumped-to message row (after `jumpTo` scrolls it into
+   * view) so the eye lands on it. Resets any in-flight flash with a forced reflow so a
+   * repeat jump to the same row re-triggers the animation, and self-clears on
+   * `animationend`.
+   */
+  protected flash(el: Element | null | undefined): void {
+    if (!el) {
+      return;
+    }
+    el.classList.remove('msg--flash');
+    void (el as HTMLElement).offsetWidth; // reflow to restart the CSS animation
+    el.classList.add('msg--flash');
+    el.addEventListener(
+      'animationend',
+      () => el.classList.remove('msg--flash'),
+      {
+        once: true,
+      },
+    );
+  }
+
   startEdit(row: MessageRow): void {
     this.replyingToId.set(null);
     this.editingId.set(row.id);

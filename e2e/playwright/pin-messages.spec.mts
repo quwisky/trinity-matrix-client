@@ -189,6 +189,19 @@ test.describe('Pin messages', () => {
     // chosen event id, which RoomsPage.openPinnedPanel turns into a
     // messageSearchTarget jump, the same mechanism in-room search uses).
     await pinRow.locator('.pin-item__main').click();
+
+    // The jump also briefly flashes the target row — jumpTo() scrolls it into view
+    // and MessageListBase.flash() adds `msg--flash` (message-row.component.scss: a
+    // 1.6s fade-out animation that self-removes the class on `animationend`).
+    // Assert it lands promptly, with a timeout SHORTER than the 1.6s animation, so
+    // a later poll can't false-pass on a stale (already-faded) state — the panel's
+    // dialog-close → messageSearchTarget → jumpTo chain runs asynchronously, and
+    // Playwright's own polling (well under the 1.5s window) catches the class
+    // whether it lands on this tick or the next render.
+    await expect(targetRow.first()).toHaveClass(/msg--flash/, {
+      timeout: 1_500,
+    });
+
     await expect(
       page.getByRole('heading', { name: 'Pinned messages' }),
     ).toBeHidden({ timeout: 10_000 });

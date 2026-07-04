@@ -22,6 +22,21 @@
   }
 }
 
+// Brief attention flash when a jump (reply / search / pinned panel) lands on a row.
+.msg--flash {
+  animation: msg-flash 1.6s ease-out;
+}
+
+@keyframes msg-flash {
+  from {
+    background: color-mix(in srgb, var(--trinity-accent) 28%, transparent);
+  }
+
+  to {
+    background: transparent;
+  }
+}
+
 .msg--cont {
   padding-top: 0;
 }

@@ -478,6 +478,7 @@ export class VirtualMessageListComponent extends MessageListBase {
     const existing = el.querySelector(`[data-mid="${messageId}"]`);
     if (existing) {
       existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.flash(existing);
       return;
     }
     el.scrollTop = Math.max(
@@ -488,10 +489,11 @@ export class VirtualMessageListComponent extends MessageListBase {
     );
     this.scrollTop.set(el.scrollTop);
     afterNextRender(
-      () =>
-        el
-          .querySelector(`[data-mid="${messageId}"]`)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      () => {
+        const target = el.querySelector(`[data-mid="${messageId}"]`);
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        this.flash(target);
+      },
       { injector: this.injector },
     );
   }

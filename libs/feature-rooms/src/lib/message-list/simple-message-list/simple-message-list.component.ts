@@ -175,10 +175,13 @@ export class SimpleMessageListComponent extends MessageListBase {
     }
   }
 
-  /** Scroll the original message into view when its reply preview is clicked. */
+  /** Scroll a message into view (reply preview, in-room search, or pinned panel) and
+   * briefly highlight it. */
   jumpTo(messageId: string): void {
-    this.scrollEl()
-      ?.nativeElement.querySelector(`[data-mid="${messageId}"]`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const el = this.scrollEl()?.nativeElement.querySelector(
+      `[data-mid="${messageId}"]`,
+    );
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    this.flash(el);
   }
 }
