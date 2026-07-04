@@ -308,13 +308,14 @@ describe('RoomsPage space filtering', () => {
     expect(page.activeSpaceName()).toBe('!s:hs');
   });
 
-  it('the Rooms view shows only non-DM rooms', () => {
+  it('the Rooms view shows non-DM rooms that do not belong to a space', () => {
     const page = build();
     page.onShowRooms();
 
     expect(page.roomsView()).toBe(true);
-    // Every room except the DM '!a:hs', in recency order.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs', '!b:hs']);
+    // Only the spaceless non-DM room '!c:hs': the DM '!a:hs' and the space child
+    // '!b:hs' (owned by '!s:hs') are both excluded.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
     expect(page.sidebarTitle()).toBe('Rooms');
   });
 
@@ -324,7 +325,7 @@ describe('RoomsPage space filtering', () => {
     page.onShowRooms(); // …switching to Rooms leaves it
 
     expect(page.activeSpaceId()).toBeNull();
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs', '!b:hs']);
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
   });
 
   it('selecting a space leaves the Rooms view', () => {
@@ -351,9 +352,10 @@ describe('RoomsPage space filtering', () => {
 
   it('sums unread notifications for the Home (DMs) and Rooms rail badges', () => {
     const page = build();
-    // directRoomIds = {!a:hs}; DMs: a(5). Non-DM: c(2) + b(3) = 5.
+    // directRoomIds = {!a:hs}; DMs: a(5). Rooms view (non-DM, spaceless): c(2).
+    // b(3) is a child of '!s:hs' → counted on the space pill, not the Rooms badge.
     expect(page.homeUnread()).toBe(5);
-    expect(page.roomsUnread()).toBe(5);
+    expect(page.roomsUnread()).toBe(2);
   });
 
   it('sums unread notifications per space for the space-pill badges', () => {
@@ -365,7 +367,7 @@ describe('RoomsPage space filtering', () => {
   it('re-derives homeUnread/roomsUnread when a room unreadCount changes underneath', () => {
     const page = build();
     expect(page.homeUnread()).toBe(5); // a(5)
-    expect(page.roomsUnread()).toBe(5); // c(2) + b(3)
+    expect(page.roomsUnread()).toBe(2); // c(2); b is a space child → excluded
 
     const rooms = TestBed.inject(RoomsService)
       .rooms as unknown as WritableSignal<RoomSummary[]>;
@@ -373,7 +375,7 @@ describe('RoomsPage space filtering', () => {
       list.map((r) => (r.id === '!c:hs' ? { ...r, unreadCount: 20 } : r)),
     );
 
-    expect(page.roomsUnread()).toBe(23); // c(20) + b(3)
+    expect(page.roomsUnread()).toBe(20); // c(20); b still excluded
     expect(page.homeUnread()).toBe(5); // DM total untouched
   });
 
@@ -394,14 +396,77 @@ describe('RoomsPage space filtering', () => {
   it('re-derives the aggregates when a room is removed from the list', () => {
     const page = build();
     expect(page.spaceUnread()['!s:hs']).toBe(8);
-    expect(page.roomsUnread()).toBe(5);
+    expect(page.roomsUnread()).toBe(2); // c(2); b is a space child → excluded
 
     const rooms = TestBed.inject(RoomsService)
       .rooms as unknown as WritableSignal<RoomSummary[]>;
     rooms.update((list) => list.filter((r) => r.id !== '!b:hs'));
 
     expect(page.spaceUnread()['!s:hs']).toBe(5); // only a(5) remains
-    expect(page.roomsUnread()).toBe(2); // only c(2) remains
+    expect(page.roomsUnread()).toBe(2); // still just c(2) — b was already excluded
+  });
+
+  it('a spaceless room disappears from the Rooms view once a space claims it', () => {
+    const page = build();
+    page.onShowRooms();
+    // Before: only '!c:hs' is spaceless non-DM.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
+    expect(page.roomsUnread()).toBe(2);
+
+    const spaces = TestBed.inject(SpacesService)
+      .spaces as unknown as WritableSignal<SpaceSummary[]>;
+    // '!s:hs' now also claims '!c:hs' (e.g. it was just added as a child).
+    spaces.update((list) =>
+      list.map((s) =>
+        s.id === '!s:hs'
+          ? { ...s, childRoomIds: [...s.childRoomIds, '!c:hs'] }
+          : s,
+      ),
+    );
+
+    expect(page.visibleRooms()).toEqual([]); // '!c:hs' is now space-owned
+    expect(page.roomsUnread()).toBe(0); // its unread leaves the Rooms badge too
+  });
+
+  it('a space child reappears in the Rooms view once its space no longer lists it', () => {
+    const page = build();
+    page.onShowRooms();
+    // '!b:hs' is owned by '!s:hs' — hidden from the Rooms view.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
+    expect(page.roomsUnread()).toBe(2);
+
+    const spaces = TestBed.inject(SpacesService)
+      .spaces as unknown as WritableSignal<SpaceSummary[]>;
+    // The space is removed entirely (as leaving it would surface via sync).
+    spaces.set([]);
+
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs', '!b:hs']);
+    expect(page.roomsUnread()).toBe(5); // c(2) + b(3), now both spaceless
+  });
+
+  it('a room owned by two spaces is still excluded once it is dropped from only one', () => {
+    const page = build();
+    const spaces = TestBed.inject(SpacesService)
+      .spaces as unknown as WritableSignal<SpaceSummary[]>;
+    // '!b:hs' is now a child of both '!s:hs' and a second space '!t:hs'.
+    spaces.update((list) => [...list, spaceSummary('!t:hs', ['!b:hs'])]);
+    page.onShowRooms();
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // b still hidden
+
+    // Dropping '!b:hs' from '!s:hs' alone must not surface it — '!t:hs' still owns it.
+    spaces.update((list) =>
+      list.map((s) =>
+        s.id === '!s:hs'
+          ? {
+              ...s,
+              childRoomIds: s.childRoomIds.filter((id) => id !== '!b:hs'),
+            }
+          : s,
+      ),
+    );
+
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // still hidden
+    expect(page.roomsUnread()).toBe(2); // b's unread stays off the Rooms badge
   });
 });
 
@@ -435,6 +500,7 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
       roomSummary('!a:hs', 'alpha', 5), // space 1's only child
       roomSummary('!b:hs', 'bravo', 3), // space 2's child
       roomSummary('!c:hs', 'charlie', 7), // space 2's other child
+      roomSummary('!free:hs', 'freestanding', 6), // non-DM, in no space
     ];
     const childRoomIds = vi.fn((id: string | null) => {
       if (id === '!s1:hs') return ['!a:hs'];
@@ -508,7 +574,9 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
       '!s2:hs': 10, // bravo(3) + charlie(7)
     });
     expect(page.homeUnread()).toBe(4); // the DM only
-    expect(page.roomsUnread()).toBe(15); // a(5) + b(3) + c(7), DM excluded
+    // The Rooms view is spaceless non-DM rooms only: just freestanding(6).
+    // a/b/c belong to spaces (counted on their pills) and the DM is excluded.
+    expect(page.roomsUnread()).toBe(6);
   });
 });
 
