@@ -141,25 +141,50 @@
 
     <div class="chat-body">
       @if (activeRoom(); as room) {
-        <trn-message-list
-          [messages]="timeline.messages()"
-          [threadSummaries]="threads.summaries()"
-          [loadingOlder]="timeline.loadingOlder()"
-          [canLoadOlder]="timeline.canLoadOlder()"
-          [roomId]="activeRoomId()"
-          [roomName]="room.name"
-          [uploadProgress]="uploadProgress()"
-          [jumpToId]="messageSearchTarget()"
-          (loadOlder)="loadOlder()"
-          (openThread)="onOpenThread($event)"
-          (send)="onSend($event)"
-          (sendMedia)="onSendMedia($event)"
-          (retry)="timeline.retry($event)"
-          (editMessage)="onEdit($event)"
-          (deleteMessage)="onDelete($event)"
-          (react)="onReact($event)"
-          (reply)="onReply($event)"
-        />
+        <!-- The experimental flag swaps in the windowed timeline. Both take the
+             same inputs/outputs (MessageListBase); flipping the flag re-creates the
+             chosen component fresh. -->
+        @if (flags.virtualTimeline()) {
+          <trn-virtual-message-list
+            [messages]="timeline.messages()"
+            [threadSummaries]="threads.summaries()"
+            [loadingOlder]="timeline.loadingOlder()"
+            [canLoadOlder]="timeline.canLoadOlder()"
+            [roomId]="activeRoomId()"
+            [roomName]="room.name"
+            [uploadProgress]="uploadProgress()"
+            [jumpToId]="messageSearchTarget()"
+            (loadOlder)="loadOlder()"
+            (openThread)="onOpenThread($event)"
+            (send)="onSend($event)"
+            (sendMedia)="onSendMedia($event)"
+            (retry)="timeline.retry($event)"
+            (editMessage)="onEdit($event)"
+            (deleteMessage)="onDelete($event)"
+            (react)="onReact($event)"
+            (reply)="onReply($event)"
+          />
+        } @else {
+          <trn-simple-message-list
+            [messages]="timeline.messages()"
+            [threadSummaries]="threads.summaries()"
+            [loadingOlder]="timeline.loadingOlder()"
+            [canLoadOlder]="timeline.canLoadOlder()"
+            [roomId]="activeRoomId()"
+            [roomName]="room.name"
+            [uploadProgress]="uploadProgress()"
+            [jumpToId]="messageSearchTarget()"
+            (loadOlder)="loadOlder()"
+            (openThread)="onOpenThread($event)"
+            (send)="onSend($event)"
+            (sendMedia)="onSendMedia($event)"
+            (retry)="timeline.retry($event)"
+            (editMessage)="onEdit($event)"
+            (deleteMessage)="onDelete($event)"
+            (react)="onReact($event)"
+            (reply)="onReply($event)"
+          />
+        }
         @if (membersOpen()) {
           <trn-member-list
             class="chat-members"

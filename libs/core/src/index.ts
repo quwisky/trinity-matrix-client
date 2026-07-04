@@ -24,4 +24,5 @@ export * from './lib/matrix/verification.service';
 export * from './lib/platform/trinity-desktop-bridge';
 export * from './lib/storage/session-storage.service';
 export * from './lib/theme/theme.service';
+export * from './lib/settings/feature-flags.service';
 export * from './lib/guards/auth.guard';

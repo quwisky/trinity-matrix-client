@@ -1,0 +1,43 @@
+@use '../../styles/mixins' as *;
+
+:host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--trinity-chat);
+}
+
+.scroll {
+  @include scrollable;
+
+  // Allow the flex child to shrink below its content height so it scrolls
+  // instead of growing the column.
+  flex: 1;
+  min-height: 0;
+  padding: 16px 16px 8px;
+
+  // Windowing keeps the read position via manual scrollTop math, so disable native
+  // scroll anchoring rather than letting it fight the changing spacer heights.
+  overflow-anchor: none;
+}
+
+// Spacers standing in for the off-screen rows above/below the window. Must not
+// shrink in the flex column.
+.vpad {
+  flex: 0 0 auto;
+}
+
+.load-older {
+  text-align: center;
+  padding: 8px 0 12px;
+  font-size: 13px;
+  color: var(--trinity-text-muted);
+}
+
+.empty {
+  color: var(--trinity-text-muted);
+  text-align: center;
+  padding: 24px;
+}

@@ -37,6 +37,7 @@ import {
   MatrixClientService,
   MediaService,
   NotificationService,
+  FeatureFlagsService,
   PushService,
   RoomsService,
   SpacesService,
@@ -53,7 +54,8 @@ import { MessageSearchService } from '../message-search/message-search.service';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
-import { MessageListComponent } from '../message-list/message-list.component';
+import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
+import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { ThreadPanelService } from '../thread/thread-panel.service';
@@ -77,7 +79,8 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
     ServerRailComponent,
     ChannelSidebarComponent,
     MemberListComponent,
-    MessageListComponent,
+    SimpleMessageListComponent,
+    VirtualMessageListComponent,
     EncryptionBannerComponent,
     ConnectivityBannerComponent,
   ],
@@ -98,6 +101,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
   readonly threads = inject(ThreadsService);
+  readonly flags = inject(FeatureFlagsService);
   private readonly threadPanel = inject(ThreadPanelService);
   private readonly userPicker = inject(UserPickerService);
   private readonly switcher = inject(QuickSwitcherService);

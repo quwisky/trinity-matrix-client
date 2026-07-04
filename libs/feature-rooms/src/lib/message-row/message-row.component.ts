@@ -19,7 +19,8 @@ export interface MessageRow extends MessageView {
 
 /**
  * One presentational message row, shared by the main timeline ({@link
- * MessageListComponent}) and the thread view so both render identically — sender
+ * SimpleMessageListComponent} / {@link VirtualMessageListComponent}) and the thread
+ * view so all render identically — sender
  * header/continuation, reply preview, media/markdown/text body, reactions, the
  * hover toolbar, and (main timeline only) a thread indicator.
  *

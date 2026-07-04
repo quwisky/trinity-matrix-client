@@ -15,6 +15,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
 import {
   HlmRadio,
   HlmRadioGroup,
@@ -22,6 +23,7 @@ import {
 } from '@trinity/helm/radio-group';
 import { AvatarComponent, PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import {
+  FeatureFlagsService,
   ProfileService,
   ThemeService,
   type ThemePreference,
@@ -29,8 +31,8 @@ import {
 import { DevicesSectionComponent } from '../devices/devices-section.component';
 
 /**
- * Settings shell hosting Profile (display name + avatar) and Appearance
- * (light/dark/system theme). Device management lands here in a later M9 increment.
+ * Settings shell hosting Profile (display name + avatar), Appearance
+ * (light/dark/system theme), device management, and experimental feature flags.
  */
 @Component({
   selector: 'trn-settings',
@@ -46,6 +48,7 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
     HlmTooltip,
     HlmInput,
     HlmLabel,
+    HlmCheckbox,
     HlmRadioGroup,
     HlmRadio,
     HlmRadioIndicator,
@@ -54,6 +57,7 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
 })
 export class SettingsPage {
   readonly theme = inject(ThemeService);
+  readonly flags = inject(FeatureFlagsService);
   private readonly profileSvc = inject(ProfileService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly location = inject(Location);

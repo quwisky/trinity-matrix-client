@@ -41,7 +41,7 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
  * the shared {@link MessageComposerComponent} so composing behaves identically
  * (Enter sends, edit/reply banners, emoji, attachments).
  *
- * Orchestration mirrors {@link MessageListComponent} but routes every action
+ * Orchestration mirrors {@link SimpleMessageListComponent} but routes every action
  * through {@link ThreadsService}'s thread-scoped methods, which carry the thread
  * relation so sends/edits/replies stay in the thread. Presented via
  * {@link ThreadPanelService} as a full-height, right-aligned {@link TrnDialogService}
