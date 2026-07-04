@@ -28,8 +28,9 @@ describe('ServerRailComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.pill.home')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.pill.rooms')).toBeTruthy();
     const spacePills = fixture.nativeElement.querySelectorAll(
-      '.pill:not(.home):not(.add)',
+      '.pill:not(.home):not(.add):not(.rooms)',
     );
     expect(spacePills.length).toBe(2);
   });
@@ -52,7 +53,9 @@ describe('ServerRailComponent', () => {
 
     let selected: string | null = null;
     fixture.componentInstance.selectSpace.subscribe((v) => (selected = v));
-    fixture.nativeElement.querySelector('.pill:not(.home):not(.add)').click();
+    fixture.nativeElement
+      .querySelector('.pill:not(.home):not(.add):not(.rooms)')
+      .click();
 
     expect(selected).toBe('!s:hs');
   });
@@ -79,11 +82,39 @@ describe('ServerRailComponent', () => {
     const homeItem = fixture.nativeElement.querySelector('.item');
     expect(homeItem.classList.contains('active')).toBe(true);
 
-    // Selecting the space moves the active marker to its item.
+    // Selecting the space moves the active marker to its item
+    // (order: Home, Rooms, space, add).
     fixture.componentRef.setInput('activeSpaceId', '!s:hs');
     fixture.detectChanges();
     const items = fixture.nativeElement.querySelectorAll('.item');
     expect(items[0].classList.contains('active')).toBe(false); // Home
-    expect(items[1].classList.contains('active')).toBe(true); // the space
+    expect(items[1].classList.contains('active')).toBe(false); // Rooms
+    expect(items[2].classList.contains('active')).toBe(true); // the space
+  });
+
+  it('emits showRooms when the Rooms pill is clicked', () => {
+    const fixture = TestBed.createComponent(ServerRailComponent);
+    fixture.detectChanges();
+
+    let shown = false;
+    fixture.componentInstance.showRooms.subscribe(() => (shown = true));
+    fixture.nativeElement.querySelector('[data-testid=rail-rooms]').click();
+
+    expect(shown).toBe(true);
+  });
+
+  it('marks the Rooms view active and deactivates Home when roomsActive is set', () => {
+    const fixture = TestBed.createComponent(ServerRailComponent);
+    fixture.detectChanges();
+    const items = fixture.nativeElement.querySelectorAll('.item');
+
+    // Default (no Rooms view): Home active, Rooms inactive.
+    expect(items[0].classList.contains('active')).toBe(true); // Home
+    expect(items[1].classList.contains('active')).toBe(false); // Rooms
+
+    fixture.componentRef.setInput('roomsActive', true);
+    fixture.detectChanges();
+    expect(items[0].classList.contains('active')).toBe(false); // Home no longer active
+    expect(items[1].classList.contains('active')).toBe(true); // Rooms active
   });
 });

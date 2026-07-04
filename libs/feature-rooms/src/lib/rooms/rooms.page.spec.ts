@@ -200,8 +200,8 @@ describe('RoomsPage action error feedback', () => {
   });
 });
 
-// The channel sidebar is fed by `visibleRooms()`: Home shows every room (recency
-// order), a selected space shows only its joined children in space order.
+// The channel sidebar is fed by `visibleRooms()`: Home shows only direct messages, the
+// Rooms view shows non-DM rooms, a selected space shows only its joined children.
 describe('RoomsPage space filtering', () => {
   function roomSummary(id: string, name: string): RoomSummary {
     return {
@@ -241,6 +241,7 @@ describe('RoomsPage space filtering', () => {
           useValue: {
             connect: vi.fn(),
             rooms: signal(rooms),
+            directRoomIds: signal(new Set(['!a:hs'])), // '!a:hs' is a DM
             revision: signal(0),
             membersOf: () => [],
           },
@@ -288,16 +289,13 @@ describe('RoomsPage space filtering', () => {
     return TestBed.inject(RoomsPage);
   }
 
-  it('Home (no space) shows every room in the rooms-service order', () => {
+  it('Home (no space) shows only direct messages', () => {
     const page = build();
     page.activeSpaceId.set(null);
 
-    expect(page.visibleRooms().map((r) => r.id)).toEqual([
-      '!c:hs',
-      '!a:hs',
-      '!b:hs',
-    ]);
-    expect(page.activeSpaceName()).toBe('Home');
+    // Only '!a:hs' is a DM (see directRoomIds in build()).
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']);
+    expect(page.sidebarTitle()).toBe('Direct Messages');
   });
 
   it('a selected space shows only its joined children, in space order', () => {
@@ -307,6 +305,47 @@ describe('RoomsPage space filtering', () => {
     // '!c:hs' is excluded (not a child); a/b appear in the space's order.
     expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
     expect(page.activeSpaceName()).toBe('!s:hs');
+  });
+
+  it('the Rooms view shows only non-DM rooms', () => {
+    const page = build();
+    page.onShowRooms();
+
+    expect(page.roomsView()).toBe(true);
+    // Every room except the DM '!a:hs', in recency order.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs', '!b:hs']);
+    expect(page.sidebarTitle()).toBe('Rooms');
+  });
+
+  it('showing Rooms clears the active space', () => {
+    const page = build();
+    page.activeSpaceId.set('!s:hs'); // a space is selected…
+    page.onShowRooms(); // …switching to Rooms leaves it
+
+    expect(page.activeSpaceId()).toBeNull();
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs', '!b:hs']);
+  });
+
+  it('selecting a space leaves the Rooms view', () => {
+    const page = build();
+    page.onShowRooms();
+    expect(page.roomsView()).toBe(true);
+
+    page.onSelectSpace('!s:hs');
+    expect(page.roomsView()).toBe(false);
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
+    expect(page.sidebarTitle()).toBe('!s:hs');
+  });
+
+  it('Home returns to direct messages from the Rooms view', () => {
+    const page = build();
+    page.onShowRooms();
+    expect(page.roomsView()).toBe(true);
+
+    page.onSelectSpace(null); // clicking Home
+    expect(page.roomsView()).toBe(false);
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']); // DMs
+    expect(page.sidebarTitle()).toBe('Direct Messages');
   });
 });
 

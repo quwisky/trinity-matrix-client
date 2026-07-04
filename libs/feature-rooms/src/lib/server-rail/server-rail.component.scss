@@ -88,6 +88,14 @@
   color: var(--trinity-text-bright);
 }
 
+// Rooms pill: accent-filled on hover and while its view is active
+// (`.item.active`), matching the Home pill.
+.pill.rooms:hover,
+.item.active .pill.rooms {
+  background: var(--trinity-accent);
+  color: #fff;
+}
+
 trn-avatar {
   pointer-events: none;
 }

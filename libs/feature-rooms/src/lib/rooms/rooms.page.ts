@@ -120,6 +120,9 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly activeSpaceId = signal<string | null>(null);
+  /** Whether the Rooms view is active — filters the sidebar to non-DM rooms. Home (the
+   * default, no space) shows direct messages only; a space or this view clears the other. */
+  readonly roomsView = signal(false);
   readonly activeRoomId = signal<string | null>(null);
   /** Whether the side pane is shown as an overlay drawer (below the md breakpoint). */
   readonly drawerOpen = signal(false);
@@ -140,16 +143,23 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly spaceError = signal<string | null>(null);
 
   /**
-   * Rooms shown in the channel sidebar. Home (`null`) shows every joined room in
-   * recency order (as before). A selected space shows only its joined child rooms,
-   * in the space's own order (`m.space.child` `order` then name). Both read live
-   * signals, so the list reacts to sync, membership, and `m.space.child` changes.
+   * Rooms shown in the channel sidebar. Home (`null`, the default) shows only direct
+   * messages (`m.direct`) in recency order. The Rooms view shows every non-DM joined
+   * room. A selected space shows only its joined child rooms, in the space's own order
+   * (`m.space.child` `order` then name). All read live signals, so the list reacts to
+   * sync, membership, and `m.space.child` changes.
    */
   readonly visibleRooms = computed<RoomSummary[]>(() => {
-    const spaceId = this.activeSpaceId();
     const all = this.rooms.rooms();
+    const direct = this.rooms.directRoomIds();
+    // Rooms view: every non-DM joined room (overrides the space scope).
+    if (this.roomsView()) {
+      return all.filter((room) => !direct.has(room.id));
+    }
+    const spaceId = this.activeSpaceId();
     if (!spaceId) {
-      return all;
+      // Home: direct messages only.
+      return all.filter((room) => direct.has(room.id));
     }
     const byId = new Map(all.map((room) => [room.id, room] as const));
     return this.spaces
@@ -164,6 +174,14 @@ export class RoomsPage implements OnInit, OnDestroy {
       return 'Home';
     }
     return this.spaces.spaces().find((s) => s.id === id)?.name ?? 'Home';
+  });
+
+  /** Channel-sidebar header: the Rooms view label, a selected space, else Home's DMs. */
+  readonly sidebarTitle = computed(() => {
+    if (this.roomsView()) {
+      return 'Rooms';
+    }
+    return this.activeSpaceId() ? this.activeSpaceName() : 'Direct Messages';
   });
 
   readonly activeRoom = computed(() => {
@@ -326,11 +344,19 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   onSelectSpace(id: string | null): void {
+    // Selecting a space (or Home) leaves the Rooms view.
+    this.roomsView.set(false);
     this.activeSpaceId.set(id);
     // Load (or clear, for Home) the space's full child hierarchy so the sidebar can
     // offer not-yet-joined channels + sub-spaces. The fetch is cancelled/replaced if
     // the selection changes again before it lands.
     this.spaces.openSpace(id);
+  }
+
+  /** Switch to the Rooms view (non-DM rooms); clears any selected space. */
+  onShowRooms(): void {
+    this.activeSpaceId.set(null);
+    this.roomsView.set(true);
   }
 
   /** Rail "+": prompt for a name, create the space, then select it on success. */
