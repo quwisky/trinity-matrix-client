@@ -133,6 +133,11 @@ export class TimelineService {
     }
   };
 
+  /** The window regained focus while a room is open — send the read receipt we
+   * held back while unfocused, so the open room's badge clears now the user is
+   * actually looking at it. */
+  private readonly onFocus = (): void => this.markRead();
+
   /** Start projecting a room's live timeline; attaches live + decryption listeners. */
   open(roomId: string): void {
     if (this.roomId === roomId || !this.matrix.isInitialized) {
@@ -152,6 +157,11 @@ export class TimelineService {
     room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     room.on(RoomStateEvent.Members, this.onMember);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
+    // Re-ack the open room on refocus: while unfocused markRead holds the receipt
+    // so its unread accrues, so we mark it read again when the window returns.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', this.onFocus);
+    }
     // Projects the timeline and sends the initial read receipt; subsequent live
     // messages re-ack through the same path (see {@link markRead}).
     this.refresh();
@@ -159,6 +169,9 @@ export class TimelineService {
 
   /** Detach listeners and clear the timeline. */
   close(): void {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', this.onFocus);
+    }
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
     this.room?.off(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     this.room?.off(RoomStateEvent.Members, this.onMember);
@@ -381,23 +394,35 @@ export class TimelineService {
     this._canLoadOlder.set(
       liveTimeline.getPaginationToken(Direction.Backward) !== null,
     );
-    // The room is on-screen, so mark its latest message read. Deduped, so live
-    // messages clear the badge but paginating older history does not re-send.
+    // The room is on-screen: mark its latest message read while the window is
+    // focused (deduped, so live messages clear the badge but paginating older
+    // history doesn't re-send). Skipped while unfocused so an open room still
+    // shows unread; onFocus re-acks on return.
     this.markRead(events);
   }
 
   /**
    * Send a read receipt for the active room's latest *confirmed* event, clearing
-   * its unread badge. Deduped on the last-acked event id so a live message marks
-   * read but a no-op refresh (decryption, pagination) doesn't re-send. Pending
-   * local echoes are skipped (the SDK rejects a receipt on an unsent event) and
-   * any missing/failed receipt API is swallowed so viewing a room never throws.
+   * its unread badge — but ONLY while the window is focused. When the app isn't in
+   * focus we skip the ack, so an open room still accumulates unread (the badge
+   * climbs like any other channel); {@link onFocus} re-acks when focus returns.
+   * Deduped on the last-acked event id so a live message marks read but a no-op
+   * refresh (decryption, pagination) doesn't re-send. Pending local echoes are
+   * skipped (the SDK rejects a receipt on an unsent event) and any missing/failed
+   * receipt API is swallowed so viewing a room never throws. `events` defaults to
+   * the live timeline so the focus re-ack can run without a refresh's snapshot.
    */
-  private markRead(events: readonly MatrixEvent[]): void {
-    if (!this.matrix.isInitialized) {
+  private markRead(events?: readonly MatrixEvent[]): void {
+    if (!this.matrix.isInitialized || !this.room) {
       return;
     }
-    const latest = [...events].reverse().find((e) => !e.status);
+    // The room is open, but the user isn't looking if the window is unfocused —
+    // hold the receipt so its unread accumulates; onFocus re-acks on return.
+    if (typeof document !== 'undefined' && !document.hasFocus()) {
+      return;
+    }
+    const list = events ?? this.room.getLiveTimeline().getEvents();
+    const latest = [...list].reverse().find((e) => !e.status);
     const id = latest?.getId() ?? null;
     if (!latest || !id || id === this.lastReadEventId) {
       return;
