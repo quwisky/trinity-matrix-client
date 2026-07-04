@@ -142,19 +142,33 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Last space-management failure (surfaced as a toast); null when clear. */
   readonly spaceError = signal<string | null>(null);
 
+  /** Ids of every joined room that is a child of some space, unioned across all spaces.
+   * Used to keep space-owned rooms out of the flat Rooms view (they live in their space). */
+  private readonly spaceChildRoomIds = computed<Set<string>>(() => {
+    const ids = new Set<string>();
+    for (const space of this.spaces.spaces()) {
+      for (const id of space.childRoomIds) ids.add(id);
+    }
+    return ids;
+  });
+
   /**
    * Rooms shown in the channel sidebar. Home (`null`, the default) shows only direct
    * messages (`m.direct`) in recency order. The Rooms view shows every non-DM joined
-   * room. A selected space shows only its joined child rooms, in the space's own order
+   * room that does not belong to any space (space-owned rooms live under their space).
+   * A selected space shows only its joined child rooms, in the space's own order
    * (`m.space.child` `order` then name). All read live signals, so the list reacts to
    * sync, membership, and `m.space.child` changes.
    */
   readonly visibleRooms = computed<RoomSummary[]>(() => {
     const all = this.rooms.rooms();
     const direct = this.rooms.directRoomIds();
-    // Rooms view: every non-DM joined room (overrides the space scope).
+    // Rooms view: non-DM joined rooms that aren't owned by a space (overrides the space scope).
     if (this.roomsView()) {
-      return all.filter((room) => !direct.has(room.id));
+      const inSpace = this.spaceChildRoomIds();
+      return all.filter(
+        (room) => !direct.has(room.id) && !inSpace.has(room.id),
+      );
     }
     const spaceId = this.activeSpaceId();
     if (!spaceId) {
@@ -192,12 +206,18 @@ export class RoomsPage implements OnInit, OnDestroy {
       .reduce((sum, r) => (direct.has(r.id) ? sum + r.unreadCount : sum), 0);
   });
 
-  /** Total unread notifications across non-DM rooms (Rooms rail badge). */
+  /** Total unread notifications across the Rooms view — non-DM rooms that don't
+   * belong to any space (space unread is surfaced on the space pills). */
   readonly roomsUnread = computed(() => {
     const direct = this.rooms.directRoomIds();
+    const inSpace = this.spaceChildRoomIds();
     return this.rooms
       .rooms()
-      .reduce((sum, r) => (direct.has(r.id) ? sum : sum + r.unreadCount), 0);
+      .reduce(
+        (sum, r) =>
+          direct.has(r.id) || inSpace.has(r.id) ? sum : sum + r.unreadCount,
+        0,
+      );
   });
 
   /** Unread notifications summed per space, keyed by space id (space-pill badges). */
