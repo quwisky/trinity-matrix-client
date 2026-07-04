@@ -135,7 +135,18 @@ export class SecureStorageService {
     ) {
       return createNativeBackend();
     }
-    // 3) Web/PWA (and Electron without an available keyring): best-effort.
+    // 3) Web/PWA (and Electron/native without an available keyring): best-effort
+    // plaintext. On web this is the documented norm (defended by CSP + sanitization),
+    // but on desktop/native it means the OS keychain FAILED — secrets (the access
+    // token) will land in plaintext. Surface that anomaly rather than falling back
+    // silently. (A user-facing prompt is a further, product-owned step.)
+    if (bridge || Capacitor.isNativePlatform()) {
+      console.warn(
+        'Trinity: secure storage (OS keychain/keystore) is unavailable on this ' +
+          'device — the session token will be stored unencrypted. Sign out to ' +
+          'clear it, or investigate the keyring on this machine.',
+      );
+    }
     return createWebBackend();
   }
 }
