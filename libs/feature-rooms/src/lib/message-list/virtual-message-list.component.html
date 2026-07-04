@@ -1,0 +1,47 @@
+<span class="sr-only" role="status" aria-live="polite">{{
+  announcement()
+}}</span>
+
+<div class="scroll" #scroll (scroll)="onScroll()">
+  @if (loadingOlder()) {
+    <div class="load-older">Loading older messages…</div>
+  }
+
+  <div class="vpad" [style.height.px]="topPad()"></div>
+
+  @for (row of windowedRows(); track row.id) {
+    <trn-message-row
+      [row]="row"
+      [threadSummary]="threadSummaries()[row.id] ?? null"
+      [editable]="isEditable(row)"
+      [deletable]="row.isOwn && !row.status"
+      (react)="react.emit({ id: row.id, key: $event })"
+      (replyMessage)="startReply(row)"
+      (copyMessage)="onCopy(row)"
+      (editMessage)="startEdit(row)"
+      (deleteMessage)="onDelete(row)"
+      (retry)="retry.emit(row.id)"
+      (jumpReply)="jumpTo($event)"
+      (openThread)="openThread.emit($event)"
+    />
+  } @empty {
+    <div class="empty">No messages yet.</div>
+  }
+
+  <div class="vpad" [style.height.px]="bottomPad()"></div>
+</div>
+
+<trn-message-composer
+  [roomId]="roomId()"
+  [roomName]="roomName()"
+  [editing]="editingId() !== null"
+  [editTargetId]="editingId()"
+  [draft]="editingDraft()"
+  [replyingTo]="replyingToName()"
+  [uploadProgress]="uploadProgress()"
+  (submitText)="onSubmit($event)"
+  (submitMedia)="sendMedia.emit($event)"
+  (cancelEdit)="editingId.set(null)"
+  (cancelReply)="replyingToId.set(null)"
+  (editLast)="editLastOwn()"
+/>

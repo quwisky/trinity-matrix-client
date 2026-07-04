@@ -42,6 +42,23 @@ if (virtualConsole) {
   };
 }
 
+// jsdom has no ResizeObserver. The virtualized message list feature-detects it and
+// degrades to render-all without one, but a no-op stub lets the observer wiring run
+// (and be exercised) in the message-list component tests.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe(): void {
+      /* no-op */
+    }
+    unobserve(): void {
+      /* no-op */
+    }
+    disconnect(): void {
+      /* no-op */
+    }
+  } as unknown as typeof ResizeObserver;
+}
+
 getTestBed().initTestEnvironment(
   BrowserDynamicTestingModule,
   platformBrowserDynamicTesting(),

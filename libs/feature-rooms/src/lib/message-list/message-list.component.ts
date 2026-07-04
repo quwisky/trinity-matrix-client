@@ -1,27 +1,7 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  ElementRef,
-  computed,
-  effect,
-  inject,
-  input,
-  output,
-  signal,
-  untracked,
-  viewChild,
-} from '@angular/core';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { ChangeDetectionStrategy, Component, effect } from '@angular/core';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
-import {
-  MessageRowComponent,
-  type MessageRow,
-} from '../message-row/message-row.component';
-import {
-  isEditableMessage,
-  type MessageView,
-  type ThreadSummary,
-} from '@trinity/core';
+import { MessageRowComponent } from '../message-row/message-row.component';
+import { MessageListBase } from './message-list-base';
 
 /** Trigger older-history loading when the scroll top gets within this many px. */
 const AUTO_LOAD_THRESHOLD_PX = 150;
@@ -40,7 +20,12 @@ const NEAR_BOTTOM_PX = 120;
  */
 const MAX_BACKFILL_ROUNDS = 20;
 
-/** Discord-style message list for the active room (read-only timeline). */
+/**
+ * Discord-style message list for the active room — the plain, non-virtualized
+ * timeline (renders every loaded row). The windowed variant
+ * ({@link VirtualMessageListComponent}) is selected instead when the experimental
+ * virtualized-timeline flag is on. Shared logic lives in {@link MessageListBase}.
+ */
 @Component({
   selector: 'trn-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -48,56 +33,7 @@ const MAX_BACKFILL_ROUNDS = 20;
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
 })
-export class MessageListComponent {
-  readonly messages = input<MessageView[]>([]);
-  /** Thread summaries keyed by root event id, for the per-row thread indicator. */
-  readonly threadSummaries = input<Record<string, ThreadSummary>>({});
-  readonly loadingOlder = input(false);
-  readonly canLoadOlder = input(false);
-  readonly roomName = input('');
-  /**
-   * Active room id. The list instance is reused across room switches (it stays
-   * mounted under `@if (activeRoom())`), so a change here resets the per-room
-   * UI + scroll state — otherwise a pending edit/reply target, the last-seen id,
-   * and the backfill anchors would leak into the next room.
-   */
-  readonly roomId = input<string | null>(null);
-  /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
-  readonly uploadProgress = input<number | null>(null);
-  /**
-   * Event id to scroll into view, set by an external jump (e.g. in-room message
-   * search). Reuses the same {@link jumpTo} scroll the reply-preview uses; a no-op
-   * when the event isn't in the loaded timeline.
-   */
-  readonly jumpToId = input<string | null>(null);
-  readonly loadOlder = output<void>();
-  /** Open the thread rooted at this event id (raised by a row's indicator). */
-  readonly openThread = output<string>();
-  readonly send = output<string>();
-  readonly sendMedia = output<{ file: File; caption: string }>();
-  readonly retry = output<string>();
-  readonly editMessage = output<{ id: string; body: string }>();
-  readonly deleteMessage = output<string>();
-  readonly react = output<{ id: string; key: string }>();
-  readonly reply = output<{ id: string; body: string }>();
-
-  readonly editingId = signal<string | null>(null);
-  readonly editingDraft = computed(
-    () => this.messages().find((m) => m.id === this.editingId())?.body ?? '',
-  );
-
-  readonly replyingToId = signal<string | null>(null);
-  readonly replyingToName = computed(
-    () =>
-      this.messages().find((m) => m.id === this.replyingToId())?.senderName ??
-      '',
-  );
-
-  /** Live-region text announcing a newly-arrived incoming message to screen readers. */
-  readonly announcement = signal('');
-
-  private readonly alert = inject(TrnAlertService);
-  private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
+export class MessageListComponent extends MessageListBase {
   private lastId = '';
   /** Whether the user is scrolled to (or near) the bottom — gates auto-scroll on
    * incoming messages. Starts true so the first load and each new room stick. */
@@ -117,67 +53,8 @@ export class MessageListComponent {
   private lastBackfillOldestId = '';
   private backfillRounds = 0;
 
-  // Grouping rows, cached per event id so an unchanged message (same view object
-  // AND same header flag) keeps its row identity. The timeline projects stable view
-  // objects (only changed events get a new identity), so reusing the row here means
-  // an OnPush row is re-rendered only when its message or grouping actually changes
-  // — not on every live event elsewhere in the room.
-  private rowCache = new Map<
-    string,
-    { view: MessageView; showHeader: boolean; row: MessageRow }
-  >();
-
-  /** Group consecutive messages from the same sender (Discord-style). */
-  readonly rows = computed<MessageRow[]>(() => {
-    const GAP_MS = 5 * 60 * 1000;
-    const msgs = this.messages();
-    const nextCache = new Map<
-      string,
-      { view: MessageView; showHeader: boolean; row: MessageRow }
-    >();
-    const result = msgs.map((m, i) => {
-      const prev = msgs[i - 1];
-      const showHeader =
-        !prev ||
-        prev.senderId !== m.senderId ||
-        m.timestamp - prev.timestamp > GAP_MS ||
-        // A reply always shows its own header: the quoted preview breaks the
-        // visual flow, so a headerless continuation would look like the reply
-        // lost its author (name + avatar).
-        !!m.replyTo;
-      const cached = this.rowCache.get(m.id);
-      const row =
-        cached && cached.view === m && cached.showHeader === showHeader
-          ? cached.row
-          : { ...m, showHeader };
-      nextCache.set(m.id, { view: m, showHeader, row });
-      return row;
-    });
-    this.rowCache = nextCache;
-    return result;
-  });
-
   constructor() {
-    // Reset per-room state when the active room changes. Declared FIRST so it
-    // runs before the anchoring effect below (effects fire in creation order):
-    // clearing lastId lets that effect treat the new room as a fresh load rather
-    // than announcing another room's newest message. Also drops any pending
-    // edit/reply target so the next plain send in the new room isn't routed as a
-    // stale cross-room edit/reply.
-    effect(() => {
-      this.roomId();
-      untracked(() => {
-        this.editingId.set(null);
-        this.replyingToId.set(null);
-        this.announcement.set('');
-        this.lastId = '';
-        this.lastBackfillOldestId = '';
-        this.backfillRounds = 0;
-        this.pendingPrepend = false;
-        this.atBottom = true;
-        this.rowCache.clear();
-      });
-    });
+    super();
 
     effect(() => {
       const msgs = this.messages();
@@ -268,6 +145,15 @@ export class MessageListComponent {
     });
   }
 
+  protected override resetOnRoomChange(): void {
+    super.resetOnRoomChange();
+    this.lastId = '';
+    this.lastBackfillOldestId = '';
+    this.backfillRounds = 0;
+    this.pendingPrepend = false;
+    this.atBottom = true;
+  }
+
   /** Auto-load older history once the user scrolls near the top. */
   onScroll(): void {
     const el = this.scrollEl()?.nativeElement;
@@ -289,67 +175,10 @@ export class MessageListComponent {
     }
   }
 
-  startEdit(row: MessageRow): void {
-    this.replyingToId.set(null);
-    this.editingId.set(row.id);
-  }
-
-  startReply(row: MessageRow): void {
-    this.editingId.set(null);
-    this.replyingToId.set(row.id);
-  }
-
   /** Scroll the original message into view when its reply preview is clicked. */
   jumpTo(messageId: string): void {
     this.scrollEl()
       ?.nativeElement.querySelector(`[data-mid="${messageId}"]`)
       ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-
-  /** A message the current user can still edit (own, confirmed, text — not media). */
-  isEditable(m: MessageView): boolean {
-    return isEditableMessage(m);
-  }
-
-  /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
-  editLastOwn(): void {
-    const msgs = this.messages();
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (this.isEditable(msgs[i])) {
-        this.editingId.set(msgs[i].id);
-        return;
-      }
-    }
-  }
-
-  onCopy(row: MessageRow): void {
-    void navigator.clipboard?.writeText(row.body);
-  }
-
-  async onDelete(row: MessageRow): Promise<void> {
-    const confirmed = await this.alert.confirm({
-      header: 'Delete message',
-      message: 'Delete this message? This cannot be undone.',
-      confirmText: 'Delete',
-      destructive: true,
-    });
-    if (confirmed) {
-      this.deleteMessage.emit(row.id);
-    }
-  }
-
-  /** Composer submit — routes to an edit or reply when active, else a new send. */
-  onSubmit(text: string): void {
-    const editId = this.editingId();
-    const replyId = this.replyingToId();
-    if (editId) {
-      this.editMessage.emit({ id: editId, body: text });
-      this.editingId.set(null);
-    } else if (replyId) {
-      this.reply.emit({ id: replyId, body: text });
-      this.replyingToId.set(null);
-    } else {
-      this.send.emit(text);
-    }
   }
 }
