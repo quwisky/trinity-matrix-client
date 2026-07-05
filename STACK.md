@@ -43,7 +43,7 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 20.7 / 8  | Flat config (`eslint.config.mjs`) + module boundaries                |
 | `prettier` (+ `prettier-plugin-tailwindcss`)      | 3.9 / 0.8     | `singleQuote`; Angular parser for `*.page.html`; Tailwind class sort |
 | `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                            |
-| `@commitlint/{cli,config-angular}`                | 21            | `commit-msg` hook; Angular commit convention                         |
+| `@commitlint/{cli,config-conventional}`           | 21            | `commit-msg` hook; Conventional Commits convention                   |
 | `husky` + `lint-staged`                           | 9 / 17        | `pre-commit` (lint/format staged) + `commit-msg` hooks               |
 | `typescript`                                      | 5.9           | `moduleResolution: bundler`; aliases in `tsconfig.base.json`         |
 | `@types/node`                                     | 22            | Node globals for `vite.config.ts` + the spec tsconfigs               |
@@ -137,11 +137,12 @@ the architecture changes — find out before building UI on top.
 - **End-to-end — app journeys:** `@nx/playwright` + `@playwright/test` at
   `e2e/playwright/`. `nx e2e trinity-e2e` builds the dev bundle, serves `www/`, and brings the
   disposable Synapse harness up/down via global setup (auth specs skip when Docker is absent).
-  Covers login/guard, theme, profile, and device management.
+  Covers login/guard, navigation, settings, room list & filtering, favourites, notifications, unread badges, pinned messages, mobile nav, and timeline virtualization.
 - **End-to-end — crypto/protocol:** Playwright **standalone** (`playwright`, not
-  `@playwright/test`) — `e2e/*.mjs` scripts that serve `www/` and drive Chromium/WebKit:
-  `smoke-login`, the `crypto-spike` (per engine), the two-client emoji-SAS `verify-sas`, and
-  the encrypted `send-media` round-trip (disposable Synapse harness, env-gated; full
+  `@playwright/test`) — `e2e/features/*.mjs` scripts (driven by `e2e/runners/*-run.mjs`) that serve `www/` and drive
+  Chromium/WebKit: `smoke-login`, the `crypto-spike` (per engine), the two-client emoji-SAS
+  `verify-sas`, and the encrypted `send-media`, `threads`, `reply`, `spaces`, `rooms`, `search`,
+  and `emoji` round-trips (disposable Synapse harness, env-gated; full
   round-trips run to PASS 2026-06-27). See [e2e/README.md](e2e/README.md).
 - Vitest shares the Vite config and runs in parallel by default.
 

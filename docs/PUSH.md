@@ -29,7 +29,7 @@ message content) and the client fetches the event after sync.
   (`main.ts`). **`null` disables push** — the service is then a clean no-op.
 - **Native-only + guarded**: registration runs only on `getPlatform() ∈ {ios, android}`
   with the plugin available. It is deliberately **not** gated on `isNativePlatform()`,
-  which is `true` under Electron (where there is no push plugin). Web and desktop no-op.
+  which is `false` under Electron (where there is no push plugin). Web and desktop no-op.
 - **Lifecycle**: `register()` is called from the rooms shell (`rooms.page`), which
   mounts after both a fresh login and a restored session; it's idempotent per session.
   `unregister()` runs on logout (before the token is invalidated) and on re-login into
@@ -69,10 +69,10 @@ None of this can be tested on the iOS Simulator or on web/Electron.
 ## Local notifications (desktop + web)
 
 `NotificationService` (`@trinity/core`) surfaces incoming messages as OS notifications
-via the web `Notification` API, driven by the **live sync stream** — no push gateway
+driven by the **live sync stream** — on desktop (Electron) via the main process over the `trinityDesktop` bridge, on web/PWA via the Web `Notification` API — no push gateway
 involved. It runs on **desktop (Electron) and web/PWA** (`!isNativePlatform()`); on
 mobile, push (above) owns delivery, so it's a no-op there. It fires only for **live**
-timeline events from someone other than you, while the window is **unfocused**, and only
+timeline events from someone other than you, unless the user is looking at that room (the window is focused and that room is open), and only
 when the account's push rules say to notify (`getPushActionsForEvent().notify` — honors
 mutes / mentions-only). A tap focuses the window and opens the app. Connected from the
 rooms shell; the listener dies with the client on logout. This is the desktop story — it

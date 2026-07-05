@@ -1,71 +1,141 @@
 # CLAUDE.md
 
-Guidance for Claude Code in this repository. This file loads into every session.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project
+Trinity is a cross-platform [Matrix](https://matrix.org) client with first-class end-to-end
+encryption, built from one codebase for **Web (PWA), iOS, Android, and Desktop (Electron)**.
+Stack: Angular 21 (standalone + signals) + spartan-ng on Tailwind v4, `matrix-js-sdk` +
+Rust crypto WASM, Capacitor 8, and a hand-rolled Electron shell, in an Nx monorepo.
 
-**Trinity** — a cross-platform **Matrix** client with first-class end-to-end encryption, built with **Angular + spartan-ng + Capacitor + Electron** and targeting **iOS, Android, desktop (Windows/macOS/Linux), and web/PWA** from a single codebase. A Discord-style shell (Spaces as a server rail, rooms, members) over `matrix-js-sdk` + Rust crypto (WASM).
-
-## Stack
-
-- **Angular** — standalone components, signals, typed reactive forms, `inject()`
-- **spartan-ng** — UI: headless **Brain** primitives (`@spartan-ng/brain`) + styled **Helm** components copied into `libs/spartan/*` (aliased `@trinity/helm/*`), added via `@spartan-ng/cli`
-- **Tailwind CSS v4** + Angular **CDK** — styling/theming (`theme/spartan.css` + `theme/variables.scss`) and overlays/dialogs
-- **Capacitor** — native bridge for iOS/Android, device plugins
-- **Electron** — desktop runtime for Windows/macOS/Linux (main/renderer/preload, packaging, auto-update)
-- **Vitest** + Angular **TestBed** — unit/component tests
-- **Playwright** — end-to-end tests
-
-## Subagent delegation
-
-Specialized agents live in `.claude/agents/`. Route work to them proactively:
-
-| When the task is about…                                                                         | Delegate to               |
-|-------------------------------------------------------------------------------------------------|---------------------------|
-| App structure, routing, services, state, scaffolding a feature                                  | `angular-architect`       |
-| Device APIs, native plugins, permissions, platform differences, `capacitor.config`, `cap sync`  | `capacitor-native`        |
-| Desktop runtime, Electron main/preload, IPC, native menus, packaging, code signing, auto-update | `electron-desktop`        |
-| Styling, theming, spartan-ng/Helm components, responsive layout, accessibility                  | `ui-designer`             |
-| Unit/component tests for components, services, guards, pipes                                    | `angular-test-engineer`   |
-| End-to-end user journeys and regression coverage                                                | `e2e-test-engineer`       |
-| Slowness, bundle size, startup time, pre-release tuning                                         | `mobile-performance`      |
-
-Orchestration defaults:
-
-- For a new feature, start with `angular-architect` for structure, implement, then hand off to `angular-test-engineer` for coverage.
-- For anything touching a device API, consult `capacitor-native` first so web fallbacks and permissions are handled.
-- After non-trivial code changes, proactively run `angular-test-engineer`; before a release, run `mobile-performance`.
-- Keep verbose work (test runs, bundle analysis, codebase exploration) inside subagents so the main context stays clean.
-
-## Conventions
-
-- Standalone components only; no NgModules in new code.
-- Signals for local and computed state; RxJS for streams and async orchestration. Bridge with `toSignal`/`toObservable`.
-- `inject()` over constructor injection; typed reactive forms; no `any`.
-- Structure as `core/` (singletons, guards, interceptors), `shared/` (reusable UI), and `feature/` folders that own their routes and lazy-load.
-- Theme via Tailwind v4 (`theme/spartan.css`) and the trinity CSS custom-property tokens in `theme/variables.scss`; no hard-coded colors or `!important`.
-- Centralize platform branching behind a service (Capacitor's `isNativePlatform()` + the `trinityDesktop`/Electron marker), not ad-hoc `Capacitor.getPlatform()` checks scattered through components. Treat desktop (Electron) as a first-class branch alongside ios/android/web.
-
-## Cross-platform guardrails
-
-- Always feature-detect native plugins (`Capacitor.isNativePlatform()` / `Capacitor.isPluginAvailable()`) and provide a web fallback.
-- Never store secrets or tokens in `localStorage` or `Preferences` — use secure storage backed by Keychain/Keystore.
-- Run `npx cap sync` after any native dependency or config change; call out when a native rebuild is required.
-- Handle the Android hardware back button, safe-area insets, and keyboard/status-bar differences explicitly.
-- Use Angular lifecycle hooks and Router events (the Ionic page lifecycles are gone); route-change focus is handled centrally by `NavigationFocusService`.
-- On desktop (Electron), keep `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true`; expose only a minimal preload API via `contextBridge` and validate all IPC in the main process.
-- Detect desktop at runtime and don't call mobile-only Capacitor plugins there — provide a desktop/Electron equivalent or a web fallback.
-- Sign and notarize desktop builds; ship auto-updates only over a signed, signature-verified channel.
+**Companion docs** (read these for depth — do not duplicate them here):
+`.claude/CLAUDE.md` (Angular/TypeScript style guide, always applies) · [`.claude/README.md`](.claude/README.md)
+(agents · skills · rules catalog) · `.claude/rules/code-quality.md`
+(file-size / single-responsibility thresholds) · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) · [STACK.md](STACK.md) (pinned versions + gotchas) ·
+[PLAN.md](PLAN.md) (roadmap) · [docs/PUSH.md](docs/PUSH.md).
 
 ## Commands
 
-> Adjust to your actual `package.json` scripts.
+This project is **pnpm-only** (a `preinstall` guard aborts npm/yarn) and needs **Node 22+**.
+Run `corepack enable` once; it picks up the pinned pnpm version.
 
-- Dev server: `pnpm run start`
-- Build (web): `pnpm run build`
-- Unit tests: `pnpm run test` (Vitest)
-- Sync native: `pnpx cap sync`
-- Lint: `pnpm run lint`
+| Command                        | Purpose                                                               |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `pnpm start`                   | Web dev server (hot reload) at `:4200` (`nx serve trinity`)           |
+| `pnpm build`                   | Production web build → root `www/` (consumed by Capacitor + Electron) |
+| `pnpm test`                    | Vitest unit tests, all projects once (`nx run-many -t test`)          |
+| `pnpm lint`                    | ESLint + Nx module boundaries, all projects                           |
+| `pnpm stylelint`               | Stylelint (SCSS) — **not** part of `pnpm lint`; run separately        |
+| `pnpm format` / `format:check` | Prettier write / verify (CI uses `format:check`)                      |
+
+**Single project / single test** — Vitest runs via an `nx:run-commands` target (`vitest run`,
+`cwd` = the project dir), so forward Vitest args after `--`:
+
+```bash
+pnpm exec nx test core                        # one project
+pnpm exec nx test core --configuration=watch  # watch mode
+pnpm exec nx test core -- message-list        # files matching a path substring
+pnpm exec nx test core -- -t "sends a read receipt"   # one test by name
+pnpm exec nx affected -t lint test            # only what changed vs. the base branch
+pnpm exec nx reset                            # clear Nx cache if results look stale
+```
+
+**Native (Capacitor)** — each `*:run`/`*:build` rebuilds `www/` and `cap sync`s first; re-run a
+`*:sync` after any web change. Android needs `ANDROID_HOME`; iOS needs macOS + Xcode.
+
+| Command                          | Purpose                                               |
+| -------------------------------- | ----------------------------------------------------- |
+| `pnpm android:run` / `ios:run`   | Build → sync → launch on emulator/simulator           |
+| `pnpm android:open` / `ios:open` | Open Android Studio / Xcode                           |
+| `pnpm android:sync` / `ios:sync` | Build → `cap sync` only                               |
+| `pnpm android:build`             | Debug APK → `android/app/build/outputs/apk/debug/`    |
+| `pnpm android:build:release`     | Release AAB (needs a signing keystore)                |
+| `pnpm ios:build`                 | `cap build ios --scheme App` (needs signing identity) |
+
+**Electron desktop** (hand-rolled shell in `electron/`, its own `package.json`):
+
+| Command                                           | Purpose                                                          |
+| ------------------------------------------------- | ---------------------------------------------------------------- |
+| `pnpm electron:install`                           | One-time: download the Electron binary (normal install skips it) |
+| `pnpm electron:start`                             | Build + run the desktop shell                                    |
+| `pnpm electron:package[:mac\|:linux\|:win\|:all]` | Package for the host OS (or a named target)                      |
+| `pnpm electron:package:mac:signed`                | Signed + notarized macOS build (needs Developer ID / creds)      |
+| `pnpm electron:e2e`                               | Playwright `_electron` specs against the built app               |
+
+**E2E / protocol harnesses** — Playwright. Install browsers once with
+`pnpm exec playwright install chromium webkit`.
+
+| Command                                                                | Purpose                                                                |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `pnpm exec nx e2e trinity-e2e`                                         | App-journey specs (`@nx/playwright`); skips itself if Docker is absent |
+| `pnpm smoke:login`                                                     | Headless redirect→login + live matrix.org `.well-known` discovery      |
+| `pnpm spike:chromium` / `spike:webkit`                                 | E2EE WASM check in Blink / WebKit                                      |
+| `pnpm e2e:verify`                                                      | Two-client emoji-SAS device verification (needs Docker)                |
+| `pnpm e2e:media` / `threads` / `reply` / `spaces` / `rooms` / `search` / `emoji` | Feature round-trips vs. disposable Synapse (needs Docker)              |
+| `pnpm e2e:verify:up` / `e2e:verify:down`                               | Start / stop the Synapse Docker harness manually                       |
+
+The Synapse-backed flows (`e2e:verify`, `e2e:media`, `e2e:threads`, `e2e:reply`, `e2e:spaces`,
+`e2e:rooms`, `e2e:search`, `e2e:emoji`) each own **one** disposable Synapse Docker stack on fixed ports, so they
+**must run sequentially, never concurrently** (e.g. `pnpm e2e:threads && pnpm e2e:spaces`). See
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#testing).
+
+## Architecture
+
+**Nx integrated monorepo.** The deployable app is `apps/trinity`; reusable code lives in `libs/*`,
+imported via `@trinity/*` path aliases (`tsconfig.base.json`) and guarded by Nx module boundaries.
+The web build emits to root `www/` (not `dist/`), which Capacitor and Electron wrap unchanged.
+
+**Layering — dependencies point inward, enforced by `@nx/enforce-module-boundaries`** (project
+`tags` in each `project.json`):
+
+- `@trinity/core` `[type:core]` — all Matrix/Capacitor logic (services, guards, storage). Depends on nothing.
+- `@trinity/feature-*` `[type:feature]` — screens/pages. May depend on `core` + `ui` only, **never another feature**.
+- `@trinity/ui` `[type:ui]` — reusable **presentational** components. No state/SDK deps; may use `@trinity/helm/*`.
+- `@trinity/helm/*` (`libs/spartan/*`, `[type:ui]`) — styled spartan-ng **Helm** over headless **Brain** primitives.
+
+**The core rule: components never import `matrix-js-sdk` directly.** All SDK access is wrapped in
+`@trinity/core` services (`libs/core/src/lib/matrix/`). New SDK interaction belongs there, not in a
+component. This keeps the SDK swappable and the UI testable. A cross-feature dependency that the
+boundary forbids (e.g. the encryption banner needing crypto status) is resolved by reading
+`@trinity/core` signals from the feature that owns the surface — not by importing the other feature.
+
+**State pattern — the SDK is the single source of truth; there is no Redux store.** `matrix-js-sdk`
+already owns rooms/timelines/crypto in memory + IndexedDB and emits events. Core services _project_
+those `EventEmitter` streams into **read-only Angular signals** (`private writable → asReadonly() →
+computed`); components are `OnPush` and read signals directly. **Async actions return cold RxJS
+Observables** (`defer`/`from` + operators); components subscribe with `takeUntilDestroyed`. Signals =
+state, Observables = one-shot actions. (Login pages wrap calls in `runWithBusy()` for busy/error state.)
+
+**E2EE WASM loading — the single most important platform gotcha.** matrix-js-sdk resolves its
+`.wasm` relative to bundled JS, which Angular's esbuild doesn't emit → 404. Fix: the build target
+copies the file to `assets/crypto/`, and `crypto-wasm-loader.ts` calls `initAsync(url)` (memoized)
+against that path **before** `initRustCrypto()`. Crypto-api types are a **deep import** —
+`matrix-js-sdk/lib/crypto-api`, not re-exported from the package root in 41.x.
+
+**Routing** — all lazy-loaded standalone routes in `apps/trinity/src/app/app.routes.ts`, most behind
+`authGuard` (restores a persisted session or redirects to `/login`). On wide layouts the
+`/encryption/*` routes are also presented as CDK dialogs. Production builds set
+`optimization.styles.inlineCritical: false` — the deferred stylesheet `onload` never fires over
+Electron's `trinity://` scheme, which broke the desktop dark theme.
+
+## Conventions specific to this repo
+
+- **Component structure**: each component/page in its own directory as `name/name.component.ts` +
+  `.html` + `.scss` + `.spec.ts` (logic in `.ts`, styles in `.scss`, template in `.html`).
+- **Selectors**: `trn` prefix — elements kebab-case (`trn-avatar`), directives camelCase. Class
+  suffix must be `Page` or `Component`.
+- **`libs/spartan/*` is generated and owned via `@spartan-ng/cli`** (config in root
+  `components.json`). Add/regenerate Helm components with the CLI, don't hand-author; it's
+  intentionally exempt from the `trn`-prefix and class-suffix ESLint rules.
+- **Commits use the Conventional Commits convention** (commitlint `commit-msg` hook via
+  `@commitlint/config-conventional`): `type(scope): subject` where `type` ∈
+  `feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert`. A `pre-commit` hook
+  runs lint-staged (eslint --fix + prettier); a module-boundary violation fails the commit.
+- **Cross-lib imports use `@trinity/*` aliases**; imports within a lib stay relative.
+- **Keep `data-testid` hooks** on interactive elements — the headless Playwright harnesses drive them.
+- Shared SCSS mixins live in `libs/feature-rooms/src/lib/styles/_mixins.scss`.
+- **Desktop detection**: Capacitor's `isNativePlatform()` is `false` in the Electron shell — branch on
+  the `trinityDesktop` preload marker to treat desktop like web (service worker off, push off).
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->

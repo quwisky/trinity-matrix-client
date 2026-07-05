@@ -118,7 +118,7 @@
     "@angular/language-service": "21.2.9",
     "@capacitor/cli": "8.4.1",
     "@commitlint/cli": "^21.2.0",
-    "@commitlint/config-angular": "^21.2.0",
+    "@commitlint/config-conventional": "^21.2.0",
     "@nx/angular": "23.0.1",
     "@nx/devkit": "23.0.1",
     "@nx/eslint": "23.0.1",

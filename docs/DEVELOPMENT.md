@@ -128,8 +128,9 @@ pnpm exec nx test trinity --configuration=watch
 ```
 
 **App journeys (`@nx/playwright`)** — `@playwright/test` specs in
-[`e2e/playwright/`](../e2e/playwright/) covering login/guard, theme, profile,
-and device management. Builds the dev bundle, serves `www/`, and brings the Synapse
+[`e2e/playwright/`](../e2e/playwright/) covering the app shell/login guard, navigation, notifications, pinned
+messages, favourite and room lists, unread badges, timeline virtualization, and settings
+(theme, profile, device management). Builds the dev bundle, serves `www/`, and brings the Synapse
 harness below up/down via global setup (auth specs skip themselves when Docker is absent):
 
 ```bash
@@ -164,9 +165,11 @@ pnpm e2e:threads      # thread lifecycle: Reply-in-thread → first reply create
 pnpm e2e:spaces       # spaces create/manage: create space + channel (asserts m.space.child) + leave (needs Docker)
 pnpm e2e:rooms        # room/DM creation + invites: create room, start DM, invite, accept/decline (needs Docker)
 pnpm e2e:search       # search: quick switcher + in-room message search (needs Docker)
+pnpm e2e:reply        # reply header/preview: reply-in-timeline round-trip (needs Docker)
+pnpm e2e:emoji        # composer emoji: :shortcode autocomplete, inline conversion, picker (needs Docker)
 ```
 
-The Synapse-backed flows (`e2e:verify`/`media`/`threads`/`spaces`/`rooms`/`search`) each
+The Synapse-backed flows (`e2e:verify`/`media`/`threads`/`reply`/`spaces`/`rooms`/`search`/`emoji`) each
 start and tear down the **one** disposable Synapse Docker stack (fixed ports), so they
 **must run sequentially**, never concurrently — e.g. `pnpm e2e:threads && pnpm e2e:spaces`.
 
@@ -177,10 +180,10 @@ browsers:
 pnpm exec playwright install chromium webkit
 ```
 
-`e2e/` holds `smoke-login.mjs`, `crypto-spike.mjs`, the two-client
-`verify-sas.mjs` (+ its `verify-sas-run.mjs` orchestrator, `verify-sas-selfcheck.mjs`,
-and a disposable `synapse/` Synapse+Caddy harness), the feature flows
-`send-media.mjs` / `threads.mjs` / `spaces.mjs` / `rooms.mjs` / `search.mjs` (each with a
+`e2e/features/` holds `smoke-login.mjs`, `crypto-spike.mjs`, the two-client
+`verify-sas.mjs` (+ `verify-sas-selfcheck.mjs`); the `e2e/runners/*-run.mjs` orchestrators own the
+disposable `e2e/synapse/` Synapse+Caddy harness, the feature flows
+`send-media.mjs` / `threads.mjs` / `reply.mjs` / `spaces.mjs` / `rooms.mjs` / `search.mjs` / `emoji.mjs` (each with a
 `*-run.mjs` orchestrator that owns the Synapse lifecycle), and a shared `support/serve.mjs`
 static server. See [e2e/README.md](../e2e/README.md) for the verification flow and how
 to point it at your own homeserver. The verification harness needs a homeserver over
@@ -221,11 +224,11 @@ to point it at your own homeserver. The verification harness needs a homeserver 
   `prettier --write`, and everything else gets `prettier --write` (see
   [`.lintstagedrc.json`](../.lintstagedrc.json)). A module-boundary violation fails
   the commit.
-- **Commitlint** — a **commit-msg** hook validates the message against the Angular
-  convention ([`.commitlintrc.json`](../.commitlintrc.json) →
-  `@commitlint/config-angular`): `type(scope): subject`, where `type` is one of
-  `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
-  (note: **no** `chore`).
+- **Commitlint** — a **commit-msg** hook validates the message against the Conventional
+  Commits convention ([`.commitlintrc.json`](../.commitlintrc.json) →
+  `@commitlint/config-conventional`): `type(scope): subject`, where `type` is one of
+  `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`,
+  or `revert`.
 
 ## Continuous integration
 
@@ -248,23 +251,21 @@ first download non-interactive so CI doesn't hang on a prompt.
 | `electron`             | `pnpm -C electron run compile`      | (Electron TS compile check)   |
 | `electron-build-linux` | `electron-builder --linux AppImage` | `pnpm electron:package:linux` |
 
-`electron` (Electron main/preload compile check) runs on push/PR. The **per-OS Electron
-packages build only on `tag` events** (electron-builder downloads the Electron binary +
-tooling — too heavy for every push). electron-builder can't cross-build, so each OS is a
-**separate workflow** routed to its own runner via a `labels` filter (labels are
-per-workflow in Crow, not per-step):
+`electron` (Electron main/preload compile check) runs on push/PR. The **Linux Electron
+package builds only on `tag` events** (electron-builder downloads the Electron binary +
+tooling — too heavy for every push):
 
 | Workflow file                           | Runner label    | Builds                               |
 | --------------------------------------- | --------------- | ------------------------------------ |
 | `ci.yaml` (`electron-build-linux` step) | _default agent_ | Linux AppImage → `electron/release/` |
-| `electron-macos.yaml`                   | `os: macos`     | macOS `.dmg` + `.zip` (macOS host)   |
-| `electron-windows.yaml`                 | `os: windows`   | Windows NSIS `.exe` (Windows host)   |
 
-The macOS/Windows workflows need a Crow **agent connected on that OS advertising the
-matching label** (e.g. `CROW_AGENT_LABELS="os=macos"`); without one, those tag workflows
-stay pending. Both currently produce **unsigned** artifacts; for the macOS signed +
-notarized path see [macOS signing & notarization](#macos-signing--notarization) below.
-Publishing the artifacts (release/object store) needs a separate upload plugin.
+electron-builder **can't cross-build** the macOS/Windows packages, so there is **no macOS
+or Windows CI workflow yet** — each would need its own Crow workflow on a runner of that OS
+(routed via a `labels` filter such as `CROW_AGENT_LABELS="os=macos"`, since labels are
+per-workflow in Crow, not per-step). Such a workflow would produce an **unsigned** artifact
+by default; for the macOS signed + notarized path see [macOS signing &
+notarization](#macos-signing--notarization) below. Publishing the artifacts (release/object
+store) needs a separate upload plugin.
 
 Steps share the cloned workspace, so the `node_modules` from `install` is reused by the
 rest. `--frozen-lockfile` makes CI fail if `pnpm-lock.yaml` is out of sync with
@@ -311,10 +312,10 @@ export APPLE_TEAM_ID=ABCDE12345
 If no notarization creds are set, `notarize.cjs` logs `skipping notarization — no
 credentials` and the (still-signed, if a cert was found) `.app` is left un-notarized.
 
-**CI:** [`.crow/electron-macos.yaml`](../.crow/electron-macos.yaml) runs the **unsigned**
-path on tags today. To produce a signed + notarized artifact, switch it to
-`pnpm electron:package:mac:signed` and provide the cert + notarization values as Crow
-**secrets** wired into the step's `environment:` (commented examples are in that file).
+**CI:** No macOS CI workflow exists yet — `.crow/ci.yaml` builds only the Linux AppImage
+on tags, so no macOS package is produced today. A dedicated macOS workflow (on a macOS
+runner) must be added first; it should run `pnpm electron:package:mac:signed` and provide
+the cert + notarization values as Crow **secrets** wired into the step's `environment:`.
 
 > Cannot be verified on Linux/CI without an Apple Developer cert — the signed path needs a
 > real macOS host with a Developer ID identity and notarization credentials.
@@ -415,8 +416,8 @@ onto black, so `apple-touch-icon.png` ideally keeps a solid plate (`icon-plated.
   class-suffix ESLint rules.
 - **State via signals** — services keep state in private signals exposed as
   `asReadonly()`. **Async service APIs return RxJS Observables** (`defer`/`from` +
-  `switchMap`/`map`/`catchError`); components subscribe with `takeUntilDestroyed`
-  (see the `angular-rxjs-patterns` skill). The login page wraps its calls in the
+  `switchMap`/`map`/`catchError`); components subscribe with `takeUntilDestroyed`.
+  The login page wraps its calls in the
   shared `runWithBusy()` helper (via a local `withBusy()` method) for busy/error handling.
 - New SDK interaction belongs in `@trinity/core` (`libs/core`), not in a component;
   feature pages live in `@trinity/feature-*` libs. Respect the module boundaries.

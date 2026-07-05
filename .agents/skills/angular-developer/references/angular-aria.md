@@ -135,8 +135,8 @@ These patterns combine the `ngCombobox` directive (applied directly to the trigg
 **Imports:**
 
 ```ts
-import { Combobox, ComboboxPopup, ComboboxWidget } from '@angular/aria/combobox';
-import { Listbox, Option } from '@angular/aria/listbox';
+import {Combobox, ComboboxPopup, ComboboxWidget} from '@angular/aria/combobox';
+import {Listbox, Option} from '@angular/aria/listbox';
 ```
 
 **Directives:** `ngCombobox`, `ngComboboxPopup`, `ngComboboxWidget`, `ngListbox`, `ngOption`.
@@ -144,10 +144,24 @@ import { Listbox, Option } from '@angular/aria/listbox';
 ```html
 <!-- Example 1: Standard Autocomplete -->
 <div>
-  <input ngCombobox #combobox="ngCombobox" [(value)]="searchString" [(expanded)]="isExpanded" placeholder="Search options..." class="select-trigger" />
+  <input
+    ngCombobox
+    #combobox="ngCombobox"
+    [(value)]="searchString"
+    [(expanded)]="isExpanded"
+    placeholder="Search options..."
+    class="select-trigger"
+  />
 
   <ng-template ngComboboxPopup [combobox]="combobox">
-    <ul ngComboboxWidget ngListbox #listbox="ngListbox" [(value)]="selectedValue" [activeDescendant]="listbox.activeDescendant()" class="dropdown-menu">
+    <ul
+      ngComboboxWidget
+      ngListbox
+      #listbox="ngListbox"
+      [(value)]="selectedValue"
+      [activeDescendant]="listbox.activeDescendant()"
+      class="dropdown-menu"
+    >
       <li ngOption value="option1" label="Option 1" class="option">Option 1</li>
       <li ngOption value="option2" label="Option 2" class="option">Option 2</li>
     </ul>
@@ -161,7 +175,16 @@ import { Listbox, Option } from '@angular/aria/listbox';
 </div>
 
 <ng-template ngComboboxPopup [combobox]="select">
-  <ul ngComboboxWidget ngListbox #selectListbox="ngListbox" [(value)]="selectedValues" [activeDescendant]="selectListbox.activeDescendant()" (click)="onCommit()" (keydown.enter)="onCommit()" class="dropdown-menu">
+  <ul
+    ngComboboxWidget
+    ngListbox
+    #selectListbox="ngListbox"
+    [(value)]="selectedValues"
+    [activeDescendant]="selectListbox.activeDescendant()"
+    (click)="onCommit()"
+    (keydown.enter)="onCommit()"
+    class="dropdown-menu"
+  >
     <li ngOption value="option1" label="Option 1" class="option">Option 1</li>
     <li ngOption value="option2" label="Option 2" class="option">Option 2</li>
   </ul>
@@ -430,10 +453,10 @@ Angular Aria provides standard Component Harnesses (based on `@angular/cdk/testi
 **Imports:**
 
 ```ts
-import { HarnessLoader } from '@angular/cdk/testing';
-import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { AccordionGroupHarness, AccordionHarness } from '@angular/aria/accordion/testing';
-import { ListboxHarness, ListboxOptionHarness } from '@angular/aria/listbox/testing';
+import {HarnessLoader} from '@angular/cdk/testing';
+import {TestbedHarnessEnvironment} from '@angular/cdk/testing/testbed';
+import {AccordionGroupHarness, AccordionHarness} from '@angular/aria/accordion/testing';
+import {ListboxHarness, ListboxOptionHarness} from '@angular/aria/listbox/testing';
 ```
 
 ### Example: Testing an Accordion with Harnesses
@@ -451,7 +474,7 @@ describe('MyAccordionComponent', () => {
 
   it('should expand accordion on toggle', async () => {
     // Get the harness by its trigger title
-    const accordion = await loader.getHarness(AccordionHarness.with({ title: 'Section 1' }));
+    const accordion = await loader.getHarness(AccordionHarness.with({title: 'Section 1'}));
 
     expect(await accordion.isExpanded()).toBeFalse();
 
@@ -472,9 +495,9 @@ The `[formField]` directive automatically detects directives like `ngCombobox` o
 **Imports:**
 
 ```ts
-import { form, schema, required } from '@angular/forms/signals';
-import { Combobox, ComboboxPopup, ComboboxWidget } from '@angular/aria/combobox';
-import { Listbox, Option } from '@angular/aria/listbox';
+import {form, schema, required} from '@angular/forms/signals';
+import {Combobox, ComboboxPopup, ComboboxWidget} from '@angular/aria/combobox';
+import {Listbox, Option} from '@angular/aria/listbox';
 ```
 
 ### Example 1: Autocomplete Combobox inside a Form
@@ -493,10 +516,24 @@ You bind it directly using `[formField]`:
 ```html
 <div>
   <label for="city-input">Choose your city:</label>
-  <input id="city-input" ngCombobox #combobox="ngCombobox" [formField]="myForm.city" [(expanded)]="isExpanded" placeholder="Search cities..." />
+  <input
+    id="city-input"
+    ngCombobox
+    #combobox="ngCombobox"
+    [formField]="myForm.city"
+    [(expanded)]="isExpanded"
+    placeholder="Search cities..."
+  />
 
   <ng-template ngComboboxPopup [combobox]="combobox">
-    <ul ngComboboxWidget ngListbox #listbox="ngListbox" [(value)]="selectedValue" [activeDescendant]="listbox.activeDescendant()" class="dropdown-menu">
+    <ul
+      ngComboboxWidget
+      ngListbox
+      #listbox="ngListbox"
+      [(value)]="selectedValue"
+      [activeDescendant]="listbox.activeDescendant()"
+      class="dropdown-menu"
+    >
       <li ngOption value="sfo" label="San Francisco">San Francisco</li>
       <li ngOption value="nyc" label="New York">New York</li>
     </ul>
@@ -511,13 +548,29 @@ Apply `ngCombobox` directly to a focusable `div` trigger and bind to `[formField
 ```html
 <div>
   <label for="city-select">Choose your city:</label>
-  <div id="city-select" ngCombobox #select="ngCombobox" [formField]="myForm.city" [(expanded)]="isExpanded" class="select-trigger">
+  <div
+    id="city-select"
+    ngCombobox
+    #select="ngCombobox"
+    [formField]="myForm.city"
+    [(expanded)]="isExpanded"
+    class="select-trigger"
+  >
     <span class="select-text">{{ myForm.city.value() || 'Choose your city' }}</span>
     <span class="icon">▼</span>
   </div>
 
   <ng-template ngComboboxPopup [combobox]="select">
-    <ul ngComboboxWidget ngListbox #selectListbox="ngListbox" [(value)]="selectedValues" [activeDescendant]="selectListbox.activeDescendant()" (click)="onCommit()" (keydown.enter)="onCommit()" class="dropdown-menu">
+    <ul
+      ngComboboxWidget
+      ngListbox
+      #selectListbox="ngListbox"
+      [(value)]="selectedValues"
+      [activeDescendant]="selectListbox.activeDescendant()"
+      (click)="onCommit()"
+      (keydown.enter)="onCommit()"
+      class="dropdown-menu"
+    >
       <li ngOption value="sfo" label="San Francisco">San Francisco</li>
       <li ngOption value="nyc" label="New York">New York</li>
     </ul>

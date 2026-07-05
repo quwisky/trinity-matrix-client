@@ -52,7 +52,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
 **Correctness**
 
 - [x] **Edit/reply target leaks across a room switch** _(fixed)_ —
-      [message-list.component.ts](../libs/feature-rooms/src/lib/message-list/message-list.component.ts).
+      [message-list-base.ts](../libs/feature-rooms/src/lib/message-list/message-list-base.ts).
       The list instance is reused across rooms (it stays mounted under `@if activeRoom`),
       so `editingId`/`replyingToId`/`lastId` weren't reset. Replying in room A then
       switching to B and sending a plain message shipped it as an `m.in_reply_to` a
@@ -72,7 +72,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
       session (no legacy→authed fallback). _Fix: reset `authedMedia` in `releaseAll()` and
       call `media.releaseAll()` on logout/login alongside `avatars.releaseAll()`._
 - [x] **Timeline force-scrolls to the bottom on every incoming message** _(fixed)_ —
-      [message-list.component.ts:185](../libs/feature-rooms/src/lib/message-list/message-list.component.ts).
+      [simple-message-list.component.ts](../libs/feature-rooms/src/lib/message-list/simple-message-list/simple-message-list.component.ts).
       `stickToBottom` has no "is the user near the bottom?" gate, so a message arriving
       while the user reads scrollback yanks them down. _Fix: capture proximity to the
       bottom before the DOM update and only auto-stick when the user was already there._
@@ -146,11 +146,10 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
 - [x] **`pendingDecryption` grew unbounded for permanent UTDs** _(fixed)_ —
       [notification.service.ts:84](../libs/core/src/lib/matrix/notification.service.ts).
       Events that never decrypt are never evicted. _Fix: cap/evict like `notified`._
-- [ ] **No timeline virtualization** _(plausible; deferred — a substantial feature
-      needing its own design + perf pass)_ —
-      [message-list.component.html:10](../libs/feature-rooms/src/lib/message-list/message-list.component.html).
-      Every loaded event stays in the DOM; long rooms + backfill accumulate hundreds of
-      rows. _Fix: CDK Virtual Scroll with an auto/dynamic item-size strategy._
+- [x] **No timeline virtualization** _(fixed)_ —
+      [virtual-message-list.component.ts](../libs/feature-rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.ts).
+      A windowed timeline (VirtualMessageListComponent) selected by a feature flag was added; the
+      plain-scroll SimpleMessageListComponent remains the default.
 
 **Test coverage**
 
@@ -164,14 +163,3 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
       (`hardenContents`: window.open denied, external nav prevented + opened externally,
       webview attachment blocked), and `deep-link.spec.ts` (`deepLinkFromArgv`, and
       `deliverDeepLink` ignoring any non-`eu.qwky.trinity://` scheme).
-
-## Remaining (open)
-
-One item is left open — a genuine feature, not a quick fix:
-
-- **Timeline virtualization** — retrofitting CDK Virtual Scroll into the message list is
-  a substantial feature: rows are variable-height (needs an autosize strategy), and it
-  must be reconciled with the existing scroll-anchoring (backfill prepend math, `jumpTo`,
-  the `atBottom` gate) — none of which is verifiable headlessly (jsdom has no layout). It
-  warrants its own design + on-device perf/scroll verification rather than a risky
-  bundled change to the tuned timeline.

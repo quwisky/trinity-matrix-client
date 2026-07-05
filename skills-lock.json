@@ -1,89 +1,11 @@
 {
   "version": 1,
   "skills": {
-    "angular-component": {
-      "source": "analogjs/angular-skills",
-      "sourceType": "github",
-      "skillPath": "skills/angular-component/SKILL.md",
-      "computedHash": "2789fdf11e2a70832ce2e6e79954018325a010ebdd45c5d4b1e7bfdf44679b7c"
-    },
     "angular-developer": {
       "source": "angular/skills",
       "sourceType": "github",
       "skillPath": "angular-developer/SKILL.md",
-      "computedHash": "e6400c4e948ba8c9d002509e9a482862c189f96938e01655f56a1e9a4533cb19"
-    },
-    "angular-di": {
-      "source": "analogjs/angular-skills",
-      "sourceType": "github",
-      "skillPath": "skills/angular-di/SKILL.md",
-      "computedHash": "4d3dd9ecceec5642eea118aede824501bdec537b6b8735564a68787ec9617b75"
-    },
-    "angular-directives": {
-      "source": "analogjs/angular-skills",
-      "sourceType": "github",
-      "skillPath": "skills/angular-directives/SKILL.md",
-      "computedHash": "b8ce636215ec0792839fe57c3632b475957bed1ebc404e9a1c54222e0e506bfa"
-    },
-    "angular-forms": {
-      "source": "analogjs/angular-skills",
-      "sourceType": "github",
-      "skillPath": "skills/angular-forms/SKILL.md",
-      "computedHash": "a2e28f7c7c1b9b13f0a8212f403515886f9d23bf13732a355b1f5d01f5cc9d69"
-    },
-    "angular-http": {
-      "source": "analogjs/angular-skills",
-      "sourceType": "github",
-      "skillPath": "skills/angular-http/SKILL.md",
-      "computedHash": "ad8821177929ea09eb94e7fc386d842c76c7f39b6c4d7aa3176ba3596dbabecc"
-    },
-    "angular-routing": {
-      "source": "analogjs/angular-skills",
-      "sourceType": "github",
-      "skillPath": "skills/angular-routing/SKILL.md",
-      "computedHash": "e54b8803da246042525e67effe7ea2a9dc26d5a50e857125793f579c7027aef3"
-    },
-    "angular-signals": {
-      "source": "analogjs/angular-skills",
-      "sourceType": "github",
-      "skillPath": "skills/angular-signals/SKILL.md",
-      "computedHash": "ddedef1232295f200b966778bc36d16fc07d2113ad1dbc73d75d14eb544953bc"
-    },
-    "angular-testing": {
-      "source": "analogjs/angular-skills",
-      "sourceType": "github",
-      "skillPath": "skills/angular-testing/SKILL.md",
-      "computedHash": "66adf01ccb30305e179ce41ff76ded6b60dbb5909bd889cc350cdd13b6933130"
-    },
-    "frontend-design": {
-      "source": "anthropics/skills",
-      "sourceType": "github",
-      "skillPath": "skills/frontend-design/SKILL.md",
-      "computedHash": "4eabc66183767153e404b39d1b839b1c37f2d82d86f0a0d7e880a579d8d62336"
-    },
-    "git-commit": {
-      "source": "github/awesome-copilot",
-      "sourceType": "github",
-      "skillPath": "skills/git-commit/SKILL.md",
-      "computedHash": "2607fc60629b82b257136dd2a7a373f0a4466c0b49df7746d845d59313c99b21"
-    },
-    "ionic-angular": {
-      "source": "capawesome-team/skills",
-      "sourceType": "github",
-      "skillPath": "skills/ionic-angular/SKILL.md",
-      "computedHash": "44351bf5dfe0a89334749dafe9f94de416a583f8fb6d5480b83a42dc4755e016"
-    },
-    "ionic-design": {
-      "source": "cap-go/capacitor-skills",
-      "sourceType": "github",
-      "skillPath": "skills/ionic-design/SKILL.md",
-      "computedHash": "069f85d262fcba95777119918e8269fa2786368ff333adcdcd017317dfc7315d"
-    },
-    "mobile-design": {
-      "source": "sickn33/antigravity-awesome-skills",
-      "sourceType": "github",
-      "skillPath": "skills/mobile-design/SKILL.md",
-      "computedHash": "ba174c1095bcdda7a135622361778568589922fae7d932d822c5daba94e12318"
+      "computedHash": "71ec40398a5194a446b23dbaf46c00d8f9f7fa6b944b69a0ea7f36893302a2fa"
     },
     "nx-workspace": {
       "source": "nrwl/nx-ai-agents-config",
@@ -103,35 +25,17 @@
       "skillPath": "skills/playwright-cli/SKILL.md",
       "computedHash": "32cf6cf8733ae75ae41f5241347bca74459629f90bcfbd4e25540ede5d4b8f95"
     },
-    "scss-best-practices": {
-      "source": "mindrally/skills",
-      "sourceType": "github",
-      "skillPath": "scss-best-practices/SKILL.md",
-      "computedHash": "16ac9e8bf135304254a358776c5fac043799c1c3ac40221da1338ee972506de5"
-    },
     "spartan": {
       "source": "spartan-ng/spartan",
       "sourceType": "github",
       "skillPath": "skills/spartan/SKILL.md",
       "computedHash": "126d1eba31bef1c33c37ce3675bc20d0e74a5c2f42625d7837d5c8fae25234e5"
     },
-    "typescript-advanced-types": {
-      "source": "wshobson/agents",
-      "sourceType": "github",
-      "skillPath": "plugins/javascript-typescript/skills/typescript-advanced-types/SKILL.md",
-      "computedHash": "8cbf2bf600f392d7260e476e3202932a876e2281cda3b15a8b6a5a43f383252d"
-    },
     "vitest": {
       "source": "antfu/skills",
       "sourceType": "github",
       "skillPath": "skills/vitest/SKILL.md",
       "computedHash": "943d436114c677802426741980146c07560bf375297666b03062444f4b98a785"
-    },
-    "web-design-guidelines": {
-      "source": "vercel-labs/agent-skills",
-      "sourceType": "github",
-      "skillPath": "skills/web-design-guidelines/SKILL.md",
-      "computedHash": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474"
     }
   }
 }

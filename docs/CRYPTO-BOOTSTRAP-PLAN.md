@@ -111,9 +111,9 @@ Cross-signing already exists server-side, but this device isn't trusted
 'root' })`, same shape as `RoomsService` (a `connect()` that bridges crypto events →
 signals; cold Observables for actions):
 
-- Read-only signals: `cryptoReady` (cross-signing + secret storage ready),
-  `keyBackupActive`, `thisDeviceVerified`, and `needsSetup` vs `needsRecovery`
-  (drives which flow the UI shows).
+- Read-only signals: `status` (a `CryptoStatus` union — `unknown` / `ready` /
+  `needs-setup` / `needs-recovery` — that drives which flow the UI shows),
+  `keyBackupActive`, and `thisDeviceVerified`.
 - `connect()`: on `CryptoEvent.KeysChanged` / sync prepared, recompute status via
   `isCrossSigningReady()`, `isSecretStorageReady()`, `getActiveSessionBackupVersion()`,
   `getDeviceVerificationStatus(userId, deviceId)`. Call `checkKeyBackupAndEnable()`
