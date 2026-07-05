@@ -13,3 +13,4 @@
 # Keeping `packages` empty declares the workspace root explicitly (so pnpm never walks
 # up to a parent dir) while leaving the single-project install exactly as it is.
 packages: []
+minimumReleaseAge: 1440
