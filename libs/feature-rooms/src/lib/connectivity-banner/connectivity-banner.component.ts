@@ -20,14 +20,7 @@ import { BannerComponent } from '@trinity/ui';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgIcon, BannerComponent],
   viewProviders: [provideIcons({ lucideCloudOff })],
-  template: `
-    @if (offline()) {
-      <trn-banner tone="neutral">
-        <ng-icon trnBannerIcon name="lucideCloudOff" aria-hidden="true" />
-        You’re offline. Reconnecting…
-      </trn-banner>
-    }
-  `,
+  templateUrl: './connectivity-banner.component.html',
 })
 export class ConnectivityBannerComponent {
   private readonly matrix = inject(MatrixClientService);

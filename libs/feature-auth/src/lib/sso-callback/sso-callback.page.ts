@@ -22,20 +22,7 @@ import { SsoStateStore } from '../sso-state.store';
 @Component({
   selector: 'trn-sso-callback',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <main class="flex-1 overflow-y-auto p-4 text-center">
-      <h1 class="sr-only">Completing sign in</h1>
-      @if (error(); as e) {
-        <p>
-          <span class="text-destructive">{{ e }}</span>
-        </p>
-        <button hlmBtn (click)="back()">Back to sign in</button>
-      } @else {
-        <hlm-spinner />
-        <p>Completing sign in…</p>
-      }
-    </main>
-  `,
+  templateUrl: './sso-callback.page.html',
   imports: [HlmButton, HlmSpinner],
 })
 export class SsoCallbackPage implements OnInit {

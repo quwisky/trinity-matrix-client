@@ -20,17 +20,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   selector: 'trn-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './banner.component.scss',
-  template: `
-    <div class="banner" [attr.data-tone]="tone()">
-      <span class="banner__icon"><ng-content select="[trnBannerIcon]" /></span>
-      <!-- Live region scoped to the message so trailing actions aren't read as
-           part of the polite announcement. -->
-      <span class="banner__text" role="status"><ng-content /></span>
-      <span class="banner__actions"
-        ><ng-content select="[trnBannerActions]"
-      /></span>
-    </div>
-  `,
+  templateUrl: './banner.component.html',
 })
 export class BannerComponent {
   /** Colour tone: `neutral` (passive status) or `accent` (call-to-action). */

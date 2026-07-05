@@ -48,78 +48,7 @@ const MIN_SEARCH_LENGTH = 2;
   selector: 'trn-user-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AvatarComponent, HlmSpinner, HlmButton, HlmInput],
-  template: `
-    <div
-      class="flex h-[560px] max-h-[85vh] w-[92vw] max-w-[460px] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
-    >
-      <div
-        class="flex items-center gap-2 border-b border-solid border-border p-3"
-      >
-        <button hlmBtn variant="ghost" size="sm" (click)="cancel()">
-          Cancel
-        </button>
-        <h2 class="flex-1 truncate text-center text-base font-semibold">
-          {{ title() }}
-        </h2>
-        <button
-          hlmBtn
-          size="sm"
-          [disabled]="!canConfirm()"
-          (click)="confirmTyped()"
-        >
-          {{ confirmLabel() }}
-        </button>
-      </div>
-
-      <div class="border-b border-solid border-border p-3">
-        <input
-          hlmInput
-          [placeholder]="placeholder()"
-          autocapitalize="off"
-          autocorrect="off"
-          inputmode="text"
-          [value]="term()"
-          (input)="onInput($event)"
-        />
-      </div>
-
-      <div class="flex-1 overflow-y-auto p-2">
-        @if (searching()) {
-          <div class="picker-status" aria-live="polite"><hlm-spinner /></div>
-        }
-        @for (user of results(); track user.userId) {
-          <button
-            type="button"
-            class="flex w-full items-center gap-3 rounded-md p-2 text-left hover:bg-accent"
-            (click)="choose(user.userId)"
-          >
-            <trn-avatar
-              [mxc]="user.avatarMxc"
-              [initial]="initialOf(user.displayName)"
-              [name]="user.displayName"
-              [size]="36"
-            />
-            <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-medium">{{
-                user.displayName
-              }}</span>
-              <span class="block truncate text-xs text-muted-foreground">{{
-                user.userId
-              }}</span>
-            </span>
-          </button>
-        } @empty {
-          @if (!searching()) {
-            <div class="picker-empty">
-              <span class="text-xs text-muted-foreground">{{
-                emptyHint()
-              }}</span>
-            </div>
-          }
-        }
-      </div>
-    </div>
-  `,
+  templateUrl: './user-picker.component.html',
   styleUrl: './user-picker.component.scss',
 })
 export class UserPickerComponent {

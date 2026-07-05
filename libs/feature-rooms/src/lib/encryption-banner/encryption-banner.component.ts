@@ -35,26 +35,7 @@ interface BannerAction {
   styleUrls: ['encryption-banner.component.scss'],
   imports: [NgIcon, HlmButton, BannerComponent],
   viewProviders: [provideIcons({ lucideLock })],
-  template: `
-    @if (visible()) {
-      <trn-banner tone="accent">
-        <ng-icon trnBannerIcon name="lucideLock" aria-hidden="true" />
-        {{ message() }}
-        <span trnBannerActions>
-          @for (action of actions(); track action.kind) {
-            <button
-              hlmBtn
-              class="banner__action"
-              size="sm"
-              (click)="run(action.kind)"
-            >
-              {{ action.label }}
-            </button>
-          }
-        </span>
-      </trn-banner>
-    }
-  `,
+  templateUrl: './encryption-banner.component.html',
 })
 export class EncryptionBannerComponent {
   private readonly crypto = inject(CryptoService);

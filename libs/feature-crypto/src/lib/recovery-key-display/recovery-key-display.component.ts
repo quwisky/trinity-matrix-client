@@ -27,38 +27,7 @@ const COPIED_FEEDBACK_MS = 2000;
   styleUrls: ['recovery-key-display.component.scss'],
   imports: [HlmButton, NgIcon],
   viewProviders: [provideIcons({ lucideCheck, lucideCopy, lucideDownload })],
-  template: `
-    <!-- No aria-label: the key text itself must be the accessible content so a
-         screen reader can read it. Copy/Download are the reliable capture path. -->
-    <code class="key" tabindex="0">{{ recoveryKey() }}</code>
-
-    <div class="actions">
-      <button hlmBtn variant="outline" size="sm" (click)="copy()">
-        <ng-icon
-          [name]="copied() ? 'lucideCheck' : 'lucideCopy'"
-          aria-hidden="true"
-        />
-        {{ copied() ? 'Copied' : 'Copy' }}
-      </button>
-      @if (canDownload) {
-        <button hlmBtn variant="outline" size="sm" (click)="download()">
-          <ng-icon name="lucideDownload" aria-hidden="true" />
-          Download
-        </button>
-      }
-    </div>
-
-    @if (copyFailed()) {
-      <p class="copy-hint">
-        Couldn't copy automatically — select the key above and copy it manually.
-      </p>
-    }
-
-    <!-- Announce copy/download outcomes to assistive tech (visually hidden). -->
-    <span class="sr-only" role="status" aria-live="polite">{{
-      announcement()
-    }}</span>
-  `,
+  templateUrl: './recovery-key-display.component.html',
 })
 export class RecoveryKeyDisplayComponent {
   private readonly document = inject(DOCUMENT);

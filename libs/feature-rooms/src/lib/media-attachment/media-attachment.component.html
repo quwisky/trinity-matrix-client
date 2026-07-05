@@ -1,0 +1,23 @@
+<trn-media-bubble
+  [item]="media()"
+  [src]="src()"
+  [loading]="loading()"
+  [error]="hasError()"
+  (openLightbox)="openLightbox()"
+  (download)="download()"
+/>
+
+@if (lightboxSrc(); as full) {
+  <div
+    #lightbox
+    class="lightbox"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    [attr.aria-label]="media().filename"
+    (click)="closeLightbox()"
+    (keydown.escape)="closeLightbox()"
+  >
+    <img class="lightbox__img" [src]="full" [alt]="media().filename" />
+  </div>
+}
