@@ -124,7 +124,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
       ran before the try; `trinity://app/%` rejected the handler. _Fixed_ by guarding the
       decode and returning a 400.
 - [x] **`verification-host` could open two modals** _(fixed)_ —
-      [verification-host.component.ts:42](../apps/trinity/src/app/verification-host.component.ts).
+      [verification-host.component.ts:42](../libs/feature-shell/src/lib/verification-host.component.ts).
       `this.ref` (a plain field, not a signal) is set only after `await import(...)`, so two
       effect runs during the dynamic import can both enter `present()`. _Fix: set a
       synchronous in-flight guard before awaiting._

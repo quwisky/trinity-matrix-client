@@ -1,7 +1,7 @@
 # Development guide
 
 Setup, running, testing, and troubleshooting. Architecture is in
-[ARCHITECTURE.md](ARCHITECTURE.md); roadmap in [../PLAN.md](../PLAN.md).
+[ARCHITECTURE.md](ARCHITECTURE.md); roadmap in [PLAN.md](PLAN.md).
 
 ## Workspace layout
 
@@ -206,7 +206,7 @@ to point it at your own homeserver. The verification harness needs a homeserver 
   Synapse, so the credentialed path itself is exercised end-to-end — just not against
   matrix.org.
 - On-device WebView runtime (the Playwright engine runs are faithful proxies, but a
-  simulator/emulator run is the real thing — see [../SPIKE.md](../SPIKE.md)).
+  simulator/emulator run is the real thing — see [SPIKE.md](SPIKE.md)).
 - The **native SSO deep link** (`eu.qwky.trinity://sso-callback`) — wired with a state
   nonce, but the round-trip needs on-device validation (`cap sync` then a real SSO).
 

@@ -9,11 +9,11 @@ inside the WebView engines we ship to? Answer: yes, on both engines.
 ## How it was tested
 
 - An in-app spike lives at the home page ("Run crypto spike" button):
-  [crypto-spike.service.ts](libs/core/src/lib/matrix/crypto-spike.service.ts) +
-  [home.page.html](apps/trinity/src/app/home/home.page.html). It creates a throwaway,
+  [crypto-spike.service.ts](../libs/data-access-crypto/src/lib/crypto-spike.service.ts) +
+  [home.page.html](../libs/feature-shell/src/lib/home.page.html). It creates a throwaway,
   unauthenticated client, preloads the WASM, calls `initRustCrypto()`, and reports
   the crypto version, generated device key, IndexedDB availability, and timing.
-- Driven headlessly by [e2e/features/crypto-spike.mjs](e2e/features/crypto-spike.mjs)
+- Driven headlessly by [e2e/features/crypto-spike.mjs](../e2e/features/crypto-spike.mjs)
   via Playwright against two engines (run `pnpm spike:chromium` / `pnpm spike:webkit`).
 
 ## Results
@@ -35,8 +35,8 @@ Angular's esbuild does **not** emit the SDK's WASM asset, so the default loader
    `assets/crypto/matrix_sdk_crypto_wasm_bg.wasm`.
 2. Preload it before `initRustCrypto()` with `initAsync(url)` — the loader memoizes,
    so the SDK's own internal call reuses our instance. See
-   [crypto-wasm-loader.ts](libs/core/src/lib/matrix/crypto-wasm-loader.ts), used by both
-   the spike and [matrix-client.service.ts](libs/core/src/lib/matrix/matrix-client.service.ts).
+   [crypto-wasm-loader.ts](../libs/util-matrix/src/lib/crypto-wasm-loader.ts), used by both
+   the spike and [matrix-client.service.ts](../libs/data-access-matrix-client/src/lib/matrix-client.service.ts).
 
 The WASM is confirmed synced into both native bundles
 (`android/.../public/assets/crypto/`, `ios/App/App/public/assets/crypto/`).

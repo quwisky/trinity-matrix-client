@@ -1,7 +1,7 @@
 # Architecture
 
 How the codebase is organized, the rules it follows, and how data flows. For the
-roadmap see [../PLAN.md](../PLAN.md); for dependency specifics see [../STACK.md](../STACK.md).
+roadmap see [PLAN.md](PLAN.md); for dependency specifics see [STACK.md](STACK.md).
 
 ## Layering rules
 
@@ -241,7 +241,7 @@ persisted session and re-runs the client lifecycle (including crypto).
 
 ## E2EE WASM loading
 
-The single most important platform detail (full story in [../SPIKE.md](../SPIKE.md)):
+The single most important platform detail (full story in [SPIKE.md](SPIKE.md)):
 
 - matrix-js-sdk's default loader resolves its `.wasm` **relative to the bundled JS**,
   which Angular's esbuild does not emit — so it **404s**.
@@ -327,7 +327,7 @@ The _other_ way a fresh device gets trusted (besides the recovery key): an inter
   match/mismatch — each emoji announced by its **name**, the glyph `aria-hidden`) and
   `DeviceVerificationPage`, which renders every stage and works both as a route
   (`/encryption/verify`, self-initiated) and as modal content (incoming).
-- **`VerificationHostComponent`** ([verification-host.component.ts](../apps/trinity/src/app/verification-host.component.ts))
+- **`VerificationHostComponent`** ([verification-host.component.ts](../libs/feature-shell/src/lib/verification-host.component.ts))
   is mounted app-level in `app.component.html` (not a lib), so incoming requests are caught
   on **any** route. It owns `connect()` (once the client is live) and lazily presents the
   verification modal for incoming requests — keeping `feature-crypto` out of the main bundle.

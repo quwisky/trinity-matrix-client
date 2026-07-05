@@ -20,9 +20,9 @@ End-to-end encryption is a first-class, in-MVP feature.
 
 | Doc                                          | What's in it                                             |
 | -------------------------------------------- | -------------------------------------------------------- |
-| [PLAN.md](PLAN.md)                           | Roadmap, milestones, scope, decisions, risks             |
-| [STACK.md](STACK.md)                         | Pinned versions + integration notes for every dependency |
-| [SPIKE.md](SPIKE.md)                         | E2EE crypto WASM validation results (the gating risk)    |
+| [docs/PLAN.md](docs/PLAN.md)                 | Roadmap, milestones, scope, decisions, risks             |
+| [docs/STACK.md](docs/STACK.md)               | Pinned versions + integration notes for every dependency |
+| [docs/SPIKE.md](docs/SPIKE.md)               | E2EE crypto WASM validation results (the gating risk)    |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organized and how data flows             |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)   | Setup, running, testing, troubleshooting                 |
 | [docs/PUSH.md](docs/PUSH.md)                 | Push notifications: architecture + native/gateway setup  |
@@ -47,7 +47,7 @@ End-to-end encryption is a first-class, in-MVP feature.
   hooks (lint-staged + commitlint / Angular commit convention), re-run on every
   push/PR by **Crow CI** (the badge above; see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#continuous-integration))
 
-Exact versions and gotchas live in [STACK.md](STACK.md).
+Exact versions and gotchas live in [STACK.md](docs/STACK.md).
 
 ## Quick start
 
@@ -143,7 +143,7 @@ New shared libs are added when first needed. Each component/page lives in its ow
 
 | Milestone                                        | State                                                                                                                                                                                              |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](SPIKE.md))                                                                                                                                  |
+| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](docs/SPIKE.md))                                                                                                                             |
 | 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                                                                                                                                                 |
 | 3 — Crypto bootstrap (cross-signing, key backup) | ✅ Done — core services + setup/recovery UI and a non-blocking `/rooms` banner                                                                                                                     |
 | 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock                                                                                                                             |
@@ -153,7 +153,7 @@ New shared libs are added when first needed. Each component/page lives in its ow
 | 8 — Media                                        | ✅ Done — display + send (image/file/video/audio), AES-CTR attachment crypto in-tree, server thumbnails + duration/dimension probing, native Camera picker + Filesystem/Share save (web fallbacks) |
 | 9 — MVP polish                                   | ✅ Done — light/dark/system theme (+ native status bar), offline sync cache + web/PWA service worker, Settings (profile + device management), authenticated avatars                                |
 
-Full breakdown in [PLAN.md](PLAN.md).
+Full breakdown in [PLAN.md](docs/PLAN.md).
 
 ## Known limitations (current)
 

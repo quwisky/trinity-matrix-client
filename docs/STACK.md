@@ -23,7 +23,7 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | `@capacitor/share`                   | 8.0.1     | Native OS save/share sheet for downloads (web `<a download>` fallback)                                         |
 | `@capacitor/status-bar`              | 8.0.2     | Sets the native status-bar style to match the light/dark theme                                                 |
 | `@angular/service-worker`            | 21.2.9    | PWA service worker (production web): precaches the app shell + crypto WASM for offline                         |
-| `@capacitor/push-notifications`      | 8.1.1     | FCM/APNs device token for the Matrix pusher (see [docs/PUSH.md](docs/PUSH.md))                                 |
+| `@capacitor/push-notifications`      | 8.1.1     | FCM/APNs device token for the Matrix pusher (see [PUSH.md](PUSH.md))                                           |
 | `matrix-encrypt-attachment`          | —         | Removed (unmaintained since 2022); ported into `@trinity/util-matrix` `attachment-crypto.ts`                   |
 | `marked`                             | 18.0.5    | Markdown → HTML for the composer/timeline                                                                      |
 | `dompurify`                          | 3.4.11    | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                                                     |
@@ -143,7 +143,7 @@ the architecture changes — find out before building UI on top.
   Chromium/WebKit: `smoke-login`, the `crypto-spike` (per engine), the two-client emoji-SAS
   `verify-sas`, and the encrypted `send-media`, `threads`, `reply`, `spaces`, `rooms`, `search`,
   and `emoji` round-trips (disposable Synapse harness, env-gated; full
-  round-trips run to PASS 2026-06-27). See [e2e/README.md](e2e/README.md).
+  round-trips run to PASS 2026-06-27). See [e2e/README.md](../e2e/README.md).
 - Vitest shares the Vite config and runs in parallel by default.
 
 ## Open setup decisions / reminders
@@ -153,7 +153,7 @@ the architecture changes — find out before building UI on top.
   iOS `CFBundleURLSchemes` + Android intent-filter); the round-trip still needs
   on-device validation.
 - Push: the client plumbing is done (`@capacitor/push-notifications` + a Matrix
-  pusher; see [docs/PUSH.md](docs/PUSH.md)). Delivery still needs a deployed push
+  pusher; see [PUSH.md](PUSH.md)). Delivery still needs a deployed push
   gateway (Sygnal), an Apple dev account (APNs) + Firebase project (FCM), and
   on-device verification.
 

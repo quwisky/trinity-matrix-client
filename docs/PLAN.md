@@ -11,7 +11,7 @@ iOS, Android, and Desktop (Electron) from a single Angular codebase.
 - **Testing:** Vitest (unit) + Playwright (e2e).
 - **State management:** signal-store services (no NgRx) — `matrix-js-sdk` is the
   source of truth. Revisit `@ngrx/signals` (SignalStore) for optimistic sends /
-  persisted selection. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#state-management).
+  persisted selection. See [ARCHITECTURE.md](ARCHITECTURE.md#state-management).
 
 ## 1. Goals & Scope
 
@@ -30,7 +30,7 @@ iOS, Android, and Desktop (Electron) from a single Angular codebase.
 
 - Notifications — _landed_: **desktop/web local notifications** from live sync
   (`NotificationService`) and **mobile push** client plumbing (`PushService` + Matrix
-  pusher via `@capacitor/push-notifications`); see [docs/PUSH.md](docs/PUSH.md).
+  pusher via `@capacitor/push-notifications`); see [PUSH.md](PUSH.md).
   Remaining for mobile push: a deployed Sygnal gateway + FCM/APNs credentials +
   on-device verification (or UnifiedPush on Android to avoid running a gateway).
 - Threads (edits, redactions, reactions, and replies landed early, in MVP)
@@ -63,7 +63,7 @@ Pinned versions and integration notes live in [STACK.md](STACK.md).
 > design (parts still planned); physically it maps to `apps/trinity` (app shell) and
 > `libs/` — Matrix logic lives in per-domain `@trinity/data-access-*` libs (+ `@trinity/util-matrix`,
 > `@trinity/platform-native`) and each feature is a `@trinity/feature-*` lib. See
-> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the implemented structure.
+> [ARCHITECTURE.md](ARCHITECTURE.md) for the implemented structure.
 
 ```
 src/app/
@@ -104,7 +104,7 @@ src/app/
    cross-signing setup, key backup. Establishes the device identity messaging depends on.
    Core services (`CryptoService` + the 4S key callback) plus the `@trinity/feature-crypto`
    setup/recovery UI and a non-blocking `/rooms` encryption banner.
-   See [docs/CRYPTO-BOOTSTRAP-PLAN.md](docs/CRYPTO-BOOTSTRAP-PLAN.md).
+   See [CRYPTO-BOOTSTRAP-PLAN.md](CRYPTO-BOOTSTRAP-PLAN.md).
 4. **Sync & room list** — start client with crypto enabled, render rooms
    (names/avatars/unread), live updates, encryption indicators.
 5. **Timeline (read)** — ✅ render decrypted messages (markdown), backward pagination
@@ -182,7 +182,7 @@ Phase 2:
   through the **main process** (the `trinityDesktop` preload bridge → Electron
   `Notification`) so the OS attributes notifications to Trinity; the renderer Web
   Notification path stays for web/PWA. macOS still needs a signed + notarized build to
-  actually deliver (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) → signing).
+  actually deliver (see [DEVELOPMENT.md](DEVELOPMENT.md) → signing).
 - **Threads** — ✅ full lifecycle. Reading (a core `ThreadsService`, "N replies" timeline
   indicators, a thread view; client runs with `threadSupport: true`); in-thread composing
   (reply/react/edit/delete, reusing the main-timeline paths via the SDK `threadId`);
@@ -238,7 +238,7 @@ to win the cascade unconditionally); an `IonRouterOutlet` navigation lock (ionic
 logout hanging ~25s on the Rust-crypto IndexedDB wipe (now backgrounded, with `init()`
 gating re-login on it); unlock/verify presented as **modals** on the desktop layout;
 **main-process notifications**; a **Discord-style login**; a **macOS signing + notarization**
-scaffold; and an **Electron Playwright e2e** suite. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+scaffold; and an **Electron Playwright e2e** suite. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 5. Key Risks (front-loaded)
 

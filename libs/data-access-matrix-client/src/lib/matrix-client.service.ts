@@ -25,7 +25,7 @@ import { SecretStorageKeyService } from './secret-storage-key.service';
 /**
  * Owns the single matrix-js-sdk MatrixClient instance and its lifecycle.
  *
- * Lifecycle contract (see PLAN.md / STACK.md):
+ * Lifecycle contract (see docs/PLAN.md / docs/STACK.md):
  *   createClient -> initRustCrypto() -> startClient()
  * The legacy `client.crypto` is gone; use `client.getCrypto()` for the CryptoApi.
  *
