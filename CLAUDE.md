@@ -85,22 +85,37 @@ The Synapse-backed flows (`e2e:verify`, `e2e:media`, `e2e:threads`, `e2e:reply`,
 imported via `@trinity/*` path aliases (`tsconfig.base.json`) and guarded by Nx module boundaries.
 The web build emits to root `www/` (not `dist/`), which Capacitor and Electron wrap unchanged.
 
-**Layering — dependencies point inward, enforced by `@nx/enforce-module-boundaries`** (project
-`tags` in each `project.json`):
+**Layering — dependencies point inward, enforced by `@nx/enforce-module-boundaries`** (`type:*` +
+`scope:*` tags in each `project.json`). The former monolithic `@trinity/core` was dissolved into
+typed, per-domain libs (do **not** import `@trinity/core` — it no longer exists):
 
-- `@trinity/core` `[type:core]` — all Matrix/Capacitor logic (services, guards, storage). Depends on nothing.
-- `@trinity/feature-*` `[type:feature]` — screens/pages. May depend on `core` + `ui` only, **never another feature**.
-- `@trinity/ui` `[type:ui]` — reusable **presentational** components. No state/SDK deps; may use `@trinity/helm/*`.
-- `@trinity/helm/*` (`libs/spartan/*`, `[type:ui]`) — styled spartan-ng **Helm** over headless **Brain** primitives.
+- `@trinity/util-matrix` `[type:util]` — pure, DI-free Matrix models/helpers (`MessageView` +
+  `buildMessageView`/`initialOf`/`isEditableMessage`, `MediaPayload`, `MatrixSession`, markdown/sanitize,
+  `crypto-wasm-loader`, attachment-crypto). No Angular DI. Everything may depend on it.
+- `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
+  preferences, theme/status-bar, launcher badge, desktop bridge, error handler). Branches on
+  `isNativePlatform()` internally. May depend only on `util`.
+- `@trinity/data-access-matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
+  the client/session foundation every domain data-access lib depends on.
+- `@trinity/data-access-*` `[type:data-access]` — one lib per Matrix domain (`-media`, `-rooms`,
+  `-timeline`, `-crypto`, `-profile`, `-invites`, `-pinned`, `-search`, `-notifications`, `-auth`).
+  Cross-domain injects are inter-lib edges (search→rooms/invites, auth→media/notifications, notification→timeline).
+- `@trinity/feature-*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
+  `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
+- `@trinity/ui` + `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]` — **presentational** only; no
+  state/SDK deps. Helm is `@spartan-ng/cli`-generated.
+- **Scopes:** `scope:shared` (the kernel: util/platform/matrix-client/ui/helm) may not reach into
+  `scope:matrix` (domain data-access + feature libs); the thin `apps/trinity` composes both.
 
-**The core rule: components never import `matrix-js-sdk` directly.** All SDK access is wrapped in
-`@trinity/core` services (`libs/core/src/lib/matrix/`). New SDK interaction belongs there, not in a
-component. This keeps the SDK swappable and the UI testable. A cross-feature dependency that the
-boundary forbids (e.g. the encryption banner needing crypto status) is resolved by reading
-`@trinity/core` signals from the feature that owns the surface — not by importing the other feature.
+**The core rule: components never import `matrix-js-sdk` directly.** All SDK access is wrapped in the
+`@trinity/data-access-*` services. New SDK interaction belongs there, not in a component. This keeps the
+SDK swappable and the UI testable. A cross-feature dependency the boundary forbids (e.g. the encryption
+banner needing crypto status) is resolved by reading the relevant `@trinity/data-access-*` signal from the
+feature that owns the surface, or via a provided-loader token (`ENCRYPTION_DIALOG_COMPONENTS`, wired in
+`main.ts`) — never by importing the other feature.
 
 **State pattern — the SDK is the single source of truth; there is no Redux store.** `matrix-js-sdk`
-already owns rooms/timelines/crypto in memory + IndexedDB and emits events. Core services _project_
+already owns rooms/timelines/crypto in memory + IndexedDB and emits events. Data-access services _project_
 those `EventEmitter` streams into **read-only Angular signals** (`private writable → asReadonly() →
 computed`); components are `OnPush` and read signals directly. **Async actions return cold RxJS
 Observables** (`defer`/`from` + operators); components subscribe with `takeUntilDestroyed`. Signals =

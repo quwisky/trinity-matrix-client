@@ -24,7 +24,7 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | `@capacitor/status-bar`              | 8.0.2     | Sets the native status-bar style to match the light/dark theme                                                 |
 | `@angular/service-worker`            | 21.2.9    | PWA service worker (production web): precaches the app shell + crypto WASM for offline                         |
 | `@capacitor/push-notifications`      | 8.1.1     | FCM/APNs device token for the Matrix pusher (see [docs/PUSH.md](docs/PUSH.md))                                 |
-| `matrix-encrypt-attachment`          | —         | Removed (unmaintained since 2022); ported into `@trinity/core` `attachment-crypto.ts`                          |
+| `matrix-encrypt-attachment`          | —         | Removed (unmaintained since 2022); ported into `@trinity/util-matrix` `attachment-crypto.ts`                   |
 | `marked`                             | 18.0.5    | Markdown → HTML for the composer/timeline                                                                      |
 | `dompurify`                          | 3.4.11    | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                                                     |
 
@@ -81,7 +81,7 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
   returns the `CryptoApi` (main E2EE entry point) after `initRustCrypto()`.
 - Crypto bootstrap sequence: init rust crypto -> cross-signing setup
   (`bootstrapCrossSigning`) -> key backup (`bootstrapSecretStorage` / key backup APIs).
-  **Implemented (M3)** in `@trinity/core` `CryptoService` + `@trinity/feature-crypto`.
+  **Implemented (M3)** in `@trinity/data-access-crypto` `CryptoService` + `@trinity/feature-crypto`.
 - Device verification via the `VerificationRequest`/`Verifier` APIs. **Implemented (M7):**
   emoji-SAS self-verification (`requestOwnUserVerification`) in `VerificationService` +
   `@trinity/feature-crypto`. QR and cross-user verification are deferred.

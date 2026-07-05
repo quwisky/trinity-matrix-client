@@ -54,7 +54,7 @@
 ## What's already done vs. what this milestone adds
 
 `MatrixClientService.init()` already runs `preloadCryptoWasm()` → `initRustCrypto()`
-→ `startClient()` ([matrix-client.service.ts](../libs/core/src/lib/matrix/matrix-client.service.ts)).
+→ `startClient()` ([matrix-client.service.ts](../libs/data-access-matrix-client/src/lib/matrix-client.service.ts)).
 So the Rust crypto engine and the **IndexedDB crypto store** exist as soon as a
 session is live, and device Olm/Megolm keys are generated automatically.
 
@@ -107,7 +107,7 @@ Cross-signing already exists server-side, but this device isn't trusted
 
 ## Files — core (`libs/core`)
 
-**New: `libs/core/src/lib/matrix/crypto.service.ts`** — `@Injectable({ providedIn:
+**New: `libs/data-access-crypto/src/lib/crypto.service.ts`** — `@Injectable({ providedIn:
 'root' })`, same shape as `RoomsService` (a `connect()` that bridges crypto events →
 signals; cold Observables for actions):
 
@@ -123,7 +123,7 @@ signals; cold Observables for actions):
   wrapping flow B.
 - `refresh()`: re-evaluate signals.
 
-**Modify: `libs/core/src/lib/matrix/matrix-client.service.ts`** — add
+**Modify: `libs/data-access-matrix-client/src/lib/matrix-client.service.ts`** — add
 `cryptoCallbacks: { getSecretStorageKey, cacheSecretStorageKey }` to the
 `createClient({...})` call. `getSecretStorageKey` resolves from an in-memory key the
 `CryptoService` sets during the unlock flow (a small injected key-holder, kept out of

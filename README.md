@@ -90,15 +90,25 @@ native projects are unchanged.
 
 ```
 apps/trinity/
-  src/                app shell (main, routes, AppComponent, theme, environments,
-                      assets) + the dev-only /spike page
+  src/                thin app entry: main bootstrap + providers, root routes,
+                      theme, environments (the shell UI lives in feature-shell)
   project.json        build/serve/test targets (Angular esbuild builder)
   vite.config.ts      Vitest setup (Analog Angular plugin)
 libs/
-  core/               @trinity/core  — MatrixClient lifecycle, auth, RoomsService
-                      + timeline read models, crypto loader, profile/devices/avatar
-                      + media (encrypted attachments) services, theme service,
-                      session model, storage, authGuard  [type:core]
+  util-matrix/        @trinity/util-matrix — pure DI-free Matrix models/helpers
+                      (MessageView/MediaPayload/MatrixSession, markdown, wasm loader,
+                      attachment crypto)  [type:util]
+  platform-native/    @trinity/platform-native — Capacitor/native capabilities
+                      (session/secure storage, preferences, theme/status-bar, launcher
+                      badge, desktop bridge, error handler)  [type:platform]
+  data-access-matrix-client/
+                      @trinity/data-access-matrix-client — MatrixClient lifecycle +
+                      4S key service; the client/session foundation  [type:data-access]
+  data-access-*/      @trinity/data-access-{media,rooms,timeline,crypto,profile,invites,
+                      pinned,search,notifications,auth} — one lib per Matrix domain
+                      (read models + write actions + guards)  [type:data-access]
+  feature-shell/      @trinity/feature-shell — app shell (AppComponent, verification
+                      host, nav-focus) + the dev-only /spike page  [type:feature]
   feature-auth/       @trinity/feature-auth — login + SSO callback  [type:feature]
   feature-rooms/      @trinity/feature-rooms — Discord-style shell (server rail =
                       Spaces, channel list, members) + message timeline (list,
@@ -112,7 +122,7 @@ libs/
   ui/                 @trinity/ui — reusable presentational components (avatar +
                       mxc resolver token, banner, page header, media bubble,
                       message toolbar, encryption-dialog service); may use
-                      @trinity/helm/* but no core/state deps  [type:ui]
+                      @trinity/helm/* + @trinity/util-* but no data-access/state deps  [type:ui]
   spartan/*           @trinity/helm/* — styled spartan-ng Helm components over
                       headless Brain primitives (button, input, card, overlay,
                       dropdown-menu, …), generated via @spartan-ng/cli  [type:ui]

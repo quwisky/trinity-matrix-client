@@ -61,8 +61,8 @@ Pinned versions and integration notes live in [STACK.md](STACK.md).
 
 > Layout note: the repo is now an **Nx monorepo**. The module map below is the logical
 > design (parts still planned); physically it maps to `apps/trinity` (app shell) and
-> `libs/` — `core/*` lives in `@trinity/core` (`libs/core/src/lib/…`) and each
-> `features/*` becomes a `@trinity/feature-*` lib. See
+> `libs/` — Matrix logic lives in per-domain `@trinity/data-access-*` libs (+ `@trinity/util-matrix`,
+> `@trinity/platform-native`) and each feature is a `@trinity/feature-*` lib. See
 > [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the implemented structure.
 
 ```
@@ -116,7 +116,7 @@ src/app/
    other devices). `VerificationService` (core) + `feature-crypto` SAS UI + an
    app-level host for incoming requests. QR and cross-user verification deferred.
 8. **Media** — 🚧 encrypted media display + send (image/file/video/audio). Attachment
-   crypto (AES-CTR-256 + SHA-256) is inlined in `@trinity/core` (`attachment-crypto.ts`,
+   crypto (AES-CTR-256 + SHA-256) is inlined in `@trinity/util-matrix` (`attachment-crypto.ts`,
    replacing the unmaintained `matrix-encrypt-attachment`); the upload path encrypts for
    E2EE rooms. Picking uses Capacitor **Camera** on native with a web `<input type="file">`
    fallback (works on web and inside WebViews); the composer also accepts a **pasted image**

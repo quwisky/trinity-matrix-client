@@ -9,16 +9,20 @@ Trinity is an **Nx integrated monorepo** (pnpm). The deployable app lives in
 `apps/`, reusable code in `libs/` (imported via `@trinity/*` path aliases and
 guarded by Nx module boundaries). Projects:
 
-| Project            | Path                    | Notes                                                                                                                                                                                            |
-| ------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `trinity`          | `apps/trinity`          | the Angular/spartan-ng app (build, serve, test) `[type:app]`                                                                                                                                     |
-| `core`             | `libs/core`             | `@trinity/core` — Matrix services, storage, guard `[type:core]`                                                                                                                                  |
-| `feature-auth`     | `libs/feature-auth`     | `@trinity/feature-auth` — login + SSO callback `[type:feature]`                                                                                                                                  |
-| `feature-rooms`    | `libs/feature-rooms`    | `@trinity/feature-rooms` — room shell + message timeline (incl. quick switcher, message search, user picker) `[type:feature]`                                                                    |
-| `feature-crypto`   | `libs/feature-crypto`   | `@trinity/feature-crypto` — encryption setup/recovery + device verification `[type:feature]`                                                                                                     |
-| `feature-settings` | `libs/feature-settings` | `@trinity/feature-settings` — settings: appearance (theme), profile, device management `[type:feature]`                                                                                          |
-| `ui`               | `libs/ui`               | `@trinity/ui` — reusable presentational components (avatar + `AVATAR_RESOLVER` token, banner, page header, media bubble, message toolbar, encryption-dialog service) + `runWithBusy` `[type:ui]` |
-| `spartan/*`        | `libs/spartan/*`        | `@trinity/helm/*` — styled spartan-ng **Helm** components over headless **Brain** primitives (button, input, card, overlay, dropdown-menu, …), added via `@spartan-ng/cli` `[type:ui]`           |
+| Project                     | Path                             | Notes                                                                                                                                                                                            |
+| --------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `trinity`                   | `apps/trinity`                   | the Angular/spartan-ng app (build, serve, test) `[type:app]`                                                                                                                                     |
+| `util-matrix`               | `libs/util-matrix`               | `@trinity/util-matrix` — pure DI-free Matrix models/helpers (view models, media/session models, markdown, wasm loader) `[type:util]`                                                             |
+| `platform-native`           | `libs/platform-native`           | `@trinity/platform-native` — Capacitor/native capabilities (storage, preferences, theme, badge, error handler) `[type:platform]`                                                                 |
+| `data-access-matrix-client` | `libs/data-access-matrix-client` | `@trinity/data-access-matrix-client` — MatrixClient lifecycle + 4S key; the client/session foundation `[type:data-access]`                                                                       |
+| `data-access-*`             | `libs/data-access-*`             | `@trinity/data-access-{media,rooms,timeline,crypto,profile,invites,pinned,search,notifications,auth}` — one lib per Matrix domain (services, read models, guards) `[type:data-access]`           |
+| `feature-shell`             | `libs/feature-shell`             | `@trinity/feature-shell` — app shell (AppComponent, verification host, nav focus) + dev `/spike` page `[type:feature]`                                                                           |
+| `feature-auth`              | `libs/feature-auth`              | `@trinity/feature-auth` — login + SSO callback `[type:feature]`                                                                                                                                  |
+| `feature-rooms`             | `libs/feature-rooms`             | `@trinity/feature-rooms` — room shell + message timeline (incl. quick switcher, message search, user picker) `[type:feature]`                                                                    |
+| `feature-crypto`            | `libs/feature-crypto`            | `@trinity/feature-crypto` — encryption setup/recovery + device verification `[type:feature]`                                                                                                     |
+| `feature-settings`          | `libs/feature-settings`          | `@trinity/feature-settings` — settings: appearance (theme), profile, device management `[type:feature]`                                                                                          |
+| `ui`                        | `libs/ui`                        | `@trinity/ui` — reusable presentational components (avatar + `AVATAR_RESOLVER` token, banner, page header, media bubble, message toolbar, encryption-dialog service) + `runWithBusy` `[type:ui]` |
+| `spartan/*`                 | `libs/spartan/*`                 | `@trinity/helm/*` — styled spartan-ng **Helm** components over headless **Brain** primitives (button, input, card, overlay, dropdown-menu, …), added via `@spartan-ng/cli` `[type:ui]`           |
 
 The web build still emits to root `www/`, so Capacitor and the native projects
 are unchanged. `pnpm exec nx graph` opens the dependency graph.
@@ -419,7 +423,7 @@ onto black, so `apple-touch-icon.png` ideally keeps a solid plate (`icon-plated.
   `switchMap`/`map`/`catchError`); components subscribe with `takeUntilDestroyed`.
   The login page wraps its calls in the
   shared `runWithBusy()` helper (via a local `withBusy()` method) for busy/error handling.
-- New SDK interaction belongs in `@trinity/core` (`libs/core`), not in a component;
+- New SDK interaction belongs in the relevant `@trinity/data-access-*` lib, not in a component;
   feature pages live in `@trinity/feature-*` libs. Respect the module boundaries.
 - Cross-lib imports use the `@trinity/*` aliases; imports within a lib stay relative.
 - Component SCSS shares mixins from `libs/feature-rooms/src/lib/styles/_mixins.scss`.
