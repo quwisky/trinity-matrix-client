@@ -1,6 +1,6 @@
 # Trinity — Implementation Plan
 
-A multiplatform Matrix client built with **Ionic + Angular**, deployed to Web (PWA),
+A multiplatform Matrix client built with **spartan-ng + Angular** on Tailwind v4, deployed to Web (PWA),
 iOS, Android, and Desktop (Electron) from a single Angular codebase.
 
 ## Confirmed Decisions
@@ -43,14 +43,14 @@ Pinned versions and integration notes live in [STACK.md](STACK.md).
 
 | Concern         | Choice (version @ 2026-06-26)                                                                 | Rationale                                         |
 | --------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| UI framework    | Ionic `@ionic/angular` 8.8.12 + Angular 20 (standalone, signals)                              | Cross-platform UI, native feel                    |
+| UI framework    | spartan-ng `@spartan-ng/brain` 1.0.4 on Tailwind v4 + Angular 21 (standalone, signals)        | Cross-platform UI, native feel                    |
 | Native bridge   | Capacitor 8.4.1                                                                               | iOS/Android/Web; SPM on iOS, edge-to-edge Android |
-| Desktop         | Electron via `@capacitor-community/electron` 5.0.1                                            | Reuses web build                                  |
+| Desktop         | Electron (hand-rolled shell in `electron/`, packaged with electron-builder)                   | Reuses web build                                  |
 | Matrix protocol | `matrix-js-sdk` 41.8.0 (needs Node 22+)                                                       | Official; handles sync/E2EE/crypto                |
 | Crypto          | `@matrix-org/matrix-sdk-crypto-wasm` 18.3.1 (Rust crypto)                                     | Modern E2EE backend                               |
 | State           | Angular signals for state (read-only from services) + RxJS Observables for async service APIs | Reactive UI; cancellable async flows              |
 | Storage         | IndexedDB (sync + crypto store) via SDK; Capacitor Preferences for tokens                     | Persistent offline cache                          |
-| Styling         | Ionic components + CSS variables (theming/dark mode)                                          |                                                   |
+| Styling         | spartan-ng (Tailwind v4) + CSS variables (theming/dark mode)                                  |                                                   |
 | Testing         | Vitest (Analog plugin, run via Nx) + Playwright (e2e)                                         |                                                   |
 
 > Note: `matrix-js-sdk` is browser-oriented and runs under Capacitor's WebView.

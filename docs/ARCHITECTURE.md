@@ -362,18 +362,18 @@ assert real behavior:
   Docker harness (`e2e/synapse/`), with a homeserver-free `verify-sas-selfcheck.mjs`
   fallback. The full SAS round-trip was run to PASS (2026-06-27).
 - `send-media-run.mjs`, `threads-run.mjs`, `spaces-run.mjs`, `rooms-run.mjs`,
-  `search-run.mjs` — full feature flows against the disposable Synapse: encrypted media
+  `search-run.mjs`, `reply-run.mjs`, `emoji-run.mjs` — full feature flows against the disposable Synapse: encrypted media
   send/receive; the thread lifecycle ("Reply in thread" → the first reply creates the
   thread, reopen, abandon-creates-nothing); spaces create/manage (create a space, create a
   channel in it asserting the `m.space.child`/`m.space.parent` links + child encryption,
   leave); room/DM creation + invites (create a room, start a DM, invite, accept/decline);
-  and search (the quick switcher + in-room message search). Each `*-run.mjs` owns the
+  search (the quick switcher + in-room message search); reply header/preview; and composer emoji (`:shortcode` autocomplete, inline conversion, and the ngx-emoji-mart picker). Each `*-run.mjs` owns the
   Synapse lifecycle, so they **must run sequentially** (one shared Docker stack on fixed
   ports), e.g. `pnpm e2e:threads && pnpm e2e:spaces`.
 
 See [e2e/README.md](../e2e/README.md) for the verification flow.
 
-There are also two **`@playwright/test`** suites under `apps/trinity/`:
+There are also two **`@playwright/test`** suites under `e2e/`:
 
 - `e2e/` (the `@nx/playwright` project, `nx e2e trinity-e2e`) — authenticated app journeys
   against the same disposable Synapse harness (login, settings/theme, devices,

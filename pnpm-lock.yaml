@@ -165,7 +165,7 @@ importers:
       '@commitlint/cli':
         specifier: ^21.2.0
         version: 21.2.0(@types/node@22.20.0)(conventional-commits-parser@6.4.0)(typescript@5.9.3)
-      '@commitlint/config-angular':
+      '@commitlint/config-conventional':
         specifier: ^21.2.0
         version: 21.2.0
       '@nx/angular':
@@ -1376,14 +1376,6 @@ packages:
     resolution: {integrity: sha512-4GLVIhUaT3c3GBlQ0GB80/5H3xXdn/Tgw4lrsuoOQVDu2wl4Xw0GuzSar8xZKSMv4H3xaKaQXmvH91GmdyYBZA==}
     engines: {node: '>=22.12.0'}
     hasBin: true
-
-  '@commitlint/config-angular-type-enum@21.0.1':
-    resolution: {integrity: sha512-xTQlgHTaQyXfFpPI3w2dI7ppuTDWmF++1W/kgNohRpxhBzAoJxc6Q/2P7EjvJodtVl7+38xHyu0STtV4ERXdhg==}
-    engines: {node: '>=22.12.0'}
-
-  '@commitlint/config-angular@21.2.0':
-    resolution: {integrity: sha512-0h/gUnNnrpouI5F5yEx6g/NwPmQ8MujiHuMv2F9/UXvoKrhm9FmSP/M1Bss7HyyC5hDKVHgx61Il6WsCKBzy2g==}
-    engines: {node: '>=22.12.0'}
 
   '@commitlint/config-conventional@21.2.0':
     resolution: {integrity: sha512-Qf8WRDVcyVd14if6VTWenebxFbKnVnbzPUJjlzjkyJGeHK2xCGd63Dr1XZzj0plXKQb9P0BfOxoc1HVeCo2BWQ==}
@@ -11132,12 +11124,6 @@ snapshots:
       - conventional-commits-filter
       - conventional-commits-parser
       - typescript
-
-  '@commitlint/config-angular-type-enum@21.0.1': {}
-
-  '@commitlint/config-angular@21.2.0':
-    dependencies:
-      '@commitlint/config-angular-type-enum': 21.0.1
 
   '@commitlint/config-conventional@21.2.0':
     dependencies:

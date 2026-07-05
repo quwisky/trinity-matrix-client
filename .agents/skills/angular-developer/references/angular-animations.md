@@ -141,11 +141,17 @@ bootstrapApplication(App, {
 ### Defining Transitions
 
 ```ts
-import { signal } from '@angular/core';
-import { trigger, state, style, animate, transition } from '@angular/animations';
+import {signal} from '@angular/core';
+import {trigger, state, style, animate, transition} from '@angular/animations';
 
 @Component({
-  animations: [trigger('openClose', [state('open', style({ opacity: 1 })), state('closed', style({ opacity: 0 })), transition('open <=> closed', [animate('0.5s')])])],
+  animations: [
+    trigger('openClose', [
+      state('open', style({opacity: 1})),
+      state('closed', style({opacity: 0})),
+      transition('open <=> closed', [animate('0.5s')]),
+    ]),
+  ],
   template: `<div [@openClose]="isOpen() ? 'open' : 'closed'">...</div>`,
 })
 export class OpenClose {

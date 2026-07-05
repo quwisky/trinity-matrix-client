@@ -1,5 +1,7 @@
 {
-  "enabledPlugins": {},
+  "enabledPlugins": {
+    "nx@nx-claude-plugins": true
+  },
   "extraKnownMarketplaces": {
     "nx-claude-plugins": {
       "source": {
@@ -10,9 +12,7 @@
   },
   "sandbox": {
     "network": {
-      "allowedDomains": [
-        "www.google-analytics.com"
-      ]
+      "allowedDomains": ["www.google-analytics.com"]
     }
   }
 }
