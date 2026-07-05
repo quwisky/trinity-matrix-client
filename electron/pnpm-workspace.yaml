@@ -1,0 +1,10 @@
+# Standalone pnpm workspace root for the hand-rolled Electron desktop shell.
+#
+# This marks electron/ as its OWN pnpm project (its own pnpm-lock.yaml + node_modules)
+# so `pnpm -C electron install` resolves here instead of walking up to the repo-root
+# pnpm-workspace.yaml. The shell is deliberately not part of the Nx app/libs graph and
+# is installed separately (`pnpm electron:install`); without this file the root
+# workspace swallows it and its node_modules (incl. the `electron` types tsc needs)
+# never get installed.
+packages: []
+minimumReleaseAge: 1440

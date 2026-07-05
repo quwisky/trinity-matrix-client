@@ -1,0 +1,67 @@
+@if (showError()) {
+  <button
+    type="button"
+    class="media media--file media--error"
+    (click)="download.emit()"
+  >
+    <span class="media__icon" aria-hidden="true">!</span>
+    <span class="media__meta">
+      <span class="media__name">{{ filename() }}</span>
+      <span class="media__sub">Couldn’t load — download</span>
+    </span>
+  </button>
+} @else if (kind() === 'image') {
+  <button
+    type="button"
+    class="media media--image"
+    [style.aspect-ratio]="aspectRatio()"
+    [attr.aria-label]="'Open image ' + filename()"
+    (click)="openLightbox.emit()"
+  >
+    @if (src()) {
+      <img
+        class="media__img"
+        [src]="src()"
+        [alt]="filename()"
+        (error)="imgFailed.set(true)"
+      />
+    } @else {
+      <span class="media__skeleton" aria-hidden="true"></span>
+    }
+  </button>
+} @else if (kind() === 'video') {
+  @if (src()) {
+    <video
+      class="media media--video"
+      controls
+      [src]="src()"
+      [attr.aria-label]="'Video: ' + filename()"
+    ></video>
+  } @else {
+    <span class="media media--video media__skeleton" aria-hidden="true"></span>
+  }
+} @else if (kind() === 'audio') {
+  @if (src()) {
+    <audio
+      class="media media--audio"
+      controls
+      [src]="src()"
+      [attr.aria-label]="'Audio: ' + filename()"
+    ></audio>
+  } @else {
+    <span class="media__loading">Loading audio…</span>
+  }
+} @else {
+  <button
+    type="button"
+    class="media media--file"
+    [attr.aria-label]="'Download ' + filename()"
+    (click)="download.emit()"
+  >
+    <span class="media__icon" aria-hidden="true">↓</span>
+    <span class="media__meta">
+      <span class="media__name">{{ filename() }}</span>
+      <span class="media__sub">{{ subtitle() }}</span>
+    </span>
+  </button>
+}

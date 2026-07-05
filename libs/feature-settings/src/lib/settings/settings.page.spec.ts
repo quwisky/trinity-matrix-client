@@ -7,14 +7,13 @@ import { of } from 'rxjs';
 import { render } from '@testing-library/angular';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProfileService, type UserProfile } from '@trinity/data-access-profile';
 import {
   FeatureFlagsService,
-  ProfileService,
   ThemeService,
   type ResolvedTheme,
   type ThemePreference,
-  type UserProfile,
-} from '@trinity/core';
+} from '@trinity/platform-native';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { DevicesSectionComponent } from '../devices/devices-section.component';
 import { SettingsPage } from './settings.page';

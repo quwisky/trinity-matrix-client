@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { render, screen } from '@testing-library/angular';
-import { CryptoService } from '@trinity/core';
+import { CryptoService } from '@trinity/data-access-crypto';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';

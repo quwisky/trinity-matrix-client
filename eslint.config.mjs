@@ -35,29 +35,61 @@ export default defineConfig([
           allow: [],
           depConstraints: [
             {
-              sourceTag: 'scope:trinity',
-              onlyDependOnLibsWithTags: ['scope:trinity'],
+              sourceTag: 'scope:matrix',
+              onlyDependOnLibsWithTags: ['scope:matrix', 'scope:shared'],
+            },
+            {
+              // The shared kernel (util/platform/matrix-client/ui/helm) must stay
+              // domain-agnostic — it may not reach into the matrix domain libs.
+              sourceTag: 'scope:shared',
+              onlyDependOnLibsWithTags: ['scope:shared'],
             },
             {
               sourceTag: 'type:app',
               onlyDependOnLibsWithTags: [
                 'type:feature',
-                'type:core',
                 'type:ui',
+                'type:data-access',
+                'type:util',
+                'type:platform',
               ],
             },
             {
               sourceTag: 'type:feature',
-              onlyDependOnLibsWithTags: ['type:core', 'type:ui'],
+              onlyDependOnLibsWithTags: [
+                'type:ui',
+                'type:data-access',
+                'type:util',
+                'type:platform',
+              ],
             },
             {
-              sourceTag: 'type:core',
-              onlyDependOnLibsWithTags: ['type:core'],
+              // State/services/API wrappers — may use other data-access + util/platform.
+              sourceTag: 'type:data-access',
+              onlyDependOnLibsWithTags: [
+                'type:data-access',
+                'type:util',
+                'type:platform',
+              ],
             },
             {
               // Presentational-only: no state/services, so no core dependency.
               sourceTag: 'type:ui',
-              onlyDependOnLibsWithTags: ['type:ui'],
+              onlyDependOnLibsWithTags: [
+                'type:ui',
+                'type:util',
+                'type:platform',
+              ],
+            },
+            {
+              // Native capabilities behind Capacitor/browser APIs — only util below.
+              sourceTag: 'type:platform',
+              onlyDependOnLibsWithTags: ['type:platform', 'type:util'],
+            },
+            {
+              // Pure functions/models — no Angular DI, depends only on other utils.
+              sourceTag: 'type:util',
+              onlyDependOnLibsWithTags: ['type:util'],
             },
           ],
         },

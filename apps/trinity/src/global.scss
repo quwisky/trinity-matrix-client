@@ -3,9 +3,8 @@
  * ----------------------------------------------------------------------------
  * Global styles for the whole app. Ionic is fully removed: the base reset now comes
  * from Tailwind's preflight (imported in theme/spartan.css) and the design tokens
- * from theme/variables.scss. Dark mode is still keyed off the `.ion-palette-dark`
- * class ThemeService toggles on <html> (variables.scss + spartan.css define the
- * dark ramp under it) — the class name is kept purely as that marker.
+ * from theme/variables.scss. Dark mode is keyed off the `.dark` class ThemeService
+ * toggles on <html> (variables.scss + spartan.css define the dark ramp under it).
  */
 
 /*

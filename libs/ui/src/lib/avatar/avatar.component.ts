@@ -28,31 +28,7 @@ import { AVATAR_RESOLVER } from './avatar-resolver';
   selector: 'trn-avatar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [HlmAvatar, HlmAvatarImage, HlmAvatarFallback],
-  template: `
-    <hlm-avatar
-      [style.width.px]="size()"
-      [style.height.px]="size()"
-      [style.borderRadius]="square() ? '30%' : null"
-    >
-      @if (src()) {
-        <img
-          hlmAvatarImage
-          [src]="src()"
-          [alt]="name()"
-          [style.borderRadius]="square() ? '30%' : null"
-        />
-      }
-      <span
-        hlmAvatarFallback
-        class="leading-none font-semibold"
-        [style.background]="color()"
-        [style.color]="'#fff'"
-        [style.font-size.px]="size() * 0.4"
-        [style.borderRadius]="square() ? '30%' : null"
-        >{{ initial() }}</span
-      >
-    </hlm-avatar>
-  `,
+  templateUrl: './avatar.component.html',
   styles: [
     `
       :host {

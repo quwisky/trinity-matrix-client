@@ -1,7 +1,7 @@
 import { Location } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { render } from '@testing-library/angular';
-import { AuthService } from '@trinity/core';
+import { AuthService } from '@trinity/data-access-auth';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

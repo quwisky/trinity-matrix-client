@@ -1,22 +1,23 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import { AuthService } from '@trinity/data-access-auth';
+import { CryptoService } from '@trinity/data-access-crypto';
 import {
-  AuthService,
-  CryptoService,
   InvitesService,
-  MatrixClientService,
-  MediaService,
-  PinnedMessagesService,
+  type PendingInvite,
+} from '@trinity/data-access-invites';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MediaService } from '@trinity/data-access-media';
+import { PinnedMessagesService } from '@trinity/data-access-pinned';
+import {
   RoomsService,
   SpacesService,
-  ThreadsService,
-  TimelineService,
-  type PendingInvite,
   type RoomSummary,
   type SpaceChildRoom,
   type SpaceSummary,
-} from '@trinity/core';
+} from '@trinity/data-access-rooms';
+import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
 import {
   TrnActionSheetService,
   TrnAlertService,

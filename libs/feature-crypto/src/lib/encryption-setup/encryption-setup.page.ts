@@ -14,7 +14,8 @@ import { TrnAlertService } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { CryptoService, type PasswordPrompt } from '@trinity/core';
+import { CryptoService } from '@trinity/data-access-crypto';
+import { type PasswordPrompt } from '@trinity/util-matrix';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
 

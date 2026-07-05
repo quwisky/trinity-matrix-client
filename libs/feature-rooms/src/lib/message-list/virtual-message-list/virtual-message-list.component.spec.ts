@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { render } from '@testing-library/angular';
 import { MockComponent } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MessageView } from '@trinity/core';
+import { type MessageView } from '@trinity/util-matrix';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { VirtualMessageListComponent } from './virtual-message-list.component';
 

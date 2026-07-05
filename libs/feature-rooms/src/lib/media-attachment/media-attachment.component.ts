@@ -13,7 +13,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription, finalize, switchMap } from 'rxjs';
 import { MediaBubbleComponent, runWithBusy } from '@trinity/ui';
-import { MediaService, type MediaPayload } from '@trinity/core';
+import { MediaService } from '@trinity/data-access-media';
+import { type MediaPayload } from '@trinity/util-matrix';
 import { FileSaveService } from '../media-save/file-save.service';
 
 /**
@@ -26,31 +27,7 @@ import { FileSaveService } from '../media-save/file-save.service';
   selector: 'trn-media-attachment',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MediaBubbleComponent],
-  template: `
-    <trn-media-bubble
-      [item]="media()"
-      [src]="src()"
-      [loading]="loading()"
-      [error]="hasError()"
-      (openLightbox)="openLightbox()"
-      (download)="download()"
-    />
-
-    @if (lightboxSrc(); as full) {
-      <div
-        #lightbox
-        class="lightbox"
-        role="dialog"
-        aria-modal="true"
-        tabindex="-1"
-        [attr.aria-label]="media().filename"
-        (click)="closeLightbox()"
-        (keydown.escape)="closeLightbox()"
-      >
-        <img class="lightbox__img" [src]="full" [alt]="media().filename" />
-      </div>
-    }
-  `,
+  templateUrl: './media-attachment.component.html',
   styles: [
     `
       .lightbox {

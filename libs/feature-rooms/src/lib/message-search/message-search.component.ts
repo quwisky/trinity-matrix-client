@@ -15,10 +15,10 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideLock, lucideServer } from '@ng-icons/lucide';
 import {
   SearchService,
-  TimelineService,
   type LoadedMessageSearch,
   type MessageHit,
-} from '@trinity/core';
+} from '@trinity/data-access-search';
+import { TimelineService } from '@trinity/data-access-timeline';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
@@ -55,144 +55,7 @@ interface HighlightPart {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
   viewProviders: [provideIcons({ lucideLock, lucideServer })],
-  template: `
-    <div
-      class="flex h-screen w-screen flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg md:w-[480px]"
-    >
-      <div
-        class="flex items-center gap-2 border-b border-solid border-border p-3"
-      >
-        <h2 class="flex-1 text-base font-semibold">Search messages</h2>
-        <button hlmBtn variant="ghost" size="sm" (click)="dismiss()">
-          Cancel
-        </button>
-      </div>
-
-      <div class="border-b border-solid border-border p-3">
-        <input
-          #searchInput
-          hlmInput
-          placeholder="Search this conversation"
-          autocapitalize="off"
-          autocorrect="off"
-          inputmode="text"
-          [value]="query()"
-          (input)="onInput($event)"
-          (keydown.escape)="dismiss()"
-        />
-      </div>
-
-      <div class="flex-1 overflow-y-auto">
-        @if (encrypted()) {
-          <div class="ms-banner" data-testid="e2ee-note">
-            <ng-icon name="lucideLock" aria-hidden="true" />
-            <span>
-              Encrypted room — searching the {{ scanned() }} loaded
-              {{ scanned() === 1 ? 'message' : 'messages' }} only.
-            </span>
-            <button
-              hlmBtn
-              variant="outline"
-              size="sm"
-              [disabled]="loadingHistory()"
-              (click)="loadOlderHistory()"
-              data-testid="load-older"
-            >
-              @if (loadingHistory()) {
-                <hlm-spinner />
-              }
-              Load older messages
-            </button>
-          </div>
-        } @else if (query().trim()) {
-          <div class="ms-banner">
-            @if (serverMode()) {
-              <span data-testid="server-summary">
-                Showing {{ serverCount() }} server
-                {{ serverCount() === 1 ? 'result' : 'results' }} from the full
-                history.
-              </span>
-            } @else {
-              <button
-                hlmBtn
-                variant="outline"
-                size="sm"
-                [disabled]="searching()"
-                (click)="searchServer()"
-                data-testid="search-server"
-              >
-                @if (searching()) {
-                  <hlm-spinner />
-                } @else {
-                  <ng-icon name="lucideServer" aria-hidden="true" />
-                }
-                Search all messages
-              </button>
-            }
-          </div>
-        }
-
-        <div>
-          @for (hit of results(); track hit.eventId) {
-            <button
-              type="button"
-              class="ms-row flex w-full items-start gap-3 p-3 text-left hover:bg-accent"
-              (click)="select(hit)"
-              data-testid="result"
-            >
-              <trn-avatar
-                [mxc]="hit.senderAvatarMxc"
-                [initial]="initialOf(hit.senderName)"
-                [name]="hit.senderName"
-                [size]="36"
-              />
-              <span class="min-w-0 flex-1">
-                <span class="flex items-baseline gap-2">
-                  <span class="truncate text-sm font-medium">{{
-                    hit.senderName
-                  }}</span>
-                  <span class="ms-time shrink-0">{{ formatTime(hit.ts) }}</span>
-                </span>
-                <p class="ms-snippet text-sm">
-                  @for (part of highlight(hit.snippet); track $index) {
-                    @if (part.match) {
-                      <mark>{{ part.text }}</mark>
-                    } @else {
-                      <span>{{ part.text }}</span>
-                    }
-                  }
-                </p>
-              </span>
-            </button>
-          } @empty {
-            <div class="ms-empty" aria-live="polite">
-              <span class="text-xs text-muted-foreground">{{
-                emptyHint()
-              }}</span>
-            </div>
-          }
-        </div>
-
-        @if (serverMode() && serverNextBatch()) {
-          <div class="ms-more">
-            <button
-              hlmBtn
-              variant="ghost"
-              size="sm"
-              [disabled]="searching()"
-              (click)="loadMoreServer()"
-              data-testid="load-more-server"
-            >
-              @if (searching()) {
-                <hlm-spinner />
-              }
-              Load more results
-            </button>
-          </div>
-        }
-      </div>
-    </div>
-  `,
+  templateUrl: './message-search.component.html',
   styleUrl: './message-search.component.scss',
 })
 export class MessageSearchComponent {

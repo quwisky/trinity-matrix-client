@@ -11,7 +11,10 @@ import { lucideX } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { ThreadsService, type ThreadSummary } from '@trinity/core';
+import {
+  ThreadsService,
+  type ThreadSummary,
+} from '@trinity/data-access-timeline';
 
 /** Most participant avatars shown per row before the "+N" overflow chip. */
 const MAX_AVATARS = 4;

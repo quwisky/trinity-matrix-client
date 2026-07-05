@@ -4,7 +4,10 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
 import { fireEvent, render } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
-import { VerificationService, type VerificationView } from '@trinity/core';
+import {
+  VerificationService,
+  type VerificationView,
+} from '@trinity/data-access-crypto';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { DeviceVerificationPage } from './device-verification.page';

@@ -4,7 +4,7 @@
   "projectType": "library",
   "sourceRoot": "libs/feature-rooms/src",
   "prefix": "trn",
-  "tags": ["type:feature", "scope:trinity"],
+  "tags": ["type:feature", "scope:matrix"],
   "targets": {
     "test": {
       "executor": "nx:run-commands",

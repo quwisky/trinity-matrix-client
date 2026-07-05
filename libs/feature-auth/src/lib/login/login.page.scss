@@ -113,8 +113,8 @@
   border-color: transparent;
 }
 
-// Primary action buttons (Continue / Sign in) — default to --ion-color-primary
-// (blurple). Top margin separates the button from the last field.
+// Primary action buttons (Continue / Sign in) — use the spartan --primary token
+// (blurple) via the helm button. Top margin separates the button from the last field.
 .login-card__submit {
   display: block;
   margin-top: 20px;

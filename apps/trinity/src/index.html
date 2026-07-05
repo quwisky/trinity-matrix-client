@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Ionic App</title>
+    <title>Trinity</title>
 
     <!--
       Content-Security-Policy backstop behind the explicit message-HTML
@@ -13,8 +13,9 @@
       connect-src and bound as blob: (see Avatar/MediaService), and the sanitizer
       strips remote <img src> from message HTML, so allowing https: images would
       only re-open the tracking-pixel/IP-leak vector. 'wasm-unsafe-eval' is
-      required by the Rust crypto WASM; 'unsafe-inline' style is required by
-      Ionic's runtime styles. Clickjacking (frame-ancestors) must be set as a
+      required by the Rust crypto WASM; 'unsafe-inline' style is required by the
+      runtime <style> injection from Angular component styles + the CDK overlay /
+      spartan helm layer. Clickjacking (frame-ancestors) must be set as a
       real response header at the host — it is ignored in a <meta> CSP.
     -->
     <meta

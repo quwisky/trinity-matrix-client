@@ -11,7 +11,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
 import { Observable } from 'rxjs';
-import { VerificationService } from '@trinity/core';
+import { VerificationService } from '@trinity/data-access-crypto';
 import {
   PageHeaderComponent,
   resolveInternalReturnTo,

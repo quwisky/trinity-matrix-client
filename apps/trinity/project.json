@@ -4,7 +4,7 @@
   "projectType": "application",
   "sourceRoot": "apps/trinity/src",
   "prefix": "trn",
-  "tags": ["type:app", "scope:trinity"],
+  "tags": ["type:app", "scope:matrix"],
   "targets": {
     "build": {
       "executor": "@angular-devkit/build-angular:application",

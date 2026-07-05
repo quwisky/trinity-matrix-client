@@ -12,14 +12,16 @@ import {
 } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
+import { AvatarService } from '@trinity/data-access-media';
 import {
-  AvatarService,
   AppBadgeService,
-  FeatureFlagsService,
   PUSH_CONFIG,
+} from '@trinity/data-access-notifications';
+import {
+  FeatureFlagsService,
   ThemeService,
   TrinityErrorHandler,
-} from '@trinity/core';
+} from '@trinity/platform-native';
 import {
   AVATAR_RESOLVER,
   ENCRYPTION_DIALOG_COMPONENTS,
@@ -28,8 +30,7 @@ import {
 import { provideSpartanHlm } from '@trinity/helm/utils';
 
 import { routes } from './app/app.routes';
-import { AppComponent } from './app/app.component';
-import { NavigationFocusService } from './app/navigation-focus.service';
+import { AppComponent, NavigationFocusService } from '@trinity/feature-shell';
 import { environment } from './environments/environment';
 
 // Desktop (hand-rolled Electron) detection. The preload bridge exposes

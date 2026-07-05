@@ -5,13 +5,15 @@ import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import {
   InvitesService,
+  type PendingInvite,
+} from '@trinity/data-access-invites';
+import { type UserProfile } from '@trinity/data-access-profile';
+import {
   RoomsService,
   SpacesService,
-  type PendingInvite,
   type RoomSummary,
   type SpaceChildRoom,
-  type UserProfile,
-} from '@trinity/core';
+} from '@trinity/data-access-rooms';
 import { ChannelSidebarComponent } from './channel-sidebar.component';
 
 function room(over: Partial<RoomSummary> = {}): RoomSummary {

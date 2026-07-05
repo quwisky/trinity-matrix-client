@@ -1,0 +1,318 @@
+<div class="sidebar">
+  <header class="sidebar__header">
+    <span class="sidebar__title">{{ spaceName() }}</span>
+    <div class="sidebar__actions">
+      <button
+        class="sidebar__action"
+        (click)="openSwitcher.emit()"
+        aria-label="Search (Ctrl/Cmd+K)"
+        title="Search (Ctrl/Cmd+K)"
+        data-testid="open-switcher"
+      >
+        <ng-icon name="lucideCommand" aria-hidden="true" />
+      </button>
+      @if (spaceActive()) {
+        <button
+          class="sidebar__action"
+          (click)="createRoom.emit()"
+          aria-label="Create a channel"
+          title="Create a channel"
+        >
+          <ng-icon name="lucidePlus" aria-hidden="true" />
+        </button>
+        <button
+          class="sidebar__action"
+          (click)="inviteToSpace.emit()"
+          aria-label="Invite people to space"
+          title="Invite people to space"
+        >
+          <ng-icon name="lucideUserPlus" aria-hidden="true" />
+        </button>
+        <button
+          class="sidebar__action"
+          (click)="leaveSpace.emit()"
+          aria-label="Leave space"
+          title="Leave space"
+        >
+          <ng-icon name="lucideLogOut" aria-hidden="true" />
+        </button>
+      } @else {
+        <button
+          class="sidebar__action"
+          (click)="newChat.emit()"
+          aria-label="New room or direct message"
+          title="New room or direct message"
+        >
+          <ng-icon name="lucidePlus" aria-hidden="true" />
+        </button>
+      }
+    </div>
+  </header>
+
+  <div class="sidebar__scroll">
+    @if (invites().length) {
+      <div class="category">Invites</div>
+      @for (invite of invites(); track invite.roomId) {
+        <div class="invite">
+          <trn-avatar
+            class="invite__avatar"
+            [mxc]="invite.avatarMxc"
+            [initial]="invite.initial"
+            [name]="invite.name"
+            [size]="32"
+          />
+          <div class="invite__text">
+            <span class="invite__name" [title]="invite.name">{{
+              invite.name
+            }}</span>
+            <span class="invite__meta"
+              >{{
+                invite.isSpace ? 'Space' : invite.isDirect ? 'DM' : 'Room'
+              }}
+              · from {{ invite.inviterName }}</span
+            >
+          </div>
+          <div class="invite__actions">
+            <button
+              class="invite__btn accept"
+              (click)="acceptInvite.emit(invite.roomId)"
+              [attr.aria-label]="'Accept invite to ' + invite.name"
+              title="Accept"
+            >
+              <ng-icon name="lucideCheck" aria-hidden="true" />
+            </button>
+            <button
+              class="invite__btn decline"
+              (click)="declineInvite.emit(invite.roomId)"
+              [attr.aria-label]="'Decline invite to ' + invite.name"
+              title="Decline"
+            >
+              <ng-icon name="lucideX" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      }
+    }
+
+    @if (favouriteRooms().length) {
+      <div class="category">Favourites</div>
+      @for (room of favouriteRooms(); track room.id) {
+        <ng-container
+          [ngTemplateOutlet]="roomRow"
+          [ngTemplateOutletContext]="{ $implicit: room }"
+        />
+      }
+      @if (otherRooms().length) {
+        <div class="sidebar__divider" role="separator"></div>
+      }
+    }
+
+    @for (room of otherRooms(); track room.id) {
+      <ng-container
+        [ngTemplateOutlet]="roomRow"
+        [ngTemplateOutletContext]="{ $implicit: room }"
+      />
+    }
+
+    @if (!rooms().length) {
+      <p class="empty">No channels here yet.</p>
+    }
+
+    @if (spaceActive()) {
+      @if (childrenLoading()) {
+        <p class="empty">Loading channels…</p>
+      } @else if (childrenError()) {
+        <p class="empty empty--error">Couldn’t load this space’s channels.</p>
+      } @else {
+        @if (joinableRooms().length) {
+          <div class="category">More Channels</div>
+          @for (child of joinableRooms(); track child.roomId) {
+            <div class="joinable">
+              <span class="joinable__hash">#</span>
+              <div class="joinable__text">
+                <span
+                  class="joinable__name"
+                  [title]="child.topic || child.name"
+                  >{{ child.name }}</span
+                >
+                @if (child.suggested) {
+                  <span class="joinable__tag">Suggested</span>
+                }
+              </div>
+              <button
+                class="joinable__action"
+                (click)="joinRoom.emit(child)"
+                [attr.aria-label]="'Join ' + child.name"
+                title="Join"
+              >
+                Join
+              </button>
+            </div>
+          }
+        }
+
+        @if (childSpaces().length) {
+          <div class="category">Spaces</div>
+          @for (child of childSpaces(); track child.roomId) {
+            <div class="joinable joinable--space">
+              <trn-avatar
+                class="joinable__avatar"
+                [mxc]="child.avatarMxc"
+                [initial]="child.initial"
+                [name]="child.name"
+                [size]="24"
+                [square]="true"
+              />
+              <div class="joinable__text">
+                <span class="joinable__name" [title]="child.name">{{
+                  child.name
+                }}</span>
+              </div>
+              @if (child.joined) {
+                <button
+                  class="joinable__action"
+                  (click)="openChildSpace.emit(child.roomId)"
+                  [attr.aria-label]="'Open ' + child.name"
+                  title="Open"
+                >
+                  Open
+                </button>
+              } @else {
+                <button
+                  class="joinable__action"
+                  (click)="joinRoom.emit(child)"
+                  [attr.aria-label]="'Join ' + child.name"
+                  title="Join"
+                >
+                  Join
+                </button>
+              }
+            </div>
+          }
+        }
+      }
+    }
+  </div>
+
+  <footer class="userbar">
+    <button
+      class="userbar__trigger"
+      [hlmDropdownMenuTrigger]="accountMenu"
+      side="top"
+      align="start"
+      aria-label="Account menu"
+      data-testid="user-menu-trigger"
+    >
+      <trn-avatar
+        [mxc]="user().avatarMxc"
+        [initial]="userInitial()"
+        [name]="user().displayName"
+        [size]="32"
+      />
+      <div class="userbar__id">
+        <span class="userbar__name">{{ user().displayName }}</span>
+        <span class="userbar__handle">{{ user().userId }}</span>
+      </div>
+    </button>
+    <button
+      class="userbar__settings"
+      (click)="openSettings.emit()"
+      aria-label="Settings"
+      title="Settings"
+      data-testid="open-settings"
+    >
+      <ng-icon name="lucideSettings" />
+    </button>
+  </footer>
+
+  <ng-template #roomRow let-room>
+    <div class="channel-row">
+      <button
+        class="channel"
+        [class.active]="activeRoomId() === room.id"
+        [class.unread]="room.hasUnread"
+        (click)="selectRoom.emit(room.id)"
+        [title]="room.name"
+      >
+        <trn-avatar
+          class="channel__avatar"
+          [mxc]="room.avatarMxc"
+          [initial]="room.initial"
+          [name]="room.name"
+          [size]="36"
+        />
+        <div class="channel__text">
+          <span class="channel__name">{{ room.name }}</span>
+          @if (room.lastMessage) {
+            <span class="channel__preview">{{ room.lastMessage }}</span>
+          }
+        </div>
+        @if (room.highlightCount > 0) {
+          <span
+            class="channel__badge"
+            [attr.aria-label]="room.highlightCount + ' unread mentions'"
+            >{{ badgeLabel(room.highlightCount) }}</span
+          >
+        } @else if (room.hasUnread) {
+          <span
+            class="channel__badge channel__badge--muted"
+            [attr.aria-label]="room.unreadCount + ' unread messages'"
+            >{{ badgeLabel(room.unreadCount) }}</span
+          >
+        }
+      </button>
+      <button
+        class="channel__menu"
+        [hlmDropdownMenuTrigger]="roomMenu"
+        align="end"
+        [attr.aria-label]="'Options for ' + room.name"
+        title="Room options"
+      >
+        <ng-icon name="lucideEllipsisVertical" aria-hidden="true" />
+      </button>
+    </div>
+
+    <ng-template #roomMenu>
+      <div hlmDropdownMenu>
+        <button
+          hlmDropdownMenuItem
+          (triggered)="toggleFavourite(room)"
+          data-testid="room-favourite"
+        >
+          <ng-icon name="lucideStar" />
+          {{ room.favourite ? 'Unfavourite' : 'Favourite' }}
+        </button>
+        @if (spaceActive()) {
+          <div hlmDropdownMenuSeparator></div>
+          <button
+            hlmDropdownMenuItem
+            variant="destructive"
+            (triggered)="removeRoom.emit(room.id)"
+            data-testid="room-remove"
+          >
+            <ng-icon name="lucideCircleMinus" />
+            Remove from space
+          </button>
+        }
+      </div>
+    </ng-template>
+  </ng-template>
+
+  <ng-template #accountMenu>
+    <div hlmDropdownMenu>
+      <div hlmDropdownMenuLabel class="truncate">
+        {{ user().displayName }}
+      </div>
+      <div hlmDropdownMenuSeparator></div>
+      <button
+        hlmDropdownMenuItem
+        variant="destructive"
+        (triggered)="logout.emit()"
+        data-testid="logout"
+      >
+        <ng-icon name="lucideLogOut" />
+        Log out
+      </button>
+    </div>
+  </ng-template>
+</div>

@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard } from '@trinity/core';
+import { authGuard } from '@trinity/data-access-auth';
 import { environment } from '../environments/environment';
 
 export const routes: Routes = [
@@ -51,7 +51,7 @@ export const routes: Routes = [
         {
           path: 'spike',
           loadComponent: () =>
-            import('./home/home.page').then((m) => m.HomePage),
+            import('@trinity/feature-shell').then((m) => m.HomePage),
         },
       ]),
   {

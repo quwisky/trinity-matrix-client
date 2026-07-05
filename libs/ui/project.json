@@ -4,7 +4,7 @@
   "projectType": "library",
   "sourceRoot": "libs/ui/src",
   "prefix": "trn",
-  "tags": ["type:ui", "scope:trinity"],
+  "tags": ["type:ui", "scope:shared"],
   "targets": {
     "test": {
       "executor": "nx:run-commands",

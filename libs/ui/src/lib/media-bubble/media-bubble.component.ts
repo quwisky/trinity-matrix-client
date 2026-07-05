@@ -35,78 +35,7 @@ export interface MediaBubbleItem {
 @Component({
   selector: 'trn-media-bubble',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    @if (showError()) {
-      <button
-        type="button"
-        class="media media--file media--error"
-        (click)="download.emit()"
-      >
-        <span class="media__icon" aria-hidden="true">!</span>
-        <span class="media__meta">
-          <span class="media__name">{{ filename() }}</span>
-          <span class="media__sub">Couldn’t load — download</span>
-        </span>
-      </button>
-    } @else if (kind() === 'image') {
-      <button
-        type="button"
-        class="media media--image"
-        [style.aspect-ratio]="aspectRatio()"
-        [attr.aria-label]="'Open image ' + filename()"
-        (click)="openLightbox.emit()"
-      >
-        @if (src()) {
-          <img
-            class="media__img"
-            [src]="src()"
-            [alt]="filename()"
-            (error)="imgFailed.set(true)"
-          />
-        } @else {
-          <span class="media__skeleton" aria-hidden="true"></span>
-        }
-      </button>
-    } @else if (kind() === 'video') {
-      @if (src()) {
-        <video
-          class="media media--video"
-          controls
-          [src]="src()"
-          [attr.aria-label]="'Video: ' + filename()"
-        ></video>
-      } @else {
-        <span
-          class="media media--video media__skeleton"
-          aria-hidden="true"
-        ></span>
-      }
-    } @else if (kind() === 'audio') {
-      @if (src()) {
-        <audio
-          class="media media--audio"
-          controls
-          [src]="src()"
-          [attr.aria-label]="'Audio: ' + filename()"
-        ></audio>
-      } @else {
-        <span class="media__loading">Loading audio…</span>
-      }
-    } @else {
-      <button
-        type="button"
-        class="media media--file"
-        [attr.aria-label]="'Download ' + filename()"
-        (click)="download.emit()"
-      >
-        <span class="media__icon" aria-hidden="true">↓</span>
-        <span class="media__meta">
-          <span class="media__name">{{ filename() }}</span>
-          <span class="media__sub">{{ subtitle() }}</span>
-        </span>
-      </button>
-    }
-  `,
+  templateUrl: './media-bubble.component.html',
   styles: [
     `
       :host {
@@ -127,7 +56,7 @@ export interface MediaBubbleItem {
         max-height: 20rem;
         border-radius: 0.5rem;
         overflow: hidden;
-        background: var(--ion-color-step-100, #f1f1f3);
+        background: #f1f1f3;
       }
       .media__img {
         display: block;
@@ -140,7 +69,7 @@ export interface MediaBubbleItem {
         width: 100%;
         height: 100%;
         min-height: 8rem;
-        background: var(--ion-color-step-100, #f1f1f3);
+        background: #f1f1f3;
       }
       .media--video,
       .media--audio {
@@ -157,12 +86,12 @@ export interface MediaBubbleItem {
         gap: 0.625rem;
         padding: 0.625rem 0.75rem;
         border-radius: 0.5rem;
-        background: var(--ion-color-step-100, #f1f1f3);
+        background: #f1f1f3;
         text-align: left;
         width: 100%;
       }
       .media--error {
-        background: var(--ion-color-danger-tint, #f6d7d7);
+        background: #f6d7d7;
       }
       .media__icon {
         flex: 0 0 auto;
@@ -172,7 +101,7 @@ export interface MediaBubbleItem {
         align-items: center;
         justify-content: center;
         border-radius: 0.375rem;
-        background: var(--ion-color-step-200, #e3e3e6);
+        background: #e3e3e6;
         font-weight: 700;
       }
       .media__meta {

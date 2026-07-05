@@ -1,7 +1,10 @@
 import { signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import { render } from '@testing-library/angular';
-import { ThreadsService, type ThreadSummary } from '@trinity/core';
+import {
+  ThreadsService,
+  type ThreadSummary,
+} from '@trinity/data-access-timeline';
 import { AvatarComponent } from '@trinity/ui';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';

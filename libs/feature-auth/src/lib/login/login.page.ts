@@ -15,7 +15,7 @@ import { HlmCardImports } from '@trinity/helm/card';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { AuthService } from '@trinity/core';
+import { AuthService } from '@trinity/data-access-auth';
 import { runWithBusy } from '@trinity/ui';
 import { SsoStateStore } from '../sso-state.store';
 

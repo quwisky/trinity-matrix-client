@@ -65,7 +65,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
       Edit A → Edit B (without saving) left A's text in the field — Enter overwrote B with
       A's body. _Fixed_ so the effect re-fills when the target's `draft` changes.
 - [x] **Authenticated-media probe is never invalidated across an account/homeserver
-      switch** _(fixed)_ — [media.service.ts:398](../libs/core/src/lib/matrix/media.service.ts).
+      switch** _(fixed)_ — [media.service.ts:398](../libs/data-access-media/src/lib/media.service.ts).
       `supportsAuthedMedia()` memoizes `isVersionSupported('v1.11')` on the root singleton;
       `releaseAll()` clears the blob cache but leaves it. Log out of a legacy homeserver
       → into an authed-media-only one, and every image/file/video/audio 401s for the whole
@@ -93,7 +93,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
 **Test coverage**
 
 - [x] **`AuthService` had zero unit tests** _(fixed)_ —
-      [auth.service.ts](../libs/core/src/lib/matrix/auth.service.ts). Added
+      [auth.service.ts](../libs/data-access-auth/src/lib/auth.service.ts). Added
       `auth.service.spec.ts` covering discovery (base-url + trailing-slash strip, the
       `https://<domain>` fallback, MXID → domain extraction, failed-discovery throw) and
       SSO-URL building, mocking `AutoDiscovery`/`createClient`. Password/token login and
@@ -104,7 +104,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
 **Security**
 
 - [x] **Access token could persist to plaintext with no signal** _(fixed — diagnostic)_ —
-      [secure-storage.service.ts:117](../libs/core/src/lib/storage/secure-storage.service.ts).
+      [secure-storage.service.ts:117](../libs/platform-native/src/lib/secure-storage.service.ts).
       `select()` now `console.warn`s when it falls back to plaintext on a platform that
       should have a keychain (Electron/native keyring failure) — the anomalous case — while
       staying quiet on plain web (the documented norm). A **user-facing** prompt/banner
@@ -112,7 +112,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
       never consumed. _Fix: warn at login (or gate "remember me") when the resolved backend
       is insecure._
 - [x] **`SecretStorageKeyService.set()` didn't zero the previous 4S buffer** _(fixed)_
-      — [secret-storage-key.service.ts:23](../libs/core/src/lib/matrix/secret-storage-key.service.ts).
+      — [secret-storage-key.service.ts:23](../libs/data-access-matrix-client/src/lib/secret-storage-key.service.ts).
       `clear()` zeroes the key, but `set()` reassigns without wiping the buffer it replaces
       when the key is set more than once during bootstrap/recovery. _Fix: `this.privateKey?.fill(0)`
       before reassigning._
@@ -124,7 +124,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
       ran before the try; `trinity://app/%` rejected the handler. _Fixed_ by guarding the
       decode and returning a 400.
 - [x] **`verification-host` could open two modals** _(fixed)_ —
-      [verification-host.component.ts:42](../apps/trinity/src/app/verification-host.component.ts).
+      [verification-host.component.ts:42](../libs/feature-shell/src/lib/verification-host.component.ts).
       `this.ref` (a plain field, not a signal) is set only after `await import(...)`, so two
       effect runs during the dynamic import can both enter `present()`. _Fix: set a
       synchronous in-flight guard before awaiting._
@@ -144,7 +144,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
 **Performance**
 
 - [x] **`pendingDecryption` grew unbounded for permanent UTDs** _(fixed)_ —
-      [notification.service.ts:84](../libs/core/src/lib/matrix/notification.service.ts).
+      [notification.service.ts:84](../libs/data-access-notifications/src/lib/notification.service.ts).
       Events that never decrypt are never evicted. _Fix: cap/evict like `notified`._
 - [x] **No timeline virtualization** _(fixed)_ —
       [virtual-message-list.component.ts](../libs/feature-rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.ts).
@@ -154,7 +154,7 @@ accessibility polish, plus a few test-coverage gaps on critical paths.
 **Test coverage**
 
 - [x] **`authGuard` had no unit test** _(fixed)_ —
-      [auth.guard.ts](../libs/core/src/lib/guards/auth.guard.ts). Added `auth.guard.spec.ts`
+      [auth.guard.ts](../libs/data-access-auth/src/lib/auth.guard.ts). Added `auth.guard.spec.ts`
       covering the already-initialized short-circuit, session-restore, no-session redirect,
       and init-failure→`/login` branches.
 - [x] **Security-critical Electron modules now have tests** _(fixed)_ —

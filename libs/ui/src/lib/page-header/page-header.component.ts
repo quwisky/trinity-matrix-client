@@ -39,21 +39,7 @@ import {
   // display:contents => the rendered <header> is the real flex child of the page
   // column; the trn-page-header host adds no box of its own.
   host: { class: 'contents' },
-  template: `
-    <header [class]="headerClass()">
-      <ng-content select="[trnHeaderLeading]" />
-      <!-- The single, always-rendered page heading. Body is a plain string
-           (title input) or fully projected (e.g. the rooms room-name title). -->
-      <h1 [class]="titleClass()">
-        @if (title(); as t) {
-          {{ t }}
-        } @else {
-          <ng-content select="[trnHeaderTitle]" />
-        }
-      </h1>
-      <ng-content select="[trnHeaderActions]" />
-    </header>
-  `,
+  templateUrl: './page-header.component.html',
 })
 export class PageHeaderComponent {
   /** Layout recipe: the standard page header, or the rooms chat toolbar. */

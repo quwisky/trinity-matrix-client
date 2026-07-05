@@ -12,7 +12,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
 import { Observable } from 'rxjs';
-import { CryptoService } from '@trinity/core';
+import { CryptoService } from '@trinity/data-access-crypto';
 import {
   PageHeaderComponent,
   resolveInternalReturnTo,

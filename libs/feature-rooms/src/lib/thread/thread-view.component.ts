@@ -20,11 +20,8 @@ import { lucideX } from '@ng-icons/lucide';
 import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import {
-  ThreadsService,
-  isEditableMessage,
-  type MessageView,
-} from '@trinity/core';
+import { ThreadsService } from '@trinity/data-access-timeline';
+import { isEditableMessage, type MessageView } from '@trinity/util-matrix';
 import {
   MessageRowComponent,
   type MessageRow,

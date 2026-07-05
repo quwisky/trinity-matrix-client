@@ -4,7 +4,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import type { ReactionView } from '@trinity/core';
+import { type ReactionView } from '@trinity/util-matrix';
 
 /** Reaction pills under a message; clicking one toggles the user's own reaction. */
 @Component({
