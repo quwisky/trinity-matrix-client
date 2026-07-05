@@ -8,8 +8,8 @@ import {
   encodeRecoveryKey,
 } from 'matrix-js-sdk/lib/crypto-api';
 import { CryptoService } from './crypto.service';
-import { MatrixClientService } from './matrix-client.service';
-import { SecretStorageKeyService } from './secret-storage-key.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { SecretStorageKeyService } from '@trinity/data-access-matrix-client';
 
 /** A 401 UIA challenge carrying flows + session, as the SDK surfaces it. */
 function uiaError(session: string): MatrixError {

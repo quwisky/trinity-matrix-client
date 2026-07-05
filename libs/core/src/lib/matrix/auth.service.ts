@@ -10,7 +10,7 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { AvatarService } from './avatar.service';
 import { MediaService } from './media.service';
 import { PushService } from './push.service';

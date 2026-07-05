@@ -4,7 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PUSH_CONFIG, PushService, type PushConfig } from './push.service';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
 // Shared, mutable mock state — hoisted so the vi.mock factories can close over it.
 const h = vi.hoisted(() => {

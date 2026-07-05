@@ -26,7 +26,7 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from './media.service';
 import {
   buildMessageView,

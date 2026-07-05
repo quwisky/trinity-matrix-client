@@ -3,7 +3,7 @@
 // `@trinity/core` consumers are unaffected during the lib restructure.
 export * from '@trinity/util-matrix';
 export * from '@trinity/platform-native';
-export * from './lib/matrix/matrix-client.service';
+export * from '@trinity/data-access-matrix-client';
 export * from './lib/matrix/rooms.service';
 export * from './lib/matrix/spaces.service';
 export * from './lib/matrix/invites.service';
@@ -19,7 +19,6 @@ export * from './lib/matrix/devices.service';
 export * from './lib/matrix/push.service';
 export * from './lib/matrix/notification.service';
 export * from './lib/matrix/crypto-spike.service';
-export * from './lib/matrix/secret-storage-key.service';
 export * from './lib/matrix/crypto.service';
 export * from './lib/matrix/verification.service';
 export * from './lib/platform/app-badge.service';

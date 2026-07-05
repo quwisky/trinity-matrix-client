@@ -7,7 +7,7 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { messagePreview } from '@trinity/util-matrix';
 
 /**

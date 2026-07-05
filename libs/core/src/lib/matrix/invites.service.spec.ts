@@ -4,7 +4,7 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { InvitesService } from './invites.service';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
 interface RoomOpts {
   roomId: string;

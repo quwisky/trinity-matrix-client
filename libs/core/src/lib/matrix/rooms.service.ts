@@ -12,7 +12,7 @@ import {
   type RoomMember,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { messagePreview } from '@trinity/util-matrix';
 import {
   isValidUserId,

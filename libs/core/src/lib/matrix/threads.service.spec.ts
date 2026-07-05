@@ -9,7 +9,7 @@ import {
 } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadsService } from './threads.service';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService, type UploadedMedia } from './media.service';
 
 const MEMBERS: Record<string, string> = {

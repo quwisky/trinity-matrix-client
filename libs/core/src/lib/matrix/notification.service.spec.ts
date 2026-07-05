@@ -4,7 +4,7 @@ import { MatrixEventEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { TimelineService } from './timeline.service';
 
 const cap = vi.hoisted(() => ({ native: false }));

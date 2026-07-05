@@ -6,7 +6,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, map } from 'rxjs';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
 /** A room we have been invited to but not yet joined (shown in the Invites group). */
 export interface PendingInvite {

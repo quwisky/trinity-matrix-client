@@ -4,7 +4,7 @@ import { firstValueFrom, of } from 'rxjs';
 import { RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineService } from './timeline.service';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService, type UploadedMedia } from './media.service';
 
 /** A MediaService mock whose uploadMedia echoes a descriptor for the room's mode. */

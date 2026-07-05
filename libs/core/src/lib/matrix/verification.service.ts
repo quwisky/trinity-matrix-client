@@ -11,7 +11,7 @@ import {
   type Verifier,
 } from 'matrix-js-sdk/lib/crypto-api';
 import { Observable, defer, from, of } from 'rxjs';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
 /** UI-facing stage of the active verification (maps the SDK's numeric phase). */
 export type VerificationStage =

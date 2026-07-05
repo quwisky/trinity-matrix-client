@@ -10,7 +10,7 @@ import {
   tap,
   throwError,
 } from 'rxjs';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
 /** The signed-in user's profile. The avatar is the raw `mxc://`; the UI resolves
  * it (authenticated) via the shared avatar resolver. */

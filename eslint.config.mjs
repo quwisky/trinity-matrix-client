@@ -44,6 +44,7 @@ export default defineConfig([
                 'type:feature',
                 'type:core',
                 'type:ui',
+                'type:data-access',
                 'type:util',
                 'type:platform',
               ],
@@ -53,6 +54,7 @@ export default defineConfig([
               onlyDependOnLibsWithTags: [
                 'type:core',
                 'type:ui',
+                'type:data-access',
                 'type:util',
                 'type:platform',
               ],
@@ -61,6 +63,16 @@ export default defineConfig([
               sourceTag: 'type:core',
               onlyDependOnLibsWithTags: [
                 'type:core',
+                'type:data-access',
+                'type:util',
+                'type:platform',
+              ],
+            },
+            {
+              // State/services/API wrappers — may use other data-access + util/platform.
+              sourceTag: 'type:data-access',
+              onlyDependOnLibsWithTags: [
+                'type:data-access',
                 'type:util',
                 'type:platform',
               ],

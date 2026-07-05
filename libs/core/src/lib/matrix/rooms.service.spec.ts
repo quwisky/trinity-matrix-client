@@ -4,7 +4,7 @@ import { ClientEvent, MatrixEventEvent, RoomEvent } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { describe, expect, it, vi } from 'vitest';
 
 // A live-timeline event shaped like the bits messagePreview() reads.

@@ -11,7 +11,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { Observable, Subscription, defer, from, map, switchMap } from 'rxjs';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import {
   roomEncryptionInitialState,
   visibilityOptions,

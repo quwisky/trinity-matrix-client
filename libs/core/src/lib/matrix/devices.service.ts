@@ -2,7 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { Observable, defer, from, map, tap } from 'rxjs';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import {
   UiaCancelledError,
   runPasswordUia,

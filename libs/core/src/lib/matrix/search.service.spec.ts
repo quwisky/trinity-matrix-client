@@ -10,7 +10,7 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { InvitesService, type PendingInvite } from './invites.service';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import {
   RoomsService,
   type RoomSummary,

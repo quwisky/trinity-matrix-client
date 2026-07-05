@@ -3,7 +3,7 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileService } from './profile.service';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
 function fakeClient(overrides: Record<string, unknown> = {}) {
   return {

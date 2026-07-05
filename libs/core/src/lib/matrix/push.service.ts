@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Observable, defer } from 'rxjs';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
 /**
  * Deployment-specific push config the app provides (see `environment.push`). Null

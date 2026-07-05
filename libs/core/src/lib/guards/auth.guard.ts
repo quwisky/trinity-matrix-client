@@ -1,7 +1,7 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router, UrlTree } from '@angular/router';
 import { Observable, catchError, map, of, switchMap } from 'rxjs';
-import { MatrixClientService } from '../matrix/matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
 
 /**

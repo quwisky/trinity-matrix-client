@@ -9,7 +9,7 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { TimelineService } from './timeline.service';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
 

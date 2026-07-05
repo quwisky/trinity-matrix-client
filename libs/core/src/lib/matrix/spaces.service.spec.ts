@@ -4,7 +4,7 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { SpacesService } from './spaces.service';
-import { MatrixClientService } from './matrix-client.service';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
 /** Wire a fake matrix-js-sdk client into a mocked {@link MatrixClientService}. */
 function provideMatrix(client: unknown): MatrixClientService {
