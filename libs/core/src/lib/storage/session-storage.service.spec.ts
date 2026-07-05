@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionStorageService } from './session-storage.service';
@@ -21,23 +22,6 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }));
 
-/** In-memory SecureStorage stand-in (a real keychain/keystore in production). */
-class FakeSecureStorage {
-  readonly store = new Map<string, string>();
-  async get(key: string): Promise<string | null> {
-    return this.store.get(key) ?? null;
-  }
-  async set(key: string, value: string): Promise<void> {
-    this.store.set(key, value);
-  }
-  async remove(key: string): Promise<void> {
-    this.store.delete(key);
-  }
-  async isSecure(): Promise<boolean> {
-    return true;
-  }
-}
-
 const SESSION: MatrixSession = {
   baseUrl: 'https://hs',
   userId: '@me:hs',
@@ -45,15 +29,28 @@ const SESSION: MatrixSession = {
   accessToken: 'secret-token-xyz',
 };
 
+/**
+ * Provide the real {@link SessionStorageService} with a mocked
+ * {@link SecureStorageService}. ng-mocks' auto-spies are backed by an in-memory
+ * map so the keychain stand-in round-trips like the real thing (a real
+ * keychain/keystore in production); `secure.store` exposes that map for assertions.
+ */
 function setup() {
-  const secure = new FakeSecureStorage();
+  const store = new Map<string, string>();
   TestBed.configureTestingModule({
-    providers: [
-      SessionStorageService,
-      { provide: SecureStorageService, useValue: secure },
-    ],
+    providers: [SessionStorageService, MockProvider(SecureStorageService)],
   });
-  return { svc: TestBed.inject(SessionStorageService), secure };
+  const secure = TestBed.inject(SecureStorageService);
+  vi.mocked(secure.get).mockImplementation(
+    async (key) => store.get(key) ?? null,
+  );
+  vi.mocked(secure.set).mockImplementation(async (key, value) => {
+    store.set(key, value);
+  });
+  vi.mocked(secure.remove).mockImplementation(async (key) => {
+    store.delete(key);
+  });
+  return { svc: TestBed.inject(SessionStorageService), secure: { store } };
 }
 
 describe('SessionStorageService', () => {

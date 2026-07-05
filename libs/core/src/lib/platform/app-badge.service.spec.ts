@@ -1,5 +1,6 @@
 import { ApplicationRef, WritableSignal, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MockProvider } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Capacitor } from '@capacitor/core';
 import { AppBadgeService } from './app-badge.service';
@@ -12,26 +13,28 @@ type BadgingNavigator = Navigator & {
 };
 
 /**
- * Instantiate AppBadgeService against a mock RoomsService whose `totalUnread` is a
+ * Instantiate AppBadgeService against a mocked RoomsService whose `totalUnread` is a
  * writable signal the test drives; `flush` runs a change-detection tick so the
- * effect fires. `mobile.set` is a spy unless overridden.
+ * effect fires. MobileBadgeService is an ng-mocks mock, so `mobile.set` is a vitest
+ * spy (autoSpy) the tests can assert against.
  */
-function setup(
-  initial: number,
-  mobile: Partial<MobileBadgeService> = {},
-): { total: WritableSignal<number>; flush: () => void } {
+function setup(initial: number): {
+  total: WritableSignal<number>;
+  mobile: MobileBadgeService;
+  flush: () => void;
+} {
   const total = signal(initial);
-  const rooms = { totalUnread: total } as unknown as RoomsService;
   TestBed.configureTestingModule({
     providers: [
       AppBadgeService,
-      { provide: RoomsService, useValue: rooms },
-      { provide: MobileBadgeService, useValue: { set: vi.fn(), ...mobile } },
+      MockProvider(RoomsService, { totalUnread: total }),
+      MockProvider(MobileBadgeService),
     ],
   });
   TestBed.inject(AppBadgeService); // instantiate → registers the effect
+  const mobile = TestBed.inject(MobileBadgeService);
   const appRef = TestBed.inject(ApplicationRef);
-  return { total, flush: () => appRef.tick() };
+  return { total, mobile, flush: () => appRef.tick() };
 }
 
 describe('AppBadgeService', () => {
@@ -65,15 +68,14 @@ describe('AppBadgeService', () => {
 
   it('uses the native mobile badge on a Capacitor platform (0 clears)', () => {
     vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
-    const set = vi.fn();
 
-    const { total, flush } = setup(2, { set });
+    const { total, mobile, flush } = setup(2);
     flush();
-    expect(set).toHaveBeenLastCalledWith(2);
+    expect(mobile.set).toHaveBeenLastCalledWith(2);
 
     total.set(0);
     flush();
-    expect(set).toHaveBeenLastCalledWith(0);
+    expect(mobile.set).toHaveBeenLastCalledWith(0);
   });
 
   it('uses the Web Badging API on web/PWA (set for >0, clear for 0)', () => {
@@ -116,15 +118,14 @@ describe('AppBadgeService', () => {
       setBadgeCount,
     };
     vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
-    const set = vi.fn();
     const setAppBadge = vi.fn(() => Promise.resolve());
     (navigator as BadgingNavigator).setAppBadge = setAppBadge;
 
-    const { flush } = setup(5, { set });
+    const { mobile, flush } = setup(5);
     flush();
 
     expect(setBadgeCount).toHaveBeenLastCalledWith(5);
-    expect(set).not.toHaveBeenCalled(); // native mobile badge not touched
+    expect(mobile.set).not.toHaveBeenCalled(); // native mobile badge not touched
     expect(setAppBadge).not.toHaveBeenCalled(); // Web Badging API not touched
   });
 });

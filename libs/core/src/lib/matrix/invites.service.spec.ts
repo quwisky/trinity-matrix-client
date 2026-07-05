@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { RoomEvent } from 'matrix-js-sdk';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { InvitesService } from './invites.service';
@@ -54,17 +55,14 @@ function setup(rooms: ReturnType<typeof fakeRoom>[]) {
     on: vi.fn(),
     off: vi.fn(),
   };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
-
   TestBed.configureTestingModule({
-    providers: [
-      InvitesService,
-      { provide: MatrixClientService, useValue: matrix },
-    ],
+    providers: [InvitesService, MockProvider(MatrixClientService)],
   });
+  const matrix = TestBed.inject(MatrixClientService);
+  // `isInitialized` and `instance` are getters on the real service; stub the
+  // mocked members so the service reads our fake client.
+  ngMocks.stubMember(matrix, 'isInitialized', true);
+  ngMocks.stubMember(matrix, 'instance', client);
   const svc = TestBed.inject(InvitesService);
   svc.connect();
   return { svc, client, matrix };
@@ -189,7 +187,7 @@ describe('InvitesService', () => {
       on: vi.fn(),
       off: vi.fn(),
     };
-    (matrix as unknown as { instance: unknown }).instance = clientB;
+    ngMocks.stubMember(matrix, 'instance', clientB);
     svc.connect();
 
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!b:hs']);

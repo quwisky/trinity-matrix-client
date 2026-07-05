@@ -1,10 +1,17 @@
 import '@analogjs/vitest-angular/setup-zone';
+import '@testing-library/jest-dom/vitest';
 
 import { getTestBed } from '@angular/core/testing';
 import {
   BrowserDynamicTestingModule,
   platformBrowserDynamicTesting,
 } from '@angular/platform-browser-dynamic/testing';
+import { ngMocks } from 'ng-mocks';
+import { vi } from 'vitest';
+
+// ng-mocks: back every auto-mocked method with a vitest spy so migrated specs can
+// use `.mockReturnValue(...)` / `.toHaveBeenCalledWith(...)` on MockProvider stubs.
+ngMocks.autoSpy(() => vi.fn());
 
 // jsdom 25 forwards non-fatal "jsdomError" events to the console, flooding test
 // output with noise from feature gaps our components legitimately hit:

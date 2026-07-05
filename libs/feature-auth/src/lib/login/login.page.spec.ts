@@ -1,37 +1,38 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { AuthService } from '@trinity/core';
+import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { LoginPage } from './login.page';
 import { SsoStateStore } from '../sso-state.store';
 
-function configure(
-  auth: Partial<AuthService>,
-  navigateByUrl = vi.fn(),
-  ssoSave = vi.fn().mockResolvedValue(undefined),
-): {
-  navigateByUrl: ReturnType<typeof vi.fn>;
-  ssoSave: ReturnType<typeof vi.fn>;
-} {
-  TestBed.configureTestingModule({
-    imports: [LoginPage],
+async function renderLogin(auth: Partial<AuthService>): Promise<{
+  cmp: LoginPage;
+  router: Router;
+  ssoStore: SsoStateStore;
+}> {
+  const { fixture } = await render(LoginPage, {
     providers: [
-      { provide: AuthService, useValue: auth },
-      { provide: Router, useValue: { navigateByUrl } },
-      { provide: SsoStateStore, useValue: { save: ssoSave } },
+      MockProvider(AuthService, auth),
+      MockProvider(Router),
+      MockProvider(SsoStateStore),
     ],
   });
-  return { navigateByUrl, ssoSave };
+  return {
+    cmp: fixture.componentInstance,
+    router: TestBed.inject(Router),
+    ssoStore: TestBed.inject(SsoStateStore),
+  };
 }
 
 describe('LoginPage', () => {
-  it('discovers the homeserver and surfaces its login flows', () => {
-    configure({
+  it('discovers the homeserver and surfaces its login flows', async () => {
+    const { cmp } = await renderLogin({
       discoverHomeserver: vi.fn(() => of('https://hs.example')),
       getSupportedFlows: vi.fn(() => of(['m.login.password', 'm.login.sso'])),
-    } as unknown as AuthService);
-    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+    } as unknown as Partial<AuthService>);
 
     cmp.discover();
 
@@ -40,12 +41,11 @@ describe('LoginPage', () => {
     expect(cmp.ssoSupported()).toBe(true);
   });
 
-  it('hides password/SSO when the homeserver does not offer them', () => {
-    configure({
+  it('hides password/SSO when the homeserver does not offer them', async () => {
+    const { cmp } = await renderLogin({
       discoverHomeserver: vi.fn(() => of('https://hs.example')),
       getSupportedFlows: vi.fn(() => of([])),
-    } as unknown as AuthService);
-    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+    } as unknown as Partial<AuthService>);
 
     cmp.discover();
 
@@ -53,14 +53,13 @@ describe('LoginPage', () => {
     expect(cmp.ssoSupported()).toBe(false);
   });
 
-  it('surfaces a discovery error and stays on step 1', () => {
-    configure({
+  it('surfaces a discovery error and stays on step 1', async () => {
+    const { cmp } = await renderLogin({
       discoverHomeserver: vi.fn(() =>
         throwError(() => new Error('no .well-known')),
       ),
       getSupportedFlows: vi.fn(),
-    } as unknown as AuthService);
-    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+    } as unknown as Partial<AuthService>);
 
     cmp.discover();
 
@@ -68,12 +67,11 @@ describe('LoginPage', () => {
     expect(cmp.baseUrl()).toBeNull();
   });
 
-  it('logs in with a password and navigates to rooms', () => {
+  it('logs in with a password and navigates to rooms', async () => {
     const loginWithPassword = vi.fn(() => of(undefined));
-    const { navigateByUrl } = configure({
+    const { cmp, router } = await renderLogin({
       loginWithPassword,
-    } as unknown as AuthService);
-    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+    } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
     cmp.username.set('alice');
     cmp.password.set('hunter2');
@@ -85,36 +83,41 @@ describe('LoginPage', () => {
       'alice',
       'hunter2',
     );
-    expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
+      replaceUrl: true,
+    });
   });
 
-  it('surfaces a password-login error without navigating', () => {
-    const { navigateByUrl } = configure({
+  it('surfaces a password-login error without navigating', async () => {
+    const { cmp, router } = await renderLogin({
       loginWithPassword: vi.fn(() => throwError(() => new Error('bad creds'))),
-    } as unknown as AuthService);
-    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+    } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
 
     cmp.loginPassword();
 
     expect(cmp.error()).toBe('bad creds');
-    expect(navigateByUrl).not.toHaveBeenCalled();
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 
   it('starts SSO with a state nonce stashed and bound to the callback redirect', async () => {
     const getSsoUrl = vi.fn(
       () => 'https://hs.example/_matrix/sso?redirectUrl=x',
     );
-    const { ssoSave } = configure({ getSsoUrl } as unknown as AuthService);
-    const cmp = TestBed.createComponent(LoginPage).componentInstance;
+    const { cmp, ssoStore } = await renderLogin({
+      getSsoUrl,
+    } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
 
     await cmp.startSso();
 
     // The nonce + homeserver are persisted via the store (Preferences) so a native
     // cold-start callback can still validate — not in sessionStorage.
-    expect(ssoSave).toHaveBeenCalledTimes(1);
-    const [state, savedBaseUrl] = ssoSave.mock.calls[0] as [string, string];
+    expect(ssoStore.save).toHaveBeenCalledTimes(1);
+    const [state, savedBaseUrl] = vi.mocked(ssoStore.save).mock.calls[0] as [
+      string,
+      string,
+    ];
     expect(savedBaseUrl).toBe('https://hs.example');
     expect(state).toBeTruthy();
     // The state round-trips via the redirect URL handed to the homeserver.
@@ -130,8 +133,9 @@ describe('LoginPage', () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
     try {
       const getSsoUrl = vi.fn(() => 'https://hs.example/sso');
-      configure({ getSsoUrl } as unknown as AuthService);
-      const cmp = TestBed.createComponent(LoginPage).componentInstance;
+      const { cmp } = await renderLogin({
+        getSsoUrl,
+      } as unknown as Partial<AuthService>);
       cmp.baseUrl.set('https://hs.example');
 
       await cmp.startSso();

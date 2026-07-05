@@ -1,30 +1,28 @@
 import { TestBed } from '@angular/core/testing';
 import { TrnDialogService } from '@trinity/helm/overlay';
+import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
 import { MessageSearchService } from './message-search.service';
 
 describe('MessageSearchService', () => {
-  let openAndWait: ReturnType<typeof vi.fn>;
+  let dialog: TrnDialogService;
   let svc: MessageSearchService;
 
   beforeEach(() => {
-    openAndWait = vi.fn();
     TestBed.configureTestingModule({
-      providers: [
-        MessageSearchService,
-        { provide: TrnDialogService, useValue: { openAndWait } },
-      ],
+      providers: [MessageSearchService, MockProvider(TrnDialogService)],
     });
     svc = TestBed.inject(MessageSearchService);
+    dialog = TestBed.inject(TrnDialogService);
   });
 
   it('opens a right-aligned panel scoped to the room and resolves the chosen id', async () => {
-    openAndWait.mockResolvedValue('$jump:hs');
+    vi.mocked(dialog.openAndWait).mockResolvedValue('$jump:hs');
 
     const result = await svc.search('!r:hs');
 
-    expect(openAndWait).toHaveBeenCalledWith(MessageSearchComponent, {
+    expect(dialog.openAndWait).toHaveBeenCalledWith(MessageSearchComponent, {
       side: 'end',
       inputs: { roomId: '!r:hs' },
     });
@@ -32,7 +30,7 @@ describe('MessageSearchService', () => {
   });
 
   it('resolves null when dismissed without a selection', async () => {
-    openAndWait.mockResolvedValue(null);
+    vi.mocked(dialog.openAndWait).mockResolvedValue(null);
     expect(await svc.search('!r:hs')).toBeNull();
   });
 
@@ -42,13 +40,13 @@ describe('MessageSearchService', () => {
     const dismissed = new Promise<string | null>((resolve) => {
       release = resolve;
     });
-    openAndWait.mockReturnValue(dismissed);
+    vi.mocked(dialog.openAndWait).mockReturnValue(dismissed);
 
     const first = svc.search('!r:hs'); // opens; stays pending
     const second = await svc.search('!r:hs'); // re-entrant: no second dialog
 
     expect(second).toBeNull();
-    expect(openAndWait).toHaveBeenCalledTimes(1);
+    expect(dialog.openAndWait).toHaveBeenCalledTimes(1);
 
     release('$e:hs');
     await expect(first).resolves.toBe('$e:hs');

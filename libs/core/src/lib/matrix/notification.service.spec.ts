@@ -1,6 +1,7 @@
 import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
-import { MatrixEventEvent, RoomEvent } from 'matrix-js-sdk';
+import { MatrixEventEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -33,25 +34,22 @@ function setup() {
     on: vi.fn(),
     off: vi.fn(),
   };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
-  const router = { navigate: vi.fn(() => Promise.resolve(true)) };
-  const timeline = { openRoomId: null as string | null };
   TestBed.configureTestingModule({
     providers: [
       NotificationService,
-      { provide: MatrixClientService, useValue: matrix },
-      { provide: Router, useValue: router },
-      { provide: TimelineService, useValue: timeline },
+      MockProvider(MatrixClientService),
+      MockProvider(Router, { navigate: vi.fn(() => Promise.resolve(true)) }),
+      MockProvider(TimelineService),
     ],
   });
+  const matrix = TestBed.inject(MatrixClientService);
+  ngMocks.stubMember(matrix, 'isInitialized', true);
+  ngMocks.stubMember(matrix, 'instance', client as unknown as MatrixClient);
   return {
     svc: TestBed.inject(NotificationService),
     client,
-    router,
-    timeline,
+    router: TestBed.inject(Router),
+    timeline: TestBed.inject(TimelineService),
   };
 }
 
@@ -180,7 +178,7 @@ describe('NotificationService', () => {
   it('stays quiet when focused on the room the message is in', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const { svc, client, timeline } = setup();
-    timeline.openRoomId = '!r:hs'; // the user is viewing this very room
+    ngMocks.stubMember(timeline, 'openRoomId', '!r:hs'); // the user is viewing this very room
     svc.connect();
 
     timelineHandler(client)(event(), room, false, false, live);
@@ -191,7 +189,7 @@ describe('NotificationService', () => {
   it('notifies for the open room when the window is unfocused (not actually looking)', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false); // window unfocused…
     const { svc, client, timeline } = setup();
-    timeline.openRoomId = '!r:hs'; // …even though this very room is "open"
+    ngMocks.stubMember(timeline, 'openRoomId', '!r:hs'); // …even though this very room is "open"
     svc.connect();
 
     timelineHandler(client)(event(), room, false, false, live);
@@ -202,7 +200,7 @@ describe('NotificationService', () => {
   it('notifies for a message to a different (not open) room even while focused', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const { svc, client, timeline } = setup();
-    timeline.openRoomId = '!other:hs'; // user is looking at a different room
+    ngMocks.stubMember(timeline, 'openRoomId', '!other:hs'); // user is looking at a different room
     svc.connect();
 
     timelineHandler(client)(event(), room, false, false, live);

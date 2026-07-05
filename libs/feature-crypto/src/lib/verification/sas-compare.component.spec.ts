@@ -1,5 +1,5 @@
-import { TestBed } from '@angular/core/testing';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render } from '@testing-library/angular';
+import { describe, expect, it, vi } from 'vitest';
 import { SasCompareComponent } from './sas-compare.component';
 
 const EMOJI = [
@@ -8,42 +8,40 @@ const EMOJI = [
 ];
 
 describe('SasCompareComponent', () => {
-  function render() {
-    const fixture = TestBed.createComponent(SasCompareComponent);
-    fixture.componentRef.setInput('emoji', EMOJI);
-    fixture.detectChanges();
-    return fixture;
-  }
+  it('renders an item per emoji, labelled by name', async () => {
+    const { container } = await render(SasCompareComponent, {
+      inputs: { emoji: EMOJI },
+    });
 
-  it('renders an item per emoji, labelled by name', () => {
-    const el = render().nativeElement;
-    expect(el.querySelectorAll('.emoji__item').length).toBe(2);
-    expect(el.textContent).toContain('Dog');
-    expect(el.textContent).toContain('Cat');
+    expect(container.querySelectorAll('.emoji__item').length).toBe(2);
+    expect(container.textContent).toContain('Dog');
+    expect(container.textContent).toContain('Cat');
     // Glyphs are decorative for assistive tech.
-    expect(el.querySelector('.emoji__glyph').getAttribute('aria-hidden')).toBe(
-      'true',
-    );
+    expect(
+      container.querySelector('.emoji__glyph')?.getAttribute('aria-hidden'),
+    ).toBe('true');
   });
 
-  it('emits match / mismatch / cancel from the action buttons', () => {
-    const fixture = render();
+  it('emits match / mismatch / cancel from the action buttons', async () => {
     const events: string[] = [];
-    fixture.componentInstance.match.subscribe(() => events.push('match'));
-    fixture.componentInstance.mismatch.subscribe(() => events.push('mismatch'));
-    fixture.componentInstance.cancelled.subscribe(() => events.push('cancel'));
+    const { container } = await render(SasCompareComponent, {
+      inputs: { emoji: EMOJI },
+      on: {
+        match: vi.fn(() => events.push('match')),
+        mismatch: vi.fn(() => events.push('mismatch')),
+        cancelled: vi.fn(() => events.push('cancel')),
+      },
+    });
 
-    const buttons = [
-      ...fixture.nativeElement.querySelectorAll('button'),
-    ] as HTMLElement[];
-    buttons
-      .find(
+    const buttons = [...container.querySelectorAll('button')] as HTMLElement[];
+    fireEvent.click(
+      buttons.find(
         (b) =>
           b.textContent?.includes('match') && !b.textContent?.includes("don't"),
-      )!
-      .click();
-    buttons.find((b) => b.textContent?.includes("don't"))!.click();
-    buttons.find((b) => b.textContent?.includes('Cancel'))!.click();
+      )!,
+    );
+    fireEvent.click(buttons.find((b) => b.textContent?.includes("don't"))!);
+    fireEvent.click(buttons.find((b) => b.textContent?.includes('Cancel'))!);
 
     expect(events).toEqual(['match', 'mismatch', 'cancel']);
   });

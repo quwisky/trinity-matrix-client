@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MatrixClientService } from '@trinity/core';
 import { ConnectivityBannerComponent } from './connectivity-banner.component';
@@ -9,34 +10,28 @@ describe('ConnectivityBannerComponent', () => {
 
   beforeEach(() => {
     connectivity = signal<'online' | 'offline'>('online');
-    TestBed.configureTestingModule({
-      imports: [ConnectivityBannerComponent],
-      providers: [
-        {
-          provide: MatrixClientService,
-          useValue: { connectivity } as unknown as MatrixClientService,
-        },
-      ],
-    });
   });
+
+  const renderBanner = () =>
+    render(ConnectivityBannerComponent, {
+      providers: [MockProvider(MatrixClientService, { connectivity })],
+    });
 
   const banner = (el: HTMLElement) => el.querySelector('trn-banner');
 
-  it('renders nothing while online', () => {
-    const fixture = TestBed.createComponent(ConnectivityBannerComponent);
-    fixture.detectChanges();
+  it('renders nothing while online', async () => {
+    const { container } = await renderBanner();
 
-    expect(banner(fixture.nativeElement)).toBeNull();
+    expect(banner(container)).toBeNull();
   });
 
-  it('shows the offline banner when connectivity drops', () => {
-    const fixture = TestBed.createComponent(ConnectivityBannerComponent);
-    fixture.detectChanges();
+  it('shows the offline banner when connectivity drops', async () => {
+    const { container, fixture } = await renderBanner();
 
     connectivity.set('offline');
     fixture.detectChanges();
 
-    const el = banner(fixture.nativeElement);
+    const el = banner(container);
     expect(el).not.toBeNull();
     expect(el?.textContent).toContain('offline');
   });

@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import type { MatrixClient } from 'matrix-js-sdk';
+import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -107,15 +109,17 @@ function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
     getCrypto: () => crypto,
     getUserId: () => '@me:hs',
   };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
 
+  // The MatrixClient itself is a matrix-js-sdk object we must never build for real,
+  // so we keep the hand-rolled emitter fake above and expose it through a ng-mocks
+  // mock of MatrixClientService (its `isInitialized`/`instance` getters overridden).
   TestBed.configureTestingModule({
     providers: [
       VerificationService,
-      { provide: MatrixClientService, useValue: matrix },
+      MockProvider(MatrixClientService, {
+        isInitialized: true,
+        instance: client as unknown as MatrixClient,
+      }),
     ],
   });
   return { svc: TestBed.inject(VerificationService), crypto, client };

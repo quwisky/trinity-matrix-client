@@ -1,5 +1,5 @@
 import { Component } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { render } from '@testing-library/angular';
 import { BannerComponent } from './banner.component';
 
 @Component({
@@ -17,35 +17,32 @@ class HostComponent {
 }
 
 describe('BannerComponent', () => {
-  it('projects the icon, message, and actions into their slots', () => {
-    const fixture = TestBed.createComponent(HostComponent);
-    fixture.detectChanges();
-    const el = fixture.nativeElement as HTMLElement;
+  it('projects the icon, message, and actions into their slots', async () => {
+    const { container } = await render(HostComponent);
 
-    expect(el.querySelector('.banner__icon .icon')).toBeTruthy();
-    expect(el.querySelector('.banner__text')?.textContent?.trim()).toBe(
+    expect(container.querySelector('.banner__icon .icon')).toBeTruthy();
+    expect(container.querySelector('.banner__text')?.textContent?.trim()).toBe(
       'Hello there',
     );
     // The polite live region wraps the message, not the actions.
-    expect(el.querySelector('[role="status"]')?.textContent?.trim()).toBe(
-      'Hello there',
-    );
     expect(
-      el.querySelector('.banner__actions button')?.textContent?.trim(),
+      container.querySelector('[role="status"]')?.textContent?.trim(),
+    ).toBe('Hello there');
+    expect(
+      container.querySelector('.banner__actions button')?.textContent?.trim(),
     ).toBe('Do it');
   });
 
-  it('reflects the tone as a data attribute', () => {
-    const fixture = TestBed.createComponent(BannerComponent);
-    fixture.detectChanges();
-    expect(
-      fixture.nativeElement.querySelector('.banner').getAttribute('data-tone'),
-    ).toBe('neutral');
+  it('reflects the tone as a data attribute', async () => {
+    const { fixture, container } = await render(BannerComponent);
+    expect(container.querySelector('.banner')?.getAttribute('data-tone')).toBe(
+      'neutral',
+    );
 
     fixture.componentRef.setInput('tone', 'accent');
     fixture.detectChanges();
-    expect(
-      fixture.nativeElement.querySelector('.banner').getAttribute('data-tone'),
-    ).toBe('accent');
+    expect(container.querySelector('.banner')?.getAttribute('data-tone')).toBe(
+      'accent',
+    );
   });
 });

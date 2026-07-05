@@ -8,6 +8,17 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideDoorOpen, lucideHouse } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import type { SpaceSummary } from '@trinity/core';
+import { unreadBadgeLabel } from '../shared/unread-badge';
+
+/** Unread notification counts driving the rail's badges. */
+export interface RailUnread {
+  /** Total across direct-message rooms (Home badge). */
+  home: number;
+  /** Total across non-DM rooms (Rooms badge). */
+  rooms: number;
+  /** Per-space totals keyed by space id (space-pill badges). */
+  perSpace: Record<string, number>;
+}
 
 /** Discord server rail: Home (direct messages) + a Rooms view + one pill per Matrix Space. */
 @Component({
@@ -34,11 +45,11 @@ import type { SpaceSummary } from '@trinity/core';
         >
           <ng-icon name="lucideHouse" aria-hidden="true" />
         </button>
-        @if (homeUnread() > 0) {
+        @if (unread().home > 0) {
           <span
             class="badge"
-            [attr.aria-label]="badgeLabel(homeUnread()) + ' unread'"
-            >{{ badgeLabel(homeUnread()) }}</span
+            [attr.aria-label]="badgeLabel(unread().home) + ' unread'"
+            >{{ badgeLabel(unread().home) }}</span
           >
         }
       </div>
@@ -55,11 +66,11 @@ import type { SpaceSummary } from '@trinity/core';
         >
           <ng-icon name="lucideDoorOpen" aria-hidden="true" />
         </button>
-        @if (roomsUnread() > 0) {
+        @if (unread().rooms > 0) {
           <span
             class="badge"
-            [attr.aria-label]="badgeLabel(roomsUnread()) + ' unread'"
-            >{{ badgeLabel(roomsUnread()) }}</span
+            [attr.aria-label]="badgeLabel(unread().rooms) + ' unread'"
+            >{{ badgeLabel(unread().rooms) }}</span
           >
         }
       </div>
@@ -67,7 +78,7 @@ import type { SpaceSummary } from '@trinity/core';
       <div class="separator"></div>
 
       @for (space of spaces(); track space.id) {
-        @let spaceUnreadCount = spaceUnread()[space.id] ?? 0;
+        @let spaceUnreadCount = unread().perSpace[space.id] ?? 0;
         <div
           class="item"
           [class.active]="activeSpaceId() === space.id && !roomsActive()"
@@ -120,12 +131,8 @@ export class ServerRailComponent {
   readonly activeSpaceId = input<string | null>(null);
   /** Whether the Rooms view is active (drives the Rooms pill's active state). */
   readonly roomsActive = input(false);
-  /** Total unread notifications across direct-message rooms (Home badge). */
-  readonly homeUnread = input(0);
-  /** Total unread notifications across non-DM rooms (Rooms badge). */
-  readonly roomsUnread = input(0);
-  /** Per-space total unread notifications, keyed by space id (space-pill badge). */
-  readonly spaceUnread = input<Record<string, number>>({});
+  /** Unread notification counts for the Home / Rooms / per-space badges. */
+  readonly unread = input<RailUnread>({ home: 0, rooms: 0, perSpace: {} });
   readonly selectSpace = output<string | null>();
   /** The "+" pill at the end of the rail — raise the create-a-space flow. */
   readonly createSpace = output<void>();
@@ -133,7 +140,5 @@ export class ServerRailComponent {
   readonly showRooms = output<void>();
 
   /** Cap an unread count for a pill badge, Discord-style ("99+"). */
-  badgeLabel(count: number): string {
-    return count > 99 ? '99+' : String(count);
-  }
+  readonly badgeLabel = unreadBadgeLabel;
 }

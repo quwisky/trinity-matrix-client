@@ -1,84 +1,75 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import { render, screen } from '@testing-library/angular';
 import { CryptoService } from '@trinity/core';
 import { TrnAlertService } from '@trinity/helm/overlay';
+import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { EncryptionSetupPage } from './encryption-setup.page';
 
 const KEY = 'THE-RECOVERY-KEY';
 
-function configure(
-  setUp: ReturnType<typeof vi.fn>,
-  navigateByUrl = vi.fn(),
-): { navigateByUrl: ReturnType<typeof vi.fn> } {
-  TestBed.configureTestingModule({
-    imports: [EncryptionSetupPage],
+async function setup(): Promise<{
+  fixture: Awaited<ReturnType<typeof render<EncryptionSetupPage>>>['fixture'];
+  crypto: CryptoService;
+  router: Router;
+}> {
+  const { fixture } = await render(EncryptionSetupPage, {
     providers: [
-      { provide: CryptoService, useValue: { setUp } },
-      { provide: Router, useValue: { navigateByUrl } },
-      {
-        provide: TrnAlertService,
-        useValue: {
-          confirm: vi.fn().mockResolvedValue(false),
-          prompt: vi.fn().mockResolvedValue(null),
-        },
-      },
+      MockProvider(CryptoService),
+      MockProvider(Router),
+      MockProvider(TrnAlertService),
     ],
   });
-  return { navigateByUrl };
+  const crypto = TestBed.inject(CryptoService);
+  const router = TestBed.inject(Router);
+  return { fixture, crypto, router };
 }
 
-function continueButton(host: HTMLElement): HTMLElement {
-  const buttons = [...host.querySelectorAll('button[hlmBtn]')] as HTMLElement[];
-  return buttons.find((b) => b.textContent?.includes('Continue'))!;
+function continueButton(): HTMLElement {
+  return screen.getByRole('button', { name: /Continue to Trinity/i });
 }
 
 describe('EncryptionSetupPage', () => {
-  it('shows the recovery key after setUp succeeds', () => {
-    const setUp = vi.fn().mockReturnValue(of(KEY));
-    configure(setUp);
-    const fixture = TestBed.createComponent(EncryptionSetupPage);
-    fixture.detectChanges();
+  it('shows the recovery key after setUp succeeds', async () => {
+    const { fixture, crypto } = await setup();
+    vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
 
     fixture.componentInstance.setUp();
     fixture.detectChanges();
 
-    expect(setUp).toHaveBeenCalledOnce();
+    expect(crypto.setUp).toHaveBeenCalledOnce();
     expect(fixture.componentInstance.recoveryKey()).toBe(KEY);
     expect(fixture.nativeElement.textContent).toContain(KEY);
   });
 
-  it('gates Continue until the user confirms they saved the key', () => {
-    const setUp = vi.fn().mockReturnValue(of(KEY));
-    const { navigateByUrl } = configure(setUp);
-    const fixture = TestBed.createComponent(EncryptionSetupPage);
+  it('gates Continue until the user confirms they saved the key', async () => {
+    const { fixture, crypto, router } = await setup();
+    vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
+
     fixture.componentInstance.setUp();
     fixture.detectChanges();
 
-    expect(
-      (continueButton(fixture.nativeElement) as { disabled?: boolean })
-        .disabled,
-    ).toBe(true);
+    expect(continueButton()).toBeDisabled();
 
     fixture.componentInstance.confirmedSaved.set(true);
     fixture.detectChanges();
-    expect(
-      (continueButton(fixture.nativeElement) as { disabled?: boolean })
-        .disabled,
-    ).toBe(false);
+    expect(continueButton()).toBeEnabled();
 
     fixture.componentInstance.finish();
-    expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
+      replaceUrl: true,
+    });
   });
 
-  it('surfaces an error when setUp fails', () => {
+  it('surfaces an error when setUp fails', async () => {
+    const { fixture, crypto } = await setup();
     // An arbitrary failure message — the page surfaces whatever setUp emits.
-    const setUp = vi
-      .fn()
-      .mockReturnValue(throwError(() => new Error('Setup failed.')));
-    configure(setUp);
-    const fixture = TestBed.createComponent(EncryptionSetupPage);
+    vi.mocked(crypto.setUp).mockReturnValue(
+      throwError(() => new Error('Setup failed.')),
+    );
+
     fixture.componentInstance.setUp();
     fixture.detectChanges();
 

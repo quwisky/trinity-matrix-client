@@ -6,6 +6,8 @@ import { Router, provideRouter } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { App } from '@capacitor/app';
 import { MatrixClientService, VerificationService } from '@trinity/core';
+import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppComponent } from './app.component';
 
@@ -39,43 +41,39 @@ vi.mock('@capacitor/core', () => ({
 }));
 
 // AppComponent's template mounts <trn-verification-host>, which injects these.
-// (It also injects TrnDialogService, but that's providedIn root and never opens a
-// dialog here — active() stays null — so the real one is fine unprovided.)
+// MockProvider auto-spies the services; the signal-backed members are the only
+// state the host reads, so they're supplied as real signals via the overrides.
+// (The host also injects TrnDialogService, but that's providedIn root and never
+// opens a dialog here — active() stays null — so the real one is fine unprovided.)
 const hostProviders = [
-  { provide: MatrixClientService, useValue: { syncState: signal(null) } },
-  {
-    provide: VerificationService,
-    useValue: { active: signal(null), connect: vi.fn() },
-  },
+  MockProvider(MatrixClientService, { syncState: signal(null) }),
+  MockProvider(VerificationService, { active: signal(null) }),
 ];
 
 describe('AppComponent', () => {
   it('should create the app', async () => {
-    await TestBed.configureTestingModule({
-      imports: [AppComponent],
+    const { fixture } = await render(AppComponent, {
       providers: [
         provideRouter([]),
         provideServiceWorker('ngsw-worker.js', { enabled: false }),
         ...hostProviders,
       ],
-    }).compileComponents();
+    });
 
-    const fixture = TestBed.createComponent(AppComponent);
-    const app = fixture.componentInstance;
-    expect(app).toBeTruthy();
+    expect(fixture.componentInstance).toBeTruthy();
   });
 
   describe('handleDeepLink', () => {
     async function create() {
-      await TestBed.configureTestingModule({
-        imports: [AppComponent],
+      // provideRouter powers <router-outlet>; hostProviders for trn-verification-host
+      const { fixture } = await render(AppComponent, {
         providers: [
           provideRouter([]),
           provideServiceWorker('ngsw-worker.js', { enabled: false }),
           ...hostProviders,
-        ], // provideRouter powers <router-outlet>; hostProviders for trn-verification-host
-      }).compileComponents();
-      const cmp = TestBed.createComponent(AppComponent).componentInstance;
+        ],
+      });
+      const cmp = fixture.componentInstance;
       const navigate = vi
         .spyOn(TestBed.inject(Router), 'navigate')
         .mockResolvedValue(true);
@@ -153,17 +151,16 @@ describe('AppComponent', () => {
     });
 
     async function create() {
-      await TestBed.configureTestingModule({
-        imports: [AppComponent],
+      const { fixture } = await render(AppComponent, {
         providers: [
           provideRouter([]),
           provideServiceWorker('ngsw-worker.js', { enabled: false }),
           ...hostProviders,
-          { provide: Dialog, useValue: { openDialogs: dialogOpenDialogs } },
-          { provide: Location, useValue: { back: locationBack } },
+          MockProvider(Dialog, { openDialogs: dialogOpenDialogs }),
+          MockProvider(Location, { back: locationBack }),
         ],
-      }).compileComponents();
-      const cmp = TestBed.createComponent(AppComponent).componentInstance;
+      });
+      const cmp = fixture.componentInstance;
       cmp.ngOnInit();
       const listener = backButtonListeners.at(-1);
       if (!listener) {

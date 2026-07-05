@@ -1,6 +1,8 @@
-import { TestBed } from '@angular/core/testing';
 import { DialogRef } from '@angular/cdk/dialog';
 import { RoomsService, type UserSearchResult } from '@trinity/core';
+import { AvatarComponent } from '@trinity/ui';
+import { render } from '@testing-library/angular';
+import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserPickerComponent } from './user-picker.component';
@@ -20,18 +22,22 @@ describe('UserPickerComponent', () => {
   beforeEach(() => {
     dismiss = vi.fn().mockResolvedValue(true);
     searchUsers = vi.fn(() => of(RESULTS));
-    TestBed.configureTestingModule({
-      imports: [UserPickerComponent],
-      providers: [
-        { provide: DialogRef, useValue: { close: dismiss } },
-        { provide: RoomsService, useValue: { searchUsers } },
-      ],
-    });
   });
 
-  it('enables Confirm only for a complete Matrix ID', () => {
-    const { componentInstance: c } =
-      TestBed.createComponent(UserPickerComponent);
+  /** Render the picker with the dialog ref and rooms service stubbed. */
+  function renderPicker() {
+    return render(UserPickerComponent, {
+      providers: [
+        { provide: DialogRef, useValue: { close: dismiss } },
+        MockProvider(RoomsService, { searchUsers }),
+      ],
+      imports: [MockComponent(AvatarComponent)],
+    });
+  }
+
+  it('enables Confirm only for a complete Matrix ID', async () => {
+    const { fixture } = await renderPicker();
+    const c = fixture.componentInstance;
 
     setInput('bob', c);
     expect(c.canConfirm()).toBe(false);
@@ -40,9 +46,9 @@ describe('UserPickerComponent', () => {
     expect(c.canConfirm()).toBe(true);
   });
 
-  it('confirms the typed MXID (trimmed) and dismisses with it', () => {
-    const { componentInstance: c } =
-      TestBed.createComponent(UserPickerComponent);
+  it('confirms the typed MXID (trimmed) and dismisses with it', async () => {
+    const { fixture } = await renderPicker();
+    const c = fixture.componentInstance;
     setInput('  @bob:hs  ', c);
 
     c.confirmTyped();
@@ -50,9 +56,9 @@ describe('UserPickerComponent', () => {
     expect(dismiss).toHaveBeenCalledWith('@bob:hs');
   });
 
-  it('does not dismiss when confirming an invalid MXID', () => {
-    const { componentInstance: c } =
-      TestBed.createComponent(UserPickerComponent);
+  it('does not dismiss when confirming an invalid MXID', async () => {
+    const { fixture } = await renderPicker();
+    const c = fixture.componentInstance;
     setInput('bob', c);
 
     c.confirmTyped();
@@ -60,18 +66,18 @@ describe('UserPickerComponent', () => {
     expect(dismiss).not.toHaveBeenCalled();
   });
 
-  it('dismisses with the chosen directory result', () => {
-    const { componentInstance: c } =
-      TestBed.createComponent(UserPickerComponent);
+  it('dismisses with the chosen directory result', async () => {
+    const { fixture } = await renderPicker();
+    const c = fixture.componentInstance;
 
     c.choose('@carol:hs');
 
     expect(dismiss).toHaveBeenCalledWith('@carol:hs');
   });
 
-  it('cancels by dismissing with null', () => {
-    const { componentInstance: c } =
-      TestBed.createComponent(UserPickerComponent);
+  it('cancels by dismissing with null', async () => {
+    const { fixture } = await renderPicker();
+    const c = fixture.componentInstance;
 
     c.cancel();
 
@@ -79,8 +85,7 @@ describe('UserPickerComponent', () => {
   });
 
   it('does not search for a term shorter than two characters', async () => {
-    const fixture = TestBed.createComponent(UserPickerComponent);
-    fixture.detectChanges();
+    const { fixture } = await renderPicker();
 
     setInput('b', fixture.componentInstance);
     fixture.detectChanges();
@@ -90,8 +95,7 @@ describe('UserPickerComponent', () => {
   });
 
   it('searches the directory (debounced) and exposes the results', async () => {
-    const fixture = TestBed.createComponent(UserPickerComponent);
-    fixture.detectChanges();
+    const { fixture } = await renderPicker();
 
     setInput('bob', fixture.componentInstance);
     fixture.detectChanges(); // flush the toObservable effect

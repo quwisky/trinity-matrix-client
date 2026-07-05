@@ -1,37 +1,35 @@
 import { TestBed } from '@angular/core/testing';
 import type { SwitcherSelection } from '@trinity/core';
 import { TrnDialogService } from '@trinity/helm/overlay';
+import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 import { QuickSwitcherService } from './quick-switcher.service';
 
 describe('QuickSwitcherService', () => {
-  let openAndWait: ReturnType<typeof vi.fn>;
+  let dialog: TrnDialogService;
   let svc: QuickSwitcherService;
 
   beforeEach(() => {
-    openAndWait = vi.fn();
     TestBed.configureTestingModule({
-      providers: [
-        QuickSwitcherService,
-        { provide: TrnDialogService, useValue: { openAndWait } },
-      ],
+      providers: [QuickSwitcherService, MockProvider(TrnDialogService)],
     });
+    dialog = TestBed.inject(TrnDialogService);
     svc = TestBed.inject(QuickSwitcherService);
   });
 
   it('opens the switcher dialog and resolves the chosen selection', async () => {
     const selection: SwitcherSelection = { kind: 'space', id: '!s:hs' };
-    openAndWait.mockResolvedValue(selection);
+    vi.mocked(dialog.openAndWait).mockResolvedValue(selection);
 
     const result = await svc.pick();
 
-    expect(openAndWait).toHaveBeenCalledWith(QuickSwitcherComponent);
+    expect(dialog.openAndWait).toHaveBeenCalledWith(QuickSwitcherComponent);
     expect(result).toEqual(selection);
   });
 
   it('resolves null when dismissed without a selection', async () => {
-    openAndWait.mockResolvedValue(null);
+    vi.mocked(dialog.openAndWait).mockResolvedValue(null);
     expect(await svc.pick()).toBeNull();
   });
 
@@ -41,13 +39,13 @@ describe('QuickSwitcherService', () => {
     const dismissed = new Promise<SwitcherSelection | null>((resolve) => {
       release = resolve;
     });
-    openAndWait.mockReturnValue(dismissed);
+    vi.mocked(dialog.openAndWait).mockReturnValue(dismissed);
 
     const first = svc.pick(); // opens; stays pending
     const second = await svc.pick(); // re-entrant: no second dialog
 
     expect(second).toBeNull();
-    expect(openAndWait).toHaveBeenCalledTimes(1);
+    expect(dialog.openAndWait).toHaveBeenCalledTimes(1);
 
     release({ kind: 'room', id: '!r:hs' });
     await expect(first).resolves.toEqual({ kind: 'room', id: '!r:hs' });

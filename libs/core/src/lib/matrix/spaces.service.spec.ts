@@ -1,8 +1,21 @@
 import { TestBed } from '@angular/core/testing';
+import { type MatrixClient } from 'matrix-js-sdk';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { SpacesService } from './spaces.service';
 import { MatrixClientService } from './matrix-client.service';
+
+/** Wire a fake matrix-js-sdk client into a mocked {@link MatrixClientService}. */
+function provideMatrix(client: unknown): MatrixClientService {
+  TestBed.configureTestingModule({
+    providers: [SpacesService, MockProvider(MatrixClientService)],
+  });
+  const matrix = TestBed.inject(MatrixClientService);
+  ngMocks.stubMember(matrix, 'isInitialized', true);
+  ngMocks.stubMember(matrix, 'instance', client as MatrixClient);
+  return matrix;
+}
 
 // A single `m.space.child` link. `via` defaults to a non-empty array (a valid
 // link); pass `via: []` to model a removed/tombstoned child.
@@ -55,17 +68,7 @@ function setup(rooms: ReturnType<typeof fakeRoom>[]) {
     on: vi.fn(),
     off: vi.fn(),
   };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
-
-  TestBed.configureTestingModule({
-    providers: [
-      SpacesService,
-      { provide: MatrixClientService, useValue: matrix },
-    ],
-  });
+  const matrix = provideMatrix(client);
   const svc = TestBed.inject(SpacesService);
   svc.connect();
   return { svc, client, matrix };
@@ -227,7 +230,7 @@ describe('SpacesService', () => {
       on: vi.fn(),
       off: vi.fn(),
     };
-    (matrix as unknown as { instance: unknown }).instance = clientB;
+    ngMocks.stubMember(matrix, 'instance', clientB as unknown as MatrixClient);
     svc.connect();
 
     expect(svc.spaces().map((s) => s.id)).toEqual(['!b:hs']); // not frozen on A
@@ -264,17 +267,7 @@ function setupWrites() {
     on: vi.fn(),
     off: vi.fn(),
   };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
-
-  TestBed.configureTestingModule({
-    providers: [
-      SpacesService,
-      { provide: MatrixClientService, useValue: matrix },
-    ],
-  });
+  provideMatrix(client);
   const svc = TestBed.inject(SpacesService);
   return { svc, createRoom, sendStateEvent, leave, joinRoom };
 }
@@ -451,17 +444,7 @@ function setupHierarchy(opts: {
     on: vi.fn(),
     off: vi.fn(),
   };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
-
-  TestBed.configureTestingModule({
-    providers: [
-      SpacesService,
-      { provide: MatrixClientService, useValue: matrix },
-    ],
-  });
+  provideMatrix(client);
   const svc = TestBed.inject(SpacesService);
   return { svc, getRoomHierarchy };
 }
@@ -597,16 +580,7 @@ describe('SpacesService hierarchy', () => {
       on: vi.fn(),
       off: vi.fn(),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-    TestBed.configureTestingModule({
-      providers: [
-        SpacesService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
+    provideMatrix(client);
     const svc = TestBed.inject(SpacesService);
 
     svc.openSpace('!s:hs');

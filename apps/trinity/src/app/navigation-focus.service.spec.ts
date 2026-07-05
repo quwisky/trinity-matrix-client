@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { NavigationEnd, Router } from '@angular/router';
+import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NavigationFocusService } from './navigation-focus.service';
@@ -11,7 +12,7 @@ describe('NavigationFocusService', () => {
   beforeEach(() => {
     events = new Subject<unknown>();
     TestBed.configureTestingModule({
-      providers: [{ provide: Router, useValue: { events } }],
+      providers: [MockProvider(Router, { events })],
     });
     svc = TestBed.inject(NavigationFocusService);
     // Run the deferred focus synchronously for deterministic assertions.

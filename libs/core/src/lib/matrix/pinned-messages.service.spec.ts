@@ -5,6 +5,7 @@ import {
   RoomEvent,
   RoomStateEvent,
 } from 'matrix-js-sdk';
+import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { PinnedMessagesService } from './pinned-messages.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -105,14 +106,13 @@ function setup(
     sendStateEvent,
     ...emitter(),
   };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
   TestBed.configureTestingModule({
     providers: [
       PinnedMessagesService,
-      { provide: MatrixClientService, useValue: matrix },
+      MockProvider(MatrixClientService, {
+        isInitialized: true,
+        instance: client as never,
+      }),
     ],
   });
   const svc = TestBed.inject(PinnedMessagesService);

@@ -1,15 +1,23 @@
 import { TestBed } from '@angular/core/testing';
+import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
+import type { MessageView } from '@trinity/core';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { SimpleMessageListComponent } from './simple-message-list.component';
 
-function msg(id: string, senderId: string, senderName: string, ts: number) {
+function msg(
+  id: string,
+  senderId: string,
+  senderName: string,
+  ts: number,
+): MessageView {
   return {
     id,
     senderId,
     senderName,
     senderInitial: senderName[0],
-    senderAvatarUrl: null,
+    senderAvatarMxc: null,
     body: `body ${id}`,
     html: null,
     timestamp: ts,
@@ -19,38 +27,38 @@ function msg(id: string, senderId: string, senderName: string, ts: number) {
     reactions: [],
     replyTo: null,
     status: null,
-    kind: 'text' as const,
+    kind: 'text',
+    media: null,
+    caption: null,
+    captionHtml: null,
   };
 }
 
 describe('SimpleMessageListComponent', () => {
-  beforeEach(() =>
-    TestBed.configureTestingModule({ imports: [SimpleMessageListComponent] }),
-  );
+  it('renders a row per message and groups consecutive senders', async () => {
+    const { container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$1', '@a:hs', 'Alice', 1000),
+          msg('$2', '@a:hs', 'Alice', 2000), // same sender → continuation
+          msg('$3', '@b:hs', 'Bob', 3000),
+        ],
+      },
+    });
 
-  it('renders a row per message and groups consecutive senders', () => {
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      msg('$1', '@a:hs', 'Alice', 1000),
-      msg('$2', '@a:hs', 'Alice', 2000), // same sender → continuation
-      msg('$3', '@b:hs', 'Bob', 3000),
-    ]);
-    fixture.detectChanges();
-
-    const el = fixture.nativeElement;
-    expect(el.querySelectorAll('.msg').length).toBe(3);
-    expect(el.querySelectorAll('.msg__avatar').length).toBe(2); // Alice + Bob headers
-    expect(el.querySelectorAll('.msg--cont').length).toBe(1); // Alice's second line
-    expect(el.textContent).toContain('body $2');
+    expect(container.querySelectorAll('.msg').length).toBe(3);
+    expect(container.querySelectorAll('.msg__avatar').length).toBe(2); // Alice + Bob headers
+    expect(container.querySelectorAll('.msg--cont').length).toBe(1); // Alice's second line
+    expect(container.textContent).toContain('body $2');
   });
 
-  it('resets the edit/reply target and suppresses announcements on room change', () => {
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('roomId', '!a:hs');
-    fixture.componentRef.setInput('messages', [
-      msg('$1', '@a:hs', 'Alice', 1000),
-    ]);
-    fixture.detectChanges();
+  it('resets the edit/reply target and suppresses announcements on room change', async () => {
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: {
+        roomId: '!a:hs',
+        messages: [msg('$1', '@a:hs', 'Alice', 1000)],
+      },
+    });
     const cmp = fixture.componentInstance;
 
     // In-progress reply in room A.
@@ -70,107 +78,117 @@ describe('SimpleMessageListComponent', () => {
     expect(cmp.announcement()).toBe('');
   });
 
-  it('renders formatted markdown via innerHTML', () => {
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      {
-        id: '$1',
-        senderId: '@a:hs',
-        senderName: 'Alice',
-        senderInitial: 'A',
-        senderAvatarUrl: null,
-        body: '**bold**',
-        html: '<strong>bold</strong>',
-        timestamp: 1,
-        isOwn: false,
-        decryptionFailed: false,
-        edited: false,
-        reactions: [],
-        replyTo: null,
-        status: null,
-        kind: 'text' as const,
+  it('renders formatted markdown via innerHTML', async () => {
+    const { container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          {
+            id: '$1',
+            senderId: '@a:hs',
+            senderName: 'Alice',
+            senderInitial: 'A',
+            senderAvatarMxc: null,
+            body: '**bold**',
+            html: '<strong>bold</strong>',
+            timestamp: 1,
+            isOwn: false,
+            decryptionFailed: false,
+            edited: false,
+            reactions: [],
+            replyTo: null,
+            status: null,
+            kind: 'text',
+            media: null,
+            caption: null,
+            captionHtml: null,
+          },
+        ],
       },
-    ]);
-    fixture.detectChanges();
+    });
 
-    const el = fixture.nativeElement.querySelector('.msg__text--html');
+    const el = container.querySelector('.msg__text--html');
     expect(el).toBeTruthy();
-    expect(el.querySelector('strong')?.textContent).toBe('bold');
+    expect(el?.querySelector('strong')?.textContent).toBe('bold');
   });
 
-  it('renders a reply preview above a reply message', () => {
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      {
-        ...msg('$1', '@a:hs', 'Alice', 1000),
-        replyTo: {
-          id: '$orig',
-          senderName: 'Bob',
-          senderInitial: 'B',
-          senderAvatarUrl: null,
-          body: 'original message',
-        },
+  it('renders a reply preview above a reply message', async () => {
+    const { container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          {
+            ...msg('$1', '@a:hs', 'Alice', 1000),
+            replyTo: {
+              id: '$orig',
+              senderName: 'Bob',
+              senderInitial: 'B',
+              senderAvatarMxc: null,
+              body: 'original message',
+            },
+          },
+        ],
       },
-    ]);
-    fixture.detectChanges();
+    });
 
-    const reply = fixture.nativeElement.querySelector('.msg__reply');
+    const reply = container.querySelector('.msg__reply');
     expect(reply).toBeTruthy();
-    expect(reply.textContent).toContain('Bob');
-    expect(reply.textContent).toContain('original message');
+    expect(reply?.textContent).toContain('Bob');
+    expect(reply?.textContent).toContain('original message');
   });
 
-  it('shows the header on a reply even when it continues the same sender', () => {
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      msg('$1', '@a:hs', 'Alice', 1000),
-      {
-        // Same sender, well within the 5-min gap → would normally group as a
-        // continuation, but a reply must keep its own author + avatar.
-        ...msg('$2', '@a:hs', 'Alice', 2000),
-        replyTo: {
-          id: '$orig',
-          senderName: 'Bob',
-          senderInitial: 'B',
-          senderAvatarUrl: null,
-          body: 'original message',
-        },
+  it('shows the header on a reply even when it continues the same sender', async () => {
+    const { container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$1', '@a:hs', 'Alice', 1000),
+          {
+            // Same sender, well within the 5-min gap → would normally group as a
+            // continuation, but a reply must keep its own author + avatar.
+            ...msg('$2', '@a:hs', 'Alice', 2000),
+            replyTo: {
+              id: '$orig',
+              senderName: 'Bob',
+              senderInitial: 'B',
+              senderAvatarMxc: null,
+              body: 'original message',
+            },
+          },
+        ],
       },
-    ]);
-    fixture.detectChanges();
+    });
 
-    const el = fixture.nativeElement;
-    const rows = el.querySelectorAll('.msg');
+    const rows = container.querySelectorAll('.msg');
     expect(rows.length).toBe(2);
     // Both rows carry a header (avatar + author); the reply is not a continuation.
-    expect(el.querySelectorAll('.msg__avatar').length).toBe(2);
-    expect(el.querySelectorAll('.msg--cont').length).toBe(0);
+    expect(container.querySelectorAll('.msg__avatar').length).toBe(2);
+    expect(container.querySelectorAll('.msg--cont').length).toBe(0);
     expect(rows[1].querySelector('.msg__author')?.textContent).toContain(
       'Alice',
     );
     expect(rows[1].querySelector('.msg__reply')?.textContent).toContain('Bob');
   });
 
-  it('editLastOwn selects the most recent editable own message', () => {
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      { ...msg('$1', '@me:hs', 'Me', 1000), isOwn: true },
-      { ...msg('$2', '@b:hs', 'Bob', 2000) }, // not own → skip
-      { ...msg('$3', '@me:hs', 'Me', 3000), isOwn: true }, // latest editable own
-      {
-        ...msg('$4', '@me:hs', 'Me', 4000),
-        isOwn: true,
-        kind: 'redacted' as const,
+  it('editLastOwn selects the most recent editable own message', async () => {
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          { ...msg('$1', '@me:hs', 'Me', 1000), isOwn: true },
+          { ...msg('$2', '@b:hs', 'Bob', 2000) }, // not own → skip
+          { ...msg('$3', '@me:hs', 'Me', 3000), isOwn: true }, // latest editable own
+          {
+            ...msg('$4', '@me:hs', 'Me', 4000),
+            isOwn: true,
+            kind: 'redacted' as const,
+          },
+        ],
       },
-    ]);
-    fixture.detectChanges();
+    });
 
     const cmp = fixture.componentInstance;
     cmp.editLastOwn();
     expect(cmp.editingId()).toBe('$3');
   });
 
-  it('scrolls the matching row into view when jumpToId is set', () => {
+  it('scrolls the matching row into view when jumpToId is set', async () => {
     let jumped: Element | null = null;
     // jsdom doesn't implement scrollIntoView; stub it on the prototype and
     // capture the element it was invoked on (a regular fn binds `this`).
@@ -178,12 +196,14 @@ describe('SimpleMessageListComponent', () => {
       jumped = this;
     });
 
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      msg('$1', '@a:hs', 'Alice', 1000),
-      msg('$2', '@b:hs', 'Bob', 2000),
-    ]);
-    fixture.detectChanges();
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$1', '@a:hs', 'Alice', 1000),
+          msg('$2', '@b:hs', 'Bob', 2000),
+        ],
+      },
+    });
 
     fixture.componentRef.setInput('jumpToId', '$2');
     fixture.detectChanges();
@@ -192,16 +212,19 @@ describe('SimpleMessageListComponent', () => {
     expect((jumped as unknown as Element).getAttribute('data-mid')).toBe('$2');
   });
 
-  it('re-jumps to the same id when jumpToNonce is bumped', () => {
+  it('re-jumps to the same id when jumpToNonce is bumped', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
 
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      msg('$1', '@a:hs', 'Alice', 1000),
-      msg('$2', '@b:hs', 'Bob', 2000),
-    ]);
-    fixture.detectChanges(); // render the rows first (the jump reads the DOM)
+    // render() paints the rows first (the jump reads the DOM).
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$1', '@a:hs', 'Alice', 1000),
+          msg('$2', '@b:hs', 'Bob', 2000),
+        ],
+      },
+    });
 
     fixture.componentRef.setInput('jumpToId', '$2');
     fixture.componentRef.setInput('jumpToNonce', 1);
@@ -215,33 +238,37 @@ describe('SimpleMessageListComponent', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 
-  it('flashes the jumped-to row', () => {
+  it('flashes the jumped-to row', async () => {
     Element.prototype.scrollIntoView = vi.fn();
 
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      msg('$1', '@a:hs', 'Alice', 1000),
-      msg('$2', '@b:hs', 'Bob', 2000),
-    ]);
-    fixture.detectChanges();
+    const { fixture, container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$1', '@a:hs', 'Alice', 1000),
+          msg('$2', '@b:hs', 'Bob', 2000),
+        ],
+      },
+    });
 
     fixture.componentInstance.jumpTo('$2');
 
-    const row = fixture.nativeElement.querySelector('[data-mid="$2"]');
+    const row = container.querySelector('[data-mid="$2"]')!;
     expect(row.classList.contains('msg--flash')).toBe(true);
   });
 
-  it('re-applies the flash class on a repeat jump to the same row', () => {
+  it('re-applies the flash class on a repeat jump to the same row', async () => {
     Element.prototype.scrollIntoView = vi.fn();
 
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      msg('$1', '@a:hs', 'Alice', 1000),
-      msg('$2', '@b:hs', 'Bob', 2000),
-    ]);
-    fixture.detectChanges();
+    const { fixture, container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$1', '@a:hs', 'Alice', 1000),
+          msg('$2', '@b:hs', 'Bob', 2000),
+        ],
+      },
+    });
 
-    const row = fixture.nativeElement.querySelector('[data-mid="$2"]');
+    const row = container.querySelector('[data-mid="$2"]')!;
 
     fixture.componentInstance.jumpTo('$2');
     expect(row.classList.contains('msg--flash')).toBe(true);
@@ -254,38 +281,33 @@ describe('SimpleMessageListComponent', () => {
     expect(row.classList.contains('msg--flash')).toBe(true);
   });
 
-  it('emits loadOlder when scrolled near the top (and history remains)', () => {
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('canLoadOlder', true);
-    fixture.detectChanges();
+  it('emits loadOlder when scrolled near the top (and history remains)', async () => {
+    const { fixture, container } = await render(SimpleMessageListComponent, {
+      inputs: { canLoadOlder: true },
+    });
 
     let fired = false;
     fixture.componentInstance.loadOlder.subscribe(() => (fired = true));
     // jsdom has no layout, so scrollTop defaults to 0 (within the threshold).
-    fixture.nativeElement
-      .querySelector('.scroll')
-      .dispatchEvent(new Event('scroll'));
+    container.querySelector('.scroll')!.dispatchEvent(new Event('scroll'));
 
     expect(fired).toBe(true);
   });
 
-  it('does not auto-load when there is no more history', () => {
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.componentRef.setInput('canLoadOlder', false);
-    fixture.detectChanges();
+  it('does not auto-load when there is no more history', async () => {
+    const { fixture, container } = await render(SimpleMessageListComponent, {
+      inputs: { canLoadOlder: false },
+    });
 
     let fired = false;
     fixture.componentInstance.loadOlder.subscribe(() => (fired = true));
-    fixture.nativeElement
-      .querySelector('.scroll')
-      .dispatchEvent(new Event('scroll'));
+    container.querySelector('.scroll')!.dispatchEvent(new Event('scroll'));
 
     expect(fired).toBe(false);
   });
 
-  it('announces a new incoming message, but not the first load or own messages', () => {
-    const fixture = TestBed.createComponent(SimpleMessageListComponent);
-    fixture.detectChanges(); // resolve the scroll viewchild
+  it('announces a new incoming message, but not the first load or own messages', async () => {
+    const { fixture } = await render(SimpleMessageListComponent); // render resolves the scroll viewchild
     const cmp = fixture.componentInstance;
 
     fixture.componentRef.setInput('messages', [
@@ -323,6 +345,12 @@ describe('SimpleMessageListComponent', () => {
     afterEach(() => vi.unstubAllGlobals());
 
     it('keeps backfilling while older history arrives, even if the count stays equal, then stops', () => {
+      // A detached TestBed fixture (not ATL render()) is deliberate here: render()
+      // attaches the component to ApplicationRef, so the signal write from the
+      // synchronous-rAF backfill re-enters the zoneless scheduler ("cannot
+      // synchronously execute watches while scheduling"). A detached fixture only
+      // ticks on our explicit fixture.detectChanges(), which is what this timing
+      // test needs.
       const fixture = TestBed.createComponent(SimpleMessageListComponent);
       fixture.componentRef.setInput('canLoadOlder', true);
       fixture.detectChanges(); // resolve the scroll viewchild
@@ -363,35 +391,28 @@ describe('SimpleMessageListComponent', () => {
   // Handlers provided by MessageListBase (shared with VirtualMessageListComponent),
   // exercised here through the plain component.
   describe('shared behaviour (base)', () => {
-    const confirm = vi.fn();
     const row = (id: string) => ({
       ...msg(id, '@a:hs', 'A', 1),
       showHeader: true,
     });
 
-    beforeEach(() => {
-      confirm.mockReset();
-      TestBed.configureTestingModule({
-        providers: [{ provide: TrnAlertService, useValue: { confirm } }],
+    async function make() {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        providers: [MockProvider(TrnAlertService)],
       });
-    });
-
-    function make() {
-      const fixture = TestBed.createComponent(SimpleMessageListComponent);
-      fixture.detectChanges();
       return fixture.componentInstance;
     }
 
-    it('routes a plain submit to send', () => {
-      const cmp = make();
+    it('routes a plain submit to send', async () => {
+      const cmp = await make();
       let sent: string | null = null;
       cmp.send.subscribe((t) => (sent = t));
       cmp.onSubmit('hello');
       expect(sent).toBe('hello');
     });
 
-    it('routes a submit to editMessage while editing, then clears the target', () => {
-      const cmp = make();
+    it('routes a submit to editMessage while editing, then clears the target', async () => {
+      const cmp = await make();
       let edited: { id: string; body: string } | null = null;
       cmp.editMessage.subscribe((e) => (edited = e));
       cmp.editingId.set('$7');
@@ -400,8 +421,8 @@ describe('SimpleMessageListComponent', () => {
       expect(cmp.editingId()).toBeNull();
     });
 
-    it('routes a submit to reply while replying, then clears the target', () => {
-      const cmp = make();
+    it('routes a submit to reply while replying, then clears the target', async () => {
+      const cmp = await make();
       let replied: { id: string; body: string } | null = null;
       cmp.reply.subscribe((e) => (replied = e));
       cmp.replyingToId.set('$3');
@@ -410,8 +431,8 @@ describe('SimpleMessageListComponent', () => {
       expect(cmp.replyingToId()).toBeNull();
     });
 
-    it('makes startEdit and startReply mutually exclusive', () => {
-      const cmp = make();
+    it('makes startEdit and startReply mutually exclusive', async () => {
+      const cmp = await make();
       cmp.replyingToId.set('$1');
       cmp.startEdit(row('$2'));
       expect(cmp.editingId()).toBe('$2');
@@ -424,21 +445,22 @@ describe('SimpleMessageListComponent', () => {
     });
 
     it('deletes only when the confirm dialog is accepted', async () => {
-      const cmp = make();
+      const cmp = await make();
+      const confirm = TestBed.inject(TrnAlertService).confirm;
       const deleted: string[] = [];
       cmp.deleteMessage.subscribe((id) => deleted.push(id));
 
-      confirm.mockResolvedValueOnce(false);
+      vi.mocked(confirm).mockResolvedValueOnce(false);
       await cmp.onDelete(row('$1'));
       expect(deleted).toEqual([]);
 
-      confirm.mockResolvedValueOnce(true);
+      vi.mocked(confirm).mockResolvedValueOnce(true);
       await cmp.onDelete(row('$2'));
       expect(deleted).toEqual(['$2']);
     });
 
-    it('copies a message body to the clipboard', () => {
-      const cmp = make();
+    it('copies a message body to the clipboard', async () => {
+      const cmp = await make();
       const writeText = vi.fn();
       Object.defineProperty(navigator, 'clipboard', {
         value: { writeText },

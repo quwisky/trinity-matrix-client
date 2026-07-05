@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import {
   afterEach,
@@ -25,16 +26,14 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
 
 function setup(clientOverrides: Record<string, unknown> = {}) {
   const client = fakeClient(clientOverrides);
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
   TestBed.configureTestingModule({
-    providers: [
-      AvatarService,
-      { provide: MatrixClientService, useValue: matrix },
-    ],
+    providers: [AvatarService, MockProvider(MatrixClientService)],
   });
+  const matrix = TestBed.inject(MatrixClientService);
+  // `instance` is a getter that would throw before init; stub it to the fake
+  // matrix-js-sdk client the service reaches through (never a real SDK object).
+  ngMocks.stubMember(matrix, 'instance', client as never);
+  ngMocks.stubMember(matrix, 'isInitialized', true);
   return { svc: TestBed.inject(AvatarService), client };
 }
 

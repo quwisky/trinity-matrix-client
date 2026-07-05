@@ -1,11 +1,13 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { render } from '@testing-library/angular';
 import {
   MatrixClientService,
   VerificationService,
   type VerificationView,
 } from '@trinity/core';
 import { TrnDialogService } from '@trinity/helm/overlay';
+import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { VerificationHostComponent } from './verification-host.component';
@@ -22,27 +24,25 @@ function incoming(): VerificationView {
   };
 }
 
-function setup() {
+async function setup() {
   const syncState = signal<string | null>(null);
   const active = signal<VerificationView | null>(null);
-  const connect = vi.fn();
   const open = vi.fn().mockReturnValue({ closed: new Subject() });
-  TestBed.configureTestingModule({
-    imports: [VerificationHostComponent],
+  const { fixture } = await render(VerificationHostComponent, {
     providers: [
-      { provide: MatrixClientService, useValue: { syncState } },
-      { provide: VerificationService, useValue: { active, connect } },
-      { provide: TrnDialogService, useValue: { open } },
+      MockProvider(MatrixClientService, { syncState }),
+      MockProvider(VerificationService, { active }),
+      MockProvider(TrnDialogService, { open }),
     ],
   });
-  const fixture = TestBed.createComponent(VerificationHostComponent);
-  fixture.detectChanges();
+  // `connect` is auto-spied by ng-mocks (see test-setup autoSpy).
+  const connect = TestBed.inject(VerificationService).connect;
   return { fixture, syncState, active, connect, open };
 }
 
 describe('VerificationHostComponent', () => {
-  it('connects only once the client is live', () => {
-    const { fixture, syncState, connect } = setup();
+  it('connects only once the client is live', async () => {
+    const { fixture, syncState, connect } = await setup();
     expect(connect).not.toHaveBeenCalled();
 
     syncState.set('PREPARED');
@@ -52,7 +52,7 @@ describe('VerificationHostComponent', () => {
   });
 
   it('presents a modal for an incoming verification request', async () => {
-    const { fixture, active, open } = setup();
+    const { fixture, active, open } = await setup();
 
     active.set(incoming());
     fixture.detectChanges();
@@ -70,8 +70,8 @@ describe('VerificationHostComponent', () => {
     );
   });
 
-  it('does not present a modal for a self-initiated (outgoing) request', () => {
-    const { fixture, active, open } = setup();
+  it('does not present a modal for a self-initiated (outgoing) request', async () => {
+    const { fixture, active, open } = await setup();
 
     active.set({ ...incoming(), incoming: false });
     fixture.detectChanges();

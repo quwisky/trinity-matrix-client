@@ -16,7 +16,21 @@ import {
   type MessageView,
   type ThreadSummary,
 } from '@trinity/core';
-import { type MessageRow } from '../message-row/message-row.component';
+import {
+  type MessageRow,
+  type MessageRowAction,
+  type MessageRowCaps,
+} from '../message-row/message-row.component';
+
+/** Fallback caps for a row not present in the memoized map (defensive; unreached). */
+const DEFAULT_ROW_CAPS: MessageRowCaps = {
+  editable: false,
+  deletable: false,
+  canPin: false,
+  pinned: false,
+  canThread: true,
+  readOnly: false,
+};
 
 /**
  * Shared domain logic for the room timeline, independent of scroll strategy: the
@@ -203,6 +217,77 @@ export abstract class MessageListBase {
 
   onCopy(row: MessageRow): void {
     void navigator.clipboard?.writeText(row.body);
+  }
+
+  /** Scroll a message into view (each scroll strategy implements it differently). */
+  abstract jumpTo(messageId: string): void;
+
+  /**
+   * Per-row caps keyed by event id, memoized so the reference is stable across
+   * change-detection ticks that don't touch pinning/permissions/the message set.
+   * `rowCaps()` is called from an `@for` on every CD; returning a fresh object each
+   * time would defeat the OnPush `MessageRowComponent` and re-render every row.
+   */
+  private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
+    const canPin = this.canPin();
+    const pinnedIds = this.pinnedIds();
+    const caps = new Map<string, MessageRowCaps>();
+    for (const message of this.messages()) {
+      caps.set(message.id, {
+        editable: this.isEditable(message),
+        deletable: message.isOwn && !message.status,
+        canPin,
+        pinned: pinnedIds.includes(message.id),
+        canThread: true,
+        readOnly: false,
+      });
+    }
+    return caps;
+  });
+
+  /** Per-row capabilities/state for {@link MessageRowComponent} in the main timeline. */
+  rowCaps(row: MessageRow): MessageRowCaps {
+    return this.rowCapsById().get(row.id) ?? DEFAULT_ROW_CAPS;
+  }
+
+  /** Route a single row action to its handler / upward output. */
+  onRowAction(row: MessageRow, action: MessageRowAction): void {
+    switch (action.type) {
+      case 'react':
+        this.react.emit({ id: row.id, key: action.key });
+        break;
+      case 'reply':
+        this.startReply(row);
+        break;
+      case 'copy':
+        this.onCopy(row);
+        break;
+      case 'edit':
+        this.startEdit(row);
+        break;
+      case 'delete':
+        void this.onDelete(row);
+        break;
+      case 'pin':
+        this.togglePin.emit(row.id);
+        break;
+      case 'retry':
+        this.retry.emit(row.id);
+        break;
+      case 'jump':
+        this.jumpTo(action.id);
+        break;
+      case 'thread':
+        this.openThread.emit(row.id);
+        break;
+      default: {
+        // Exhaustiveness guard: adding a MessageRowAction variant without a case
+        // here becomes a compile error rather than a silently-dropped action.
+        const unhandled: never = action;
+        void unhandled;
+        break;
+      }
+    }
   }
 
   async onDelete(row: MessageRow): Promise<void> {

@@ -1,14 +1,23 @@
 import { TestBed } from '@angular/core/testing';
+import { render } from '@testing-library/angular';
+import { MockComponent } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MessageView } from '@trinity/core';
+import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { VirtualMessageListComponent } from './virtual-message-list.component';
 
-function msg(id: string, senderId: string, senderName: string, ts: number) {
+function msg(
+  id: string,
+  senderId: string,
+  senderName: string,
+  ts: number,
+): MessageView {
   return {
     id,
     senderId,
     senderName,
     senderInitial: senderName[0],
-    senderAvatarUrl: null,
+    senderAvatarMxc: null,
     body: `body ${id}`,
     html: null,
     timestamp: ts,
@@ -18,7 +27,10 @@ function msg(id: string, senderId: string, senderName: string, ts: number) {
     reactions: [],
     replyTo: null,
     status: null,
-    kind: 'text' as const,
+    kind: 'text',
+    media: null,
+    caption: null,
+    captionHtml: null,
   };
 }
 
@@ -37,12 +49,27 @@ describe('VirtualMessageListComponent', () => {
     // Fresh ResizeObserver registry per test (the controllable stub is cumulative).
     (ResizeObserver as unknown as { instances: unknown[] }).instances.length =
       0;
-    TestBed.configureTestingModule({
-      imports: [VirtualMessageListComponent],
-    });
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  // Render the windowed list with the heavy composer child mocked away; the
+  // MessageRowComponent stays real because the tests assert its rendered DOM
+  // (`.msg`, `data-mid`, the flash class).
+  function renderList(
+    inputs: Partial<{
+      messages: MessageView[];
+      roomId: string;
+      jumpToId: string;
+      jumpToNonce: number;
+      canLoadOlder: boolean;
+    }> = {},
+  ) {
+    return render(VirtualMessageListComponent, {
+      inputs,
+      imports: [MockComponent(MessageComposerComponent)],
+    });
+  }
 
   function many(n: number) {
     return Array.from({ length: n }, (_, i) =>
@@ -74,36 +101,31 @@ describe('VirtualMessageListComponent', () => {
   const rect = (top: number, bottom = top): DOMRect =>
     ({ top, bottom }) as unknown as DOMRect;
 
-  it('renders rows and groups consecutive senders (shared base logic)', () => {
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      msg('$1', '@a:hs', 'Alice', 1000),
-      msg('$2', '@a:hs', 'Alice', 2000), // same sender → continuation
-      msg('$3', '@b:hs', 'Bob', 3000),
-    ]);
-    fixture.detectChanges();
+  it('renders rows and groups consecutive senders (shared base logic)', async () => {
+    const { container } = await renderList({
+      messages: [
+        msg('$1', '@a:hs', 'Alice', 1000),
+        msg('$2', '@a:hs', 'Alice', 2000), // same sender → continuation
+        msg('$3', '@b:hs', 'Bob', 3000),
+      ],
+    });
 
-    const el = fixture.nativeElement;
-    expect(el.querySelectorAll('.msg').length).toBe(3);
-    expect(el.querySelectorAll('.msg--cont').length).toBe(1);
+    expect(container.querySelectorAll('.msg').length).toBe(3);
+    expect(container.querySelectorAll('.msg--cont').length).toBe(1);
   });
 
-  it('renders the whole list (no spacers) for a short room', () => {
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', many(10));
-    fixture.detectChanges();
+  it('renders the whole list (no spacers) for a short room', async () => {
+    const { fixture, container } = await renderList({ messages: many(10) });
     const cmp = fixture.componentInstance;
 
     expect(cmp.windowedRows().length).toBe(10);
     expect(cmp.topPad()).toBe(0);
     expect(cmp.bottomPad()).toBe(0);
-    expect(fixture.nativeElement.querySelectorAll('.msg').length).toBe(10);
+    expect(container.querySelectorAll('.msg').length).toBe(10);
   });
 
-  it('renders only a window of a long room, pinned to the newest', () => {
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', many(200));
-    fixture.detectChanges();
+  it('renders only a window of a long room, pinned to the newest', async () => {
+    const { fixture, container } = await renderList({ messages: many(200) });
     const cmp = fixture.componentInstance;
 
     expect(cmp.rows().length).toBe(200);
@@ -114,20 +136,16 @@ describe('VirtualMessageListComponent', () => {
     expect(cmp.bottomPad()).toBe(0);
     expect(cmp.topPad()).toBeGreaterThan(0);
     expect(cmp.windowedRows().at(-1)?.id).toBe('$199');
-    expect(fixture.nativeElement.querySelectorAll('.msg').length).toBe(
+    expect(container.querySelectorAll('.msg').length).toBe(
       cmp.windowedRows().length,
     );
   });
 
-  it('keeps topPad + visible + bottomPad equal to the full height when scrolled up', () => {
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', many(200));
-    fixture.detectChanges();
+  it('keeps topPad + visible + bottomPad equal to the full height when scrolled up', async () => {
+    const { fixture, container } = await renderList({ messages: many(200) });
     const cmp = fixture.componentInstance;
 
-    const scroll = fixture.nativeElement.querySelector(
-      '.scroll',
-    ) as HTMLElement;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
     let st = 5000;
     Object.defineProperty(scroll, 'scrollTop', {
       get: () => st,
@@ -151,16 +169,12 @@ describe('VirtualMessageListComponent', () => {
     expect(cmp.topPad() + visible + cmp.bottomPad()).toBe(200 * EST);
   });
 
-  it('brings a windowed-out row into the DOM when jumped to', () => {
+  it('brings a windowed-out row into the DOM when jumped to', async () => {
     Element.prototype.scrollIntoView = vi.fn();
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', many(200));
-    fixture.detectChanges();
+    const { fixture, container } = await renderList({ messages: many(200) });
     const cmp = fixture.componentInstance;
 
-    const scroll = fixture.nativeElement.querySelector(
-      '.scroll',
-    ) as HTMLElement;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
     let st = 0;
     Object.defineProperty(scroll, 'scrollTop', {
       get: () => st,
@@ -181,18 +195,18 @@ describe('VirtualMessageListComponent', () => {
     expect(row?.classList.contains('msg--flash')).toBe(true);
   });
 
-  it('does not re-jump when the timeline changes after a jump', () => {
+  it('does not re-jump when the timeline changes after a jump', async () => {
     // jumpTo reads ids()/prefix(); the jump effect must run it untracked so a later
     // messages() change does not re-invoke jumpTo and yank the viewport back.
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
 
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', [
-      msg('$1', '@a:hs', 'Alice', 1000),
-      msg('$2', '@b:hs', 'Bob', 2000),
-    ]);
-    fixture.detectChanges();
+    const { fixture } = await renderList({
+      messages: [
+        msg('$1', '@a:hs', 'Alice', 1000),
+        msg('$2', '@b:hs', 'Bob', 2000),
+      ],
+    });
 
     fixture.componentRef.setInput('jumpToId', '$2');
     fixture.detectChanges();
@@ -207,13 +221,11 @@ describe('VirtualMessageListComponent', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
-  it('resets the edit/reply target on room change (shared base reset)', () => {
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('roomId', '!a:hs');
-    fixture.componentRef.setInput('messages', [
-      msg('$1', '@a:hs', 'Alice', 1000),
-    ]);
-    fixture.detectChanges();
+  it('resets the edit/reply target on room change (shared base reset)', async () => {
+    const { fixture } = await renderList({
+      roomId: '!a:hs',
+      messages: [msg('$1', '@a:hs', 'Alice', 1000)],
+    });
     const cmp = fixture.componentInstance;
 
     cmp.replyingToId.set('$1');
@@ -229,37 +241,33 @@ describe('VirtualMessageListComponent', () => {
     expect(cmp.announcement()).toBe('');
   });
 
-  it('handles an empty timeline', () => {
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', []);
-    fixture.detectChanges();
+  it('handles an empty timeline', async () => {
+    const { fixture, container } = await renderList({ messages: [] });
     const cmp = fixture.componentInstance;
 
     expect(cmp.windowedRows()).toEqual([]);
     expect(cmp.topPad()).toBe(0);
     expect(cmp.bottomPad()).toBe(0);
-    expect(fixture.nativeElement.querySelector('.empty')).not.toBeNull();
+    expect(container.querySelector('.empty')).not.toBeNull();
   });
 
-  it('jumps synchronously to an already-rendered row', () => {
+  it('jumps synchronously to an already-rendered row', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', many(10)); // short → all rendered
-    fixture.detectChanges();
+    const { fixture } = await renderList({ messages: many(10) }); // short → all rendered
 
     fixture.componentInstance.jumpTo('$5');
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
-  it('re-jumps to the same id when jumpToNonce is bumped', () => {
+  it('re-jumps to the same id when jumpToNonce is bumped', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', many(10)); // short → all rendered
-    fixture.componentRef.setInput('jumpToId', '$5');
-    fixture.componentRef.setInput('jumpToNonce', 1);
-    fixture.detectChanges();
+    const { fixture } = await renderList({
+      messages: many(10), // short → all rendered
+      jumpToId: '$5',
+      jumpToNonce: 1,
+    });
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
     // Repeat request to the same id (next nonce) must re-fire the jump effect.
@@ -268,40 +276,34 @@ describe('VirtualMessageListComponent', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 
-  it('flashes an already-rendered row on jump (in-window path)', () => {
+  it('flashes an already-rendered row on jump (in-window path)', async () => {
     Element.prototype.scrollIntoView = vi.fn();
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', many(10)); // short → all rendered
-    fixture.detectChanges();
+    const { fixture, container } = await renderList({ messages: many(10) }); // short → all rendered
 
     fixture.componentInstance.jumpTo('$5');
 
-    const row = fixture.nativeElement.querySelector('[data-mid="$5"]');
-    expect(row.classList.contains('msg--flash')).toBe(true);
+    const row = container.querySelector('[data-mid="$5"]');
+    expect(row?.classList.contains('msg--flash')).toBe(true);
   });
 
-  it('is a no-op when jumping to an unloaded event', () => {
+  it('is a no-op when jumping to an unloaded event', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', many(10));
-    fixture.detectChanges();
+    const { fixture } = await renderList({ messages: many(10) });
 
     fixture.componentInstance.jumpTo('$nope');
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
-  it('re-pins to the newest message after a room switch', () => {
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('roomId', '!a:hs');
-    fixture.componentRef.setInput('messages', many(200));
-    fixture.detectChanges();
+  it('re-pins to the newest message after a room switch', async () => {
+    const { fixture, container } = await renderList({
+      roomId: '!a:hs',
+      messages: many(200),
+    });
     const cmp = fixture.componentInstance;
 
     // Scroll up in room A → not pinned (bottom spacer appears).
-    const scroll = fixture.nativeElement.querySelector(
-      '.scroll',
-    ) as HTMLElement;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
     let st = 2000;
     Object.defineProperty(scroll, 'scrollTop', {
       get: () => st,
@@ -328,15 +330,11 @@ describe('VirtualMessageListComponent', () => {
     expect(cmp.windowedRows().at(-1)?.id).toBe('$199');
   });
 
-  it('tracks at-bottom vs scrolled-up from the scroll position', () => {
-    const fixture = TestBed.createComponent(VirtualMessageListComponent);
-    fixture.componentRef.setInput('messages', many(200));
-    fixture.detectChanges();
+  it('tracks at-bottom vs scrolled-up from the scroll position', async () => {
+    const { fixture, container } = await renderList({ messages: many(200) });
     const cmp = fixture.componentInstance;
 
-    const scroll = fixture.nativeElement.querySelector(
-      '.scroll',
-    ) as HTMLElement;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
     let st = 0;
     Object.defineProperty(scroll, 'scrollTop', {
       get: () => st,
@@ -367,14 +365,10 @@ describe('VirtualMessageListComponent', () => {
 
   // Fire the (controllable) ResizeObserver so onRowsResized actually runs.
   describe('height measurement (ResizeObserver fires)', () => {
-    it('measures a row and re-sticks to the bottom while pinned', () => {
-      const fixture = TestBed.createComponent(VirtualMessageListComponent);
-      fixture.componentRef.setInput('messages', many(200));
-      fixture.detectChanges();
+    it('measures a row and re-sticks to the bottom while pinned', async () => {
+      const { container } = await renderList({ messages: many(200) });
 
-      const scroll = fixture.nativeElement.querySelector(
-        '.scroll',
-      ) as HTMLElement;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = 0;
       Object.defineProperty(scroll, 'scrollTop', {
         get: () => st,
@@ -392,15 +386,11 @@ describe('VirtualMessageListComponent', () => {
       expect(st).toBe(12_800);
     });
 
-    it('compensates scroll when an above-the-fold row grows (scrolled up)', () => {
-      const fixture = TestBed.createComponent(VirtualMessageListComponent);
-      fixture.componentRef.setInput('messages', many(200));
-      fixture.detectChanges();
+    it('compensates scroll when an above-the-fold row grows (scrolled up)', async () => {
+      const { fixture, container } = await renderList({ messages: many(200) });
       const cmp = fixture.componentInstance;
 
-      const scroll = fixture.nativeElement.querySelector(
-        '.scroll',
-      ) as HTMLElement;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = 5000;
       Object.defineProperty(scroll, 'scrollTop', {
         get: () => st,
@@ -443,6 +433,11 @@ describe('VirtualMessageListComponent', () => {
     );
 
     it('backfills a short room until it fills, then stops (id-based guard)', () => {
+      // A detached TestBed fixture (not ATL render()) is deliberate: render()
+      // attaches the component to ApplicationRef, so the signal write from the
+      // synchronous-rAF backfill re-enters the zoneless scheduler ("cannot
+      // synchronously execute watches while scheduling"). A detached fixture only
+      // ticks on our explicit fixture.detectChanges().
       const fixture = TestBed.createComponent(VirtualMessageListComponent);
       fixture.componentRef.setInput('canLoadOlder', true);
       fixture.detectChanges();
@@ -476,16 +471,14 @@ describe('VirtualMessageListComponent', () => {
       expect(emits).toBe(2);
     });
 
-    it('restores scroll to the anchor row after older history prepends', () => {
-      const fixture = TestBed.createComponent(VirtualMessageListComponent);
-      fixture.componentRef.setInput('canLoadOlder', true);
-      fixture.componentRef.setInput('messages', many(30)); // short → all rendered
-      fixture.detectChanges();
+    it('restores scroll to the anchor row after older history prepends', async () => {
+      const { fixture, container } = await renderList({
+        canLoadOlder: true,
+        messages: many(30), // short → all rendered
+      });
       const cmp = fixture.componentInstance;
 
-      const scroll = fixture.nativeElement.querySelector(
-        '.scroll',
-      ) as HTMLElement;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = 100; // < AUTO_LOAD_THRESHOLD_PX (150) → triggers load-older
       Object.defineProperty(scroll, 'scrollTop', {
         get: () => st,

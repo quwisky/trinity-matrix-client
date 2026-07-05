@@ -2,6 +2,8 @@ import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
+import { fireEvent, render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import { VerificationService, type VerificationView } from '@trinity/core';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -20,39 +22,39 @@ function view(partial: Partial<VerificationView>): VerificationView {
   };
 }
 
-function configure(
+async function renderPage(
   active: WritableSignal<VerificationView | null>,
-  returnTo: string | null = null,
+  options: { returnTo?: string | null; asModal?: boolean } = {},
 ) {
-  const svc = {
-    active,
-    startSelfVerification: vi.fn(() => of(undefined)),
-    accept: vi.fn(() => of(undefined)),
-    startSas: vi.fn(() => of(undefined)),
-    confirmSas: vi.fn(() => of(undefined)),
-    mismatchSas: vi.fn(() => of(undefined)),
-    cancel: vi.fn(() => of(undefined)),
-    dismiss: vi.fn(),
-  };
-  const router = { navigateByUrl: vi.fn() };
-  const route = {
-    snapshot: {
-      queryParamMap: {
-        get: (key: string) => (key === 'returnTo' ? returnTo : null),
-      },
-    },
-  };
+  const { returnTo = null, asModal = false } = options;
   const close = vi.fn();
-  TestBed.configureTestingModule({
-    imports: [DeviceVerificationPage],
+  const result = await render(DeviceVerificationPage, {
+    inputs: { asModal },
     providers: [
-      { provide: VerificationService, useValue: svc },
-      { provide: Router, useValue: router },
-      { provide: ActivatedRoute, useValue: route },
-      { provide: DialogRef, useValue: { close } },
+      MockProvider(VerificationService, { active }),
+      MockProvider(Router),
+      MockProvider(ActivatedRoute, {
+        snapshot: {
+          queryParamMap: {
+            get: (key: string) => (key === 'returnTo' ? returnTo : null),
+          },
+        } as never,
+      }),
+      MockProvider(DialogRef, { close }),
     ],
   });
-  return { svc, router, close };
+
+  // Every action method returns a cold Observable the page feeds to runWithBusy.
+  const svc = TestBed.inject(VerificationService);
+  vi.mocked(svc.startSelfVerification).mockReturnValue(of(undefined));
+  vi.mocked(svc.accept).mockReturnValue(of(undefined));
+  vi.mocked(svc.startSas).mockReturnValue(of(undefined));
+  vi.mocked(svc.confirmSas).mockReturnValue(of(undefined));
+  vi.mocked(svc.mismatchSas).mockReturnValue(of(undefined));
+  vi.mocked(svc.cancel).mockReturnValue(of(undefined));
+  const router = TestBed.inject(Router);
+
+  return { ...result, svc, router, close };
 }
 
 // Every control on the page is now a native `<button hlmBtn>`: the body buttons,
@@ -65,49 +67,43 @@ function button(host: HTMLElement, text: string): HTMLElement {
 }
 
 describe('DeviceVerificationPage', () => {
-  it('offers to start when nothing is in flight', () => {
-    const { svc } = configure(signal(null));
-    const fixture = TestBed.createComponent(DeviceVerificationPage);
-    fixture.detectChanges();
+  it('offers to start when nothing is in flight', async () => {
+    const { svc, container } = await renderPage(signal(null));
 
-    button(fixture.nativeElement, 'Start verification').click();
+    fireEvent.click(button(container, 'Start verification'));
 
     expect(svc.startSelfVerification).toHaveBeenCalledOnce();
   });
 
-  it('accepts an incoming request', () => {
-    const { svc } = configure(
+  it('accepts an incoming request', async () => {
+    const { svc, container } = await renderPage(
       signal(view({ stage: 'requested', incoming: true })),
     );
-    const fixture = TestBed.createComponent(DeviceVerificationPage);
-    fixture.detectChanges();
 
-    button(fixture.nativeElement, 'Accept').click();
+    fireEvent.click(button(container, 'Accept'));
 
     expect(svc.accept).toHaveBeenCalledOnce();
   });
 
-  it('shows the emoji and confirms on match', () => {
-    const { svc } = configure(
+  it('shows the emoji and confirms on match', async () => {
+    const { svc, container } = await renderPage(
       signal(
         view({ stage: 'sas-shown', emoji: [{ glyph: '🐶', name: 'Dog' }] }),
       ),
     );
-    const fixture = TestBed.createComponent(DeviceVerificationPage);
-    fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('Dog');
-    button(fixture.nativeElement, 'They match').click();
+    expect(container.textContent).toContain('Dog');
+    fireEvent.click(button(container, 'They match'));
 
     expect(svc.confirmSas).toHaveBeenCalledOnce();
   });
 
-  it('dismisses and navigates to /rooms when done (routed, no returnTo)', () => {
-    const { svc, router } = configure(signal(view({ stage: 'done' })));
-    const fixture = TestBed.createComponent(DeviceVerificationPage);
-    fixture.detectChanges();
+  it('dismisses and navigates to /rooms when done (routed, no returnTo)', async () => {
+    const { svc, router, container } = await renderPage(
+      signal(view({ stage: 'done' })),
+    );
 
-    button(fixture.nativeElement, 'Done').click();
+    fireEvent.click(button(container, 'Done'));
 
     expect(svc.dismiss).toHaveBeenCalledOnce();
     expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
@@ -115,39 +111,41 @@ describe('DeviceVerificationPage', () => {
     });
   });
 
-  it('returns to the launch route (returnTo) when finishing a routed flow', () => {
-    const { router } = configure(signal(view({ stage: 'done' })), '/settings');
-    const fixture = TestBed.createComponent(DeviceVerificationPage);
-    fixture.detectChanges();
+  it('returns to the launch route (returnTo) when finishing a routed flow', async () => {
+    const { router, container } = await renderPage(
+      signal(view({ stage: 'done' })),
+      { returnTo: '/settings' },
+    );
 
-    button(fixture.nativeElement, 'Done').click();
+    fireEvent.click(button(container, 'Done'));
 
     expect(router.navigateByUrl).toHaveBeenCalledWith('/settings', {
       replaceUrl: true,
     });
   });
 
-  it('rejects an off-app returnTo and falls back to /rooms', () => {
-    const { router } = configure(signal(view({ stage: 'done' })), '//evil.com');
-    const fixture = TestBed.createComponent(DeviceVerificationPage);
-    fixture.detectChanges();
+  it('rejects an off-app returnTo and falls back to /rooms', async () => {
+    const { router, container } = await renderPage(
+      signal(view({ stage: 'done' })),
+      { returnTo: '//evil.com' },
+    );
 
-    button(fixture.nativeElement, 'Done').click();
+    fireEvent.click(button(container, 'Done'));
 
     expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
       replaceUrl: true,
     });
   });
 
-  it('dismisses its own modal (and emits close) instead of navigating when modal', () => {
-    const { svc, router, close } = configure(signal(view({ stage: 'done' })));
-    const fixture = TestBed.createComponent(DeviceVerificationPage);
-    fixture.componentRef.setInput('asModal', true);
+  it('dismisses its own modal (and emits close) instead of navigating when modal', async () => {
+    const { svc, router, close, container, fixture } = await renderPage(
+      signal(view({ stage: 'done' })),
+      { asModal: true },
+    );
     let closed = false;
     fixture.componentInstance.closed.subscribe(() => (closed = true));
-    fixture.detectChanges();
 
-    button(fixture.nativeElement, 'Done').click();
+    fireEvent.click(button(container, 'Done'));
 
     expect(svc.dismiss).toHaveBeenCalledOnce();
     expect(closed).toBe(true);
@@ -155,12 +153,12 @@ describe('DeviceVerificationPage', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it('does not touch the modal stack on the routed (non-modal) path', () => {
-    const { close } = configure(signal(view({ stage: 'done' })));
-    const fixture = TestBed.createComponent(DeviceVerificationPage);
-    fixture.detectChanges();
+  it('does not touch the modal stack on the routed (non-modal) path', async () => {
+    const { close, container } = await renderPage(
+      signal(view({ stage: 'done' })),
+    );
 
-    button(fixture.nativeElement, 'Done').click();
+    fireEvent.click(button(container, 'Done'));
 
     expect(close).not.toHaveBeenCalled();
   });

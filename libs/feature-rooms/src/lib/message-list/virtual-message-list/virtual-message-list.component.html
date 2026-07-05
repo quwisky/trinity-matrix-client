@@ -13,19 +13,8 @@
     <trn-message-row
       [row]="row"
       [threadSummary]="threadSummaries()[row.id] ?? null"
-      [editable]="isEditable(row)"
-      [deletable]="row.isOwn && !row.status"
-      [canPin]="canPin()"
-      [pinned]="isPinned(row.id)"
-      (react)="react.emit({ id: row.id, key: $event })"
-      (replyMessage)="startReply(row)"
-      (copyMessage)="onCopy(row)"
-      (editMessage)="startEdit(row)"
-      (deleteMessage)="onDelete(row)"
-      (togglePin)="togglePin.emit(row.id)"
-      (retry)="retry.emit(row.id)"
-      (jumpReply)="jumpTo($event)"
-      (openThread)="openThread.emit($event)"
+      [caps]="rowCaps(row)"
+      (action)="onRowAction(row, $event)"
     />
   } @empty {
     <div class="empty">No messages yet.</div>

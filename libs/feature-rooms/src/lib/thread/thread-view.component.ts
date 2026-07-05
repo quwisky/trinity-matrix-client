@@ -28,11 +28,23 @@ import {
 import {
   MessageRowComponent,
   type MessageRow,
+  type MessageRowAction,
+  type MessageRowCaps,
 } from '../message-row/message-row.component';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
+
+/** Fallback caps for a row not present in the memoized map (defensive; unreached). */
+const THREAD_ROW_CAPS: MessageRowCaps = {
+  editable: false,
+  deletable: false,
+  canPin: false,
+  pinned: false,
+  canThread: false,
+  readOnly: false,
+};
 
 /**
  * Thread view: the root message plus its replies, with an in-thread composer.
@@ -232,6 +244,69 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         this.threads.redactInThread(row.id),
         'Could not delete the message.',
       );
+    }
+  }
+
+  /**
+   * Per-row caps keyed by event id, memoized so the reference is stable across
+   * change-detection ticks that don't change the thread's messages — a fresh object
+   * per CD would defeat the OnPush {@link MessageRowComponent} and re-render every row.
+   */
+  private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
+    const caps = new Map<string, MessageRowCaps>();
+    for (const row of this.rows()) {
+      caps.set(row.id, {
+        editable: this.isEditable(row),
+        deletable: row.isOwn && !row.status,
+        canPin: false,
+        pinned: false,
+        canThread: false,
+        readOnly: false,
+      });
+    }
+    return caps;
+  });
+
+  /** Per-row capabilities/state for a thread row (no pinning or nested threads). */
+  rowCaps(row: MessageRow): MessageRowCaps {
+    return this.rowCapsById().get(row.id) ?? THREAD_ROW_CAPS;
+  }
+
+  /** Route a single row action to its thread handler. */
+  onRowAction(row: MessageRow, action: MessageRowAction): void {
+    switch (action.type) {
+      case 'react':
+        this.onReact(row.id, action.key);
+        break;
+      case 'reply':
+        this.startReply(row);
+        break;
+      case 'copy':
+        this.onCopy(row);
+        break;
+      case 'edit':
+        this.startEdit(row);
+        break;
+      case 'delete':
+        void this.onDelete(row);
+        break;
+      case 'retry':
+        this.onRetry(row.id);
+        break;
+      case 'jump':
+        this.jumpTo(action.id);
+        break;
+      // Pin/thread are not offered inside a thread (caps.canPin/canThread false).
+      case 'pin':
+      case 'thread':
+        break;
+      default: {
+        // Exhaustiveness guard: a new MessageRowAction variant without a case here
+        // becomes a compile error rather than a silently-dropped action.
+        const unhandled: never = action;
+        void unhandled;
+        break;
+      }
     }
   }
 

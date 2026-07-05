@@ -1,5 +1,5 @@
 import { Component } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { render } from '@testing-library/angular';
 import { PageHeaderComponent } from './page-header.component';
 
 @Component({
@@ -27,48 +27,41 @@ class TitleHostComponent {
 class ProjectedTitleHostComponent {}
 
 describe('PageHeaderComponent', () => {
-  it('renders exactly one header and one h1, with the title input as the heading text', () => {
-    const fixture = TestBed.createComponent(TitleHostComponent);
-    fixture.detectChanges();
-    const el = fixture.nativeElement as HTMLElement;
+  it('renders exactly one header and one h1, with the title input as the heading text', async () => {
+    const { container } = await render(TitleHostComponent);
 
-    expect(el.querySelectorAll('header')).toHaveLength(1);
-    const headings = el.querySelectorAll('h1');
+    expect(container.querySelectorAll('header')).toHaveLength(1);
+    const headings = container.querySelectorAll('h1');
     expect(headings).toHaveLength(1);
     expect(headings[0].textContent?.trim()).toBe('Settings');
   });
 
-  it('projects the leading and actions slots', () => {
-    const fixture = TestBed.createComponent(TitleHostComponent);
-    fixture.detectChanges();
-    const el = fixture.nativeElement as HTMLElement;
+  it('projects the leading and actions slots', async () => {
+    const { container } = await render(TitleHostComponent);
 
-    expect(el.querySelector('.lead')?.textContent?.trim()).toBe('Back');
-    expect(el.querySelector('.act')?.textContent?.trim()).toBe('Close');
+    expect(container.querySelector('.lead')?.textContent?.trim()).toBe('Back');
+    expect(container.querySelector('.act')?.textContent?.trim()).toBe('Close');
   });
 
-  it('falls back to the projected [trnHeaderTitle] inside the h1 when no title input is set', () => {
-    const fixture = TestBed.createComponent(ProjectedTitleHostComponent);
-    fixture.detectChanges();
-    const el = fixture.nativeElement as HTMLElement;
+  it('falls back to the projected [trnHeaderTitle] inside the h1 when no title input is set', async () => {
+    const { container } = await render(ProjectedTitleHostComponent);
 
-    const h1 = el.querySelector('h1');
+    const h1 = container.querySelector('h1');
     expect(h1).toBeTruthy();
     // The projected title is the body of the single h1 — not a nested heading.
     expect(h1?.querySelector('.projected-title')?.textContent?.trim()).toBe(
       '# general',
     );
-    expect(el.querySelectorAll('h1')).toHaveLength(1);
+    expect(container.querySelectorAll('h1')).toHaveLength(1);
   });
 
-  it('swaps host classes by variant', () => {
+  it('swaps host classes by variant', async () => {
     // Drive the component directly with setInput (like the banner tone test) so
     // toggling the signal input doesn't trip NG0100 via a host-field mutation.
-    const fixture = TestBed.createComponent(PageHeaderComponent);
-    fixture.componentRef.setInput('title', 'X');
-    fixture.detectChanges();
-    const header = () =>
-      (fixture.nativeElement as HTMLElement).querySelector('header')!;
+    const { fixture, container } = await render(PageHeaderComponent, {
+      inputs: { title: 'X' },
+    });
+    const header = () => container.querySelector('header')!;
 
     // page (default): safe-top + min-h-14, no chat background.
     expect(header().className).toContain('safe-top');
@@ -86,17 +79,10 @@ describe('PageHeaderComponent', () => {
     expect(header().className).toContain('text-[var(--trinity-text-bright)]');
   });
 
-  it('does not reflect the title input onto a native title attribute (no whole-bar tooltip)', () => {
-    const fixture = TestBed.createComponent(TitleHostComponent);
-    fixture.detectChanges();
-    const host = (fixture.nativeElement as HTMLElement).querySelector(
-      'trn-page-header',
-    )!;
+  it('does not reflect the title input onto a native title attribute (no whole-bar tooltip)', async () => {
+    const { container } = await render(TitleHostComponent);
+    const host = container.querySelector('trn-page-header')!;
     expect(host.getAttribute('title')).toBeNull();
-    expect(
-      (fixture.nativeElement as HTMLElement)
-        .querySelector('header')!
-        .getAttribute('title'),
-    ).toBeNull();
+    expect(container.querySelector('header')!.getAttribute('title')).toBeNull();
   });
 });

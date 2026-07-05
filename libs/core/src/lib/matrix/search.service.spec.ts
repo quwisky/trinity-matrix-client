@@ -6,6 +6,7 @@ import {
   SearchOrderBy,
   type ISearchRequestBody,
 } from 'matrix-js-sdk';
+import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { InvitesService, type PendingInvite } from './invites.service';
@@ -74,28 +75,21 @@ function setup(opts: {
   TestBed.configureTestingModule({
     providers: [
       SearchService,
-      {
-        provide: RoomsService,
-        useValue: {
-          rooms: signal(opts.rooms ?? []),
-          directRoomIds: signal<ReadonlySet<string>>(
-            opts.directRoomIds ?? new Set(),
-          ),
-          searchUsers,
-        },
-      },
-      {
-        provide: SpacesService,
-        useValue: { spaces: signal(opts.spaces ?? []) },
-      },
-      {
-        provide: InvitesService,
-        useValue: { pendingInvites: signal(opts.invites ?? []) },
-      },
-      {
-        provide: MatrixClientService,
-        useValue: opts.matrix ?? { isInitialized: false, instance: {} },
-      },
+      MockProvider(RoomsService, {
+        rooms: signal(opts.rooms ?? []),
+        directRoomIds: signal<ReadonlySet<string>>(
+          opts.directRoomIds ?? new Set(),
+        ),
+        searchUsers,
+      }),
+      MockProvider(SpacesService, { spaces: signal(opts.spaces ?? []) }),
+      MockProvider(InvitesService, {
+        pendingInvites: signal(opts.invites ?? []),
+      }),
+      MockProvider(
+        MatrixClientService,
+        opts.matrix ?? { isInitialized: false },
+      ),
     ],
   });
   return { svc: TestBed.inject(SearchService), searchUsers };

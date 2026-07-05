@@ -8,6 +8,8 @@ import {
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
 import { TrnDialogService } from '@trinity/helm/overlay';
+import { fireEvent, render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionBannerComponent } from './encryption-banner.component';
 
@@ -22,24 +24,16 @@ function stubViewport(matches: boolean): void {
 }
 
 const status = signal<CryptoStatus>('unknown');
-let navigateByUrl: ReturnType<typeof vi.fn>;
-let navigate: ReturnType<typeof vi.fn>;
-let open: ReturnType<typeof vi.fn>;
 
-beforeEach(() => {
-  status.set('unknown');
-  navigateByUrl = vi.fn();
-  navigate = vi.fn().mockResolvedValue(true);
-  open = vi.fn();
-
-  TestBed.configureTestingModule({
-    imports: [EncryptionBannerComponent],
+/** Render the banner with the real dialog service and mocked collaborators. */
+function renderBanner() {
+  return render(EncryptionBannerComponent, {
     providers: [
       // The real dialog service so we exercise its desktop-vs-mobile branching.
       EncryptionDialogService,
-      { provide: CryptoService, useValue: { status: status.asReadonly() } },
-      { provide: Router, useValue: { navigateByUrl, navigate } },
-      { provide: TrnDialogService, useValue: { open } },
+      MockProvider(CryptoService, { status: status.asReadonly() }),
+      MockProvider(Router, { navigate: vi.fn().mockResolvedValue(true) }),
+      MockProvider(TrnDialogService),
       {
         provide: ENCRYPTION_DIALOG_COMPONENTS,
         useValue: {
@@ -49,6 +43,10 @@ beforeEach(() => {
       },
     ],
   });
+}
+
+beforeEach(() => {
+  status.set('unknown');
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -57,41 +55,40 @@ function clickAction(host: HTMLElement, label: string): void {
   const button = [...host.querySelectorAll('button')].find(
     (b) => b.textContent?.trim() === label,
   );
-  (button as HTMLElement).click();
+  fireEvent.click(button as HTMLElement);
 }
 
 describe('EncryptionBannerComponent', () => {
-  it('renders nothing when crypto is unknown or ready', () => {
-    const fixture = TestBed.createComponent(EncryptionBannerComponent);
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.banner')).toBeNull();
+  it('renders nothing when crypto is unknown or ready', async () => {
+    const { fixture, container } = await renderBanner();
+    expect(container.querySelector('.banner')).toBeNull();
 
     status.set('ready');
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.banner')).toBeNull();
+    expect(container.querySelector('.banner')).toBeNull();
   });
 
-  it('offers a single setup action that always routes to the setup page', () => {
+  it('offers a single setup action that always routes to the setup page', async () => {
     stubViewport(true); // even on desktop, setup stays a full page
     status.set('needs-setup');
-    const fixture = TestBed.createComponent(EncryptionBannerComponent);
-    fixture.detectChanges();
+    const { container } = await renderBanner();
 
-    const buttons = fixture.nativeElement.querySelectorAll('button');
+    const buttons = container.querySelectorAll('button');
     expect(buttons.length).toBe(1);
-    expect(fixture.nativeElement.textContent).toContain('Set up encryption');
+    expect(container.textContent).toContain('Set up encryption');
 
-    clickAction(fixture.nativeElement, 'Set up');
-    expect(navigateByUrl).toHaveBeenCalledWith('/encryption/setup');
-    expect(open).not.toHaveBeenCalled();
+    const router = TestBed.inject(Router);
+    const dialog = TestBed.inject(TrnDialogService);
+    clickAction(container, 'Set up');
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/encryption/setup');
+    expect(dialog.open).not.toHaveBeenCalled();
   });
 
-  it('lists both recovery-key and verify actions for needs-recovery', () => {
+  it('lists both recovery-key and verify actions for needs-recovery', async () => {
     status.set('needs-recovery');
-    const fixture = TestBed.createComponent(EncryptionBannerComponent);
-    fixture.detectChanges();
+    const { container } = await renderBanner();
 
-    const labels = [...fixture.nativeElement.querySelectorAll('button')].map(
+    const labels = [...container.querySelectorAll('button')].map(
       (b: HTMLElement) => b.textContent?.trim(),
     );
     expect(labels).toEqual(['Use recovery key', 'Verify another device']);
@@ -100,38 +97,44 @@ describe('EncryptionBannerComponent', () => {
   it('opens unlock/verify as modals on the desktop layout', async () => {
     stubViewport(true);
     status.set('needs-recovery');
-    const fixture = TestBed.createComponent(EncryptionBannerComponent);
-    fixture.detectChanges();
+    const { container } = await renderBanner();
 
-    clickAction(fixture.nativeElement, 'Use recovery key');
+    const dialog = TestBed.inject(TrnDialogService);
+    const router = TestBed.inject(Router);
+
+    clickAction(container, 'Use recovery key');
     await vi.waitFor(() =>
-      expect(open).toHaveBeenCalledWith(StubUnlockPage, {
+      expect(dialog.open).toHaveBeenCalledWith(StubUnlockPage, {
         inputs: { asModal: true },
         disableClose: true,
       }),
     );
 
-    clickAction(fixture.nativeElement, 'Verify another device');
+    clickAction(container, 'Verify another device');
     await vi.waitFor(() =>
-      expect(open).toHaveBeenCalledWith(
+      expect(dialog.open).toHaveBeenCalledWith(
         StubVerifyPage,
         expect.objectContaining({ inputs: { asModal: true } }),
       ),
     );
-    expect(navigate).not.toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 
-  it('navigates to the unlock/verify routes on the mobile layout', () => {
+  it('navigates to the unlock/verify routes on the mobile layout', async () => {
     stubViewport(false);
     status.set('needs-recovery');
-    const fixture = TestBed.createComponent(EncryptionBannerComponent);
-    fixture.detectChanges();
+    const { container } = await renderBanner();
 
-    clickAction(fixture.nativeElement, 'Use recovery key');
-    clickAction(fixture.nativeElement, 'Verify another device');
+    const dialog = TestBed.inject(TrnDialogService);
+    const router = TestBed.inject(Router);
 
-    expect(navigate).toHaveBeenCalledWith(['/encryption/unlock'], {});
-    expect(navigate).toHaveBeenCalledWith(['/encryption/verify'], {});
-    expect(open).not.toHaveBeenCalled();
+    clickAction(container, 'Use recovery key');
+    clickAction(container, 'Verify another device');
+
+    await vi.waitFor(() => {
+      expect(router.navigate).toHaveBeenCalledWith(['/encryption/unlock'], {});
+      expect(router.navigate).toHaveBeenCalledWith(['/encryption/verify'], {});
+    });
+    expect(dialog.open).not.toHaveBeenCalled();
   });
 });

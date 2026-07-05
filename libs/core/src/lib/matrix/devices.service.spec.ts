@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { MatrixError } from 'matrix-js-sdk';
+import { MatrixClient, MatrixError } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
+import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevicesService } from './devices.service';
@@ -49,14 +50,13 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
 
 function setup(clientOverrides: Record<string, unknown> = {}) {
   const client = fakeClient(clientOverrides);
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
   TestBed.configureTestingModule({
     providers: [
       DevicesService,
-      { provide: MatrixClientService, useValue: matrix },
+      MockProvider(MatrixClientService, {
+        isInitialized: true,
+        instance: client as unknown as MatrixClient,
+      }),
     ],
   });
   return { svc: TestBed.inject(DevicesService), client };
