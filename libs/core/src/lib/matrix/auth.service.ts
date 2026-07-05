@@ -14,7 +14,7 @@ import { MatrixClientService } from './matrix-client.service';
 import { AvatarService } from './avatar.service';
 import { MediaService } from './media.service';
 import { PushService } from './push.service';
-import { SessionStorageService } from '../storage/session-storage.service';
+import { SessionStorageService } from '@trinity/platform-native';
 import { MatrixSession } from '@trinity/util-matrix';
 
 const DEVICE_DISPLAY_NAME = 'Trinity (Ionic)';

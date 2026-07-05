@@ -17,7 +17,7 @@ vi.mock('matrix-js-sdk', async (importActual) => {
 import { AutoDiscovery, createClient } from 'matrix-js-sdk';
 import { AuthService } from './auth.service';
 import { MatrixClientService } from './matrix-client.service';
-import { SessionStorageService } from '../storage/session-storage.service';
+import { SessionStorageService } from '@trinity/platform-native';
 import { AvatarService } from './avatar.service';
 import { MediaService } from './media.service';
 import { PushService } from './push.service';

@@ -45,20 +45,39 @@ export default defineConfig([
                 'type:core',
                 'type:ui',
                 'type:util',
+                'type:platform',
               ],
             },
             {
               sourceTag: 'type:feature',
-              onlyDependOnLibsWithTags: ['type:core', 'type:ui', 'type:util'],
+              onlyDependOnLibsWithTags: [
+                'type:core',
+                'type:ui',
+                'type:util',
+                'type:platform',
+              ],
             },
             {
               sourceTag: 'type:core',
-              onlyDependOnLibsWithTags: ['type:core', 'type:util'],
+              onlyDependOnLibsWithTags: [
+                'type:core',
+                'type:util',
+                'type:platform',
+              ],
             },
             {
               // Presentational-only: no state/services, so no core dependency.
               sourceTag: 'type:ui',
-              onlyDependOnLibsWithTags: ['type:ui', 'type:util'],
+              onlyDependOnLibsWithTags: [
+                'type:ui',
+                'type:util',
+                'type:platform',
+              ],
+            },
+            {
+              // Native capabilities behind Capacitor/browser APIs — only util below.
+              sourceTag: 'type:platform',
+              onlyDependOnLibsWithTags: ['type:platform', 'type:util'],
             },
             {
               // Pure functions/models — no Angular DI, depends only on other utils.

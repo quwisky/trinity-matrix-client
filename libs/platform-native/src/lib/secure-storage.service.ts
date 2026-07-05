@@ -5,7 +5,7 @@ import { SecureStorage } from '@aparajita/capacitor-secure-storage';
 import {
   getTrinityDesktopBridge,
   type TrinityDesktopBridge,
-} from '../platform/trinity-desktop-bridge';
+} from './trinity-desktop-bridge';
 
 /**
  * One secret-storage backend. `isSecure` is true only when values are held behind an

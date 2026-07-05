@@ -5,7 +5,7 @@ import { Observable, firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { authGuard } from './auth.guard';
 import { MatrixClientService } from '../matrix/matrix-client.service';
-import { SessionStorageService } from '../storage/session-storage.service';
+import { SessionStorageService } from '@trinity/platform-native';
 
 /** Run the guard inside an injection context (it takes no route/state). */
 function run(): Observable<boolean | UrlTree> {

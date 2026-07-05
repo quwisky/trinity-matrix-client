@@ -17,7 +17,7 @@ import {
   tap,
   throwError,
 } from 'rxjs';
-import { SessionStorageService } from '../storage/session-storage.service';
+import { SessionStorageService } from '@trinity/platform-native';
 import { MatrixSession } from '@trinity/util-matrix';
 import { preloadCryptoWasm } from '@trinity/util-matrix';
 import { SecretStorageKeyService } from './secret-storage-key.service';

@@ -1,8 +1,10 @@
 import { Injectable, effect, inject } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { RoomsService } from '../matrix/rooms.service';
-import { getTrinityDesktopBridge } from './trinity-desktop-bridge';
-import { MobileBadgeService } from './mobile-badge.service';
+import {
+  getTrinityDesktopBridge,
+  MobileBadgeService,
+} from '@trinity/platform-native';
 
 /** Cap the badge to a sane maximum so no sink is handed an absurd value. */
 const MAX_BADGE = 9999;

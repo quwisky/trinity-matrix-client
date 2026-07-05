@@ -4,7 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Capacitor } from '@capacitor/core';
 import { AppBadgeService } from './app-badge.service';
-import { MobileBadgeService } from './mobile-badge.service';
+import { MobileBadgeService } from '@trinity/platform-native';
 import { RoomsService } from '../matrix/rooms.service';
 
 type BadgingNavigator = Navigator & {

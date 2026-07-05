@@ -4,7 +4,7 @@ import { ClientEvent, SyncState, createClient } from 'matrix-js-sdk';
 import { firstValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from './matrix-client.service';
-import { SessionStorageService } from '../storage/session-storage.service';
+import { SessionStorageService } from '@trinity/platform-native';
 import { SecretStorageKeyService } from './secret-storage-key.service';
 
 // A controllable fake sync store (the real IndexedDBStore needs a browser IDB).

@@ -11,7 +11,7 @@ import {
 } from 'matrix-js-sdk';
 import { MatrixClientService } from './matrix-client.service';
 import { TimelineService } from './timeline.service';
-import { getTrinityDesktopBridge } from '../platform/trinity-desktop-bridge';
+import { getTrinityDesktopBridge } from '@trinity/platform-native';
 
 /** Max characters of message body shown in a notification. */
 const PREVIEW_LIMIT = 140;
