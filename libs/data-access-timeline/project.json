@@ -1,0 +1,18 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "data-access-timeline",
+  "projectType": "library",
+  "sourceRoot": "libs/data-access-timeline/src",
+  "prefix": "trn",
+  "tags": ["type:data-access", "scope:trinity"],
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/data-access-timeline"
+      },
+      "configurations": { "watch": { "command": "vitest" } }
+    }
+  }
+}

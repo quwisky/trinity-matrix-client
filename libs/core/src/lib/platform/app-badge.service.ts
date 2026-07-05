@@ -1,6 +1,6 @@
 import { Injectable, effect, inject } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
-import { RoomsService } from '../matrix/rooms.service';
+import { RoomsService } from '@trinity/data-access-rooms';
 import {
   getTrinityDesktopBridge,
   MobileBadgeService,

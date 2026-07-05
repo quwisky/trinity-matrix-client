@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Capacitor } from '@capacitor/core';
 import { AppBadgeService } from './app-badge.service';
 import { MobileBadgeService } from '@trinity/platform-native';
-import { RoomsService } from '../matrix/rooms.service';
+import { RoomsService } from '@trinity/data-access-rooms';
 
 type BadgingNavigator = Navigator & {
   setAppBadge?: unknown;

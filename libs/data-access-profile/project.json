@@ -1,0 +1,15 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "data-access-profile",
+  "projectType": "library",
+  "sourceRoot": "libs/data-access-profile/src",
+  "prefix": "trn",
+  "tags": ["type:data-access", "scope:trinity"],
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "command": "vitest run", "cwd": "libs/data-access-profile" },
+      "configurations": { "watch": { "command": "vitest" } }
+    }
+  }
+}
