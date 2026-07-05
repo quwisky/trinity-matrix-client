@@ -4,7 +4,7 @@
   "projectType": "library",
   "sourceRoot": "libs/platform-native/src",
   "prefix": "trn",
-  "tags": ["type:platform", "scope:trinity"],
+  "tags": ["type:platform", "scope:shared"],
   "targets": {
     "test": {
       "executor": "nx:run-commands",

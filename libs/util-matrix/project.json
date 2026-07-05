@@ -4,7 +4,7 @@
   "projectType": "library",
   "sourceRoot": "libs/util-matrix/src",
   "prefix": "trn",
-  "tags": ["type:util", "scope:trinity"],
+  "tags": ["type:util", "scope:shared"],
   "targets": {
     "test": {
       "executor": "nx:run-commands",

@@ -4,12 +4,19 @@
   "projectType": "library",
   "sourceRoot": "libs/feature-shell/src",
   "prefix": "trn",
-  "tags": ["type:feature", "scope:trinity"],
+  "tags": ["type:feature", "scope:matrix"],
   "targets": {
     "test": {
       "executor": "nx:run-commands",
-      "options": { "command": "vitest run", "cwd": "libs/feature-shell" },
-      "configurations": { "watch": { "command": "vitest" } }
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/feature-shell"
+      },
+      "configurations": {
+        "watch": {
+          "command": "vitest"
+        }
+      }
     }
   }
 }

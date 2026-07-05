@@ -4,7 +4,7 @@
   "projectType": "library",
   "sourceRoot": "libs/data-access-timeline/src",
   "prefix": "trn",
-  "tags": ["type:data-access", "scope:trinity"],
+  "tags": ["type:data-access", "scope:matrix"],
   "targets": {
     "test": {
       "executor": "nx:run-commands",
@@ -12,7 +12,11 @@
         "command": "vitest run",
         "cwd": "libs/data-access-timeline"
       },
-      "configurations": { "watch": { "command": "vitest" } }
+      "configurations": {
+        "watch": {
+          "command": "vitest"
+        }
+      }
     }
   }
 }

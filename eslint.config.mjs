@@ -35,8 +35,14 @@ export default defineConfig([
           allow: [],
           depConstraints: [
             {
-              sourceTag: 'scope:trinity',
-              onlyDependOnLibsWithTags: ['scope:trinity'],
+              sourceTag: 'scope:matrix',
+              onlyDependOnLibsWithTags: ['scope:matrix', 'scope:shared'],
+            },
+            {
+              // The shared kernel (util/platform/matrix-client/ui/helm) must stay
+              // domain-agnostic — it may not reach into the matrix domain libs.
+              sourceTag: 'scope:shared',
+              onlyDependOnLibsWithTags: ['scope:shared'],
             },
             {
               sourceTag: 'type:app',

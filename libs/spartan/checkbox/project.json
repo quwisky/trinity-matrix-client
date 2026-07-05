@@ -4,7 +4,7 @@
   "sourceRoot": "libs/spartan/checkbox/src",
   "prefix": "hlm",
   "projectType": "library",
-  "tags": ["type:ui", "scope:trinity"],
+  "tags": ["type:ui", "scope:shared"],
   "targets": {
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",
