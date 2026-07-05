@@ -17,6 +17,9 @@ export default defineConfig(() => ({
     environment: 'jsdom',
     setupFiles: ['src/test-setup.ts'],
     include: ['src/**/*.spec.ts'],
+    // The app is just bootstrap + routing now; its unit tests live in the
+    // feature-shell lib, so a bare `nx test trinity` legitimately finds none.
+    passWithNoTests: true,
     reporters: ['default'],
     // Ionic ships ESM inside a CommonJS-typed package; inline it so Vitest
     // transforms it instead of trying to require() the ES modules.

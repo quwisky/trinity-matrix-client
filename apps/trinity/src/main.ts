@@ -30,8 +30,7 @@ import {
 import { provideSpartanHlm } from '@trinity/helm/utils';
 
 import { routes } from './app/app.routes';
-import { AppComponent } from './app/app.component';
-import { NavigationFocusService } from './app/navigation-focus.service';
+import { AppComponent, NavigationFocusService } from '@trinity/feature-shell';
 import { environment } from './environments/environment';
 
 // Desktop (hand-rolled Electron) detection. The preload bridge exposes

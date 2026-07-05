@@ -51,7 +51,7 @@ export const routes: Routes = [
         {
           path: 'spike',
           loadComponent: () =>
-            import('./home/home.page').then((m) => m.HomePage),
+            import('@trinity/feature-shell').then((m) => m.HomePage),
         },
       ]),
   {

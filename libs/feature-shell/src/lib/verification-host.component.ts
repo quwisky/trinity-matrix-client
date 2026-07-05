@@ -7,6 +7,7 @@ import {
 import type { DialogRef } from '@angular/cdk/dialog';
 import { VerificationService } from '@trinity/data-access-crypto';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/ui';
 import { TrnDialogService } from '@trinity/helm/overlay';
 
 /**
@@ -25,6 +26,12 @@ export class VerificationHostComponent {
   private readonly matrix = inject(MatrixClientService);
   private readonly verification = inject(VerificationService);
   private readonly dialog = inject(TrnDialogService);
+  // App-provided lazy loader (main.ts) for the verification modal page — reuses
+  // the encryption-dialog seam so this feature lib never imports feature-crypto.
+  // Optional: absent in ui-in-isolation / tests with no app wiring.
+  private readonly dialogComponents = inject(ENCRYPTION_DIALOG_COMPONENTS, {
+    optional: true,
+  });
   private ref: DialogRef<void, unknown> | null = null;
   /** Synchronous in-flight guard: `ref` is only set after the lazy import, so
    * without this a second effect run during the import opens a second modal. */
@@ -55,12 +62,15 @@ export class VerificationHostComponent {
     if (this.ref || this.presenting) {
       return;
     }
+    const loadPage = this.dialogComponents?.verify;
+    if (!loadPage) {
+      return; // no app wiring — nothing to present (e.g. ui-only test contexts)
+    }
     this.presenting = true;
     try {
-      // Lazy-load the verification UI so feature-crypto stays out of the main
-      // bundle until an incoming request actually needs it.
-      const { DeviceVerificationPage } =
-        await import('@trinity/feature-crypto');
+      // Lazy-load the verification UI (via the app-provided loader) so
+      // feature-crypto stays out of the main bundle until actually needed.
+      const DeviceVerificationPage = await loadPage();
       // The request may have been cleared while the chunk was loading.
       if (!this.verification.active()?.incoming) {
         return;

@@ -6,6 +6,7 @@ import {
   type VerificationView,
 } from '@trinity/data-access-crypto';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/ui';
 import { TrnDialogService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
@@ -33,6 +34,14 @@ async function setup() {
       MockProvider(MatrixClientService, { syncState }),
       MockProvider(VerificationService, { active }),
       MockProvider(TrnDialogService, { open }),
+      // The app provides these lazy loaders (main.ts); a stub page class here.
+      {
+        provide: ENCRYPTION_DIALOG_COMPONENTS,
+        useValue: {
+          unlock: () => Promise.resolve(class StubUnlock {}),
+          verify: () => Promise.resolve(class StubVerify {}),
+        },
+      },
     ],
   });
   // `connect` is auto-spied by ng-mocks (see test-setup autoSpy).

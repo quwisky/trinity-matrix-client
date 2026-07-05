@@ -46,6 +46,7 @@
       "@trinity/feature-rooms": ["libs/feature-rooms/src/index.ts"],
       "@trinity/feature-settings": ["libs/feature-settings/src/index.ts"],
       "@trinity/ui": ["libs/ui/src/index.ts"],
+      "@trinity/feature-shell": ["libs/feature-shell/src/index.ts"],
       "@trinity/helm/button": ["./libs/spartan/button/src/index.ts"],
       "@trinity/helm/utils": ["./libs/spartan/utils/src/index.ts"],
       "@trinity/helm/input": ["./libs/spartan/input/src/index.ts"],
