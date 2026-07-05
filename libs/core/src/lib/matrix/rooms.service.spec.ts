@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NgZone } from '@angular/core';
 import { ClientEvent, MatrixEventEvent, RoomEvent } from 'matrix-js-sdk';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -61,6 +62,25 @@ function fakeRoom(opts: {
   };
 }
 
+/**
+ * Provide RoomsService with a MockProvider-backed MatrixClientService whose
+ * `instance` getter yields `client` and whose `isInitialized` is true, matching the
+ * data-holder shape the service reads. Returns both so tests can re-point `instance`.
+ */
+function provideRooms(client: unknown): {
+  svc: RoomsService;
+  matrix: MatrixClientService;
+} {
+  TestBed.configureTestingModule({
+    providers: [RoomsService, MockProvider(MatrixClientService)],
+  });
+  const matrix = TestBed.inject(MatrixClientService);
+  ngMocks.stubMember(matrix, 'isInitialized', true);
+  ngMocks.stubMember(matrix, 'instance', client);
+  const svc = TestBed.inject(RoomsService);
+  return { svc, matrix };
+}
+
 describe('RoomsService', () => {
   function setup(rooms: ReturnType<typeof fakeRoom>[]) {
     const client = {
@@ -68,18 +88,7 @@ describe('RoomsService', () => {
       getRooms: () => rooms,
       on: () => {},
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc } = provideRooms(client);
     svc.connect();
     return svc;
   }
@@ -226,24 +235,13 @@ describe('RoomsService', () => {
     });
     const clientA = makeClient([fakeRoom({ roomId: '!a:hs', name: 'A' })]);
     const clientB = makeClient([fakeRoom({ roomId: '!b:hs', name: 'B' })]);
-    const matrix = {
-      isInitialized: true,
-      instance: clientA,
-    } as unknown as MatrixClientService;
-
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc, matrix } = provideRooms(clientA);
 
     svc.connect();
     expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs']);
 
     // Simulate logout→login: MatrixClientService swaps in a fresh client.
-    (matrix as unknown as { instance: unknown }).instance = clientB;
+    ngMocks.stubMember(matrix, 'instance', clientB);
     svc.connect();
 
     expect(svc.rooms().map((r) => r.id)).toEqual(['!b:hs']); // not frozen on A
@@ -265,17 +263,7 @@ describe('RoomsService', () => {
       on: (event: string, cb: () => void) => handlers.set(event, cb),
       off: vi.fn(),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc } = provideRooms(client);
     svc.connect();
     expect(svc.totalUnread()).toBe(2);
 
@@ -298,17 +286,7 @@ describe('RoomsService', () => {
       on: (event: string, cb: () => void) => handlers.set(event, cb),
       off: vi.fn(),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc } = provideRooms(client);
     svc.connect();
     expect(svc.totalUnread()).toBe(0);
 
@@ -330,17 +308,7 @@ describe('RoomsService', () => {
       on: (event: string, cb: () => void) => handlers.set(event, cb),
       off: vi.fn(),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc } = provideRooms(client);
     const zone = TestBed.inject(NgZone);
     svc.connect();
 
@@ -363,17 +331,7 @@ describe('RoomsService', () => {
       on: (event: string, cb: () => void) => handlers.set(event, cb),
       off: vi.fn(),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc } = provideRooms(client);
     svc.connect();
     expect(svc.totalUnread()).toBe(2);
 
@@ -395,17 +353,7 @@ describe('RoomsService', () => {
       on: vi.fn(),
       off: vi.fn(),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc } = provideRooms(client);
 
     svc.connect();
     const wiredCalls = client.on.mock.calls.length;
@@ -452,18 +400,7 @@ describe('RoomsService writes', () => {
       on: vi.fn(),
       off: vi.fn(),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc } = provideRooms(client);
     return { svc, createRoom, invite, setAccountData, searchUserDirectory };
   }
 
@@ -564,17 +501,7 @@ describe('RoomsService writes', () => {
       on: vi.fn(),
       off: vi.fn(),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc } = provideRooms(client);
 
     await firstValueFrom(svc.createDirectMessage('@bob:hs'));
 
@@ -643,17 +570,7 @@ describe('RoomsService directRoomIds', () => {
       on: vi.fn(),
       off: vi.fn(),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc } = provideRooms(client);
     svc.connect();
     return svc;
   }
@@ -698,18 +615,7 @@ describe('RoomsService setFavourite', () => {
       on: (event: string, cb: () => void) => handlers.set(event, cb),
       off: vi.fn(),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
-
-    TestBed.configureTestingModule({
-      providers: [
-        RoomsService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
-    });
-    const svc = TestBed.inject(RoomsService);
+    const { svc } = provideRooms(client);
     svc.connect();
     return {
       svc,

@@ -1,6 +1,7 @@
-import { TestBed } from '@angular/core/testing';
 import { DialogRef } from '@angular/cdk/dialog';
 import { SearchService, type SwitcherResult } from '@trinity/core';
+import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuickSwitcherComponent } from './quick-switcher.component';
@@ -44,27 +45,27 @@ describe('QuickSwitcherComponent', () => {
     dismiss = vi.fn().mockResolvedValue(true);
     localResults = vi.fn(() => LOCAL);
     searchPeople = vi.fn(() => of<SwitcherResult[]>([]));
-    TestBed.configureTestingModule({
-      imports: [QuickSwitcherComponent],
+  });
+
+  /** Render the switcher with the dialog ref and search service stubbed. */
+  function renderSwitcher() {
+    return render(QuickSwitcherComponent, {
       providers: [
         { provide: DialogRef, useValue: { close: dismiss } },
-        { provide: SearchService, useValue: { localResults, searchPeople } },
+        MockProvider(SearchService, { localResults, searchPeople }),
       ],
     });
-  });
+  }
 
-  it('renders the ranked local results as rows', () => {
-    const fixture = TestBed.createComponent(QuickSwitcherComponent);
-    fixture.detectChanges();
+  it('renders the ranked local results as rows', async () => {
+    const { fixture, container } = await renderSwitcher();
 
     expect(fixture.componentInstance.results()).toEqual(LOCAL);
-    expect(fixture.nativeElement.querySelectorAll('.qs-row').length).toBe(
-      LOCAL.length,
-    );
+    expect(container.querySelectorAll('.qs-row').length).toBe(LOCAL.length);
   });
 
-  it('recomputes results when the query changes', () => {
-    const fixture = TestBed.createComponent(QuickSwitcherComponent);
+  it('recomputes results when the query changes', async () => {
+    const { fixture } = await renderSwitcher();
     const c = fixture.componentInstance;
     localResults.mockImplementation((q: string) =>
       q === 'alp' ? [LOCAL[0]] : LOCAL,
@@ -77,8 +78,9 @@ describe('QuickSwitcherComponent', () => {
     expect(localResults).toHaveBeenLastCalledWith('alp');
   });
 
-  it('moves the highlight with arrow keys, wrapping and preventing the caret move', () => {
-    const c = TestBed.createComponent(QuickSwitcherComponent).componentInstance;
+  it('moves the highlight with arrow keys, wrapping and preventing the caret move', async () => {
+    const { fixture } = await renderSwitcher();
+    const c = fixture.componentInstance;
 
     const down = keyEvent();
     c.move(1, down.event);
@@ -93,8 +95,9 @@ describe('QuickSwitcherComponent', () => {
     expect(c.highlight()).toBe(LOCAL.length - 1);
   });
 
-  it('Enter selects the highlighted row and dismisses with its {kind,id}', () => {
-    const c = TestBed.createComponent(QuickSwitcherComponent).componentInstance;
+  it('Enter selects the highlighted row and dismisses with its {kind,id}', async () => {
+    const { fixture } = await renderSwitcher();
+    const c = fixture.componentInstance;
     c.highlight.set(1); // bravo (space)
 
     c.choose(keyEvent().event);
@@ -102,16 +105,18 @@ describe('QuickSwitcherComponent', () => {
     expect(dismiss).toHaveBeenCalledWith({ kind: 'space', id: '!b:hs' });
   });
 
-  it('clicking a row dismisses with its selection', () => {
-    const c = TestBed.createComponent(QuickSwitcherComponent).componentInstance;
+  it('clicking a row dismisses with its selection', async () => {
+    const { fixture } = await renderSwitcher();
+    const c = fixture.componentInstance;
 
     c.select(LOCAL[2]);
 
     expect(dismiss).toHaveBeenCalledWith({ kind: 'dm', id: '!c:hs' });
   });
 
-  it('Escape / Cancel dismisses with null', () => {
-    const c = TestBed.createComponent(QuickSwitcherComponent).componentInstance;
+  it('Escape / Cancel dismisses with null', async () => {
+    const { fixture } = await renderSwitcher();
+    const c = fixture.componentInstance;
 
     c.dismiss(null);
 
@@ -129,9 +134,8 @@ describe('QuickSwitcherComponent', () => {
       }),
     ];
     searchPeople.mockReturnValue(of(people));
-    const fixture = TestBed.createComponent(QuickSwitcherComponent);
+    const { fixture } = await renderSwitcher();
     const c = fixture.componentInstance;
-    fixture.detectChanges();
 
     setInput('bob', c);
     fixture.detectChanges(); // flush the toObservable effect
@@ -143,8 +147,7 @@ describe('QuickSwitcherComponent', () => {
   });
 
   it('does not query the directory for a term shorter than two characters', async () => {
-    const fixture = TestBed.createComponent(QuickSwitcherComponent);
-    fixture.detectChanges();
+    const { fixture } = await renderSwitcher();
 
     setInput('b', fixture.componentInstance);
     fixture.detectChanges();

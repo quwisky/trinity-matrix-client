@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileService } from './profile.service';
@@ -19,16 +20,14 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
 
 function setup(clientOverrides: Record<string, unknown> = {}) {
   const client = fakeClient(clientOverrides);
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
   TestBed.configureTestingModule({
-    providers: [
-      ProfileService,
-      { provide: MatrixClientService, useValue: matrix },
-    ],
+    providers: [ProfileService, MockProvider(MatrixClientService)],
   });
+  const matrix = TestBed.inject(MatrixClientService);
+  // The service reads `matrix.instance` (a getter) for the SDK client; stub both
+  // getters on the mock so it hands back our fake client.
+  ngMocks.stubMember(matrix, 'instance', client);
+  ngMocks.stubMember(matrix, 'isInitialized', true);
   return { svc: TestBed.inject(ProfileService), client };
 }
 

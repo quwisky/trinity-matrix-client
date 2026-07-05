@@ -1,6 +1,12 @@
 import { TestBed } from '@angular/core/testing';
+import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
-import { RoomEvent, RoomStateEvent, ThreadEvent } from 'matrix-js-sdk';
+import {
+  RoomEvent,
+  RoomStateEvent,
+  ThreadEvent,
+  type MatrixClient,
+} from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadsService } from './threads.service';
 import { MatrixClientService } from './matrix-client.service';
@@ -215,15 +221,18 @@ function setup(
     },
     ...emitter(),
   };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
   TestBed.configureTestingModule({
     providers: [
       ThreadsService,
-      { provide: MatrixClientService, useValue: matrix },
-      { provide: MediaService, useValue: fakeMediaService() },
+      // `isInitialized` and `instance` are getters on the real service; MockProvider
+      // overrides them so the service reads our SDK-shaped fakes.
+      MockProvider(MatrixClientService, {
+        isInitialized: true,
+        instance: client as unknown as MatrixClient,
+      }),
+      MockProvider(MediaService, {
+        uploadMedia: fakeMediaService().uploadMedia,
+      }),
     ],
   });
   const svc = TestBed.inject(ThreadsService);

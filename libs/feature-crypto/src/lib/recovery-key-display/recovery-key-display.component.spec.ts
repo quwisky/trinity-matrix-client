@@ -1,24 +1,18 @@
-import { TestBed } from '@angular/core/testing';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/angular';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RecoveryKeyDisplayComponent } from './recovery-key-display.component';
 
 const KEY = 'EsTa bcde fghi jklm nopq rstu vwxy z012 3456 789a bcde fghi';
 
 describe('RecoveryKeyDisplayComponent', () => {
-  beforeEach(() =>
-    TestBed.configureTestingModule({ imports: [RecoveryKeyDisplayComponent] }),
-  );
-
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders the recovery key', () => {
-    const fixture = TestBed.createComponent(RecoveryKeyDisplayComponent);
-    fixture.componentRef.setInput('recoveryKey', KEY);
-    fixture.detectChanges();
+  it('renders the recovery key', async () => {
+    const { container } = await render(RecoveryKeyDisplayComponent, {
+      inputs: { recoveryKey: KEY },
+    });
 
-    expect(fixture.nativeElement.querySelector('.key').textContent).toContain(
-      KEY,
-    );
+    expect(container.querySelector('.key')?.textContent).toContain(KEY);
   });
 
   it('copies the key to the clipboard and confirms', async () => {
@@ -28,9 +22,9 @@ describe('RecoveryKeyDisplayComponent', () => {
       configurable: true,
     });
 
-    const fixture = TestBed.createComponent(RecoveryKeyDisplayComponent);
-    fixture.componentRef.setInput('recoveryKey', KEY);
-    fixture.detectChanges();
+    const { fixture } = await render(RecoveryKeyDisplayComponent, {
+      inputs: { recoveryKey: KEY },
+    });
 
     fixture.componentInstance.copy();
     await fixture.whenStable();
@@ -39,7 +33,7 @@ describe('RecoveryKeyDisplayComponent', () => {
     expect(fixture.componentInstance.copied()).toBe(true);
   });
 
-  it('downloads the key as a text file on web', () => {
+  it('downloads the key as a text file on web', async () => {
     const createObjectURL = vi.fn(() => 'blob:url');
     const revokeObjectURL = vi.fn();
     URL.createObjectURL = createObjectURL;
@@ -48,9 +42,9 @@ describe('RecoveryKeyDisplayComponent', () => {
       .spyOn(HTMLAnchorElement.prototype, 'click')
       .mockImplementation(() => undefined);
 
-    const fixture = TestBed.createComponent(RecoveryKeyDisplayComponent);
-    fixture.componentRef.setInput('recoveryKey', KEY);
-    fixture.detectChanges();
+    const { fixture } = await render(RecoveryKeyDisplayComponent, {
+      inputs: { recoveryKey: KEY },
+    });
 
     fixture.componentInstance.download();
 
@@ -66,9 +60,9 @@ describe('RecoveryKeyDisplayComponent', () => {
       configurable: true,
     });
 
-    const fixture = TestBed.createComponent(RecoveryKeyDisplayComponent);
-    fixture.componentRef.setInput('recoveryKey', KEY);
-    fixture.detectChanges();
+    const { fixture } = await render(RecoveryKeyDisplayComponent, {
+      inputs: { recoveryKey: KEY },
+    });
 
     fixture.componentInstance.copy();
     await fixture.whenStable();
@@ -76,6 +70,8 @@ describe('RecoveryKeyDisplayComponent', () => {
 
     expect(fixture.componentInstance.copyFailed()).toBe(true);
     expect(fixture.componentInstance.copied()).toBe(false);
-    expect(fixture.nativeElement.querySelector('.copy-hint')).toBeTruthy();
+    expect(
+      screen.getByText(/select the key above and copy it manually/i),
+    ).toBeInTheDocument();
   });
 });

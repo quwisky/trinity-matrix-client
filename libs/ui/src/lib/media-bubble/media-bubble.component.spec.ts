@@ -1,52 +1,36 @@
-import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { render } from '@testing-library/angular';
 import { MediaBubbleComponent } from './media-bubble.component';
 
 describe('MediaBubbleComponent', () => {
-  beforeEach(() =>
-    TestBed.configureTestingModule({ imports: [MediaBubbleComponent] }),
-  );
+  it('renders an <img> with the resolved src and alt for an image', async () => {
+    const { container } = await render(MediaBubbleComponent, {
+      inputs: { kind: 'image', src: 'blob:thumb', filename: 'pic.png' },
+    });
 
-  function create() {
-    return TestBed.createComponent(MediaBubbleComponent);
-  }
-
-  it('renders an <img> with the resolved src and alt for an image', () => {
-    const fixture = create();
-    fixture.componentRef.setInput('kind', 'image');
-    fixture.componentRef.setInput('src', 'blob:thumb');
-    fixture.componentRef.setInput('filename', 'pic.png');
-    fixture.detectChanges();
-
-    const img = fixture.nativeElement.querySelector('img.media__img');
+    const img = container.querySelector('img.media__img');
     expect(img).toBeTruthy();
-    expect(img.getAttribute('src')).toBe('blob:thumb');
-    expect(img.getAttribute('alt')).toBe('pic.png');
+    expect(img?.getAttribute('src')).toBe('blob:thumb');
+    expect(img?.getAttribute('alt')).toBe('pic.png');
   });
 
-  it('renders a download file-card for a file kind', () => {
-    const fixture = create();
-    fixture.componentRef.setInput('kind', 'file');
-    fixture.componentRef.setInput('filename', 'report.pdf');
-    fixture.detectChanges();
+  it('renders a download file-card for a file kind', async () => {
+    const { container } = await render(MediaBubbleComponent, {
+      inputs: { kind: 'file', filename: 'report.pdf' },
+    });
 
-    const card = fixture.nativeElement.querySelector(
-      '.media--file:not(.media--error)',
-    );
+    const card = container.querySelector('.media--file:not(.media--error)');
     expect(card).toBeTruthy();
-    expect(
-      fixture.nativeElement.querySelector('.media__name').textContent,
-    ).toContain('report.pdf');
+    expect(container.querySelector('.media__name')?.textContent).toContain(
+      'report.pdf',
+    );
   });
 
-  it('reflects the render state via data-media-state', () => {
-    const fixture = create();
+  it('reflects the render state via data-media-state', async () => {
+    const { fixture } = await render(MediaBubbleComponent, {
+      // No src yet → still loading.
+      inputs: { kind: 'image', src: null },
+    });
     const host = fixture.nativeElement as HTMLElement;
-    fixture.componentRef.setInput('kind', 'image');
-
-    // No src yet → still loading.
-    fixture.componentRef.setInput('src', null);
-    fixture.detectChanges();
     expect(host.getAttribute('data-media-state')).toBe('loading');
 
     // A resolved src → ready.
@@ -60,50 +44,47 @@ describe('MediaBubbleComponent', () => {
     expect(host.getAttribute('data-media-state')).toBe('error');
   });
 
-  it('emits openLightbox when the image is clicked', () => {
-    const fixture = create();
-    fixture.componentRef.setInput('kind', 'image');
-    fixture.componentRef.setInput('src', 'blob:thumb');
-    fixture.detectChanges();
+  it('emits openLightbox when the image is clicked', async () => {
+    const { fixture, container } = await render(MediaBubbleComponent, {
+      inputs: { kind: 'image', src: 'blob:thumb' },
+    });
 
     let opened = 0;
     fixture.componentInstance.openLightbox.subscribe(() => opened++);
-    fixture.nativeElement.querySelector('.media--image').click();
+    container.querySelector<HTMLElement>('.media--image')!.click();
 
     expect(opened).toBe(1);
   });
 
-  it('emits download when the file-card is clicked', () => {
-    const fixture = create();
-    fixture.componentRef.setInput('kind', 'file');
-    fixture.detectChanges();
+  it('emits download when the file-card is clicked', async () => {
+    const { fixture, container } = await render(MediaBubbleComponent, {
+      inputs: { kind: 'file' },
+    });
 
     let downloaded = 0;
     fixture.componentInstance.download.subscribe(() => downloaded++);
-    fixture.nativeElement.querySelector('.media--file').click();
+    container.querySelector<HTMLElement>('.media--file')!.click();
 
     expect(downloaded).toBe(1);
   });
 
-  it('renders a human-readable size in the file-card subtitle', () => {
-    const fixture = create();
-    fixture.componentRef.setInput('kind', 'file');
-    fixture.componentRef.setInput('size', 1536); // 1.5 KB
-    fixture.detectChanges();
+  it('renders a human-readable size in the file-card subtitle', async () => {
+    const { container } = await render(MediaBubbleComponent, {
+      inputs: { kind: 'file', size: 1536 }, // 1.5 KB
+    });
 
-    expect(
-      fixture.nativeElement.querySelector('.media__sub').textContent,
-    ).toContain('1.5 KB');
+    expect(container.querySelector('.media__sub')?.textContent).toContain(
+      '1.5 KB',
+    );
   });
 
-  it('shows the error file-card (download fallback) after the <img> fails to load', () => {
-    const fixture = create();
-    fixture.componentRef.setInput('kind', 'image');
-    fixture.componentRef.setInput('src', 'blob:broken');
-    fixture.detectChanges();
+  it('shows the error file-card (download fallback) after the <img> fails to load', async () => {
+    const { fixture, container } = await render(MediaBubbleComponent, {
+      inputs: { kind: 'image', src: 'blob:broken' },
+    });
 
-    fixture.nativeElement
-      .querySelector('img.media__img')
+    container
+      .querySelector('img.media__img')!
       .dispatchEvent(new Event('error'));
     fixture.detectChanges();
 
@@ -113,7 +94,7 @@ describe('MediaBubbleComponent', () => {
 
     let downloaded = 0;
     fixture.componentInstance.download.subscribe(() => downloaded++);
-    host.querySelector('.media--error').click();
+    host.querySelector<HTMLElement>('.media--error')!.click();
     expect(downloaded).toBe(1);
   });
 });

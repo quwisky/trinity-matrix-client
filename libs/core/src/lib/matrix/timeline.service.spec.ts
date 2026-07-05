@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,9 +7,9 @@ import { TimelineService } from './timeline.service';
 import { MatrixClientService } from './matrix-client.service';
 import { MediaService, type UploadedMedia } from './media.service';
 
-/** A MediaService stub whose uploadMedia echoes a descriptor for the room's mode. */
-function fakeMediaService() {
-  return {
+/** A MediaService mock whose uploadMedia echoes a descriptor for the room's mode. */
+function mediaProvider() {
+  return MockProvider(MediaService, {
     uploadMedia: (_file: File, encrypt: boolean) =>
       of<UploadedMedia>(
         encrypt
@@ -33,7 +34,15 @@ function fakeMediaService() {
               info: { mimetype: 'image/png', size: 4 },
             },
       ),
-  } as unknown as MediaService;
+  });
+}
+
+/** Wrap a fake matrix-js-sdk client as a MatrixClientService mock. */
+function matrixProvider(client: unknown, isInitialized = true) {
+  return MockProvider(MatrixClientService, {
+    isInitialized,
+    instance: client,
+  } as Partial<MatrixClientService>);
 }
 
 function fakeEvent(o: {
@@ -159,17 +168,9 @@ function setup(
       return Promise.resolve({});
     },
   };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
 
   TestBed.configureTestingModule({
-    providers: [
-      TimelineService,
-      { provide: MatrixClientService, useValue: matrix },
-      { provide: MediaService, useValue: fakeMediaService() },
-    ],
+    providers: [TimelineService, matrixProvider(client), mediaProvider()],
   });
   const svc = TestBed.inject(TimelineService);
   svc.open('!r:hs');
@@ -471,15 +472,8 @@ describe('TimelineService', () => {
       sendReadReceipt: () => Promise.resolve({}),
       scrollback: () => Promise.resolve(room),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
     TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
+      providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
     svc.open('!r:hs');
@@ -534,15 +528,8 @@ describe('TimelineService', () => {
       sendReadReceipt: () => Promise.resolve({}),
       scrollback: () => Promise.resolve(room),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
     TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
+      providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
     svc.open('!r:hs');
@@ -620,15 +607,8 @@ describe('TimelineService', () => {
       sendReadReceipt: () => Promise.resolve({}),
       scrollback: () => Promise.reject(new Error('network')),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
     TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
+      providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
     svc.open('!r:hs');
@@ -671,15 +651,8 @@ describe('TimelineService', () => {
       },
       scrollback: () => Promise.resolve(room),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
     TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
+      providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
     svc.open('!r:hs');
@@ -715,15 +688,8 @@ describe('TimelineService', () => {
       },
       scrollback: () => Promise.resolve(room),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
     TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
+      providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
     svc.open('!r:hs');
@@ -758,15 +724,8 @@ describe('TimelineService', () => {
       },
       scrollback: () => Promise.resolve(room),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
     TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
+      providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
     svc.open('!r:hs');
@@ -805,15 +764,8 @@ describe('TimelineService', () => {
       },
       scrollback: () => Promise.resolve(room),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
     TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
+      providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
     svc.open('!r:hs');
@@ -853,15 +805,8 @@ describe('TimelineService', () => {
       },
       scrollback: () => Promise.resolve(room),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
     TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
+      providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
     svc.open('!r:hs');
@@ -908,15 +853,8 @@ describe('TimelineService', () => {
       },
       scrollback: () => Promise.resolve(room),
     };
-    const matrix = {
-      isInitialized: true,
-      instance: client,
-    } as unknown as MatrixClientService;
     TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        { provide: MatrixClientService, useValue: matrix },
-      ],
+      providers: [TimelineService, matrixProvider(client)],
     });
     const svc = TestBed.inject(TimelineService);
     svc.open('!r:hs');

@@ -1,5 +1,4 @@
 import { Component, signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
@@ -7,6 +6,8 @@ import {
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
 import { TrnAlertService, TrnDialogService } from '@trinity/helm/overlay';
+import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevicesService, type DeviceInfo } from '@trinity/core';
@@ -58,29 +59,29 @@ describe('DevicesSectionComponent', () => {
     alertConfirm = vi.fn().mockResolvedValue(true);
     alertPrompt = vi.fn().mockResolvedValue('Tablet');
     dialogOpen = vi.fn();
+  });
 
-    TestBed.configureTestingModule({
-      imports: [DevicesSectionComponent],
+  afterEach(() => vi.unstubAllGlobals());
+
+  function renderSection() {
+    return render(DevicesSectionComponent, {
       providers: [
         // The real dialog service so we exercise its desktop-vs-mobile branching.
         EncryptionDialogService,
-        {
-          provide: DevicesService,
-          useValue: {
-            devices,
-            list: () => of(devices()),
-            rename,
-            delete: del,
-            connect,
-            disconnect,
-          },
-        },
-        {
-          provide: TrnAlertService,
-          useValue: { confirm: alertConfirm, prompt: alertPrompt },
-        },
-        { provide: TrnDialogService, useValue: { open: dialogOpen } },
-        { provide: Router, useValue: { navigate } },
+        MockProvider(DevicesService, {
+          devices,
+          list: () => of(devices()),
+          rename,
+          delete: del,
+          connect,
+          disconnect,
+        }),
+        MockProvider(TrnAlertService, {
+          confirm: alertConfirm,
+          prompt: alertPrompt,
+        }),
+        MockProvider(TrnDialogService, { open: dialogOpen }),
+        MockProvider(Router, { navigate }),
         {
           provide: ENCRYPTION_DIALOG_COMPONENTS,
           useValue: {
@@ -90,30 +91,33 @@ describe('DevicesSectionComponent', () => {
         },
       ],
     });
-  });
+  }
 
-  afterEach(() => vi.unstubAllGlobals());
+  it('lists devices with badges; only non-current devices can be signed out', async () => {
+    const { container } = await renderSection();
 
-  it('lists devices with badges; only non-current devices can be signed out', () => {
-    const fixture = TestBed.createComponent(DevicesSectionComponent);
-    fixture.detectChanges();
-    const el = fixture.nativeElement as HTMLElement;
-
-    expect(el.querySelectorAll('[data-testid=device-row]').length).toBe(2);
-    expect(el.querySelector('[data-testid=verify-devices]')).not.toBeNull();
-    expect(el.textContent).toContain('Laptop');
-    expect(el.textContent).toContain('Phone');
-    expect(el.textContent).toContain('This device');
-    expect(el.textContent).toContain('Unverified');
+    expect(container.querySelectorAll('[data-testid=device-row]').length).toBe(
+      2,
+    );
+    expect(
+      container.querySelector('[data-testid=verify-devices]'),
+    ).not.toBeNull();
+    expect(container.textContent).toContain('Laptop');
+    expect(container.textContent).toContain('Phone');
+    expect(container.textContent).toContain('This device');
+    expect(container.textContent).toContain('Unverified');
     // Current device has no remove button; the other one does.
-    expect(el.querySelectorAll('[data-testid=remove-device]').length).toBe(1);
-    expect(el.querySelectorAll('[data-testid=rename-device]').length).toBe(2);
+    expect(
+      container.querySelectorAll('[data-testid=remove-device]').length,
+    ).toBe(1);
+    expect(
+      container.querySelectorAll('[data-testid=rename-device]').length,
+    ).toBe(2);
   });
 
   it('renames a device via the alert', async () => {
     alertPrompt.mockResolvedValue('Tablet');
-    const fixture = TestBed.createComponent(DevicesSectionComponent);
-    fixture.detectChanges();
+    const { fixture } = await renderSection();
 
     await fixture.componentInstance.rename(OTHER);
 
@@ -123,8 +127,7 @@ describe('DevicesSectionComponent', () => {
 
   it('does not rename when the prompt is cancelled', async () => {
     alertPrompt.mockResolvedValue(null);
-    const fixture = TestBed.createComponent(DevicesSectionComponent);
-    fixture.detectChanges();
+    const { fixture } = await renderSection();
 
     await fixture.componentInstance.rename(OTHER);
 
@@ -133,8 +136,7 @@ describe('DevicesSectionComponent', () => {
 
   it('signs out a device via the destructive alert', async () => {
     alertConfirm.mockResolvedValue(true);
-    const fixture = TestBed.createComponent(DevicesSectionComponent);
-    fixture.detectChanges();
+    const { fixture } = await renderSection();
 
     await fixture.componentInstance.remove(OTHER);
 
@@ -146,18 +148,16 @@ describe('DevicesSectionComponent', () => {
 
   it('does not sign out a device when the confirm is cancelled', async () => {
     alertConfirm.mockResolvedValue(false);
-    const fixture = TestBed.createComponent(DevicesSectionComponent);
-    fixture.detectChanges();
+    const { fixture } = await renderSection();
 
     await fixture.componentInstance.remove(OTHER);
 
     expect(del).not.toHaveBeenCalled();
   });
 
-  it('navigates to the verification flow on mobile, returning to settings', () => {
+  it('navigates to the verification flow on mobile, returning to settings', async () => {
     stubViewport(false);
-    const fixture = TestBed.createComponent(DevicesSectionComponent);
-    fixture.detectChanges();
+    const { fixture } = await renderSection();
 
     fixture.componentInstance.verifyDevices();
 
@@ -169,8 +169,7 @@ describe('DevicesSectionComponent', () => {
 
   it('opens the verification flow as a dialog on the desktop layout', async () => {
     stubViewport(true);
-    const fixture = TestBed.createComponent(DevicesSectionComponent);
-    fixture.detectChanges();
+    const { fixture } = await renderSection();
 
     fixture.componentInstance.verifyDevices();
 
@@ -186,24 +185,18 @@ describe('DevicesSectionComponent', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('subscribes to live device updates while mounted', () => {
-    const fixture = TestBed.createComponent(DevicesSectionComponent);
-    fixture.detectChanges();
+  it('subscribes to live device updates while mounted', async () => {
+    const { fixture } = await renderSection();
     expect(connect).toHaveBeenCalled();
 
     fixture.destroy();
     expect(disconnect).toHaveBeenCalled();
   });
 
-  it('hides the verify affordance when every session is verified', () => {
+  it('hides the verify affordance when every session is verified', async () => {
     devices.set([CURRENT, { ...OTHER, isVerified: true }]);
-    const fixture = TestBed.createComponent(DevicesSectionComponent);
-    fixture.detectChanges();
+    const { container } = await renderSection();
 
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector(
-        '[data-testid=verify-devices]',
-      ),
-    ).toBeNull();
+    expect(container.querySelector('[data-testid=verify-devices]')).toBeNull();
   });
 });

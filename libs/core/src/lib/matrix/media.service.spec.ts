@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import {
   afterEach,
@@ -101,15 +102,14 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
 
 function setup(clientOverrides: Record<string, unknown> = {}) {
   const client = fakeClient(clientOverrides);
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
 
   TestBed.configureTestingModule({
     providers: [
       MediaService,
-      { provide: MatrixClientService, useValue: matrix },
+      MockProvider(MatrixClientService, {
+        isInitialized: true,
+        instance: client as unknown as MatrixClientService['instance'],
+      }),
     ],
   });
   const svc = TestBed.inject(MediaService);

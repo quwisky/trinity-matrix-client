@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixError } from 'matrix-js-sdk';
@@ -101,18 +102,21 @@ function setup(opts: CryptoOpts = {}) {
     off: vi.fn(),
   };
 
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
-
   TestBed.configureTestingModule({
     providers: [
       CryptoService,
       SecretStorageKeyService,
-      { provide: MatrixClientService, useValue: matrix },
+      MockProvider(MatrixClientService),
     ],
   });
+
+  const matrix = TestBed.inject(MatrixClientService);
+  ngMocks.stubMember(matrix, 'isInitialized', true);
+  ngMocks.stubMember(
+    matrix,
+    'instance',
+    client as unknown as MatrixClientService['instance'],
+  );
 
   return {
     svc: TestBed.inject(CryptoService),
@@ -363,7 +367,11 @@ describe('CryptoService', () => {
         on: vi.fn(),
         off: vi.fn(),
       };
-      (matrix as unknown as { instance: unknown }).instance = clientB;
+      ngMocks.stubMember(
+        matrix,
+        'instance',
+        clientB as unknown as MatrixClientService['instance'],
+      );
 
       svc.connect();
       await firstValueFrom(svc.refresh());

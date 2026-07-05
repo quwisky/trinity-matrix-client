@@ -1,4 +1,7 @@
 import '@analogjs/vitest-angular/setup-zone';
+import '@testing-library/jest-dom/vitest';
+import { ngMocks } from 'ng-mocks';
+import { vi } from 'vitest';
 
 import { getTestBed } from '@angular/core/testing';
 import {
@@ -46,3 +49,7 @@ getTestBed().initTestEnvironment(
   BrowserDynamicTestingModule,
   platformBrowserDynamicTesting(),
 );
+
+// ng-mocks: back every auto-mocked method with a vitest spy so migrated specs
+// can use `.mockReturnValue(...)` / `.toHaveBeenCalledWith(...)` on MockProvider stubs.
+ngMocks.autoSpy(() => vi.fn());

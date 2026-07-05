@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -33,15 +34,15 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Injected deps aren't exercised by discovery/SSO — empty stubs suffice.
+    // Injected deps aren't exercised by discovery/SSO — mock stubs suffice.
     TestBed.configureTestingModule({
       providers: [
         AuthService,
-        { provide: MatrixClientService, useValue: {} },
-        { provide: SessionStorageService, useValue: {} },
-        { provide: AvatarService, useValue: {} },
-        { provide: MediaService, useValue: {} },
-        { provide: PushService, useValue: {} },
+        MockProvider(MatrixClientService),
+        MockProvider(SessionStorageService),
+        MockProvider(AvatarService),
+        MockProvider(MediaService),
+        MockProvider(PushService),
       ],
     });
     auth = TestBed.inject(AuthService);

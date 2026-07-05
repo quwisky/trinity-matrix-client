@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { MockProvider } from 'ng-mocks';
 import { ClientEvent, SyncState, createClient } from 'matrix-js-sdk';
 import { firstValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -48,24 +49,20 @@ function fakeClient() {
 }
 
 function setup() {
-  const storage = {
-    load: vi.fn(() => of(null)),
-    save: vi.fn(() => of(undefined)),
-    clear: vi.fn(() => of(undefined)),
-  };
-  const keys = {
-    clear: vi.fn(),
-    getSecretStorageKey: vi.fn(),
-    cacheSecretStorageKey: vi.fn(),
-  };
   TestBed.configureTestingModule({
     providers: [
       MatrixClientService,
-      { provide: SessionStorageService, useValue: storage },
-      { provide: SecretStorageKeyService, useValue: keys },
+      MockProvider(SessionStorageService),
+      MockProvider(SecretStorageKeyService),
     ],
   });
-  return { svc: TestBed.inject(MatrixClientService), storage, keys };
+  const svc = TestBed.inject(MatrixClientService);
+  const storage = TestBed.inject(SessionStorageService);
+  const keys = TestBed.inject(SecretStorageKeyService);
+  // Default: no persisted session (mirrors the original hand-rolled stub); the
+  // save/clear observables aren't exercised by these paths.
+  vi.mocked(storage.load).mockReturnValue(of(null));
+  return { svc, storage, keys };
 }
 
 describe('MatrixClientService', () => {

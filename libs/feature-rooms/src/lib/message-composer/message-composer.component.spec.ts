@@ -1,7 +1,9 @@
-import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { signal, type Provider } from '@angular/core';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, type ComponentInput } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import { ThemeService } from '@trinity/core';
 import { TrnToastService } from '@trinity/helm/overlay';
@@ -9,26 +11,29 @@ import { MessageComposerComponent } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 
 describe('MessageComposerComponent', () => {
-  let toastShow: ReturnType<typeof vi.fn>;
-
   beforeEach(() => {
-    toastShow = vi.fn();
     // jsdom has no object-URL API; stub it for the staged-image preview.
     URL.createObjectURL = vi.fn(() => 'blob:preview');
     URL.revokeObjectURL = vi.fn();
-    TestBed.configureTestingModule({
-      imports: [MessageComposerComponent],
-      providers: [{ provide: TrnToastService, useValue: { show: toastShow } }],
-    });
   });
+
+  /** Render the composer with the toast service auto-mocked (plus any extra providers). */
+  function renderComposer(
+    inputs: ComponentInput<MessageComposerComponent> = {},
+    providers: Provider[] = [],
+  ) {
+    return render(MessageComposerComponent, {
+      inputs,
+      providers: [MockProvider(TrnToastService), ...providers],
+    });
+  }
 
   function enter(shift = false): Event {
     return new KeyboardEvent('keydown', { key: 'Enter', shiftKey: shift });
   }
 
-  it('emits the trimmed text on Enter and clears the input', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('emits the trimmed text on Enter and clears the input', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     let sent: string | undefined;
@@ -41,9 +46,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('');
   });
 
-  it('does not submit on Shift+Enter or when empty', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('does not submit on Shift+Enter or when empty', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     let count = 0;
@@ -59,11 +63,11 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('   ');
   });
 
-  it('prefills the draft in edit mode and keeps the text after submit', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('editing', true);
-    fixture.componentRef.setInput('draft', 'old text');
-    fixture.detectChanges();
+  it('prefills the draft in edit mode and keeps the text after submit', async () => {
+    const { fixture } = await renderComposer({
+      editing: true,
+      draft: 'old text',
+    });
     const cmp = fixture.componentInstance;
 
     expect(cmp.text()).toBe('old text');
@@ -78,12 +82,12 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('new text');
   });
 
-  it('refreshes the field when the edit target changes while still editing', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('editing', true);
-    fixture.componentRef.setInput('editTargetId', '$a');
-    fixture.componentRef.setInput('draft', 'body A');
-    fixture.detectChanges();
+  it('refreshes the field when the edit target changes while still editing', async () => {
+    const { fixture } = await renderComposer({
+      editing: true,
+      editTargetId: '$a',
+      draft: 'body A',
+    });
     const cmp = fixture.componentInstance;
     expect(cmp.text()).toBe('body A');
 
@@ -95,12 +99,12 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('body B');
   });
 
-  it('does not clobber typed text when the same target body mutates mid-edit', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('editing', true);
-    fixture.componentRef.setInput('editTargetId', '$a');
-    fixture.componentRef.setInput('draft', 'hello');
-    fixture.detectChanges();
+  it('does not clobber typed text when the same target body mutates mid-edit', async () => {
+    const { fixture } = await renderComposer({
+      editing: true,
+      editTargetId: '$a',
+      draft: 'hello',
+    });
     const cmp = fixture.componentInstance;
     cmp.text.set('hello world'); // user has typed an in-progress edit
 
@@ -112,9 +116,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('hello world');
   });
 
-  it('emits editLast on Up arrow only when empty and not editing', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('emits editLast on Up arrow only when empty and not editing', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     let count = 0;
@@ -128,10 +131,8 @@ describe('MessageComposerComponent', () => {
     expect(count).toBe(1); // has text → cursor movement, no emit
   });
 
-  it('does not emit editLast while already editing', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('editing', true);
-    fixture.detectChanges();
+  it('does not emit editLast while already editing', async () => {
+    const { fixture } = await renderComposer({ editing: true });
     const cmp = fixture.componentInstance;
 
     let count = 0;
@@ -142,10 +143,8 @@ describe('MessageComposerComponent', () => {
     expect(count).toBe(0);
   });
 
-  it('emits cancel on Escape in edit mode', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('editing', true);
-    fixture.detectChanges();
+  it('emits cancel on Escape in edit mode', async () => {
+    const { fixture } = await renderComposer({ editing: true });
     const cmp = fixture.componentInstance;
 
     let cancelled = false;
@@ -155,13 +154,10 @@ describe('MessageComposerComponent', () => {
     expect(cancelled).toBe(true);
   });
 
-  it('inserts an emoji at the cursor and closes the picker', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('inserts an emoji at the cursor and closes the picker', async () => {
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const ta = fixture.nativeElement.querySelector(
-      'textarea',
-    ) as HTMLTextAreaElement;
+    const ta = container.querySelector('textarea') as HTMLTextAreaElement;
 
     cmp.text.set('ab');
     fixture.detectChanges();
@@ -174,14 +170,14 @@ describe('MessageComposerComponent', () => {
     expect(cmp.pickerOpen()).toBe(false);
   });
 
-  it('shows a reply banner and cancels the reply on Escape', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('replyingTo', 'Alice');
-    fixture.detectChanges();
+  it('shows a reply banner and cancels the reply on Escape', async () => {
+    const { fixture, container } = await renderComposer({
+      replyingTo: 'Alice',
+    });
     const cmp = fixture.componentInstance;
 
-    expect(fixture.nativeElement.textContent).toContain('Replying to');
-    expect(fixture.nativeElement.textContent).toContain('Alice');
+    expect(container.textContent).toContain('Replying to');
+    expect(container.textContent).toContain('Alice');
 
     let cancelled = false;
     cmp.cancelReply.subscribe(() => (cancelled = true));
@@ -189,9 +185,8 @@ describe('MessageComposerComponent', () => {
     expect(cancelled).toBe(true);
   });
 
-  it('stages a picked file and sends it with the typed caption on submit', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('stages a picked file and sends it with the typed caption on submit', async () => {
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     let emitted: { file: File; caption: string } | undefined;
@@ -200,7 +195,7 @@ describe('MessageComposerComponent', () => {
     const file = new File([new Uint8Array([1])], 'pic.png', {
       type: 'image/png',
     });
-    const input = fixture.nativeElement.querySelector(
+    const input = container.querySelector(
       '[data-testid=composer-file-input]',
     ) as HTMLInputElement;
     Object.defineProperty(input, 'files', {
@@ -222,11 +217,10 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('');
   });
 
-  it('opens the hidden file input on attach (web fallback)', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('opens the hidden file input on attach (web fallback)', async () => {
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const input = fixture.nativeElement.querySelector(
+    const input = container.querySelector(
       '[data-testid=composer-file-input]',
     ) as HTMLInputElement;
     const clickSpy = vi
@@ -241,34 +235,33 @@ describe('MessageComposerComponent', () => {
   it('toasts a clear message when the native attach is denied/fails', async () => {
     // Stand in for the native picker: available, but pickImage errors (e.g. denied
     // photo access) instead of resolving a file.
-    TestBed.overrideProvider(MediaPickerService, {
-      useValue: {
+    const { fixture } = await renderComposer({}, [
+      MockProvider(MediaPickerService, {
         available: true,
         pickImage: () =>
           throwError(
             () => new Error('Photo access is denied. Enable it in Settings.'),
           ),
-      },
-    });
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+      }),
+    ]);
 
     fixture.componentInstance.onAttach();
     await Promise.resolve(); // let the error handler's toast settle
 
-    expect(toastShow).toHaveBeenCalledWith(
+    const toast = TestBed.inject(TrnToastService);
+    expect(toast.show).toHaveBeenCalledWith(
       expect.stringContaining('Photo access is denied'),
       expect.objectContaining({ variant: 'destructive', duration: 4000 }),
     );
   });
 
-  it('shows a determinate upload progress bar while uploading and hides it when idle', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('shows a determinate upload progress bar while uploading and hides it when idle', async () => {
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const el = fixture.nativeElement as HTMLElement;
-    const wrapper = () => el.querySelector('[data-testid=upload-progress]');
-    const bar = () => el.querySelector('hlm-progress') as HTMLElement | null;
+    const wrapper = () =>
+      container.querySelector('[data-testid=upload-progress]');
+    const bar = () =>
+      container.querySelector('hlm-progress') as HTMLElement | null;
 
     // Idle: no progress UI.
     expect(wrapper()).toBeNull();
@@ -298,11 +291,10 @@ describe('MessageComposerComponent', () => {
     expect(wrapper()).toBeNull();
   });
 
-  it('disables the attach button while an upload is in flight', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('disables the attach button while an upload is in flight', async () => {
+    const { fixture, container } = await renderComposer();
     const attach = () =>
-      fixture.nativeElement.querySelector(
+      container.querySelector(
         '[data-testid=composer-attach]',
       ) as HTMLButtonElement;
 
@@ -317,11 +309,10 @@ describe('MessageComposerComponent', () => {
     expect(attach().disabled).toBe(false);
   });
 
-  it('toggles the emoji picker open and closed from the button', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('toggles the emoji picker open and closed from the button', async () => {
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const button = fixture.nativeElement.querySelector(
+    const button = container.querySelector(
       '.composer__emoji',
     ) as HTMLButtonElement;
 
@@ -332,13 +323,10 @@ describe('MessageComposerComponent', () => {
     expect(cmp.pickerOpen()).toBe(false);
   });
 
-  it('inserts the emoji chosen from the picker at the cursor', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('inserts the emoji chosen from the picker at the cursor', async () => {
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const ta = fixture.nativeElement.querySelector(
-      'textarea',
-    ) as HTMLTextAreaElement;
+    const ta = container.querySelector('textarea') as HTMLTextAreaElement;
 
     cmp.text.set('ab');
     fixture.detectChanges();
@@ -354,13 +342,11 @@ describe('MessageComposerComponent', () => {
     expect(cmp.pickerOpen()).toBe(false);
   });
 
-  it('mirrors the active app theme into the picker dark mode', () => {
+  it('mirrors the active app theme into the picker dark mode', async () => {
     const resolved = signal<'light' | 'dark'>('dark');
-    TestBed.overrideProvider(ThemeService, {
-      useValue: { resolved: resolved.asReadonly() },
-    });
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+    const { fixture } = await renderComposer({}, [
+      MockProvider(ThemeService, { resolved: resolved.asReadonly() }),
+    ]);
     const cmp = fixture.componentInstance;
 
     expect(cmp.isDarkMode()).toBe(true);
@@ -380,9 +366,8 @@ describe('MessageComposerComponent', () => {
     return { event, preventDefault };
   }
 
-  it('stages a pasted image (preventing the default paste) and sends on submit', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('stages a pasted image (preventing the default paste) and sends on submit', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     let emitted: { file: File; caption: string } | undefined;
@@ -402,9 +387,8 @@ describe('MessageComposerComponent', () => {
     expect(emitted).toEqual({ file, caption: '' });
   });
 
-  it('stages a pasted image exposed only via clipboard items (WebKit fallback)', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('stages a pasted image exposed only via clipboard items (WebKit fallback)', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     const file = new File([new Uint8Array([1])], 'paste.png', {
@@ -419,10 +403,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.pendingFile()).toBe(file);
   });
 
-  it('discards a staged attachment when the room changes', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('roomId', '!a:hs');
-    fixture.detectChanges();
+  it('discards a staged attachment when the room changes', async () => {
+    const { fixture } = await renderComposer({ roomId: '!a:hs' });
     const cmp = fixture.componentInstance;
 
     const file = new File([new Uint8Array([1])], 'pic.png', {
@@ -437,9 +419,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.pendingFile()).toBeNull();
   });
 
-  it('Escape discards a staged attachment', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('Escape discards a staged attachment', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     const file = new File([new Uint8Array([1])], 'pic.png', {
@@ -452,10 +433,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.pendingFile()).toBeNull();
   });
 
-  it('ends an active reply when a staged attachment is sent', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('replyingTo', 'Alice');
-    fixture.detectChanges();
+  it('ends an active reply when a staged attachment is sent', async () => {
+    const { fixture } = await renderComposer({ replyingTo: 'Alice' });
     const cmp = fixture.componentInstance;
 
     let cancelledReply = false;
@@ -475,10 +454,8 @@ describe('MessageComposerComponent', () => {
     expect(cancelledReply).toBe(true);
   });
 
-  it('does not stage a pasted image while editing (paste falls through)', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('editing', true);
-    fixture.detectChanges();
+  it('does not stage a pasted image while editing (paste falls through)', async () => {
+    const { fixture } = await renderComposer({ editing: true });
     const cmp = fixture.componentInstance;
 
     const file = new File([new Uint8Array([1])], 'x.png', {
@@ -491,9 +468,8 @@ describe('MessageComposerComponent', () => {
     expect(preventDefault).not.toHaveBeenCalled(); // browser pastes normally
   });
 
-  it('does not edit-last on ArrowUp when a file is staged', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('does not edit-last on ArrowUp when a file is staged', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     const file = new File([new Uint8Array([1])], 'x.png', {
@@ -507,9 +483,8 @@ describe('MessageComposerComponent', () => {
     expect(count).toBe(0); // staged file suppresses the edit-last shortcut
   });
 
-  it('clearPending drops a staged attachment', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('clearPending drops a staged attachment', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     const file = new File([new Uint8Array([1])], 'x.png', {
@@ -523,14 +498,11 @@ describe('MessageComposerComponent', () => {
     expect(cmp.pendingPreview()).toBeNull();
   });
 
-  it('enables the send button with a staged file even when the text is empty', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('enables the send button with a staged file even when the text is empty', async () => {
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
     const send = () =>
-      fixture.nativeElement.querySelector(
-        '.composer__send',
-      ) as HTMLButtonElement;
+      container.querySelector('.composer__send') as HTMLButtonElement;
 
     expect(send().disabled).toBe(true); // empty text, no attachment
 
@@ -543,9 +515,8 @@ describe('MessageComposerComponent', () => {
     expect(send().disabled).toBe(false); // a staged file is enough to send
   });
 
-  it('lets a non-image (text) paste through untouched', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('lets a non-image (text) paste through untouched', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     let count = 0;
@@ -560,10 +531,8 @@ describe('MessageComposerComponent', () => {
     expect(preventDefault).not.toHaveBeenCalled();
   });
 
-  it('ignores a pasted image while an upload is already in flight', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('uploadProgress', 0.5);
-    fixture.detectChanges();
+  it('ignores a pasted image while an upload is already in flight', async () => {
+    const { fixture } = await renderComposer({ uploadProgress: 0.5 });
     const cmp = fixture.componentInstance;
 
     let count = 0;
@@ -581,7 +550,7 @@ describe('MessageComposerComponent', () => {
 
   /** Type `value` into the textarea and place the caret (default: at the end). */
   function type(
-    fixture: ReturnType<typeof TestBed.createComponent>,
+    fixture: ComponentFixture<MessageComposerComponent>,
     value: string,
     caret = value.length,
   ): HTMLTextAreaElement {
@@ -595,12 +564,11 @@ describe('MessageComposerComponent', () => {
     return ta;
   }
 
-  const menu = (fixture: ReturnType<typeof TestBed.createComponent>) =>
+  const menu = (fixture: ComponentFixture<MessageComposerComponent>) =>
     fixture.nativeElement.querySelector('[data-testid=emoji-autocomplete]');
 
-  it('opens the emoji menu while typing a :shortcode and ranks an exact match first', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('opens the emoji menu while typing a :shortcode and ranks an exact match first', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':joy');
@@ -610,9 +578,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.emojiMatches()[0].native).toBe('😂');
   });
 
-  it('accepts the highlighted emoji on Enter without sending the message', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('accepts the highlighted emoji on Enter without sending the message', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     let sent = 0;
@@ -626,9 +593,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.emojiOpen()).toBe(false);
   });
 
-  it('replaces only the :shortcode token, preserving surrounding text', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('replaces only the :shortcode token, preserving surrounding text', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     type(fixture, 'hi :joy');
@@ -637,9 +603,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('hi 😂');
   });
 
-  it('moves the highlight with the arrow keys before accepting', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('moves the highlight with the arrow keys before accepting', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':joy');
@@ -651,10 +616,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe(second);
   });
 
-  it('closes the menu on Escape without cancelling an active reply', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.componentRef.setInput('replyingTo', 'Alice');
-    fixture.detectChanges();
+  it('closes the menu on Escape without cancelling an active reply', async () => {
+    const { fixture } = await renderComposer({ replyingTo: 'Alice' });
     const cmp = fixture.componentInstance;
 
     let cancelled = 0;
@@ -669,9 +632,8 @@ describe('MessageComposerComponent', () => {
     expect(cancelled).toBe(1);
   });
 
-  it('converts a fully typed :shortcode: to its emoji inline', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('converts a fully typed :shortcode: to its emoji inline', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     type(fixture, 'party :tada:');
@@ -680,9 +642,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.emojiOpen()).toBe(false);
   });
 
-  it('inserts the emoji when a suggestion is clicked', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('inserts the emoji when a suggestion is clicked', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':fire');
@@ -693,9 +654,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.emojiOpen()).toBe(false);
   });
 
-  it('does not trigger on a colon that is not a shortcode boundary', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('does not trigger on a colon that is not a shortcode boundary', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     type(fixture, '8:30');
@@ -706,9 +666,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.emojiOpen()).toBe(false);
   });
 
-  it('accepts on Tab when open and leaves Tab alone when closed', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('accepts on Tab when open and leaves Tab alone when closed', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':joy');
@@ -727,9 +686,8 @@ describe('MessageComposerComponent', () => {
     expect(closedPrevent).not.toHaveBeenCalled();
   });
 
-  it('replaces a :shortcode in the middle of the text (caret not at end)', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('replaces a :shortcode in the middle of the text (caret not at end)', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     type(fixture, 'hey :joy there', 8); // caret right after ":joy"
@@ -738,9 +696,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('hey 😂 there');
   });
 
-  it('resets the highlight to the first item when the result set changes', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('resets the highlight to the first item when the result set changes', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':joy');
@@ -752,13 +709,10 @@ describe('MessageComposerComponent', () => {
     expect(cmp.emojiActiveIndex()).toBe(0);
   });
 
-  it('does not open the menu while an IME composition is in progress', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('does not open the menu while an IME composition is in progress', async () => {
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
-    const ta = fixture.nativeElement.querySelector(
-      'textarea',
-    ) as HTMLTextAreaElement;
+    const ta = container.querySelector('textarea') as HTMLTextAreaElement;
 
     ta.value = ':joy';
     ta.selectionStart = ta.selectionEnd = 4;
@@ -774,9 +728,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.emojiOpen()).toBe(true);
   });
 
-  it('lets an IME-confirming Enter pass through without accepting or sending', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('lets an IME-confirming Enter pass through without accepting or sending', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     let sent = 0;
@@ -795,9 +748,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('😂');
   });
 
-  it('resolves the +1/-1 shortcodes through the emoji index', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('resolves the +1/-1 shortcodes through the emoji index', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':+1');
@@ -806,9 +758,8 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('👍');
   });
 
-  it('renders each suggestion with its native emoji and :colons: label', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('renders each suggestion with its native emoji and :colons: label', async () => {
+    const { fixture } = await renderComposer();
 
     type(fixture, ':joy');
     const first = menu(fixture).querySelector('.composer__emoji-suggestion');
@@ -820,9 +771,8 @@ describe('MessageComposerComponent', () => {
     ).toContain(':joy:');
   });
 
-  it('does not inline-convert a token that is not a real shortcode', () => {
-    const fixture = TestBed.createComponent(MessageComposerComponent);
-    fixture.detectChanges();
+  it('does not inline-convert a token that is not a real shortcode', async () => {
+    const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
 
     // "happy" is only a search keyword, never a shortcode → stays literal.

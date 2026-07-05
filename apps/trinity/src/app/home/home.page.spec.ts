@@ -1,18 +1,15 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-
+import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
+import { describe, expect, it } from 'vitest';
+import { CryptoSpikeService } from '@trinity/core';
 import { HomePage } from './home.page';
 
 describe('HomePage', () => {
-  let component: HomePage;
-  let fixture: ComponentFixture<HomePage>;
+  it('should create', async () => {
+    const { fixture } = await render(HomePage, {
+      providers: [MockProvider(CryptoSpikeService)],
+    });
 
-  beforeEach(async () => {
-    fixture = TestBed.createComponent(HomePage);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
-  });
-
-  it('should create', () => {
-    expect(component).toBeTruthy();
+    expect(fixture.componentInstance).toBeTruthy();
   });
 });

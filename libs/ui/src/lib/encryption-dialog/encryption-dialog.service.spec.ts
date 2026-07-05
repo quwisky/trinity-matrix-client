@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { TrnDialogService } from '@trinity/helm/overlay';
+import { MockProvider } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionDialogService } from './encryption-dialog.service';
 import {
@@ -20,14 +21,11 @@ function stubViewport(matches: boolean): void {
 }
 
 function setup(opts: { loaders?: EncryptionDialogLoaders | null } = {}) {
-  const navigate = vi.fn().mockResolvedValue(true);
-  const open = vi.fn();
-
   TestBed.configureTestingModule({
     providers: [
       EncryptionDialogService,
-      { provide: Router, useValue: { navigate } },
-      { provide: TrnDialogService, useValue: { open } },
+      MockProvider(Router),
+      MockProvider(TrnDialogService),
       ...(opts.loaders === undefined
         ? [
             {
@@ -42,6 +40,8 @@ function setup(opts: { loaders?: EncryptionDialogLoaders | null } = {}) {
     ],
   });
   const service = TestBed.inject(EncryptionDialogService);
+  const { navigate } = TestBed.inject(Router);
+  const { open } = TestBed.inject(TrnDialogService);
   return { service, navigate, open };
 }
 

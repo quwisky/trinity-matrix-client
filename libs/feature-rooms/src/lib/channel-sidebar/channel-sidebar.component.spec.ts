@@ -1,5 +1,5 @@
-import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { render } from '@testing-library/angular';
+import { describe, expect, it } from 'vitest';
 import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
 import { ChannelSidebarComponent } from './channel-sidebar.component';
 
@@ -52,16 +52,12 @@ function child(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
 }
 
 describe('ChannelSidebarComponent', () => {
-  beforeEach(() =>
-    TestBed.configureTestingModule({ imports: [ChannelSidebarComponent] }),
-  );
+  it('lists rooms and emits selectRoom when one is clicked', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent, {
+      inputs: { rooms: [room()] },
+    });
 
-  it('lists rooms and emits selectRoom when one is clicked', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('rooms', [room()]);
-    fixture.detectChanges();
-
-    const channels = fixture.nativeElement.querySelectorAll('.channel');
+    const channels = container.querySelectorAll<HTMLElement>('.channel');
     expect(channels.length).toBe(1);
     expect(channels[0].textContent).toContain('general');
 
@@ -71,126 +67,126 @@ describe('ChannelSidebarComponent', () => {
     expect(roomId).toBe('!a:hs');
   });
 
-  it('renders a messenger-style row: avatar, name, and last-message preview', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('rooms', [
-      room({ name: 'general', lastMessage: 'hey there' }),
-    ]);
-    fixture.detectChanges();
+  it('renders a messenger-style row: avatar, name, and last-message preview', async () => {
+    const { container } = await render(ChannelSidebarComponent, {
+      inputs: { rooms: [room({ name: 'general', lastMessage: 'hey there' })] },
+    });
 
-    const channel = fixture.nativeElement.querySelector('.channel');
+    const channel = container.querySelector('.channel')!;
     // Discord-style hash prefix is gone; a room avatar takes its place.
     expect(channel.querySelector('.channel__hash')).toBeNull();
     expect(channel.querySelector('trn-avatar')).not.toBeNull();
-    expect(channel.querySelector('.channel__name').textContent).toContain(
+    expect(channel.querySelector('.channel__name')!.textContent).toContain(
       'general',
     );
-    expect(channel.querySelector('.channel__preview').textContent).toContain(
+    expect(channel.querySelector('.channel__preview')!.textContent).toContain(
       'hey there',
     );
   });
 
-  it('omits the preview line when a room has no last message', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('rooms', [room({ lastMessage: '' })]);
-    fixture.detectChanges();
+  it('omits the preview line when a room has no last message', async () => {
+    const { container } = await render(ChannelSidebarComponent, {
+      inputs: { rooms: [room({ lastMessage: '' })] },
+    });
 
-    expect(fixture.nativeElement.querySelector('.channel__preview')).toBeNull();
+    expect(container.querySelector('.channel__preview')).toBeNull();
   });
 
-  it('shows a mention count, a muted unread count, and caps at 99+', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('rooms', [
-      room({
-        id: '!m:hs',
-        name: 'mentions',
-        hasUnread: true,
-        unreadCount: 5,
-        highlightCount: 2,
-      }),
-      room({
-        id: '!u:hs',
-        name: 'unread',
-        hasUnread: true,
-        unreadCount: 128,
-        highlightCount: 0,
-      }),
-      room({ id: '!r:hs', name: 'read' }),
-    ]);
-    fixture.detectChanges();
+  it('shows a mention count, a muted unread count, and caps at 99+', async () => {
+    const { container } = await render(ChannelSidebarComponent, {
+      inputs: {
+        rooms: [
+          room({
+            id: '!m:hs',
+            name: 'mentions',
+            hasUnread: true,
+            unreadCount: 5,
+            highlightCount: 2,
+          }),
+          room({
+            id: '!u:hs',
+            name: 'unread',
+            hasUnread: true,
+            unreadCount: 128,
+            highlightCount: 0,
+          }),
+          room({ id: '!r:hs', name: 'read' }),
+        ],
+      },
+    });
 
-    const el = fixture.nativeElement;
     // The mention room shows the red mention badge with the highlight count.
-    const mention = el.querySelector(
+    const mention = container.querySelector(
       '.channel__badge:not(.channel__badge--muted)',
-    );
-    expect(mention.textContent.trim()).toBe('2');
+    )!;
+    expect(mention.textContent!.trim()).toBe('2');
     // The plain-unread room shows a muted count badge, capped Discord-style.
-    const muted = el.querySelector('.channel__badge--muted');
-    expect(muted.textContent.trim()).toBe('99+');
+    const muted = container.querySelector('.channel__badge--muted')!;
+    expect(muted.textContent!.trim()).toBe('99+');
     // No bare dots anymore — every unread room carries a count.
-    expect(el.querySelectorAll('.channel__dot').length).toBe(0);
-    expect(el.querySelectorAll('.channel.unread').length).toBe(2);
+    expect(container.querySelectorAll('.channel__dot').length).toBe(0);
+    expect(container.querySelectorAll('.channel.unread').length).toBe(2);
   });
 
-  it('caps badgeLabel exactly at the 99/100 boundary', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.detectChanges();
+  it('caps badgeLabel exactly at the 99/100 boundary', async () => {
+    const { fixture } = await render(ChannelSidebarComponent);
 
     expect(fixture.componentInstance.badgeLabel(99)).toBe('99');
     expect(fixture.componentInstance.badgeLabel(100)).toBe('99+');
   });
 
-  it('shows the exact uncapped unread count on a muted badge', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('rooms', [
-      room({
-        id: '!u:hs',
-        name: 'unread',
-        hasUnread: true,
-        unreadCount: 7,
-        highlightCount: 0,
-      }),
-    ]);
-    fixture.detectChanges();
+  it('shows the exact uncapped unread count on a muted badge', async () => {
+    const { container } = await render(ChannelSidebarComponent, {
+      inputs: {
+        rooms: [
+          room({
+            id: '!u:hs',
+            name: 'unread',
+            hasUnread: true,
+            unreadCount: 7,
+            highlightCount: 0,
+          }),
+        ],
+      },
+    });
 
-    const muted = fixture.nativeElement.querySelector('.channel__badge--muted');
-    expect(muted.textContent.trim()).toBe('7');
+    const muted = container.querySelector('.channel__badge--muted')!;
+    expect(muted.textContent!.trim()).toBe('7');
   });
 
-  it('shows only the new-chat affordance on Home (no space actions)', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.detectChanges(); // spaceActive defaults to false
+  it('shows only the new-chat affordance on Home (no space actions)', async () => {
+    // spaceActive defaults to false
+    const { container } = await render(ChannelSidebarComponent);
 
-    const el = fixture.nativeElement;
     // Space-only actions are hidden on Home; the new-room/DM "+" is present.
-    expect(el.querySelector('[aria-label="Create a channel"]')).toBeNull();
     expect(
-      el.querySelector('[aria-label="Invite people to space"]'),
+      container.querySelector('[aria-label="Create a channel"]'),
     ).toBeNull();
-    expect(el.querySelector('[aria-label="Leave space"]')).toBeNull();
     expect(
-      el.querySelector('[aria-label="New room or direct message"]'),
+      container.querySelector('[aria-label="Invite people to space"]'),
+    ).toBeNull();
+    expect(container.querySelector('[aria-label="Leave space"]')).toBeNull();
+    expect(
+      container.querySelector('[aria-label="New room or direct message"]'),
     ).not.toBeNull();
   });
 
-  it('emits newChat from the Home "+" affordance', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.detectChanges();
+  it('emits newChat from the Home "+" affordance', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent);
 
     let opened = false;
     fixture.componentInstance.newChat.subscribe(() => (opened = true));
-    fixture.nativeElement
-      .querySelector('[aria-label="New room or direct message"]')
+    container
+      .querySelector<HTMLElement>('[aria-label="New room or direct message"]')!
       .click();
 
     expect(opened).toBe(true);
   });
 
-  it('shows the space actions and emits createRoom / inviteToSpace / leaveSpace', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('spaceActive', true);
-    fixture.detectChanges();
+  it('shows the space actions and emits createRoom / inviteToSpace / leaveSpace', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent, {
+      inputs: { spaceActive: true },
+    });
 
     let created = false;
     let invited = false;
@@ -199,29 +195,37 @@ describe('ChannelSidebarComponent', () => {
     fixture.componentInstance.inviteToSpace.subscribe(() => (invited = true));
     fixture.componentInstance.leaveSpace.subscribe(() => (left = true));
 
-    const el = fixture.nativeElement;
-    el.querySelector('[aria-label="Create a channel"]').click();
-    el.querySelector('[aria-label="Invite people to space"]').click();
-    el.querySelector('[aria-label="Leave space"]').click();
+    container
+      .querySelector<HTMLElement>('[aria-label="Create a channel"]')!
+      .click();
+    container
+      .querySelector<HTMLElement>('[aria-label="Invite people to space"]')!
+      .click();
+    container.querySelector<HTMLElement>('[aria-label="Leave space"]')!.click();
 
     expect(created).toBe(true);
     expect(invited).toBe(true);
     expect(left).toBe(true);
     // The Home affordance is hidden while a space is active.
     expect(
-      el.querySelector('[aria-label="New room or direct message"]'),
+      container.querySelector('[aria-label="New room or direct message"]'),
     ).toBeNull();
   });
 
-  it('renders pending invites and emits accept / decline with the room id', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('invites', [
-      invite({ roomId: '!i:hs', name: 'Invited Room', inviterName: 'Alice' }),
-    ]);
-    fixture.detectChanges();
+  it('renders pending invites and emits accept / decline with the room id', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent, {
+      inputs: {
+        invites: [
+          invite({
+            roomId: '!i:hs',
+            name: 'Invited Room',
+            inviterName: 'Alice',
+          }),
+        ],
+      },
+    });
 
-    const el = fixture.nativeElement;
-    const invites = el.querySelectorAll('.invite');
+    const invites = container.querySelectorAll<HTMLElement>('.invite');
     expect(invites.length).toBe(1);
     expect(invites[0].textContent).toContain('Invited Room');
     expect(invites[0].textContent).toContain('Alice');
@@ -231,30 +235,28 @@ describe('ChannelSidebarComponent', () => {
     fixture.componentInstance.acceptInvite.subscribe((id) => (accepted = id));
     fixture.componentInstance.declineInvite.subscribe((id) => (declined = id));
 
-    el.querySelector('.invite__btn.accept').click();
-    el.querySelector('.invite__btn.decline').click();
+    container.querySelector<HTMLElement>('.invite__btn.accept')!.click();
+    container.querySelector<HTMLElement>('.invite__btn.decline')!.click();
 
     expect(accepted).toBe('!i:hs');
     expect(declined).toBe('!i:hs');
   });
 
-  it('shows no Invites group when there are none', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.detectChanges();
+  it('shows no Invites group when there are none', async () => {
+    const { container } = await render(ChannelSidebarComponent);
 
-    expect(fixture.nativeElement.querySelector('.invite')).toBeNull();
+    expect(container.querySelector('.invite')).toBeNull();
   });
 
-  it('emits logout from the account menu opened via the user bar', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.detectChanges();
+  it('emits logout from the account menu opened via the user bar', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent);
 
     let loggedOut = false;
     fixture.componentInstance.logout.subscribe(() => (loggedOut = true));
 
     // Open the account menu from the user-bar trigger, then trigger Log out
     // (the item lives in a CDK menu rendered into the overlay container).
-    fixture.nativeElement.querySelector('.userbar__trigger').click();
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
     fixture.detectChanges();
 
     const logoutItem = document.querySelector<HTMLElement>(
@@ -264,129 +266,141 @@ describe('ChannelSidebarComponent', () => {
     logoutItem?.click();
 
     expect(loggedOut).toBe(true);
-    fixture.destroy();
   });
 
-  it('emits openSettings from the user-panel settings button', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.detectChanges();
+  it('emits openSettings from the user-panel settings button', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent);
 
     let opened = false;
     fixture.componentInstance.openSettings.subscribe(() => (opened = true));
-    fixture.nativeElement.querySelector('.userbar__settings').click();
+    container.querySelector<HTMLElement>('.userbar__settings')!.click();
 
     expect(opened).toBe(true);
   });
 
-  it('emits openSwitcher from the header search button', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.detectChanges();
+  it('emits openSwitcher from the header search button', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent);
 
     let opened = false;
     fixture.componentInstance.openSwitcher.subscribe(() => (opened = true));
-    fixture.nativeElement
-      .querySelector('[data-testid="open-switcher"]')
+    container
+      .querySelector<HTMLElement>('[data-testid="open-switcher"]')!
       .click();
 
     expect(opened).toBe(true);
   });
 
-  it('lists not-yet-joined channels and emits joinRoom with the child', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('spaceActive', true);
-    fixture.componentRef.setInput('joinableRooms', [
-      child({ roomId: '!x:hs', name: 'open-channel', suggested: true }),
-    ]);
-    fixture.detectChanges();
+  it('lists not-yet-joined channels and emits joinRoom with the child', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent, {
+      inputs: {
+        spaceActive: true,
+        joinableRooms: [
+          child({ roomId: '!x:hs', name: 'open-channel', suggested: true }),
+        ],
+      },
+    });
 
-    const el = fixture.nativeElement;
-    const joinables = el.querySelectorAll('.joinable');
+    const joinables = container.querySelectorAll<HTMLElement>('.joinable');
     expect(joinables.length).toBe(1);
     expect(joinables[0].textContent).toContain('open-channel');
     expect(joinables[0].textContent).toContain('Suggested'); // suggested hint
 
     let joined: SpaceChildRoom | undefined;
     fixture.componentInstance.joinRoom.subscribe((c) => (joined = c));
-    el.querySelector('[aria-label="Join open-channel"]').click();
+    container
+      .querySelector<HTMLElement>('[aria-label="Join open-channel"]')!
+      .click();
 
     expect(joined?.roomId).toBe('!x:hs');
   });
 
-  it('offers Open for joined sub-spaces and Join for the rest', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('spaceActive', true);
-    fixture.componentRef.setInput('childSpaces', [
-      child({
-        roomId: '!j:hs',
-        name: 'Joined Sub',
-        isSpace: true,
-        joined: true,
-      }),
-      child({ roomId: '!n:hs', name: 'New Sub', isSpace: true, joined: false }),
-    ]);
-    fixture.detectChanges();
+  it('offers Open for joined sub-spaces and Join for the rest', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent, {
+      inputs: {
+        spaceActive: true,
+        childSpaces: [
+          child({
+            roomId: '!j:hs',
+            name: 'Joined Sub',
+            isSpace: true,
+            joined: true,
+          }),
+          child({
+            roomId: '!n:hs',
+            name: 'New Sub',
+            isSpace: true,
+            joined: false,
+          }),
+        ],
+      },
+    });
 
-    const el = fixture.nativeElement;
     let opened: string | undefined;
     let joined: SpaceChildRoom | undefined;
     fixture.componentInstance.openChildSpace.subscribe((id) => (opened = id));
     fixture.componentInstance.joinRoom.subscribe((c) => (joined = c));
 
-    el.querySelector('[aria-label="Open Joined Sub"]').click();
-    el.querySelector('[aria-label="Join New Sub"]').click();
+    container
+      .querySelector<HTMLElement>('[aria-label="Open Joined Sub"]')!
+      .click();
+    container
+      .querySelector<HTMLElement>('[aria-label="Join New Sub"]')!
+      .click();
 
     expect(opened).toBe('!j:hs');
     expect(joined?.roomId).toBe('!n:hs');
   });
 
-  it('renders a Favourites header with favourite rows grouped above the rest', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('rooms', [
-      room({ id: '!a:hs', name: 'alpha' }),
-      room({ id: '!f:hs', name: 'favourite-room', favourite: true }),
-      room({ id: '!b:hs', name: 'bravo' }),
-    ]);
-    fixture.detectChanges();
+  it('renders a Favourites header with favourite rows grouped above the rest', async () => {
+    const { container } = await render(ChannelSidebarComponent, {
+      inputs: {
+        rooms: [
+          room({ id: '!a:hs', name: 'alpha' }),
+          room({ id: '!f:hs', name: 'favourite-room', favourite: true }),
+          room({ id: '!b:hs', name: 'bravo' }),
+        ],
+      },
+    });
 
-    const el = fixture.nativeElement;
-    const categories = [...el.querySelectorAll('.category')].map(
-      (c: HTMLElement) => c.textContent,
+    const categories = [...container.querySelectorAll('.category')].map(
+      (c) => c.textContent,
     );
     expect(categories).toContain('Favourites');
 
-    const channels = [...el.querySelectorAll('.channel__name')].map(
-      (n: HTMLElement) => n.textContent,
+    const channels = [...container.querySelectorAll('.channel__name')].map(
+      (n) => n.textContent,
     );
     // The favourite room renders first (under "Favourites"); the rest keep their order.
     expect(channels).toEqual(['favourite-room', 'alpha', 'bravo']);
   });
 
-  it('omits the Favourites header when no room is favourited', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('rooms', [
-      room({ id: '!a:hs', name: 'alpha' }),
-      room({ id: '!b:hs', name: 'bravo' }),
-    ]);
-    fixture.detectChanges();
+  it('omits the Favourites header when no room is favourited', async () => {
+    const { container } = await render(ChannelSidebarComponent, {
+      inputs: {
+        rooms: [
+          room({ id: '!a:hs', name: 'alpha' }),
+          room({ id: '!b:hs', name: 'bravo' }),
+        ],
+      },
+    });
 
-    const categories = [
-      ...fixture.nativeElement.querySelectorAll('.category'),
-    ].map((c: HTMLElement) => c.textContent);
+    const categories = [...container.querySelectorAll('.category')].map(
+      (c) => c.textContent,
+    );
     expect(categories).not.toContain('Favourites');
   });
 
-  it('emits setFavourite to favourite a non-favourite room via the kebab menu', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('rooms', [
-      room({ id: '!a:hs', name: 'general', favourite: false }),
-    ]);
-    fixture.detectChanges();
+  it('emits setFavourite to favourite a non-favourite room via the kebab menu', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent, {
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'general', favourite: false })],
+      },
+    });
 
     let emitted: { id: string; favourite: boolean } | undefined;
     fixture.componentInstance.setFavourite.subscribe((e) => (emitted = e));
 
-    const kebab: HTMLElement =
-      fixture.nativeElement.querySelector('.channel__menu');
+    const kebab = container.querySelector<HTMLElement>('.channel__menu')!;
     kebab.click(); // open the menu (rendered into the CDK overlay)
     fixture.detectChanges();
 
@@ -397,21 +411,19 @@ describe('ChannelSidebarComponent', () => {
     favouriteItem?.click();
 
     expect(emitted).toEqual({ id: '!a:hs', favourite: true });
-    fixture.destroy();
   });
 
-  it('emits setFavourite to unfavourite a favourite room via the kebab menu', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('rooms', [
-      room({ id: '!a:hs', name: 'general', favourite: true }),
-    ]);
-    fixture.detectChanges();
+  it('emits setFavourite to unfavourite a favourite room via the kebab menu', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent, {
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'general', favourite: true })],
+      },
+    });
 
     let emitted: { id: string; favourite: boolean } | undefined;
     fixture.componentInstance.setFavourite.subscribe((e) => (emitted = e));
 
-    const kebab: HTMLElement =
-      fixture.nativeElement.querySelector('.channel__menu');
+    const kebab = container.querySelector<HTMLElement>('.channel__menu')!;
     kebab.click();
     fixture.detectChanges();
 
@@ -422,18 +434,16 @@ describe('ChannelSidebarComponent', () => {
     favouriteItem?.click();
 
     expect(emitted).toEqual({ id: '!a:hs', favourite: false });
-    fixture.destroy();
   });
 
-  it('emits removeRoom for a joined channel only while a space is active', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('rooms', [
-      room({ id: '!a:hs', name: 'general' }),
-    ]);
-    // No space active → the kebab menu offers no "Remove from space" item.
-    fixture.detectChanges();
+  it('emits removeRoom for a joined channel only while a space is active', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent, {
+      inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+    });
+
     const kebab = (): HTMLElement =>
-      fixture.nativeElement.querySelector('.channel__menu');
+      container.querySelector<HTMLElement>('.channel__menu')!;
+    // No space active → the kebab menu offers no "Remove from space" item.
     kebab().click(); // open
     fixture.detectChanges();
     expect(document.querySelector('[data-testid="room-remove"]')).toBeNull();
@@ -451,21 +461,19 @@ describe('ChannelSidebarComponent', () => {
     document.querySelector<HTMLElement>('[data-testid="room-remove"]')?.click();
 
     expect(removed).toBe('!a:hs');
-    fixture.destroy();
   });
 
-  it('shows loading then error states for the space hierarchy', () => {
-    const fixture = TestBed.createComponent(ChannelSidebarComponent);
-    fixture.componentRef.setInput('spaceActive', true);
-    fixture.componentRef.setInput('childrenLoading', true);
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Loading channels');
+  it('shows loading then error states for the space hierarchy', async () => {
+    const { fixture, container } = await render(ChannelSidebarComponent, {
+      inputs: { spaceActive: true, childrenLoading: true },
+    });
+    expect(container.textContent).toContain('Loading channels');
 
     fixture.componentRef.setInput('childrenLoading', false);
     fixture.componentRef.setInput('childrenError', 'nope');
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.empty--error')).not.toBeNull();
+    expect(container.querySelector('.empty--error')).not.toBeNull();
     // No joinable rows render while erroring.
-    expect(fixture.nativeElement.querySelector('.joinable')).toBeNull();
+    expect(container.querySelector('.joinable')).toBeNull();
   });
 });

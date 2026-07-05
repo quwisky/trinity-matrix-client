@@ -1,7 +1,9 @@
 import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
 import { DialogRef } from '@angular/cdk/dialog';
+import { render } from '@testing-library/angular';
 import { ThreadsService, type ThreadSummary } from '@trinity/core';
+import { AvatarComponent } from '@trinity/ui';
+import { MockComponent, MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadsListComponent } from './threads-list.component';
 
@@ -22,24 +24,23 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
   };
 }
 
-function build(threads: ThreadSummary[] = []) {
+async function build(threads: ThreadSummary[] = []) {
   const threadList = signal<ThreadSummary[]>(threads);
   const dismiss = vi.fn().mockResolvedValue(true);
-  TestBed.configureTestingModule({
-    imports: [ThreadsListComponent],
+  const { fixture, container } = await render(ThreadsListComponent, {
+    inputs: { roomId: '!r:hs' },
+    imports: [MockComponent(AvatarComponent)],
     providers: [
-      { provide: ThreadsService, useValue: { threadList } },
-      { provide: DialogRef, useValue: { close: dismiss } },
+      MockProvider(ThreadsService, { threadList }),
+      MockProvider(DialogRef, { close: dismiss }),
     ],
   });
-  const fixture = TestBed.createComponent(ThreadsListComponent);
-  fixture.componentRef.setInput('roomId', '!r:hs');
-  return { fixture, dismiss };
+  return { fixture, container, dismiss };
 }
 
 describe('ThreadsListComponent', () => {
-  it('renders a row per thread with root preview, reply count, and last reply', () => {
-    const { fixture } = build([
+  it('renders a row per thread with root preview, reply count, and last reply', async () => {
+    const { container } = await build([
       summary({
         rootEventId: '$a',
         rootPreview: 'first thread',
@@ -51,73 +52,68 @@ describe('ThreadsListComponent', () => {
         replyCount: 1,
       }),
     ]);
-    fixture.detectChanges();
 
-    const items = fixture.nativeElement.querySelectorAll('.thread-item');
+    const items = container.querySelectorAll('.thread-item');
     expect(items.length).toBe(2);
-    expect(fixture.nativeElement.textContent).toContain('first thread');
-    expect(fixture.nativeElement.textContent).toContain('2 replies');
-    expect(fixture.nativeElement.textContent).toContain('1 reply');
-    expect(fixture.nativeElement.textContent).toContain('Bob:');
-    expect(fixture.nativeElement.textContent).toContain('a reply');
+    expect(container.textContent).toContain('first thread');
+    expect(container.textContent).toContain('2 replies');
+    expect(container.textContent).toContain('1 reply');
+    expect(container.textContent).toContain('Bob:');
+    expect(container.textContent).toContain('a reply');
   });
 
-  it('renders threads in the order the service provides (already sorted)', () => {
-    const { fixture } = build([
+  it('renders threads in the order the service provides (already sorted)', async () => {
+    const { container } = await build([
       summary({ rootEventId: '$new', rootPreview: 'newer' }),
       summary({ rootEventId: '$old', rootPreview: 'older' }),
     ]);
-    fixture.detectChanges();
 
     const roots = [
-      ...fixture.nativeElement.querySelectorAll('.thread-item__root'),
-    ].map((el: HTMLElement) => el.textContent?.trim());
+      ...container.querySelectorAll<HTMLElement>('.thread-item__root'),
+    ].map((el) => el.textContent?.trim());
     expect(roots).toEqual(['newer', 'older']);
   });
 
-  it('shows an unread badge (highlight variant) when the thread is unread', () => {
-    const { fixture } = build([summary({ unreadCount: 4, highlight: true })]);
-    fixture.detectChanges();
+  it('shows an unread badge (highlight variant) when the thread is unread', async () => {
+    const { container } = await build([
+      summary({ unreadCount: 4, highlight: true }),
+    ]);
 
-    const badge = fixture.nativeElement.querySelector('.thread-item__badge');
+    const badge = container.querySelector('.thread-item__badge');
     expect(badge).toBeTruthy();
-    expect(badge.textContent).toContain('4');
-    expect(badge.classList.contains('thread-item__badge--highlight')).toBe(
+    expect(badge?.textContent).toContain('4');
+    expect(badge?.classList.contains('thread-item__badge--highlight')).toBe(
       true,
     );
   });
 
-  it('omits the unread badge for a read thread', () => {
-    const { fixture } = build([summary({ unreadCount: 0 })]);
-    fixture.detectChanges();
+  it('omits the unread badge for a read thread', async () => {
+    const { container } = await build([summary({ unreadCount: 0 })]);
 
-    expect(
-      fixture.nativeElement.querySelector('.thread-item__badge'),
-    ).toBeNull();
+    expect(container.querySelector('.thread-item__badge')).toBeNull();
   });
 
-  it('closes with the chosen thread-root id when a row is tapped', () => {
-    const { fixture, dismiss } = build([summary({ rootEventId: '$pick' })]);
-    fixture.detectChanges();
+  it('closes with the chosen thread-root id when a row is tapped', async () => {
+    const { container, dismiss } = await build([
+      summary({ rootEventId: '$pick' }),
+    ]);
 
-    fixture.nativeElement.querySelector('.thread-item').click();
+    container.querySelector<HTMLElement>('.thread-item')!.click();
 
     expect(dismiss).toHaveBeenCalledWith('$pick');
   });
 
-  it('closes with no payload when closed', () => {
-    const { fixture, dismiss } = build([summary()]);
-    fixture.detectChanges();
+  it('closes with no payload when closed', async () => {
+    const { fixture, dismiss } = await build([summary()]);
 
     fixture.componentInstance.close();
 
     expect(dismiss).toHaveBeenCalledWith();
   });
 
-  it('shows an empty state when there are no threads', () => {
-    const { fixture } = build([]);
-    fixture.detectChanges();
+  it('shows an empty state when there are no threads', async () => {
+    const { container } = await build([]);
 
-    expect(fixture.nativeElement.querySelector('.threads__empty')).toBeTruthy();
+    expect(container.querySelector('.threads__empty')).toBeTruthy();
   });
 });

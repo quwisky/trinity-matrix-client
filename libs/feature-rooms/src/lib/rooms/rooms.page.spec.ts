@@ -23,6 +23,7 @@ import {
   TrnDialogService,
   TrnToastService,
 } from '@trinity/helm/overlay';
+import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
@@ -33,18 +34,13 @@ import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
 
 /** Default InvitesService mock: empty model + join/leave stubs. */
-function invitesProvider(over: Partial<Record<string, unknown>> = {}) {
-  return {
-    provide: InvitesService,
-    useValue: {
-      connect: vi.fn(),
-      disconnect: vi.fn(),
-      pendingInvites: signal<PendingInvite[]>([]),
-      acceptInvite: vi.fn(() => of(undefined)),
-      declineInvite: vi.fn(() => of(undefined)),
-      ...over,
-    },
-  };
+function invitesProvider(over: Partial<InvitesService> = {}) {
+  return MockProvider(InvitesService, {
+    pendingInvites: signal<PendingInvite[]>([]),
+    acceptInvite: () => of(undefined),
+    declineInvite: () => of(undefined),
+    ...over,
+  });
 }
 
 // Instantiate the page through DI without rendering (the shell template pulls in
@@ -61,75 +57,27 @@ describe('RoomsPage action error feedback', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        { provide: RoomsService, useValue: { connect: vi.fn() } },
-        {
-          provide: SpacesService,
-          useValue: { connect: vi.fn(), openSpace: vi.fn() },
-        },
-        {
-          provide: TimelineService,
-          useValue: {
-            edit,
-            sendMedia,
-            redact: vi.fn(() => of(undefined)),
-            toggleReaction: vi.fn(() => of(undefined)),
-            reply: vi.fn(() => of(undefined)),
-            close: vi.fn(),
-          },
-        },
-        {
-          provide: MatrixClientService,
-          useValue: {
-            isInitialized: true,
-            instance: { getUserId: () => '@me:hs' },
-          },
-        },
-        {
-          provide: CryptoService,
-          useValue: { connect: vi.fn(), status: signal('ready') },
-        },
-        {
-          provide: ThreadsService,
-          useValue: {
-            open: vi.fn(),
-            close: vi.fn(),
-            closeThread: vi.fn(),
-            summaries: signal({}),
-          },
-        },
-        {
-          provide: ThreadPanelService,
-          useValue: { open: vi.fn(), openList: vi.fn() },
-        },
-        {
-          provide: PinnedMessagesService,
-          useValue: {
-            open: vi.fn(),
-            close: vi.fn(),
-            isPinned: vi.fn(() => false),
-            pin: vi.fn(),
-            unpin: vi.fn(),
-            canPin: signal(false),
-            pinnedEventIds: signal<string[]>([]),
-            pinnedMessages: signal([]),
-          },
-        },
-        {
-          provide: PinnedPanelService,
-          useValue: { openPanel: vi.fn(async () => null) },
-        },
+        MockProvider(RoomsService),
+        MockProvider(SpacesService),
+        MockProvider(TimelineService, { edit, sendMedia }),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs' } as never,
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
         invitesProvider(),
-        { provide: UserPickerService, useValue: { pick: vi.fn() } },
-        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
-        { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
-        {
-          provide: AuthService,
-          useValue: { logout: vi.fn(() => of(undefined)) },
-        },
-        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
-        { provide: TrnToastService, useValue: { show: toastShow } },
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService, { show: toastShow }),
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -159,25 +107,19 @@ describe('RoomsPage action error feedback', () => {
   it('onSetFavourite favourites a room by delegating to RoomsService.setFavourite', () => {
     const page = build();
     const rooms = TestBed.inject(RoomsService);
-    const setFavourite = vi.fn();
-    (rooms as unknown as { setFavourite: typeof setFavourite }).setFavourite =
-      setFavourite;
 
     page.onSetFavourite({ id: '!r:hs', favourite: true });
 
-    expect(setFavourite).toHaveBeenCalledWith('!r:hs', true);
+    expect(rooms.setFavourite).toHaveBeenCalledWith('!r:hs', true);
   });
 
   it('onSetFavourite unfavourites a room by delegating to RoomsService.setFavourite', () => {
     const page = build();
     const rooms = TestBed.inject(RoomsService);
-    const setFavourite = vi.fn();
-    (rooms as unknown as { setFavourite: typeof setFavourite }).setFavourite =
-      setFavourite;
 
     page.onSetFavourite({ id: '!r:hs', favourite: false });
 
-    expect(setFavourite).toHaveBeenCalledWith('!r:hs', false);
+    expect(rooms.setFavourite).toHaveBeenCalledWith('!r:hs', false);
   });
 
   it('opens the threads-list panel for the active room', () => {
@@ -203,7 +145,7 @@ describe('RoomsPage action error feedback', () => {
   it('onTogglePin pins an unpinned message', () => {
     const page = build();
     const pinned = TestBed.inject(PinnedMessagesService);
-    (pinned.isPinned as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    vi.mocked(pinned.isPinned).mockReturnValue(false);
 
     page.onTogglePin('$1');
 
@@ -214,7 +156,7 @@ describe('RoomsPage action error feedback', () => {
   it('onTogglePin unpins an already-pinned message', () => {
     const page = build();
     const pinned = TestBed.inject(PinnedMessagesService);
-    (pinned.isPinned as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    vi.mocked(pinned.isPinned).mockReturnValue(true);
 
     page.onTogglePin('$1');
 
@@ -225,7 +167,7 @@ describe('RoomsPage action error feedback', () => {
   it('openPinnedPanel jumps the timeline to the chosen pinned message', async () => {
     const page = build();
     const panel = TestBed.inject(PinnedPanelService);
-    (panel.openPanel as ReturnType<typeof vi.fn>).mockResolvedValue('$evt:hs');
+    vi.mocked(panel.openPanel).mockResolvedValue('$evt:hs');
 
     await page.openPinnedPanel();
 
@@ -240,7 +182,7 @@ describe('RoomsPage action error feedback', () => {
     // only re-fires because jumpRequest keeps incrementing.
     const page = build();
     const panel = TestBed.inject(PinnedPanelService);
-    (panel.openPanel as ReturnType<typeof vi.fn>).mockResolvedValue('$evt:hs');
+    vi.mocked(panel.openPanel).mockResolvedValue('$evt:hs');
 
     await page.openPinnedPanel();
     expect(page.jumpRequest()).toBe(1);
@@ -254,7 +196,7 @@ describe('RoomsPage action error feedback', () => {
   it('openPinnedPanel does not jump when the panel is cancelled', async () => {
     const page = build();
     const panel = TestBed.inject(PinnedPanelService);
-    (panel.openPanel as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    vi.mocked(panel.openPanel).mockResolvedValue(null);
 
     await page.openPinnedPanel();
 
@@ -343,71 +285,33 @@ describe('RoomsPage space filtering', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        {
-          provide: RoomsService,
-          useValue: {
-            connect: vi.fn(),
-            rooms: signal(rooms),
-            directRoomIds: signal(new Set(['!a:hs'])), // '!a:hs' is a DM
-            revision: signal(0),
-            membersOf: () => [],
-          },
-        },
-        {
-          provide: SpacesService,
-          useValue: {
-            connect: vi.fn(),
-            openSpace: vi.fn(),
-            spaces: signal([spaceSummary('!s:hs', ['!a:hs', '!b:hs'])]),
-            childRoomIds,
-          },
-        },
-        { provide: TimelineService, useValue: { close: vi.fn() } },
-        {
-          provide: MatrixClientService,
-          useValue: {
-            isInitialized: true,
-            instance: { getUserId: () => '@me:hs', getUser: () => null },
-          },
-        },
-        { provide: CryptoService, useValue: { connect: vi.fn() } },
-        {
-          provide: ThreadsService,
-          useValue: { close: vi.fn(), closeThread: vi.fn() },
-        },
-        {
-          provide: ThreadPanelService,
-          useValue: { open: vi.fn(), openList: vi.fn() },
-        },
-        {
-          provide: PinnedMessagesService,
-          useValue: {
-            open: vi.fn(),
-            close: vi.fn(),
-            isPinned: vi.fn(() => false),
-            pin: vi.fn(),
-            unpin: vi.fn(),
-            canPin: signal(false),
-            pinnedEventIds: signal<string[]>([]),
-            pinnedMessages: signal([]),
-          },
-        },
-        {
-          provide: PinnedPanelService,
-          useValue: { openPanel: vi.fn(async () => null) },
-        },
+        MockProvider(RoomsService, {
+          rooms: signal(rooms),
+          directRoomIds: signal<ReadonlySet<string>>(new Set(['!a:hs'])), // '!a:hs' is a DM
+        }),
+        MockProvider(SpacesService, {
+          spaces: signal([spaceSummary('!s:hs', ['!a:hs', '!b:hs'])]),
+          childRoomIds,
+        }),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
         invitesProvider(),
-        { provide: UserPickerService, useValue: { pick: vi.fn() } },
-        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
-        { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
-        {
-          provide: AuthService,
-          useValue: { logout: vi.fn(() => of(undefined)) },
-        },
-        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
-        { provide: TrnToastService, useValue: { show: vi.fn() } },
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -634,74 +538,36 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        {
-          provide: RoomsService,
-          useValue: {
-            connect: vi.fn(),
-            rooms: signal(rooms),
-            directRoomIds: signal(new Set(['!dm:hs'])),
-            revision: signal(0),
-            membersOf: () => [],
-          },
-        },
-        {
-          provide: SpacesService,
-          useValue: {
-            connect: vi.fn(),
-            openSpace: vi.fn(),
-            spaces: signal([
-              spaceSummary('!s1:hs', ['!a:hs']),
-              spaceSummary('!s2:hs', ['!b:hs', '!c:hs']),
-            ]),
-            childRoomIds,
-          },
-        },
-        { provide: TimelineService, useValue: { close: vi.fn() } },
-        {
-          provide: MatrixClientService,
-          useValue: {
-            isInitialized: true,
-            instance: { getUserId: () => '@me:hs', getUser: () => null },
-          },
-        },
-        { provide: CryptoService, useValue: { connect: vi.fn() } },
-        {
-          provide: ThreadsService,
-          useValue: { close: vi.fn(), closeThread: vi.fn() },
-        },
-        {
-          provide: ThreadPanelService,
-          useValue: { open: vi.fn(), openList: vi.fn() },
-        },
-        {
-          provide: PinnedMessagesService,
-          useValue: {
-            open: vi.fn(),
-            close: vi.fn(),
-            isPinned: vi.fn(() => false),
-            pin: vi.fn(),
-            unpin: vi.fn(),
-            canPin: signal(false),
-            pinnedEventIds: signal<string[]>([]),
-            pinnedMessages: signal([]),
-          },
-        },
-        {
-          provide: PinnedPanelService,
-          useValue: { openPanel: vi.fn(async () => null) },
-        },
+        MockProvider(RoomsService, {
+          rooms: signal(rooms),
+          directRoomIds: signal<ReadonlySet<string>>(new Set(['!dm:hs'])),
+        }),
+        MockProvider(SpacesService, {
+          spaces: signal([
+            spaceSummary('!s1:hs', ['!a:hs']),
+            spaceSummary('!s2:hs', ['!b:hs', '!c:hs']),
+          ]),
+          childRoomIds,
+        }),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
         invitesProvider(),
-        { provide: UserPickerService, useValue: { pick: vi.fn() } },
-        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
-        { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
-        {
-          provide: AuthService,
-          useValue: { logout: vi.fn(() => of(undefined)) },
-        },
-        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
-        { provide: TrnToastService, useValue: { show: vi.fn() } },
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -739,69 +605,36 @@ describe('RoomsPage space actions', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        { provide: RoomsService, useValue: { connect: vi.fn() } },
-        {
-          provide: SpacesService,
-          useValue: {
-            connect: vi.fn(),
-            openSpace: vi.fn(),
-            spaces: signal<SpaceSummary[]>([]),
-            childRoomIds: () => [],
-            createSpace,
-            createRoomInSpace,
-            leaveSpace,
-          },
-        },
-        { provide: TimelineService, useValue: { close: vi.fn() } },
-        {
-          provide: MatrixClientService,
-          useValue: {
-            isInitialized: true,
-            instance: { getUserId: () => '@me:hs', getUser: () => null },
-          },
-        },
-        { provide: CryptoService, useValue: { connect: vi.fn() } },
-        {
-          provide: ThreadsService,
-          useValue: { close: vi.fn(), closeThread: vi.fn() },
-        },
-        {
-          provide: ThreadPanelService,
-          useValue: { open: vi.fn(), openList: vi.fn() },
-        },
-        {
-          provide: PinnedMessagesService,
-          useValue: {
-            open: vi.fn(),
-            close: vi.fn(),
-            isPinned: vi.fn(() => false),
-            pin: vi.fn(),
-            unpin: vi.fn(),
-            canPin: signal(false),
-            pinnedEventIds: signal<string[]>([]),
-            pinnedMessages: signal([]),
-          },
-        },
-        {
-          provide: PinnedPanelService,
-          useValue: { openPanel: vi.fn(async () => null) },
-        },
+        MockProvider(RoomsService),
+        MockProvider(SpacesService, {
+          spaces: signal<SpaceSummary[]>([]),
+          createSpace,
+          createRoomInSpace,
+          leaveSpace,
+        }),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
         invitesProvider(),
-        { provide: UserPickerService, useValue: { pick: vi.fn() } },
-        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
-        { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
-        {
-          provide: AuthService,
-          useValue: { logout: vi.fn(() => of(undefined)) },
-        },
-        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
-        {
-          provide: TrnAlertService,
-          useValue: { confirm: alertConfirm, prompt: alertPrompt },
-        },
-        { provide: TrnToastService, useValue: { show: vi.fn() } },
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService, { logout: vi.fn(() => of(undefined)) }),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnAlertService, {
+          confirm: alertConfirm,
+          prompt: alertPrompt,
+        }),
+        MockProvider(TrnToastService),
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -965,85 +798,38 @@ describe('RoomsPage room / DM / invite actions', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        {
-          provide: RoomsService,
-          useValue: {
-            connect: vi.fn(),
-            rooms: signal<RoomSummary[]>([]),
-            revision: signal(0),
-            membersOf: () => [],
-            createRoom,
-            createDirectMessage,
-            inviteUser,
-          },
-        },
-        {
-          provide: SpacesService,
-          useValue: {
-            connect: vi.fn(),
-            openSpace: vi.fn(),
-            spaces: signal<SpaceSummary[]>([]),
-            childRoomIds: () => [],
-          },
-        },
+        MockProvider(RoomsService, {
+          rooms: signal<RoomSummary[]>([]),
+          createRoom,
+          createDirectMessage,
+          inviteUser,
+        }),
+        MockProvider(SpacesService, { spaces: signal<SpaceSummary[]>([]) }),
         invitesProvider({
           pendingInvites: pending,
           acceptInvite,
           declineInvite,
         }),
-        { provide: UserPickerService, useValue: { pick } },
-        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
-        { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        {
-          provide: TimelineService,
-          useValue: { open: vi.fn(), close: vi.fn() },
-        },
-        { provide: MediaService, useValue: { releaseAll: vi.fn() } },
-        {
-          provide: MatrixClientService,
-          useValue: {
-            isInitialized: true,
-            instance: { getUserId: () => '@me:hs', getUser: () => null },
-          },
-        },
-        { provide: CryptoService, useValue: { connect: vi.fn() } },
-        {
-          provide: ThreadsService,
-          useValue: { open: vi.fn(), close: vi.fn(), closeThread: vi.fn() },
-        },
-        {
-          provide: ThreadPanelService,
-          useValue: { open: vi.fn(), openList: vi.fn() },
-        },
-        {
-          provide: PinnedMessagesService,
-          useValue: {
-            open: vi.fn(),
-            close: vi.fn(),
-            isPinned: vi.fn(() => false),
-            pin: vi.fn(),
-            unpin: vi.fn(),
-            canPin: signal(false),
-            pinnedEventIds: signal<string[]>([]),
-            pinnedMessages: signal([]),
-          },
-        },
-        {
-          provide: PinnedPanelService,
-          useValue: { openPanel: vi.fn(async () => null) },
-        },
-        {
-          provide: AuthService,
-          useValue: { logout: vi.fn(() => of(undefined)) },
-        },
-        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
-        {
-          provide: TrnAlertService,
-          useValue: { confirm: vi.fn(), prompt: alertPrompt },
-        },
-        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
-        { provide: TrnToastService, useValue: { show: toastShow } },
+        MockProvider(UserPickerService, { pick }),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TimelineService),
+        MockProvider(MediaService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
+        MockProvider(AuthService),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnAlertService, { prompt: alertPrompt }),
+        MockProvider(TrnActionSheetService),
+        MockProvider(TrnToastService, { show: toastShow }),
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -1216,104 +1002,59 @@ describe('RoomsPage space hierarchy actions', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        {
-          provide: RoomsService,
-          useValue: {
-            connect: vi.fn(),
-            rooms: signal<RoomSummary[]>([
-              {
-                id: '!c:hs',
-                name: 'general',
-                initial: 'G',
-                avatarMxc: null,
-                topic: '',
-                memberCount: 0,
-                encrypted: false,
-                unreadCount: 0,
-                highlightCount: 0,
-                hasUnread: false,
-                lastMessage: '',
-                activityTs: 0,
-                favourite: false,
-              },
-            ]),
-            revision: signal(0),
-            membersOf: () => [],
-          },
-        },
-        {
-          provide: SpacesService,
-          useValue: {
-            connect: vi.fn(),
-            openSpace,
-            joinRoom,
-            removeRoomFromSpace,
-            spaces: signal<SpaceSummary[]>([
-              {
-                id: '!s:hs',
-                name: 'My Space',
-                initial: 'M',
-                avatarMxc: null,
-                childRoomIds: [],
-              },
-            ]),
-            childRoomIds: () => [],
-            notJoinedRooms: signal<SpaceChildRoom[]>([]),
-            childSpaces: signal<SpaceChildRoom[]>([]),
-            childrenLoading: signal(false),
-            childrenError: signal<string | null>(null),
-          },
-        },
-        { provide: TimelineService, useValue: { close: vi.fn() } },
-        {
-          provide: MatrixClientService,
-          useValue: {
-            isInitialized: true,
-            instance: { getUserId: () => '@me:hs', getUser: () => null },
-          },
-        },
-        { provide: CryptoService, useValue: { connect: vi.fn() } },
-        {
-          provide: ThreadsService,
-          useValue: { close: vi.fn(), closeThread: vi.fn() },
-        },
-        {
-          provide: ThreadPanelService,
-          useValue: { open: vi.fn(), openList: vi.fn() },
-        },
-        {
-          provide: PinnedMessagesService,
-          useValue: {
-            open: vi.fn(),
-            close: vi.fn(),
-            isPinned: vi.fn(() => false),
-            pin: vi.fn(),
-            unpin: vi.fn(),
-            canPin: signal(false),
-            pinnedEventIds: signal<string[]>([]),
-            pinnedMessages: signal([]),
-          },
-        },
-        {
-          provide: PinnedPanelService,
-          useValue: { openPanel: vi.fn(async () => null) },
-        },
+        MockProvider(RoomsService, {
+          rooms: signal<RoomSummary[]>([
+            {
+              id: '!c:hs',
+              name: 'general',
+              initial: 'G',
+              avatarMxc: null,
+              topic: '',
+              memberCount: 0,
+              encrypted: false,
+              unreadCount: 0,
+              highlightCount: 0,
+              hasUnread: false,
+              lastMessage: '',
+              activityTs: 0,
+              favourite: false,
+            },
+          ]),
+        }),
+        MockProvider(SpacesService, {
+          openSpace,
+          joinRoom,
+          removeRoomFromSpace,
+          spaces: signal<SpaceSummary[]>([
+            {
+              id: '!s:hs',
+              name: 'My Space',
+              initial: 'M',
+              avatarMxc: null,
+              childRoomIds: [],
+            },
+          ]),
+        }),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
         invitesProvider(),
-        { provide: UserPickerService, useValue: { pick: vi.fn() } },
-        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
-        { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
-        {
-          provide: AuthService,
-          useValue: { logout: vi.fn(() => of(undefined)) },
-        },
-        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
-        {
-          provide: TrnAlertService,
-          useValue: { confirm: alertConfirm, prompt: vi.fn() },
-        },
-        { provide: TrnToastService, useValue: { show: vi.fn() } },
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnAlertService, { confirm: alertConfirm }),
+        MockProvider(TrnToastService),
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -1398,85 +1139,32 @@ describe('RoomsPage quick switcher', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        {
-          provide: RoomsService,
-          useValue: {
-            connect: vi.fn(),
-            rooms: signal<RoomSummary[]>([]),
-            revision: signal(0),
-            membersOf: () => [],
-            createDirectMessage,
-          },
-        },
-        {
-          provide: SpacesService,
-          useValue: {
-            connect: vi.fn(),
-            openSpace,
-            spaces: signal<SpaceSummary[]>([]),
-            childRoomIds: () => [],
-          },
-        },
+        MockProvider(RoomsService, { createDirectMessage }),
+        MockProvider(SpacesService, { openSpace }),
         invitesProvider({
           pendingInvites: pending,
           acceptInvite,
         }),
-        { provide: UserPickerService, useValue: { pick: vi.fn() } },
-        { provide: QuickSwitcherService, useValue: { pick } },
-        {
-          provide: MessageSearchService,
-          useValue: { search: messageSearch },
-        },
-        {
-          provide: TimelineService,
-          useValue: { open: timelineOpen, close: vi.fn() },
-        },
-        { provide: MediaService, useValue: { releaseAll: vi.fn() } },
-        {
-          provide: MatrixClientService,
-          useValue: {
-            isInitialized: true,
-            instance: { getUserId: () => '@me:hs', getUser: () => null },
-          },
-        },
-        { provide: CryptoService, useValue: { connect: vi.fn() } },
-        {
-          provide: ThreadsService,
-          useValue: { open: vi.fn(), close: vi.fn(), closeThread: vi.fn() },
-        },
-        {
-          provide: ThreadPanelService,
-          useValue: { open: vi.fn(), openList: vi.fn() },
-        },
-        {
-          provide: PinnedMessagesService,
-          useValue: {
-            open: vi.fn(),
-            close: vi.fn(),
-            isPinned: vi.fn(() => false),
-            pin: vi.fn(),
-            unpin: vi.fn(),
-            canPin: signal(false),
-            pinnedEventIds: signal<string[]>([]),
-            pinnedMessages: signal([]),
-          },
-        },
-        {
-          provide: PinnedPanelService,
-          useValue: { openPanel: vi.fn(async () => null) },
-        },
-        {
-          provide: AuthService,
-          useValue: { logout: vi.fn(() => of(undefined)) },
-        },
-        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: TrnDialogService, useValue: { hasOpen: dialogHasOpen } },
-        {
-          provide: TrnAlertService,
-          useValue: { confirm: vi.fn(), prompt: vi.fn() },
-        },
-        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
-        { provide: TrnToastService, useValue: { show: vi.fn() } },
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService, { pick }),
+        MockProvider(MessageSearchService, { search: messageSearch }),
+        MockProvider(TimelineService, { open: timelineOpen }),
+        MockProvider(MediaService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
+        MockProvider(AuthService),
+        MockProvider(Router),
+        MockProvider(TrnDialogService, { hasOpen: dialogHasOpen }),
+        MockProvider(TrnAlertService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(TrnToastService),
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -1641,74 +1329,28 @@ describe('RoomsPage mobile nav drawer', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        {
-          provide: RoomsService,
-          useValue: {
-            connect: vi.fn(),
-            rooms: signal<RoomSummary[]>([]),
-            revision: signal(0),
-            membersOf: () => [],
-          },
-        },
-        {
-          provide: SpacesService,
-          useValue: {
-            connect: vi.fn(),
-            openSpace: vi.fn(),
-            spaces: signal<SpaceSummary[]>([]),
-            childRoomIds: () => [],
-          },
-        },
-        {
-          provide: TimelineService,
-          useValue: { open: timelineOpen, close: vi.fn() },
-        },
-        { provide: MediaService, useValue: { releaseAll } },
-        {
-          provide: MatrixClientService,
-          useValue: {
-            isInitialized: true,
-            instance: { getUserId: () => '@me:hs', getUser: () => null },
-          },
-        },
-        { provide: CryptoService, useValue: { connect: vi.fn() } },
-        {
-          provide: ThreadsService,
-          useValue: { open: threadsOpen, close: vi.fn(), closeThread: vi.fn() },
-        },
-        {
-          provide: ThreadPanelService,
-          useValue: { open: vi.fn(), openList: vi.fn() },
-        },
-        {
-          provide: PinnedMessagesService,
-          useValue: {
-            open: vi.fn(),
-            close: vi.fn(),
-            isPinned: vi.fn(() => false),
-            pin: vi.fn(),
-            unpin: vi.fn(),
-            canPin: signal(false),
-            pinnedEventIds: signal<string[]>([]),
-            pinnedMessages: signal([]),
-          },
-        },
-        {
-          provide: PinnedPanelService,
-          useValue: { openPanel: vi.fn(async () => null) },
-        },
+        MockProvider(RoomsService),
+        MockProvider(SpacesService),
+        MockProvider(TimelineService, { open: timelineOpen }),
+        MockProvider(MediaService, { releaseAll }),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService, { open: threadsOpen }),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
         invitesProvider(),
-        { provide: UserPickerService, useValue: { pick: vi.fn() } },
-        { provide: QuickSwitcherService, useValue: { pick: vi.fn() } },
-        { provide: MessageSearchService, useValue: { search: vi.fn() } },
-        { provide: TrnActionSheetService, useValue: { open: vi.fn() } },
-        {
-          provide: AuthService,
-          useValue: { logout: vi.fn(() => of(undefined)) },
-        },
-        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
-        { provide: TrnDialogService, useValue: { hasOpen: () => false } },
-        { provide: TrnToastService, useValue: { show: vi.fn() } },
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
       ],
     });
     return TestBed.inject(RoomsPage);

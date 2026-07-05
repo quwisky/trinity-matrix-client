@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture } from '@angular/core/testing';
 import { DialogRef } from '@angular/cdk/dialog';
+import { render } from '@testing-library/angular';
 import {
   SearchService,
   TimelineService,
@@ -8,6 +9,8 @@ import {
   type MessageHit,
   type ServerMessageSearch,
 } from '@trinity/core';
+import { AvatarComponent } from '@trinity/ui';
+import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
@@ -42,15 +45,26 @@ describe('MessageSearchComponent', () => {
   let searchServerMessages: ReturnType<typeof vi.fn>;
   let loadMoreHistory: ReturnType<typeof vi.fn>;
 
-  function build(state: LoadedMessageSearch): {
+  async function build(state: LoadedMessageSearch): Promise<{
     fixture: ComponentFixture<MessageSearchComponent>;
+    container: HTMLElement;
     c: MessageSearchComponent;
-  } {
+  }> {
     searchLoadedMessages.mockReturnValue(state);
-    const fixture = TestBed.createComponent(MessageSearchComponent);
-    fixture.componentRef.setInput('roomId', '!r:hs');
-    fixture.detectChanges();
-    return { fixture, c: fixture.componentInstance };
+    const { fixture, container } = await render(MessageSearchComponent, {
+      inputs: { roomId: '!r:hs' },
+      imports: [MockComponent(AvatarComponent)],
+      providers: [
+        MockProvider(DialogRef, { close: dismiss }),
+        MockProvider(SearchService, {
+          searchLoadedMessages,
+          searchServerMessages,
+          loadMoreHistory,
+        }),
+        MockProvider(TimelineService, { messages: signal([]) }),
+      ],
+    });
+    return { fixture, container, c: fixture.componentInstance };
   }
 
   function setQuery(value: string, c: MessageSearchComponent): void {
@@ -64,94 +78,71 @@ describe('MessageSearchComponent', () => {
       of<ServerMessageSearch>({ hits: [], count: 0, nextBatch: null }),
     );
     loadMoreHistory = vi.fn(() => of(0));
-    TestBed.configureTestingModule({
-      imports: [MessageSearchComponent],
-      providers: [
-        { provide: DialogRef, useValue: { close: dismiss } },
-        {
-          provide: SearchService,
-          useValue: {
-            searchLoadedMessages,
-            searchServerMessages,
-            loadMoreHistory,
-          },
-        },
-        { provide: TimelineService, useValue: { messages: signal([]) } },
-      ],
-    });
   });
 
-  it('renders the loaded-timeline matches as result rows', () => {
-    const { fixture } = build(
+  it('renders the loaded-timeline matches as result rows', async () => {
+    const { container } = await build(
       loaded({ hits: [hit({ eventId: '$1' }), hit({ eventId: '$2' })] }),
     );
 
-    expect(
-      fixture.nativeElement.querySelectorAll('[data-testid="result"]').length,
-    ).toBe(2);
+    expect(container.querySelectorAll('[data-testid="result"]').length).toBe(2);
   });
 
-  it('shows the E2EE note (with the scanned count) and no server toggle for an encrypted room', () => {
-    const { fixture, c } = build(
+  it('shows the E2EE note (with the scanned count) and no server toggle for an encrypted room', async () => {
+    const { fixture, container, c } = await build(
       loaded({ encrypted: true, serverAvailable: false, scanned: 7 }),
     );
     setQuery('hi', c);
     fixture.detectChanges();
 
-    const note = fixture.nativeElement.querySelector(
-      '[data-testid="e2ee-note"]',
-    );
+    const note = container.querySelector('[data-testid="e2ee-note"]');
     expect(note).toBeTruthy();
-    expect(note.textContent).toContain('7');
-    expect(note.textContent.toLowerCase()).toContain('loaded');
+    expect(note?.textContent).toContain('7');
+    expect(note?.textContent?.toLowerCase()).toContain('loaded');
     // The full-history server search is never offered for an encrypted room.
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="search-server"]'),
-    ).toBeNull();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="load-older"]'),
-    ).toBeTruthy();
+    expect(container.querySelector('[data-testid="search-server"]')).toBeNull();
+    expect(container.querySelector('[data-testid="load-older"]')).toBeTruthy();
   });
 
-  it('offers the server search for an unencrypted room with a query', () => {
-    const { fixture, c } = build(loaded({ encrypted: false }));
+  it('offers the server search for an unencrypted room with a query', async () => {
+    const { fixture, container, c } = await build(loaded({ encrypted: false }));
     setQuery('hello', c);
     fixture.detectChanges();
 
     expect(
-      fixture.nativeElement.querySelector('[data-testid="search-server"]'),
+      container.querySelector('[data-testid="search-server"]'),
     ).toBeTruthy();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="e2ee-note"]'),
-    ).toBeNull();
+    expect(container.querySelector('[data-testid="e2ee-note"]')).toBeNull();
   });
 
-  it('dismisses with the chosen event id when a result is selected', () => {
-    const { c } = build(loaded({ hits: [hit({ eventId: '$jump' })] }));
+  it('dismisses with the chosen event id when a result is selected', async () => {
+    const { c } = await build(loaded({ hits: [hit({ eventId: '$jump' })] }));
 
     c.select(hit({ eventId: '$jump' }));
 
     expect(dismiss).toHaveBeenCalledWith('$jump');
   });
 
-  it('cancel dismisses with null', () => {
-    const { c } = build(loaded());
+  it('cancel dismisses with null', async () => {
+    const { c } = await build(loaded());
 
     c.dismiss();
 
     expect(dismiss).toHaveBeenCalledWith(null);
   });
 
-  it('"load older messages" pages in history via the service', () => {
+  it('"load older messages" pages in history via the service', async () => {
     loadMoreHistory.mockReturnValue(of(40));
-    const { c } = build(loaded({ encrypted: true, serverAvailable: false }));
+    const { c } = await build(
+      loaded({ encrypted: true, serverAvailable: false }),
+    );
 
     c.loadOlderHistory();
 
     expect(loadMoreHistory).toHaveBeenCalledWith('!r:hs');
   });
 
-  it('runs the server search and shows its paged results', () => {
+  it('runs the server search and shows its paged results', async () => {
     searchServerMessages.mockReturnValue(
       of<ServerMessageSearch>({
         hits: [hit({ eventId: '$s1', senderName: 'Bob' })],
@@ -159,7 +150,7 @@ describe('MessageSearchComponent', () => {
         nextBatch: 'b2',
       }),
     );
-    const { fixture, c } = build(loaded({ encrypted: false }));
+    const { fixture, container, c } = await build(loaded({ encrypted: false }));
     setQuery('hello', c);
 
     c.searchServer();
@@ -171,12 +162,12 @@ describe('MessageSearchComponent', () => {
     expect(c.serverCount()).toBe(3);
     expect(c.serverNextBatch()).toBe('b2');
     expect(
-      fixture.nativeElement.querySelector('[data-testid="load-more-server"]'),
+      container.querySelector('[data-testid="load-more-server"]'),
     ).toBeTruthy();
   });
 
-  it('appends the next page of server results on load-more', () => {
-    const { c } = build(loaded({ encrypted: false }));
+  it('appends the next page of server results on load-more', async () => {
+    const { c } = await build(loaded({ encrypted: false }));
     setQuery('hello', c);
     searchServerMessages.mockReturnValueOnce(
       of<ServerMessageSearch>({
@@ -205,7 +196,7 @@ describe('MessageSearchComponent', () => {
     expect(c.serverNextBatch()).toBeNull();
   });
 
-  it('a changed query reverts from server mode to instant loaded results', () => {
+  it('a changed query reverts from server mode to instant loaded results', async () => {
     searchServerMessages.mockReturnValue(
       of<ServerMessageSearch>({
         hits: [hit({ eventId: '$s1' })],
@@ -213,7 +204,7 @@ describe('MessageSearchComponent', () => {
         nextBatch: null,
       }),
     );
-    const { c } = build(loaded({ hits: [hit({ eventId: '$loaded' })] }));
+    const { c } = await build(loaded({ hits: [hit({ eventId: '$loaded' })] }));
     setQuery('hello', c);
     c.searchServer();
     expect(c.serverMode()).toBe(true);

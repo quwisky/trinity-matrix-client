@@ -1,4 +1,5 @@
-import { TestBed } from '@angular/core/testing';
+import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { MediaService, type MediaPayload } from '@trinity/core';
@@ -42,21 +43,28 @@ describe('MediaAttachmentComponent', () => {
     // FileSaveService owns the platform branch; stub it so the component test
     // doesn't touch the object-URL API / native plugins.
     fileSave = { save: vi.fn().mockReturnValue(of(undefined)) };
-
-    TestBed.configureTestingModule({
-      imports: [MediaAttachmentComponent],
-      providers: [
-        { provide: MediaService, useValue: mediaService },
-        { provide: FileSaveService, useValue: fileSave },
-      ],
-    });
   });
 
-  it('resolves the thumbnail, sets src, and pins the resolved URL', () => {
+  /**
+   * Render the component with the mocked injected services. Behaviour is
+   * configured on the `mediaService` / `fileSave` stubs *before* calling this
+   * (render triggers the initial change detection that fires the resolve effect).
+   */
+  function renderMedia(media: MediaPayload) {
+    return render(MediaAttachmentComponent, {
+      inputs: { media },
+      // MockProvider auto-mocks the service; the second arg wires our spies in
+      // as the method implementations so assertions read the same references.
+      providers: [
+        MockProvider(MediaService, mediaService),
+        MockProvider(FileSaveService, fileSave),
+      ],
+    });
+  }
+
+  it('resolves the thumbnail, sets src, and pins the resolved URL', async () => {
     const media = imageMedia();
-    const fixture = TestBed.createComponent(MediaAttachmentComponent);
-    fixture.componentRef.setInput('media', media);
-    fixture.detectChanges();
+    const { fixture } = await renderMedia(media);
 
     expect(mediaService.resolveMedia).toHaveBeenCalledWith(media, 'thumbnail');
     expect(fixture.componentInstance.src()).toBe('blob:thumb');
@@ -64,28 +72,24 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.hasError()).toBe(false);
   });
 
-  it('surfaces the error state when thumbnail resolution fails', () => {
+  it('surfaces the error state when thumbnail resolution fails', async () => {
     mediaService.resolveMedia.mockReturnValue(
       throwError(() => new Error('boom')),
     );
-    const fixture = TestBed.createComponent(MediaAttachmentComponent);
-    fixture.componentRef.setInput('media', imageMedia());
-    fixture.detectChanges();
+    const { fixture } = await renderMedia(imageMedia());
 
     expect(fixture.componentInstance.hasError()).toBe(true);
     expect(fixture.componentInstance.src()).toBeNull();
   });
 
-  it('does not resolve a thumbnail for a file attachment (download-only card)', () => {
+  it('does not resolve a thumbnail for a file attachment (download-only card)', async () => {
     const media: MediaPayload = {
       ...imageMedia(),
       kind: 'file',
       filename: 'report.pdf',
       mimeType: 'application/pdf',
     };
-    const fixture = TestBed.createComponent(MediaAttachmentComponent);
-    fixture.componentRef.setInput('media', media);
-    fixture.detectChanges();
+    const { fixture } = await renderMedia(media);
 
     // A file card never binds src — resolving (and decrypting) it would be wasted.
     expect(mediaService.resolveMedia).not.toHaveBeenCalled();
@@ -93,16 +97,14 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.loading()).toBe(false);
   });
 
-  it('pins the full-res URL when the lightbox opens and unpins it on close', () => {
+  it('pins the full-res URL when the lightbox opens and unpins it on close', async () => {
     // Distinct URLs per variant so the lightbox pin is observable apart from the
     // thumbnail's.
     mediaService.resolveMedia.mockImplementation(
       (_m: MediaPayload, variant: string) =>
         of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
     );
-    const fixture = TestBed.createComponent(MediaAttachmentComponent);
-    fixture.componentRef.setInput('media', imageMedia());
-    fixture.detectChanges();
+    const { fixture } = await renderMedia(imageMedia());
     const cmp = fixture.componentInstance;
 
     cmp.openLightbox();
@@ -116,14 +118,12 @@ describe('MediaAttachmentComponent', () => {
     expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
   });
 
-  it('unpins the full-res URL when destroyed with the lightbox still open', () => {
+  it('unpins the full-res URL when destroyed with the lightbox still open', async () => {
     mediaService.resolveMedia.mockImplementation(
       (_m: MediaPayload, variant: string) =>
         of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
     );
-    const fixture = TestBed.createComponent(MediaAttachmentComponent);
-    fixture.componentRef.setInput('media', imageMedia());
-    fixture.detectChanges();
+    const { fixture } = await renderMedia(imageMedia());
     fixture.componentInstance.openLightbox();
 
     mediaService.unpin.mockClear();
@@ -132,11 +132,9 @@ describe('MediaAttachmentComponent', () => {
     expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
   });
 
-  it('download() resolves the full bytes then hands them to FileSaveService', () => {
+  it('download() resolves the full bytes then hands them to FileSaveService', async () => {
     const media = imageMedia();
-    const fixture = TestBed.createComponent(MediaAttachmentComponent);
-    fixture.componentRef.setInput('media', media);
-    fixture.detectChanges();
+    const { fixture } = await renderMedia(media);
 
     fixture.componentInstance.download();
 
@@ -145,23 +143,19 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.hasError()).toBe(false);
   });
 
-  it('download() surfaces an error when saving fails', () => {
+  it('download() surfaces an error when saving fails', async () => {
     fileSave.save.mockReturnValue(throwError(() => new Error('save failed')));
-    const fixture = TestBed.createComponent(MediaAttachmentComponent);
-    fixture.componentRef.setInput('media', imageMedia());
-    fixture.detectChanges();
+    const { fixture } = await renderMedia(imageMedia());
 
     fixture.componentInstance.download();
 
     expect(fixture.componentInstance.hasError()).toBe(true);
   });
 
-  it('ignores a second download() while a save is in flight', () => {
+  it('ignores a second download() while a save is in flight', async () => {
     const saveStream = new Subject<void>();
     fileSave.save.mockReturnValue(saveStream.asObservable());
-    const fixture = TestBed.createComponent(MediaAttachmentComponent);
-    fixture.componentRef.setInput('media', imageMedia());
-    fixture.detectChanges();
+    const { fixture } = await renderMedia(imageMedia());
 
     fixture.componentInstance.download();
     fixture.componentInstance.download(); // second tap while the first is saving

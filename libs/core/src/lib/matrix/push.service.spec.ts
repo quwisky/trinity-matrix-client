@@ -1,5 +1,6 @@
 import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
+import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PUSH_CONFIG, PushService, type PushConfig } from './push.service';
@@ -45,22 +46,24 @@ function setup(opts: { config?: PushConfig | null } = {}) {
     setPusher: vi.fn(async () => ({})),
     removePusher: vi.fn(async () => ({})),
   };
-  const matrix = {
-    isInitialized: true,
-    instance: client,
-  } as unknown as MatrixClientService;
-  const router = { navigate: vi.fn(() => Promise.resolve(true)) };
   TestBed.configureTestingModule({
     providers: [
       PushService,
-      { provide: MatrixClientService, useValue: matrix },
-      { provide: Router, useValue: router },
+      MockProvider(MatrixClientService, {
+        isInitialized: true,
+        instance: client as never,
+      }),
+      MockProvider(Router),
       {
         provide: PUSH_CONFIG,
         useValue: 'config' in opts ? opts.config : CONFIG,
       },
     ],
   });
+  const router = TestBed.inject(Router);
+  // `router.navigate` is an auto-spy (returns undefined); the service chains
+  // `.catch()` on it, so give it a resolved promise to await.
+  vi.mocked(router.navigate).mockResolvedValue(true);
   return { svc: TestBed.inject(PushService), client, router };
 }
 

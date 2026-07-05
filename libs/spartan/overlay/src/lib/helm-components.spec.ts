@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { render } from '@testing-library/angular';
 import { describe, expect, it } from 'vitest';
 // Imported straight from the owning helm libs (libs/spartan/*). These focused
 // smoke tests live in the overlay lib because it's the one spartan lib with a
@@ -83,41 +83,33 @@ describe('buttonVariants (hlm-button cva)', () => {
 class HelmHostComponent {}
 
 describe('helm component render smoke tests', () => {
+  // Render the REAL helm directives/components (never mocked) — the whole point
+  // of this suite is proving each one instantiates.
   function build() {
-    const fixture = TestBed.createComponent(HelmHostComponent);
-    fixture.detectChanges();
-    return fixture;
+    return render(HelmHostComponent);
   }
 
-  it('mounts button[hlmBtn]', () => {
-    const fixture = build();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid=btn]'),
-    ).toBeTruthy();
+  it('mounts button[hlmBtn]', async () => {
+    const { fixture, container } = await build();
+    expect(container.querySelector('[data-testid=btn]')).toBeTruthy();
     expect(fixture.debugElement.query(By.directive(HlmButton))).toBeTruthy();
   });
 
-  it('mounts input[hlmInput]', () => {
-    const fixture = build();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid=input]'),
-    ).toBeTruthy();
+  it('mounts input[hlmInput]', async () => {
+    const { fixture, container } = await build();
+    expect(container.querySelector('[data-testid=input]')).toBeTruthy();
     expect(fixture.debugElement.query(By.directive(HlmInput))).toBeTruthy();
   });
 
-  it('mounts hlm-spinner', () => {
-    const fixture = build();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid=spinner]'),
-    ).toBeTruthy();
+  it('mounts hlm-spinner', async () => {
+    const { fixture, container } = await build();
+    expect(container.querySelector('[data-testid=spinner]')).toBeTruthy();
     expect(fixture.debugElement.query(By.directive(HlmSpinner))).toBeTruthy();
   });
 
-  it('mounts hlm-checkbox', () => {
-    const fixture = build();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid=checkbox]'),
-    ).toBeTruthy();
+  it('mounts hlm-checkbox', async () => {
+    const { fixture, container } = await build();
+    expect(container.querySelector('[data-testid=checkbox]')).toBeTruthy();
     expect(fixture.debugElement.query(By.directive(HlmCheckbox))).toBeTruthy();
   });
 });

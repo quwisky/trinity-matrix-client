@@ -1,5 +1,6 @@
-import { TestBed } from '@angular/core/testing';
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
+import { describe, expect, it } from 'vitest';
 import { of } from 'rxjs';
 import {
   MediaService,
@@ -67,163 +68,139 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
 }
 
 describe('MessageRowComponent', () => {
-  beforeEach(() =>
-    TestBed.configureTestingModule({
-      imports: [MessageRowComponent],
+  function renderRow(inputs: {
+    row: MessageRow;
+    threadSummary?: ThreadSummary | null;
+    readOnly?: boolean;
+  }) {
+    return render(MessageRowComponent, {
+      inputs,
       // The media branch renders <trn-media-attachment>, which injects these.
       providers: [
-        {
-          provide: MediaService,
-          useValue: {
-            resolveMedia: () => of(null),
-            downloadMedia: () => of({ blob: new Blob(), filename: 'doc.pdf' }),
-            pin: vi.fn(),
-            unpin: vi.fn(),
-          },
-        },
-        { provide: FileSaveService, useValue: { save: () => of(undefined) } },
+        MockProvider(MediaService, {
+          resolveMedia: () => of(null),
+          downloadMedia: () => of({ blob: new Blob(), filename: 'doc.pdf' }),
+        }),
+        MockProvider(FileSaveService, { save: () => of(undefined) }),
       ],
-    }),
-  );
+    });
+  }
 
-  it('renders a plain caption below a media attachment', () => {
-    const fixture = TestBed.createComponent(MessageRowComponent);
-    fixture.componentRef.setInput(
-      'row',
-      row({ kind: 'file', media: fileMedia(), caption: 'look at this' }),
-    );
-    fixture.detectChanges();
+  it('renders a plain caption below a media attachment', async () => {
+    const { container } = await renderRow({
+      row: row({ kind: 'file', media: fileMedia(), caption: 'look at this' }),
+    });
 
-    const el = fixture.nativeElement;
-    expect(el.querySelector('trn-media-attachment')).toBeTruthy();
-    expect(el.querySelector('.msg__text')?.textContent).toContain(
+    expect(container.querySelector('trn-media-attachment')).toBeTruthy();
+    expect(container.querySelector('.msg__text')?.textContent).toContain(
       'look at this',
     );
   });
 
-  it('renders a rich (HTML) caption below a media attachment', () => {
-    const fixture = TestBed.createComponent(MessageRowComponent);
-    fixture.componentRef.setInput(
-      'row',
-      row({
+  it('renders a rich (HTML) caption below a media attachment', async () => {
+    const { container } = await renderRow({
+      row: row({
         kind: 'file',
         media: fileMedia(),
         caption: 'look here',
         captionHtml: '<strong>look here</strong>',
       }),
-    );
-    fixture.detectChanges();
+    });
 
-    const html = fixture.nativeElement.querySelector('.msg__text--html');
+    const html = container.querySelector('.msg__text--html');
     expect(html?.innerHTML).toContain('<strong>look here</strong>');
   });
 
-  it('renders no caption text for an uncaptioned media message', () => {
-    const fixture = TestBed.createComponent(MessageRowComponent);
-    fixture.componentRef.setInput(
-      'row',
-      row({
+  it('renders no caption text for an uncaptioned media message', async () => {
+    const { container } = await renderRow({
+      row: row({
         kind: 'file',
         media: fileMedia(),
         caption: null,
         captionHtml: null,
       }),
-    );
-    fixture.detectChanges();
+    });
 
-    expect(
-      fixture.nativeElement.querySelector('trn-media-attachment'),
-    ).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('.msg__text')).toBeNull();
+    expect(container.querySelector('trn-media-attachment')).toBeTruthy();
+    expect(container.querySelector('.msg__text')).toBeNull();
   });
 
-  it('renders the message body and the hover toolbar', () => {
-    const fixture = TestBed.createComponent(MessageRowComponent);
-    fixture.componentRef.setInput('row', row());
-    fixture.detectChanges();
+  it('renders the message body and the hover toolbar', async () => {
+    const { container } = await renderRow({ row: row() });
 
-    const el = fixture.nativeElement;
-    expect(el.querySelector('.msg')).toBeTruthy();
-    expect(el.textContent).toContain('hello');
-    expect(el.querySelector('trn-message-toolbar')).toBeTruthy();
+    expect(container.querySelector('.msg')).toBeTruthy();
+    expect(container.textContent).toContain('hello');
+    expect(container.querySelector('trn-message-toolbar')).toBeTruthy();
   });
 
-  it('shows a thread indicator and emits openThread with the root id on click', () => {
-    const fixture = TestBed.createComponent(MessageRowComponent);
-    fixture.componentRef.setInput('row', row());
-    fixture.componentRef.setInput('threadSummary', summary({ replyCount: 3 }));
-    fixture.detectChanges();
+  it('shows a thread indicator and emits openThread with the root id on click', async () => {
+    const { fixture, container } = await renderRow({
+      row: row(),
+      threadSummary: summary({ replyCount: 3 }),
+    });
 
-    const btn = fixture.nativeElement.querySelector('.msg__thread');
+    const btn = container.querySelector<HTMLElement>('.msg__thread');
     expect(btn).toBeTruthy();
-    expect(btn.textContent).toContain('3 replies');
-    expect(btn.textContent).toContain('last reply');
+    expect(btn?.textContent).toContain('3 replies');
+    expect(btn?.textContent).toContain('last reply');
 
     let opened = '';
     fixture.componentInstance.openThread.subscribe((id) => (opened = id));
-    btn.click();
+    btn?.click();
     expect(opened).toBe('$1');
   });
 
-  it('uses the singular for a single reply', () => {
-    const fixture = TestBed.createComponent(MessageRowComponent);
-    fixture.componentRef.setInput('row', row());
-    fixture.componentRef.setInput('threadSummary', summary({ replyCount: 1 }));
-    fixture.detectChanges();
+  it('uses the singular for a single reply', async () => {
+    const { container } = await renderRow({
+      row: row(),
+      threadSummary: summary({ replyCount: 1 }),
+    });
 
-    expect(
-      fixture.nativeElement.querySelector('.msg__thread').textContent,
-    ).toContain('1 reply');
+    expect(container.querySelector('.msg__thread')?.textContent).toContain(
+      '1 reply',
+    );
   });
 
-  it('shows an unread badge on the thread indicator when the thread is unread', () => {
-    const fixture = TestBed.createComponent(MessageRowComponent);
-    fixture.componentRef.setInput('row', row());
-    fixture.componentRef.setInput(
-      'threadSummary',
-      summary({ unreadCount: 5, highlight: true }),
-    );
-    fixture.detectChanges();
+  it('shows an unread badge on the thread indicator when the thread is unread', async () => {
+    const { container } = await renderRow({
+      row: row(),
+      threadSummary: summary({ unreadCount: 5, highlight: true }),
+    });
 
-    const badge = fixture.nativeElement.querySelector('.msg__thread-badge');
+    const badge = container.querySelector('.msg__thread-badge');
     expect(badge).toBeTruthy();
-    expect(badge.textContent).toContain('5');
-    expect(badge.classList.contains('msg__thread-badge--highlight')).toBe(true);
+    expect(badge?.textContent).toContain('5');
+    expect(badge?.classList.contains('msg__thread-badge--highlight')).toBe(
+      true,
+    );
     // The count rides on the (aria-hidden badge's) button label for SR users.
     expect(
-      fixture.nativeElement
-        .querySelector('.msg__thread')
-        .getAttribute('aria-label'),
+      container.querySelector('.msg__thread')?.getAttribute('aria-label'),
     ).toContain('5 unread');
   });
 
-  it('omits the unread badge when the thread is read', () => {
-    const fixture = TestBed.createComponent(MessageRowComponent);
-    fixture.componentRef.setInput('row', row());
-    fixture.componentRef.setInput('threadSummary', summary({ unreadCount: 0 }));
-    fixture.detectChanges();
+  it('omits the unread badge when the thread is read', async () => {
+    const { container } = await renderRow({
+      row: row(),
+      threadSummary: summary({ unreadCount: 0 }),
+    });
 
-    expect(
-      fixture.nativeElement.querySelector('.msg__thread-badge'),
-    ).toBeNull();
+    expect(container.querySelector('.msg__thread-badge')).toBeNull();
   });
 
-  it('omits the thread indicator when there is no summary', () => {
-    const fixture = TestBed.createComponent(MessageRowComponent);
-    fixture.componentRef.setInput('row', row());
-    fixture.detectChanges();
+  it('omits the thread indicator when there is no summary', async () => {
+    const { container } = await renderRow({ row: row() });
 
-    expect(fixture.nativeElement.querySelector('.msg__thread')).toBeNull();
+    expect(container.querySelector('.msg__thread')).toBeNull();
   });
 
-  it('hides the toolbar and retry affordance in read-only (thread) mode', () => {
-    const fixture = TestBed.createComponent(MessageRowComponent);
-    fixture.componentRef.setInput('row', row({ status: 'failed' }));
-    fixture.componentRef.setInput('readOnly', true);
-    fixture.detectChanges();
+  it('hides the toolbar and retry affordance in read-only (thread) mode', async () => {
+    const { container } = await renderRow({
+      row: row({ status: 'failed' }),
+      readOnly: true,
+    });
 
-    const el = fixture.nativeElement;
-    expect(el.querySelector('trn-message-toolbar')).toBeNull();
-    expect(el.querySelector('.msg__retry')).toBeNull();
+    expect(container.querySelector('trn-message-toolbar')).toBeNull();
+    expect(container.querySelector('.msg__retry')).toBeNull();
   });
 });
