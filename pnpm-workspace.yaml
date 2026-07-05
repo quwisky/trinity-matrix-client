@@ -1,0 +1,15 @@
+# pnpm workspace root.
+#
+# Trinity is an Nx *integrated* monorepo: the deployable app plus every reusable lib
+# are one project, driven by a single root `package.json` and wired together through
+# `@trinity/*` TypeScript path aliases (`tsconfig.base.json`) — not pnpm workspace
+# linking. So there are no pnpm sub-packages to install/symlink here:
+#
+#   - `libs/spartan/*` carry a `package.json` (name `@trinity/helm/*`) only for the
+#     `@spartan-ng/cli` generator; they are consumed via the path aliases above.
+#   - `electron/` (name `trinity-desktop`) is a standalone app with its own dependency
+#     tree, installed separately via `pnpm electron:install` — intentionally not a member.
+#
+# Keeping `packages` empty declares the workspace root explicitly (so pnpm never walks
+# up to a parent dir) while leaving the single-project install exactly as it is.
+packages: []
