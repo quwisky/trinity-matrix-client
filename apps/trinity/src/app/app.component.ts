@@ -11,7 +11,7 @@ import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { SwUpdate } from '@angular/service-worker';
-import { getTrinityDesktopBridge } from '@trinity/core';
+import { getTrinityDesktopBridge } from '@trinity/platform-native';
 import { HlmToaster } from '@trinity/helm/sonner';
 import { VerificationHostComponent } from './verification-host.component';
 

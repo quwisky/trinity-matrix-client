@@ -1,5 +1,8 @@
 import { DialogRef } from '@angular/cdk/dialog';
-import { RoomsService, type UserSearchResult } from '@trinity/core';
+import {
+  RoomsService,
+  type UserSearchResult,
+} from '@trinity/data-access-rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { render } from '@testing-library/angular';
 import { MockComponent, MockProvider } from 'ng-mocks';

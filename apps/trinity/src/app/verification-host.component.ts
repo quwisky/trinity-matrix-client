@@ -5,7 +5,8 @@ import {
   inject,
 } from '@angular/core';
 import type { DialogRef } from '@angular/cdk/dialog';
-import { MatrixClientService, VerificationService } from '@trinity/core';
+import { VerificationService } from '@trinity/data-access-crypto';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { TrnDialogService } from '@trinity/helm/overlay';
 
 /**

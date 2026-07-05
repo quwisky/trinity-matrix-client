@@ -4,11 +4,11 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { render } from '@testing-library/angular';
 import {
   SearchService,
-  TimelineService,
   type LoadedMessageSearch,
   type MessageHit,
   type ServerMessageSearch,
-} from '@trinity/core';
+} from '@trinity/data-access-search';
+import { TimelineService } from '@trinity/data-access-timeline';
 import { AvatarComponent } from '@trinity/ui';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';

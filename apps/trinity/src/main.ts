@@ -12,14 +12,16 @@ import {
 } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
+import { AvatarService } from '@trinity/data-access-media';
 import {
-  AvatarService,
   AppBadgeService,
-  FeatureFlagsService,
   PUSH_CONFIG,
+} from '@trinity/data-access-notifications';
+import {
+  FeatureFlagsService,
   ThemeService,
   TrinityErrorHandler,
-} from '@trinity/core';
+} from '@trinity/platform-native';
 import {
   AVATAR_RESOLVER,
   ENCRYPTION_DIALOG_COMPONENTS,

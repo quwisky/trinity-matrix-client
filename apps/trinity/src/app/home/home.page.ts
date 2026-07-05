@@ -9,7 +9,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { PageHeaderComponent } from '@trinity/ui';
-import { CryptoSpikeService, CryptoSpikeResult } from '@trinity/core';
+import {
+  CryptoSpikeResult,
+  CryptoSpikeService,
+} from '@trinity/data-access-crypto';
 
 @Component({
   selector: 'trn-home',

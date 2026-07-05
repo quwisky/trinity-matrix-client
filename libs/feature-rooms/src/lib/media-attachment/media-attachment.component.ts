@@ -13,7 +13,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription, finalize, switchMap } from 'rxjs';
 import { MediaBubbleComponent, runWithBusy } from '@trinity/ui';
-import { MediaService, type MediaPayload } from '@trinity/core';
+import { MediaService } from '@trinity/data-access-media';
+import { type MediaPayload } from '@trinity/util-matrix';
 import { FileSaveService } from '../media-save/file-save.service';
 
 /**

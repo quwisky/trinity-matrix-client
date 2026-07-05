@@ -14,7 +14,8 @@ import {
   type MessageAction,
   type MessageToolbarCaps,
 } from '@trinity/ui';
-import type { MessageView, ThreadSummary } from '@trinity/core';
+import { type ThreadSummary } from '@trinity/data-access-timeline';
+import { type MessageView } from '@trinity/util-matrix';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
 

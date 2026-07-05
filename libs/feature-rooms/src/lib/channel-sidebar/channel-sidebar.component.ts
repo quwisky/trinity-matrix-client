@@ -28,15 +28,15 @@ import {
   lucideX,
 } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
+import { InvitesService } from '@trinity/data-access-invites';
+import { type UserProfile } from '@trinity/data-access-profile';
 import {
-  InvitesService,
   RoomsService,
   SpacesService,
-  initialOf,
   type RoomSummary,
   type SpaceChildRoom,
-  type UserProfile,
-} from '@trinity/core';
+} from '@trinity/data-access-rooms';
+import { initialOf } from '@trinity/util-matrix';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 
 /** Discord channel sidebar: space header, invites, room list, and the user panel. */

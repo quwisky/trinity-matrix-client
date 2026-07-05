@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, type ComponentInput } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
-import { ThemeService } from '@trinity/core';
+import { ThemeService } from '@trinity/platform-native';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { MessageComposerComponent } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';

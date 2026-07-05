@@ -22,12 +22,12 @@ import {
   HlmRadioIndicator,
 } from '@trinity/helm/radio-group';
 import { AvatarComponent, PageHeaderComponent, runWithBusy } from '@trinity/ui';
+import { ProfileService } from '@trinity/data-access-profile';
 import {
   FeatureFlagsService,
-  ProfileService,
   ThemeService,
   type ThemePreference,
-} from '@trinity/core';
+} from '@trinity/platform-native';
 import { DevicesSectionComponent } from '../devices/devices-section.component';
 
 /**

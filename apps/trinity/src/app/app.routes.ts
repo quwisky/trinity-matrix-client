@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard } from '@trinity/core';
+import { authGuard } from '@trinity/data-access-auth';
 import { environment } from '../environments/environment';
 
 export const routes: Routes = [

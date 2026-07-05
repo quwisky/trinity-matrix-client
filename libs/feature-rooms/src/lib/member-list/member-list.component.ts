@@ -7,7 +7,7 @@ import {
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideX } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
-import type { MemberSummary } from '@trinity/core';
+import { type MemberSummary } from '@trinity/data-access-rooms';
 
 /** Discord member list (right column): joined members of the active room. */
 @Component({

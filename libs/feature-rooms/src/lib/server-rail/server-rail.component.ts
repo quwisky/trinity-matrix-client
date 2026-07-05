@@ -7,7 +7,7 @@ import {
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideDoorOpen, lucideHouse } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
-import type { SpaceSummary } from '@trinity/core';
+import { type SpaceSummary } from '@trinity/data-access-rooms';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 
 /** Unread notification counts driving the rail's badges. */

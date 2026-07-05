@@ -10,7 +10,7 @@ import { render } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DevicesService, type DeviceInfo } from '@trinity/core';
+import { DevicesService, type DeviceInfo } from '@trinity/data-access-crypto';
 import { DevicesSectionComponent } from './devices-section.component';
 
 @Component({ selector: 'trn-stub-verify', template: '' })

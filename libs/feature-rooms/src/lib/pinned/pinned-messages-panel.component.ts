@@ -5,7 +5,7 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucidePinOff, lucideX } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { PinnedMessagesService } from '@trinity/core';
+import { PinnedMessagesService } from '@trinity/data-access-pinned';
 
 /**
  * Pinned-messages panel: every `m.room.pinned_events` entry for the active room, in

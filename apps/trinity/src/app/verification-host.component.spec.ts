@@ -2,10 +2,10 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@testing-library/angular';
 import {
-  MatrixClientService,
   VerificationService,
   type VerificationView,
-} from '@trinity/core';
+} from '@trinity/data-access-crypto';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { TrnDialogService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';

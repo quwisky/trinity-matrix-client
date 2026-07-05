@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
 import { render, screen } from '@testing-library/angular';
-import { CryptoService } from '@trinity/core';
+import { CryptoService } from '@trinity/data-access-crypto';
 import { MockProvider } from 'ng-mocks';
 import { Observable, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';

@@ -2,11 +2,9 @@ import { render } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import { of } from 'rxjs';
-import {
-  MediaService,
-  type MediaPayload,
-  type ThreadSummary,
-} from '@trinity/core';
+import { MediaService } from '@trinity/data-access-media';
+import { type ThreadSummary } from '@trinity/data-access-timeline';
+import { type MediaPayload } from '@trinity/util-matrix';
 import { FileSaveService } from '../media-save/file-save.service';
 import {
   MessageRowComponent,

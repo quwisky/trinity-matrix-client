@@ -42,7 +42,6 @@ export default defineConfig([
               sourceTag: 'type:app',
               onlyDependOnLibsWithTags: [
                 'type:feature',
-                'type:core',
                 'type:ui',
                 'type:data-access',
                 'type:util',
@@ -52,17 +51,7 @@ export default defineConfig([
             {
               sourceTag: 'type:feature',
               onlyDependOnLibsWithTags: [
-                'type:core',
                 'type:ui',
-                'type:data-access',
-                'type:util',
-                'type:platform',
-              ],
-            },
-            {
-              sourceTag: 'type:core',
-              onlyDependOnLibsWithTags: [
-                'type:core',
                 'type:data-access',
                 'type:util',
                 'type:platform',

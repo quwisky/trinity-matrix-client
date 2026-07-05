@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { AuthService } from '@trinity/core';
+import { AuthService } from '@trinity/data-access-auth';
 import { render } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';

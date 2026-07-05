@@ -8,7 +8,7 @@ import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideLock } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
-import { CryptoService } from '@trinity/core';
+import { CryptoService } from '@trinity/data-access-crypto';
 import { BannerComponent, EncryptionDialogService } from '@trinity/ui';
 
 /** Which encryption flow a banner action triggers. */

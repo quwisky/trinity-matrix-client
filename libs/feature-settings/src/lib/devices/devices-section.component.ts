@@ -17,7 +17,7 @@ import { HlmBadge } from '@trinity/helm/badge';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
-import { DevicesService, type DeviceInfo } from '@trinity/core';
+import { DevicesService, type DeviceInfo } from '@trinity/data-access-crypto';
 
 /**
  * Device-management section of the Settings page: lists the user's sessions with

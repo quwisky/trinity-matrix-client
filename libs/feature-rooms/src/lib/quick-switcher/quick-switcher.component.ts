@@ -22,7 +22,7 @@ import {
   type SwitcherKind,
   type SwitcherResult,
   type SwitcherSelection,
-} from '@trinity/core';
+} from '@trinity/data-access-search';
 import { AvatarComponent } from '@trinity/ui';
 import { DialogRef } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';

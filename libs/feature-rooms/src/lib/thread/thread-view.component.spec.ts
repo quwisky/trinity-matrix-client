@@ -1,7 +1,8 @@
 import { signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import { render } from '@testing-library/angular';
-import { ThreadsService, type MessageView } from '@trinity/core';
+import { ThreadsService } from '@trinity/data-access-timeline';
+import { type MessageView } from '@trinity/util-matrix';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';

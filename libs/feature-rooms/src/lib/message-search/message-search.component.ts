@@ -15,10 +15,10 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideLock, lucideServer } from '@ng-icons/lucide';
 import {
   SearchService,
-  TimelineService,
   type LoadedMessageSearch,
   type MessageHit,
-} from '@trinity/core';
+} from '@trinity/data-access-search';
+import { TimelineService } from '@trinity/data-access-timeline';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';

@@ -30,7 +30,7 @@ import {
   type EmojiData,
   type EmojiEvent,
 } from '@ctrl/ngx-emoji-mart/ngx-emoji';
-import { ThemeService } from '@trinity/core';
+import { ThemeService } from '@trinity/platform-native';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 
 const MAX_HEIGHT_PX = 200;

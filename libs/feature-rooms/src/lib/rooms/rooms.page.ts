@@ -31,25 +31,26 @@ import {
   TrnDialogService,
   TrnToastService,
 } from '@trinity/helm/overlay';
+import { AuthService } from '@trinity/data-access-auth';
+import { CryptoService } from '@trinity/data-access-crypto';
+import { InvitesService } from '@trinity/data-access-invites';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MediaService } from '@trinity/data-access-media';
 import {
-  AuthService,
-  CryptoService,
-  InvitesService,
-  MatrixClientService,
-  MediaService,
   NotificationService,
-  FeatureFlagsService,
-  PinnedMessagesService,
   PushService,
+} from '@trinity/data-access-notifications';
+import { PinnedMessagesService } from '@trinity/data-access-pinned';
+import { type UserProfile } from '@trinity/data-access-profile';
+import {
   RoomsService,
   SpacesService,
-  ThreadsService,
-  TimelineService,
   type RoomSummary,
   type SpaceChildRoom,
-  type SwitcherSelection,
-  type UserProfile,
-} from '@trinity/core';
+} from '@trinity/data-access-rooms';
+import { type SwitcherSelection } from '@trinity/data-access-search';
+import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
+import { FeatureFlagsService } from '@trinity/platform-native';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';

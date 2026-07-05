@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { CryptoService, type CryptoStatus } from '@trinity/core';
+import { CryptoService, type CryptoStatus } from '@trinity/data-access-crypto';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   EncryptionDialogService,

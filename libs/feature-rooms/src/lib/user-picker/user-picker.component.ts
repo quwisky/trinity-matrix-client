@@ -18,9 +18,9 @@ import {
 } from 'rxjs';
 import {
   RoomsService,
-  isValidUserId,
   type UserSearchResult,
-} from '@trinity/core';
+} from '@trinity/data-access-rooms';
+import { isValidUserId } from '@trinity/util-matrix';
 import { AvatarComponent } from '@trinity/ui';
 import { DialogRef } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';

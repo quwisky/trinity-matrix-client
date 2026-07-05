@@ -11,11 +11,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/helm/overlay';
-import {
-  isEditableMessage,
-  type MessageView,
-  type ThreadSummary,
-} from '@trinity/core';
+import { type ThreadSummary } from '@trinity/data-access-timeline';
+import { isEditableMessage, type MessageView } from '@trinity/util-matrix';
 import {
   type MessageRow,
   type MessageRowAction,

@@ -1,5 +1,8 @@
 import { DialogRef } from '@angular/cdk/dialog';
-import { SearchService, type SwitcherResult } from '@trinity/core';
+import {
+  SearchService,
+  type SwitcherResult,
+} from '@trinity/data-access-search';
 import { render } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
