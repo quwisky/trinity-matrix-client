@@ -21,16 +21,9 @@ export default defineConfig(() => ({
     // feature-shell lib, so a bare `nx test trinity` legitimately finds none.
     passWithNoTests: true,
     reporters: ['default'],
-    // Ionic ships ESM inside a CommonJS-typed package; inline it so Vitest
-    // transforms it instead of trying to require() the ES modules.
-    server: {
-      deps: {
-        inline: [/@ionic/, /ionicons/, /@stencil/],
-      },
-    },
     coverage: {
       reportsDirectory: '../../coverage/apps/trinity',
-      provider: 'v8',
+      provider: 'v8' as const,
     },
   },
 }));
