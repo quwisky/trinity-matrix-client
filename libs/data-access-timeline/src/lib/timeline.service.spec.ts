@@ -108,13 +108,12 @@ function fakeRelations(
   return { getSortedAnnotationsByKey: () => annotations };
 }
 
-function setup(
+function fakeRoom(
   events: ReturnType<typeof fakeEvent>[],
-  sent: unknown[][] = [],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   encrypted = false,
 ) {
-  const room = {
+  return {
     roomId: '!r:hs',
     getLiveTimeline: () => ({
       getEvents: () => events,
@@ -139,7 +138,11 @@ function setup(
     on: () => {},
     off: () => {},
   };
-  const client = {
+}
+
+/** A fake matrix-js-sdk client that records everything it is asked to send. */
+function fakeClient(room: ReturnType<typeof fakeRoom>, sent: unknown[][]) {
+  return {
     baseUrl: 'https://hs',
     getRoom: () => room,
     getUserId: () => '@me:hs',
@@ -168,6 +171,16 @@ function setup(
       return Promise.resolve({});
     },
   };
+}
+
+function setup(
+  events: ReturnType<typeof fakeEvent>[],
+  sent: unknown[][] = [],
+  reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
+  encrypted = false,
+) {
+  const room = fakeRoom(events, reactions, encrypted);
+  const client = fakeClient(room, sent);
 
   TestBed.configureTestingModule({
     providers: [TimelineService, matrixProvider(client), mediaProvider()],
@@ -1056,6 +1069,53 @@ describe('TimelineService', () => {
       );
 
       expect(sent).toHaveLength(0);
+    });
+
+    it('sends through the active account, re-resolved on every send', async () => {
+      // Multi-account: `MatrixClientService.instance` resolves whichever account is
+      // active at access time. sendMedia must therefore read it per send and never
+      // cache a client — otherwise a GIF (or any attachment) chosen after the user
+      // switches accounts would upload and post under the *previous* account.
+      const gif = () =>
+        new File([new Uint8Array([1, 2, 3, 4])], 'trinity.gif', {
+          type: 'image/gif',
+        });
+      const sentA: unknown[][] = [];
+      const sentB: unknown[][] = [];
+      const room = fakeRoom([]);
+      const active = { client: fakeClient(room, sentA) as unknown };
+      const clientB = fakeClient(room, sentB);
+
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          {
+            provide: MatrixClientService,
+            useValue: {
+              isInitialized: true,
+              get instance() {
+                return active.client;
+              },
+            } as unknown as MatrixClientService,
+          },
+          mediaProvider(),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+
+      await firstValueFrom(svc.sendMedia(gif(), ''));
+      expect(sentA).toHaveLength(1);
+      expect(sentB).toHaveLength(0);
+
+      active.client = clientB; // the user picks another account in the switcher
+
+      await firstValueFrom(svc.sendMedia(gif(), ''));
+      expect(sentB).toHaveLength(1); // landed on the newly-active account
+      expect(sentA).toHaveLength(1); // and not a second time on the previous one
+      expect((sentB[0][1] as Record<string, unknown>)['msgtype']).toBe(
+        'm.image',
+      );
     });
   });
 });

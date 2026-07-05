@@ -1,11 +1,17 @@
 import { signal, type Provider } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { throwError } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, type ComponentInput } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import { ThemeService } from '@trinity/platform-native';
+import {
+  GifService,
+  GifSettingsService,
+  type GifProviderId,
+  type GifResult,
+} from '@trinity/data-access-gif';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { MessageComposerComponent } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
@@ -778,5 +784,115 @@ describe('MessageComposerComponent', () => {
     // "happy" is only a search keyword, never a shortcode → stays literal.
     type(fixture, 'x :happy:');
     expect(cmp.text()).toBe('x :happy:');
+  });
+
+  // --- GIF picker -----------------------------------------------------------
+
+  const gifResult: GifResult = {
+    id: 'g1',
+    description: 'Happy Cat',
+    previewUrl: 'https://x/tiny',
+    previewWidth: 1,
+    previewHeight: 1,
+    url: 'https://x/gif',
+    width: 2,
+    height: 2,
+  };
+
+  /** Providers that enable the GIF affordance and stub the download to `file`. */
+  function gifProviders(
+    download: () => ReturnType<GifService['download']> = () =>
+      of(
+        new File([new Uint8Array([1])], 'happy-cat.gif', { type: 'image/gif' }),
+      ),
+  ): Provider[] {
+    return [
+      MockProvider(GifSettingsService, {
+        provider: signal<GifProviderId>('tenor').asReadonly(),
+        apiKey: signal('KEY').asReadonly(),
+        configured: signal(true).asReadonly(),
+      }),
+      MockProvider(GifService, { download }),
+    ];
+  }
+
+  it('hides the GIF button when no GIF provider is configured', async () => {
+    const { container } = await renderComposer();
+    expect(container.querySelector('[data-testid=composer-gif]')).toBeNull();
+  });
+
+  it('shows the GIF button when a provider + key are configured', async () => {
+    const { container } = await renderComposer({}, gifProviders());
+    expect(
+      container.querySelector('[data-testid=composer-gif]'),
+    ).not.toBeNull();
+  });
+
+  it('opening the GIF picker closes the emoji picker and vice versa', async () => {
+    const { fixture } = await renderComposer({}, gifProviders());
+    const cmp = fixture.componentInstance;
+
+    cmp.pickerOpen.set(true);
+    cmp.toggleGifPicker();
+    expect(cmp.gifPickerOpen()).toBe(true);
+    expect(cmp.pickerOpen()).toBe(false);
+
+    cmp.toggleEmojiPicker();
+    expect(cmp.pickerOpen()).toBe(true);
+    expect(cmp.gifPickerOpen()).toBe(false);
+  });
+
+  it('downloads a chosen GIF and sends it as media, closing the picker', async () => {
+    const download = vi.fn(() =>
+      of(
+        new File([new Uint8Array([1])], 'happy-cat.gif', { type: 'image/gif' }),
+      ),
+    );
+    const { fixture } = await renderComposer({}, gifProviders(download));
+    const cmp = fixture.componentInstance;
+    cmp.gifPickerOpen.set(true);
+
+    let emitted: { file: File; caption: string } | undefined;
+    cmp.submitMedia.subscribe((e) => (emitted = e));
+
+    cmp.onGifSelect(gifResult);
+
+    expect(download).toHaveBeenCalledWith(gifResult);
+    expect(emitted?.file.type).toBe('image/gif');
+    expect(emitted?.caption).toBe('');
+    expect(cmp.gifPickerOpen()).toBe(false);
+    expect(cmp.gifDownloading()).toBe(false);
+  });
+
+  it('ends an active reply when a GIF is sent (media carries no reply relation)', async () => {
+    const { fixture } = await renderComposer(
+      { replyingTo: 'Alice' },
+      gifProviders(),
+    );
+    const cmp = fixture.componentInstance;
+
+    let cancelled = false;
+    cmp.cancelReply.subscribe(() => (cancelled = true));
+    cmp.onGifSelect(gifResult);
+
+    expect(cancelled).toBe(true);
+  });
+
+  it('toasts when a GIF download fails', async () => {
+    const { fixture } = await renderComposer(
+      {},
+      gifProviders(() => throwError(() => new Error('nope'))),
+    );
+    const cmp = fixture.componentInstance;
+
+    cmp.onGifSelect(gifResult);
+    await Promise.resolve();
+
+    const toast = TestBed.inject(TrnToastService);
+    expect(toast.show).toHaveBeenCalledWith(
+      expect.stringContaining('Could not load'),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+    expect(cmp.gifDownloading()).toBe(false);
   });
 });

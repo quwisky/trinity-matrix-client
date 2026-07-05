@@ -65,6 +65,12 @@
       (emojiSelect)="onPickerSelect($event)"
     />
   }
+  @if (gifPickerOpen()) {
+    <trn-gif-picker
+      class="composer__gif-picker"
+      (gifSelect)="onGifSelect($event)"
+    />
+  }
   @if (emojiOpen()) {
     <ul
       id="emoji-suggestions"
@@ -144,13 +150,27 @@
     (blur)="onBlur()"
     (paste)="onPaste($event)"
   ></textarea>
+  @if (gifEnabled()) {
+    <button
+      type="button"
+      class="composer__gif"
+      hlmTooltip="GIF"
+      aria-label="Send a GIF"
+      data-testid="composer-gif"
+      [disabled]="uploadProgress() !== null || editing() || gifDownloading()"
+      [attr.aria-expanded]="gifPickerOpen()"
+      (click)="toggleGifPicker()"
+    >
+      <ng-icon name="lucideImagePlay" aria-hidden="true" />
+    </button>
+  }
   <button
     type="button"
     class="composer__emoji"
     hlmTooltip="Emoji"
     aria-label="Insert emoji"
     [attr.aria-expanded]="pickerOpen()"
-    (click)="pickerOpen.set(!pickerOpen())"
+    (click)="toggleEmojiPicker()"
   >
     <ng-icon name="lucideSmile" aria-hidden="true" />
   </button>

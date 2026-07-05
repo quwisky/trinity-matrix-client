@@ -1,0 +1,85 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmLabel } from '@trinity/helm/label';
+import {
+  HlmRadio,
+  HlmRadioGroup,
+  HlmRadioIndicator,
+} from '@trinity/helm/radio-group';
+import {
+  GIF_PROVIDERS,
+  GifSettingsService,
+  isGifProviderId,
+  type GifProviderId,
+} from '@trinity/data-access-gif';
+
+/**
+ * GIF-picker settings: choose a provider (Tenor / GIPHY) and paste its API key.
+ * Until a key is saved the composer hides its GIF button. The key is low-
+ * sensitivity third-party config, persisted in Preferences by GifSettingsService.
+ */
+@Component({
+  selector: 'trn-gifs-section',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './gifs-section.component.html',
+  styleUrl: './gifs-section.component.scss',
+  imports: [
+    HlmButton,
+    HlmInput,
+    HlmLabel,
+    HlmRadioGroup,
+    HlmRadio,
+    HlmRadioIndicator,
+  ],
+})
+export class GifsSectionComponent {
+  private readonly settings = inject(GifSettingsService);
+
+  readonly providers = GIF_PROVIDERS;
+  readonly configured = this.settings.configured;
+
+  /** Local draft of the provider choice (committed on Save). */
+  readonly provider = signal<GifProviderId>(this.settings.provider());
+  /** Local draft of the API key (committed on Save). */
+  readonly apiKeyDraft = signal(this.settings.apiKey());
+
+  /** Metadata (label + key-help link) for the currently selected provider. */
+  readonly selected = computed(
+    () =>
+      this.providers.find((p) => p.id === this.provider()) ?? this.providers[0],
+  );
+
+  /** The form has a key and differs from what's saved — enables Save. */
+  readonly dirty = computed(
+    () =>
+      this.apiKeyDraft().trim().length > 0 &&
+      (this.provider() !== this.settings.provider() ||
+        this.apiKeyDraft().trim() !== this.settings.apiKey()),
+  );
+
+  onProviderChange(value: string): void {
+    if (isGifProviderId(value)) {
+      this.provider.set(value);
+    }
+  }
+
+  onKeyInput(event: Event): void {
+    this.apiKeyDraft.set((event.target as HTMLInputElement).value);
+  }
+
+  save(): void {
+    this.settings.save(this.provider(), this.apiKeyDraft());
+  }
+
+  clear(): void {
+    this.settings.clear();
+    this.apiKeyDraft.set('');
+  }
+}

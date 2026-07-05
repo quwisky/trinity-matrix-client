@@ -28,6 +28,11 @@ All notable changes to this project are documented here. The format is based on
   data (each account's message-sync and encryption stores) persistent so it isn't
   evicted under storage pressure — which matters more as accounts add up, since an
   evicted encryption store would force that account to re-verify.
+- **Send GIFs from the composer.** A new GIF button (beside the emoji picker) opens a
+  searchable GIF grid — trending on open, live search as you type — and sends the chosen
+  GIF as an image message in rooms and threads (encrypted rooms included). Search is
+  powered by **Tenor** or **GIPHY**: pick a provider and paste a free API key in
+  Settings → GIFs. The GIF button stays hidden until a key is configured.
 
 ### Changed
 
@@ -50,6 +55,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Clearing your GIF API key no longer forgets which GIF provider you had chosen. Settings
+  → GIFs stored the provider and the key together, so **Clear** discarded both and the next
+  time you opened the app the provider had silently reverted to Tenor. GIPHY users now stay
+  on GIPHY after clearing their key.
 - Signing an account out and then logging back in failed with a crypto error ("the account
   in the store doesn't match the account in the constructor"), leaving that account unable to
   sign back in. Sign-out wiped the account's message cache but deleted the wrong encryption
