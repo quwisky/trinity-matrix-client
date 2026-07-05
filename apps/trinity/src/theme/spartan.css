@@ -7,7 +7,7 @@
  * the raw <button> rows rely on) — it used to be omitted to avoid fighting Ionic.
  *
  * `--primary` is Trinity blurple (#5865f2 ≈ hsl(235 86% 65%)). `@theme inline` maps
- * the tokens to Tailwind color utilities *by reference*, so flipping `.ion-palette-dark`
+ * the tokens to Tailwind color utilities *by reference*, so flipping `.dark`
  * (the class ThemeService toggles on <html>) re-themes at runtime.
  */
 @layer theme, base, components, utilities;
@@ -21,7 +21,7 @@
 @source '../../../../apps';
 
 /* Dark mode keyed to the class ThemeService toggles on <html>. */
-@custom-variant dark (&:where(.ion-palette-dark, .ion-palette-dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   --background: hsl(0deg 0% 100%);
@@ -50,7 +50,7 @@
   --radius: 0.5rem;
 }
 
-.ion-palette-dark {
+.dark {
   --background: hsl(240deg 10% 3.9%);
   --foreground: hsl(0deg 0% 98%);
   --card: hsl(240deg 10% 3.9%);

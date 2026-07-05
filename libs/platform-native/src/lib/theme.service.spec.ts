@@ -70,7 +70,7 @@ describe('ThemeService', () => {
 
   afterEach(() => {
     window.matchMedia = origMatchMedia;
-    document.documentElement.classList.remove('ion-palette-dark');
+    document.documentElement.classList.remove('dark');
   });
 
   function service(): ThemeService {
@@ -78,9 +78,8 @@ describe('ThemeService', () => {
     return TestBed.inject(ThemeService);
   }
 
-  // The dark palette is the `.ion-palette-dark` class on <html> (light is default).
-  const isDark = () =>
-    document.documentElement.classList.contains('ion-palette-dark');
+  // The dark palette is the `.dark` class on <html> (light is default).
+  const isDark = () => document.documentElement.classList.contains('dark');
 
   it('defaults to following the system, resolving light when the OS is light', async () => {
     const svc = service();

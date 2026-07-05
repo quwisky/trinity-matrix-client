@@ -14,7 +14,7 @@ const THEME_KEY = 'trinity.theme';
  * is Ionic's own dark-palette class (global.scss imports dark.class.css), so toggling
  * it switches both the Trinity vars and Ionic's surface tokens together.
  */
-const DARK_CLASS = 'ion-palette-dark';
+const DARK_CLASS = 'dark';
 
 /**
  * Owns the app's light/dark appearance: persists the user's preference, resolves

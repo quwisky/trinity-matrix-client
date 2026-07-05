@@ -56,7 +56,7 @@ export interface MediaBubbleItem {
         max-height: 20rem;
         border-radius: 0.5rem;
         overflow: hidden;
-        background: var(--ion-color-step-100, #f1f1f3);
+        background: #f1f1f3;
       }
       .media__img {
         display: block;
@@ -69,7 +69,7 @@ export interface MediaBubbleItem {
         width: 100%;
         height: 100%;
         min-height: 8rem;
-        background: var(--ion-color-step-100, #f1f1f3);
+        background: #f1f1f3;
       }
       .media--video,
       .media--audio {
@@ -86,12 +86,12 @@ export interface MediaBubbleItem {
         gap: 0.625rem;
         padding: 0.625rem 0.75rem;
         border-radius: 0.5rem;
-        background: var(--ion-color-step-100, #f1f1f3);
+        background: #f1f1f3;
         text-align: left;
         width: 100%;
       }
       .media--error {
-        background: var(--ion-color-danger-tint, #f6d7d7);
+        background: #f6d7d7;
       }
       .media__icon {
         flex: 0 0 auto;
@@ -101,7 +101,7 @@ export interface MediaBubbleItem {
         align-items: center;
         justify-content: center;
         border-radius: 0.375rem;
-        background: var(--ion-color-step-200, #e3e3e6);
+        background: #e3e3e6;
         font-weight: 700;
       }
       .media__meta {
