@@ -8,6 +8,7 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideDoorOpen, lucideHouse } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import type { SpaceSummary } from '@trinity/core';
+import { unreadBadgeLabel } from '../shared/unread-badge';
 
 /** Unread notification counts driving the rail's badges. */
 export interface RailUnread {
@@ -139,7 +140,5 @@ export class ServerRailComponent {
   readonly showRooms = output<void>();
 
   /** Cap an unread count for a pill badge, Discord-style ("99+"). */
-  badgeLabel(count: number): string {
-    return count > 99 ? '99+' : String(count);
-  }
+  readonly badgeLabel = unreadBadgeLabel;
 }

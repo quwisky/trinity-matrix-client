@@ -32,10 +32,12 @@ import {
   InvitesService,
   RoomsService,
   SpacesService,
+  initialOf,
   type RoomSummary,
   type SpaceChildRoom,
   type UserProfile,
 } from '@trinity/core';
+import { unreadBadgeLabel } from '../shared/unread-badge';
 
 /** Discord channel sidebar: space header, invites, room list, and the user panel. */
 @Component({
@@ -428,10 +430,7 @@ export class ChannelSidebarComponent {
     avatarMxc: null,
   });
   /** First letter of the display name, for the user-panel avatar fallback. */
-  readonly userInitial = computed(() => {
-    const name = this.user().displayName.replace(/^[@#!]+/, '');
-    return (name[0] ?? '?').toUpperCase();
-  });
+  readonly userInitial = computed(() => initialOf(this.user().displayName));
   readonly selectRoom = output<string>();
   /** Header "+" on Home — raise the new-room / new-DM chooser. */
   readonly newChat = output<void>();
@@ -457,11 +456,9 @@ export class ChannelSidebarComponent {
   readonly logout = output<void>();
 
   /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
-  badgeLabel(count: number): string {
-    return count > 99 ? '99+' : String(count);
-  }
+  readonly badgeLabel = unreadBadgeLabel;
 
-  /** Toggle a room's `m.favourite` tag directly (a pure, self-contained write). */
+  /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service. */
   toggleFavourite(room: RoomSummary): void {
     this.roomsSvc.setFavourite(room.id, !room.favourite);
   }

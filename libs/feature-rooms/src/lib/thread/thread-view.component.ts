@@ -36,6 +36,16 @@ import { MessageComposerComponent } from '../message-composer/message-composer.c
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
 
+/** Fallback caps for a row not present in the memoized map (defensive; unreached). */
+const THREAD_ROW_CAPS: MessageRowCaps = {
+  editable: false,
+  deletable: false,
+  canPin: false,
+  pinned: false,
+  canThread: false,
+  readOnly: false,
+};
+
 /**
  * Thread view: the root message plus its replies, with an in-thread composer.
  * Reuses the shared {@link MessageRowComponent} so a thread renders exactly like
@@ -237,16 +247,29 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Per-row caps keyed by event id, memoized so the reference is stable across
+   * change-detection ticks that don't change the thread's messages — a fresh object
+   * per CD would defeat the OnPush {@link MessageRowComponent} and re-render every row.
+   */
+  private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
+    const caps = new Map<string, MessageRowCaps>();
+    for (const row of this.rows()) {
+      caps.set(row.id, {
+        editable: this.isEditable(row),
+        deletable: row.isOwn && !row.status,
+        canPin: false,
+        pinned: false,
+        canThread: false,
+        readOnly: false,
+      });
+    }
+    return caps;
+  });
+
   /** Per-row capabilities/state for a thread row (no pinning or nested threads). */
   rowCaps(row: MessageRow): MessageRowCaps {
-    return {
-      editable: this.isEditable(row),
-      deletable: row.isOwn && !row.status,
-      canPin: false,
-      pinned: false,
-      canThread: false,
-      readOnly: false,
-    };
+    return this.rowCapsById().get(row.id) ?? THREAD_ROW_CAPS;
   }
 
   /** Route a single row action to its thread handler. */
@@ -277,6 +300,13 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
       case 'pin':
       case 'thread':
         break;
+      default: {
+        // Exhaustiveness guard: a new MessageRowAction variant without a case here
+        // becomes a compile error rather than a silently-dropped action.
+        const unhandled: never = action;
+        void unhandled;
+        break;
+      }
     }
   }
 

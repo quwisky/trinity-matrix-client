@@ -22,6 +22,16 @@ import {
   type MessageRowCaps,
 } from '../message-row/message-row.component';
 
+/** Fallback caps for a row not present in the memoized map (defensive; unreached). */
+const DEFAULT_ROW_CAPS: MessageRowCaps = {
+  editable: false,
+  deletable: false,
+  canPin: false,
+  pinned: false,
+  canThread: true,
+  readOnly: false,
+};
+
 /**
  * Shared domain logic for the room timeline, independent of scroll strategy: the
  * inputs/outputs, the edit/reply state + action handlers, and the Discord-style row
@@ -212,16 +222,32 @@ export abstract class MessageListBase {
   /** Scroll a message into view (each scroll strategy implements it differently). */
   abstract jumpTo(messageId: string): void;
 
+  /**
+   * Per-row caps keyed by event id, memoized so the reference is stable across
+   * change-detection ticks that don't touch pinning/permissions/the message set.
+   * `rowCaps()` is called from an `@for` on every CD; returning a fresh object each
+   * time would defeat the OnPush `MessageRowComponent` and re-render every row.
+   */
+  private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
+    const canPin = this.canPin();
+    const pinnedIds = this.pinnedIds();
+    const caps = new Map<string, MessageRowCaps>();
+    for (const message of this.messages()) {
+      caps.set(message.id, {
+        editable: this.isEditable(message),
+        deletable: message.isOwn && !message.status,
+        canPin,
+        pinned: pinnedIds.includes(message.id),
+        canThread: true,
+        readOnly: false,
+      });
+    }
+    return caps;
+  });
+
   /** Per-row capabilities/state for {@link MessageRowComponent} in the main timeline. */
   rowCaps(row: MessageRow): MessageRowCaps {
-    return {
-      editable: this.isEditable(row),
-      deletable: row.isOwn && !row.status,
-      canPin: this.canPin(),
-      pinned: this.isPinned(row.id),
-      canThread: true,
-      readOnly: false,
-    };
+    return this.rowCapsById().get(row.id) ?? DEFAULT_ROW_CAPS;
   }
 
   /** Route a single row action to its handler / upward output. */
@@ -254,6 +280,13 @@ export abstract class MessageListBase {
       case 'thread':
         this.openThread.emit(row.id);
         break;
+      default: {
+        // Exhaustiveness guard: adding a MessageRowAction variant without a case
+        // here becomes a compile error rather than a silently-dropped action.
+        const unhandled: never = action;
+        void unhandled;
+        break;
+      }
     }
   }
 
