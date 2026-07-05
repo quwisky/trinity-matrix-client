@@ -1,6 +1,17 @@
+import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
-import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
+import {
+  InvitesService,
+  RoomsService,
+  SpacesService,
+  type PendingInvite,
+  type RoomSummary,
+  type SpaceChildRoom,
+  type UserProfile,
+} from '@trinity/core';
 import { ChannelSidebarComponent } from './channel-sidebar.component';
 
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
@@ -51,9 +62,54 @@ function child(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
   };
 }
 
+/**
+ * Render the sidebar with its injected core services mocked. The space hierarchy
+ * and invites now come from `SpacesService`/`InvitesService` signals (not inputs),
+ * so tests seed and later mutate those signals directly.
+ */
+async function renderSidebar(
+  opts: {
+    inputs?: {
+      rooms?: RoomSummary[];
+      spaceActive?: boolean;
+      activeRoomId?: string | null;
+      user?: UserProfile;
+    };
+    joinableRooms?: SpaceChildRoom[];
+    childSpaces?: SpaceChildRoom[];
+    childrenLoading?: boolean;
+    childrenError?: string | null;
+    invites?: PendingInvite[];
+  } = {},
+) {
+  const signals = {
+    notJoinedRooms: signal<SpaceChildRoom[]>(opts.joinableRooms ?? []),
+    childSpaces: signal<SpaceChildRoom[]>(opts.childSpaces ?? []),
+    childrenLoading: signal(opts.childrenLoading ?? false),
+    childrenError: signal<string | null>(opts.childrenError ?? null),
+    pendingInvites: signal<PendingInvite[]>(opts.invites ?? []),
+  };
+
+  const rendered = await render(ChannelSidebarComponent, {
+    inputs: opts.inputs ?? {},
+    providers: [
+      MockProvider(SpacesService, {
+        notJoinedRooms: signals.notJoinedRooms,
+        childSpaces: signals.childSpaces,
+        childrenLoading: signals.childrenLoading,
+        childrenError: signals.childrenError,
+      }),
+      MockProvider(InvitesService, { pendingInvites: signals.pendingInvites }),
+      MockProvider(RoomsService),
+    ],
+  });
+
+  return { ...rendered, signals, roomsSvc: TestBed.inject(RoomsService) };
+}
+
 describe('ChannelSidebarComponent', () => {
   it('lists rooms and emits selectRoom when one is clicked', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent, {
+    const { fixture, container } = await renderSidebar({
       inputs: { rooms: [room()] },
     });
 
@@ -68,7 +124,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('renders a messenger-style row: avatar, name, and last-message preview', async () => {
-    const { container } = await render(ChannelSidebarComponent, {
+    const { container } = await renderSidebar({
       inputs: { rooms: [room({ name: 'general', lastMessage: 'hey there' })] },
     });
 
@@ -85,7 +141,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('omits the preview line when a room has no last message', async () => {
-    const { container } = await render(ChannelSidebarComponent, {
+    const { container } = await renderSidebar({
       inputs: { rooms: [room({ lastMessage: '' })] },
     });
 
@@ -93,7 +149,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('shows a mention count, a muted unread count, and caps at 99+', async () => {
-    const { container } = await render(ChannelSidebarComponent, {
+    const { container } = await renderSidebar({
       inputs: {
         rooms: [
           room({
@@ -129,14 +185,14 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('caps badgeLabel exactly at the 99/100 boundary', async () => {
-    const { fixture } = await render(ChannelSidebarComponent);
+    const { fixture } = await renderSidebar();
 
     expect(fixture.componentInstance.badgeLabel(99)).toBe('99');
     expect(fixture.componentInstance.badgeLabel(100)).toBe('99+');
   });
 
   it('shows the exact uncapped unread count on a muted badge', async () => {
-    const { container } = await render(ChannelSidebarComponent, {
+    const { container } = await renderSidebar({
       inputs: {
         rooms: [
           room({
@@ -156,7 +212,7 @@ describe('ChannelSidebarComponent', () => {
 
   it('shows only the new-chat affordance on Home (no space actions)', async () => {
     // spaceActive defaults to false
-    const { container } = await render(ChannelSidebarComponent);
+    const { container } = await renderSidebar();
 
     // Space-only actions are hidden on Home; the new-room/DM "+" is present.
     expect(
@@ -172,7 +228,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('emits newChat from the Home "+" affordance', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent);
+    const { fixture, container } = await renderSidebar();
 
     let opened = false;
     fixture.componentInstance.newChat.subscribe(() => (opened = true));
@@ -184,7 +240,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('shows the space actions and emits createRoom / inviteToSpace / leaveSpace', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent, {
+    const { fixture, container } = await renderSidebar({
       inputs: { spaceActive: true },
     });
 
@@ -213,16 +269,10 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('renders pending invites and emits accept / decline with the room id', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent, {
-      inputs: {
-        invites: [
-          invite({
-            roomId: '!i:hs',
-            name: 'Invited Room',
-            inviterName: 'Alice',
-          }),
-        ],
-      },
+    const { fixture, container } = await renderSidebar({
+      invites: [
+        invite({ roomId: '!i:hs', name: 'Invited Room', inviterName: 'Alice' }),
+      ],
     });
 
     const invites = container.querySelectorAll<HTMLElement>('.invite');
@@ -243,13 +293,13 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('shows no Invites group when there are none', async () => {
-    const { container } = await render(ChannelSidebarComponent);
+    const { container } = await renderSidebar();
 
     expect(container.querySelector('.invite')).toBeNull();
   });
 
   it('emits logout from the account menu opened via the user bar', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent);
+    const { fixture, container } = await renderSidebar();
 
     let loggedOut = false;
     fixture.componentInstance.logout.subscribe(() => (loggedOut = true));
@@ -269,7 +319,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('emits openSettings from the user-panel settings button', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent);
+    const { fixture, container } = await renderSidebar();
 
     let opened = false;
     fixture.componentInstance.openSettings.subscribe(() => (opened = true));
@@ -279,7 +329,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('emits openSwitcher from the header search button', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent);
+    const { fixture, container } = await renderSidebar();
 
     let opened = false;
     fixture.componentInstance.openSwitcher.subscribe(() => (opened = true));
@@ -291,13 +341,11 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('lists not-yet-joined channels and emits joinRoom with the child', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent, {
-      inputs: {
-        spaceActive: true,
-        joinableRooms: [
-          child({ roomId: '!x:hs', name: 'open-channel', suggested: true }),
-        ],
-      },
+    const { fixture, container } = await renderSidebar({
+      inputs: { spaceActive: true },
+      joinableRooms: [
+        child({ roomId: '!x:hs', name: 'open-channel', suggested: true }),
+      ],
     });
 
     const joinables = container.querySelectorAll<HTMLElement>('.joinable');
@@ -315,24 +363,22 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('offers Open for joined sub-spaces and Join for the rest', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent, {
-      inputs: {
-        spaceActive: true,
-        childSpaces: [
-          child({
-            roomId: '!j:hs',
-            name: 'Joined Sub',
-            isSpace: true,
-            joined: true,
-          }),
-          child({
-            roomId: '!n:hs',
-            name: 'New Sub',
-            isSpace: true,
-            joined: false,
-          }),
-        ],
-      },
+    const { fixture, container } = await renderSidebar({
+      inputs: { spaceActive: true },
+      childSpaces: [
+        child({
+          roomId: '!j:hs',
+          name: 'Joined Sub',
+          isSpace: true,
+          joined: true,
+        }),
+        child({
+          roomId: '!n:hs',
+          name: 'New Sub',
+          isSpace: true,
+          joined: false,
+        }),
+      ],
     });
 
     let opened: string | undefined;
@@ -352,7 +398,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('renders a Favourites header with favourite rows grouped above the rest', async () => {
-    const { container } = await render(ChannelSidebarComponent, {
+    const { container } = await renderSidebar({
       inputs: {
         rooms: [
           room({ id: '!a:hs', name: 'alpha' }),
@@ -375,7 +421,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('omits the Favourites header when no room is favourited', async () => {
-    const { container } = await render(ChannelSidebarComponent, {
+    const { container } = await renderSidebar({
       inputs: {
         rooms: [
           room({ id: '!a:hs', name: 'alpha' }),
@@ -390,15 +436,12 @@ describe('ChannelSidebarComponent', () => {
     expect(categories).not.toContain('Favourites');
   });
 
-  it('emits setFavourite to favourite a non-favourite room via the kebab menu', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent, {
+  it('favourites a non-favourite room via the kebab menu', async () => {
+    const { fixture, container, roomsSvc } = await renderSidebar({
       inputs: {
         rooms: [room({ id: '!a:hs', name: 'general', favourite: false })],
       },
     });
-
-    let emitted: { id: string; favourite: boolean } | undefined;
-    fixture.componentInstance.setFavourite.subscribe((e) => (emitted = e));
 
     const kebab = container.querySelector<HTMLElement>('.channel__menu')!;
     kebab.click(); // open the menu (rendered into the CDK overlay)
@@ -410,18 +453,15 @@ describe('ChannelSidebarComponent', () => {
     expect(favouriteItem?.textContent).toContain('Favourite');
     favouriteItem?.click();
 
-    expect(emitted).toEqual({ id: '!a:hs', favourite: true });
+    expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', true);
   });
 
-  it('emits setFavourite to unfavourite a favourite room via the kebab menu', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent, {
+  it('unfavourites a favourite room via the kebab menu', async () => {
+    const { fixture, container, roomsSvc } = await renderSidebar({
       inputs: {
         rooms: [room({ id: '!a:hs', name: 'general', favourite: true })],
       },
     });
-
-    let emitted: { id: string; favourite: boolean } | undefined;
-    fixture.componentInstance.setFavourite.subscribe((e) => (emitted = e));
 
     const kebab = container.querySelector<HTMLElement>('.channel__menu')!;
     kebab.click();
@@ -433,11 +473,11 @@ describe('ChannelSidebarComponent', () => {
     expect(favouriteItem?.textContent).toContain('Unfavourite');
     favouriteItem?.click();
 
-    expect(emitted).toEqual({ id: '!a:hs', favourite: false });
+    expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', false);
   });
 
   it('emits removeRoom for a joined channel only while a space is active', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent, {
+    const { fixture, container } = await renderSidebar({
       inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
     });
 
@@ -464,13 +504,14 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('shows loading then error states for the space hierarchy', async () => {
-    const { fixture, container } = await render(ChannelSidebarComponent, {
-      inputs: { spaceActive: true, childrenLoading: true },
+    const { fixture, container, signals } = await renderSidebar({
+      inputs: { spaceActive: true },
+      childrenLoading: true,
     });
     expect(container.textContent).toContain('Loading channels');
 
-    fixture.componentRef.setInput('childrenLoading', false);
-    fixture.componentRef.setInput('childrenError', 'nope');
+    signals.childrenLoading.set(false);
+    signals.childrenError.set('nope');
     fixture.detectChanges();
     expect(container.querySelector('.empty--error')).not.toBeNull();
     // No joinable rows render while erroring.

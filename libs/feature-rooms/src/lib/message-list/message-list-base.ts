@@ -16,7 +16,11 @@ import {
   type MessageView,
   type ThreadSummary,
 } from '@trinity/core';
-import { type MessageRow } from '../message-row/message-row.component';
+import {
+  type MessageRow,
+  type MessageRowAction,
+  type MessageRowCaps,
+} from '../message-row/message-row.component';
 
 /**
  * Shared domain logic for the room timeline, independent of scroll strategy: the
@@ -203,6 +207,54 @@ export abstract class MessageListBase {
 
   onCopy(row: MessageRow): void {
     void navigator.clipboard?.writeText(row.body);
+  }
+
+  /** Scroll a message into view (each scroll strategy implements it differently). */
+  abstract jumpTo(messageId: string): void;
+
+  /** Per-row capabilities/state for {@link MessageRowComponent} in the main timeline. */
+  rowCaps(row: MessageRow): MessageRowCaps {
+    return {
+      editable: this.isEditable(row),
+      deletable: row.isOwn && !row.status,
+      canPin: this.canPin(),
+      pinned: this.isPinned(row.id),
+      canThread: true,
+      readOnly: false,
+    };
+  }
+
+  /** Route a single row action to its handler / upward output. */
+  onRowAction(row: MessageRow, action: MessageRowAction): void {
+    switch (action.type) {
+      case 'react':
+        this.react.emit({ id: row.id, key: action.key });
+        break;
+      case 'reply':
+        this.startReply(row);
+        break;
+      case 'copy':
+        this.onCopy(row);
+        break;
+      case 'edit':
+        this.startEdit(row);
+        break;
+      case 'delete':
+        void this.onDelete(row);
+        break;
+      case 'pin':
+        this.togglePin.emit(row.id);
+        break;
+      case 'retry':
+        this.retry.emit(row.id);
+        break;
+      case 'jump':
+        this.jumpTo(action.id);
+        break;
+      case 'thread':
+        this.openThread.emit(row.id);
+        break;
+    }
   }
 
   async onDelete(row: MessageRow): Promise<void> {

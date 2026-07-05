@@ -13,7 +13,7 @@
       type="button"
       class="msg__reply"
       [attr.aria-label]="'Replying to ' + r.replyTo.senderName"
-      (click)="jumpReply.emit(r.replyTo.id)"
+      (click)="action.emit({ type: 'jump', id: r.replyTo.id })"
     >
       <trn-avatar
         class="msg__reply-avatar"
@@ -60,7 +60,7 @@
       @if (r.reactions.length) {
         <trn-message-reactions
           [reactions]="r.reactions"
-          (toggleReaction)="react.emit($event)"
+          (toggleReaction)="action.emit({ type: 'react', key: $event })"
         />
       }
     </div>
@@ -91,7 +91,7 @@
       @if (r.reactions.length) {
         <trn-message-reactions
           [reactions]="r.reactions"
-          (toggleReaction)="react.emit($event)"
+          (toggleReaction)="action.emit({ type: 'react', key: $event })"
         />
       }
     </div>
@@ -102,7 +102,7 @@
       type="button"
       class="msg__thread"
       [attr.aria-label]="threadLabel(thread)"
-      (click)="openThread.emit(r.id)"
+      (click)="action.emit({ type: 'thread' })"
     >
       <ng-icon
         class="msg__thread-icon"
@@ -130,27 +130,17 @@
     </button>
   }
 
-  @if (!readOnly() && r.status === 'failed') {
-    <button class="msg__retry" (click)="retry.emit()">
+  @if (!caps().readOnly && r.status === 'failed') {
+    <button class="msg__retry" (click)="action.emit({ type: 'retry' })">
       Failed to send — retry
     </button>
   }
 
-  @if (!readOnly() && !r.decryptionFailed && r.kind !== 'redacted') {
+  @if (!caps().readOnly && !r.decryptionFailed && r.kind !== 'redacted') {
     <trn-message-toolbar
       class="msg__toolbar"
-      [canEdit]="editable()"
-      [canDelete]="deletable()"
-      [canPin]="canPin()"
-      [pinned]="pinned()"
-      [canThread]="canThread()"
-      (react)="react.emit($event)"
-      (replyMessage)="replyMessage.emit()"
-      (openThread)="openThread.emit(r.id)"
-      (togglePin)="togglePin.emit()"
-      (copyMessage)="copyMessage.emit()"
-      (editMessage)="editMessage.emit()"
-      (deleteMessage)="deleteMessage.emit()"
+      [caps]="toolbarCaps()"
+      (action)="action.emit($event)"
     />
   }
 </div>

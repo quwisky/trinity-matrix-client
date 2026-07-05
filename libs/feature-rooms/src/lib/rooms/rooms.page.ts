@@ -48,12 +48,16 @@ import {
   type RoomSummary,
   type SpaceChildRoom,
   type SwitcherSelection,
+  type UserProfile,
 } from '@trinity/core';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
-import { ServerRailComponent } from '../server-rail/server-rail.component';
+import {
+  ServerRailComponent,
+  type RailUnread,
+} from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
 import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
@@ -240,6 +244,13 @@ export class RoomsPage implements OnInit, OnDestroy {
     return totals;
   });
 
+  /** The rail's unread badges bundled into one object input. */
+  readonly railUnread = computed<RailUnread>(() => ({
+    home: this.homeUnread(),
+    rooms: this.roomsUnread(),
+    perSpace: this.spaceUnread(),
+  }));
+
   readonly activeRoom = computed(() => {
     const id = this.activeRoomId();
     return id ? (this.rooms.rooms().find((r) => r.id === id) ?? null) : null;
@@ -273,10 +284,12 @@ export class RoomsPage implements OnInit, OnDestroy {
     return this.matrix.instance.getUser(uid)?.avatarUrl ?? null;
   });
 
-  readonly userInitial = computed(() => {
-    const name = this.userName().replace(/^[@#!]+/, '');
-    return (name[0] ?? '?').toUpperCase();
-  });
+  /** The signed-in user's profile, bundled for the channel sidebar's user panel. */
+  readonly userProfile = computed<UserProfile>(() => ({
+    userId: this.userId(),
+    displayName: this.userName(),
+    avatarMxc: this.userAvatarMxc(),
+  }));
 
   readonly syncLabel = computed(() => {
     const state = String(this.matrix.syncState() ?? '');
@@ -532,11 +545,6 @@ export class RoomsPage implements OnInit, OnDestroy {
     ) {
       this.applyRemoveFromSpace(spaceId, roomId);
     }
-  }
-
-  /** Sidebar kebab Favourite/Unfavourite: write (or clear) the room's `m.favourite` tag. */
-  onSetFavourite({ id, favourite }: { id: string; favourite: boolean }): void {
-    this.rooms.setFavourite(id, favourite);
   }
 
   private applyRemoveFromSpace(spaceId: string, childId: string): void {

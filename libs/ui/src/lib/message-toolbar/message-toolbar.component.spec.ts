@@ -1,7 +1,21 @@
 import { ComponentFixture } from '@angular/core/testing';
 import { render } from '@testing-library/angular';
 import { describe, expect, it } from 'vitest';
-import { MessageToolbarComponent } from './message-toolbar.component';
+import {
+  MessageToolbarComponent,
+  type MessageAction,
+  type MessageToolbarCaps,
+} from './message-toolbar.component';
+
+/** Build a caps object, overriding only the flags a test cares about. */
+const caps = (over: Partial<MessageToolbarCaps> = {}): MessageToolbarCaps => ({
+  canEdit: false,
+  canDelete: false,
+  canPin: false,
+  pinned: false,
+  canThread: true,
+  ...over,
+});
 
 /**
  * Open the overflow "⋯" menu; its items render into the CDK overlay (document), so
@@ -27,18 +41,18 @@ describe('MessageToolbarComponent', () => {
     const buttons = container.querySelectorAll('.toolbar__btn');
     expect(buttons.length).toBe(4);
 
-    let replied = false;
-    cmp.replyMessage.subscribe(() => (replied = true));
+    let action: MessageAction | undefined;
+    cmp.action.subscribe((a) => (action = a));
     container.querySelector<HTMLButtonElement>('[aria-label="Reply"]')!.click();
-    expect(replied).toBe(true);
+    expect(action).toEqual({ type: 'reply' });
   });
 
   it('offers Copy in the overflow menu by default and emits it', async () => {
     const { fixture, container } = await render(MessageToolbarComponent);
     const cmp = fixture.componentInstance;
 
-    let copied = false;
-    cmp.copyMessage.subscribe(() => (copied = true));
+    let action: MessageAction | undefined;
+    cmp.action.subscribe((a) => (action = a));
 
     openMenu(container, fixture);
     const copy = document.querySelector<HTMLElement>(
@@ -51,20 +65,18 @@ describe('MessageToolbarComponent', () => {
     expect(document.querySelector('[data-testid="msg-pin"]')).toBeNull();
 
     copy?.click();
-    expect(copied).toBe(true);
+    expect(action).toEqual({ type: 'copy' });
     fixture.destroy();
   });
 
   it('reveals Edit and Delete in the menu when permitted and emits on click', async () => {
     const { fixture, container } = await render(MessageToolbarComponent, {
-      inputs: { canEdit: true, canDelete: true },
+      inputs: { caps: caps({ canEdit: true, canDelete: true }) },
     });
 
     const cmp = fixture.componentInstance;
-    let edited = false;
-    let deleted = false;
-    cmp.editMessage.subscribe(() => (edited = true));
-    cmp.deleteMessage.subscribe(() => (deleted = true));
+    const actions: MessageAction[] = [];
+    cmp.action.subscribe((a) => actions.push(a));
 
     // Choosing a menu item closes the menu, so re-open it before the next click.
     openMenu(container, fixture);
@@ -74,14 +86,13 @@ describe('MessageToolbarComponent', () => {
     openMenu(container, fixture);
     document.querySelector<HTMLElement>('[data-testid="msg-delete"]')?.click();
 
-    expect(edited).toBe(true);
-    expect(deleted).toBe(true);
+    expect(actions).toEqual([{ type: 'edit' }, { type: 'delete' }]);
     fixture.destroy();
   });
 
   it('offers Pin only when canPin and toggles its label with pinned', async () => {
     // ATL resets TestBed only between tests, so a single test uses one fixture
-    // and drives the input transitions with setInput (matching the sibling specs).
+    // and drives the caps transitions with setInput (matching the sibling specs).
     const { container, fixture } = await render(MessageToolbarComponent);
     const cmp = fixture.componentInstance;
 
@@ -90,20 +101,20 @@ describe('MessageToolbarComponent', () => {
     expect(document.querySelector('[data-testid="msg-pin"]')).toBeNull();
 
     // canPin → the Pin item appears in the open menu and clicking it emits.
-    fixture.componentRef.setInput('canPin', true);
+    fixture.componentRef.setInput('caps', caps({ canPin: true }));
     fixture.detectChanges();
 
-    let toggled = false;
-    cmp.togglePin.subscribe(() => (toggled = true));
+    let action: MessageAction | undefined;
+    cmp.action.subscribe((a) => (action = a));
 
     const pin = document.querySelector<HTMLElement>('[data-testid="msg-pin"]');
     expect(pin).toBeTruthy();
     expect(pin?.textContent).toContain('Pin message');
     pin?.click(); // activating a menu item closes the dropdown
-    expect(toggled).toBe(true);
+    expect(action).toEqual({ type: 'pin' });
 
     // pinned → the label flips to Unpin (reopen, the click above closed it).
-    fixture.componentRef.setInput('pinned', true);
+    fixture.componentRef.setInput('caps', caps({ canPin: true, pinned: true }));
     fixture.detectChanges();
     openMenu(container, fixture);
     expect(
@@ -116,14 +127,14 @@ describe('MessageToolbarComponent', () => {
     const { fixture, container } = await render(MessageToolbarComponent);
     const cmp = fixture.componentInstance;
 
-    let threaded = false;
-    cmp.openThread.subscribe(() => (threaded = true));
+    let action: MessageAction | undefined;
+    cmp.action.subscribe((a) => (action = a));
     container
       .querySelector<HTMLButtonElement>('[aria-label="Reply in thread"]')!
       .click();
-    expect(threaded).toBe(true);
+    expect(action).toEqual({ type: 'thread' });
 
-    fixture.componentRef.setInput('canThread', false);
+    fixture.componentRef.setInput('caps', caps({ canThread: false }));
     fixture.detectChanges();
     expect(
       container.querySelector('[aria-label="Reply in thread"]'),
@@ -136,8 +147,8 @@ describe('MessageToolbarComponent', () => {
 
     expect(container.querySelector('.toolbar__picker')).toBeNull();
 
-    let reacted = '';
-    cmp.react.subscribe((k) => (reacted = k));
+    let action: MessageAction | undefined;
+    cmp.action.subscribe((a) => (action = a));
     cmp.pickerOpen.set(true);
     fixture.detectChanges();
 
@@ -146,7 +157,7 @@ describe('MessageToolbarComponent', () => {
     expect(emojis.length).toBe(cmp.quickEmojis.length);
     emojis[0].click();
 
-    expect(reacted).toBe(cmp.quickEmojis[0]);
+    expect(action).toEqual({ type: 'react', key: cmp.quickEmojis[0] });
     expect(cmp.pickerOpen()).toBe(false); // closes after picking
   });
 });

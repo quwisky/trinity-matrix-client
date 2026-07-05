@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   output,
 } from '@angular/core';
@@ -27,7 +28,14 @@ import {
   lucideX,
 } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
-import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
+import {
+  InvitesService,
+  RoomsService,
+  SpacesService,
+  type RoomSummary,
+  type SpaceChildRoom,
+  type UserProfile,
+} from '@trinity/core';
 
 /** Discord channel sidebar: space header, invites, room list, and the user panel. */
 @Component({
@@ -266,14 +274,14 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
           data-testid="user-menu-trigger"
         >
           <trn-avatar
-            [mxc]="userAvatarMxc()"
+            [mxc]="user().avatarMxc"
             [initial]="userInitial()"
-            [name]="userName()"
+            [name]="user().displayName"
             [size]="32"
           />
           <div class="userbar__id">
-            <span class="userbar__name">{{ userName() }}</span>
-            <span class="userbar__handle">{{ userId() }}</span>
+            <span class="userbar__name">{{ user().displayName }}</span>
+            <span class="userbar__handle">{{ user().userId }}</span>
           </div>
         </button>
         <button
@@ -338,9 +346,7 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
           <div hlmDropdownMenu>
             <button
               hlmDropdownMenuItem
-              (triggered)="
-                setFavourite.emit({ id: room.id, favourite: !room.favourite })
-              "
+              (triggered)="toggleFavourite(room)"
               data-testid="room-favourite"
             >
               <ng-icon name="lucideStar" />
@@ -364,7 +370,9 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
 
       <ng-template #accountMenu>
         <div hlmDropdownMenu>
-          <div hlmDropdownMenuLabel class="truncate">{{ userName() }}</div>
+          <div hlmDropdownMenuLabel class="truncate">
+            {{ user().displayName }}
+          </div>
           <div hlmDropdownMenuSeparator></div>
           <button
             hlmDropdownMenuItem
@@ -382,6 +390,10 @@ import type { PendingInvite, RoomSummary, SpaceChildRoom } from '@trinity/core';
   styleUrl: './channel-sidebar.component.scss',
 })
 export class ChannelSidebarComponent {
+  private readonly spacesSvc = inject(SpacesService);
+  private readonly invitesSvc = inject(InvitesService);
+  private readonly roomsSvc = inject(RoomsService);
+
   readonly spaceName = input('Home');
   /** Whether a space (not Home) is selected — gates the header space actions. */
   readonly spaceActive = input(false);
@@ -399,20 +411,27 @@ export class ChannelSidebarComponent {
     this.rooms().filter((r) => !r.favourite),
   );
   /** Not-yet-joined channels of the active space (the "More Channels" list). */
-  readonly joinableRooms = input<SpaceChildRoom[]>([]);
+  readonly joinableRooms = this.spacesSvc.notJoinedRooms;
   /** Sub-spaces of the active space (joined → Open, otherwise Join). */
-  readonly childSpaces = input<SpaceChildRoom[]>([]);
+  readonly childSpaces = this.spacesSvc.childSpaces;
   /** Whether the active space's child hierarchy is still loading. */
-  readonly childrenLoading = input(false);
+  readonly childrenLoading = this.spacesSvc.childrenLoading;
   /** Non-null when the active space's child hierarchy failed to load. */
-  readonly childrenError = input<string | null>(null);
+  readonly childrenError = this.spacesSvc.childrenError;
   /** Pending invites surfaced in an "Invites" group above the channels. */
-  readonly invites = input<PendingInvite[]>([]);
+  readonly invites = this.invitesSvc.pendingInvites;
   readonly activeRoomId = input<string | null>(null);
-  readonly userName = input('');
-  readonly userId = input('');
-  readonly userAvatarMxc = input<string | null>(null);
-  readonly userInitial = input('?');
+  /** The signed-in user (name + handle + avatar) for the bottom user panel. */
+  readonly user = input<UserProfile>({
+    userId: '',
+    displayName: '',
+    avatarMxc: null,
+  });
+  /** First letter of the display name, for the user-panel avatar fallback. */
+  readonly userInitial = computed(() => {
+    const name = this.user().displayName.replace(/^[@#!]+/, '');
+    return (name[0] ?? '?').toUpperCase();
+  });
   readonly selectRoom = output<string>();
   /** Header "+" on Home — raise the new-room / new-DM chooser. */
   readonly newChat = output<void>();
@@ -426,8 +445,6 @@ export class ChannelSidebarComponent {
   readonly joinRoom = output<SpaceChildRoom>();
   /** Remove (unlink) a joined channel from the active space, by room id. */
   readonly removeRoom = output<string>();
-  /** Favourite / unfavourite a room (writes the `m.favourite` tag), by room id + target state. */
-  readonly setFavourite = output<{ id: string; favourite: boolean }>();
   /** Open a joined sub-space (select it in the rail), by room id. */
   readonly openChildSpace = output<string>();
   /** Accept / decline a pending invite by room id. */
@@ -442,5 +459,10 @@ export class ChannelSidebarComponent {
   /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
   badgeLabel(count: number): string {
     return count > 99 ? '99+' : String(count);
+  }
+
+  /** Toggle a room's `m.favourite` tag directly (a pure, self-contained write). */
+  toggleFavourite(room: RoomSummary): void {
+    this.roomsSvc.setFavourite(room.id, !room.favourite);
   }
 }

@@ -36,18 +36,18 @@
     class="toolbar__btn"
     hlmTooltip="Reply"
     aria-label="Reply"
-    (click)="replyMessage.emit()"
+    (click)="action.emit({ type: 'reply' })"
   >
     <ng-icon name="lucideReply" aria-hidden="true" />
   </button>
 
-  @if (canThread()) {
+  @if (caps().canThread) {
     <button
       type="button"
       class="toolbar__btn"
       hlmTooltip="Reply in thread"
       aria-label="Reply in thread"
-      (click)="openThread.emit()"
+      (click)="action.emit({ type: 'thread' })"
     >
       <ng-icon name="lucideMessagesSquare" aria-hidden="true" />
     </button>
@@ -68,40 +68,40 @@
 
 <ng-template #moreMenu>
   <div hlmDropdownMenu>
-    @if (canPin()) {
+    @if (caps().canPin) {
       <button
         hlmDropdownMenuItem
-        (triggered)="togglePin.emit()"
+        (triggered)="action.emit({ type: 'pin' })"
         data-testid="msg-pin"
       >
         <ng-icon name="lucidePin" />
-        {{ pinned() ? 'Unpin message' : 'Pin message' }}
+        {{ caps().pinned ? 'Unpin message' : 'Pin message' }}
       </button>
     }
     <button
       hlmDropdownMenuItem
-      (triggered)="copyMessage.emit()"
+      (triggered)="action.emit({ type: 'copy' })"
       data-testid="msg-copy"
     >
       <ng-icon name="lucideCopy" />
       Copy text
     </button>
-    @if (canEdit()) {
+    @if (caps().canEdit) {
       <button
         hlmDropdownMenuItem
-        (triggered)="editMessage.emit()"
+        (triggered)="action.emit({ type: 'edit' })"
         data-testid="msg-edit"
       >
         <ng-icon name="lucidePencil" />
         Edit message
       </button>
     }
-    @if (canDelete()) {
+    @if (caps().canDelete) {
       <div hlmDropdownMenuSeparator></div>
       <button
         hlmDropdownMenuItem
         variant="destructive"
-        (triggered)="deleteMessage.emit()"
+        (triggered)="action.emit({ type: 'delete' })"
         data-testid="msg-delete"
       >
         <ng-icon name="lucideTrash2" />

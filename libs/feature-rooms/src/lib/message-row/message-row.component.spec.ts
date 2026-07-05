@@ -8,7 +8,23 @@ import {
   type ThreadSummary,
 } from '@trinity/core';
 import { FileSaveService } from '../media-save/file-save.service';
-import { MessageRowComponent, type MessageRow } from './message-row.component';
+import {
+  MessageRowComponent,
+  type MessageRow,
+  type MessageRowAction,
+  type MessageRowCaps,
+} from './message-row.component';
+
+/** Build a row caps object, overriding only the flags a test cares about. */
+const caps = (over: Partial<MessageRowCaps> = {}): MessageRowCaps => ({
+  editable: false,
+  deletable: false,
+  canPin: false,
+  pinned: false,
+  canThread: true,
+  readOnly: false,
+  ...over,
+});
 
 function row(overrides: Partial<MessageRow> = {}): MessageRow {
   return {
@@ -71,7 +87,7 @@ describe('MessageRowComponent', () => {
   function renderRow(inputs: {
     row: MessageRow;
     threadSummary?: ThreadSummary | null;
-    readOnly?: boolean;
+    caps?: MessageRowCaps;
   }) {
     return render(MessageRowComponent, {
       inputs,
@@ -133,7 +149,7 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('trn-message-toolbar')).toBeTruthy();
   });
 
-  it('shows a thread indicator and emits openThread with the root id on click', async () => {
+  it('shows a thread indicator and emits a thread action on click', async () => {
     const { fixture, container } = await renderRow({
       row: row(),
       threadSummary: summary({ replyCount: 3 }),
@@ -144,10 +160,11 @@ describe('MessageRowComponent', () => {
     expect(btn?.textContent).toContain('3 replies');
     expect(btn?.textContent).toContain('last reply');
 
-    let opened = '';
-    fixture.componentInstance.openThread.subscribe((id) => (opened = id));
+    // The row raises a type-only thread action; the host supplies the row id.
+    let action: MessageRowAction | undefined;
+    fixture.componentInstance.action.subscribe((a) => (action = a));
     btn?.click();
-    expect(opened).toBe('$1');
+    expect(action).toEqual({ type: 'thread' });
   });
 
   it('uses the singular for a single reply', async () => {
@@ -197,7 +214,7 @@ describe('MessageRowComponent', () => {
   it('hides the toolbar and retry affordance in read-only (thread) mode', async () => {
     const { container } = await renderRow({
       row: row({ status: 'failed' }),
-      readOnly: true,
+      caps: caps({ readOnly: true }),
     });
 
     expect(container.querySelector('trn-message-toolbar')).toBeNull();

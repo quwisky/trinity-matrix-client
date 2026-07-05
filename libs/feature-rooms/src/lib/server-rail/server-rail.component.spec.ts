@@ -3,7 +3,7 @@ import type { SpaceSummary } from '@trinity/core';
 import { AvatarComponent } from '@trinity/ui';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
-import { ServerRailComponent } from './server-rail.component';
+import { ServerRailComponent, type RailUnread } from './server-rail.component';
 
 function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
   return {
@@ -15,6 +15,14 @@ function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
     ...over,
   };
 }
+
+/** Build an unread object, overriding only the counts a test cares about. */
+const unread = (over: Partial<RailUnread> = {}): RailUnread => ({
+  home: 0,
+  rooms: 0,
+  perSpace: {},
+  ...over,
+});
 
 describe('ServerRailComponent', () => {
   it('renders Home plus a pill per space', async () => {
@@ -129,9 +137,7 @@ describe('ServerRailComponent', () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [space({ id: '!s:hs' })],
-        homeUnread: 3,
-        roomsUnread: 7,
-        spaceUnread: { '!s:hs': 12 },
+        unread: unread({ home: 3, rooms: 7, perSpace: { '!s:hs': 12 } }),
       },
       imports: [MockComponent(AvatarComponent)],
     });
@@ -152,7 +158,7 @@ describe('ServerRailComponent', () => {
 
   it('caps a pill badge at 99+', async () => {
     const { container } = await render(ServerRailComponent, {
-      inputs: { homeUnread: 250 },
+      inputs: { unread: unread({ home: 250 }) },
       imports: [MockComponent(AvatarComponent)],
     });
     expect(container.querySelector('.item .badge')?.textContent?.trim()).toBe(
@@ -168,11 +174,13 @@ describe('ServerRailComponent', () => {
           space({ id: '!b:hs', name: 'Bravo' }),
           space({ id: '!c:hs', name: 'Charlie' }),
         ],
-        spaceUnread: {
-          '!a:hs': 1,
-          '!b:hs': 0,
-          '!c:hs': 42,
-        },
+        unread: unread({
+          perSpace: {
+            '!a:hs': 1,
+            '!b:hs': 0,
+            '!c:hs': 42,
+          },
+        }),
       },
       imports: [MockComponent(AvatarComponent)],
     });
@@ -188,7 +196,7 @@ describe('ServerRailComponent', () => {
     const { fixture, container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [space({ id: '!s:hs' })],
-        spaceUnread: { '!s:hs': 6 },
+        unread: unread({ perSpace: { '!s:hs': 6 } }),
       },
       imports: [MockComponent(AvatarComponent)],
     });
@@ -196,7 +204,10 @@ describe('ServerRailComponent', () => {
     const spaceItem = () => container.querySelectorAll('.item')[2];
     expect(spaceItem().querySelector('.badge')?.textContent?.trim()).toBe('6');
 
-    fixture.componentRef.setInput('spaceUnread', { '!s:hs': 0 });
+    fixture.componentRef.setInput(
+      'unread',
+      unread({ perSpace: { '!s:hs': 0 } }),
+    );
     fixture.detectChanges();
 
     expect(spaceItem().querySelector('.badge')).toBeNull();

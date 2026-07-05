@@ -27,16 +27,8 @@
     @for (row of rows(); track row.id) {
       <trn-message-row
         [row]="row"
-        [editable]="isEditable(row)"
-        [deletable]="row.isOwn && !row.status"
-        [canThread]="false"
-        (react)="onReact(row.id, $event)"
-        (replyMessage)="startReply(row)"
-        (copyMessage)="onCopy(row)"
-        (editMessage)="startEdit(row)"
-        (deleteMessage)="onDelete(row)"
-        (retry)="onRetry(row.id)"
-        (jumpReply)="jumpTo($event)"
+        [caps]="rowCaps(row)"
+        (action)="onRowAction(row, $event)"
       />
     } @empty {
       <div class="thread__empty">No replies in this thread yet.</div>

@@ -24,6 +24,28 @@ import {
   lucideTrash2,
 } from '@ng-icons/lucide';
 
+/** Which optional actions the toolbar offers for a given message. */
+export interface MessageToolbarCaps {
+  canEdit: boolean;
+  canDelete: boolean;
+  /** Whether the current user may pin/unpin this message (room permission). */
+  canPin: boolean;
+  /** Whether this message is currently pinned (drives the Pin/Unpin label). */
+  pinned: boolean;
+  /** Whether to offer "Reply in thread" — false inside a thread. */
+  canThread: boolean;
+}
+
+/** A single action a user triggers from the message toolbar. */
+export type MessageAction =
+  | { type: 'react'; key: string }
+  | { type: 'reply' }
+  | { type: 'edit' }
+  | { type: 'delete' }
+  | { type: 'copy' }
+  | { type: 'pin' }
+  | { type: 'thread' };
+
 /** A small set of one-tap reactions offered by the picker. */
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '😢'];
 
@@ -65,21 +87,14 @@ let nextPickerId = 0;
   ],
 })
 export class MessageToolbarComponent {
-  readonly canEdit = input(false);
-  readonly canDelete = input(false);
-  /** Whether the current user may pin/unpin this message (room permission). */
-  readonly canPin = input(false);
-  /** Whether this message is currently pinned (drives the Pin/Unpin label). */
-  readonly pinned = input(false);
-  /** Whether to offer "Reply in thread" — false inside a thread (no nested threads). */
-  readonly canThread = input(true);
-  readonly react = output<string>();
-  readonly replyMessage = output<void>();
-  readonly openThread = output<void>();
-  readonly togglePin = output<void>();
-  readonly copyMessage = output<void>();
-  readonly editMessage = output<void>();
-  readonly deleteMessage = output<void>();
+  readonly caps = input<MessageToolbarCaps>({
+    canEdit: false,
+    canDelete: false,
+    canPin: false,
+    pinned: false,
+    canThread: true,
+  });
+  readonly action = output<MessageAction>();
 
   readonly quickEmojis = QUICK_EMOJIS;
   readonly pickerOpen = signal(false);
@@ -87,7 +102,7 @@ export class MessageToolbarComponent {
   readonly pickerId = `trn-reaction-picker-${nextPickerId++}`;
 
   pick(emoji: string): void {
-    this.react.emit(emoji);
+    this.action.emit({ type: 'react', key: emoji });
     this.pickerOpen.set(false);
   }
 }

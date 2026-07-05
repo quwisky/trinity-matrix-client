@@ -2,12 +2,18 @@ import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   input,
   output,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideMessagesSquare } from '@ng-icons/lucide';
-import { AvatarComponent, MessageToolbarComponent } from '@trinity/ui';
+import {
+  AvatarComponent,
+  MessageToolbarComponent,
+  type MessageAction,
+  type MessageToolbarCaps,
+} from '@trinity/ui';
 import type { MessageView, ThreadSummary } from '@trinity/core';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
@@ -16,6 +22,26 @@ import { MediaAttachmentComponent } from '../media-attachment/media-attachment.c
 export interface MessageRow extends MessageView {
   showHeader: boolean;
 }
+
+/** The per-row capability/state flags the row (and its toolbar) render from. */
+export interface MessageRowCaps {
+  /** Whether the current user may edit this message (own, confirmed, text). */
+  editable: boolean;
+  /** Whether the current user may delete this message. */
+  deletable: boolean;
+  /** Whether the current user may pin/unpin this message (room permission). */
+  canPin: boolean;
+  /** Whether this message is currently pinned. */
+  pinned: boolean;
+  /** Offer "Reply in thread" — false inside a thread (no nesting). */
+  canThread: boolean;
+  /** Hide the hover toolbar + retry affordance (view-only thread panel). */
+  readOnly: boolean;
+}
+
+/** A user intent raised from a message row: the toolbar's actions plus row-local ones. */
+export type MessageRowAction =
+  MessageAction | { type: 'retry' } | { type: 'jump'; id: string };
 
 /**
  * One presentational message row, shared by the main timeline ({@link
@@ -48,32 +74,33 @@ export class MessageRowComponent {
   readonly row = input.required<MessageRow>();
   /** Thread summary for this row's event (main timeline only), else null. */
   readonly threadSummary = input<ThreadSummary | null>(null);
-  /** Whether the current user may edit this message (own, confirmed, text). */
-  readonly editable = input(false);
-  /** Whether the current user may delete this message. */
-  readonly deletable = input(false);
-  /** Whether the current user may pin/unpin this message (room permission). */
-  readonly canPin = input(false);
-  /** Whether this message is currently pinned. */
-  readonly pinned = input(false);
-  /** Hide the hover toolbar + retry affordance (view-only thread panel). */
-  readonly readOnly = input(false);
-  /** Offer "Reply in thread" in the toolbar — false inside a thread (no nesting). */
-  readonly canThread = input(true);
+  /** Per-row capabilities/state (edit/delete/pin permissions, pinned, read-only). */
+  readonly caps = input<MessageRowCaps>({
+    editable: false,
+    deletable: false,
+    canPin: false,
+    pinned: false,
+    canThread: true,
+    readOnly: false,
+  });
 
-  /** A reaction key was chosen (quick-emoji toolbar or an existing reaction pill). */
-  readonly react = output<string>();
-  readonly replyMessage = output<void>();
-  readonly copyMessage = output<void>();
-  readonly editMessage = output<void>();
-  readonly deleteMessage = output<void>();
-  /** Pin/unpin was chosen from the overflow menu (host resolves which, given `pinned`). */
-  readonly togglePin = output<void>();
-  readonly retry = output<void>();
-  /** The reply preview was clicked — jump to the quoted event id. */
-  readonly jumpReply = output<string>();
-  /** The thread indicator was clicked — open the thread for this root event id. */
-  readonly openThread = output<string>();
+  /**
+   * A user intent raised from this row — a toolbar action, a reaction, a retry, or a
+   * jump-to-quoted-message. The host pairs it with `row` to run the effect.
+   */
+  readonly action = output<MessageRowAction>();
+
+  /** Capabilities the overflow toolbar needs, projected from {@link caps}. */
+  readonly toolbarCaps = computed<MessageToolbarCaps>(() => {
+    const c = this.caps();
+    return {
+      canEdit: c.editable,
+      canDelete: c.deletable,
+      canPin: c.canPin,
+      pinned: c.pinned,
+      canThread: c.canThread,
+    };
+  });
 
   /** Accessible label for the thread indicator button (incl. any unread count). */
   threadLabel(summary: ThreadSummary): string {

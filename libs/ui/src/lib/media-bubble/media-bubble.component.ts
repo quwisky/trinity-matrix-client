@@ -12,6 +12,21 @@ import {
 export type MediaBubbleKind = 'image' | 'file' | 'video' | 'audio';
 
 /**
+ * The metadata a media bubble renders. A structural subset of `@trinity/core`'s
+ * `MediaPayload`, redeclared locally so this presentational leaf keeps its "no
+ * `@trinity/core` dependency" contract — the smart wrapper passes its `MediaPayload`
+ * straight in (extra fields are ignored).
+ */
+export interface MediaBubbleItem {
+  kind: MediaBubbleKind;
+  filename: string;
+  mimeType: string;
+  size?: number;
+  width?: number;
+  height?: number;
+}
+
+/**
  * Presentational media attachment: renders an image/video/audio inline or a
  * download file-card, driven entirely by inputs (a resolved `src` object URL plus
  * metadata) — it performs no fetching/decryption and has no `@trinity/core`
@@ -188,19 +203,19 @@ export type MediaBubbleKind = 'image' | 'file' | 'video' | 'audio';
   },
 })
 export class MediaBubbleComponent {
-  readonly kind = input<MediaBubbleKind>('file');
+  /** The media item to render (metadata only — no bytes). */
+  readonly item = input.required<MediaBubbleItem>();
   /** Resolved `blob:`/`https:` URL, or null while loading. */
   readonly src = input<string | null>(null);
-  readonly filename = input('attachment');
-  readonly mimeType = input('application/octet-stream');
-  readonly size = input<number | undefined>(undefined);
-  readonly width = input<number | undefined>(undefined);
-  readonly height = input<number | undefined>(undefined);
   readonly loading = input(false);
   readonly error = input(false);
 
   readonly openLightbox = output<void>();
   readonly download = output<void>();
+
+  /** Terse accessors so the template needn't unwrap `item()` repeatedly. */
+  readonly kind = computed(() => this.item().kind);
+  readonly filename = computed(() => this.item().filename);
 
   /** A local <img>-decode failure, combined with the input `error`. */
   readonly imgFailed = signal(false);
@@ -217,14 +232,14 @@ export class MediaBubbleComponent {
 
   /** CSS aspect-ratio from intrinsic dimensions to avoid layout shift. */
   readonly aspectRatio = computed(() => {
-    const w = this.width();
-    const h = this.height();
+    const w = this.item().width;
+    const h = this.item().height;
     return w && h ? `${w} / ${h}` : null;
   });
 
   /** File-card subtitle: human-readable size, falling back to the MIME type. */
   readonly subtitle = computed(
-    () => formatSize(this.size()) ?? this.mimeType(),
+    () => formatSize(this.item().size) ?? this.item().mimeType,
   );
 
   constructor() {

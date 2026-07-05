@@ -28,13 +28,8 @@ import { FileSaveService } from '../media-save/file-save.service';
   imports: [MediaBubbleComponent],
   template: `
     <trn-media-bubble
-      [kind]="media().kind"
+      [item]="media()"
       [src]="src()"
-      [filename]="media().filename"
-      [mimeType]="media().mimeType"
-      [size]="media().size"
-      [width]="media().width"
-      [height]="media().height"
       [loading]="loading()"
       [error]="hasError()"
       (openLightbox)="openLightbox()"

@@ -104,23 +104,8 @@ describe('RoomsPage action error feedback', () => {
     expect(toastShow).not.toHaveBeenCalled();
   });
 
-  it('onSetFavourite favourites a room by delegating to RoomsService.setFavourite', () => {
-    const page = build();
-    const rooms = TestBed.inject(RoomsService);
-
-    page.onSetFavourite({ id: '!r:hs', favourite: true });
-
-    expect(rooms.setFavourite).toHaveBeenCalledWith('!r:hs', true);
-  });
-
-  it('onSetFavourite unfavourites a room by delegating to RoomsService.setFavourite', () => {
-    const page = build();
-    const rooms = TestBed.inject(RoomsService);
-
-    page.onSetFavourite({ id: '!r:hs', favourite: false });
-
-    expect(rooms.setFavourite).toHaveBeenCalledWith('!r:hs', false);
-  });
+  // Favouriting moved into ChannelSidebarComponent (it now calls RoomsService
+  // directly), so that behaviour is covered by channel-sidebar.component.spec.ts.
 
   it('opens the threads-list panel for the active room', () => {
     const page = build();

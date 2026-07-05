@@ -28,6 +28,8 @@ import {
 import {
   MessageRowComponent,
   type MessageRow,
+  type MessageRowAction,
+  type MessageRowCaps,
 } from '../message-row/message-row.component';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 
@@ -232,6 +234,49 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         this.threads.redactInThread(row.id),
         'Could not delete the message.',
       );
+    }
+  }
+
+  /** Per-row capabilities/state for a thread row (no pinning or nested threads). */
+  rowCaps(row: MessageRow): MessageRowCaps {
+    return {
+      editable: this.isEditable(row),
+      deletable: row.isOwn && !row.status,
+      canPin: false,
+      pinned: false,
+      canThread: false,
+      readOnly: false,
+    };
+  }
+
+  /** Route a single row action to its thread handler. */
+  onRowAction(row: MessageRow, action: MessageRowAction): void {
+    switch (action.type) {
+      case 'react':
+        this.onReact(row.id, action.key);
+        break;
+      case 'reply':
+        this.startReply(row);
+        break;
+      case 'copy':
+        this.onCopy(row);
+        break;
+      case 'edit':
+        this.startEdit(row);
+        break;
+      case 'delete':
+        void this.onDelete(row);
+        break;
+      case 'retry':
+        this.onRetry(row.id);
+        break;
+      case 'jump':
+        this.jumpTo(action.id);
+        break;
+      // Pin/thread are not offered inside a thread (caps.canPin/canThread false).
+      case 'pin':
+      case 'thread':
+        break;
     }
   }
 

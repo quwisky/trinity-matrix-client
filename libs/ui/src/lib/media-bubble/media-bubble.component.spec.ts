@@ -1,10 +1,28 @@
 import { render } from '@testing-library/angular';
-import { MediaBubbleComponent } from './media-bubble.component';
+import {
+  MediaBubbleComponent,
+  type MediaBubbleItem,
+} from './media-bubble.component';
+
+/** Build a media item, overriding only the fields a test cares about. */
+const item = (over: Partial<MediaBubbleItem> = {}): MediaBubbleItem => ({
+  kind: 'file',
+  filename: 'attachment',
+  mimeType: 'application/octet-stream',
+  ...over,
+});
 
 describe('MediaBubbleComponent', () => {
   it('renders an <img> with the resolved src and alt for an image', async () => {
     const { container } = await render(MediaBubbleComponent, {
-      inputs: { kind: 'image', src: 'blob:thumb', filename: 'pic.png' },
+      inputs: {
+        item: item({
+          kind: 'image',
+          filename: 'pic.png',
+          mimeType: 'image/png',
+        }),
+        src: 'blob:thumb',
+      },
     });
 
     const img = container.querySelector('img.media__img');
@@ -15,7 +33,7 @@ describe('MediaBubbleComponent', () => {
 
   it('renders a download file-card for a file kind', async () => {
     const { container } = await render(MediaBubbleComponent, {
-      inputs: { kind: 'file', filename: 'report.pdf' },
+      inputs: { item: item({ kind: 'file', filename: 'report.pdf' }) },
     });
 
     const card = container.querySelector('.media--file:not(.media--error)');
@@ -28,7 +46,7 @@ describe('MediaBubbleComponent', () => {
   it('reflects the render state via data-media-state', async () => {
     const { fixture } = await render(MediaBubbleComponent, {
       // No src yet → still loading.
-      inputs: { kind: 'image', src: null },
+      inputs: { item: item({ kind: 'image' }), src: null },
     });
     const host = fixture.nativeElement as HTMLElement;
     expect(host.getAttribute('data-media-state')).toBe('loading');
@@ -46,7 +64,7 @@ describe('MediaBubbleComponent', () => {
 
   it('emits openLightbox when the image is clicked', async () => {
     const { fixture, container } = await render(MediaBubbleComponent, {
-      inputs: { kind: 'image', src: 'blob:thumb' },
+      inputs: { item: item({ kind: 'image' }), src: 'blob:thumb' },
     });
 
     let opened = 0;
@@ -58,7 +76,7 @@ describe('MediaBubbleComponent', () => {
 
   it('emits download when the file-card is clicked', async () => {
     const { fixture, container } = await render(MediaBubbleComponent, {
-      inputs: { kind: 'file' },
+      inputs: { item: item({ kind: 'file' }) },
     });
 
     let downloaded = 0;
@@ -70,7 +88,7 @@ describe('MediaBubbleComponent', () => {
 
   it('renders a human-readable size in the file-card subtitle', async () => {
     const { container } = await render(MediaBubbleComponent, {
-      inputs: { kind: 'file', size: 1536 }, // 1.5 KB
+      inputs: { item: item({ kind: 'file', size: 1536 }) }, // 1.5 KB
     });
 
     expect(container.querySelector('.media__sub')?.textContent).toContain(
@@ -80,7 +98,7 @@ describe('MediaBubbleComponent', () => {
 
   it('shows the error file-card (download fallback) after the <img> fails to load', async () => {
     const { fixture, container } = await render(MediaBubbleComponent, {
-      inputs: { kind: 'image', src: 'blob:broken' },
+      inputs: { item: item({ kind: 'image' }), src: 'blob:broken' },
     });
 
     container
