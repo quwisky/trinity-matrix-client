@@ -1,20 +1,15 @@
-export * from './lib/matrix/session.model';
+// Pure Matrix models/helpers now live in @trinity/util-matrix; re-exported here so
+// existing `@trinity/core` consumers are unaffected during the lib restructure.
+export * from '@trinity/util-matrix';
 export * from './lib/matrix/matrix-client.service';
 export * from './lib/matrix/rooms.service';
 export * from './lib/matrix/spaces.service';
 export * from './lib/matrix/invites.service';
 export * from './lib/matrix/search.service';
-export { isValidUserId } from './lib/matrix/room-create';
 export * from './lib/matrix/timeline.service';
-export {
-  isTransientMatrixError,
-  retryTransient,
-} from './lib/matrix/transient-errors';
 export * from './lib/error/trinity-error-handler';
 export * from './lib/matrix/threads.service';
 export * from './lib/matrix/pinned-messages.service';
-export { initialOf, isEditableMessage } from './lib/matrix/message-view';
-export * from './lib/matrix/media.model';
 export * from './lib/matrix/media.service';
 export * from './lib/matrix/avatar.service';
 export * from './lib/matrix/auth.service';
@@ -25,7 +20,6 @@ export * from './lib/matrix/notification.service';
 export * from './lib/matrix/crypto-spike.service';
 export * from './lib/matrix/secret-storage-key.service';
 export * from './lib/matrix/crypto.service';
-export * from './lib/matrix/password-uia';
 export * from './lib/matrix/verification.service';
 export * from './lib/platform/trinity-desktop-bridge';
 export * from './lib/platform/app-badge.service';

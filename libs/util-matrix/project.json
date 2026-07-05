@@ -1,0 +1,22 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "util-matrix",
+  "projectType": "library",
+  "sourceRoot": "libs/util-matrix/src",
+  "prefix": "trn",
+  "tags": ["type:util", "scope:trinity"],
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/util-matrix"
+      },
+      "configurations": {
+        "watch": {
+          "command": "vitest"
+        }
+      }
+    }
+  }
+}

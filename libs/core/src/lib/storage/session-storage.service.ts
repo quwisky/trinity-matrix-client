@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 import { Observable, defer, from } from 'rxjs';
-import { MatrixSession } from '../matrix/session.model';
+import { MatrixSession } from '@trinity/util-matrix';
 import { SecureStorageService } from './secure-storage.service';
 
 /** Non-secret session fields (baseUrl/userId/deviceId) — safe for Preferences. */

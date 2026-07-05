@@ -23,6 +23,7 @@
     "useDefineForClassFields": false,
     "paths": {
       "@trinity/core": ["libs/core/src/index.ts"],
+      "@trinity/util-matrix": ["libs/util-matrix/src/index.ts"],
       "@trinity/feature-auth": ["libs/feature-auth/src/index.ts"],
       "@trinity/feature-crypto": ["libs/feature-crypto/src/index.ts"],
       "@trinity/feature-rooms": ["libs/feature-rooms/src/index.ts"],

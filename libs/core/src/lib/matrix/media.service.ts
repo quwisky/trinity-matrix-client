@@ -14,10 +14,10 @@ import {
   throwError,
 } from 'rxjs';
 import { MsgType } from 'matrix-js-sdk';
-import { decryptAttachment, encryptAttachment } from './attachment-crypto';
+import { decryptAttachment, encryptAttachment } from '@trinity/util-matrix';
 import { MatrixClientService } from './matrix-client.service';
-import { fetchMediaBytes } from './authed-media';
-import type { EncryptedFileInfo, MediaPayload } from './media.model';
+import { fetchMediaBytes } from '@trinity/util-matrix';
+import type { EncryptedFileInfo, MediaPayload } from '@trinity/util-matrix';
 
 /** Which rendition of an attachment to resolve. */
 export type MediaVariant = 'thumbnail' | 'full';

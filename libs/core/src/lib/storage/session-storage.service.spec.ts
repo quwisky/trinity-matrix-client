@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionStorageService } from './session-storage.service';
 import { SecureStorageService } from './secure-storage.service';
-import { MatrixSession } from '../matrix/session.model';
+import { MatrixSession } from '@trinity/util-matrix';
 
 // In-memory @capacitor/preferences (hoisted so the vi.mock factory can see it).
 const { prefs } = vi.hoisted(() => ({ prefs: new Map<string, string>() }));

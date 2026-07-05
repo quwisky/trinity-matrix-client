@@ -11,7 +11,7 @@ import type { SecretStorageKeyDescriptionAesV1 } from 'matrix-js-sdk/lib/secret-
 import { Observable, defer, from } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 import { SecretStorageKeyService } from './secret-storage-key.service';
-import { runPasswordUia, type PasswordPrompt } from './password-uia';
+import { runPasswordUia, type PasswordPrompt } from '@trinity/util-matrix';
 
 /**
  * Where this device stands relative to the account's encryption setup:

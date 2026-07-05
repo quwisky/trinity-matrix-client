@@ -34,7 +34,7 @@ import {
   initialOf,
   isDisplayableMessage,
   type MessageView,
-} from './message-view';
+} from '@trinity/util-matrix';
 import {
   annotationContent,
   editMessageContent,
@@ -43,7 +43,7 @@ import {
   myReactionId,
   renderMarkdown,
   replyMessageContent,
-} from './message-content';
+} from '@trinity/util-matrix';
 
 /** A distinct participant of a thread, for compact avatar/name display. */
 export interface ThreadParticipant {

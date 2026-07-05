@@ -18,8 +18,8 @@ import {
   throwError,
 } from 'rxjs';
 import { SessionStorageService } from '../storage/session-storage.service';
-import { MatrixSession } from './session.model';
-import { preloadCryptoWasm } from './crypto-wasm-loader';
+import { MatrixSession } from '@trinity/util-matrix';
+import { preloadCryptoWasm } from '@trinity/util-matrix';
 import { SecretStorageKeyService } from './secret-storage-key.service';
 
 /**

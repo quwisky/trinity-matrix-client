@@ -15,7 +15,7 @@ import { AvatarService } from './avatar.service';
 import { MediaService } from './media.service';
 import { PushService } from './push.service';
 import { SessionStorageService } from '../storage/session-storage.service';
-import { MatrixSession } from './session.model';
+import { MatrixSession } from '@trinity/util-matrix';
 
 const DEVICE_DISPLAY_NAME = 'Trinity (Ionic)';
 

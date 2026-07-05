@@ -7,7 +7,7 @@ import {
   UiaCancelledError,
   runPasswordUia,
   type PasswordPrompt,
-} from './password-uia';
+} from '@trinity/util-matrix';
 
 /** A signed-in device (session) for the current user. */
 export interface DeviceInfo {

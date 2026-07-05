@@ -8,7 +8,7 @@ import {
 import { Observable, catchError, defer, from, map, of } from 'rxjs';
 import { InvitesService } from './invites.service';
 import { MatrixClientService } from './matrix-client.service';
-import { isDisplayableMessage } from './message-view';
+import { isDisplayableMessage } from '@trinity/util-matrix';
 import { RoomsService } from './rooms.service';
 import { SpacesService } from './spaces.service';
 

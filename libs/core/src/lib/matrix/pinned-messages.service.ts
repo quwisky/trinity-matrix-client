@@ -8,7 +8,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from './matrix-client.service';
-import { messagePreview } from './message-content';
+import { messagePreview } from '@trinity/util-matrix';
 
 /**
  * A compact, render-ready projection of one pinned message — the pinned panel's row

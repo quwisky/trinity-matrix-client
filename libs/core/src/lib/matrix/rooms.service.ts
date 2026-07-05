@@ -13,12 +13,12 @@ import {
 } from 'matrix-js-sdk';
 import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
-import { messagePreview } from './message-content';
+import { messagePreview } from '@trinity/util-matrix';
 import {
   isValidUserId,
   roomEncryptionInitialState,
   visibilityOptions,
-} from './room-create';
+} from '@trinity/util-matrix';
 
 /** Fields a {@link RoomsService.createRoom} call accepts. */
 export interface CreateRoomOptions {

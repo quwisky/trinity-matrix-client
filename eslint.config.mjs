@@ -44,20 +44,26 @@ export default defineConfig([
                 'type:feature',
                 'type:core',
                 'type:ui',
+                'type:util',
               ],
             },
             {
               sourceTag: 'type:feature',
-              onlyDependOnLibsWithTags: ['type:core', 'type:ui'],
+              onlyDependOnLibsWithTags: ['type:core', 'type:ui', 'type:util'],
             },
             {
               sourceTag: 'type:core',
-              onlyDependOnLibsWithTags: ['type:core'],
+              onlyDependOnLibsWithTags: ['type:core', 'type:util'],
             },
             {
               // Presentational-only: no state/services, so no core dependency.
               sourceTag: 'type:ui',
-              onlyDependOnLibsWithTags: ['type:ui'],
+              onlyDependOnLibsWithTags: ['type:ui', 'type:util'],
+            },
+            {
+              // Pure functions/models — no Angular DI, depends only on other utils.
+              sourceTag: 'type:util',
+              onlyDependOnLibsWithTags: ['type:util'],
             },
           ],
         },

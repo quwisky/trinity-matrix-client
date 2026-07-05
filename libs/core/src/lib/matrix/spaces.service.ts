@@ -12,7 +12,10 @@ import {
 } from 'matrix-js-sdk';
 import { Observable, Subscription, defer, from, map, switchMap } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
-import { roomEncryptionInitialState, visibilityOptions } from './room-create';
+import {
+  roomEncryptionInitialState,
+  visibilityOptions,
+} from '@trinity/util-matrix';
 
 /** Children fetched per `getRoomHierarchy` page. */
 const HIERARCHY_LIMIT = 100;

@@ -25,30 +25,18 @@ import {
 import { MatrixClientService } from './matrix-client.service';
 import { MediaService } from './media.service';
 import {
+  annotationContent,
   buildMessageView,
   collectMessageSenders,
-  isDisplayableMessage,
-  reactionsFor,
-  type MessageView,
-} from './message-view';
-import {
-  annotationContent,
   editMessageContent,
+  isDisplayableMessage,
   mediaCaptionFields,
   myReactionId,
+  reactionsFor,
   renderMarkdown,
   replyMessageContent,
-} from './message-content';
-
-// Re-export the message view model + reaction/reply types from their shared home
-// so existing `@trinity/core` consumers (and the timeline barrel entry) are
-// unaffected by the extraction into message-view.ts.
-export type {
-  MessageKind,
-  MessageView,
-  ReactionView,
-  ReplyPreview,
-} from './message-view';
+  type MessageView,
+} from '@trinity/util-matrix';
 
 const SCROLLBACK = 30;
 
