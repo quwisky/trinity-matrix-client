@@ -13,7 +13,8 @@ import { focusMainWindow, getMainWindow } from './window';
 //     validated/clamped in coerceNotificationPayload before any Notification is
 //     constructed, and only accepted from our own main window's renderer.
 //   main -> renderer: NOTIFICATION_CLICK_CHANNEL forwards the clicked
-//     notification's roomId so the Angular app can route to it.
+//     notification's roomId (and the account userId it belongs to) so the Angular
+//     app can switch accounts if needed and route to the room.
 export const SHOW_NOTIFICATION_CHANNEL = 'show-notification';
 export const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 
@@ -61,8 +62,11 @@ function showOsNotification(payload: NotificationRequest): void {
   if (!Notification.isSupported()) {
     return;
   }
-  // Per-room collapse: drop any still-open notification for the same room.
-  activeNotifications.get(payload.roomId)?.close();
+  // Collapse key: the renderer sends `userId|roomId` as the tag so a room collapses
+  // per account (and the same room on two accounts stays two toasts); fall back to
+  // the room id for legacy single-account payloads.
+  const collapseKey = payload.tag || payload.roomId;
+  activeNotifications.get(collapseKey)?.close();
 
   const icon = resolveNotificationIcon();
   const notification = new Notification({
@@ -71,18 +75,19 @@ function showOsNotification(payload: NotificationRequest): void {
     silent: payload.silent,
     ...(icon ? { icon } : {}),
   });
-  activeNotifications.set(payload.roomId, notification);
+  activeNotifications.set(collapseKey, notification);
 
   notification.on('click', () => {
     focusMainWindow();
     getMainWindow()?.webContents.send(
       NOTIFICATION_CLICK_CHANNEL,
       payload.roomId,
+      payload.userId,
     );
   });
   notification.on('close', () => {
-    if (activeNotifications.get(payload.roomId) === notification) {
-      activeNotifications.delete(payload.roomId);
+    if (activeNotifications.get(collapseKey) === notification) {
+      activeNotifications.delete(collapseKey);
     }
   });
   // Electron 42 posts via macOS UNUserNotification, which requires a STABLE code

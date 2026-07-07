@@ -112,6 +112,13 @@ test.describe('Mobile navigation drawer', () => {
 
   test.use({ viewport: MOBILE_VIEWPORT });
 
+  // Every test here does a full UI login in beforeEach (~10-20s), then waits for the
+  // seeded room to arrive via initial sync. Under the suite's parallel load a cold
+  // login + Rust-crypto init + first sync + m.direct processing can exceed the
+  // default 30s per-test budget, so give these login-heavy tests headroom plus one
+  // retry for the rare tail. Scoped to this describe — no effect on other specs.
+  test.describe.configure({ timeout: 60_000, retries: 1 });
+
   // Seed once for the whole file (shared account, same as navigation/settings
   // specs) — every test below just needs *a* room to tap.
   test.beforeAll(async () => {

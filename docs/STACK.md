@@ -79,6 +79,13 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
     for an ephemeral in-memory store.
 - The legacy `client.crypto` object is **gone** — use `client.getCrypto()` which
   returns the `CryptoApi` (main E2EE entry point) after `initRustCrypto()`.
+- **Per-account crypto store** (multi-account): pass `initRustCrypto({ cryptoDatabasePrefix })`
+  scoped by account **and device** (`trinity-crypto:${userId}:${deviceId}`). A `OlmMachine` is
+  bound to `(userId, deviceId)` and rejects a store that doesn't match ("the account in the store
+  doesn't match the account in the constructor"), so a user-id-only prefix breaks re-login after a
+  new device is issued. Matching gotcha: **`clearStores()` must be passed the SAME
+  `{ cryptoDatabasePrefix }`** — the no-arg form deletes the SDK default store and orphans the
+  account's real one. See `docs/MULTI-ACCOUNT.md` §2.3.
 - Crypto bootstrap sequence: init rust crypto -> cross-signing setup
   (`bootstrapCrossSigning`) -> key backup (`bootstrapSecretStorage` / key backup APIs).
   **Implemented (M3)** in `@trinity/data-access-crypto` `CryptoService` + `@trinity/feature-crypto`.

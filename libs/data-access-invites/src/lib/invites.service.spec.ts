@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { RoomEvent } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
@@ -56,7 +57,12 @@ function setup(rooms: ReturnType<typeof fakeRoom>[]) {
     off: vi.fn(),
   };
   TestBed.configureTestingModule({
-    providers: [InvitesService, MockProvider(MatrixClientService)],
+    providers: [
+      InvitesService,
+      MockProvider(MatrixClientService, {
+        activeUserId: signal<string | null>(null).asReadonly(),
+      }),
+    ],
   });
   const matrix = TestBed.inject(MatrixClientService);
   // `isInitialized` and `instance` are getters on the real service; stub the

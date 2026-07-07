@@ -19,6 +19,9 @@ import { MatrixSession } from '@trinity/util-matrix';
 
 const DEVICE_DISPLAY_NAME = 'Trinity (Ionic)';
 
+/** Whether a successful login replaces the current account or adds alongside it. */
+export type LoginMode = 'replace' | 'add';
+
 /**
  * Handles authentication: homeserver discovery (.well-known), password login,
  * SSO URL construction, and logout. On success it persists the session and hands
@@ -67,11 +70,18 @@ export class AuthService {
     );
   }
 
-  /** Log in with username + password, persist the session, and start the client. */
+  /**
+   * Log in with username + password. `replace` (default) makes it the sole account;
+   * `add` keeps the other signed-in accounts and adds this one alongside. Passing
+   * `deviceId` re-authenticates that EXISTING device (re-auth of a soft-logged-out
+   * account) so its crypto store is reused and no re-verification is needed.
+   */
   loginWithPassword(
     baseUrl: string,
     user: string,
     password: string,
+    mode: LoginMode = 'replace',
+    deviceId?: string,
   ): Observable<void> {
     return defer(() =>
       from(
@@ -79,9 +89,10 @@ export class AuthService {
           identifier: { type: 'm.id.user', user: this.localpart(user) },
           password,
           initial_device_display_name: DEVICE_DISPLAY_NAME,
+          ...(deviceId ? { device_id: deviceId } : {}),
         }),
       ),
-    ).pipe(switchMap((res) => this.persistAndStart(baseUrl, res)));
+    ).pipe(switchMap((res) => this.establish(baseUrl, res, mode)));
   }
 
   /** Build the SSO redirect URL the browser/WebView should navigate to. */
@@ -93,45 +104,97 @@ export class AuthService {
    * Complete an SSO/CAS login by exchanging the returned `loginToken` for a session.
    * Called from the SSO callback route after the homeserver redirects back.
    */
-  completeSsoLogin(baseUrl: string, loginToken: string): Observable<void> {
+  completeSsoLogin(
+    baseUrl: string,
+    loginToken: string,
+    mode: LoginMode = 'replace',
+    deviceId?: string,
+  ): Observable<void> {
     return defer(() =>
       from(
         createClient({ baseUrl }).login('m.login.token', {
           token: loginToken,
           initial_device_display_name: DEVICE_DISPLAY_NAME,
+          ...(deviceId ? { device_id: deviceId } : {}),
         }),
       ),
-    ).pipe(switchMap((res) => this.persistAndStart(baseUrl, res)));
+    ).pipe(switchMap((res) => this.establish(baseUrl, res, mode)));
   }
 
-  /** Invalidate the server-side device, stop the client, and clear local state. */
-  logout(): Observable<void> {
-    const serverLogout = this.matrix.isInitialized
-      ? from(this.matrix.instance.logout(true)).pipe(
-          // Even if the server call fails, clear locally so the user isn't stuck.
-          catchError(() => of(void 0)),
-        )
-      : of(void 0);
-
-    // Delete the Matrix pusher first, while the access token is still valid, so the
-    // gateway stops pushing to this device; then log out and clear local state.
-    return this.push.unregister().pipe(
-      switchMap(() => serverLogout),
-      // reset() (not stop()) wipes the local sync + crypto stores so the prior
-      // account's keys/cache don't linger on a shared device after logout.
-      switchMap(() => this.matrix.reset()),
-      tap(() => {
-        this.avatars.releaseAll(); // revoke cached avatar blob URLs
-        this.media.releaseAll(); // revoke media blobs + reset the authed-media probe
-      }),
-      switchMap(() => this.storage.clear()),
+  /**
+   * Switch the active account. Cheap when it's already live (flips the active client
+   * + persisted pointer); starts it first if it isn't running yet.
+   */
+  switchAccount(userId: string): Observable<void> {
+    if (this.matrix.accountIds().includes(userId)) {
+      this.matrix.setActive(userId);
+      return this.storage.setActive(userId);
+    }
+    return this.storage.load(userId).pipe(
+      switchMap((session) => (session ? this.matrix.add(session) : of(void 0))),
+      switchMap(() => this.storage.setActive(userId)),
     );
   }
 
-  /** Persist the session from a login response and start the live client. */
-  private persistAndStart(
+  /**
+   * Sign an account out — the active one by default, or a specific `userId`.
+   * Invalidates its server-side device and wipes its local stores. When it was the
+   * last account this fully resets (releasing the shared media/avatar caches and
+   * clearing storage); otherwise the others keep running and the active pointer moves
+   * to a survivor.
+   */
+  logout(userId?: string): Observable<void> {
+    // `||` (not `??`) so an empty-string id — e.g. the user panel emitting a null
+    // active id as '' — falls back to the active account rather than being treated
+    // as a real target (which would skip client teardown and clear everything).
+    const target = userId || this.matrix.activeUserId();
+    if (!target) {
+      return this.storage.clear();
+    }
+    const client = this.matrix.clientFor(target);
+    // Even if the server call fails, clear locally so the user isn't stuck.
+    const serverLogout = client
+      ? from(client.logout(true)).pipe(catchError(() => of(void 0)))
+      : of(void 0);
+    const isLast = this.matrix.accountIds().every((id) => id === target);
+
+    if (isLast) {
+      // Delete the pusher first (token still valid), log out server-side, then
+      // reset() (not stop()) so the account's keys/cache don't linger on a shared
+      // device, drop the shared blob caches, and clear storage.
+      return this.push.unregister().pipe(
+        switchMap(() => serverLogout),
+        switchMap(() => this.matrix.reset()),
+        tap(() => {
+          this.avatars.releaseAll();
+          this.media.releaseAll();
+        }),
+        switchMap(() => this.storage.clear()),
+      );
+    }
+    // Sign out just this account; the others keep syncing. Delete its pusher first
+    // (token still valid), then matrix.remove stops + wipes it and repoints the active
+    // account to a survivor — mirror that in storage.
+    return this.push.unregister(target).pipe(
+      switchMap(() => serverLogout),
+      switchMap(() => this.matrix.remove(target)),
+      switchMap(() => this.storage.remove(target)),
+      switchMap(() => {
+        const active = this.matrix.activeUserId();
+        return active ? this.storage.setActive(active) : of(void 0);
+      }),
+    );
+  }
+
+  /**
+   * Persist a login response and bring its client up. `replace` (the default login)
+   * tears down any current account first — dropping its media/avatar caches + pusher;
+   * `add` keeps the other signed-in accounts running and just adds this one, active.
+   */
+  private establish(
     baseUrl: string,
     res: { user_id: string; device_id: string; access_token: string },
+    mode: LoginMode,
   ): Observable<void> {
     const session: MatrixSession = {
       baseUrl,
@@ -139,17 +202,23 @@ export class AuthService {
       deviceId: res.device_id,
       accessToken: res.access_token,
     };
-    // Drop any avatar/media blobs cached for a previous session — re-login can
-    // switch accounts/homeservers without a logout (e.g. navigating to /login);
-    // releasing media also re-probes authed-media support for the new homeserver.
+    if (mode === 'add') {
+      // Additive: leave the other accounts' media/avatar caches + pusher untouched.
+      // Start with the STORED session so this account uses its own crypto-store
+      // prefix, not the SDK default (which would collide with the active account's).
+      // Then register a pusher for the new account (idempotent; no-op off native).
+      return this.storage.save(session).pipe(
+        switchMap((stored) => this.matrix.add(stored)),
+        switchMap(() => this.push.register()),
+      );
+    }
+    // Replace: drop the prior session's avatar/media blobs (re-login can switch
+    // accounts/homeservers without a logout) and its pusher, then start fresh.
     this.avatars.releaseAll();
     this.media.releaseAll();
-    // Likewise tear down a prior session's push registration (remove its pusher
-    // while its token is still valid, and reset the once-per-session guard) so the
-    // new account registers its own pusher when the shell mounts.
     return this.push.unregister().pipe(
       switchMap(() => this.storage.save(session)),
-      switchMap(() => this.matrix.init(session)),
+      switchMap((stored) => this.matrix.init(stored)),
     );
   }
 

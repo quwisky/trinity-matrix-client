@@ -9,19 +9,33 @@
         <h2 hlmCardTitle class="login-card__wordmark">Trinity</h2>
         @if (!baseUrl()) {
           <p hlmCardDescription class="login-card__subtitle">
-            Welcome back! Enter your homeserver to continue.
+            @if (reauthUserId()) {
+              Reconnecting your account…
+            } @else if (addMode) {
+              Add another account — enter its homeserver to continue.
+            } @else {
+              Welcome back! Enter your homeserver to continue.
+            }
           </p>
         } @else {
           <p hlmCardDescription class="login-card__subtitle">
-            Sign in to your account
+            @if (reauthUserId()) {
+              Sign in again to reconnect this account
+            } @else {
+              {{
+                addMode
+                  ? 'Sign in to the account to add'
+                  : 'Sign in to your account'
+              }}
+            }
           </p>
           <p class="login-card__homeserver">{{ baseUrl() }}</p>
         }
       </div>
 
       <div hlmCardContent>
-        @if (!baseUrl()) {
-          <!-- ── Step 1: Homeserver ──────────────────────────── -->
+        @if (!baseUrl() && !reauthUserId()) {
+          <!-- ── Step 1: Homeserver (skipped in re-auth: the HS is known) ── -->
           <div class="login-card__field">
             <label hlmLabel for="homeserver" class="login-card__label"
               >Homeserver</label
@@ -58,7 +72,7 @@
                 id="username"
                 autocapitalize="off"
                 autocorrect="off"
-                [disabled]="busy()"
+                [disabled]="busy() || !!reauthUserId()"
                 [ngModel]="username()"
                 (ngModelChange)="username.set($event)"
               />
@@ -119,6 +133,20 @@
           <p class="login-card__error text-destructive" role="alert">
             {{ message }}
           </p>
+        }
+
+        <!-- ── Add / re-auth: cancel back to the app ──────────── -->
+        @if (addMode || reauthUserId()) {
+          <button
+            hlmBtn
+            variant="ghost"
+            class="login-card__cancel w-full"
+            [disabled]="busy()"
+            (click)="cancelAdd()"
+            data-testid="cancel-add"
+          >
+            Cancel
+          </button>
         }
       </div>
     </section>

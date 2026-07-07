@@ -1,17 +1,15 @@
-import { TestBed } from '@angular/core/testing';
-import { SecretStorageKeyService } from './secret-storage-key.service';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { SecretStorageKeyDescription } from 'matrix-js-sdk/lib/secret-storage';
+import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 
 // A 4S key id always maps to a key description; the callback only reads the keys.
 const desc = {} as SecretStorageKeyDescription;
 
-describe('SecretStorageKeyService', () => {
-  let keys: SecretStorageKeyService;
+describe('SecretStorageKeyHolder', () => {
+  let keys: SecretStorageKeyHolder;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [SecretStorageKeyService] });
-    keys = TestBed.inject(SecretStorageKeyService);
+    keys = new SecretStorageKeyHolder();
   });
 
   it('returns null and reports no key before one is set', async () => {

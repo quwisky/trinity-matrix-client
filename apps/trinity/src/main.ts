@@ -19,6 +19,7 @@ import {
 } from '@trinity/data-access-notifications';
 import {
   FeatureFlagsService,
+  StoragePersistenceService,
   ThemeService,
   TrinityErrorHandler,
 } from '@trinity/platform-native';
@@ -58,6 +59,12 @@ bootstrapApplication(AppComponent, {
     provideAppInitializer(() => inject(ThemeService).init()),
     // Load persisted experimental feature flags (e.g. virtualized timeline).
     provideAppInitializer(() => inject(FeatureFlagsService).init()),
+    // Ask the browser to make our IndexedDB persistent so multi-account sync +
+    // crypto stores aren't evicted under storage pressure (best-effort; no-op where
+    // unsupported). Fire-and-forget — nothing blocks startup on the prompt.
+    provideAppInitializer(() => {
+      void inject(StoragePersistenceService).requestPersistence();
+    }),
     // Instantiate the dock-badge service so its unread-total effect is live for
     // the whole session (desktop-only by feature detection; a no-op elsewhere).
     provideAppInitializer(() => {

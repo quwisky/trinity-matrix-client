@@ -2,7 +2,10 @@ import { Injectable, inject, signal } from '@angular/core';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { Observable, defer, from, map, tap } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  MatrixClientService,
+  reprojectOnAccountSwitch,
+} from '@trinity/data-access-matrix-client';
 import {
   UiaCancelledError,
   runPasswordUia,
@@ -55,6 +58,16 @@ export class DevicesService {
       void this.loadDevices().catch(() => undefined);
     }
   };
+
+  constructor() {
+    // On an account switch, re-project the device list onto the newly-active
+    // account's client — but only while it is already wired to one.
+    reprojectOnAccountSwitch(
+      this.matrix,
+      () => this.connectedClient !== null,
+      () => this.connect(),
+    );
+  }
 
   /** Subscribe to live device-list changes; pair with {@link disconnect}. */
   connect(): void {

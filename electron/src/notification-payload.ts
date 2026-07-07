@@ -9,6 +9,7 @@
 export const NOTIFICATION_TITLE_LIMIT = 120;
 export const NOTIFICATION_BODY_LIMIT = 300;
 export const NOTIFICATION_ROOM_ID_LIMIT = 256;
+export const NOTIFICATION_USER_ID_LIMIT = 256;
 
 /** Validated, clamped notification request derived from an untrusted IPC payload. */
 export interface NotificationRequest {
@@ -18,6 +19,8 @@ export interface NotificationRequest {
   silent: boolean;
   /** Web-Notification-style collapse tag; forwarded by the preload bridge. */
   tag?: string;
+  /** Account the notification belongs to; echoed back on click for switch-then-open. */
+  userId?: string;
 }
 
 /**
@@ -70,6 +73,13 @@ export function coerceNotificationPayload(
   };
   if (typeof rec['tag'] === 'string') {
     request.tag = rec['tag'];
+  }
+  const userId = sanitizeNotificationText(
+    rec['userId'],
+    NOTIFICATION_USER_ID_LIMIT,
+  );
+  if (userId) {
+    request.userId = userId;
   }
   return request;
 }

@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
@@ -9,7 +10,12 @@ import { MatrixClientService } from '@trinity/data-access-matrix-client';
 /** Wire a fake matrix-js-sdk client into a mocked {@link MatrixClientService}. */
 function provideMatrix(client: unknown): MatrixClientService {
   TestBed.configureTestingModule({
-    providers: [SpacesService, MockProvider(MatrixClientService)],
+    providers: [
+      SpacesService,
+      MockProvider(MatrixClientService, {
+        activeUserId: signal<string | null>(null).asReadonly(),
+      }),
+    ],
   });
   const matrix = TestBed.inject(MatrixClientService);
   ngMocks.stubMember(matrix, 'isInitialized', true);

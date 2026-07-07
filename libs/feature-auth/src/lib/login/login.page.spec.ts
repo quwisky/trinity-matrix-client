@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '@trinity/data-access-auth';
+import { SessionStorageService } from '@trinity/platform-native';
 import { render } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
@@ -8,16 +9,27 @@ import { describe, expect, it, vi } from 'vitest';
 import { LoginPage } from './login.page';
 import { SsoStateStore } from '../sso-state.store';
 
-async function renderLogin(auth: Partial<AuthService>): Promise<{
+async function renderLogin(
+  auth: Partial<AuthService>,
+  opts: { add?: boolean; reauth?: string; record?: unknown } = {},
+): Promise<{
   cmp: LoginPage;
   router: Router;
   ssoStore: SsoStateStore;
 }> {
+  const queryParamMap = {
+    has: (key: string) => key === 'add' && !!opts.add,
+    get: (key: string) => (key === 'reauth' ? (opts.reauth ?? null) : null),
+  };
   const { fixture } = await render(LoginPage, {
     providers: [
       MockProvider(AuthService, auth),
       MockProvider(Router),
       MockProvider(SsoStateStore),
+      MockProvider(SessionStorageService, {
+        record: vi.fn(() => of(opts.record ?? null) as never),
+      }),
+      { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap } } },
     ],
   });
   return {
@@ -82,10 +94,71 @@ describe('LoginPage', () => {
       'https://hs.example',
       'alice',
       'hunter2',
+      'replace',
+      undefined, // no device id → a fresh (not re-auth) login
     );
     expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
       replaceUrl: true,
     });
+  });
+
+  it('logs in in add mode when /login?add is set', async () => {
+    const loginWithPassword = vi.fn(() => of(undefined));
+    const { cmp } = await renderLogin(
+      { loginWithPassword } as unknown as Partial<AuthService>,
+      { add: true },
+    );
+    cmp.baseUrl.set('https://hs.example');
+    cmp.username.set('bob');
+    cmp.password.set('hunter2');
+
+    expect(cmp.addMode).toBe(true);
+    cmp.loginPassword();
+
+    expect(loginWithPassword).toHaveBeenCalledWith(
+      'https://hs.example',
+      'bob',
+      'hunter2',
+      'add',
+      undefined,
+    );
+  });
+
+  it('re-auth mode prefills the account and reuses its device (add + deviceId)', async () => {
+    const loginWithPassword = vi.fn(() => of(undefined));
+    const getSupportedFlows = vi.fn(() => of(['m.login.password']));
+    const { cmp } = await renderLogin(
+      {
+        loginWithPassword,
+        getSupportedFlows,
+      } as unknown as Partial<AuthService>,
+      {
+        reauth: '@bob:hs',
+        record: {
+          baseUrl: 'https://hs.example',
+          userId: '@bob:hs',
+          deviceId: 'OLDDEV',
+        },
+      },
+    );
+
+    // The constructor loaded the record: homeserver known, username locked in.
+    expect(cmp.reauthUserId()).toBe('@bob:hs');
+    expect(cmp.baseUrl()).toBe('https://hs.example');
+    expect(cmp.username()).toBe('@bob:hs');
+    expect(getSupportedFlows).toHaveBeenCalledWith('https://hs.example');
+
+    cmp.password.set('hunter2');
+    cmp.loginPassword();
+
+    // Re-auth logs in ADD mode, re-authenticating the EXISTING device.
+    expect(loginWithPassword).toHaveBeenCalledWith(
+      'https://hs.example',
+      '@bob:hs',
+      'hunter2',
+      'add',
+      'OLDDEV',
+    );
   });
 
   it('surfaces a password-login error without navigating', async () => {
@@ -124,6 +197,40 @@ describe('LoginPage', () => {
     const redirect = getSsoUrl.mock.calls[0][1] as string;
     expect(redirect).toContain('/sso-callback?sso_state=');
     expect(redirect).toContain(state);
+  });
+
+  it('re-auth SSO stashes an add-mode nonce bound to the existing device', async () => {
+    const getSsoUrl = vi.fn(() => 'https://hs.example/sso');
+    const getSupportedFlows = vi.fn(() => of(['m.login.sso']));
+    const { cmp, ssoStore } = await renderLogin(
+      {
+        getSsoUrl,
+        getSupportedFlows,
+      } as unknown as Partial<AuthService>,
+      {
+        reauth: '@bob:hs',
+        record: {
+          baseUrl: 'https://hs.example',
+          userId: '@bob:hs',
+          deviceId: 'OLDDEV',
+        },
+      },
+    );
+
+    // The constructor loaded the record: the homeserver comes from the stored account.
+    expect(cmp.baseUrl()).toBe('https://hs.example');
+
+    await cmp.startSso();
+
+    // The SSO round-trip re-authenticates the EXISTING device: the stash carries add
+    // mode + OLDDEV, so the homeserver mints no new device and no re-verification runs.
+    expect(ssoStore.save).toHaveBeenCalledTimes(1);
+    const [state, savedBaseUrl, mode, deviceId] = vi.mocked(ssoStore.save).mock
+      .calls[0] as [string, string, string, string];
+    expect(savedBaseUrl).toBe('https://hs.example');
+    expect(mode).toBe('add');
+    expect(deviceId).toBe('OLDDEV');
+    expect(state).toBeTruthy();
   });
 
   it('uses the eu.qwky.trinity:// scheme and opens externally on Electron', async () => {

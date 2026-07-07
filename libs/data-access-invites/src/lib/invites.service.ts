@@ -6,7 +6,10 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, map } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  MatrixClientService,
+  reprojectOnAccountSwitch,
+} from '@trinity/data-access-matrix-client';
 
 /** A room we have been invited to but not yet joined (shown in the Invites group). */
 export interface PendingInvite {
@@ -57,6 +60,16 @@ export class InvitesService {
 
   /** Stable listener ref so {@link connect}/{@link disconnect} can add and remove it. */
   private readonly onChange = (): void => this.refresh();
+
+  constructor() {
+    // On an account switch, re-project this service onto the newly-active account's
+    // client — but only while it is already wired to one.
+    reprojectOnAccountSwitch(
+      this.matrix,
+      () => this.connectedClient !== null,
+      () => this.connect(),
+    );
+  }
 
   /**
    * Attach sync listeners and do the first read. Idempotent per client (e.g. the

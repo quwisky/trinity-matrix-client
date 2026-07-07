@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Observable, defer } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { SessionStorageService } from '@trinity/platform-native';
 
 /**
  * Deployment-specific push config the app provides (see `environment.push`). Null
@@ -19,36 +20,58 @@ export interface PushConfig {
 
 export const PUSH_CONFIG = new InjectionToken<PushConfig | null>('PUSH_CONFIG');
 
+/** Pusher `data` key carrying the owning account's user id (see docs/PUSH.md). The
+ * gateway must forward this from `devices[].data` into the delivered push payload so
+ * a tap can switch to the right account. */
+const ACCOUNT_DATA_KEY = 'trinity_user_id';
+
 /**
  * Registers the device for OS push (FCM/APNs via `@capacitor/push-notifications`)
- * and a matching **Matrix pusher** so the homeserver routes notifications through
- * the configured push gateway. Native-only and config-gated: a no-op on web/desktop
- * or when no {@link PushConfig} is provided (so the app degrades to in-app/sync
- * updates). Pair {@link register} (called once the client is live) with
- * {@link unregister} (on logout) to delete the pusher.
+ * and a matching **Matrix pusher on every signed-in account** so each account's
+ * homeserver routes its notifications through the configured push gateway. All
+ * accounts share the one device token (pushkey); each pusher tags itself with its
+ * account's user id in `data` so the gateway can fan out to the right account and a
+ * tap can switch to it. Native-only and config-gated: a no-op on web/desktop or when
+ * no {@link PushConfig} is provided.
+ *
+ * Pair {@link register} (called once the shell is live — it also re-applies pushers
+ * for accounts added later) with {@link unregister} (a single account on per-account
+ * sign-out, or all on full logout) to delete the pusher(s).
  */
 @Injectable({ providedIn: 'root' })
 export class PushService {
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
   private readonly zone = inject(NgZone);
+  private readonly storage = inject(SessionStorageService);
   private readonly config = inject(PUSH_CONFIG, { optional: true });
 
-  /** The pushkey (device token) of the pusher we registered, for later removal. */
+  /** The device push token (FCM/APNs), shared by every account's pusher. */
   private currentPushkey: string | null = null;
   private listenersAttached = false;
-  /** Guards against re-running the OS-registration flow on every shell mount. */
+  /** Guards the one-time OS-registration flow (permission + token request). */
   private registered = false;
 
   /**
-   * Request OS push permission, register for a device token, and (on the token
-   * callback) register a Matrix pusher. Idempotent + best-effort: callers can
-   * subscribe-and-forget. No-op when push isn't available/configured.
+   * Request OS push permission, register for a device token, and register a Matrix
+   * pusher on every account. Idempotent + best-effort: once the token is known a
+   * repeat call just re-applies pushers for all accounts (covering any added since),
+   * so the authenticated shell can call it on every mount. No-op when push isn't
+   * available/configured.
    */
   register(): Observable<void> {
     return defer(async () => {
-      if (this.registered || !this.canPush()) {
+      if (!this.canPush()) {
         return;
+      }
+      // Token already in hand (e.g. a shell re-mount after adding an account):
+      // (re)register a pusher for every account, covering any newly-added ones.
+      if (this.currentPushkey) {
+        await this.setPushers(this.currentPushkey);
+        return;
+      }
+      if (this.registered) {
+        return; // the OS-registration flow is already in progress
       }
       const permission = await PushNotifications.requestPermissions();
       if (permission.receive !== 'granted') {
@@ -71,12 +94,23 @@ export class PushService {
   }
 
   /**
-   * Delete the Matrix pusher and detach listeners. Run on logout BEFORE the access
-   * token is invalidated so the gateway stops receiving pushes for this device.
+   * Delete pusher(s). With a `userId`, remove just that account's pusher (on
+   * per-account sign-out) while the others keep theirs. Without one, tear everything
+   * down — remove every account's pusher and detach listeners (full logout / reset).
+   * Run before the access token is invalidated so the gateway stops delivering.
    */
-  unregister(): Observable<void> {
+  unregister(userId?: string): Observable<void> {
     return defer(async () => {
       const pushkey = this.currentPushkey;
+      if (userId) {
+        if (pushkey && this.config) {
+          await this.matrix
+            .clientFor(userId)
+            ?.removePusher(pushkey, this.appId())
+            .catch(() => undefined);
+        }
+        return;
+      }
       this.currentPushkey = null;
       this.registered = false;
       if (this.listenersAttached) {
@@ -84,10 +118,12 @@ export class PushService {
         await PushNotifications.removeAllListeners().catch(() => undefined);
         this.listenersAttached = false;
       }
-      if (pushkey && this.config && this.matrix.isInitialized) {
-        await this.matrix.instance
-          .removePusher(pushkey, this.appId())
-          .catch(() => undefined);
+      if (pushkey && this.config) {
+        for (const account of this.matrix.all()) {
+          await account.client
+            .removePusher(pushkey, this.appId())
+            .catch(() => undefined);
+        }
       }
     });
   }
@@ -116,35 +152,74 @@ export class PushService {
     }
     this.listenersAttached = true;
     await PushNotifications.addListener('registration', (token) => {
-      void this.setPusher(token.value).catch(() => undefined);
+      void this.setPushers(token.value).catch(() => undefined);
     });
-    await PushNotifications.addListener('pushNotificationActionPerformed', () =>
-      // Plugin callbacks fire outside Angular's zone — run navigation inside it so
-      // the view renders. Sygnal's `event_id_only` payload carries room_id/event_id;
-      // for now a tap just opens the app (room-targeted routing is a follow-up).
-      this.zone.run(
-        () => void this.router.navigate(['/rooms']).catch(() => undefined),
-      ),
+    await PushNotifications.addListener(
+      'pushNotificationActionPerformed',
+      (action) => {
+        // Plugin callbacks fire outside Angular's zone — run navigation inside it.
+        const data = action?.notification?.data as
+          Record<string, unknown> | undefined;
+        this.zone.run(() => this.openFromPush(data));
+      },
     );
   }
 
-  private async setPusher(pushkey: string): Promise<void> {
+  /** Register (or refresh) a pusher for every signed-in account with `pushkey`. */
+  private async setPushers(pushkey: string): Promise<void> {
     if (!this.config) {
       return;
     }
     this.currentPushkey = pushkey;
-    const client = this.matrix.instance;
-    await client.setPusher({
-      app_id: this.appId(),
-      pushkey,
-      kind: 'http',
-      app_display_name: 'Trinity',
-      device_display_name: client.getDeviceId() ?? 'Trinity',
-      lang: 'en',
-      // `event_id_only` keeps message content off the gateway; the client fetches
-      // the event after sync. `append: false` replaces any stale pusher for this key.
-      data: { url: this.config.gatewayUrl, format: 'event_id_only' },
-      append: false,
-    });
+    for (const account of this.matrix.all()) {
+      // `event_id_only` keeps message content off the gateway; the client fetches the
+      // event after sync. `trinity_user_id` tags the pusher so the gateway can fan out
+      // to the right account and a tap can switch to it (see docs/PUSH.md). Built as a
+      // value, not an inline literal: the Matrix spec allows extra `data` keys but the
+      // SDK types the field narrowly (`{ url, format, brand }`).
+      const data = {
+        url: this.config.gatewayUrl,
+        format: 'event_id_only',
+        [ACCOUNT_DATA_KEY]: account.userId,
+      };
+      await account.client
+        .setPusher({
+          app_id: this.appId(),
+          pushkey,
+          kind: 'http',
+          app_display_name: 'Trinity',
+          device_display_name: account.client.getDeviceId() ?? 'Trinity',
+          lang: 'en',
+          data,
+          // `append: false` replaces a stale pusher for this key on this account.
+          append: false,
+        })
+        .catch(() => undefined);
+    }
+  }
+
+  /** Tap on a delivered push: switch to the owning account (if tagged) and open. */
+  private openFromPush(data: Record<string, unknown> | undefined): void {
+    const userId =
+      typeof data?.[ACCOUNT_DATA_KEY] === 'string'
+        ? (data[ACCOUNT_DATA_KEY] as string)
+        : null;
+    const roomId =
+      typeof data?.['room_id'] === 'string'
+        ? (data['room_id'] as string)
+        : null;
+
+    if (
+      userId &&
+      userId !== this.matrix.activeUserId() &&
+      this.matrix.accountIds().includes(userId)
+    ) {
+      this.matrix.setActive(userId);
+      this.storage.setActive(userId).subscribe({ error: () => undefined });
+    }
+    const navigate = roomId
+      ? this.router.navigate(['/rooms'], { queryParams: { room: roomId } })
+      : this.router.navigate(['/rooms']);
+    void navigate.catch(() => undefined);
   }
 }

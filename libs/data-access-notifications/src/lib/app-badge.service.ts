@@ -1,6 +1,6 @@
 import { Injectable, effect, inject } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
-import { RoomsService } from '@trinity/data-access-rooms';
+import { UnreadAggregatorService } from '@trinity/data-access-rooms';
 import {
   getTrinityDesktopBridge,
   MobileBadgeService,
@@ -16,9 +16,9 @@ type BadgingNavigator = Navigator & {
 };
 
 /**
- * Mirrors the app-wide unread total ({@link RoomsService.totalUnread}) onto
- * whatever app-icon badge the current platform supports, choosing exactly ONE
- * sink by feature detection:
+ * Mirrors the app-wide unread total ({@link UnreadAggregatorService.totalUnread},
+ * summed across every signed-in account) onto whatever app-icon badge the current
+ * platform supports, choosing exactly ONE sink by feature detection:
  *
  *  - **Electron desktop** → the `trinityDesktop.setBadgeCount` preload bridge; the
  *    main process renders it per-OS (macOS dock, Linux Unity launcher, Windows
@@ -36,11 +36,11 @@ type BadgingNavigator = Navigator & {
  */
 @Injectable({ providedIn: 'root' })
 export class AppBadgeService {
-  private readonly rooms = inject(RoomsService);
+  private readonly unread = inject(UnreadAggregatorService);
   private readonly mobile = inject(MobileBadgeService);
 
   constructor() {
-    effect(() => this.push(this.rooms.totalUnread()));
+    effect(() => this.push(this.unread.totalUnread()));
   }
 
   private push(total: number): void {

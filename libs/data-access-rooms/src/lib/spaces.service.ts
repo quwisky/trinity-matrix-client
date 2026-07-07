@@ -11,7 +11,10 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { Observable, Subscription, defer, from, map, switchMap } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  MatrixClientService,
+  reprojectOnAccountSwitch,
+} from '@trinity/data-access-matrix-client';
 import {
   roomEncryptionInitialState,
   visibilityOptions,
@@ -220,6 +223,16 @@ export class SpacesService {
       this.refresh();
     }
   };
+
+  constructor() {
+    // On an account switch, re-project this service onto the newly-active account's
+    // client — but only while it is already wired to one.
+    reprojectOnAccountSwitch(
+      this.matrix,
+      () => this.connectedClient !== null,
+      () => this.connect(),
+    );
+  }
 
   /**
    * Attach sync listeners and do the first read. Idempotent per client (e.g. the

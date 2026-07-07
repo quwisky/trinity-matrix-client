@@ -25,9 +25,10 @@ interface BannerAction {
  * isn't ready. Reads {@link CryptoService.status}: `needs-setup` offers first-time
  * setup; `needs-recovery` offers both ways to trust this device — the recovery key
  * or verifying with another signed-in session. Renders nothing when crypto is
- * `ready` or still `unknown`. Lives in feature-rooms (not feature-crypto) because
- * the module boundary forbids feature→feature dependencies; it depends only on
- * `@trinity/core`.
+ * `ready` or still `unknown`. Its status is the ACTIVE account's, re-projected on an
+ * account switch, so the prompt always reflects the account in view. Lives in
+ * feature-rooms (not feature-crypto) because the module boundary forbids
+ * feature→feature dependencies; it depends only on `@trinity/data-access-crypto`.
  */
 @Component({
   selector: 'trn-encryption-banner',

@@ -12,7 +12,10 @@ import {
   type RoomMember,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  MatrixClientService,
+  reprojectOnAccountSwitch,
+} from '@trinity/data-access-matrix-client';
 import { messagePreview } from '@trinity/util-matrix';
 import {
   isValidUserId,
@@ -148,6 +151,16 @@ export class RoomsService {
   /** Bumped on every refresh so member queries can stay reactive. */
   private readonly _revision = signal(0);
   readonly revision = this._revision.asReadonly();
+
+  constructor() {
+    // On an account switch, re-project this service onto the newly-active account's
+    // client — but only while it is already wired to one.
+    reprojectOnAccountSwitch(
+      this.matrix,
+      () => this.connectedClient !== null,
+      () => this.connect(),
+    );
+  }
 
   /**
    * Attach sync listeners and do the first read. Idempotent per client (e.g. the

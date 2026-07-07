@@ -30,15 +30,25 @@ describe('SsoStateStore', () => {
     get.mockReset();
   });
 
-  it('persists state, baseUrl, and a timestamp', async () => {
-    await store().save('NONCE', 'https://hs.example');
+  it('persists state, baseUrl, mode, and a timestamp', async () => {
+    await store().save('NONCE', 'https://hs.example', 'add');
 
     const byKey = Object.fromEntries(
       set.mock.calls.map((c) => [c[0].key, c[0].value]),
     );
     expect(byKey['sso.state']).toBe('NONCE');
     expect(byKey['sso.baseUrl']).toBe('https://hs.example');
+    expect(byKey['sso.mode']).toBe('add');
     expect(Number(byKey['sso.startedAt'])).toBeGreaterThan(0);
+  });
+
+  it('defaults the mode to replace when omitted', async () => {
+    await store().save('NONCE', 'https://hs.example');
+
+    const byKey = Object.fromEntries(
+      set.mock.calls.map((c) => [c[0].key, c[0].value]),
+    );
+    expect(byKey['sso.mode']).toBe('replace');
   });
 
   it('consumes a fresh stash and clears every key (single-use)', async () => {
@@ -46,14 +56,27 @@ describe('SsoStateStore', () => {
       'sso.state': 'NONCE',
       'sso.baseUrl': 'https://hs.example',
       'sso.startedAt': String(Date.now()),
+      'sso.mode': 'add',
+      'sso.deviceId': 'OLDDEV',
     });
 
     const stash = await store().consume();
 
-    expect(stash).toEqual({ state: 'NONCE', baseUrl: 'https://hs.example' });
+    expect(stash).toEqual({
+      state: 'NONCE',
+      baseUrl: 'https://hs.example',
+      mode: 'add',
+      deviceId: 'OLDDEV',
+    });
     const removed = remove.mock.calls.map((c) => c[0].key);
     expect(removed).toEqual(
-      expect.arrayContaining(['sso.state', 'sso.baseUrl', 'sso.startedAt']),
+      expect.arrayContaining([
+        'sso.state',
+        'sso.baseUrl',
+        'sso.startedAt',
+        'sso.mode',
+        'sso.deviceId',
+      ]),
     );
   });
 
@@ -64,13 +87,36 @@ describe('SsoStateStore', () => {
       'sso.startedAt': String(Date.now() - 11 * 60 * 1000), // 11 min > 10 min TTL
     });
 
-    expect(await store().consume()).toEqual({ state: null, baseUrl: null });
+    expect(await store().consume()).toEqual({
+      state: null,
+      baseUrl: null,
+      mode: 'replace',
+      deviceId: null,
+    });
     expect(remove).toHaveBeenCalled(); // still cleared
   });
 
   it('returns an empty stash when nothing was stored', async () => {
     getFrom({});
 
-    expect(await store().consume()).toEqual({ state: null, baseUrl: null });
+    expect(await store().consume()).toEqual({
+      state: null,
+      baseUrl: null,
+      mode: 'replace',
+      deviceId: null,
+    });
+  });
+
+  it('persists the device id only when a re-auth passes one', async () => {
+    const svc = store();
+    await svc.save('NONCE', 'https://hs.example', 'add', 'OLDDEV');
+    const byKey = Object.fromEntries(
+      set.mock.calls.map((c) => [c[0].key, c[0].value]),
+    );
+    expect(byKey['sso.deviceId']).toBe('OLDDEV');
+
+    set.mockClear();
+    await svc.save('NONCE', 'https://hs.example', 'replace');
+    expect(set.mock.calls.some((c) => c[0].key === 'sso.deviceId')).toBe(false);
   });
 });

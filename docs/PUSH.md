@@ -22,18 +22,38 @@ message content) and the client fetches the event after sync.
 
 - **`PushService`** (`@trinity/data-access-notifications`, `push.service.ts`): requests OS push permission,
   registers for a device token via `@capacitor/push-notifications`, and registers a
-  matching Matrix pusher (`client.setPusher`, `app_id = <base>.<platform>`, `kind:'http'`,
-  `data:{ url, format:'event_id_only' }`). Deletes the pusher + detaches listeners on
-  logout (`removePusher`). A notification tap opens the app.
+  matching Matrix pusher **on every signed-in account** (`client.setPusher`,
+  `app_id = <base>.<platform>`, `kind:'http'`). All accounts share the one device token
+  as the `pushkey`; each pusher tags its `data` with the owning account:
+  `data:{ url, format:'event_id_only', trinity_user_id: <userId> }`. Deletes the
+  pusher(s) + detaches listeners on logout (`removePusher`). A notification tap switches
+  to the tagged account (`trinity_user_id`) and opens the room (`room_id`) before
+  showing it.
 - **Config token `PUSH_CONFIG`**: the app provides it from `environment.push`
   (`main.ts`). **`null` disables push** — the service is then a clean no-op.
 - **Native-only + guarded**: registration runs only on `getPlatform() ∈ {ios, android}`
   with the plugin available. It is deliberately **not** gated on `isNativePlatform()`,
   which is `false` under Electron (where there is no push plugin). Web and desktop no-op.
 - **Lifecycle**: `register()` is called from the rooms shell (`rooms.page`), which
-  mounts after both a fresh login and a restored session; it's idempotent per session.
-  `unregister()` runs on logout (before the token is invalidated) and on re-login into
-  a different account (so the new account gets its own pusher).
+  mounts after a fresh login and a restored session; once the device token is known a
+  repeat call re-applies pushers for **all** accounts, so an account added later gets
+  its pusher too (the add-account flow also calls it). `unregister(userId)` removes just
+  that account's pusher on per-account sign-out; `unregister()` (no id) removes every
+  account's pusher and detaches listeners on full logout.
+- **Multiple accounts need a gateway change (external dependency).** Every account's
+  pusher shares one FCM/APNs token, so the gateway receives pushes for several accounts
+  keyed by the same `pushkey`. **Sygnal must forward the pusher's `data.trinity_user_id`
+  into the delivered push payload's `data`** so the device can attribute the notification
+  to the right account (the tap-to-switch above reads `data.trinity_user_id`). Until that
+  is configured, mobile push still delivers, but a tap can't switch accounts — it opens
+  whichever account is active. This is the remaining piece of Milestone 8 (`docs/MULTI-ACCOUNT.md`).
+  - **Privacy note (gateway trust).** Because `trinity_user_id` is the account's Matrix
+    id and every account's pusher shares one device `pushkey`, the gateway operator can
+    map the device token to a specific MXID and link all of a device's accounts together.
+    The MXID is public and no message content is exposed (`event_id_only`), so this is
+    expected for a **self-hosted** gateway; for a shared/third-party gateway it is a
+    metadata-privacy tradeoff. If that matters, swap the raw MXID for a per-account opaque
+    routing id resolved back to the account client-side on tap.
 
 ## Enabling it (external setup — required)
 
@@ -111,8 +131,11 @@ serves Element's app ids — not a custom app. Options to avoid running your own
 
 - **Web Push** is not implemented (would need a VAPID/Web-Push pushgen + the service
   worker); for web, the local notifications above cover the foreground/tab case.
-- **Notification tap** opens `/rooms`; room-targeted navigation is a follow-up (rooms
-  aren't deep-linkable by route yet).
+- **Per-account push attribution** needs the Sygnal change described above (forward
+  `data.trinity_user_id`). Without it, a tapped mobile push can't switch accounts. The
+  client side (one tagged pusher per account, tap-to-switch) is in place.
+- **Notification tap** routes to `/rooms?room=<room_id>`; the client uses the room
+  query param to open the room where the route supports it.
 - **Foreground** pushes aren't surfaced separately — the live sync already updates the UI.
 - **Token rotation** leaves the previous pusher on the homeserver until logout.
 - The full token → `setPusher` → Sygnal → delivery loop needs **on-device verification**.

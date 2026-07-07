@@ -94,6 +94,7 @@ async function seedNotifyRoom(
   runId: string,
 ): Promise<{
   reader: SynapseSession;
+  readerUserId: string;
   sender: ApiUser;
   roomId: string;
   roomName: string;
@@ -139,6 +140,7 @@ async function seedNotifyRoom(
 
   return {
     reader: { available: true, hs, user: readerUser, pass: readerPass },
+    readerUserId: reader.userId,
     sender,
     roomId,
     roomName,
@@ -249,7 +251,7 @@ test.describe('Message notifications', () => {
     const hs = session.hs as string;
     const runId = `${Date.now().toString(36)}n`;
 
-    const { reader, sender, roomId, roomName, senderName } =
+    const { reader, readerUserId, sender, roomId, roomName, senderName } =
       await seedNotifyRoom(request, hs, runId);
 
     await installNotificationRecorder(page);
@@ -302,8 +304,9 @@ test.describe('Message notifications', () => {
     expect(match).toBeTruthy();
     // Title reflects the sender + room: `${sender} · ${room}`.
     expect(match?.title).toBe(`${senderName} · ${roomName}`);
-    // tag = roomId (collapses repeats from the same room).
-    expect(match?.options?.tag).toBe(roomId);
+    // tag = `${userId} ${roomId}` — collapses repeats from the same room per
+    // account, so the same room on two accounts stays two distinct toasts.
+    expect(match?.options?.tag).toBe(`${readerUserId} ${roomId}`);
   });
 
   test('suppresses a live message in the room you are currently viewing', async ({

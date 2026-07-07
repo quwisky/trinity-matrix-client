@@ -11,7 +11,10 @@ import {
   type Verifier,
 } from 'matrix-js-sdk/lib/crypto-api';
 import { Observable, defer, from, of } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  MatrixClientService,
+  reprojectOnAccountSwitch,
+} from '@trinity/data-access-matrix-client';
 
 /** UI-facing stage of the active verification (maps the SDK's numeric phase). */
 export type VerificationStage =
@@ -93,6 +96,16 @@ export class VerificationService {
   };
 
   private readonly onVerifierCancel = (): void => this.recompute();
+
+  constructor() {
+    // On an account switch, re-project incoming-verification listening onto the
+    // newly-active account's client — but only while it is already wired to one.
+    reprojectOnAccountSwitch(
+      this.matrix,
+      () => this.connectedClient !== null,
+      () => this.connect(),
+    );
+  }
 
   /**
    * Listen for incoming verification requests and adopt any already in flight.

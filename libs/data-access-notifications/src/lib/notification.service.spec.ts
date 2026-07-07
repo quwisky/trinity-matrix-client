@@ -1,11 +1,14 @@
-import { Router } from '@angular/router';
+import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { MatrixEventEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
+import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { TimelineService } from '@trinity/data-access-timeline';
+import { SessionStorageService } from '@trinity/platform-native';
 
 const cap = vi.hoisted(() => ({ native: false }));
 vi.mock('@capacitor/core', () => ({
@@ -26,28 +29,50 @@ class MockNotification {
   }
 }
 
-function setup() {
-  const client = {
-    getUserId: () => '@me:hs',
+/** A client shaped like the bits NotificationService reads, keyed to one account. */
+function fakeClient(userId: string) {
+  return {
+    getUserId: () => userId,
     getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
     getRoom: vi.fn(() => room),
     on: vi.fn(),
     off: vi.fn(),
   };
+}
+
+function setup(opts: { accounts?: string[]; active?: string } = {}) {
+  const accounts = opts.accounts ?? ['@me:hs'];
+  const active = opts.active ?? accounts[0];
+  const clients = new Map(accounts.map((id) => [id, fakeClient(id)]));
+  const accountIds = signal<readonly string[]>(accounts);
+  const activeUserId = signal<string | null>(active);
+  const setActive = vi.fn((id: string) => activeUserId.set(id));
+  const storageSetActive = vi.fn(() => of(void 0));
   TestBed.configureTestingModule({
     providers: [
       NotificationService,
-      MockProvider(MatrixClientService),
+      MockProvider(MatrixClientService, {
+        isInitialized: true,
+        accountIds: accountIds.asReadonly(),
+        activeUserId: activeUserId.asReadonly(),
+        clientFor: (id: string) =>
+          (clients.get(id) as unknown as MatrixClient) ?? null,
+        setActive,
+      }),
       MockProvider(Router, { navigate: vi.fn(() => Promise.resolve(true)) }),
       MockProvider(TimelineService),
+      MockProvider(SessionStorageService, { setActive: storageSetActive }),
     ],
   });
-  const matrix = TestBed.inject(MatrixClientService);
-  ngMocks.stubMember(matrix, 'isInitialized', true);
-  ngMocks.stubMember(matrix, 'instance', client as unknown as MatrixClient);
   return {
     svc: TestBed.inject(NotificationService),
-    client,
+    client: clients.get(active)!,
+    clients,
+    // The writable account-id signal, so tests can add/remove accounts after
+    // connect() and flush the reconcile effect via ApplicationRef.tick().
+    accountIds,
+    setActive,
+    storageSetActive,
     router: TestBed.inject(Router),
     timeline: TestBed.inject(TimelineService),
   };
@@ -59,21 +84,24 @@ function setup() {
  * forwarded by the main process.
  */
 function desktopBridge() {
-  let clickHandler: ((roomId: string) => void) | undefined;
+  let clickHandler: ((roomId: string, userId?: string) => void) | undefined;
   const unsubscribe = vi.fn();
   const bridge = {
     isElectron: true,
     platform: 'darwin',
     showNotification: vi.fn(),
-    onNotificationClick: vi.fn((cb: (roomId: string) => void) => {
-      clickHandler = cb;
-      return unsubscribe;
-    }),
+    onNotificationClick: vi.fn(
+      (cb: (roomId: string, userId?: string) => void) => {
+        clickHandler = cb;
+        return unsubscribe;
+      },
+    ),
   };
   return {
     bridge,
     unsubscribe,
-    emitClick: (roomId: string): void => clickHandler?.(roomId),
+    emitClick: (roomId: string, userId?: string): void =>
+      clickHandler?.(roomId, userId),
   };
 }
 
@@ -156,7 +184,7 @@ describe('NotificationService', () => {
     expect(MockNotification.instances[0].title).toBe('Alice · General');
     expect(MockNotification.instances[0].options).toMatchObject({
       body: 'hello there',
-      tag: '!r:hs',
+      tag: '@me:hs !r:hs',
     });
   });
 
@@ -258,7 +286,9 @@ describe('NotificationService', () => {
     MockNotification.instances[0].onclick?.();
 
     expect(focus).toHaveBeenCalled();
-    expect(router.navigate).toHaveBeenCalledWith(['/rooms']);
+    expect(router.navigate).toHaveBeenCalledWith(['/rooms'], {
+      queryParams: { room: '!r:hs' },
+    });
   });
 
   it('swallows errors so a notification failure cannot disrupt sync', () => {
@@ -353,6 +383,162 @@ describe('NotificationService', () => {
     });
   });
 
+  describe('multiple accounts', () => {
+    it('notifies for a live message on a background (non-active) account', () => {
+      // Focused on the same room id on the ACTIVE account — a background account's
+      // message to that room id must still notify (the user isn't looking at it there).
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const { svc, clients, timeline } = setup({
+        accounts: ['@me:hs', '@bg:hs'],
+        active: '@me:hs',
+      });
+      ngMocks.stubMember(timeline, 'openRoomId', '!r:hs');
+      svc.connect();
+
+      timelineHandler(clients.get('@bg:hs')!)(
+        event(),
+        room,
+        false,
+        false,
+        live,
+      );
+
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('scores push rules against the account the event is on', () => {
+      const { svc, clients } = setup({
+        accounts: ['@me:hs', '@bg:hs'],
+        active: '@me:hs',
+      });
+      const bg = clients.get('@bg:hs')!;
+      bg.getPushActionsForEvent.mockReturnValue({ notify: false, tweaks: {} });
+      svc.connect();
+
+      timelineHandler(bg)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(0);
+      expect(bg.getPushActionsForEvent).toHaveBeenCalled();
+    });
+
+    it('switches to the owning account when its notification is clicked', () => {
+      const { svc, clients, setActive, storageSetActive, router } = setup({
+        accounts: ['@me:hs', '@bg:hs'],
+        active: '@me:hs',
+      });
+      vi.spyOn(window, 'focus').mockImplementation(() => undefined);
+      svc.connect();
+      timelineHandler(clients.get('@bg:hs')!)(
+        event(),
+        room,
+        false,
+        false,
+        live,
+      );
+
+      MockNotification.instances[0].onclick?.();
+
+      expect(setActive).toHaveBeenCalledWith('@bg:hs');
+      expect(storageSetActive).toHaveBeenCalledWith('@bg:hs');
+      expect(router.navigate).toHaveBeenCalledWith(['/rooms'], {
+        queryParams: { room: '!r:hs' },
+      });
+    });
+
+    it('attaches to and notifies for an account that goes live after connect()', () => {
+      // The other multi-account tests pre-populate both accounts before connect();
+      // here @bg warm-starts and only appears in accountIds() afterwards, so the
+      // effect-driven attach is what must bind its listeners.
+      const { svc, clients, accountIds } = setup({
+        accounts: ['@me:hs'],
+        active: '@me:hs',
+      });
+      svc.connect();
+
+      const bg = fakeClient('@bg:hs');
+      clients.set('@bg:hs', bg);
+      accountIds.set(['@me:hs', '@bg:hs']);
+      TestBed.inject(ApplicationRef).tick(); // flush the reconcile effect
+
+      expect(bg.on).toHaveBeenCalledWith(
+        RoomEvent.Timeline,
+        expect.any(Function),
+      );
+      expect(bg.on).toHaveBeenCalledWith(
+        MatrixEventEvent.Decrypted,
+        expect.any(Function),
+      );
+
+      timelineHandler(bg)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('detaches listeners and clears the dedupe when an account signs out (reconcile)', () => {
+      const { svc, clients, accountIds } = setup({
+        accounts: ['@me:hs', '@bg:hs'],
+        active: '@me:hs',
+      });
+      svc.connect();
+      const bg = clients.get('@bg:hs')!;
+
+      // @bg notifies event $x once — its dedupe key is now recorded.
+      timelineHandler(bg)(event({ id: '$x' }), room, false, false, live);
+      expect(MockNotification.instances).toHaveLength(1);
+
+      // @bg signs out: it drops out of accountIds() and the reconcile effect runs.
+      accountIds.set(['@me:hs']);
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(bg.off).toHaveBeenCalledWith(
+        RoomEvent.Timeline,
+        expect.any(Function),
+      );
+      expect(bg.off).toHaveBeenCalledWith(
+        MatrixEventEvent.Decrypted,
+        expect.any(Function),
+      );
+
+      // @bg is re-added and the SAME live event fires again. A stale dedupe key
+      // would silently suppress it; forgetAccount() dropped it, so it notifies anew.
+      accountIds.set(['@me:hs', '@bg:hs']);
+      TestBed.inject(ApplicationRef).tick();
+      timelineHandler(bg)(event({ id: '$x' }), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(2);
+    });
+
+    it('skips a warm-starting account with no client yet, attaching once it appears', () => {
+      // @bg is signed in (present in accountIds) but its client is still warm-starting,
+      // so clientFor('@bg:hs') returns null when connect() first reconciles.
+      const { svc, clients, accountIds } = setup({
+        accounts: ['@me:hs'],
+        active: '@me:hs',
+      });
+      accountIds.set(['@me:hs', '@bg:hs']);
+
+      // The null client must be skipped, not passed to buildNotifier — no throw.
+      expect(() => svc.connect()).not.toThrow();
+
+      // Warm start completes: @bg's client goes live and a later reconcile re-runs.
+      const bg = fakeClient('@bg:hs');
+      clients.set('@bg:hs', bg);
+      accountIds.set(['@me:hs', '@bg:hs']); // new array ref → effect re-runs
+      TestBed.inject(ApplicationRef).tick();
+
+      // Attached exactly once: attach() binds Timeline + Decrypted, so two on() calls.
+      expect(bg.on).toHaveBeenCalledTimes(2);
+      expect(bg.on).toHaveBeenCalledWith(
+        RoomEvent.Timeline,
+        expect.any(Function),
+      );
+      expect(bg.on).toHaveBeenCalledWith(
+        MatrixEventEvent.Decrypted,
+        expect.any(Function),
+      );
+    });
+  });
+
   describe('web service worker', () => {
     afterEach(() => {
       // Drop the stubbed serviceWorker so other tests fall back to the ctor.
@@ -381,8 +567,8 @@ describe('NotificationService', () => {
 
       expect(showNotification).toHaveBeenCalledWith('Alice · General', {
         body: 'hello there',
-        tag: '!r:hs',
-        data: { roomId: '!r:hs' },
+        tag: '@me:hs !r:hs',
+        data: { roomId: '!r:hs', userId: '@me:hs' },
       });
       // Did NOT fall back to the renderer Notification constructor.
       expect(MockNotification.instances).toHaveLength(0);
@@ -440,8 +626,9 @@ describe('NotificationService', () => {
       expect(harness.bridge.showNotification).toHaveBeenCalledWith({
         title: 'Alice · General',
         body: 'hello there',
-        tag: '!r:hs',
+        tag: '@me:hs !r:hs',
         roomId: '!r:hs',
+        userId: '@me:hs',
       });
       // Did NOT fall back to the renderer Web Notification.
       expect(MockNotification.instances).toHaveLength(0);
@@ -486,6 +673,20 @@ describe('NotificationService', () => {
       expect(router.navigate).toHaveBeenCalledWith(['/rooms'], {
         queryParams: { room: '!r:hs' },
       });
+    });
+
+    it('switches accounts when a forwarded click carries a userId', () => {
+      const { svc, setActive, storageSetActive } = setup({
+        accounts: ['@me:hs', '@bg:hs'],
+        active: '@me:hs',
+      });
+      vi.spyOn(window, 'focus').mockImplementation(() => undefined);
+      svc.connect();
+
+      harness.emitClick('!r:hs', '@bg:hs');
+
+      expect(setActive).toHaveBeenCalledWith('@bg:hs');
+      expect(storageSetActive).toHaveBeenCalledWith('@bg:hs');
     });
 
     it('unsubscribes from main-process clicks on disconnect', () => {

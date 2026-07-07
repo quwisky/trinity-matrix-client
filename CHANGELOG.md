@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Multiple accounts, signed in at once.** Sign into several Matrix accounts and keep
+  them all syncing concurrently. Switch the active account from the user panel in the
+  channel sidebar (which lists each account with its own unread count and marks the
+  active one), add another via **Add account**, and sign accounts out individually. The
+  app-icon badge now sums unread across every account, and desktop/web notifications
+  fire for background accounts too — tapping one switches to the owning account before
+  opening the room. On mobile, each account registers its own push pusher tagged with
+  its user id (full per-account push delivery also needs a push-gateway change — see
+  `docs/PUSH.md`). Each account gets an isolated encryption (crypto) store, so accounts
+  never share keys.
+- **Graceful handling of a revoked session, with re-authentication.** If a homeserver
+  signs one account out (its access token is revoked server-side), the other accounts
+  keep running: a soft logout keeps that account's data, and it appears in the account
+  switcher as "Signed out — Sign in" so you can re-authenticate it in place (reusing its
+  existing device, so no re-verification), while a hard logout wipes it. Losing your last
+  account returns you to the login screen instead of a broken shell.
+- **Persistent local storage.** Trinity now asks the browser to keep its on-device
+  data (each account's message-sync and encryption stores) persistent so it isn't
+  evicted under storage pressure — which matters more as accounts add up, since an
+  evicted encryption store would force that account to re-verify.
+
 ### Changed
 
 - **Restructured the Nx workspace into typed, per-domain libraries.** The monolithic
@@ -27,6 +50,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Signing an account out and then logging back in failed with a crypto error ("the account
+  in the store doesn't match the account in the constructor"), leaving that account unable to
+  sign back in. Sign-out wiped the account's message cache but deleted the wrong encryption
+  store, so its real one was left behind; because the store was keyed only by user, the next
+  login (which gets a fresh device from the server) reopened that stale store and refused to
+  start. Two fixes: sign-out now deletes the correct encryption store, and each login's
+  encryption store is now scoped to its device, so a fresh login always starts clean instead
+  of reopening an old device's store. This also recovers accounts that were already stuck.
+  Re-logging in on a new device without signing out first now also cleans up the previous
+  device's leftover encryption store instead of leaving it on disk, and on startup any
+  encryption stores orphaned by earlier versions are swept away to reclaim disk space.
 - OnPush re-render regression on the message timeline: per-row caps are now memoized so
   scrolling/typing no longer re-renders every visible row and its toolbar.
 

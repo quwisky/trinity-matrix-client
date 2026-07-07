@@ -14,7 +14,10 @@ import {
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
-import { ChannelSidebarComponent } from './channel-sidebar.component';
+import {
+  ChannelSidebarComponent,
+  type AccountSummary,
+} from './channel-sidebar.component';
 
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {
@@ -76,6 +79,9 @@ async function renderSidebar(
       spaceActive?: boolean;
       activeRoomId?: string | null;
       user?: UserProfile;
+      accounts?: AccountSummary[];
+      activeUserId?: string | null;
+      reauthAccounts?: string[];
     };
     joinableRooms?: SpaceChildRoom[];
     childSpaces?: SpaceChildRoom[];
@@ -318,6 +324,92 @@ describe('ChannelSidebarComponent', () => {
     logoutItem?.click();
 
     expect(loggedOut).toBe(true);
+  });
+
+  it('lists accounts, marks the active one, and shows per-account unread', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        accounts: [
+          { userId: '@me:hs', displayName: 'Me', avatarMxc: null, unread: 0 },
+          { userId: '@alt:hs', displayName: 'Alt', avatarMxc: null, unread: 3 },
+        ],
+        activeUserId: '@me:hs',
+      },
+    });
+
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+    fixture.detectChanges();
+
+    const rows = document.querySelectorAll<HTMLElement>(
+      '[data-testid="account-row"]',
+    );
+    expect(rows).toHaveLength(2);
+    const active = Array.from(rows).find(
+      (r) => r.getAttribute('aria-current') === 'true',
+    );
+    expect(active?.textContent).toContain('@me:hs');
+    expect(
+      document.querySelector('.account-row__badge')?.textContent?.trim(),
+    ).toBe('3');
+  });
+
+  it('emits switchAccount when a non-active account row is clicked', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        accounts: [
+          { userId: '@me:hs', displayName: 'Me', avatarMxc: null, unread: 0 },
+          { userId: '@alt:hs', displayName: 'Alt', avatarMxc: null, unread: 3 },
+        ],
+        activeUserId: '@me:hs',
+      },
+    });
+
+    let switched: string | null = null;
+    fixture.componentInstance.switchAccount.subscribe((id) => (switched = id));
+
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+    fixture.detectChanges();
+
+    const altRow = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="account-row"]'),
+    ).find((r) => r.textContent?.includes('@alt:hs'));
+    altRow?.click();
+
+    expect(switched).toBe('@alt:hs');
+  });
+
+  it('lists soft-logged-out accounts and emits reauthAccount when clicked', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { reauthAccounts: ['@dormant:hs'] },
+    });
+
+    let reauthed: string | null = null;
+    fixture.componentInstance.reauthAccount.subscribe((id) => (reauthed = id));
+
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+    fixture.detectChanges();
+
+    const row = document.querySelector<HTMLElement>(
+      '[data-testid="reauth-row"]',
+    );
+    expect(row?.textContent).toContain('@dormant:hs');
+    row?.click();
+
+    expect(reauthed).toBe('@dormant:hs');
+  });
+
+  it('emits addAccount from the account menu', async () => {
+    const { fixture, container } = await renderSidebar();
+
+    let added = false;
+    fixture.componentInstance.addAccount.subscribe(() => (added = true));
+
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+    fixture.detectChanges();
+
+    document.querySelector<HTMLElement>('[data-testid="add-account"]')?.click();
+
+    expect(added).toBe(true);
   });
 
   it('emits openSettings from the user-panel settings button', async () => {

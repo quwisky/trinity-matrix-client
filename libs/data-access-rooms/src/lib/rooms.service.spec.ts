@@ -1,5 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { NgZone } from '@angular/core';
+import {
+  ApplicationRef,
+  NgZone,
+  signal,
+  type WritableSignal,
+} from '@angular/core';
 import { ClientEvent, MatrixEventEvent, RoomEvent } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
@@ -70,15 +75,22 @@ function fakeRoom(opts: {
 function provideRooms(client: unknown): {
   svc: RoomsService;
   matrix: MatrixClientService;
+  activeUserId: WritableSignal<string | null>;
 } {
+  const activeUserId = signal<string | null>(null);
   TestBed.configureTestingModule({
-    providers: [RoomsService, MockProvider(MatrixClientService)],
+    providers: [
+      RoomsService,
+      MockProvider(MatrixClientService, {
+        activeUserId: activeUserId.asReadonly(),
+      }),
+    ],
   });
   const matrix = TestBed.inject(MatrixClientService);
   ngMocks.stubMember(matrix, 'isInitialized', true);
   ngMocks.stubMember(matrix, 'instance', client);
   const svc = TestBed.inject(RoomsService);
-  return { svc, matrix };
+  return { svc, matrix, activeUserId };
 }
 
 describe('RoomsService', () => {
@@ -136,6 +148,36 @@ describe('RoomsService', () => {
     expect(mid.hasUnread).toBe(false);
     // totalUnread is the app-wide sum of every room's unread count.
     expect(svc.totalUnread()).toBe(3);
+  });
+
+  it('re-projects onto the newly-active account when the active account switches', () => {
+    const clientA = {
+      baseUrl: 'https://a.hs',
+      getRooms: () => [fakeRoom({ roomId: '!a:hs', name: 'A room' })],
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const { svc, matrix, activeUserId } = provideRooms(clientA);
+    activeUserId.set('@a:hs');
+    svc.connect(); // wired to account A
+    TestBed.inject(ApplicationRef).tick(); // effect's first run: still A → no-op
+    expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs']);
+    clientA.off.mockClear();
+
+    // Switch: the active client becomes B; the reproject effect re-wires on the tick.
+    const clientB = {
+      baseUrl: 'https://b.hs',
+      getRooms: () => [fakeRoom({ roomId: '!b:hs', name: 'B room' })],
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    ngMocks.stubMember(matrix, 'instance', clientB);
+    activeUserId.set('@b:hs');
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(clientA.off).toHaveBeenCalled(); // detached from A
+    expect(clientB.on).toHaveBeenCalled(); // attached to B
+    expect(svc.rooms().map((r) => r.id)).toEqual(['!b:hs']); // now B's rooms
   });
 
   it('derives an uppercase initial without the leading sigil', () => {
