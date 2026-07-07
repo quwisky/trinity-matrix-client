@@ -12,6 +12,7 @@ import {
   HlmAvatarFallback,
   HlmAvatarImage,
 } from '@trinity/helm/avatar';
+import { type PresenceState, presenceLabel } from '@trinity/util-matrix';
 import { AVATAR_RESOLVER } from './avatar-resolver';
 
 /**
@@ -33,6 +34,15 @@ import { AVATAR_RESOLVER } from './avatar-resolver';
     `
       :host {
         display: inline-flex;
+        position: relative;
+      }
+      .presence-dot {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        border-radius: 50%;
+        /* Ring in the surrounding surface colour so the dot reads as an overlay. */
+        box-shadow: 0 0 0 2px var(--trn-presence-ring, var(--background, #fff));
       }
     `,
   ],
@@ -45,8 +55,31 @@ export class AvatarComponent {
   readonly initial = input('?');
   readonly size = input(40);
   readonly square = input(false);
+  /** Online-status indicator; omit (null) to render no presence dot. */
+  readonly presence = input<PresenceState | null>(null);
 
   private readonly resolver = inject(AVATAR_RESOLVER, { optional: true });
+
+  /** Diameter of the presence dot, scaled to the avatar (floored so it stays visible). */
+  readonly dotSize = computed(() => Math.max(8, Math.round(this.size() * 0.3)));
+
+  /** Fill colour for the presence dot, by state. */
+  readonly presenceColor = computed(() => {
+    switch (this.presence()) {
+      case 'online':
+        return '#23a55a';
+      case 'unavailable':
+        return '#f0b232';
+      default:
+        return '#80848e';
+    }
+  });
+
+  /** Accessible label / tooltip for the presence dot (null when there's no dot). */
+  readonly presenceTitle = computed(() => {
+    const state = this.presence();
+    return state ? presenceLabel(state) : null;
+  });
 
   /** URL resolved from `mxc` via the resolver (null until resolved / no resolver). */
   private readonly resolvedUrl = signal<string | null>(null);

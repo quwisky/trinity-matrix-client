@@ -6,6 +6,10 @@
 
   width: 240px;
   padding: 16px 8px;
+
+  // The avatar presence dot rings itself in the surrounding surface so it reads as an
+  // overlay — tell it what this panel's surface actually is (else it halos).
+  --trn-presence-ring: var(--trinity-members);
 }
 
 .members__header {
@@ -43,6 +47,29 @@
 
   &:hover {
     background: var(--trinity-hover);
+  }
+}
+
+/* Offline members are de-emphasised (Discord-style): fade the avatar and mute the name
+   to a designed muted token (rather than a heavy row opacity that drops the name below
+   AA contrast). Hover restores both. */
+.member--offline {
+  trn-avatar {
+    opacity: 0.55;
+  }
+
+  .member__name {
+    color: var(--trinity-text-muted);
+  }
+
+  &:hover {
+    trn-avatar {
+      opacity: 1;
+    }
+
+    .member__name {
+      color: var(--trinity-text);
+    }
   }
 }
 

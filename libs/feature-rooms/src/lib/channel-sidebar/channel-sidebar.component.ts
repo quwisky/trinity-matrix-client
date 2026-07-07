@@ -29,14 +29,17 @@ import {
 } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import { InvitesService } from '@trinity/data-access-invites';
-import { type UserProfile } from '@trinity/data-access-profile';
+import {
+  PresenceService,
+  type UserProfile,
+} from '@trinity/data-access-profile';
 import {
   RoomsService,
   SpacesService,
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
-import { initialOf } from '@trinity/util-matrix';
+import { initialOf, type PresenceState } from '@trinity/util-matrix';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 
 /** One signed-in account in the user-panel switcher: the profile plus its unread total. */
@@ -80,6 +83,7 @@ export class ChannelSidebarComponent {
   private readonly spacesSvc = inject(SpacesService);
   private readonly invitesSvc = inject(InvitesService);
   private readonly roomsSvc = inject(RoomsService);
+  private readonly presence = inject(PresenceService);
 
   readonly spaceName = input('Home');
   /** Whether a space (not Home) is selected — gates the header space actions. */
@@ -155,6 +159,17 @@ export class ChannelSidebarComponent {
 
   /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
   readonly badgeLabel = unreadBadgeLabel;
+
+  /**
+   * Live online status for a direct message's other participant, or null for a non-DM
+   * room (which gets no presence dot). Reads the memoized per-user presence signal, so
+   * the row updates when that user's presence changes.
+   */
+  presenceOf(room: RoomSummary): PresenceState | null {
+    return room.directUserId
+      ? this.presence.presenceFor(room.directUserId)()
+      : null;
+  }
 
   /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service. */
   toggleFavourite(room: RoomSummary): void {

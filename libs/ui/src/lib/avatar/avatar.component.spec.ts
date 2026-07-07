@@ -53,4 +53,48 @@ describe('AvatarComponent', () => {
     expect(fixture.componentInstance.src()).toBeNull();
     expect(fallback(container)?.textContent?.trim()).toBe('C');
   });
+
+  const dot = (host: HTMLElement) =>
+    host.querySelector<HTMLElement>('.presence-dot');
+
+  it('renders no presence dot by default', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: { initial: 'A' },
+    });
+    expect(dot(container)).toBeNull();
+  });
+
+  it('renders a labelled presence dot coloured for the state', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: { initial: 'A', presence: 'online' },
+    });
+    const el = dot(container);
+    expect(el).toBeTruthy();
+    expect(el?.getAttribute('data-presence')).toBe('online');
+    expect(el?.getAttribute('aria-label')).toBe('Online');
+    expect(el?.style.background).toBe('rgb(35, 165, 90)'); // #23a55a
+  });
+
+  it('shows an amber Away dot for the unavailable state', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: { initial: 'A', presence: 'unavailable' },
+    });
+    const el = dot(container);
+    expect(el?.getAttribute('aria-label')).toBe('Away');
+    expect(el?.style.background).toBe('rgb(240, 178, 50)'); // #f0b232
+  });
+
+  it('scales the dot to the avatar size', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: { initial: 'A', presence: 'offline', size: 64 },
+    });
+    expect(dot(container)?.style.width).toBe('19px'); // round(64 * 0.3)
+  });
+
+  it('floors the dot at 8px for small avatars', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: { initial: 'A', presence: 'offline', size: 20 },
+    });
+    expect(dot(container)?.style.width).toBe('8px'); // round(20 * 0.3) = 6 → floored
+  });
 });

@@ -1,6 +1,8 @@
 <aside class="members">
   <div class="members__header">
-    <span class="category">Members — {{ members().length }}</span>
+    <span class="category"
+      >Members — {{ onlineCount() }} of {{ members().length }} online</span
+    >
     <button
       class="members__close"
       (click)="closed.emit()"
@@ -11,15 +13,20 @@
       <ng-icon name="lucideX" aria-hidden="true" />
     </button>
   </div>
-  @for (member of members(); track member.userId) {
-    <div class="member" [title]="member.userId">
+  @for (row of rows(); track row.member.userId) {
+    <div
+      class="member"
+      [class.member--offline]="row.presence === 'offline'"
+      [title]="row.member.userId"
+    >
       <trn-avatar
-        [mxc]="member.avatarMxc"
-        [initial]="member.initial"
-        [name]="member.name"
+        [mxc]="row.member.avatarMxc"
+        [initial]="row.member.initial"
+        [name]="row.member.name"
         [size]="32"
+        [presence]="row.presence"
       />
-      <span class="member__name">{{ member.name }}</span>
+      <span class="member__name">{{ row.member.name }}</span>
     </div>
   }
 </aside>

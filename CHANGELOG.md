@@ -33,6 +33,12 @@ All notable changes to this project are documented here. The format is based on
   GIF as an image message in rooms and threads (encrypted rooms included). Search is
   powered by **Tenor** or **GIPHY**: pick a provider and paste a free API key in
   Settings → GIFs. The GIF button stays hidden until a key is configured.
+- **Online status for members and direct messages.** The room member list now
+  reflects each member's Matrix presence: a coloured dot on their avatar (green
+  online, amber away, grey offline), online members sorted to the top, offline
+  members dimmed, and an "N of M online" count in the header. Each direct-message
+  row in the sidebar also shows the other person's status on their avatar. All
+  updating live. The presence dot is built into the shared avatar component.
 
 ### Changed
 

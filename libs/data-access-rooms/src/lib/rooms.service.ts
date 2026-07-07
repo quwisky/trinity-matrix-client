@@ -62,6 +62,11 @@ export interface RoomSummary {
   activityTs: number;
   /** Whether the room carries the `m.favourite` tag — favourite to the top of the list. */
   favourite: boolean;
+  /**
+   * For a direct message, the other participant's user id (from the `m.direct` map);
+   * undefined for a non-DM room. Lets the sidebar show the counterpart's online status.
+   */
+  directUserId?: string;
 }
 
 /** A joined member shown in the member list. */
@@ -464,11 +469,26 @@ export class RoomsService {
     const client = this.matrix.instance;
     const all = client.getRooms();
 
+    // Reverse `m.direct` ({ userId: roomId[] }) once into the set of DM room ids AND a
+    // roomId → counterpart-user-id lookup, so each DM room can carry the other party's id.
+    const direct = new Set<string>();
+    const directUserByRoom = new Map<string, string>();
+    for (const [userId, ids] of Object.entries(this.directMap(client))) {
+      if (Array.isArray(ids)) {
+        for (const roomId of ids) {
+          direct.add(roomId);
+          if (!directUserByRoom.has(roomId)) {
+            directUserByRoom.set(roomId, userId);
+          }
+        }
+      }
+    }
+
     this._rooms.set(
       all
         // Spaces are rendered in the server rail, not as channels in the room list.
         .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
-        .map((r) => this.toRoom(r))
+        .map((r) => this.toRoom(r, directUserByRoom.get(r.roomId)))
         // Favourite rooms first, then most recently active; fall back to name.
         .sort(
           (a, b) =>
@@ -477,20 +497,11 @@ export class RoomsService {
             a.name.localeCompare(b.name),
         ),
     );
-    // Flatten `m.direct` to the set of DM room ids so the read model can tag DMs.
-    const direct = new Set<string>();
-    for (const ids of Object.values(this.directMap(client))) {
-      if (Array.isArray(ids)) {
-        for (const roomId of ids) {
-          direct.add(roomId);
-        }
-      }
-    }
     this._directRoomIds.set(direct);
     this._revision.update((n) => n + 1);
   }
 
-  private toRoom(room: Room): RoomSummary {
+  private toRoom(room: Room, directUserId?: string): RoomSummary {
     const name = room.name || room.roomId;
     const topicEvent = room.currentState.getStateEvents('m.room.topic', '');
     const unreadCount = room.getUnreadNotificationCount(
@@ -513,6 +524,7 @@ export class RoomsService {
       lastMessage: lastMessageOf(room),
       activityTs: room.getLastActiveTimestamp(),
       favourite: room.tags?.['m.favourite'] !== undefined,
+      directUserId,
     };
   }
 
