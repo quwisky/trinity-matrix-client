@@ -33,10 +33,14 @@ export interface TrinityDesktopBridge {
 
   /**
    * Subscribe to native-notification clicks forwarded by the main process. The
-   * callback receives ONLY the target `roomId` (never the raw IPC event).
-   * Returns an unsubscribe function.
+   * callback receives the target `roomId` and the `userId` of the account the
+   * notification belongs to (so a tap can switch accounts before opening the
+   * room); `userId` is absent for legacy single-account payloads. The raw IPC
+   * event is never leaked. Returns an unsubscribe function.
    */
-  onNotificationClick?: (callback: (roomId: string) => void) => () => void;
+  onNotificationClick?: (
+    callback: (roomId: string, userId?: string) => void,
+  ) => () => void;
 
   /**
    * Push the app-wide unread total to the MAIN process, which sets the macOS
@@ -71,12 +75,15 @@ export interface DesktopNotification {
   body: string;
   /**
    * Collapse key: a newer notification with the same tag replaces an earlier
-   * still-open one. Mirrors the Web `Notification` `tag`. Trinity uses the
-   * room id so repeated messages from one room collapse into a single toast.
+   * still-open one. Mirrors the Web `Notification` `tag`. Trinity uses
+   * `userId|roomId` so messages from one room collapse per account (and the same
+   * room on two accounts stays two distinct toasts).
    */
   tag?: string;
   /** Matrix room id to route to when the notification is clicked. */
   roomId: string;
+  /** User id of the account this notification belongs to (for switch-then-open). */
+  userId?: string;
 }
 
 /**

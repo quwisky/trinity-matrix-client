@@ -68,7 +68,12 @@ export class SsoCallbackPage implements OnInit {
     }
 
     this.auth
-      .completeSsoLogin(stash.baseUrl, loginToken)
+      .completeSsoLogin(
+        stash.baseUrl,
+        loginToken,
+        stash.mode,
+        stash.deviceId ?? undefined,
+      )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {

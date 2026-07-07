@@ -58,13 +58,19 @@ export type AlertDialogResult = boolean | string | null;
         />
       }
       <div class="mt-6 flex justify-end gap-2">
-        <button hlmBtn variant="outline" (click)="onCancel()">
+        <button
+          hlmBtn
+          variant="outline"
+          (click)="onCancel()"
+          data-testid="alert-cancel"
+        >
           {{ data.cancelText }}
         </button>
         <button
           hlmBtn
           [variant]="data.destructive ? 'destructive' : 'default'"
           (click)="onConfirm()"
+          data-testid="alert-confirm"
         >
           {{ data.confirmText }}
         </button>

@@ -1,21 +1,21 @@
-import { Injectable } from '@angular/core';
 import type { CryptoCallbacks } from 'matrix-js-sdk/lib/crypto-api';
 
 /**
- * In-memory holder for the unlocked secret-storage (4S) private key.
+ * In-memory holder for one account's unlocked secret-storage (4S) private key.
  *
  * The Rust crypto stack asks for the secret-storage key whenever it reads or
  * writes 4S — cross-signing setup, key backup, and recovering a fresh device.
- * We keep the unlocked key in memory for the session ONLY: it is effectively the
- * account's recovery key, so it is never written to disk. It is handed back to the
- * SDK through the `getSecretStorageKey` callback wired into the MatrixClient at
- * creation (see MatrixClientService).
+ * The unlocked key is kept in memory for the session ONLY: it is effectively the
+ * account's recovery key, so it is never written to disk. It is handed to the SDK
+ * through the `getSecretStorageKey` callback wired into that account's MatrixClient
+ * at creation (see MatrixClientService).
  *
- * CryptoService populates this during the setup/recovery flows; logout / client
- * teardown clears it.
+ * One holder per account: each {@link MatrixClientService} `AccountClient` owns its
+ * own so a background account's key operation can never read, overwrite, or zero
+ * another account's key. CryptoService populates the active account's holder during
+ * the setup/recovery flows; client teardown clears it.
  */
-@Injectable({ providedIn: 'root' })
-export class SecretStorageKeyService {
+export class SecretStorageKeyHolder {
   private keyId: string | null = null;
   private privateKey: Uint8Array<ArrayBuffer> | null = null;
 
@@ -34,10 +34,10 @@ export class SecretStorageKeyService {
 
   /**
    * Forget the key (on logout / client teardown). Zeroes the bytes first as
-   * best-effort defense-in-depth — the GC reclaims the buffer on its own
-   * schedule and the SDK keeps its own copy, but we wipe the one we control.
-   * Safe here because teardown happens after the client has stopped, so no crypto
-   * operation is still reading the reference returned by {@link getSecretStorageKey}.
+   * best-effort defense-in-depth — the GC reclaims the buffer on its own schedule
+   * and the SDK keeps its own copy, but we wipe the one we control. Safe here
+   * because teardown happens after the client has stopped, so no crypto operation
+   * is still reading the reference returned by {@link getSecretStorageKey}.
    */
   clear(): void {
     this.privateKey?.fill(0);
@@ -52,14 +52,14 @@ export class SecretStorageKeyService {
 
   /**
    * `cryptoCallbacks.getSecretStorageKey`: return the cached `[keyId, privateKey]`
-   * when the requested key id matches the one we hold, otherwise `null` so the
-   * SDK operation fails fast and the setup/recovery flow can prompt the user.
+   * when the requested key id matches the one we hold, otherwise `null` so the SDK
+   * operation fails fast and the setup/recovery flow can prompt the user.
    *
-   * We deliberately hold a single key at a time (the one the user just generated
-   * or unlocked), so matching on `this.keyId in keys` is sufficient and the SDK's
+   * We deliberately hold a single key at a time (the one the user just generated or
+   * unlocked), so matching on `this.keyId in keys` is sufficient and the SDK's
    * suggested `getDefaultKeyId()` lookup is unnecessary here.
    *
-   * An arrow class field so `this` stays bound when passed to `createClient`.
+   * An arrow field so `this` stays bound when passed to `createClient`.
    */
   readonly getSecretStorageKey: NonNullable<
     CryptoCallbacks['getSecretStorageKey']

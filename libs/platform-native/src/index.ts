@@ -1,5 +1,6 @@
 export * from './lib/secure-storage.service';
 export * from './lib/session-storage.service';
+export * from './lib/storage-persistence.service';
 export * from './lib/feature-flags.service';
 export * from './lib/theme.service';
 export * from './lib/mobile-badge.service';

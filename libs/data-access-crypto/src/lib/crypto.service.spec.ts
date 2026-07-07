@@ -1,3 +1,4 @@
+import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
@@ -8,8 +9,10 @@ import {
   encodeRecoveryKey,
 } from 'matrix-js-sdk/lib/crypto-api';
 import { CryptoService } from './crypto.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { SecretStorageKeyService } from '@trinity/data-access-matrix-client';
+import {
+  MatrixClientService,
+  SecretStorageKeyHolder,
+} from '@trinity/data-access-matrix-client';
 
 /** A 401 UIA challenge carrying flows + session, as the SDK surfaces it. */
 function uiaError(session: string): MatrixError {
@@ -102,11 +105,15 @@ function setup(opts: CryptoOpts = {}) {
     off: vi.fn(),
   };
 
+  const holder = new SecretStorageKeyHolder();
+  // Writable so tests can flip the active account and fire the reproject effect.
+  const activeUserId = signal<string | null>(null);
   TestBed.configureTestingModule({
     providers: [
       CryptoService,
-      SecretStorageKeyService,
-      MockProvider(MatrixClientService),
+      MockProvider(MatrixClientService, {
+        activeUserId: activeUserId.asReadonly(),
+      }),
     ],
   });
 
@@ -117,14 +124,17 @@ function setup(opts: CryptoOpts = {}) {
     'instance',
     client as unknown as MatrixClientService['instance'],
   );
+  // CryptoService caches the unlocked 4S key on the ACTIVE account's holder.
+  ngMocks.stubMember(matrix, 'activeHolder', () => holder);
 
   return {
     svc: TestBed.inject(CryptoService),
-    keys: TestBed.inject(SecretStorageKeyService),
+    keys: holder,
     crypto,
     secretStorage,
     client,
     matrix,
+    activeUserId,
   };
 }
 
@@ -219,6 +229,32 @@ describe('CryptoService', () => {
         crypto.loadSessionBackupPrivateKeyFromSecretStorage,
       ).toHaveBeenCalledOnce();
       expect(crypto.checkKeyBackupAndEnable).toHaveBeenCalledOnce();
+    });
+
+    it('caches the key onto the holder captured at recovery start, not a mid-flight one', async () => {
+      const { svc, matrix, secretStorage } = setup({
+        defaultKeyId: 'k',
+        checkKey: true,
+        crossSigningReady: true,
+        secretStorageReady: true,
+      });
+
+      // Simulate an account switch mid-recovery: activeHolder() yields account A's
+      // holder on its first read (start of recover), then account B's on any later one.
+      const holderA = new SecretStorageKeyHolder();
+      const holderB = new SecretStorageKeyHolder();
+      let holderReads = 0;
+      ngMocks.stubMember(matrix, 'activeHolder', () =>
+        holderReads++ === 0 ? holderA : holderB,
+      );
+
+      await firstValueFrom(svc.recoverWithKey(VALID_KEY));
+
+      expect(secretStorage.checkKey).toHaveBeenCalledOnce();
+      // The unlocked key must land on the account active when recovery began...
+      expect(holderA.hasKey).toBe(true);
+      // ...and never leak onto whatever account became active mid-flight.
+      expect(holderB.hasKey).toBe(false);
     });
 
     it('rejects an incorrect recovery key without caching it', async () => {
@@ -379,6 +415,53 @@ describe('CryptoService', () => {
       expect(client.off).toHaveBeenCalled(); // old listeners detached
       expect(clientB.on).toHaveBeenCalled(); // new client wired
       expect(svc.status()).toBe('needs-recovery'); // not frozen on A
+    });
+
+    it('re-projects onto the newly-active account on a switch with no manual connect', async () => {
+      // Account A is a first device with no secret storage → needs-setup.
+      const { svc, client, matrix, activeUserId } = setup({
+        defaultKeyId: null,
+      });
+      activeUserId.set('@a:hs');
+      svc.connect(); // crypto listeners wired to account A
+      await firstValueFrom(svc.refresh());
+      expect(svc.status()).toBe('needs-setup');
+
+      TestBed.inject(ApplicationRef).tick(); // effect's first run: still A → connect() no-op
+      client.off.mockClear();
+
+      // Account B already has a 4S key but this device isn't trusted → needs-recovery.
+      const cryptoB = {
+        isCrossSigningReady: vi.fn().mockResolvedValue(false),
+        isSecretStorageReady: vi.fn().mockResolvedValue(false),
+        getActiveSessionBackupVersion: vi.fn().mockResolvedValue(null),
+        getDeviceVerificationStatus: vi
+          .fn()
+          .mockResolvedValue({ crossSigningVerified: false }),
+      };
+      const clientB = {
+        getCrypto: () => cryptoB,
+        secretStorage: { getDefaultKeyId: vi.fn().mockResolvedValue('k') },
+        getDeviceId: () => 'DEV',
+        getUserId: () => '@me:hs',
+        on: vi.fn(),
+        off: vi.fn(),
+      };
+      ngMocks.stubMember(
+        matrix,
+        'instance',
+        clientB as unknown as MatrixClientService['instance'],
+      );
+
+      // Switch accounts: NO svc.connect() call — the reproject effect re-runs it.
+      activeUserId.set('@b:hs');
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(client.off).toHaveBeenCalled(); // detached from A's client
+      expect(clientB.on).toHaveBeenCalled(); // wired onto B's client
+
+      await firstValueFrom(svc.refresh());
+      expect(svc.status()).toBe('needs-recovery'); // recomputed from B, not frozen on A
     });
   });
 

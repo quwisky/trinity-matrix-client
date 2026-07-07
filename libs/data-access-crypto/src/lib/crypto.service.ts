@@ -9,8 +9,10 @@ import {
 } from 'matrix-js-sdk/lib/crypto-api';
 import type { SecretStorageKeyDescriptionAesV1 } from 'matrix-js-sdk/lib/secret-storage';
 import { Observable, defer, from } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { SecretStorageKeyService } from '@trinity/data-access-matrix-client';
+import {
+  MatrixClientService,
+  reprojectOnAccountSwitch,
+} from '@trinity/data-access-matrix-client';
 import { runPasswordUia, type PasswordPrompt } from '@trinity/util-matrix';
 
 /**
@@ -41,7 +43,6 @@ export type CryptoStatus =
 @Injectable({ providedIn: 'root' })
 export class CryptoService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly secretStorageKeys = inject(SecretStorageKeyService);
 
   /**
    * The client we currently have crypto listeners on. Keyed to the instance (not
@@ -64,6 +65,16 @@ export class CryptoService {
   private readonly _thisDeviceVerified = signal(false);
   /** Whether this device is cross-signing verified. */
   readonly thisDeviceVerified = this._thisDeviceVerified.asReadonly();
+
+  constructor() {
+    // On an account switch, re-project crypto status onto the newly-active account's
+    // client — but only while it is already wired to one.
+    reprojectOnAccountSwitch(
+      this.matrix,
+      () => this.connectedClient !== null,
+      () => this.connect(),
+    );
+  }
 
   /**
    * Attach crypto listeners and compute the initial status. Idempotent; call once
@@ -179,6 +190,9 @@ export class CryptoService {
       from(
         (async (): Promise<void> => {
           const crypto = this.requireCrypto();
+          // Capture the account's 4S holder up front so a mid-recovery account switch
+          // can't retarget the cached key onto a different account's holder.
+          const holder = this.matrix.activeHolder();
           const secretStorage = this.matrix.instance.secretStorage;
           const keyId = await secretStorage.getDefaultKeyId();
           const tuple = keyId ? await secretStorage.getKey(keyId) : null;
@@ -192,7 +206,7 @@ export class CryptoService {
             throw new Error('That recovery key is incorrect.');
           }
 
-          this.secretStorageKeys.set(keyId, privateKey);
+          holder?.set(keyId, privateKey);
           // Pulls the cross-signing private keys out of 4S and trusts this device;
           // no UIA, since the keys already exist server-side.
           await crypto.bootstrapCrossSigning({});

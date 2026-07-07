@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Capacitor } from '@capacitor/core';
 import { AppBadgeService } from './app-badge.service';
 import { MobileBadgeService } from '@trinity/platform-native';
-import { RoomsService } from '@trinity/data-access-rooms';
+import { UnreadAggregatorService } from '@trinity/data-access-rooms';
 
 type BadgingNavigator = Navigator & {
   setAppBadge?: unknown;
@@ -13,8 +13,8 @@ type BadgingNavigator = Navigator & {
 };
 
 /**
- * Instantiate AppBadgeService against a mocked RoomsService whose `totalUnread` is a
- * writable signal the test drives; `flush` runs a change-detection tick so the
+ * Instantiate AppBadgeService against a mocked UnreadAggregatorService whose
+ * `totalUnread` is a writable signal the test drives; `flush` runs a change-detection tick so the
  * effect fires. MobileBadgeService is an ng-mocks mock, so `mobile.set` is a vitest
  * spy (autoSpy) the tests can assert against.
  */
@@ -27,7 +27,7 @@ function setup(initial: number): {
   TestBed.configureTestingModule({
     providers: [
       AppBadgeService,
-      MockProvider(RoomsService, { totalUnread: total }),
+      MockProvider(UnreadAggregatorService, { totalUnread: total }),
       MockProvider(MobileBadgeService),
     ],
   });

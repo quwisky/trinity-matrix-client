@@ -12,7 +12,7 @@ async function renderPage(opts: {
   auth: Partial<AuthService>;
   token: string | null;
   returnedState?: string | null;
-  stash?: SsoStateStash;
+  stash?: Partial<SsoStateStash>;
 }): Promise<{
   cmp: SsoCallbackPage;
   navigateByUrl: ReturnType<typeof vi.fn>;
@@ -23,9 +23,14 @@ async function renderPage(opts: {
   const replaceState = vi.fn();
   // The store survives a native cold-start; mock it so the CSRF check is exercised
   // independently of the storage medium.
-  const consume = vi
-    .fn()
-    .mockResolvedValue(opts.stash ?? { state: null, baseUrl: null });
+  const consume = vi.fn().mockResolvedValue(
+    opts.stash ?? {
+      state: null,
+      baseUrl: null,
+      mode: 'replace',
+      deviceId: null,
+    },
+  );
 
   const { fixture } = await render(SsoCallbackPage, {
     providers: [
@@ -72,13 +77,20 @@ describe('SsoCallbackPage', () => {
       auth: { completeSsoLogin } as unknown as Partial<AuthService>,
       token: 'TOKEN',
       returnedState: 'NONCE',
-      stash: { state: 'NONCE', baseUrl: 'https://hs.example' },
+      stash: {
+        state: 'NONCE',
+        baseUrl: 'https://hs.example',
+        mode: 'add',
+        deviceId: 'OLDDEV',
+      },
     });
 
     expect(replaceState).toHaveBeenCalledWith('/sso-callback'); // token off the URL
     expect(completeSsoLogin).toHaveBeenCalledWith(
       'https://hs.example',
       'TOKEN',
+      'add', // the add-account intent round-trips via the stash
+      'OLDDEV', // …as does the device id (SSO re-auth reuses the device)
     );
     expect(consume).toHaveBeenCalledTimes(1); // single-use read (consuming clears)
     expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });

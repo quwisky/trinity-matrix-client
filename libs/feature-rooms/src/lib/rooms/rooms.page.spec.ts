@@ -1,4 +1,4 @@
-import { signal, type WritableSignal } from '@angular/core';
+import { ApplicationRef, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { AuthService } from '@trinity/data-access-auth';
@@ -13,6 +13,7 @@ import { PinnedMessagesService } from '@trinity/data-access-pinned';
 import {
   RoomsService,
   SpacesService,
+  UnreadAggregatorService,
   type RoomSummary,
   type SpaceChildRoom,
   type SpaceSummary,
@@ -63,7 +64,15 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(TimelineService, { edit, sendMedia }),
         MockProvider(MatrixClientService, {
           isInitialized: true,
-          instance: { getUserId: () => '@me:hs' } as never,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
         }),
         MockProvider(CryptoService),
         MockProvider(ThreadsService),
@@ -283,6 +292,14 @@ describe('RoomsPage space filtering', () => {
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
         }),
         MockProvider(CryptoService),
         MockProvider(ThreadsService),
@@ -539,6 +556,14 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
         }),
         MockProvider(CryptoService),
         MockProvider(ThreadsService),
@@ -582,7 +607,10 @@ describe('RoomsPage space actions', () => {
   let createRoomInSpace: ReturnType<typeof vi.fn>;
   let leaveSpace: ReturnType<typeof vi.fn>;
 
-  function build(): RoomsPage {
+  function build(
+    activeUserId: string | null = '@me:hs',
+    accountIds: readonly string[] = ['@me:hs'],
+  ): RoomsPage {
     alertPrompt = vi.fn().mockResolvedValue(null);
     alertConfirm = vi.fn().mockResolvedValue(false);
     createSpace = vi.fn(() => of('!new:hs'));
@@ -602,6 +630,14 @@ describe('RoomsPage space actions', () => {
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>(activeUserId).asReadonly(),
+          accountIds: signal<readonly string[]>(accountIds).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
         }),
         MockProvider(CryptoService),
         MockProvider(ThreadsService),
@@ -613,7 +649,10 @@ describe('RoomsPage space actions', () => {
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
         MockProvider(TrnActionSheetService),
-        MockProvider(AuthService, { logout: vi.fn(() => of(undefined)) }),
+        MockProvider(AuthService, {
+          logout: vi.fn(() => of(undefined)),
+          switchAccount: vi.fn(() => of(undefined)),
+        }),
         MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnAlertService, {
@@ -718,29 +757,90 @@ describe('RoomsPage space actions', () => {
     expect(leaveSpace).not.toHaveBeenCalled();
   });
 
-  it('logs out and navigates to /login after confirming', async () => {
+  it('signs out the last account and navigates to /login after confirming', async () => {
     const page = build();
     alertConfirm.mockResolvedValue(true);
     const auth = TestBed.inject(AuthService);
     const router = TestBed.inject(Router);
 
-    await page.logout();
+    await page.logout('@me:hs');
 
     expect(alertConfirm).toHaveBeenCalled();
-    expect(auth.logout).toHaveBeenCalled();
+    expect(auth.logout).toHaveBeenCalledWith('@me:hs');
+    // The harness has a single account, so signing it out returns to /login.
     expect(router.navigateByUrl).toHaveBeenCalledWith('/login', {
       replaceUrl: true,
     });
   });
 
-  it('does not log out when the confirm is cancelled', async () => {
+  it('signs out one of several accounts without leaving the shell', async () => {
+    const page = build('@me:hs', ['@me:hs', '@alt:hs']);
+    alertConfirm.mockResolvedValue(true);
+    const auth = TestBed.inject(AuthService);
+    const router = TestBed.inject(Router);
+
+    await page.logout('@me:hs');
+
+    expect(auth.logout).toHaveBeenCalledWith('@me:hs');
+    // A second account is still signed in (activeUserId stays non-null), so the
+    // wasLastAccount=false branch skips the /login redirect and the shell stays.
+    expect(router.navigateByUrl).not.toHaveBeenCalledWith('/login', {
+      replaceUrl: true,
+    });
+  });
+
+  it('does not sign out when the confirm is cancelled', async () => {
     const page = build();
     alertConfirm.mockResolvedValue(false);
     const auth = TestBed.inject(AuthService);
 
-    await page.logout();
+    await page.logout('@me:hs');
 
     expect(auth.logout).not.toHaveBeenCalled();
+  });
+
+  it('switches to another account (and no-ops on the active one)', () => {
+    const page = build();
+    const auth = TestBed.inject(AuthService);
+
+    page.switchAccount('@me:hs'); // already active → ignored
+    expect(auth.switchAccount).not.toHaveBeenCalled();
+
+    page.switchAccount('@other:hs');
+    expect(auth.switchAccount).toHaveBeenCalledWith('@other:hs');
+  });
+
+  it('routes to /login in add mode from "Add account"', () => {
+    const page = build();
+    const router = TestBed.inject(Router);
+
+    page.addAccount();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/login'], {
+      queryParams: { add: 1 },
+    });
+  });
+
+  it('routes to /login in re-auth mode for a soft-logged-out account', () => {
+    const page = build();
+    const router = TestBed.inject(Router);
+
+    page.reauthAccount('@bob:hs');
+
+    expect(router.navigate).toHaveBeenCalledWith(['/login'], {
+      queryParams: { reauth: '@bob:hs' },
+    });
+  });
+
+  it('returns to /login when the last account is lost (active becomes null)', () => {
+    build(null); // no active account — e.g. a soft-logout of the last one
+    const router = TestBed.inject(Router);
+
+    TestBed.inject(ApplicationRef).tick(); // run the redirect effect
+
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/login', {
+      replaceUrl: true,
+    });
   });
 });
 
@@ -804,6 +904,14 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
         }),
         MockProvider(CryptoService),
         MockProvider(ThreadsService),
@@ -1025,6 +1133,14 @@ describe('RoomsPage space hierarchy actions', () => {
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
         }),
         MockProvider(CryptoService),
         MockProvider(ThreadsService),
@@ -1139,6 +1255,14 @@ describe('RoomsPage quick switcher', () => {
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
         }),
         MockProvider(CryptoService),
         MockProvider(ThreadsService),
@@ -1322,6 +1446,14 @@ describe('RoomsPage mobile nav drawer', () => {
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
         }),
         MockProvider(CryptoService),
         MockProvider(ThreadsService, { open: threadsOpen }),
@@ -1408,5 +1540,73 @@ describe('RoomsPage mobile nav drawer', () => {
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
     expect(threadsOpen).toHaveBeenCalledWith('!r:hs');
     expect(releaseAll).toHaveBeenCalled();
+  });
+});
+
+// The user-panel switcher summarises every signed-in account: each row is that
+// account's own client profile (display name + avatar) with a fallback to the raw
+// MXID, plus its unread total — and it tolerates an account whose client isn't
+// live yet (clientFor → null), which still shows as a row with a zero badge.
+describe('RoomsPage account switcher summary', () => {
+  const meAvatar = 'mxc://hs/me';
+
+  function build(): RoomsPage {
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        MockProvider(RoomsService, { revision: signal(0).asReadonly() }),
+        MockProvider(SpacesService),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>([
+            '@me:hs',
+            '@alt:hs',
+          ]).asReadonly(),
+          // '@me:hs' has a live client with a hydrated profile; '@alt:hs' isn't
+          // live yet (no client created), so clientFor → null for it.
+          clientFor: (userId: string) =>
+            userId === '@me:hs'
+              ? ({
+                  getUser: () => ({ displayName: 'Me', avatarUrl: meAvatar }),
+                } as never)
+              : null,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map([['@me:hs', 4]]),
+          ).asReadonly(),
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return TestBed.inject(RoomsPage);
+  }
+
+  it('summarises each account by its client profile, MXID fallback, and unread total', () => {
+    const page = build();
+
+    // '@me:hs': live profile (name + avatar) with its unread total from the
+    // aggregator. '@alt:hs': no live client, so name falls back to the MXID, the
+    // avatar is null, and its unread defaults to 0 (absent from the map).
+    expect(page.accounts()).toEqual([
+      { userId: '@me:hs', displayName: 'Me', avatarMxc: meAvatar, unread: 4 },
+      { userId: '@alt:hs', displayName: '@alt:hs', avatarMxc: null, unread: 0 },
+    ]);
   });
 });

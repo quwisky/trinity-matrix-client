@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
@@ -119,6 +120,7 @@ function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as unknown as MatrixClient,
+        activeUserId: signal<string | null>(null).asReadonly(),
       }),
     ],
   });

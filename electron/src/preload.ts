@@ -41,6 +41,7 @@ interface ShowNotificationPayload {
   body: string;
   tag?: string;
   roomId: string;
+  userId?: string;
 }
 
 // Listen at preload load (before any page JS), buffering URLs that arrive before
@@ -81,13 +82,13 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
   },
 
   // Request a native OS notification from the main process. We forward only the
-  // four known string fields (and only when shaped correctly); the main process
+  // known string fields (and only when shaped correctly); the main process
   // re-validates and clamps everything before constructing a Notification.
   showNotification(payload: ShowNotificationPayload): void {
     if (typeof payload !== 'object' || payload === null) {
       return;
     }
-    const { title, body, tag, roomId } =
+    const { title, body, tag, roomId, userId } =
       payload as Partial<ShowNotificationPayload>;
     if (typeof roomId !== 'string') {
       return;
@@ -97,6 +98,7 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
       body: typeof body === 'string' ? body : '',
       tag: typeof tag === 'string' ? tag : undefined,
       roomId,
+      userId: typeof userId === 'string' ? userId : undefined,
     });
   },
 
@@ -110,12 +112,19 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
     ipcRenderer.send(SET_BADGE_COUNT_CHANNEL, count);
   },
 
-  // Subscribe to native-notification clicks. Only the roomId string is handed to
-  // the callback — the raw IpcRendererEvent is never leaked. Returns unsubscribe.
-  onNotificationClick(callback: (roomId: string) => void): () => void {
-    const listener = (_event: IpcRendererEvent, roomId: unknown): void => {
+  // Subscribe to native-notification clicks. Only the roomId (and the account
+  // userId it belongs to) are handed to the callback — the raw IpcRendererEvent is
+  // never leaked. Returns unsubscribe.
+  onNotificationClick(
+    callback: (roomId: string, userId?: string) => void,
+  ): () => void {
+    const listener = (
+      _event: IpcRendererEvent,
+      roomId: unknown,
+      userId: unknown,
+    ): void => {
       if (typeof roomId === 'string') {
-        callback(roomId);
+        callback(roomId, typeof userId === 'string' ? userId : undefined);
       }
     };
     ipcRenderer.on(NOTIFICATION_CLICK_CHANNEL, listener);

@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClient, MatrixError } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
@@ -56,6 +57,7 @@ function setup(clientOverrides: Record<string, unknown> = {}) {
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as unknown as MatrixClient,
+        activeUserId: signal<string | null>(null).asReadonly(),
       }),
     ],
   });

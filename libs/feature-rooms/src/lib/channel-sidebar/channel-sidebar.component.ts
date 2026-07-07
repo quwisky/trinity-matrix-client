@@ -39,6 +39,12 @@ import {
 import { initialOf } from '@trinity/util-matrix';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 
+/** One signed-in account in the user-panel switcher: the profile plus its unread total. */
+export interface AccountSummary extends UserProfile {
+  /** Unread notification total for this account (drives the switcher badge). */
+  unread: number;
+}
+
 /** Discord channel sidebar: space header, invites, room list, and the user panel. */
 @Component({
   selector: 'trn-channel-sidebar',
@@ -110,6 +116,12 @@ export class ChannelSidebarComponent {
   });
   /** First letter of the display name, for the user-panel avatar fallback. */
   readonly userInitial = computed(() => initialOf(this.user().displayName));
+  /** Every signed-in account, for the switcher list in the user panel. */
+  readonly accounts = input<AccountSummary[]>([]);
+  /** The user id of the account currently in view (marked with a check). */
+  readonly activeUserId = input<string | null>(null);
+  /** User ids of accounts the server signed out that need re-authentication. */
+  readonly reauthAccounts = input<readonly string[]>([]);
   readonly selectRoom = output<string>();
   /** Header "+" on Home — raise the new-room / new-DM chooser. */
   readonly newChat = output<void>();
@@ -132,7 +144,14 @@ export class ChannelSidebarComponent {
   readonly openSwitcher = output<void>();
   /** User-panel gear — open the settings page. */
   readonly openSettings = output<void>();
-  readonly logout = output<void>();
+  /** Switch the active account to the given user id (a switcher row that isn't active). */
+  readonly switchAccount = output<string>();
+  /** Re-authenticate a soft-logged-out account by its user id. */
+  readonly reauthAccount = output<string>();
+  /** User panel "Add account" — start a login in add mode. */
+  readonly addAccount = output<void>();
+  /** Sign out the given account (the active one, from the user panel). */
+  readonly logout = output<string>();
 
   /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
   readonly badgeLabel = unreadBadgeLabel;

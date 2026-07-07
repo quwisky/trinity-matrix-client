@@ -7,9 +7,7 @@ import { login, fillLabeledInput, synapseSession } from './support/app.mts';
 const session = synapseSession();
 
 const hasDarkPalette = (page: Page): Promise<boolean> =>
-  page.evaluate(() =>
-    document.documentElement.classList.contains('ion-palette-dark'),
-  );
+  page.evaluate(() => document.documentElement.classList.contains('dark'));
 
 test.describe('Settings', () => {
   test.skip(

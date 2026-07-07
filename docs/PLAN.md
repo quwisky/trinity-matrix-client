@@ -36,6 +36,9 @@ iOS, Android, and Desktop (Electron) from a single Angular codebase.
 - Threads (edits, redactions, reactions, and replies landed early, in MVP)
 - Voice/video calls (WebRTC / Element Call style)
 - Spaces, room creation/invites, search
+- Multi-account — concurrent background sync for every signed-in account (aggregate
+  unread badge, per-account notifications, one pusher per account) with a user-panel
+  account switcher. Design + phased milestones in [MULTI-ACCOUNT.md](MULTI-ACCOUNT.md).
 
 ## 2. Tech Stack
 
@@ -226,6 +229,15 @@ Phase 2:
   (favicon, PWA, apple-touch) wired into `index.html`, plus the Electron build icon
   (`electron/build/icon.png` → electron-builder generates `.icns`/`.ico`/png at package
   time). The plated variant is kept as `icon-plated.svg`.
+- **Multi-account** — 📋 planned (design). Concurrent model: every signed-in account syncs
+  in the background, with an aggregate unread badge, per-account notifications, and one
+  pusher per account; the switcher lives in the channel-sidebar user panel. The master
+  enabler is per-account crypto-store isolation via
+  `initRustCrypto({ cryptoDatabasePrefix })` (the sync store is already per-user), so
+  `MatrixClientService` becomes a multi-client registry whose `instance` tracks the active
+  account — the viewing layer stays active-scoped while a thin aggregation layer spans all
+  accounts. Ten milestones (M1 crypto/4S isolation → M10 hardening) with the crypto-migration
+  and Sygnal fan-out risks called out. See [MULTI-ACCOUNT.md](MULTI-ACCOUNT.md).
 - **Calls** — deferred / de-prioritized.
 
 **Desktop (Electron) hardening (this iteration).** Hand-rolled Electron shell (privileged

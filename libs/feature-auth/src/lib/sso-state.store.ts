@@ -1,9 +1,12 @@
 import { Injectable } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
+import { type LoginMode } from '@trinity/data-access-auth';
 
 const STATE_KEY = 'sso.state';
 const BASE_URL_KEY = 'sso.baseUrl';
 const STARTED_KEY = 'sso.startedAt';
+const MODE_KEY = 'sso.mode';
+const DEVICE_ID_KEY = 'sso.deviceId';
 
 /** SSO round-trips are short; reject a stash older than this to limit replay. */
 const TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -12,6 +15,10 @@ const TTL_MS = 10 * 60 * 1000; // 10 minutes
 export interface SsoStateStash {
   state: string | null;
   baseUrl: string | null;
+  /** Whether this round-trip adds an account or replaces the current one. */
+  mode: LoginMode;
+  /** Device id to re-authenticate (re-auth of a soft-logged-out account), else null. */
+  deviceId: string | null;
 }
 
 /**
@@ -26,12 +33,21 @@ export interface SsoStateStash {
  */
 @Injectable({ providedIn: 'root' })
 export class SsoStateStore {
-  /** Stash the state + homeserver (timestamped) before redirecting to SSO. */
-  async save(state: string, baseUrl: string): Promise<void> {
+  /** Stash the state + homeserver + mode (timestamped) before redirecting to SSO. */
+  async save(
+    state: string,
+    baseUrl: string,
+    mode: LoginMode = 'replace',
+    deviceId?: string,
+  ): Promise<void> {
     await Promise.all([
       Preferences.set({ key: STATE_KEY, value: state }),
       Preferences.set({ key: BASE_URL_KEY, value: baseUrl }),
       Preferences.set({ key: STARTED_KEY, value: String(Date.now()) }),
+      Preferences.set({ key: MODE_KEY, value: mode }),
+      ...(deviceId
+        ? [Preferences.set({ key: DEVICE_ID_KEY, value: deviceId })]
+        : []),
     ]);
   }
 
@@ -41,19 +57,26 @@ export class SsoStateStore {
    * already-used nonce can't be replayed.
    */
   async consume(): Promise<SsoStateStash> {
-    const [state, baseUrl, startedAt] = await Promise.all([
+    const [state, baseUrl, startedAt, mode, deviceId] = await Promise.all([
       Preferences.get({ key: STATE_KEY }),
       Preferences.get({ key: BASE_URL_KEY }),
       Preferences.get({ key: STARTED_KEY }),
+      Preferences.get({ key: MODE_KEY }),
+      Preferences.get({ key: DEVICE_ID_KEY }),
     ]);
     await this.clear();
 
     const started = Number(startedAt.value);
     const fresh = Number.isFinite(started) && Date.now() - started <= TTL_MS;
     if (!fresh) {
-      return { state: null, baseUrl: null };
+      return { state: null, baseUrl: null, mode: 'replace', deviceId: null };
     }
-    return { state: state.value ?? null, baseUrl: baseUrl.value ?? null };
+    return {
+      state: state.value ?? null,
+      baseUrl: baseUrl.value ?? null,
+      mode: mode.value === 'add' ? 'add' : 'replace',
+      deviceId: deviceId.value ?? null,
+    };
   }
 
   /** Remove every SSO-state key. */
@@ -62,6 +85,8 @@ export class SsoStateStore {
       Preferences.remove({ key: STATE_KEY }),
       Preferences.remove({ key: BASE_URL_KEY }),
       Preferences.remove({ key: STARTED_KEY }),
+      Preferences.remove({ key: MODE_KEY }),
+      Preferences.remove({ key: DEVICE_ID_KEY }),
     ]);
   }
 }

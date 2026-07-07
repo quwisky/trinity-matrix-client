@@ -45,6 +45,7 @@ import { type UserProfile } from '@trinity/data-access-profile';
 import {
   RoomsService,
   SpacesService,
+  UnreadAggregatorService,
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
@@ -59,7 +60,10 @@ import {
   ServerRailComponent,
   type RailUnread,
 } from '../server-rail/server-rail.component';
-import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
+import {
+  ChannelSidebarComponent,
+  type AccountSummary,
+} from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
 import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
@@ -118,6 +122,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly switcher = inject(QuickSwitcherService);
   private readonly messageSearch = inject(MessageSearchService);
   private readonly media = inject(MediaService);
+  private readonly unreadAgg = inject(UnreadAggregatorService);
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
   private readonly push = inject(PushService);
@@ -264,9 +269,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     return this.rooms.membersOf(this.activeRoomId());
   });
 
-  readonly userId = signal(
-    this.matrix.isInitialized ? (this.matrix.instance.getUserId() ?? '') : '',
-  );
+  /** The active account's user id — recomputes when the account is switched. */
+  readonly userId = computed(() => this.matrix.activeUserId() ?? '');
 
   readonly userName = computed(() => {
     const uid = this.userId();
@@ -292,6 +296,27 @@ export class RoomsPage implements OnInit, OnDestroy {
     avatarMxc: this.userAvatarMxc(),
   }));
 
+  /** Every signed-in account, for the user-panel switcher (profile + unread total). */
+  readonly accounts = computed<AccountSummary[]>(() => {
+    this.rooms.revision(); // re-read each account's profile as it hydrates on sync
+    const unread = this.unreadAgg.unreadByAccount();
+    return this.matrix.accountIds().map((userId) => {
+      const user = this.matrix.clientFor(userId)?.getUser(userId);
+      return {
+        userId,
+        displayName: user?.displayName || userId,
+        avatarMxc: user?.avatarUrl ?? null,
+        unread: unread.get(userId) ?? 0,
+      };
+    });
+  });
+
+  /** The account currently in view — marks the active row in the switcher. */
+  readonly activeAccountId = this.matrix.activeUserId;
+
+  /** Accounts the server signed out that need re-authentication (switcher re-auth rows). */
+  readonly reauthAccounts = this.matrix.softLoggedOut;
+
   readonly syncLabel = computed(() => {
     const state = String(this.matrix.syncState() ?? '');
     if (state === 'PREPARED' || state === 'SYNCING') {
@@ -311,6 +336,13 @@ export class RoomsPage implements OnInit, OnDestroy {
       const message = this.spaceError();
       if (message) {
         void this.showError(message);
+      }
+    });
+    // If every account is gone (e.g. a server-side soft-logout of the last one), the
+    // shell has nothing to show — return to login instead of leaving it broken.
+    effect(() => {
+      if (!this.matrix.activeUserId()) {
+        void this.router.navigateByUrl('/login', { replaceUrl: true });
       }
     });
   }
@@ -827,21 +859,48 @@ export class RoomsPage implements OnInit, OnDestroy {
     void this.router.navigateByUrl('/settings');
   }
 
-  async logout(): Promise<void> {
+  /** Switch the active account (no-op when it is already active). */
+  switchAccount(userId: string): void {
+    if (userId === this.matrix.activeUserId()) {
+      return;
+    }
+    this.auth
+      .switchAccount(userId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
+  /** Start adding another account: route to the login screen in add mode. */
+  addAccount(): void {
+    void this.router.navigate(['/login'], { queryParams: { add: 1 } });
+  }
+
+  /** Re-authenticate a soft-logged-out account: route to the login prefilled for it. */
+  reauthAccount(userId: string): void {
+    void this.router.navigate(['/login'], { queryParams: { reauth: userId } });
+  }
+
+  async logout(userId: string): Promise<void> {
     const confirmed = await this.alert.confirm({
-      header: 'Log out',
-      message: 'Log out of Trinity on this device?',
-      confirmText: 'Log out',
+      header: 'Sign out',
+      message: 'Sign out of this account on this device?',
+      confirmText: 'Sign out',
       destructive: true,
     });
     if (!confirmed) {
       return;
     }
+    // Captured before the sign-out mutates the registry: signing out the last
+    // account tears everything down → back to login; otherwise another account is
+    // now active and we stay in the shell.
+    const wasLastAccount = this.matrix.accountIds().length <= 1;
     this.auth
-      .logout()
+      .logout(userId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
-        void this.router.navigateByUrl('/login', { replaceUrl: true });
+        if (wasLastAccount) {
+          void this.router.navigateByUrl('/login', { replaceUrl: true });
+        }
       });
   }
 }

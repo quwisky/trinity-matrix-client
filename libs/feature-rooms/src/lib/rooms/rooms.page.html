@@ -29,7 +29,13 @@
       [rooms]="visibleRooms()"
       [activeRoomId]="activeRoomId()"
       [user]="userProfile()"
+      [accounts]="accounts()"
+      [activeUserId]="activeAccountId()"
+      [reauthAccounts]="reauthAccounts()"
       (selectRoom)="onSelectRoom($event)"
+      (switchAccount)="switchAccount($event)"
+      (reauthAccount)="reauthAccount($event)"
+      (addAccount)="addAccount()"
       (openSwitcher)="openSwitcher()"
       (newChat)="onNewChat()"
       (createRoom)="onCreateChannel()"
@@ -41,7 +47,7 @@
       (acceptInvite)="onAcceptInvite($event)"
       (declineInvite)="onDeclineInvite($event)"
       (openSettings)="goToSettings()"
-      (logout)="logout()"
+      (logout)="logout($event)"
     />
   </aside>
 

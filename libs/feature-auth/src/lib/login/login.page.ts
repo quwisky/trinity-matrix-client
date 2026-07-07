@@ -6,16 +6,17 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
-import { Observable, map, switchMap } from 'rxjs';
+import { Observable, map, switchMap, throwError } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmCardImports } from '@trinity/helm/card';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { AuthService } from '@trinity/data-access-auth';
+import { AuthService, type LoginMode } from '@trinity/data-access-auth';
+import { SessionStorageService } from '@trinity/platform-native';
 import { runWithBusy } from '@trinity/ui';
 import { SsoStateStore } from '../sso-state.store';
 
@@ -36,8 +37,50 @@ import { SsoStateStore } from '../sso-state.store';
 export class LoginPage {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly ssoState = inject(SsoStateStore);
+  private readonly storage = inject(SessionStorageService);
   private readonly destroyRef = inject(DestroyRef);
+
+  /** `/login?add` — add a second account instead of replacing the current one. */
+  readonly addMode = this.route.snapshot.queryParamMap.has('add');
+  /** `/login?reauth=<userId>` — re-authenticate a soft-logged-out account (add mode,
+   * reusing its existing device so no re-verification is needed). */
+  readonly reauthUserId = signal<string | null>(
+    this.route.snapshot.queryParamMap.get('reauth'),
+  );
+  /** The device id to re-authenticate (from the stored record), when in re-auth mode. */
+  private reauthDeviceId: string | null = null;
+
+  constructor() {
+    const reauth = this.reauthUserId();
+    if (reauth) {
+      // Skip the homeserver step: load the stored record and discover its flows.
+      this.username.set(reauth);
+      this.withBusy(
+        this.storage.record(reauth).pipe(
+          switchMap((record) => {
+            if (!record) {
+              return throwError(
+                () => new Error('That account is no longer stored.'),
+              );
+            }
+            this.reauthDeviceId = record.deviceId;
+            this.baseUrl.set(record.baseUrl);
+            return this.auth.getSupportedFlows(record.baseUrl);
+          }),
+        ),
+      ).subscribe((flows) => {
+        this.passwordSupported.set(flows.includes('m.login.password'));
+        this.ssoSupported.set(flows.includes('m.login.sso'));
+      });
+    }
+  }
+
+  /** Re-auth and add both keep the other accounts; a plain login replaces them. */
+  private loginMode(): LoginMode {
+    return this.addMode || this.reauthUserId() ? 'add' : 'replace';
+  }
 
   // Form state.
   readonly homeserverInput = signal('matrix.org');
@@ -76,10 +119,21 @@ export class LoginPage {
     const baseUrl = this.baseUrl();
     if (!baseUrl) return;
     this.withBusy(
-      this.auth.loginWithPassword(baseUrl, this.username(), this.password()),
+      this.auth.loginWithPassword(
+        baseUrl,
+        this.username(),
+        this.password(),
+        this.loginMode(),
+        this.reauthDeviceId ?? undefined,
+      ),
     ).subscribe(() => {
       void this.router.navigateByUrl('/rooms', { replaceUrl: true });
     });
+  }
+
+  /** Abandon adding an account and return to the app. */
+  cancelAdd(): void {
+    void this.router.navigateByUrl('/rooms');
   }
 
   /** Step 2b: SSO — hand off to the homeserver's SSO page. */
@@ -92,7 +146,12 @@ export class LoginPage {
     // relaunch — whose WebView has empty sessionStorage — can still validate. Await
     // the write so the stash is durable before the SSO redirect can return.
     const state = this.generateState();
-    await this.ssoState.save(state, baseUrl);
+    await this.ssoState.save(
+      state,
+      baseUrl,
+      this.loginMode(),
+      this.reauthDeviceId ?? undefined,
+    );
 
     const native = Capacitor.isNativePlatform();
     const electron =

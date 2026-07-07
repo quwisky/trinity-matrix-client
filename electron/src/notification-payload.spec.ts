@@ -80,6 +80,22 @@ describe('coerceNotificationPayload', () => {
     ).not.toHaveProperty('tag');
   });
 
+  it('passes userId through when it is a string and omits it otherwise', () => {
+    expect(
+      coerceNotificationPayload({
+        roomId: '!r:s',
+        title: 'hi',
+        userId: '@bob:server',
+      })?.userId,
+    ).toBe('@bob:server');
+    expect(
+      coerceNotificationPayload({ roomId: '!r:s', title: 'hi' }),
+    ).not.toHaveProperty('userId');
+    expect(
+      coerceNotificationPayload({ roomId: '!r:s', title: 'hi', userId: 42 }),
+    ).not.toHaveProperty('userId');
+  });
+
   it('treats silent as false unless it is strictly true', () => {
     expect(
       coerceNotificationPayload({ roomId: '!r:s', title: 'hi' })?.silent,

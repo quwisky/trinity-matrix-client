@@ -18,15 +18,16 @@ End-to-end encryption is a first-class, in-MVP feature.
 
 ## Documentation
 
-| Doc                                          | What's in it                                             |
-| -------------------------------------------- | -------------------------------------------------------- |
-| [docs/PLAN.md](docs/PLAN.md)                 | Roadmap, milestones, scope, decisions, risks             |
-| [docs/STACK.md](docs/STACK.md)               | Pinned versions + integration notes for every dependency |
-| [docs/SPIKE.md](docs/SPIKE.md)               | E2EE crypto WASM validation results (the gating risk)    |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organized and how data flows             |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)   | Setup, running, testing, troubleshooting                 |
-| [docs/PUSH.md](docs/PUSH.md)                 | Push notifications: architecture + native/gateway setup  |
-| [docs/REVIEW.md](docs/REVIEW.md)             | Whole-codebase review findings (2026-06-27)              |
+| Doc                                            | What's in it                                             |
+| ---------------------------------------------- | -------------------------------------------------------- |
+| [docs/PLAN.md](docs/PLAN.md)                   | Roadmap, milestones, scope, decisions, risks             |
+| [docs/STACK.md](docs/STACK.md)                 | Pinned versions + integration notes for every dependency |
+| [docs/SPIKE.md](docs/SPIKE.md)                 | E2EE crypto WASM validation results (the gating risk)    |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)   | How the code is organized and how data flows             |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)     | Setup, running, testing, troubleshooting                 |
+| [docs/PUSH.md](docs/PUSH.md)                   | Push notifications: architecture + native/gateway setup  |
+| [docs/MULTI-ACCOUNT.md](docs/MULTI-ACCOUNT.md) | Multi-account support: design + phased plan (planned)    |
+| [docs/REVIEW.md](docs/REVIEW.md)               | Whole-codebase review findings (2026-06-27)              |
 
 ## Tech stack
 
