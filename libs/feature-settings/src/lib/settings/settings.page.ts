@@ -29,6 +29,7 @@ import {
   type ThemePreference,
 } from '@trinity/platform-native';
 import { DevicesSectionComponent } from '../devices/devices-section.component';
+import { GifsSectionComponent } from '../gifs/gifs-section.component';
 
 /**
  * Settings shell hosting Profile (display name + avatar), Appearance
@@ -43,6 +44,7 @@ import { DevicesSectionComponent } from '../devices/devices-section.component';
     AvatarComponent,
     PageHeaderComponent,
     DevicesSectionComponent,
+    GifsSectionComponent,
     NgIcon,
     HlmButton,
     HlmTooltip,

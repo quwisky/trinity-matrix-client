@@ -65,7 +65,9 @@ describe('SettingsPage', () => {
   it('renders the appearance options bound to the current preference', async () => {
     const { container } = await renderPage();
 
-    expect(container.querySelectorAll('hlm-radio').length).toBe(3);
+    // Scope to the theme options — the page has other radio groups (e.g. the GIF
+    // provider picker), so count the appearance options by their testids.
+    expect(container.querySelectorAll('[data-testid^=theme-]').length).toBe(3);
     expect(
       container.querySelector('[data-testid=theme-system]'),
     ).not.toBeNull();

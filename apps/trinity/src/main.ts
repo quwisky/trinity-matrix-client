@@ -13,6 +13,7 @@ import {
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
 import { AvatarService } from '@trinity/data-access-media';
+import { GifSettingsService } from '@trinity/data-access-gif';
 import {
   AppBadgeService,
   PUSH_CONFIG,
@@ -65,6 +66,9 @@ bootstrapApplication(AppComponent, {
     provideAppInitializer(() => {
       void inject(StoragePersistenceService).requestPersistence();
     }),
+    // Load the saved GIF provider + API key so the composer knows whether to
+    // offer the GIF picker on first paint.
+    provideAppInitializer(() => inject(GifSettingsService).init()),
     // Instantiate the dock-badge service so its unread-total effect is live for
     // the whole session (desktop-only by feature detection; a no-op elsewhere).
     provideAppInitializer(() => {

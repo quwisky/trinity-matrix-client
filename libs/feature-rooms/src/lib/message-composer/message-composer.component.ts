@@ -15,6 +15,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  lucideImagePlay,
   lucidePaperclip,
   lucidePlus,
   lucideSend,
@@ -31,7 +32,13 @@ import {
   type EmojiEvent,
 } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import { ThemeService } from '@trinity/platform-native';
+import {
+  GifService,
+  GifSettingsService,
+  type GifResult,
+} from '@trinity/data-access-gif';
 import { MediaPickerService } from '../media-picker/media-picker.service';
+import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 
 const MAX_HEIGHT_PX = 200;
 
@@ -59,11 +66,18 @@ const EMOJI_SUGGESTION_LIMIT = 8;
     HlmTooltip,
     HlmTextarea,
     PickerComponent,
+    GifPickerComponent,
     HlmProgress,
     HlmProgressIndicator,
   ],
   viewProviders: [
-    provideIcons({ lucidePaperclip, lucidePlus, lucideSend, lucideSmile }),
+    provideIcons({
+      lucideImagePlay,
+      lucidePaperclip,
+      lucidePlus,
+      lucideSend,
+      lucideSmile,
+    }),
   ],
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
@@ -102,6 +116,12 @@ export class MessageComposerComponent {
   /** Object URL previewing a staged image, else null (revoked on clear/destroy). */
   readonly pendingPreview = signal<string | null>(null);
   readonly pickerOpen = signal(false);
+  /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
+  readonly gifPickerOpen = signal(false);
+  /** True while a chosen GIF is being fetched, before its media upload starts. */
+  readonly gifDownloading = signal(false);
+  /** The GIF affordance is offered only once a provider + API key are configured. */
+  readonly gifEnabled = computed(() => this.gifSettings.configured());
   /** Match the emoji picker's chrome to the app's active theme. */
   readonly isDarkMode = computed(() => this.theme.resolved() === 'dark');
   /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
@@ -135,6 +155,8 @@ export class MessageComposerComponent {
   private readonly emojiSearch = inject(EmojiSearch);
   private readonly emojiService = inject(EmojiService);
   private readonly theme = inject(ThemeService);
+  private readonly gifs = inject(GifService);
+  private readonly gifSettings = inject(GifSettingsService);
   private wasEditing = false;
   private wasEditTargetId: string | null = null;
   private wasReplying = false;
@@ -319,6 +341,49 @@ export class MessageComposerComponent {
     }
   }
 
+  /** Toggle the emoji picker, closing the GIF grid (only one overlay at a time). */
+  toggleEmojiPicker(): void {
+    this.gifPickerOpen.set(false);
+    this.pickerOpen.set(!this.pickerOpen());
+  }
+
+  /** Toggle the GIF grid, closing the emoji picker (only one overlay at a time). */
+  toggleGifPicker(): void {
+    this.pickerOpen.set(false);
+    this.gifPickerOpen.set(!this.gifPickerOpen());
+  }
+
+  /** A GIF was chosen → download it and send it through the media path (works in
+   * rooms and threads, encrypted or not). Sends immediately, like other GIF UIs. */
+  onGifSelect(gif: GifResult): void {
+    if (this.gifDownloading()) {
+      return;
+    }
+    this.gifDownloading.set(true);
+    this.gifs
+      .download(gif)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (file) => {
+          this.gifDownloading.set(false);
+          this.gifPickerOpen.set(false);
+          // A media send carries no reply relation (see submit()); close any
+          // active reply so its banner doesn't linger over the next message.
+          if (this.replyingTo()) {
+            this.cancelReply.emit();
+          }
+          this.submitMedia.emit({ file, caption: '' });
+        },
+        error: () => {
+          this.gifDownloading.set(false);
+          this.toast.show('Could not load that GIF.', {
+            duration: 4000,
+            variant: 'destructive',
+          });
+        },
+      });
+  }
+
   /** Accept a suggestion: swap the `:fragment` under the caret for the emoji. */
   acceptEmoji(index = this.emojiActiveIndex()): void {
     const match = this.emojiMatches()[index];
@@ -472,6 +537,10 @@ export class MessageComposerComponent {
     }
     if (this.pickerOpen()) {
       this.pickerOpen.set(false);
+      return;
+    }
+    if (this.gifPickerOpen()) {
+      this.gifPickerOpen.set(false);
       return;
     }
     if (this.pendingFile()) {

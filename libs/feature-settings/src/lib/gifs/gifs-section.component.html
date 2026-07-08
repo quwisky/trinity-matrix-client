@@ -1,0 +1,82 @@
+<div>
+  <h2
+    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+  >
+    GIFs
+  </h2>
+
+  <hlm-radio-group
+    class="px-4 py-2"
+    [value]="provider()"
+    (valueChange)="onProviderChange($event)"
+  >
+    @for (p of providers; track p.id) {
+      <label
+        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+        [attr.data-testid]="'gif-provider-' + p.id"
+      >
+        <hlm-radio [value]="p.id"><hlm-radio-indicator /></hlm-radio>
+        {{ p.label }}
+      </label>
+    }
+  </hlm-radio-group>
+
+  <div
+    class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
+  >
+    <div class="min-w-0 flex-1">
+      <label hlmLabel for="gif-api-key">{{ selected().label }} API key</label>
+      <input
+        id="gif-api-key"
+        hlmInput
+        type="text"
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck="false"
+        class="mt-1"
+        placeholder="Paste your API key"
+        [value]="apiKeyDraft()"
+        (input)="onKeyInput($event)"
+        data-testid="gif-api-key"
+      />
+    </div>
+    <button
+      hlmBtn
+      size="sm"
+      class="ml-auto shrink-0"
+      [disabled]="!dirty()"
+      (click)="save()"
+      data-testid="gif-save"
+    >
+      Save
+    </button>
+    @if (configured()) {
+      <button
+        hlmBtn
+        variant="ghost"
+        size="sm"
+        class="shrink-0"
+        (click)="clear()"
+        data-testid="gif-clear"
+      >
+        Clear
+      </button>
+    }
+  </div>
+
+  <p class="block px-4 py-2 text-[13px] text-muted-foreground">
+    @if (configured()) {
+      GIF search is enabled — pick GIFs from the composer’s GIF button.
+    } @else {
+      Add a free API key to enable GIF search in the composer.
+    }
+    <a
+      class="text-primary underline"
+      [href]="selected().apiKeyUrl"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Get a free {{ selected().label }} API key</a
+    >.
+  </p>
+</div>
