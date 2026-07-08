@@ -194,18 +194,34 @@ export class TimelineService {
   }
 
   /**
+   * The open room plus the *currently active* account's client, or null when either
+   * is unavailable. Every cold action below resolves this inside its `defer()` — i.e.
+   * on subscribe, never when the Observable is merely constructed. `matrix.instance`
+   * follows the active account, and `this.room` follows navigation, so capturing
+   * either eagerly would let a held (or retried) action fire against an account the
+   * user has switched away from, or a room they have left.
+   */
+  private context(): { client: MatrixClient; room: Room } | null {
+    const room = this.room;
+    if (!room || !this.matrix.isInitialized) {
+      return null;
+    }
+    return { client: this.matrix.instance, room };
+  }
+
+  /**
    * Send a message to the active room. Markdown is rendered to HTML, sanitized,
    * and sent as `formatted_body` — but only when it actually adds formatting; plain
    * text is sent as-is. The local echo appears via the timeline listener.
    */
   send(body: string): Observable<void> {
-    const room = this.room;
     const text = body.trim();
-    if (!room || !text || !this.matrix.isInitialized) {
-      return of(void 0);
-    }
-    const client = this.matrix.instance;
     return defer(() => {
+      const ctx = this.context();
+      if (!ctx || !text) {
+        return of(void 0);
+      }
+      const { client, room } = ctx;
       const md = renderMarkdown(this.sanitizer, text);
       return from(
         md.formatted
@@ -227,36 +243,39 @@ export class TimelineService {
     caption: string,
     progress?: (fraction: number) => void,
   ): Observable<void> {
-    const room = this.room;
-    if (!room || !this.matrix.isInitialized || !file || file.size === 0) {
-      return of(void 0);
-    }
-    const client = this.matrix.instance;
-    const encrypt = room.hasEncryptionStateEvent();
-    return defer(() => this.mediaSvc.uploadMedia(file, encrypt, progress)).pipe(
-      switchMap((media) => {
-        const content = {
-          msgtype: media.msgtype,
-          ...mediaCaptionFields(this.sanitizer, media.body, caption),
-          info: media.info,
-          ...(media.file ? { file: media.file } : { url: media.mxc }),
-        };
-        // A valid media payload; the SDK's content union doesn't model it.
-        return from(client.sendMessage(room.roomId, content as never));
-      }),
-      map(() => void 0),
-    );
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx || !file || file.size === 0) {
+        return of(void 0);
+      }
+      const { client, room } = ctx;
+      // Read on subscribe too: a room can become encrypted while an unsent action
+      // is held, and uploading plaintext bytes into an E2EE room is not recoverable.
+      const encrypt = room.hasEncryptionStateEvent();
+      return this.mediaSvc.uploadMedia(file, encrypt, progress).pipe(
+        switchMap((media) => {
+          const content = {
+            msgtype: media.msgtype,
+            ...mediaCaptionFields(this.sanitizer, media.body, caption),
+            info: media.info,
+            ...(media.file ? { file: media.file } : { url: media.mxc }),
+          };
+          // A valid media payload; the SDK's content union doesn't model it.
+          return from(client.sendMessage(room.roomId, content as never));
+        }),
+      );
+    }).pipe(map(() => void 0));
   }
 
   /** Edit a previously-sent message via an `m.replace` relation. */
   edit(messageId: string, newBody: string): Observable<void> {
-    const room = this.room;
     const text = newBody.trim();
-    if (!room || !text || !this.matrix.isInitialized) {
-      return of(void 0);
-    }
-    const client = this.matrix.instance;
     return defer(() => {
+      const ctx = this.context();
+      if (!ctx || !text) {
+        return of(void 0);
+      }
+      const { client, room } = ctx;
       const content = editMessageContent(
         messageId,
         text,
@@ -285,13 +304,13 @@ export class TimelineService {
 
   /** Send a reply to a message (`m.in_reply_to`), with a plain-text quote fallback. */
   reply(messageId: string, body: string): Observable<void> {
-    const room = this.room;
     const text = body.trim();
-    if (!room || !text || !this.matrix.isInitialized) {
-      return of(void 0);
-    }
-    const client = this.matrix.instance;
     return defer(() => {
+      const ctx = this.context();
+      if (!ctx || !text) {
+        return of(void 0);
+      }
+      const { client, room } = ctx;
       const content = replyMessageContent(
         room,
         messageId,
@@ -304,14 +323,13 @@ export class TimelineService {
 
   /** Delete (redact) a message. */
   redact(messageId: string): Observable<void> {
-    const room = this.room;
-    if (!room || !this.matrix.isInitialized) {
-      return of(void 0);
-    }
-    const client = this.matrix.instance;
-    return defer(() => from(client.redactEvent(room.roomId, messageId))).pipe(
-      map(() => void 0),
-    );
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx) {
+        return of(void 0);
+      }
+      return from(ctx.client.redactEvent(ctx.room.roomId, messageId));
+    }).pipe(map(() => void 0));
   }
 
   /**
@@ -319,12 +337,12 @@ export class TimelineService {
    * isn't there yet, otherwise redact their existing one.
    */
   toggleReaction(messageId: string, key: string): Observable<void> {
-    const room = this.room;
-    if (!room || !this.matrix.isInitialized) {
-      return of(void 0);
-    }
-    const client = this.matrix.instance;
     return defer(() => {
+      const ctx = this.context();
+      if (!ctx) {
+        return of(void 0);
+      }
+      const { client, room } = ctx;
       const mine = myReactionId(client, room, messageId, key);
       if (mine) {
         return from(client.redactEvent(room.roomId, mine));

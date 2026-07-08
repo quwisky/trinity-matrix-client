@@ -55,6 +55,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Hardened the room and thread send paths (messages, attachments, edits, replies,
+  reactions, redactions): each now resolves the active account and the open room at the
+  moment the send runs, rather than when it is created. Nothing in the app could trigger
+  the old behaviour today, but it closed a latent path for a send to land on an account
+  you had just switched away from — or to upload unencrypted bytes into a room that had
+  become encrypted in the meantime.
 - Clearing your GIF API key no longer forgets which GIF provider you had chosen. Settings
   → GIFs stored the provider and the key together, so **Clear** discarded both and the next
   time you opened the app the provider had silently reverted to Tenor. GIPHY users now stay

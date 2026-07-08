@@ -395,11 +395,11 @@ export class ThreadsService {
     ) {
       return of(void 0);
     }
-    const client = this.matrix.instance;
     return defer(() => {
       this._loadingOlderThread.set(true);
       return from(
-        client.paginateEventTimeline(timeline, {
+        // Resolved on subscribe: `instance` follows the active account.
+        this.matrix.instance.paginateEventTimeline(timeline, {
           backwards: true,
           limit: THREAD_SCROLLBACK,
         }),
@@ -474,13 +474,13 @@ export class ThreadsService {
   }
 
   sendToThread(body: string): Observable<void> {
-    const ctx = this.threadContext();
     const text = body.trim();
-    if (!ctx || !text) {
-      return of(void 0);
-    }
-    const { client, room, roomId, threadId } = ctx;
     return defer(() => {
+      const ctx = this.threadContext();
+      if (!ctx || !text) {
+        return of(void 0);
+      }
+      const { client, room, roomId, threadId } = ctx;
       const md = renderMarkdown(this.sanitizer, text);
       // Ensure a local Thread exists (fetching the root if needed) *before*
       // sending, so the threaded echo has a home; a fetch failure aborts the send.
@@ -506,42 +506,47 @@ export class ThreadsService {
     caption: string,
     progress?: (fraction: number) => void,
   ): Observable<void> {
-    const ctx = this.threadContext();
-    if (!ctx || !file || file.size === 0) {
-      return of(void 0);
-    }
-    const { client, room, roomId, threadId } = ctx;
-    const encrypt = room.hasEncryptionStateEvent();
-    return defer(() => this.mediaSvc.uploadMedia(file, encrypt, progress)).pipe(
-      switchMap((media) =>
-        // Ensure the local Thread (fetching the root if needed) before sending,
-        // so the media echo lands in the thread; a fetch failure aborts the send.
-        this.ensureThread(room, threadId).pipe(
-          switchMap(() => {
-            const content = {
-              msgtype: media.msgtype,
-              ...mediaCaptionFields(this.sanitizer, media.body, caption),
-              info: media.info,
-              ...(media.file ? { file: media.file } : { url: media.mxc }),
-            };
-            // A valid media payload; the SDK's content union doesn't model it.
-            return from(client.sendMessage(roomId, threadId, content as never));
-          }),
+    return defer(() => {
+      const ctx = this.threadContext();
+      if (!ctx || !file || file.size === 0) {
+        return of(void 0);
+      }
+      const { client, room, roomId, threadId } = ctx;
+      // Read on subscribe too: a room can become encrypted while an unsent action
+      // is held, and uploading plaintext bytes into an E2EE room is not recoverable.
+      const encrypt = room.hasEncryptionStateEvent();
+      return this.mediaSvc.uploadMedia(file, encrypt, progress).pipe(
+        switchMap((media) =>
+          // Ensure the local Thread (fetching the root if needed) before sending,
+          // so the media echo lands in the thread; a fetch failure aborts the send.
+          this.ensureThread(room, threadId).pipe(
+            switchMap(() => {
+              const content = {
+                msgtype: media.msgtype,
+                ...mediaCaptionFields(this.sanitizer, media.body, caption),
+                info: media.info,
+                ...(media.file ? { file: media.file } : { url: media.mxc }),
+              };
+              // A valid media payload; the SDK's content union doesn't model it.
+              return from(
+                client.sendMessage(roomId, threadId, content as never),
+              );
+            }),
+          ),
         ),
-      ),
-      map(() => void 0),
-    );
+      );
+    }).pipe(map(() => void 0));
   }
 
   /** Edit an own message in the thread via an `m.replace` (stays in the thread). */
   editInThread(messageId: string, newBody: string): Observable<void> {
-    const ctx = this.threadContext();
     const text = newBody.trim();
-    if (!ctx || !text) {
-      return of(void 0);
-    }
-    const { client, roomId, threadId } = ctx;
     return defer(() => {
+      const ctx = this.threadContext();
+      if (!ctx || !text) {
+        return of(void 0);
+      }
+      const { client, roomId, threadId } = ctx;
       const content = editMessageContent(
         messageId,
         text,
@@ -557,13 +562,13 @@ export class ThreadsService {
    * false` — a genuine in-thread reply that quotes the target.
    */
   replyInThread(messageId: string, body: string): Observable<void> {
-    const ctx = this.threadContext();
     const text = body.trim();
-    if (!ctx || !text) {
-      return of(void 0);
-    }
-    const { client, room, roomId, threadId } = ctx;
     return defer(() => {
+      const ctx = this.threadContext();
+      if (!ctx || !text) {
+        return of(void 0);
+      }
+      const { client, room, roomId, threadId } = ctx;
       const content = replyMessageContent(
         room,
         messageId,
@@ -576,14 +581,14 @@ export class ThreadsService {
 
   /** Delete (redact) a message in the thread. */
   redactInThread(messageId: string): Observable<void> {
-    const ctx = this.threadContext();
-    if (!ctx) {
-      return of(void 0);
-    }
-    const { client, roomId, threadId } = ctx;
-    return defer(() =>
-      from(client.redactEvent(roomId, threadId, messageId)),
-    ).pipe(map(() => void 0));
+    return defer(() => {
+      const ctx = this.threadContext();
+      if (!ctx) {
+        return of(void 0);
+      }
+      const { client, roomId, threadId } = ctx;
+      return from(client.redactEvent(roomId, threadId, messageId));
+    }).pipe(map(() => void 0));
   }
 
   /**
@@ -592,12 +597,12 @@ export class ThreadsService {
    * relations (no thread rel_type), but the echo is routed via `threadId`.
    */
   toggleReactionInThread(messageId: string, key: string): Observable<void> {
-    const ctx = this.threadContext();
-    if (!ctx) {
-      return of(void 0);
-    }
-    const { client, room, roomId, threadId } = ctx;
     return defer(() => {
+      const ctx = this.threadContext();
+      if (!ctx) {
+        return of(void 0);
+      }
+      const { client, room, roomId, threadId } = ctx;
       const mine = myReactionId(client, room, messageId, key);
       if (mine) {
         return from(client.redactEvent(roomId, threadId, mine));

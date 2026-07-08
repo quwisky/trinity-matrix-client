@@ -733,6 +733,19 @@ describe('ThreadsService', () => {
       expect(content['filename']).toBe('pic.png'); // real name preserved
     });
 
+    it('resolves the thread context on subscribe, not when called', async () => {
+      // The in-thread actions are cold, so the thread (and the account behind it)
+      // must be resolved at subscribe. Capturing the context eagerly means a send
+      // built before the user closed the thread still fires into it afterwards.
+      const { svc, sent } = openedThread();
+
+      const send$ = svc.sendToThread('hi');
+      svc.closeThread();
+      await firstValueFrom(send$);
+
+      expect(sent).toHaveLength(0);
+    });
+
     it('retries a failed thread echo via resendEvent', () => {
       const root = fakeEvent({
         id: '$root',

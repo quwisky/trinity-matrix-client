@@ -45,6 +45,23 @@ function matrixProvider(client: unknown, isInitialized = true) {
   } as Partial<MatrixClientService>);
 }
 
+/**
+ * A MatrixClientService mock whose `instance` follows a mutable holder — mirroring
+ * the real getter, which resolves the *active* account on every access. Lets a test
+ * switch accounts and observe when the service actually reads the client.
+ */
+function switchableMatrixProvider(active: { client: unknown }) {
+  return {
+    provide: MatrixClientService,
+    useValue: {
+      isInitialized: true,
+      get instance() {
+        return active.client;
+      },
+    } as unknown as MatrixClientService,
+  };
+}
+
 function fakeEvent(o: {
   id: string;
   sender: string;
@@ -1016,6 +1033,10 @@ describe('TimelineService', () => {
       new File([new Uint8Array([1, 2, 3, 4])], 'pic.png', {
         type: 'image/png',
       });
+    const gif = () =>
+      new File([new Uint8Array([1, 2, 3, 4])], 'trinity.gif', {
+        type: 'image/gif',
+      });
 
     it('sends a plaintext url media event in an unencrypted room', async () => {
       const sent: unknown[][] = [];
@@ -1076,10 +1097,6 @@ describe('TimelineService', () => {
       // active at access time. sendMedia must therefore read it per send and never
       // cache a client — otherwise a GIF (or any attachment) chosen after the user
       // switches accounts would upload and post under the *previous* account.
-      const gif = () =>
-        new File([new Uint8Array([1, 2, 3, 4])], 'trinity.gif', {
-          type: 'image/gif',
-        });
       const sentA: unknown[][] = [];
       const sentB: unknown[][] = [];
       const room = fakeRoom([]);
@@ -1089,15 +1106,7 @@ describe('TimelineService', () => {
       TestBed.configureTestingModule({
         providers: [
           TimelineService,
-          {
-            provide: MatrixClientService,
-            useValue: {
-              isInitialized: true,
-              get instance() {
-                return active.client;
-              },
-            } as unknown as MatrixClientService,
-          },
+          switchableMatrixProvider(active),
           mediaProvider(),
         ],
       });
@@ -1116,6 +1125,49 @@ describe('TimelineService', () => {
       expect((sentB[0][1] as Record<string, unknown>)['msgtype']).toBe(
         'm.image',
       );
+    });
+
+    it('resolves the active account on subscribe, not when called', async () => {
+      // These actions are documented as cold: calling them must do nothing until
+      // subscribed. So the account must be read at *subscribe* time — resolving it
+      // eagerly means an Observable held across an account switch (or replayed by a
+      // retry operator) would upload and post under the account that is no longer
+      // active.
+      const sentA: unknown[][] = [];
+      const sentB: unknown[][] = [];
+      const room = fakeRoom([]);
+      const active = { client: fakeClient(room, sentA) as unknown };
+      const clientB = fakeClient(room, sentB);
+
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          switchableMatrixProvider(active),
+          mediaProvider(),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+
+      const send$ = svc.sendMedia(gif(), ''); // built while A is active…
+      active.client = clientB; // …account switched before anyone subscribes
+      await firstValueFrom(send$);
+
+      expect(sentA).toHaveLength(0); // nothing escaped to the stale account
+      expect(sentB).toHaveLength(1);
+    });
+
+    it('is inert when the room closed before subscribe', async () => {
+      // The same coldness contract for the room half of the context: a send built
+      // against a room the user has since navigated away from must not fire.
+      const sent: unknown[][] = [];
+      const svc = setup([], sent);
+
+      const send$ = svc.sendMedia(gif(), '');
+      svc.close();
+      await firstValueFrom(send$);
+
+      expect(sent).toHaveLength(0);
     });
   });
 });
