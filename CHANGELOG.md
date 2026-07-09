@@ -75,6 +75,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- New sessions now register with the device name **Trinity** instead of the stale
+  **Trinity (Ionic)** — the app no longer runs on Ionic, so the label shown in
+  Settings → Devices (and to other Matrix clients) shouldn't advertise it.
 - Hardened the room and thread send paths (messages, attachments, edits, replies,
   reactions, redactions): each now resolves the active account and the open room at the
   moment the send runs, rather than when it is created. Nothing in the app could trigger
