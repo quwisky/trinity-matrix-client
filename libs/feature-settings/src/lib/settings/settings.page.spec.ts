@@ -1,256 +1,232 @@
 import { Location } from '@angular/common';
-import { signal } from '@angular/core';
+import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
-import { By } from '@angular/platform-browser';
-import { of } from 'rxjs';
-import { render } from '@testing-library/angular';
-import { MockComponent, MockProvider } from 'ng-mocks';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ProfileService, type UserProfile } from '@trinity/data-access-profile';
-import {
-  FeatureFlagsService,
-  ThemeService,
-  type ResolvedTheme,
-  type ThemePreference,
-} from '@trinity/platform-native';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
-import { DevicesSectionComponent } from '../devices/devices-section.component';
+import { Router, provideRouter, type Routes } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SettingsPage } from './settings.page';
 
-describe('SettingsPage', () => {
-  let preference: ReturnType<typeof signal<ThemePreference>>;
-  let resolved: ReturnType<typeof signal<ResolvedTheme>>;
-  let virtualTimeline: ReturnType<typeof signal<boolean>>;
-  let profile: ReturnType<typeof signal<UserProfile | null>>;
+// A trivial routed stand-in for each section sub-page, so the shell can be tested
+// without pulling in the sections' SDK-backed services.
+@Component({ selector: 'trn-stub-section', template: 'section' })
+class StubSectionComponent {}
 
-  const PROFILE: UserProfile = {
-    userId: '@me:hs',
-    displayName: 'Alice',
-    avatarMxc: null,
-    avatarUrl: null,
+const SECTIONS = ['profile', 'appearance', 'devices', 'gifs', 'experimental'];
+
+const ROUTES: Routes = [
+  {
+    path: 'settings',
+    component: SettingsPage,
+    children: SECTIONS.map((path) => ({
+      path,
+      component: StubSectionComponent,
+    })),
+  },
+];
+
+/**
+ * Stub `matchMedia` so the shell reads a deterministic wide/narrow layout, and
+ * capture the change handler so a test can simulate a resize via `fireChange`.
+ */
+function stubMatchMedia(wide: boolean): {
+  fireChange: (matches: boolean) => void;
+  removeListener: ReturnType<typeof vi.fn>;
+} {
+  let handler: ((event: MediaQueryListEvent) => void) | undefined;
+  const removeListener = vi.fn();
+  const mql = {
+    matches: wide,
+    addEventListener: (_: string, fn: (event: MediaQueryListEvent) => void) => {
+      handler = fn;
+    },
+    removeEventListener: removeListener,
   };
+  window.matchMedia = vi.fn().mockReturnValue(mql as unknown as MediaQueryList);
+  return {
+    fireChange: (matches: boolean) => {
+      mql.matches = matches;
+      handler?.({ matches } as MediaQueryListEvent);
+    },
+    removeListener,
+  };
+}
 
-  beforeEach(() => {
-    preference = signal<ThemePreference>('system');
-    resolved = signal<ResolvedTheme>('dark');
-    virtualTimeline = signal(false);
-    profile = signal<UserProfile | null>(PROFILE);
-  });
+/** Let any queued async navigation (the redirect effect) settle. */
+const flush = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve));
 
-  async function renderPage() {
-    const result = await render(SettingsPage, {
-      // The devices section is a stateful feature child (its own SDK-backed
-      // service + dialog deps); mock it so the settings shell renders in isolation.
-      imports: [MockComponent(DevicesSectionComponent)],
-      providers: [
-        MockProvider(ThemeService, { preference, resolved }),
-        MockProvider(FeatureFlagsService, { virtualTimeline }),
-        MockProvider(ProfileService, {
-          profile,
-          // load() reflects the current signal so a test can preset an empty profile.
-          load: () => of(profile()!),
-        }),
-        // Real router providers — Location.back() (the shell back button) needs them.
-        provideRouter([]),
-      ],
-    });
-    const profileSvc = TestBed.inject(ProfileService);
-    // The save actions return cold Observables the page feeds to runWithBusy.
-    vi.mocked(profileSvc.setDisplayName).mockReturnValue(of(undefined));
-    vi.mocked(profileSvc.setAvatar).mockReturnValue(of(undefined));
-    return { ...result, profileSvc };
+async function harnessAt(url: string): Promise<{
+  harness: RouterTestingHarness;
+  shell: SettingsPage;
+  router: Router;
+}> {
+  TestBed.configureTestingModule({ providers: [provideRouter(ROUTES)] });
+  const harness = await RouterTestingHarness.create();
+  const shell = await harness.navigateByUrl('/settings', SettingsPage);
+  if (url !== '/settings') {
+    await harness.navigateByUrl(url);
+    harness.detectChanges();
   }
+  return { harness, shell, router: TestBed.inject(Router) };
+}
 
-  it('renders the appearance options bound to the current preference', async () => {
-    const { container } = await renderPage();
+/** Poll the router until it reaches `url` (the wide-layout redirect is async). */
+async function settle(router: Router, url: string): Promise<string> {
+  for (let i = 0; i < 30 && router.url !== url; i++) {
+    await new Promise((resolve) => setTimeout(resolve));
+  }
+  return router.url;
+}
 
-    // Scope to the theme options — the page has other radio groups (e.g. the GIF
-    // provider picker), so count the appearance options by their testids.
-    expect(container.querySelectorAll('[data-testid^=theme-]').length).toBe(3);
-    expect(
-      container.querySelector('[data-testid=theme-system]'),
-    ).not.toBeNull();
-    // The bound preference ('system') is reflected on the native radio input.
-    const systemInput = container.querySelector<HTMLInputElement>(
-      '[data-testid=theme-system] input',
-    );
-    expect(systemInput?.checked).toBe(true);
-    expect(container.textContent).toContain('dark'); // resolved-theme note
+describe('SettingsPage (shell)', () => {
+  const original = window.matchMedia;
+  afterEach(() => {
+    window.matchMedia = original;
   });
 
-  it('navigates back via the shell header back button', async () => {
-    const { container } = await renderPage();
+  it('renders a submenu link for every section', async () => {
+    stubMatchMedia(false); // narrow: the index stays on the list
+    const { harness } = await harnessAt('/settings');
+    const el = harness.fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelectorAll('[data-testid^="settings-nav-"]').length).toBe(
+      5,
+    );
+    for (const path of SECTIONS) {
+      expect(
+        el.querySelector(`[data-testid="settings-nav-${path}"]`),
+      ).not.toBeNull();
+    }
+  });
+
+  it('keeps the category list at the index on the narrow layout', async () => {
+    stubMatchMedia(false);
+    const { shell, router } = await harnessAt('/settings');
+    await flush(); // a stray narrow redirect (regression) would land here and fail
+
+    expect(router.url).toBe('/settings');
+    expect(shell.sectionActive()).toBe(false);
+  });
+
+  it('auto-selects the first section on the wide layout', async () => {
+    stubMatchMedia(true); // wide: the empty index redirects into the first section
+    const { router } = await harnessAt('/settings');
+
+    expect(await settle(router, '/settings/profile')).toBe('/settings/profile');
+  });
+
+  it('auto-selects the first section when the layout grows to wide', async () => {
+    const media = stubMatchMedia(false); // start narrow: index on the list
+    const { harness, router } = await harnessAt('/settings');
+    expect(router.url).toBe('/settings');
+
+    media.fireChange(true); // resize past the breakpoint
+    harness.detectChanges(); // run the effect that reacts to wide()
+
+    expect(await settle(router, '/settings/profile')).toBe('/settings/profile');
+  });
+
+  it('does not force a route change when the layout shrinks to narrow', async () => {
+    const media = stubMatchMedia(true); // wide: lands on the first section
+    const { harness, router } = await harnessAt('/settings');
+    expect(await settle(router, '/settings/profile')).toBe('/settings/profile');
+
+    media.fireChange(false); // shrink to narrow while a section is open
+    harness.detectChanges();
+    await flush();
+
+    // Narrow only changes the layout (single-pane), never the open section.
+    expect(router.url).toBe('/settings/profile');
+  });
+
+  it('removes its matchMedia listener when destroyed', async () => {
+    const media = stubMatchMedia(false);
+    const { harness } = await harnessAt('/settings');
+
+    harness.fixture.destroy();
+
+    expect(media.removeListener).toHaveBeenCalled();
+  });
+
+  it('marks the current section link active and exposes aria-current', async () => {
+    stubMatchMedia(true);
+    const { harness } = await harnessAt('/settings/appearance');
+    const el = harness.fixture.nativeElement as HTMLElement;
+
+    const active = el.querySelector('[data-testid="settings-nav-appearance"]');
+    const other = el.querySelector('[data-testid="settings-nav-profile"]');
+    expect(active?.classList.contains('settings__item--active')).toBe(true);
+    expect(active?.getAttribute('aria-current')).toBe('page');
+    expect(other?.classList.contains('settings__item--active')).toBe(false);
+    expect(other?.getAttribute('aria-current')).toBeNull();
+  });
+
+  it('does not redirect a directly-opened section on the wide layout', async () => {
+    stubMatchMedia(true); // wide, but a section is deep-linked from the start
+    TestBed.configureTestingModule({ providers: [provideRouter(ROUTES)] });
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/settings/devices'); // shell constructs here
+    const router = TestBed.inject(Router);
+
+    // The effect must read the URL (not the not-yet-activated child route) and leave
+    // the deep-linked section put, rather than hijacking it to the first section.
+    expect(await settle(router, '/settings/devices')).toBe('/settings/devices');
+  });
+
+  it('marks a section active when its detail is open', async () => {
+    stubMatchMedia(false);
+    const { harness, shell } = await harnessAt('/settings/appearance');
+
+    expect(shell.sectionActive()).toBe(true);
+    const el = harness.fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.settings--detail')).not.toBeNull();
+  });
+
+  it('leaves settings via history when the header back button is clicked at the index', async () => {
+    stubMatchMedia(false);
+    const { harness } = await harnessAt('/settings');
     const back = vi
       .spyOn(TestBed.inject(Location), 'back')
       .mockImplementation(() => undefined);
 
-    const button = container.querySelector<HTMLButtonElement>(
+    // Click the real button to exercise the (click)/aria-label template wiring.
+    const el = harness.fixture.nativeElement as HTMLElement;
+    el.querySelector<HTMLButtonElement>(
       'header button[aria-label=Back]',
-    );
-    button?.click();
+    )?.click();
 
     expect(back).toHaveBeenCalled();
   });
 
-  it('applies the chosen theme on change', async () => {
-    const { fixture } = await renderPage();
+  it('goes up to the category list from a section on the narrow layout', async () => {
+    stubMatchMedia(false);
+    const { harness, router } = await harnessAt('/settings/appearance');
+    const back = vi.spyOn(TestBed.inject(Location), 'back');
 
-    fixture.componentInstance.onThemeChange('light');
+    const el = harness.fixture.nativeElement as HTMLElement;
+    el.querySelector<HTMLButtonElement>(
+      'header button[aria-label=Back]',
+    )?.click();
 
-    expect(TestBed.inject(ThemeService).setPreference).toHaveBeenCalledWith(
-      'light',
-    );
+    // Deterministic "up": routes to the list (history may not hold it), not back().
+    expect(await settle(router, '/settings')).toBe('/settings');
+    expect(back).not.toHaveBeenCalled();
   });
 
-  it('reflects and toggles the virtualized-timeline flag', async () => {
-    const { fixture, container } = await renderPage();
-
-    expect(
-      container.querySelector('[data-testid=flag-virtual-timeline]'),
-    ).not.toBeNull();
-    const checkbox = fixture.debugElement.query(By.directive(HlmCheckbox));
-    expect(checkbox.componentInstance.checked()).toBe(false); // off by default
-
-    // The checkbox reflects the persisted signal.
-    virtualTimeline.set(true);
-    fixture.detectChanges();
-    expect(checkbox.componentInstance.checked()).toBe(true);
-
-    // Toggling emits checkedChange → the flag is persisted.
-    checkbox.componentInstance.checkedChange.emit(false);
-    expect(
-      TestBed.inject(FeatureFlagsService).setVirtualTimeline,
-    ).toHaveBeenCalledWith(false);
-  });
-
-  it('renders the profile and seeds the editable name', async () => {
-    const { fixture, container } = await renderPage();
-
-    expect(container.textContent).toContain('Alice');
-    expect(container.textContent).toContain('@me:hs');
-    expect(fixture.componentInstance.nameDraft()).toBe('Alice'); // seeded by load()
-  });
-
-  it('updates the draft name from a native input event', async () => {
-    const { fixture } = await renderPage();
-    const cmp = fixture.componentInstance;
-
-    // The handler now reads a native <input>'s value (not an ionInput CustomEvent).
-    cmp.onNameInput({ target: { value: 'Carol' } } as unknown as Event);
-
-    expect(cmp.nameDraft()).toBe('Carol');
-  });
-
-  it('saves an edited display name', async () => {
-    const { fixture, profileSvc } = await renderPage();
-    const cmp = fixture.componentInstance;
-
-    cmp.nameDraft.set('Bob');
-    cmp.saveName();
-
-    expect(profileSvc.setDisplayName).toHaveBeenCalledWith('Bob');
-  });
-
-  it('uploads a picked avatar file', async () => {
-    const { fixture, profileSvc } = await renderPage();
-    const cmp = fixture.componentInstance;
-
-    const file = new File([new Uint8Array([1])], 'me.png', {
-      type: 'image/png',
-    });
-    const input = document.createElement('input');
-    Object.defineProperty(input, 'files', {
-      value: [file],
-      configurable: true,
-    });
-
-    cmp.onAvatarPicked({ target: input } as unknown as Event);
-
-    expect(profileSvc.setAvatar).toHaveBeenCalledWith(file);
-    expect(input.value).toBe(''); // reset for re-picking
-  });
-
-  it('renders the avatar change control as a labelled icon button', async () => {
-    const { container } = await renderPage();
-
-    const change = container.querySelector<HTMLButtonElement>(
-      '[data-testid=change-avatar]',
-    );
-    expect(change).not.toBeNull();
-    expect(change?.tagName).toBe('BUTTON');
-    // Icon-only: an accessible label stands in for the removed "Change" text.
-    expect(change?.getAttribute('aria-label')).toBe('Change profile picture');
-    expect(change?.textContent?.trim()).toBe('');
-    // The camera icon renders as an SVG.
-    expect(change?.querySelector('svg')).not.toBeNull();
-    // It sits as a corner badge inside the avatar wrapper, beside the avatar.
-    expect(change?.parentElement?.querySelector('trn-avatar')).not.toBeNull();
-  });
-
-  it('reflects the uploading state on the change control', async () => {
-    const { fixture, container } = await renderPage();
-    const change = () =>
-      container.querySelector<HTMLButtonElement>('[data-testid=change-avatar]');
-
-    expect(change()?.disabled).toBe(false);
-
-    fixture.componentInstance.savingAvatar.set(true);
-    fixture.detectChanges();
-
-    // Disabled, relabelled, and the icon spins while the upload is in flight.
-    expect(change()?.disabled).toBe(true);
-    expect(change()?.getAttribute('aria-label')).toBe(
-      'Uploading profile picture',
-    );
-    expect(change()?.querySelector('.animate-spin')).not.toBeNull();
-  });
-
-  it('opens the file picker when the change control is clicked', async () => {
-    const { container } = await renderPage();
-
-    const fileInput = container.querySelector<HTMLInputElement>(
-      '[data-testid=avatar-input]',
-    );
-    const clickSpy = vi
-      .spyOn(fileInput!, 'click')
+  it('leaves settings via history from a section on the wide layout', async () => {
+    stubMatchMedia(true);
+    const { harness } = await harnessAt('/settings/appearance');
+    const back = vi
+      .spyOn(TestBed.inject(Location), 'back')
       .mockImplementation(() => undefined);
 
-    container
-      .querySelector<HTMLButtonElement>('[data-testid=change-avatar]')
-      ?.click();
+    const el = harness.fixture.nativeElement as HTMLElement;
+    el.querySelector<HTMLButtonElement>(
+      'header button[aria-label=Back]',
+    )?.click();
 
-    expect(clickSpy).toHaveBeenCalled();
-  });
-
-  it('rejects a non-image avatar file with an error', async () => {
-    const { fixture, profileSvc } = await renderPage();
-    const cmp = fixture.componentInstance;
-
-    const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
-    const input = document.createElement('input');
-    Object.defineProperty(input, 'files', {
-      value: [file],
-      configurable: true,
-    });
-
-    cmp.onAvatarPicked({ target: input } as unknown as Event);
-
-    expect(profileSvc.setAvatar).not.toHaveBeenCalled();
-    expect(cmp.error()).toContain('image');
-  });
-
-  it('renders the user id when no display name is set', async () => {
-    profile.set({
-      userId: '@me:hs',
-      displayName: '',
-      avatarMxc: null,
-      avatarUrl: null,
-    });
-    const { fixture, container } = await renderPage();
-
-    expect(container.textContent).toContain('@me:hs');
-    // The editable field is empty (not prefilled with the user id).
-    expect(fixture.componentInstance.nameDraft()).toBe('');
+    // Desktop: section links replace history, so Back exits through history rather
+    // than routing "up" — one press leaves settings without retracing sections.
+    expect(back).toHaveBeenCalled();
   });
 });

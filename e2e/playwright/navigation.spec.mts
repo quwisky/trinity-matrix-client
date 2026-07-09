@@ -53,7 +53,7 @@ test.describe('Route transitions', () => {
     // real (still-true) regression check that the plain router-outlet completes
     // the transition — no dead router.
     await page.getByTestId('open-settings').click();
-    await page.waitForURL('**/settings', { timeout: 20_000 });
+    await page.waitForURL(/\/settings(\/|$)/, { timeout: 20_000 });
     await expect(page.locator('trn-settings')).toBeVisible({
       timeout: 20_000,
     });
@@ -67,7 +67,7 @@ test.describe('Route transitions', () => {
     await login(page, session);
 
     await page.getByTestId('open-settings').click();
-    await page.waitForURL('**/settings', { timeout: 20_000 });
+    await page.waitForURL(/\/settings(\/|$)/, { timeout: 20_000 });
 
     await expect
       .poll(() => focusInside(page, 'trn-settings'), { timeout: 10_000 })

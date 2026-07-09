@@ -206,7 +206,9 @@ test.describe('GIF picker', () => {
 
     await login(page, reader);
     await page.getByTestId('open-settings').click();
-    await page.waitForURL('**/settings', { timeout: 20_000 });
+    // GIF config lives on the GIFs section sub-page of the settings submenu.
+    await page.getByTestId('settings-nav-gifs').click();
+    await page.waitForURL(/\/settings\/gifs$/, { timeout: 20_000 });
 
     const read = (): Promise<string | null> =>
       page.evaluate((k) => localStorage.getItem(k), GIF_CONFIG_KEY);
@@ -233,10 +235,11 @@ test.describe('GIF picker', () => {
       .toMatchObject({ provider: 'giphy', apiKey: '' });
     await expect(page.getByTestId('gif-clear')).toHaveCount(0); // picker disabled
 
-    // The remembered choice survives a reload: the key field is still GIPHY's, not
-    // Tenor's (GifSettingsService.init reads the provider back at startup).
+    // The remembered choice survives a reload: the deep-linked GIFs sub-page
+    // restores and the key field is still GIPHY's, not Tenor's (GifSettingsService
+    // .init reads the provider back at startup).
     await page.reload();
-    await page.waitForURL('**/settings', { timeout: 20_000 });
+    await page.waitForURL(/\/settings\/gifs$/, { timeout: 20_000 });
     await expect(page.locator('label[for="gif-api-key"]')).toHaveText(
       'GIPHY API key',
       { timeout: 15_000 },

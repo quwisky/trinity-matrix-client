@@ -12,156 +12,32 @@
   </button>
 </trn-page-header>
 
-<main class="flex-1 overflow-y-auto">
-  <div>
-    <h2
-      class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-    >
-      Profile
-    </h2>
-    @if (profile(); as p) {
-      <div class="flex items-center gap-3 px-4 py-2">
-        <div class="relative shrink-0">
-          <trn-avatar
-            [mxc]="p.avatarMxc"
-            [name]="p.displayName || p.userId"
-            [initial]="initial()"
-            [size]="64"
-          />
-          <button
-            type="button"
-            class="absolute -right-1 -bottom-1 grid h-7 w-7 place-items-center rounded-full border-2 border-solid border-background bg-primary text-sm text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
-            [disabled]="savingAvatar()"
-            (click)="pickAvatar()"
-            hlmTooltip="Change profile picture"
-            [attr.aria-label]="
-              savingAvatar()
-                ? 'Uploading profile picture'
-                : 'Change profile picture'
-            "
-            data-testid="change-avatar"
-          >
-            <ng-icon
-              [name]="savingAvatar() ? 'lucideLoaderCircle' : 'lucideCamera'"
-              [class.animate-spin]="savingAvatar()"
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-        <div class="min-w-0 flex-1">
-          <div
-            class="truncate text-sm font-medium text-foreground"
-            data-testid="profile-display-name"
-          >
-            {{ p.displayName || p.userId }}
-          </div>
-          <div class="truncate text-xs text-muted-foreground">
-            {{ p.userId }}
-          </div>
-        </div>
-      </div>
-      <div
-        class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
+<div class="settings" [class.settings--detail]="sectionActive()">
+  <nav class="settings__menu" aria-label="Settings sections">
+    @for (item of menu; track item.path) {
+      <a
+        class="settings__item"
+        [routerLink]="item.path"
+        [replaceUrl]="wide()"
+        routerLinkActive="settings__item--active"
+        ariaCurrentWhenActive="page"
+        [attr.data-testid]="'settings-nav-' + item.path"
       >
-        <div class="min-w-0 flex-1">
-          <label hlmLabel for="display-name">Display name</label>
-          <input
-            id="display-name"
-            hlmInput
-            class="mt-1"
-            [value]="nameDraft()"
-            (input)="onNameInput($event)"
-            data-testid="display-name-input"
-          />
-        </div>
-        <button
-          hlmBtn
-          size="sm"
-          class="ml-auto shrink-0"
-          [disabled]="savingName() || !nameDirty()"
-          (click)="saveName()"
-          data-testid="save-name"
-        >
-          Save
-        </button>
-      </div>
-    } @else if (loading()) {
-      <div class="px-4 py-2 text-sm text-muted-foreground">
-        Loading profile…
-      </div>
+        <ng-icon
+          [name]="item.icon"
+          class="settings__item-icon"
+          aria-hidden="true"
+        />
+        <span class="settings__item-label">{{ item.label }}</span>
+        <ng-icon
+          name="lucideChevronRight"
+          class="settings__item-chevron"
+          aria-hidden="true"
+        />
+      </a>
     }
-    @if (error(); as e) {
-      <p class="setting-note setting-note--error">{{ e }}</p>
-    }
-    <input
-      #avatarInput
-      type="file"
-      accept="image/*"
-      hidden
-      data-testid="avatar-input"
-      (change)="onAvatarPicked($event)"
-    />
-  </div>
-
-  <div>
-    <h2
-      class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-    >
-      Appearance
-    </h2>
-    <hlm-radio-group
-      class="px-4 py-2"
-      [value]="theme.preference()"
-      (valueChange)="onThemeChange($event)"
-    >
-      <label
-        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-        data-testid="theme-system"
-      >
-        <hlm-radio value="system"><hlm-radio-indicator /></hlm-radio>
-        Use system setting
-      </label>
-      <label
-        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-        data-testid="theme-light"
-      >
-        <hlm-radio value="light"><hlm-radio-indicator /></hlm-radio>
-        Light
-      </label>
-      <label
-        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-        data-testid="theme-dark"
-      >
-        <hlm-radio value="dark"><hlm-radio-indicator /></hlm-radio>
-        Dark
-      </label>
-    </hlm-radio-group>
-    <p class="setting-note">Showing the {{ theme.resolved() }} theme.</p>
-  </div>
-
-  <trn-devices-section />
-
-  <trn-gifs-section />
-
-  <div>
-    <h2
-      class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-    >
-      Experimental
-    </h2>
-    <label
-      class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
-      data-testid="flag-virtual-timeline"
-    >
-      <hlm-checkbox
-        [checked]="flags.virtualTimeline()"
-        (checkedChange)="flags.setVirtualTimeline($event)"
-      />
-      Virtualized timeline
-    </label>
-    <p class="setting-note">
-      Renders only the messages currently on screen, keeping memory low and
-      scrolling smooth in very long rooms.
-    </p>
-  </div>
-</main>
+  </nav>
+  <section class="settings__detail">
+    <router-outlet />
+  </section>
+</div>

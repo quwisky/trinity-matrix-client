@@ -155,14 +155,14 @@ describe('DevicesSectionComponent', () => {
     expect(del).not.toHaveBeenCalled();
   });
 
-  it('navigates to the verification flow on mobile, returning to settings', async () => {
+  it('navigates to the verification flow on mobile, returning to the Devices section', async () => {
     stubViewport(false);
     const { fixture } = await renderSection();
 
     fixture.componentInstance.verifyDevices();
 
     expect(navigate).toHaveBeenCalledWith(['/encryption/verify'], {
-      queryParams: { returnTo: '/settings' },
+      queryParams: { returnTo: '/settings/devices' },
     });
     expect(dialogOpen).not.toHaveBeenCalled();
   });
