@@ -75,6 +75,11 @@ export interface MemberSummary {
   name: string;
   initial: string;
   avatarMxc: string | null;
+  /**
+   * The member's power level in the room. By Matrix convention 100 is an admin and
+   * 50 a moderator; the member list groups members into role sections from this.
+   */
+  powerLevel: number;
 }
 
 /**
@@ -265,8 +270,14 @@ export class RoomsService {
       return [];
     }
     const joined = room.getJoinedMembers();
+    // `powerLevel` is part of the fingerprint so a promotion/demotion (which fires
+    // RoomState.members and keeps userId/name/avatar unchanged) still invalidates the
+    // cache and re-partitions the member list into its role sections.
     const sig = joined
-      .map((m) => `${m.userId}\x1f${m.name}\x1f${m.getMxcAvatarUrl() ?? ''}`)
+      .map(
+        (m) =>
+          `${m.userId}\x1f${m.name}\x1f${m.getMxcAvatarUrl() ?? ''}\x1f${m.powerLevel}`,
+      )
       .join('\x1e');
     const cached = this.memberCache.get(roomId);
     if (cached && cached.sig === sig) {
@@ -535,6 +546,7 @@ export class RoomsService {
       name,
       initial: initialOf(name),
       avatarMxc: member.getMxcAvatarUrl() ?? null,
+      powerLevel: member.powerLevel,
     };
   }
 }

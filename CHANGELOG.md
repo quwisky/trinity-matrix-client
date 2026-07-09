@@ -35,10 +35,16 @@ All notable changes to this project are documented here. The format is based on
   Settings → GIFs. The GIF button stays hidden until a key is configured.
 - **Online status for members and direct messages.** The room member list now
   reflects each member's Matrix presence: a coloured dot on their avatar (green
-  online, amber away, grey offline), online members sorted to the top, offline
-  members dimmed, and an "N of M online" count in the header. Each direct-message
-  row in the sidebar also shows the other person's status on their avatar. All
-  updating live. The presence dot is built into the shared avatar component.
+  online, amber away, grey offline), with online members ordered first and offline
+  members dimmed. Each direct-message row in the sidebar also shows the other
+  person's status on their avatar. All updating live. The presence dot is built
+  into the shared avatar component.
+- **Role sections in the member list.** The room member list now groups members
+  under **Admin**, **Moderator**, and **Member** headers (derived from each member's
+  power level, the same 100/50 convention Element uses), each header showing that
+  role's count. The panel leads straight into these sections. Empty roles are hidden,
+  online-first ordering and the offline dimming are kept within every section, and a
+  promotion or demotion re-sorts the list live.
 
 ### Changed
 

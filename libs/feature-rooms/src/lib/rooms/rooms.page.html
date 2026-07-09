@@ -212,11 +212,7 @@
           />
         }
         @if (membersOpen()) {
-          <trn-member-list
-            class="chat-members"
-            [members]="members()"
-            (closed)="closeMembers()"
-          />
+          <trn-member-list class="chat-members" [members]="members()" />
         }
       } @else {
         <div class="chat-empty">

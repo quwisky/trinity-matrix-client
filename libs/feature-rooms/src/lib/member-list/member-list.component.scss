@@ -12,30 +12,34 @@
   --trn-presence-ring: var(--trinity-members);
 }
 
-.members__header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px 8px;
-}
-
 .category {
   @include category-label;
-
-  flex: 1;
-  min-width: 0;
 }
 
-.members__close {
-  @include interactive-row;
+// A role group ("Admin — 2", "Moderator — 1", …). Space groups apart so the
+// section headers read as distinct bands rather than crowding the rows above.
+.members__section + .members__section {
+  margin-top: 16px;
+}
 
+.members__section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 4px;
+}
+
+// The role icon inherits the label's muted colour (currentColor) and sits a touch
+// larger than the 11px text so it reads as an icon, not a glyph.
+.members__section-icon {
   flex: 0 0 auto;
-  font-size: 16px;
-  padding: 2px 4px;
+  font-size: 13px;
+}
 
-  &:hover {
-    color: var(--trinity-text);
-  }
+.members__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .member {
