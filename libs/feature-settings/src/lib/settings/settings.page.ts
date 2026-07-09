@@ -10,7 +10,11 @@ import {
   viewChild,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideArrowLeft } from '@ng-icons/lucide';
+import {
+  lucideArrowLeft,
+  lucideCamera,
+  lucideLoaderCircle,
+} from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { HlmInput } from '@trinity/helm/input';
@@ -55,7 +59,9 @@ import { GifsSectionComponent } from '../gifs/gifs-section.component';
     HlmRadio,
     HlmRadioIndicator,
   ],
-  viewProviders: [provideIcons({ lucideArrowLeft })],
+  viewProviders: [
+    provideIcons({ lucideArrowLeft, lucideCamera, lucideLoaderCircle }),
+  ],
 })
 export class SettingsPage {
   readonly theme = inject(ThemeService);

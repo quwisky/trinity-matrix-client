@@ -6,6 +6,12 @@ import { login, fillLabeledInput, synapseSession } from './support/app.mts';
 // so the suite skips itself when the disposable Synapse wasn't available (no Docker).
 const session = synapseSession();
 
+// A 1x1 transparent PNG — a valid image the homeserver accepts as an avatar.
+const PNG_1x1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+);
+
 const hasDarkPalette = (page: Page): Promise<boolean> =>
   page.evaluate(() => document.documentElement.classList.contains('dark'));
 
@@ -38,6 +44,35 @@ test.describe('Settings', () => {
     await expect(page.getByTestId('profile-display-name')).toHaveText(name, {
       timeout: 20_000,
     });
+  });
+
+  test('changes the profile picture from the avatar corner badge', async ({
+    page,
+  }) => {
+    const change = page.getByTestId('change-avatar');
+    await expect(change).toBeVisible();
+    // Icon-only control: a labelled button carrying an SVG icon, no "Change" text.
+    await expect(change).toHaveAttribute(
+      'aria-label',
+      'Change profile picture',
+    );
+    await expect(change.locator('svg')).toBeVisible();
+    await expect(change).not.toContainText('Change');
+
+    // Clicking the badge opens the hidden file input's chooser; upload a PNG.
+    const chooserPromise = page.waitForEvent('filechooser');
+    await change.click();
+    const chooser = await chooserPromise;
+    await chooser.setFiles({
+      name: 'avatar.png',
+      mimeType: 'image/png',
+      buffer: PNG_1x1,
+    });
+
+    // setAvatar patches the profile's mxc, so the picture round-trips the
+    // homeserver and the avatar (beside the badge) renders as an <img>.
+    const avatar = change.locator('..').locator('trn-avatar img');
+    await expect(avatar).toBeVisible({ timeout: 30_000 });
   });
 
   test('lists the current device under Devices', async ({ page }) => {
