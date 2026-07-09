@@ -4,6 +4,9 @@
   @include column(var(--trinity-sidebar));
 
   width: 280px;
+
+  // Ring the avatar presence dots (DM online status) in this panel's surface colour.
+  --trn-presence-ring: var(--trinity-sidebar);
 }
 
 .sidebar__header {

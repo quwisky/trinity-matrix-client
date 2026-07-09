@@ -41,7 +41,10 @@ import {
   PushService,
 } from '@trinity/data-access-notifications';
 import { PinnedMessagesService } from '@trinity/data-access-pinned';
-import { type UserProfile } from '@trinity/data-access-profile';
+import {
+  PresenceService,
+  type UserProfile,
+} from '@trinity/data-access-profile';
 import {
   RoomsService,
   SpacesService,
@@ -125,6 +128,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly unreadAgg = inject(UnreadAggregatorService);
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
+  private readonly presence = inject(PresenceService);
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
   private readonly auth = inject(AuthService);
@@ -352,6 +356,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.spaces.connect();
     this.invites.connect();
     this.crypto.connect();
+    this.presence.connect(); // live online-status for member avatars
     // Register for push once the authenticated shell is live (covers both fresh
     // login and a restored session). Best-effort + native-only; no-op elsewhere.
     this.push.register().subscribe({ error: () => undefined });

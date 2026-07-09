@@ -21,3 +21,15 @@
     >{{ initial() }}</span
   >
 </hlm-avatar>
+@if (presence(); as state) {
+  <span
+    class="presence-dot"
+    role="img"
+    [attr.aria-label]="presenceTitle()"
+    [title]="presenceTitle()"
+    [attr.data-presence]="state"
+    [style.width.px]="dotSize()"
+    [style.height.px]="dotSize()"
+    [style.background]="presenceColor()"
+  ></span>
+}

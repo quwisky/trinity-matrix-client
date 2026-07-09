@@ -121,6 +121,27 @@ describe('RoomsService', () => {
     expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs']);
   });
 
+  it('tags a DM room with its counterpart user id from m.direct', () => {
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [
+        fakeRoom({ roomId: '!dm:hs', name: 'Bob' }),
+        fakeRoom({ roomId: '!room:hs', name: 'general' }),
+      ],
+      getAccountData: (type: string) =>
+        type === 'm.direct'
+          ? { getContent: () => ({ '@bob:hs': ['!dm:hs'] }) }
+          : undefined,
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+    svc.connect();
+
+    const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
+    expect(byId.get('!dm:hs')?.directUserId).toBe('@bob:hs');
+    expect(byId.get('!room:hs')?.directUserId).toBeUndefined(); // plain room
+  });
+
   it('orders rooms by recent activity and maps unread counts', () => {
     const svc = setup([
       fakeRoom({ roomId: '!old:hs', name: 'old', activity: 100 }),

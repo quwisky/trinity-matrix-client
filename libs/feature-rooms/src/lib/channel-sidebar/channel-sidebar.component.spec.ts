@@ -7,17 +7,27 @@ import {
   InvitesService,
   type PendingInvite,
 } from '@trinity/data-access-invites';
-import { type UserProfile } from '@trinity/data-access-profile';
+import {
+  PresenceService,
+  type UserProfile,
+} from '@trinity/data-access-profile';
 import {
   RoomsService,
   SpacesService,
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
+import { type PresenceState } from '@trinity/util-matrix';
 import {
   ChannelSidebarComponent,
   type AccountSummary,
 } from './channel-sidebar.component';
+
+// Stub presence: @bob is online, everyone else offline.
+const presenceStub = {
+  presenceFor: (userId: string) =>
+    signal<PresenceState>(userId === '@bob:hs' ? 'online' : 'offline'),
+};
 
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {
@@ -109,6 +119,7 @@ async function renderSidebar(
       }),
       MockProvider(InvitesService, { pendingInvites: signals.pendingInvites }),
       MockProvider(RoomsService),
+      { provide: PresenceService, useValue: presenceStub },
     ],
   });
 
@@ -116,6 +127,30 @@ async function renderSidebar(
 }
 
 describe('ChannelSidebarComponent', () => {
+  it('shows the DM counterpart’s presence, but no dot on a plain room', async () => {
+    const { fixture } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!dm:hs', name: 'Bob', directUserId: '@bob:hs' }),
+          room({ id: '!room:hs', name: 'general' }),
+        ],
+      },
+    });
+    const sidebar = fixture.componentInstance;
+    // Presence tracks the DM's other participant; a non-DM room gets null (no dot).
+    expect(sidebar.presenceOf(room({ directUserId: '@bob:hs' }))).toBe(
+      'online',
+    );
+    expect(sidebar.presenceOf(room({ directUserId: '@carol:hs' }))).toBe(
+      'offline',
+    );
+    expect(sidebar.presenceOf(room())).toBeNull();
+    // The DM row actually renders a presence dot; the plain room does not.
+    expect(
+      fixture.nativeElement.querySelectorAll('.presence-dot'),
+    ).toHaveLength(1);
+  });
+
   it('lists rooms and emits selectRoom when one is clicked', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: { rooms: [room()] },
