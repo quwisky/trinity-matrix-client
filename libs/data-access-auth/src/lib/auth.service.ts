@@ -17,7 +17,7 @@ import { PushService } from '@trinity/data-access-notifications';
 import { SessionStorageService } from '@trinity/platform-native';
 import { MatrixSession } from '@trinity/util-matrix';
 
-const DEVICE_DISPLAY_NAME = 'Trinity (Ionic)';
+const DEVICE_DISPLAY_NAME = 'Trinity';
 
 /** Whether a successful login replaces the current account or adds alongside it. */
 export type LoginMode = 'replace' | 'add';
