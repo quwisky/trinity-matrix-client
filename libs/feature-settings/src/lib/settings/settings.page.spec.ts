@@ -171,6 +171,58 @@ describe('SettingsPage', () => {
     expect(input.value).toBe(''); // reset for re-picking
   });
 
+  it('renders the avatar change control as a labelled icon button', async () => {
+    const { container } = await renderPage();
+
+    const change = container.querySelector<HTMLButtonElement>(
+      '[data-testid=change-avatar]',
+    );
+    expect(change).not.toBeNull();
+    expect(change?.tagName).toBe('BUTTON');
+    // Icon-only: an accessible label stands in for the removed "Change" text.
+    expect(change?.getAttribute('aria-label')).toBe('Change profile picture');
+    expect(change?.textContent?.trim()).toBe('');
+    // The camera icon renders as an SVG.
+    expect(change?.querySelector('svg')).not.toBeNull();
+    // It sits as a corner badge inside the avatar wrapper, beside the avatar.
+    expect(change?.parentElement?.querySelector('trn-avatar')).not.toBeNull();
+  });
+
+  it('reflects the uploading state on the change control', async () => {
+    const { fixture, container } = await renderPage();
+    const change = () =>
+      container.querySelector<HTMLButtonElement>('[data-testid=change-avatar]');
+
+    expect(change()?.disabled).toBe(false);
+
+    fixture.componentInstance.savingAvatar.set(true);
+    fixture.detectChanges();
+
+    // Disabled, relabelled, and the icon spins while the upload is in flight.
+    expect(change()?.disabled).toBe(true);
+    expect(change()?.getAttribute('aria-label')).toBe(
+      'Uploading profile picture',
+    );
+    expect(change()?.querySelector('.animate-spin')).not.toBeNull();
+  });
+
+  it('opens the file picker when the change control is clicked', async () => {
+    const { container } = await renderPage();
+
+    const fileInput = container.querySelector<HTMLInputElement>(
+      '[data-testid=avatar-input]',
+    );
+    const clickSpy = vi
+      .spyOn(fileInput!, 'click')
+      .mockImplementation(() => undefined);
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid=change-avatar]')
+      ?.click();
+
+    expect(clickSpy).toHaveBeenCalled();
+  });
+
   it('rejects a non-image avatar file with an error', async () => {
     const { fixture, profileSvc } = await renderPage();
     const cmp = fixture.componentInstance;

@@ -21,12 +21,33 @@
     </h2>
     @if (profile(); as p) {
       <div class="flex items-center gap-3 px-4 py-2">
-        <trn-avatar
-          [mxc]="p.avatarMxc"
-          [name]="p.displayName || p.userId"
-          [initial]="initial()"
-          [size]="64"
-        />
+        <div class="relative shrink-0">
+          <trn-avatar
+            [mxc]="p.avatarMxc"
+            [name]="p.displayName || p.userId"
+            [initial]="initial()"
+            [size]="64"
+          />
+          <button
+            type="button"
+            class="absolute -right-1 -bottom-1 grid h-7 w-7 place-items-center rounded-full border-2 border-solid border-background bg-primary text-sm text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
+            [disabled]="savingAvatar()"
+            (click)="pickAvatar()"
+            hlmTooltip="Change profile picture"
+            [attr.aria-label]="
+              savingAvatar()
+                ? 'Uploading profile picture'
+                : 'Change profile picture'
+            "
+            data-testid="change-avatar"
+          >
+            <ng-icon
+              [name]="savingAvatar() ? 'lucideLoaderCircle' : 'lucideCamera'"
+              [class.animate-spin]="savingAvatar()"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
         <div class="min-w-0 flex-1">
           <div
             class="truncate text-sm font-medium text-foreground"
@@ -38,17 +59,6 @@
             {{ p.userId }}
           </div>
         </div>
-        <button
-          hlmBtn
-          variant="ghost"
-          size="sm"
-          class="ml-auto shrink-0"
-          [disabled]="savingAvatar()"
-          (click)="pickAvatar()"
-          data-testid="change-avatar"
-        >
-          {{ savingAvatar() ? 'Uploading…' : 'Change' }}
-        </button>
       </div>
       <div
         class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
