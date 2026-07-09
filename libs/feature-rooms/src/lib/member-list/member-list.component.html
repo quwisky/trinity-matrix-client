@@ -1,32 +1,34 @@
-<aside class="members">
-  <div class="members__header">
-    <span class="category"
-      >Members — {{ onlineCount() }} of {{ members().length }} online</span
-    >
-    <button
-      class="members__close"
-      (click)="closed.emit()"
-      aria-label="Close member list"
-      title="Close member list"
-      data-testid="close-members"
-    >
-      <ng-icon name="lucideX" aria-hidden="true" />
-    </button>
-  </div>
-  @for (row of rows(); track row.member.userId) {
+<aside class="members" aria-label="Members">
+  @for (section of sections(); track section.role) {
     <div
-      class="member"
-      [class.member--offline]="row.presence === 'offline'"
-      [title]="row.member.userId"
+      class="members__section"
+      role="group"
+      [attr.aria-label]="section.ariaLabel"
     >
-      <trn-avatar
-        [mxc]="row.member.avatarMxc"
-        [initial]="row.member.initial"
-        [name]="row.member.name"
-        [size]="32"
-        [presence]="row.presence"
-      />
-      <span class="member__name">{{ row.member.name }}</span>
+      <!-- The group's aria-label already names the role and count, so hide the
+           visual header (icon included) from assistive tech to avoid a double read. -->
+      <span class="category members__section-label" aria-hidden="true">
+        <ng-icon class="members__section-icon" [name]="section.icon" />
+        {{ section.label }} — {{ section.rows.length }}
+      </span>
+      <ul class="members__list" role="list">
+        @for (row of section.rows; track row.member.userId) {
+          <li
+            class="member"
+            [class.member--offline]="row.presence === 'offline'"
+            [title]="row.member.userId"
+          >
+            <trn-avatar
+              [mxc]="row.member.avatarMxc"
+              [initial]="row.member.initial"
+              [name]="row.member.name"
+              [size]="32"
+              [presence]="row.presence"
+            />
+            <span class="member__name">{{ row.member.name }}</span>
+          </li>
+        }
+      </ul>
     </div>
   }
 </aside>

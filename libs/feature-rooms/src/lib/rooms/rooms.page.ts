@@ -739,11 +739,6 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.membersOpen.update((open) => !open);
   }
 
-  /** Hide the member list (raised by its own close button). */
-  closeMembers(): void {
-    this.membersOpen.set(false);
-  }
-
   /** Open the thread rooted at `rootEventId` (raised by a message's indicator). */
   onOpenThread(rootEventId: string): void {
     const roomId = this.activeRoomId();

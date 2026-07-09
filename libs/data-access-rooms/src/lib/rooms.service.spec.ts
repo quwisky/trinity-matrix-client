@@ -27,6 +27,23 @@ function timelineEvent(over: {
   };
 }
 
+// A joined member shaped like the bits of matrix-js-sdk's RoomMember that
+// RoomsService.toMember reads. `powerLevel` is mutable so a test can promote it.
+function fakeMember(over: {
+  userId: string;
+  name?: string;
+  avatarMxc?: string | null;
+  powerLevel?: number;
+}) {
+  return {
+    userId: over.userId,
+    name: over.name ?? over.userId,
+    // matrix-js-sdk's RoomMember.getMxcAvatarUrl() returns `string | undefined`.
+    getMxcAvatarUrl: () => over.avatarMxc ?? undefined,
+    powerLevel: over.powerLevel ?? 0,
+  };
+}
+
 // Minimal fakes shaped like the bits of matrix-js-sdk that RoomsService reads.
 function fakeRoom(opts: {
   roomId: string;
@@ -40,6 +57,7 @@ function fakeRoom(opts: {
   encrypted?: boolean;
   favourite?: boolean;
   events?: ReturnType<typeof timelineEvent>[];
+  members?: ReturnType<typeof fakeMember>[];
 }) {
   return {
     roomId: opts.roomId,
@@ -49,8 +67,8 @@ function fakeRoom(opts: {
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,
-    getJoinedMemberCount: () => 0,
-    getJoinedMembers: () => [],
+    getJoinedMemberCount: () => opts.members?.length ?? 0,
+    getJoinedMembers: () => opts.members ?? [],
     hasEncryptionStateEvent: () => opts.encrypted ?? false,
     getUnreadNotificationCount: (type?: string) =>
       type === 'highlight' ? (opts.highlight ?? 0) : (opts.unread ?? 0),
@@ -730,5 +748,57 @@ describe('RoomsService setFavourite', () => {
     await Promise.resolve();
 
     expect(svc.rooms()[0].favourite).toBe(true);
+  });
+});
+
+// membersOf projects a room's joined members (with power level) into the member-list
+// view model, memoized against a per-room fingerprint that includes each power level.
+describe('RoomsService membersOf', () => {
+  function setup(room: ReturnType<typeof fakeRoom>): RoomsService {
+    const client = {
+      getRooms: () => [room],
+      getRoom: (id: string) => (id === room.roomId ? room : null),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const { svc } = provideRooms(client);
+    svc.connect();
+    return svc;
+  }
+
+  it('returns joined members name-sorted, each carrying its power level and avatar', () => {
+    const svc = setup(
+      fakeRoom({
+        roomId: '!a:hs',
+        name: 'general',
+        members: [
+          fakeMember({ userId: '@z:hs', name: 'Zoe', powerLevel: 50 }),
+          fakeMember({
+            userId: '@a:hs',
+            name: 'Ada',
+            powerLevel: 100,
+            avatarMxc: 'mxc://hs/ada',
+          }),
+        ],
+      }),
+    );
+
+    const list = svc.membersOf('!a:hs');
+    expect(list.map((m) => m.name)).toEqual(['Ada', 'Zoe']);
+    expect(list.map((m) => m.powerLevel)).toEqual([100, 50]);
+    // An absent avatar normalises to null; a present one is carried through.
+    expect(list.map((m) => m.avatarMxc)).toEqual(['mxc://hs/ada', null]);
+    expect(list[0].initial).toBe('A');
+  });
+
+  it('re-projects when a member power level changes (fingerprint invalidates the cache)', () => {
+    const member = fakeMember({ userId: '@a:hs', name: 'Ada', powerLevel: 0 });
+    const svc = setup(
+      fakeRoom({ roomId: '!a:hs', name: 'general', members: [member] }),
+    );
+    expect(svc.membersOf('!a:hs')[0].powerLevel).toBe(0);
+
+    member.powerLevel = 100; // promoted to admin
+    expect(svc.membersOf('!a:hs')[0].powerLevel).toBe(100);
   });
 });

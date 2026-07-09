@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { render, screen } from '@testing-library/angular';
+import { render } from '@testing-library/angular';
 import { AvatarComponent } from '@trinity/ui';
 import { PresenceService } from '@trinity/data-access-profile';
 import { type PresenceState } from '@trinity/util-matrix';
@@ -18,18 +18,53 @@ const presenceStub = {
 };
 const providers = [{ provide: PresenceService, useValue: presenceStub }];
 
+// A member view-model, defaulting to a regular member (power level 0).
+function member(over: Partial<MemberSummaryLike> & { userId: string }) {
+  return {
+    name: over.userId,
+    initial: over.userId[1]?.toUpperCase() ?? '?',
+    avatarMxc: null,
+    powerLevel: 0,
+    ...over,
+  };
+}
+type MemberSummaryLike = ReturnType<typeof member>;
+
+const opts = { imports: [MockComponent(AvatarComponent)], providers };
+
+/** Visible section headers, in render order (e.g. ['Admin — 1', 'Member — 2']). */
+function sectionLabels(container: HTMLElement): (string | undefined)[] {
+  return [...container.querySelectorAll('.members__section-label')].map((n) =>
+    n.textContent?.trim(),
+  );
+}
+
+/** Each section's visible label mapped to the member names rendered under it. */
+function sectionMap(container: HTMLElement): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const section of container.querySelectorAll('.members__section')) {
+    const label =
+      section.querySelector('.members__section-label')?.textContent?.trim() ??
+      '';
+    map[label] = [...section.querySelectorAll('.member__name')].map(
+      (n) => n.textContent?.trim() ?? '',
+    );
+  }
+  return map;
+}
+
 // Input arrives name-sorted (Anna, Zoe) — but Anna is offline and Zoe is online.
+// Both are regular members (power level 0), so they share one "Member" section.
 const MEMBERS = [
-  { userId: '@a:hs', name: 'Anna', initial: 'A', avatarMxc: null },
-  { userId: '@z:hs', name: 'Zoe', initial: 'Z', avatarMxc: null },
+  member({ userId: '@a:hs', name: 'Anna' }),
+  member({ userId: '@z:hs', name: 'Zoe' }),
 ];
 
 describe('MemberListComponent', () => {
   it('orders online members above offline ones, keeping names within a group', async () => {
     const { container } = await render(MemberListComponent, {
       inputs: { members: MEMBERS },
-      imports: [MockComponent(AvatarComponent)],
-      providers,
+      ...opts,
     });
 
     const names = [...container.querySelectorAll('.member__name')].map((n) =>
@@ -39,16 +74,12 @@ describe('MemberListComponent', () => {
     expect(names).toEqual(['Zoe', 'Anna']);
   });
 
-  it('dims offline members and shows an online-of-total count', async () => {
+  it('dims offline members', async () => {
     const { container } = await render(MemberListComponent, {
       inputs: { members: MEMBERS },
-      imports: [MockComponent(AvatarComponent)],
-      providers,
+      ...opts,
     });
 
-    expect(container.querySelector('.category')?.textContent).toContain(
-      '1 of 2 online',
-    );
     const rows = container.querySelectorAll('.member');
     expect(rows.length).toBe(2);
     // The offline member (Anna, second row after sorting) carries the dim class.
@@ -56,16 +87,145 @@ describe('MemberListComponent', () => {
     expect(offline?.textContent).toContain('Anna');
   });
 
-  it('emits closed when the header close button is clicked', async () => {
-    const { fixture } = await render(MemberListComponent, {
-      imports: [MockComponent(AvatarComponent)],
-      providers,
+  it('regroups a name-sorted, role-interleaved list under the right headers', async () => {
+    // Realistic input: membersOf returns members name-sorted, so roles interleave —
+    // Bo (moderator) sits alphabetically between the two regular members.
+    const members = [
+      member({ userId: '@ada:hs', name: 'Ada', powerLevel: 100 }),
+      member({ userId: '@alice:hs', name: 'Alice', powerLevel: 0 }),
+      member({ userId: '@bo:hs', name: 'Bo', powerLevel: 50 }),
+      member({ userId: '@cy:hs', name: 'Cy', powerLevel: 0 }),
+    ];
+    const { container } = await render(MemberListComponent, {
+      inputs: { members },
+      ...opts,
     });
 
-    let closed = false;
-    fixture.componentInstance.closed.subscribe(() => (closed = true));
-    screen.getByTestId('close-members').click();
+    // Sections appear highest-role first, and each header holds exactly its members —
+    // proving the partition regroups rather than relying on input order.
+    expect(sectionLabels(container)).toEqual([
+      'Admin — 1',
+      'Moderator — 1',
+      'Member — 2',
+    ]);
+    expect(sectionMap(container)).toEqual({
+      'Admin — 1': ['Ada'],
+      'Moderator — 1': ['Bo'],
+      'Member — 2': ['Alice', 'Cy'],
+    });
+  });
 
-    expect(closed).toBe(true);
+  it('keeps online-first ordering within a role section', async () => {
+    // Two moderators: online sorts above offline inside the Moderator section.
+    const members = [
+      member({ userId: '@a:hs', name: 'Anna', powerLevel: 50 }),
+      member({ userId: '@z:hs', name: 'Zoe', powerLevel: 50 }),
+    ];
+    const { container } = await render(MemberListComponent, {
+      inputs: { members },
+      ...opts,
+    });
+
+    expect(sectionMap(container)).toEqual({ 'Moderator — 2': ['Zoe', 'Anna'] });
+  });
+
+  it('omits role sections that have no members', async () => {
+    const { container } = await render(MemberListComponent, {
+      inputs: { members: [member({ userId: '@cy:hs', name: 'Cy' })] },
+      ...opts,
+    });
+
+    expect(sectionLabels(container)).toEqual(['Member — 1']);
+  });
+
+  it.each([
+    [49, 'Member — 1'],
+    [50, 'Moderator — 1'],
+    [99, 'Moderator — 1'],
+    [100, 'Admin — 1'],
+    [150, 'Admin — 1'],
+  ])(
+    'classifies power level %i at the role threshold',
+    async (powerLevel, label) => {
+      const { container } = await render(MemberListComponent, {
+        inputs: {
+          members: [member({ userId: '@a:hs', name: 'Anna', powerLevel })],
+        },
+        ...opts,
+      });
+
+      expect(sectionLabels(container)).toEqual([label]);
+    },
+  );
+
+  it('re-partitions live when a member is promoted then demoted', async () => {
+    const at = (powerLevel: number) => [
+      member({ userId: '@a:hs', name: 'Anna', powerLevel }),
+    ];
+    const { container, fixture } = await render(MemberListComponent, {
+      inputs: { members: at(0) },
+      ...opts,
+    });
+    expect(sectionLabels(container)).toEqual(['Member — 1']);
+
+    fixture.componentRef.setInput('members', at(100)); // promote to admin
+    fixture.detectChanges();
+    expect(sectionLabels(container)).toEqual(['Admin — 1']);
+
+    fixture.componentRef.setInput('members', at(0)); // demote back
+    fixture.detectChanges();
+    expect(sectionLabels(container)).toEqual(['Member — 1']);
+  });
+
+  it('exposes each role section as a named group for assistive tech', async () => {
+    const members = [
+      member({ userId: '@ada:hs', name: 'Ada', powerLevel: 100 }),
+      member({ userId: '@cy:hs', name: 'Cy', powerLevel: 0 }),
+      member({ userId: '@di:hs', name: 'Di', powerLevel: 0 }),
+    ];
+    const { container } = await render(MemberListComponent, {
+      inputs: { members },
+      ...opts,
+    });
+
+    const groups = [...container.querySelectorAll('[role="group"]')].map((g) =>
+      g.getAttribute('aria-label'),
+    );
+    // Count is pluralised, and the visual label is hidden from AT to avoid a double read.
+    expect(groups).toEqual(['Admin, 1 member', 'Member, 2 members']);
+    expect(
+      container
+        .querySelector('.members__section-label')
+        ?.getAttribute('aria-hidden'),
+    ).toBe('true');
+  });
+
+  it('renders a role icon in every section header', async () => {
+    const members = [
+      member({ userId: '@ada:hs', name: 'Ada', powerLevel: 100 }),
+      member({ userId: '@bo:hs', name: 'Bo', powerLevel: 50 }),
+      member({ userId: '@cy:hs', name: 'Cy', powerLevel: 0 }),
+    ];
+    const { container, fixture } = await render(MemberListComponent, {
+      inputs: { members },
+      ...opts,
+    });
+
+    // Each of the three section headers renders exactly one icon that resolves to
+    // a real SVG (i.e. the lucide icon name is registered, not just the host element).
+    const sections = container.querySelectorAll('.members__section');
+    expect(sections.length).toBe(3);
+    for (const section of sections) {
+      const icons = section.querySelectorAll('.members__section-icon');
+      expect(icons.length).toBe(1);
+      expect(icons[0].querySelector('svg')).not.toBeNull();
+    }
+
+    // Crown for admins, shield for moderators, user for members — highest role first.
+    expect(fixture.componentInstance.sections().map((s) => s.icon)).toEqual([
+      'lucideCrown',
+      'lucideShield',
+      'lucideUser',
+    ]);
   });
 });

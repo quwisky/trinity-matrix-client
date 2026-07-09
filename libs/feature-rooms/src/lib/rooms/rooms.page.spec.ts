@@ -1519,14 +1519,6 @@ describe('RoomsPage mobile nav drawer', () => {
     expect(page.membersOpen()).toBe(true);
   });
 
-  it('closeMembers hides the member list', () => {
-    const page = build();
-
-    page.closeMembers();
-
-    expect(page.membersOpen()).toBe(false);
-  });
-
   it('onSelectRoom collapses an open drawer after picking a room', () => {
     const page = build();
     page.toggleDrawer();
