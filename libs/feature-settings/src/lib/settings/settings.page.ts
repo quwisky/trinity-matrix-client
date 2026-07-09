@@ -3,41 +3,58 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
   computed,
+  effect,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import {
+  ActivatedRoute,
+  NavigationEnd,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
+import { filter, map } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
-  lucideCamera,
-  lucideLoaderCircle,
+  lucideChevronRight,
+  lucideFlaskConical,
+  lucideImage,
+  lucideMonitorSmartphone,
+  lucidePalette,
+  lucideUser,
 } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
-import {
-  HlmRadio,
-  HlmRadioGroup,
-  HlmRadioIndicator,
-} from '@trinity/helm/radio-group';
-import { AvatarComponent, PageHeaderComponent, runWithBusy } from '@trinity/ui';
-import { ProfileService } from '@trinity/data-access-profile';
-import {
-  FeatureFlagsService,
-  ThemeService,
-  type ThemePreference,
-} from '@trinity/platform-native';
-import { DevicesSectionComponent } from '../devices/devices-section.component';
-import { GifsSectionComponent } from '../gifs/gifs-section.component';
+import { PageHeaderComponent } from '@trinity/ui';
+
+/** One row of the settings submenu, routing to its section sub-page. */
+interface SettingsMenuItem {
+  readonly path: string;
+  readonly label: string;
+  readonly icon: string;
+}
+
+const MENU: readonly SettingsMenuItem[] = [
+  { path: 'profile', label: 'Profile', icon: 'lucideUser' },
+  { path: 'appearance', label: 'Appearance', icon: 'lucidePalette' },
+  { path: 'devices', label: 'Devices', icon: 'lucideMonitorSmartphone' },
+  { path: 'gifs', label: 'GIFs', icon: 'lucideImage' },
+  { path: 'experimental', label: 'Experimental', icon: 'lucideFlaskConical' },
+];
+
+/** The two-pane / single-pane breakpoint — the same `md` the rooms shell uses. */
+const WIDE_QUERY = '(min-width: 768px)';
 
 /**
- * Settings shell hosting Profile (display name + avatar), Appearance
- * (light/dark/system theme), device management, and experimental feature flags.
+ * Settings shell: a submenu of sections beside a routed detail outlet. On the wide
+ * layout (≥768px) both panes show at once (two-pane) and the bare `/settings` index
+ * auto-selects the first section; on narrow the index shows the category list and
+ * opening one swaps to its sub-page (the header's back returns to the list).
  */
 @Component({
   selector: 'trn-settings',
@@ -45,112 +62,101 @@ import { GifsSectionComponent } from '../gifs/gifs-section.component';
   templateUrl: './settings.page.html',
   styleUrl: './settings.page.scss',
   imports: [
-    AvatarComponent,
     PageHeaderComponent,
-    DevicesSectionComponent,
-    GifsSectionComponent,
     NgIcon,
     HlmButton,
     HlmTooltip,
-    HlmInput,
-    HlmLabel,
-    HlmCheckbox,
-    HlmRadioGroup,
-    HlmRadio,
-    HlmRadioIndicator,
+    RouterLink,
+    RouterLinkActive,
+    RouterOutlet,
   ],
   viewProviders: [
-    provideIcons({ lucideArrowLeft, lucideCamera, lucideLoaderCircle }),
+    provideIcons({
+      lucideArrowLeft,
+      lucideChevronRight,
+      lucideUser,
+      lucidePalette,
+      lucideMonitorSmartphone,
+      lucideImage,
+      lucideFlaskConical,
+    }),
   ],
 })
 export class SettingsPage {
-  readonly theme = inject(ThemeService);
-  readonly flags = inject(FeatureFlagsService);
-  private readonly profileSvc = inject(ProfileService);
-  private readonly destroyRef = inject(DestroyRef);
   private readonly location = inject(Location);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly destroyRef = inject(DestroyRef);
 
-  readonly profile = this.profileSvc.profile;
-  readonly nameDraft = signal('');
-  readonly loading = signal(false);
-  readonly savingName = signal(false);
-  readonly savingAvatar = signal(false);
-  readonly error = signal<string | null>(null);
+  readonly menu = MENU;
 
-  /** Whether the draft name differs from the saved one (enables Save). */
-  readonly nameDirty = computed(
-    () => this.nameDraft().trim() !== (this.profile()?.displayName ?? ''),
+  /** The active section path (e.g. 'profile'), or null on the bare `/settings` index. */
+  private readonly activePath = toSignal(
+    this.router.events.pipe(
+      filter((event) => event instanceof NavigationEnd),
+      map(() => this.currentSection()),
+    ),
+    { initialValue: this.currentSection() },
   );
 
-  /** Fallback-avatar initial from the display name (or user id when unnamed). */
-  readonly initial = computed(() => {
-    const p = this.profile();
-    const name = (p?.displayName || p?.userId || '').replace(/^[@#!]+/, '');
-    return name.charAt(0).toUpperCase() || '?';
-  });
+  /** Whether a section detail is open — drives the mobile list ↔ detail swap. */
+  readonly sectionActive = computed(() => this.activePath() !== null);
 
-  private readonly avatarInput =
-    viewChild<ElementRef<HTMLInputElement>>('avatarInput');
+  /**
+   * Wide layout: both panes show, the index auto-selects the first section, and
+   * section links replace rather than push (lateral switches must not stack history,
+   * so one Back leaves settings instead of retracing visited sections). Template-read.
+   */
+  protected readonly wide = signal(false);
 
   constructor() {
-    // Load the profile on open; seed the editable name from the result.
-    runWithBusy(this.profileSvc.load(), {
-      busy: this.loading,
-      error: this.error,
-      destroyRef: this.destroyRef,
-    }).subscribe((profile) => this.nameDraft.set(profile.displayName));
+    // One MediaQueryList: seed the signal and track live resizes off the same object.
+    const mql =
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia(WIDE_QUERY)
+        : null;
+    this.wide.set(mql?.matches ?? false);
+    if (mql) {
+      const onChange = (event: MediaQueryListEvent): void =>
+        this.wide.set(event.matches);
+      mql.addEventListener('change', onChange);
+      this.destroyRef.onDestroy(() =>
+        mql.removeEventListener('change', onChange),
+      );
+    }
+
+    // The wide two-pane layout must never show an empty detail pane: land the bare
+    // `/settings` index on the first section. Narrow leaves the index on the list.
+    effect(() => {
+      if (this.wide() && !this.sectionActive()) {
+        void this.router.navigate([MENU[0].path], {
+          relativeTo: this.route,
+          replaceUrl: true,
+        });
+      }
+    });
   }
 
-  /** Navigate back within the app-shell history. */
+  /**
+   * Header back/up. On the narrow single-pane layout the category list is hidden
+   * while a section is open, so this is the only route back to it — go up to the
+   * index explicitly (history may not hold it after a deep-link or reload). Otherwise
+   * (the list itself, or the desktop two-pane) step out of settings through history.
+   */
   goBack(): void {
+    if (!this.wide() && this.sectionActive()) {
+      // Up to the list, replacing the section so a later Back doesn't retrace into it.
+      void this.router.navigate(['/settings'], { replaceUrl: true });
+      return;
+    }
     this.location.back();
   }
 
-  /** Apply + persist the chosen appearance when the radio group changes. */
-  onThemeChange(value: string): void {
-    this.theme.setPreference(value as ThemePreference);
-  }
-
-  onNameInput(event: Event): void {
-    this.nameDraft.set((event.target as HTMLInputElement).value);
-  }
-
-  saveName(): void {
-    runWithBusy(this.profileSvc.setDisplayName(this.nameDraft()), {
-      busy: this.savingName,
-      error: this.error,
-      destroyRef: this.destroyRef,
-    }).subscribe();
-  }
-
-  /** Open the hidden file input to choose a new avatar. */
-  pickAvatar(): void {
-    this.avatarInput()?.nativeElement.click();
-  }
-
-  onAvatarPicked(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = ''; // allow re-picking the same file
-    if (!file) {
-      return;
-    }
-    // accept="image/*" is only a picker hint — validate before uploading.
-    if (!file.type.startsWith('image/')) {
-      this.error.set('Please choose an image file.');
-      return;
-    }
-    if (file.size > MAX_AVATAR_BYTES) {
-      this.error.set('That image is too large (max 8 MB).');
-      return;
-    }
-    runWithBusy(this.profileSvc.setAvatar(file), {
-      busy: this.savingAvatar,
-      error: this.error,
-      destroyRef: this.destroyRef,
-    }).subscribe();
+  // Read the section from the router URL, not `route.firstChild`: on a deep link /
+  // reload the shell constructs before the child route activates, so `firstChild`
+  // is briefly null — which would make the wide effect wrongly redirect a directly
+  // opened section (e.g. /settings/devices) to the first one.
+  private currentSection(): string | null {
+    return /^\/settings\/([^/?#]+)/.exec(this.router.url)?.[1] ?? null;
   }
 }
-
-/** Reject avatar uploads larger than this (before hitting a server 413). */
-const MAX_AVATAR_BYTES = 8 * 1024 * 1024;

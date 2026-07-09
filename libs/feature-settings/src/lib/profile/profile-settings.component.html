@@ -1,0 +1,85 @@
+<h2
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Profile
+</h2>
+@if (profile(); as p) {
+  <div class="flex items-center gap-3 px-4 py-2">
+    <div class="relative shrink-0">
+      <trn-avatar
+        [mxc]="p.avatarMxc"
+        [name]="p.displayName || p.userId"
+        [initial]="initial()"
+        [size]="64"
+      />
+      <button
+        type="button"
+        class="absolute -right-1 -bottom-1 grid size-7 place-items-center rounded-full border-2 border-solid border-background bg-primary text-sm text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
+        [disabled]="savingAvatar()"
+        (click)="pickAvatar()"
+        hlmTooltip="Change profile picture"
+        [attr.aria-label]="
+          savingAvatar()
+            ? 'Uploading profile picture'
+            : 'Change profile picture'
+        "
+        data-testid="change-avatar"
+      >
+        <ng-icon
+          [name]="savingAvatar() ? 'lucideLoaderCircle' : 'lucideCamera'"
+          [class.animate-spin]="savingAvatar()"
+          aria-hidden="true"
+        />
+      </button>
+    </div>
+    <div class="min-w-0 flex-1">
+      <div
+        class="truncate text-sm font-medium text-foreground"
+        data-testid="profile-display-name"
+      >
+        {{ p.displayName || p.userId }}
+      </div>
+      <div class="truncate text-xs text-muted-foreground">
+        {{ p.userId }}
+      </div>
+    </div>
+  </div>
+  <div
+    class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
+  >
+    <div class="min-w-0 flex-1">
+      <label hlmLabel for="display-name">Display name</label>
+      <input
+        id="display-name"
+        hlmInput
+        class="mt-1"
+        [value]="nameDraft()"
+        (input)="onNameInput($event)"
+        data-testid="display-name-input"
+      />
+    </div>
+    <button
+      hlmBtn
+      size="sm"
+      class="ml-auto shrink-0"
+      [disabled]="savingName() || !nameDirty()"
+      (click)="saveName()"
+      data-testid="save-name"
+    >
+      Save
+    </button>
+  </div>
+} @else if (loading()) {
+  <div class="px-4 py-2 text-sm text-muted-foreground">Loading profile…</div>
+}
+@if (error(); as e) {
+  <p class="block px-4 py-2 text-[13px] text-destructive">{{ e }}</p>
+}
+<input
+  #avatarInput
+  type="file"
+  accept="image/*"
+  hidden
+  data-testid="avatar-input"
+  (change)="onAvatarPicked($event)"
+/>

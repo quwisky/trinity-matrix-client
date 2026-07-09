@@ -1,0 +1,35 @@
+<h2
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Appearance
+</h2>
+<hlm-radio-group
+  class="px-4 py-2"
+  [value]="theme.preference()"
+  (valueChange)="onThemeChange($event)"
+>
+  <label
+    class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+    data-testid="theme-system"
+  >
+    <hlm-radio value="system"><hlm-radio-indicator /></hlm-radio>
+    Use system setting
+  </label>
+  <label
+    class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+    data-testid="theme-light"
+  >
+    <hlm-radio value="light"><hlm-radio-indicator /></hlm-radio>
+    Light
+  </label>
+  <label
+    class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+    data-testid="theme-dark"
+  >
+    <hlm-radio value="dark"><hlm-radio-indicator /></hlm-radio>
+    Dark
+  </label>
+</hlm-radio-group>
+<p class="block px-4 py-2 text-[13px] text-muted-foreground">
+  Showing the {{ theme.resolved() }} theme.
+</p>

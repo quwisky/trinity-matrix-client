@@ -96,7 +96,8 @@ export class DevicesSectionComponent {
    * routed page (returning here) on mobile — via {@link EncryptionDialogService}.
    */
   verifyDevices(): void {
-    void this.dialogs.openVerify({ returnTo: '/settings' });
+    // Return to the Devices sub-page, not the settings index (the category list).
+    void this.dialogs.openVerify({ returnTo: '/settings/devices' });
   }
 
   private applyRename(id: string, name: string): void {

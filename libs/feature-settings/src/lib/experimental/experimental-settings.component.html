@@ -1,0 +1,19 @@
+<h2
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Experimental
+</h2>
+<label
+  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+  data-testid="flag-virtual-timeline"
+>
+  <hlm-checkbox
+    [checked]="flags.virtualTimeline()"
+    (checkedChange)="flags.setVirtualTimeline($event)"
+  />
+  Virtualized timeline
+</label>
+<p class="block px-4 py-2 text-[13px] text-muted-foreground">
+  Renders only the messages currently on screen, keeping memory low and
+  scrolling smooth in very long rooms.
+</p>

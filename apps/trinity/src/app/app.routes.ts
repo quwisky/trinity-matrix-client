@@ -22,8 +22,8 @@ export const routes: Routes = [
   {
     path: 'settings',
     canActivate: [authGuard],
-    loadComponent: () =>
-      import('@trinity/feature-settings').then((m) => m.SettingsPage),
+    loadChildren: () =>
+      import('@trinity/feature-settings').then((m) => m.settingsRoutes),
   },
   {
     path: 'encryption/setup',

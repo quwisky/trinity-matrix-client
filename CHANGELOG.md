@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Settings, reorganised into a browsable submenu.** The settings screen is now a
+  menu of sections — **Profile**, **Appearance**, **Devices**, **GIFs**, and
+  **Experimental** — each on its own page. On desktop the menu and the selected
+  section sit side by side (two-pane); on mobile the menu is the entry point and
+  tapping a section opens it, with a back button returning to the list. Deep links and
+  reloads land on the exact section, and back leaves settings in one press rather than
+  retracing the sections you visited. The profile picture is now changed from a camera
+  badge tucked into the corner of the avatar rather than a separate button.
 - **Multiple accounts, signed in at once.** Sign into several Matrix accounts and keep
   them all syncing concurrently. Switch the active account from the user panel in the
   channel sidebar (which lists each account with its own unread count and marks the
