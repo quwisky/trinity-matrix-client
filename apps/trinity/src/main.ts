@@ -19,6 +19,7 @@ import {
   PUSH_CONFIG,
 } from '@trinity/data-access-notifications';
 import {
+  DraftStoreService,
   FeatureFlagsService,
   StoragePersistenceService,
   ThemeService,
@@ -60,6 +61,9 @@ bootstrapApplication(AppComponent, {
     provideAppInitializer(() => inject(ThemeService).init()),
     // Load persisted experimental feature flags (e.g. virtualized timeline).
     provideAppInitializer(() => inject(FeatureFlagsService).init()),
+    // Load persisted per-conversation composer drafts before any composer mounts,
+    // so a half-typed message is restored on cold start.
+    provideAppInitializer(() => inject(DraftStoreService).init()),
     // Ask the browser to make our IndexedDB persistent so multi-account sync +
     // crypto stores aren't evicted under storage pressure (best-effort; no-op where
     // unsupported). Fire-and-forget — nothing blocks startup on the prompt.

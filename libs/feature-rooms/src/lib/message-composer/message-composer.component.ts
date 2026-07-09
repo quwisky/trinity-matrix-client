@@ -31,7 +31,7 @@ import {
   type EmojiData,
   type EmojiEvent,
 } from '@ctrl/ngx-emoji-mart/ngx-emoji';
-import { ThemeService } from '@trinity/platform-native';
+import { DraftStoreService, ThemeService } from '@trinity/platform-native';
 import {
   GifService,
   GifSettingsService,
@@ -157,6 +157,7 @@ export class MessageComposerComponent {
   private readonly theme = inject(ThemeService);
   private readonly gifs = inject(GifService);
   private readonly gifSettings = inject(GifSettingsService);
+  private readonly drafts = inject(DraftStoreService);
   private wasEditing = false;
   private wasEditTargetId: string | null = null;
   private wasReplying = false;
@@ -167,13 +168,25 @@ export class MessageComposerComponent {
     // Revoke a staged image's preview object URL on teardown.
     this.destroyRef.onDestroy(() => this.setPreview(null));
 
-    // Drop a staged (unsent) attachment when the room/thread changes — it was
-    // staged to send here, and the reused composer must not carry it elsewhere.
+    // On a room/thread change: drop the staged (unsent) attachment — it was staged
+    // to send here — and swap drafts. The composer instance is reused across rooms,
+    // so without this a half-typed message would leak into the next conversation.
     effect(() => {
       const id = this.roomId();
       if (id !== this.wasRoomId) {
+        const prev = this.wasRoomId;
         this.wasRoomId = id;
-        untracked(() => this.clearPending());
+        untracked(() => {
+          this.clearPending();
+          // Drafts only apply to compose mode; in edit mode `text` is the edit body.
+          if (!this.editing()) {
+            if (prev != null) {
+              this.drafts.set(prev, this.text());
+            }
+            this.text.set(id != null ? this.drafts.get(id) : '');
+            queueMicrotask(() => this.autoGrow());
+          }
+        });
       }
     });
 
@@ -208,11 +221,27 @@ export class MessageComposerComponent {
           this.autoGrow();
         });
       } else if (!editing && this.wasEditing) {
-        this.text.set('');
+        // Leaving edit mode restores the conversation's compose draft (empty when
+        // none), so an edit interlude doesn't discard a half-typed message.
+        const id = untracked(() => this.roomId());
+        this.text.set(id != null ? this.drafts.get(id) : '');
         queueMicrotask(() => this.autoGrow());
       }
       this.wasEditing = editing;
       this.wasEditTargetId = targetId;
+    });
+
+    // Persist the compose draft on any text change (typing, emoji insert, inline
+    // autocomplete). Gated to compose mode and the settled conversation so a room
+    // switch's load never cross-saves; sending blanks the field, dropping the draft.
+    effect(() => {
+      const value = this.text();
+      const id = this.roomId();
+      untracked(() => {
+        if (id != null && id === this.wasRoomId && !this.editing()) {
+          this.drafts.set(id, value);
+        }
+      });
     });
   }
 

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, type ComponentInput } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
-import { ThemeService } from '@trinity/platform-native';
+import { DraftStoreService, ThemeService } from '@trinity/platform-native';
 import {
   GifService,
   GifSettingsService,
@@ -15,6 +15,15 @@ import {
 import { TrnToastService } from '@trinity/helm/overlay';
 import { MessageComposerComponent } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
+
+// The draft store persists to Capacitor Preferences (debounced); stub it so the
+// composer's real DraftStoreService is a no-op on the storage side.
+vi.mock('@capacitor/preferences', () => ({
+  Preferences: {
+    get: vi.fn().mockResolvedValue({ value: null }),
+    set: vi.fn().mockResolvedValue(undefined),
+  },
+}));
 
 describe('MessageComposerComponent', () => {
   beforeEach(() => {
@@ -894,5 +903,75 @@ describe('MessageComposerComponent', () => {
       expect.objectContaining({ variant: 'destructive' }),
     );
     expect(cmp.gifDownloading()).toBe(false);
+  });
+
+  describe('draft persistence', () => {
+    it('restores the saved draft for the conversation on mount', async () => {
+      const store = new DraftStoreService();
+      store.set('!a:hs', 'half a message');
+      const { fixture } = await renderComposer({ roomId: '!a:hs' }, [
+        { provide: DraftStoreService, useValue: store },
+      ]);
+
+      expect(fixture.componentInstance.text()).toBe('half a message');
+    });
+
+    it('keeps a half-typed message per conversation when switching rooms', async () => {
+      const { fixture } = await renderComposer({ roomId: '!a:hs' });
+      const cmp = fixture.componentInstance;
+
+      cmp.text.set('draft for A');
+      fixture.detectChanges(); // flush the save effect
+
+      // Switch to a room with no draft — A's text must not leak into it.
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('');
+
+      // Switch back — A's draft is restored.
+      fixture.componentRef.setInput('roomId', '!a:hs');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('draft for A');
+    });
+
+    it('drops the draft once the message is sent', async () => {
+      const { fixture } = await renderComposer({ roomId: '!a:hs' });
+      const cmp = fixture.componentInstance;
+      const store = TestBed.inject(DraftStoreService);
+
+      cmp.text.set('to send');
+      fixture.detectChanges();
+      expect(store.get('!a:hs')).toBe('to send');
+
+      cmp.onEnter(enter());
+      fixture.detectChanges();
+
+      expect(cmp.text()).toBe('');
+      expect(store.get('!a:hs')).toBe('');
+    });
+
+    it('does not save the edit body, and restores the compose draft after editing', async () => {
+      const { fixture } = await renderComposer({ roomId: '!a:hs' });
+      const cmp = fixture.componentInstance;
+      const store = TestBed.inject(DraftStoreService);
+
+      cmp.text.set('my draft');
+      fixture.detectChanges();
+      expect(store.get('!a:hs')).toBe('my draft');
+
+      // Enter edit mode with a different body.
+      fixture.componentRef.setInput('editing', true);
+      fixture.componentRef.setInput('editTargetId', '$m');
+      fixture.componentRef.setInput('draft', 'editing an old message');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('editing an old message');
+      expect(store.get('!a:hs')).toBe('my draft'); // edit body isn't the draft
+
+      // Leaving edit mode brings the compose draft back.
+      fixture.componentRef.setInput('editing', false);
+      fixture.componentRef.setInput('editTargetId', null);
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('my draft');
+    });
   });
 });

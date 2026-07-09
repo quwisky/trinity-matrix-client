@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Message drafts are kept per conversation.** A half-typed message now stays with
+  its room (or thread) when you switch away and comes back when you return, and it
+  survives a reload or app restart. Previously the composer was shared across rooms,
+  so an unsent message bled into the next room you opened and was lost on reload.
 - **Settings, reorganised into a browsable submenu.** The settings screen is now a
   menu of sections — **Profile**, **Appearance**, **Devices**, **GIFs**, and
   **Experimental** — each on its own page. On desktop the menu and the selected
