@@ -61,6 +61,22 @@ const MEMBERS = [
 ];
 
 describe('MemberListComponent', () => {
+  it('emits selectMember with the clicked member', async () => {
+    const clicked = member({ userId: '@z:hs' });
+    const { fixture, container } = await render(MemberListComponent, {
+      inputs: { members: [clicked, member({ userId: '@a:hs' })] },
+      ...opts,
+    });
+    let selected: { userId: string } | undefined;
+    fixture.componentInstance.selectMember.subscribe((m) => (selected = m));
+
+    container
+      .querySelectorAll<HTMLElement>('[data-testid="member-row"]')[0]
+      .click();
+
+    expect(selected?.userId).toBe('@z:hs');
+  });
+
   it('orders online members above offline ones, keeping names within a group', async () => {
     const { container } = await render(MemberListComponent, {
       inputs: { members: MEMBERS },

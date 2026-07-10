@@ -241,7 +241,11 @@
           />
         }
         @if (membersOpen()) {
-          <trn-member-list class="chat-members" [members]="members()" />
+          <trn-member-list
+            class="chat-members"
+            [members]="members()"
+            (selectMember)="onSelectMember($event)"
+          />
         }
       } @else {
         <div class="chat-empty">

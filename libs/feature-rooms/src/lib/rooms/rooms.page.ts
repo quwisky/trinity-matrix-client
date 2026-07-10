@@ -53,10 +53,12 @@ import {
   RoomSettingsService,
   SpacesService,
   UnreadAggregatorService,
+  type MemberSummary,
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
+import { MemberInfoService } from '../member-info/member-info.service';
 import { type SwitcherSelection } from '@trinity/data-access-search';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
 import { type MatrixLinkTarget, type Mention } from '@trinity/util-matrix';
@@ -131,6 +133,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly pinnedPanel = inject(PinnedPanelService);
   private readonly userPicker = inject(UserPickerService);
   private readonly userCard = inject(UserCardService);
+  private readonly memberInfo = inject(MemberInfoService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly messageSearch = inject(MessageSearchService);
   private readonly media = inject(MediaService);
@@ -792,10 +795,32 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Show the user card; if they pick "Message", open (or reuse) a DM with the user. */
   private async openUserCard(userId: string): Promise<void> {
     const messageUserId = await this.userCard.open(userId);
-    if (!messageUserId) {
-      return; // dismissed — no conversation is opened
+    if (messageUserId) {
+      this.startDirectMessage(messageUserId);
     }
-    runWithBusy(this.rooms.createDirectMessage(messageUserId), {
+  }
+
+  /** Member-list row: open the member's info panel; "Message" opens/reuses a DM. */
+  onSelectMember(member: MemberSummary): void {
+    const roomId = this.activeRoomId();
+    if (roomId) {
+      void this.openMemberInfo(member, roomId);
+    }
+  }
+
+  private async openMemberInfo(
+    member: MemberSummary,
+    roomId: string,
+  ): Promise<void> {
+    const messageUserId = await this.memberInfo.open(member, roomId);
+    if (messageUserId) {
+      this.startDirectMessage(messageUserId);
+    }
+  }
+
+  /** Open (or reuse) a direct message with `userId` and navigate to it. */
+  private startDirectMessage(userId: string): void {
+    runWithBusy(this.rooms.createDirectMessage(userId), {
       busy: this.spaceBusy,
       error: this.spaceError,
       destroyRef: this.destroyRef,

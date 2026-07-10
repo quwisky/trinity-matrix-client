@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Member info panel.** Clicking a member in the member list now opens a panel showing
+  their name, ID, live online status, and role (Admin / Moderator / Member), with
+  **Message** (start or reuse a direct message) and **Copy user ID** actions — the launch
+  surface for further per-member actions.
 - **Edit a room's name, topic, and photo.** A new ⚙ button in the room header opens a
   **Room settings** dialog to change the room's name, topic, and avatar. Fields you don't
   have permission to change (by power level) are read-only. Changes save to `m.room.name`

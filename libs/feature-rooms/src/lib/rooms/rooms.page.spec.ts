@@ -34,6 +34,7 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
+import { MemberInfoService } from '../member-info/member-info.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
 
@@ -937,6 +938,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   let acceptInvite: ReturnType<typeof vi.fn>;
   let declineInvite: ReturnType<typeof vi.fn>;
   let userCardOpen: ReturnType<typeof vi.fn>;
+  let memberInfoOpen: ReturnType<typeof vi.fn>;
   let pending: WritableSignal<PendingInvite[]>;
 
   function pendingInvite(over: Partial<PendingInvite> = {}): PendingInvite {
@@ -962,6 +964,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     acceptInvite = vi.fn(() => of(undefined));
     declineInvite = vi.fn(() => of(undefined));
     userCardOpen = vi.fn().mockResolvedValue(null);
+    memberInfoOpen = vi.fn().mockResolvedValue(null);
     pending = signal<PendingInvite[]>([]);
     TestBed.configureTestingModule({
       providers: [
@@ -980,6 +983,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         }),
         MockProvider(UserPickerService, { pick }),
         MockProvider(UserCardService, { open: userCardOpen }),
+        MockProvider(MemberInfoService, { open: memberInfoOpen }),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
         MockProvider(TimelineService),
@@ -1073,6 +1077,42 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     expect(userCardOpen).toHaveBeenCalledWith('@bob:hs');
     expect(createDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it('opens a member info panel and starts a DM only if messaged', async () => {
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+    const bob = {
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+    };
+    memberInfoOpen.mockResolvedValue('@bob:hs'); // the viewer chose "Message"
+
+    page.onSelectMember(bob);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(memberInfoOpen).toHaveBeenCalledWith(bob, '!r:hs');
+    expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
+    expect(page.activeRoomId()).toBe('!dm:hs');
+  });
+
+  it('opens no member info panel without an active room', () => {
+    const page = build();
+    page.activeRoomId.set(null);
+
+    page.onSelectMember({
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+    });
+
+    expect(memberInfoOpen).not.toHaveBeenCalled();
   });
 
   it('invites the picked user to the active room and toasts success', async () => {

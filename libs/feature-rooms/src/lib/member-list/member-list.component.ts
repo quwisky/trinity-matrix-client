@@ -4,6 +4,7 @@ import {
   computed,
   inject,
   input,
+  output,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideCrown, lucideShield, lucideUser } from '@ng-icons/lucide';
@@ -85,6 +86,8 @@ export class MemberListComponent {
   private readonly presence = inject(PresenceService);
 
   readonly members = input<MemberSummary[]>([]);
+  /** A member row was clicked — the host opens their info panel. */
+  readonly selectMember = output<MemberSummary>();
 
   /**
    * Every member decorated with live presence and role. Recomputes when membership,
