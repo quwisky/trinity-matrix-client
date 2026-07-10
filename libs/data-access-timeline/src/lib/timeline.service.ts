@@ -5,6 +5,7 @@ import {
   EventType,
   MatrixEventEvent,
   RoomEvent,
+  RoomMemberEvent,
   RoomStateEvent,
   type MatrixClient,
   type MatrixEvent,
@@ -36,6 +37,8 @@ import {
   renderMarkdown,
   replyMessageContent,
   textMessageContent,
+  TYPING_REFRESH_MS,
+  TYPING_TIMEOUT_MS,
   type MessageView,
   type Mention,
 } from '@trinity/util-matrix';
@@ -66,6 +69,17 @@ export class TimelineService {
 
   private readonly _canLoadOlder = signal(false);
   readonly canLoadOlder = this._canLoadOlder.asReadonly();
+
+  // Display names of the *other* members currently typing in the open room, projected
+  // from the room's `m.typing` ephemeral (via RoomMemberEvent.Typing). Drives the
+  // "X is typing…" row under the timeline.
+  private readonly _typingNames = signal<string[]>([]);
+  readonly typingNames = this._typingNames.asReadonly();
+
+  // Timestamp (ms) of the last `sendTyping(true)` we issued for the open room, so we
+  // refresh the flag at most every {@link TYPING_REFRESH_MS} instead of per keystroke;
+  // 0 means we are not currently marked as typing.
+  private typingSentAt = 0;
 
   private roomId: string | null = null;
 
@@ -123,6 +137,18 @@ export class TimelineService {
     }
   };
 
+  // A member started/stopped typing in the open room. The event carries the changed
+  // member; re-read the room's whole typing set so the signal always reflects everyone
+  // currently typing, not just this one delta.
+  private readonly onTyping = (
+    _event: MatrixEvent,
+    member: RoomMember,
+  ): void => {
+    if (member.roomId === this.roomId) {
+      this.refreshTyping();
+    }
+  };
+
   /** The window regained focus while a room is open — send the read receipt we
    * held back while unfocused, so the open room's badge clears now the user is
    * actually looking at it. */
@@ -147,6 +173,7 @@ export class TimelineService {
     room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     room.on(RoomStateEvent.Members, this.onMember);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
+    client.on(RoomMemberEvent.Typing, this.onTyping);
     // Re-ack the open room on refocus: while unfocused markRead holds the receipt
     // so its unread accrues, so we mark it read again when the window returns.
     if (typeof window !== 'undefined') {
@@ -159,6 +186,8 @@ export class TimelineService {
 
   /** Detach listeners and clear the timeline. */
   close(): void {
+    // Don't leave ourselves marked as typing in a room we're navigating away from.
+    this.setTyping(false);
     if (typeof window !== 'undefined') {
       window.removeEventListener('focus', this.onFocus);
     }
@@ -167,6 +196,7 @@ export class TimelineService {
     this.room?.off(RoomStateEvent.Members, this.onMember);
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);
+      this.matrix.instance.off(RoomMemberEvent.Typing, this.onTyping);
     }
     this.room = null;
     this.roomId = null;
@@ -174,6 +204,7 @@ export class TimelineService {
     this.relevantSenders.clear();
     this.viewCache.clear();
     this._messages.set([]);
+    this._typingNames.set([]);
     this._canLoadOlder.set(false);
   }
 
@@ -209,6 +240,49 @@ export class TimelineService {
       return null;
     }
     return { client: this.matrix.instance, room };
+  }
+
+  /**
+   * Broadcast whether the local user is typing in the open room. Fire-and-forget:
+   * the composer calls this on input (start) and on send/close (stop). Starts are
+   * throttled to one `sendTyping(true)` per {@link TYPING_REFRESH_MS} — the server
+   * keeps the flag alive for {@link TYPING_TIMEOUT_MS}, so it never lapses mid-compose
+   * yet we don't hit the network on every keystroke. A no-op when no room is open.
+   */
+  setTyping(typing: boolean): void {
+    const ctx = this.context();
+    if (!ctx) {
+      return;
+    }
+    const now = Date.now();
+    if (typing) {
+      if (this.typingSentAt && now - this.typingSentAt < TYPING_REFRESH_MS) {
+        return; // already marked typing and refreshed recently — nothing to do
+      }
+      this.typingSentAt = now;
+      void ctx.client.sendTyping(ctx.room.roomId, true, TYPING_TIMEOUT_MS);
+    } else {
+      if (!this.typingSentAt) {
+        return; // we weren't marked as typing — nothing to clear
+      }
+      this.typingSentAt = 0;
+      void ctx.client.sendTyping(ctx.room.roomId, false, 0);
+    }
+  }
+
+  /** Re-read the open room's typing set into `typingNames`, excluding the local user. */
+  private refreshTyping(): void {
+    const ctx = this.context();
+    if (!ctx) {
+      this._typingNames.set([]);
+      return;
+    }
+    const selfId = ctx.client.getUserId();
+    const names = ctx.room
+      .getMembers()
+      .filter((member) => member.typing && member.userId !== selfId)
+      .map((member) => member.name);
+    this._typingNames.set(names);
   }
 
   /**

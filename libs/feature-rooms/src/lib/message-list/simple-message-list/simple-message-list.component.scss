@@ -31,3 +31,11 @@
   text-align: center;
   padding: 24px;
 }
+
+.typing-indicator {
+  padding: 2px 16px 4px;
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.2rem;
+  color: var(--trinity-text-muted);
+}

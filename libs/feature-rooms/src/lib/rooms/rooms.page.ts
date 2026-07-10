@@ -794,6 +794,11 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
+  /** Composer typing state → a (throttled) Matrix typing notification for the room. */
+  onTyping(typing: boolean): void {
+    this.timeline.setTyping(typing);
+  }
+
   onSendMedia({ file, caption }: { file: File; caption: string }): void {
     // The upload phase has no echo, so drive a determinate progress bar from the
     // upload fraction and surface a failure as a toast. Once the event is sent the

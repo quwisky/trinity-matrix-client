@@ -131,6 +131,13 @@ export class MessageComposerComponent {
   readonly cancelEdit = output<void>();
   readonly cancelReply = output<void>();
   readonly editLast = output<void>();
+  /**
+   * The user typed something (or cleared the field). The host debounces this into a
+   * Matrix typing notification — `true` while there is text to send, `false` once the
+   * field is empty. The composer stays presentational; the room decides where the
+   * notification goes.
+   */
+  readonly typing = output<boolean>();
 
   readonly text = signal('');
   /** A picked/pasted attachment held for a caption, sent on the next submit
@@ -302,8 +309,12 @@ export class MessageComposerComponent {
   }
 
   onInput(event: Event): void {
-    this.text.set((event.target as HTMLTextAreaElement).value);
+    const value = (event.target as HTMLTextAreaElement).value;
+    this.text.set(value);
     this.autoGrow();
+    // Broadcast typing while there's something to send; an empty field stops it. The
+    // host throttles the "start"s, so emitting on every keystroke is fine.
+    this.typing.emit(value.trim().length > 0);
     // Don't touch the menu mid-IME-composition: the in-progress reading is
     // transient ASCII that would mis-trigger `:shortcode` matching, and
     // rewriting the value/caret during composition drops characters.
@@ -390,6 +401,7 @@ export class MessageComposerComponent {
       return;
     }
     this.submitText.emit({ text: value, mentions: this.activeMentions() });
+    this.typing.emit(false); // a sent message ends the typing notification
     this.resetMenus();
     if (!this.editing()) {
       // Edits clear via editing → false; new messages clear here.

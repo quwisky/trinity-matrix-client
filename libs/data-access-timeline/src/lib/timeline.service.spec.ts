@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access-media';
+import { TYPING_REFRESH_MS } from '@trinity/util-matrix';
 
 /** A MediaService mock whose uploadMedia echoes a descriptor for the room's mode. */
 function mediaProvider() {
@@ -125,10 +126,16 @@ function fakeRelations(
   return { getSortedAnnotationsByKey: () => annotations };
 }
 
+/** A room member as {@link TimelineService.refreshTyping} reads it. */
+function fakeMember(userId: string, typing: boolean, name = userId) {
+  return { userId, typing, name, roomId: '!r:hs' };
+}
+
 function fakeRoom(
   events: ReturnType<typeof fakeEvent>[],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   encrypted = false,
+  members: ReturnType<typeof fakeMember>[] = [],
 ) {
   return {
     roomId: '!r:hs',
@@ -141,6 +148,7 @@ function fakeRoom(
       name: id === '@me:hs' ? 'Me' : 'Alice',
       getMxcAvatarUrl: () => null,
     }),
+    getMembers: () => members,
     relations: {
       getChildEventsForEvent: (
         id: string,
@@ -159,12 +167,22 @@ function fakeRoom(
 
 /** A fake matrix-js-sdk client that records everything it is asked to send. */
 function fakeClient(room: ReturnType<typeof fakeRoom>, sent: unknown[][]) {
+  // Captured event listeners keyed by event name, so a test can fire e.g. the
+  // RoomMember.typing handler the service registers in open().
+  const handlers = new Map<string, (...args: unknown[]) => void>();
   return {
     baseUrl: 'https://hs',
     getRoom: () => room,
     getUserId: () => '@me:hs',
-    on: () => {},
+    handlers,
+    on: (event: string, handler: (...args: unknown[]) => void) => {
+      handlers.set(event, handler);
+    },
     off: () => {},
+    sendTyping: (_rid: string, isTyping: boolean) => {
+      sent.push(['typing', isTyping]);
+      return Promise.resolve({});
+    },
     sendReadReceipt: () => Promise.resolve({}),
     scrollback: () => Promise.resolve(room),
     sendTextMessage: (_rid: string, body: string) => {
@@ -1187,6 +1205,94 @@ describe('TimelineService', () => {
       await firstValueFrom(send$);
 
       expect(sent).toHaveLength(0);
+    });
+  });
+
+  describe('typing', () => {
+    /** Open a room with the given members and return handles for typing assertions. */
+    function setupTyping(members: ReturnType<typeof fakeMember>[] = []) {
+      const sent: unknown[][] = [];
+      const room = fakeRoom([], {}, false, members);
+      const client = fakeClient(room, sent);
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(client), mediaProvider()],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return { svc, client, sent };
+    }
+
+    /** Only the typing calls the client recorded, in order. */
+    const typingCalls = (sent: unknown[][]) =>
+      sent.filter((call) => call[0] === 'typing');
+
+    it('broadcasts a typing notification when the composer reports typing', () => {
+      const { svc, sent } = setupTyping();
+      svc.setTyping(true);
+      expect(typingCalls(sent)).toEqual([['typing', true]]);
+    });
+
+    it('throttles repeated starts, then refreshes once the interval elapses', () => {
+      let now = 1000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const { svc, sent } = setupTyping();
+
+      svc.setTyping(true);
+      svc.setTyping(true); // still within the refresh window → no second request
+      expect(typingCalls(sent)).toEqual([['typing', true]]);
+
+      now += TYPING_REFRESH_MS + 1; // window elapsed → one refresh allowed
+      svc.setTyping(true);
+      expect(typingCalls(sent)).toEqual([
+        ['typing', true],
+        ['typing', true],
+      ]);
+    });
+
+    it('stops typing only when currently marked as typing', () => {
+      const { svc, sent } = setupTyping();
+
+      svc.setTyping(false); // never started → nothing to clear
+      expect(typingCalls(sent)).toEqual([]);
+
+      svc.setTyping(true);
+      svc.setTyping(false);
+      expect(typingCalls(sent)).toEqual([
+        ['typing', true],
+        ['typing', false],
+      ]);
+    });
+
+    it('stops typing when the room closes', () => {
+      const { svc, sent } = setupTyping();
+      svc.setTyping(true);
+      svc.close();
+      expect(typingCalls(sent)).toContainEqual(['typing', false]);
+    });
+
+    it('projects other typing members into typingNames, excluding self', () => {
+      const { svc, client } = setupTyping([
+        fakeMember('@alice:hs', true, 'Alice'),
+        fakeMember('@me:hs', true, 'Me'), // the local user never lists themselves
+        fakeMember('@bob:hs', false, 'Bob'), // present but not typing
+      ]);
+
+      // Fire the RoomMember.typing listener the service registered in open().
+      client.handlers.get('RoomMember.typing')?.(
+        {},
+        fakeMember('@alice:hs', true, 'Alice'),
+      );
+
+      expect(svc.typingNames()).toEqual(['Alice']);
+    });
+
+    it('ignores typing changes from other rooms', () => {
+      const { svc, client } = setupTyping([fakeMember('@alice:hs', true)]);
+      client.handlers.get('RoomMember.typing')?.(
+        {},
+        { userId: '@x:hs', typing: true, name: 'X', roomId: '!other:hs' },
+      );
+      expect(svc.typingNames()).toEqual([]);
     });
   });
 });

@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Typing indicators.** The composer now tells the room when you're typing, and an
+  "X is typing…" row appears under the timeline when other members type — naming up to
+  three of them and summarising beyond that. It clears the moment they send or stop, and
+  Trinity stops advertising your own typing as soon as you send or leave the room.
 - **@-mention people from the composer.** Type `@` and a name to pick a room member
   from an autocomplete menu; the sent message links them and, crucially, carries
   `m.mentions` so they're actually notified — including replies, which now ping the

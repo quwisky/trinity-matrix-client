@@ -13,6 +13,7 @@ import {
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
 import {
+  formatTypingNotice,
   isEditableMessage,
   type MessageView,
   type Mention,
@@ -66,6 +67,8 @@ export abstract class MessageListBase {
   readonly roomId = input<string | null>(null);
   /** Room members, forwarded to the composer's @-mention autocomplete. */
   readonly members = input<MentionMember[]>([]);
+  /** Display names of members currently typing in the room (excludes the local user). */
+  readonly typingNames = input<string[]>([]);
   /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
   readonly uploadProgress = input<number | null>(null);
   /**
@@ -96,6 +99,11 @@ export abstract class MessageListBase {
   readonly deleteMessage = output<string>();
   readonly react = output<{ id: string; key: string }>();
   readonly reply = output<{ id: string; body: string; mentions: Mention[] }>();
+  /** The composer's typing state changed — host debounces it into a typing notification. */
+  readonly typing = output<boolean>();
+
+  /** "X is typing…" text for the row above the composer, or '' when nobody is typing. */
+  readonly typingLabel = computed(() => formatTypingNotice(this.typingNames()));
 
   readonly editingId = signal<string | null>(null);
   readonly editingDraft = computed(

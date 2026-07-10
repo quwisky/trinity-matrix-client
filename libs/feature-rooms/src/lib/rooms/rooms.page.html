@@ -172,6 +172,7 @@
             [canLoadOlder]="timeline.canLoadOlder()"
             [roomId]="activeRoomId()"
             [members]="members()"
+            [typingNames]="timeline.typingNames()"
             [roomName]="room.name"
             [uploadProgress]="uploadProgress()"
             [jumpToId]="messageSearchTarget()"
@@ -186,6 +187,7 @@
             (deleteMessage)="onDelete($event)"
             (react)="onReact($event)"
             (reply)="onReply($event)"
+            (typing)="onTyping($event)"
           />
         } @else {
           <trn-simple-message-list
@@ -197,6 +199,7 @@
             [canLoadOlder]="timeline.canLoadOlder()"
             [roomId]="activeRoomId()"
             [members]="members()"
+            [typingNames]="timeline.typingNames()"
             [roomName]="room.name"
             [uploadProgress]="uploadProgress()"
             [jumpToId]="messageSearchTarget()"
@@ -211,6 +214,7 @@
             (deleteMessage)="onDelete($event)"
             (react)="onReact($event)"
             (reply)="onReply($event)"
+            (typing)="onTyping($event)"
           />
         }
         @if (membersOpen()) {

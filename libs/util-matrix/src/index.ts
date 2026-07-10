@@ -4,6 +4,7 @@ export * from './lib/session.model';
 export * from './lib/rust-crypto-store';
 export * from './lib/presence';
 export * from './lib/message-content';
+export * from './lib/typing';
 export * from './lib/transient-errors';
 export * from './lib/password-uia';
 export * from './lib/attachment-crypto';

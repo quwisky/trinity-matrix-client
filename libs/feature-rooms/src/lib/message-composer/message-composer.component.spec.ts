@@ -1101,4 +1101,33 @@ describe('MessageComposerComponent', () => {
       expect(submit?.mentions).toEqual([]); // the old room's tracking was dropped
     });
   });
+
+  describe('typing notifications', () => {
+    it('emits typing=true while the field has text, false when it is emptied', async () => {
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const states: boolean[] = [];
+      cmp.typing.subscribe((t) => states.push(t));
+
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      ta.value = 'hi';
+      cmp.onInput({ target: ta } as unknown as Event);
+      ta.value = '   '; // cleared to whitespace → not typing
+      cmp.onInput({ target: ta } as unknown as Event);
+
+      expect(states).toEqual([true, false]);
+    });
+
+    it('emits typing=false when a message is sent', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const states: boolean[] = [];
+      cmp.typing.subscribe((t) => states.push(t));
+
+      cmp.text.set('hello');
+      cmp.onEnter(enter());
+
+      expect(states.at(-1)).toBe(false);
+    });
+  });
 });

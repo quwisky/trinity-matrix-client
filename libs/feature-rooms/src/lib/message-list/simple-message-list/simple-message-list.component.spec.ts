@@ -411,6 +411,32 @@ describe('SimpleMessageListComponent', () => {
       expect(sent).toBe('hello');
     });
 
+    it('derives the typing label from the typing member names', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: { typingNames: [] },
+        providers: [MockProvider(TrnAlertService)],
+      });
+      const cmp = fixture.componentInstance;
+      expect(cmp.typingLabel()).toBe('');
+
+      fixture.componentRef.setInput('typingNames', ['Alice', 'Bob']);
+      fixture.detectChanges();
+      expect(cmp.typingLabel()).toBe('Alice and Bob are typing…');
+    });
+
+    it('shows the typing row only while someone is typing', async () => {
+      const { fixture, container } = await render(SimpleMessageListComponent, {
+        inputs: { typingNames: ['Alice'] },
+        providers: [MockProvider(TrnAlertService)],
+      });
+      const indicator = () => container.querySelector('.typing-indicator');
+      expect(indicator()?.textContent?.trim()).toBe('Alice is typing…');
+
+      fixture.componentRef.setInput('typingNames', []);
+      fixture.detectChanges();
+      expect(indicator()).toBeNull();
+    });
+
     it('routes a submit to editMessage while editing, then clears the target', async () => {
       const cmp = await make();
       let edited: { id: string; body: string } | null = null;
