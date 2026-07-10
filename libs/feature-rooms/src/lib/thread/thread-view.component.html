@@ -39,6 +39,7 @@
     <trn-message-composer
       placeholder="Reply…"
       [roomId]="rootEventId()"
+      [members]="members()"
       [editing]="editingId() !== null"
       [editTargetId]="editingId()"
       [draft]="editingDraft()"

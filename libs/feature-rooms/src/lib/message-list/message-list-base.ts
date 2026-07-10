@@ -12,12 +12,20 @@ import {
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
-import { isEditableMessage, type MessageView } from '@trinity/util-matrix';
+import {
+  isEditableMessage,
+  type MessageView,
+  type Mention,
+} from '@trinity/util-matrix';
 import {
   type MessageRow,
   type MessageRowAction,
   type MessageRowCaps,
 } from '../message-row/message-row.component';
+import {
+  type ComposerSubmit,
+  type MentionMember,
+} from '../message-composer/message-composer.component';
 
 /** Fallback caps for a row not present in the memoized map (defensive; unreached). */
 const DEFAULT_ROW_CAPS: MessageRowCaps = {
@@ -56,6 +64,8 @@ export abstract class MessageListBase {
    * otherwise a pending edit/reply target and the scroll anchors leak between rooms.
    */
   readonly roomId = input<string | null>(null);
+  /** Room members, forwarded to the composer's @-mention autocomplete. */
+  readonly members = input<MentionMember[]>([]);
   /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
   readonly uploadProgress = input<number | null>(null);
   /**
@@ -75,13 +85,17 @@ export abstract class MessageListBase {
   readonly openThread = output<string>();
   /** Pin or unpin this event id (host resolves which, given its current pinned state). */
   readonly togglePin = output<string>();
-  readonly send = output<string>();
+  readonly send = output<{ body: string; mentions: Mention[] }>();
   readonly sendMedia = output<{ file: File; caption: string }>();
   readonly retry = output<string>();
-  readonly editMessage = output<{ id: string; body: string }>();
+  readonly editMessage = output<{
+    id: string;
+    body: string;
+    mentions: Mention[];
+  }>();
   readonly deleteMessage = output<string>();
   readonly react = output<{ id: string; key: string }>();
-  readonly reply = output<{ id: string; body: string }>();
+  readonly reply = output<{ id: string; body: string; mentions: Mention[] }>();
 
   readonly editingId = signal<string | null>(null);
   readonly editingDraft = computed(
@@ -300,17 +314,17 @@ export abstract class MessageListBase {
   }
 
   /** Composer submit — routes to an edit or reply when active, else a new send. */
-  onSubmit(text: string): void {
+  onSubmit({ text, mentions }: ComposerSubmit): void {
     const editId = this.editingId();
     const replyId = this.replyingToId();
     if (editId) {
-      this.editMessage.emit({ id: editId, body: text });
+      this.editMessage.emit({ id: editId, body: text, mentions });
       this.editingId.set(null);
     } else if (replyId) {
-      this.reply.emit({ id: replyId, body: text });
+      this.reply.emit({ id: replyId, body: text, mentions });
       this.replyingToId.set(null);
     } else {
-      this.send.emit(text);
+      this.send.emit({ body: text, mentions });
     }
   }
 }

@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **@-mention people from the composer.** Type `@` and a name to pick a room member
+  from an autocomplete menu; the sent message links them and, crucially, carries
+  `m.mentions` so they're actually notified — including replies, which now ping the
+  message's author. Works in rooms and threads, for new messages, replies, and edits.
 - **Message drafts are kept per conversation.** A half-typed message now stays with
   its room (or thread) when you switch away and comes back when you return, and it
   survives a reload or app restart. Previously the composer was shared across rooms,

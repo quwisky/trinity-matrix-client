@@ -13,7 +13,10 @@ import {
   type GifResult,
 } from '@trinity/data-access-gif';
 import { TrnToastService } from '@trinity/helm/overlay';
-import { MessageComposerComponent } from './message-composer.component';
+import {
+  MessageComposerComponent,
+  type ComposerSubmit,
+} from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 
 // The draft store persists to Capacitor Preferences (debounced); stub it so the
@@ -52,7 +55,7 @@ describe('MessageComposerComponent', () => {
     const cmp = fixture.componentInstance;
 
     let sent: string | undefined;
-    cmp.submitText.subscribe((t) => (sent = t));
+    cmp.submitText.subscribe((e) => (sent = e.text));
 
     cmp.text.set('  hello  ');
     cmp.onEnter(enter());
@@ -88,7 +91,7 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('old text');
 
     let submitted: string | undefined;
-    cmp.submitText.subscribe((t) => (submitted = t));
+    cmp.submitText.subscribe((e) => (submitted = e.text));
     cmp.text.set('new text');
     cmp.onEnter(enter());
 
@@ -972,6 +975,130 @@ describe('MessageComposerComponent', () => {
       fixture.componentRef.setInput('editTargetId', null);
       fixture.detectChanges();
       expect(cmp.text()).toBe('my draft');
+    });
+  });
+
+  describe('mention autocomplete', () => {
+    const MEMBERS = [
+      { userId: '@alice:hs', name: 'Alice' },
+      { userId: '@bob:hs', name: 'Bob' },
+    ];
+
+    it('opens the member menu for an @query and inserts the pick', async () => {
+      const { fixture, container } = await renderComposer({ members: MEMBERS });
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      ta.value = 'hey @al';
+      ta.selectionStart = ta.selectionEnd = 7;
+      cmp.onInput({ target: ta } as unknown as Event);
+
+      // Only Alice matches "al"; the menu is open.
+      expect(cmp.mentionOpen()).toBe(true);
+      expect(cmp.mentionMatches().map((m) => m.userId)).toEqual(['@alice:hs']);
+
+      ta.selectionStart = 7;
+      cmp.acceptMention();
+
+      expect(cmp.text()).toBe('hey @Alice ');
+      expect(cmp.mentionOpen()).toBe(false);
+    });
+
+    it('emits the @-mentioned users on submit', async () => {
+      const { fixture, container } = await renderComposer({ members: MEMBERS });
+      const cmp = fixture.componentInstance;
+      let submit: ComposerSubmit | undefined;
+      cmp.submitText.subscribe((e) => (submit = e));
+
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      ta.value = 'hi @al';
+      ta.selectionStart = ta.selectionEnd = 6;
+      cmp.onInput({ target: ta } as unknown as Event);
+      ta.selectionStart = 6;
+      cmp.acceptMention();
+
+      cmp.onEnter(enter());
+
+      expect(submit?.text).toBe('hi @Alice');
+      expect(submit?.mentions).toEqual([
+        { userId: '@alice:hs', display: '@Alice' },
+      ]);
+    });
+
+    it('drops a mention whose text was deleted before sending', async () => {
+      const { fixture, container } = await renderComposer({ members: MEMBERS });
+      const cmp = fixture.componentInstance;
+      let submit: ComposerSubmit | undefined;
+      cmp.submitText.subscribe((e) => (submit = e));
+
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      ta.value = '@al';
+      ta.selectionStart = ta.selectionEnd = 3;
+      cmp.onInput({ target: ta } as unknown as Event);
+      ta.selectionStart = 3;
+      cmp.acceptMention(); // text = "@Alice "
+
+      // The user deletes the mention text before sending.
+      cmp.text.set('never mind');
+      cmp.onEnter(enter());
+
+      expect(submit?.text).toBe('never mind');
+      expect(submit?.mentions).toEqual([]);
+    });
+
+    it('does not open the menu for an @ inside a word (e.g. an email)', async () => {
+      const { fixture, container } = await renderComposer({ members: MEMBERS });
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      ta.value = 'mail a@bob';
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+      cmp.onInput({ target: ta } as unknown as Event);
+
+      expect(cmp.mentionOpen()).toBe(false); // '@' not at a word boundary
+    });
+
+    it('navigates the menu with the arrow keys and accepts with Tab', async () => {
+      const { fixture, container } = await renderComposer({ members: MEMBERS });
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      ta.value = '@';
+      ta.selectionStart = ta.selectionEnd = 1;
+      cmp.onInput({ target: ta } as unknown as Event);
+      expect(cmp.mentionMatches().map((m) => m.name)).toEqual(['Alice', 'Bob']);
+
+      cmp.onArrowDown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      expect(cmp.mentionActiveIndex()).toBe(1); // Bob highlighted
+
+      ta.selectionStart = 1;
+      cmp.onTab(new KeyboardEvent('keydown', { key: 'Tab' }));
+      expect(cmp.text()).toBe('@Bob ');
+    });
+
+    it('forgets tracked mentions when the conversation changes', async () => {
+      const { fixture, container } = await renderComposer({
+        roomId: '!a:hs',
+        members: MEMBERS,
+      });
+      const cmp = fixture.componentInstance;
+      let submit: ComposerSubmit | undefined;
+      cmp.submitText.subscribe((e) => (submit = e));
+
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      ta.value = '@al';
+      ta.selectionStart = ta.selectionEnd = 3;
+      cmp.onInput({ target: ta } as unknown as Event);
+      ta.selectionStart = 3;
+      cmp.acceptMention(); // tracks @Alice for room A
+
+      // Switch rooms, then type similar text by hand (not via the menu).
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.detectChanges();
+      cmp.text.set('@Alice again');
+      cmp.onEnter(enter());
+
+      expect(submit?.mentions).toEqual([]); // the old room's tracking was dropped
     });
   });
 });

@@ -336,10 +336,29 @@ describe('TimelineService', () => {
     await firstValueFrom(svc.send('hello there'));
     await firstValueFrom(svc.send('**bold**'));
 
-    expect(sent[0]).toEqual(['text', 'hello there']);
-    expect(sent[1][0]).toBe('html');
-    expect(sent[1][1]).toBe('**bold**');
-    expect(sent[1][2]).toContain('<strong>bold</strong>');
+    // Both go through sendMessage(content) now so mentions can add m.mentions.
+    expect(sent[0][0]).toBe('message');
+    expect(sent[0][1]).toEqual({ msgtype: 'm.text', body: 'hello there' });
+    expect(sent[1][0]).toBe('message');
+    const rich = sent[1][1] as Record<string, unknown>;
+    expect(rich['body']).toBe('**bold**');
+    expect(rich['format']).toBe('org.matrix.custom.html');
+    expect(rich['formatted_body']).toContain('<strong>bold</strong>');
+  });
+
+  it('adds m.mentions and a matrix.to pill when a message mentions someone', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(
+      svc.send('hi @Bob', [{ userId: '@bob:hs', display: '@Bob' }]),
+    );
+
+    const content = sent[0][1] as Record<string, unknown>;
+    expect(content['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
+    expect(content['formatted_body']).toContain(
+      '<a href="https://matrix.to/#/@bob:hs">@Bob</a>',
+    );
   });
 
   it('edits a message as an m.replace with new content', async () => {

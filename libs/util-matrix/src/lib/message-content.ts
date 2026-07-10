@@ -31,6 +31,39 @@ export interface RenderedMarkdown {
   html: string;
 }
 
+/** A user mentioned in a composed message (drives `m.mentions` + a matrix.to pill). */
+export interface Mention {
+  userId: string;
+  /** The exact text inserted for the mention (e.g. "@Alice"), matched to place the pill. */
+  display: string;
+}
+
+/** An `m.mentions` block for the given user ids, or `{}` when there are none. */
+function mentionsBlock(userIds: string[]): Record<string, unknown> {
+  const ids = [...new Set(userIds)].filter(Boolean);
+  return ids.length > 0 ? { 'm.mentions': { user_ids: ids } } : {};
+}
+
+/**
+ * Turn each mention's plain `@display` in the already-sanitized HTML into a
+ * matrix.to pill link — once per mention (first not-yet-replaced occurrence). The
+ * display is matched in its HTML-escaped form since it appears as text in the markup;
+ * user ids can't contain `"`, so the href needs no further escaping.
+ */
+function applyMentionPills(html: string, mentions: Mention[]): string {
+  let out = html;
+  for (const mention of mentions) {
+    const needle = escapeHtml(mention.display);
+    const at = out.indexOf(needle);
+    if (at === -1) {
+      continue;
+    }
+    const pill = `<a href="https://matrix.to/#/${mention.userId}">${needle}</a>`;
+    out = out.slice(0, at) + pill + out.slice(at + needle.length);
+  }
+  return out;
+}
+
 /**
  * Render composer markdown to sanitized HTML. `formatted` is false when the HTML
  * carries no formatting beyond the plain text, so the caller can send plain text.
@@ -68,31 +101,50 @@ export function mediaCaptionFields(
   };
 }
 
-/** `m.text` content: rich (HTML) when markdown formatted it, else plain text. */
-export function textMessageContent(text: string, md: RenderedMarkdown) {
-  return md.formatted
-    ? {
-        msgtype: MsgType.Text,
-        body: text,
-        format: 'org.matrix.custom.html',
-        formatted_body: md.html,
-      }
-    : { msgtype: MsgType.Text, body: text };
+/**
+ * `m.text` content: rich (HTML) when markdown formatted it OR the message mentions
+ * someone (mentions need a `formatted_body` for the pill), else plain text. Any
+ * mentions add `m.mentions` (so modern homeservers notify) and matrix.to pills.
+ */
+export function textMessageContent(
+  text: string,
+  md: RenderedMarkdown,
+  mentions: Mention[] = [],
+) {
+  if (md.formatted || mentions.length > 0) {
+    return {
+      msgtype: MsgType.Text,
+      body: text,
+      format: 'org.matrix.custom.html',
+      formatted_body: applyMentionPills(md.html, mentions),
+      ...mentionsBlock(mentions.map((m) => m.userId)),
+    };
+  }
+  return { msgtype: MsgType.Text, body: text };
 }
 
-/** `m.replace` edit content targeting `messageId`, with the leading `* ` fallback. */
+/**
+ * `m.replace` edit content targeting `messageId`, with the leading `* ` fallback.
+ * Mentions land in `m.new_content` (the effective content) — not the top-level
+ * replace event — so an edit that keeps existing mentions doesn't re-notify.
+ */
 export function editMessageContent(
   messageId: string,
   text: string,
   md: RenderedMarkdown,
+  mentions: Mention[] = [],
 ) {
+  const rich = md.formatted || mentions.length > 0;
   return {
     msgtype: MsgType.Text,
     body: `* ${text}`,
-    ...(md.formatted
-      ? { format: 'org.matrix.custom.html', formatted_body: `* ${md.html}` }
+    ...(rich
+      ? {
+          format: 'org.matrix.custom.html',
+          formatted_body: `* ${applyMentionPills(md.html, mentions)}`,
+        }
       : {}),
-    'm.new_content': textMessageContent(text, md),
+    'm.new_content': textMessageContent(text, md, mentions),
     'm.relates_to': {
       rel_type: RelationType.Replace,
       event_id: messageId,
@@ -111,6 +163,7 @@ export function replyMessageContent(
   messageId: string,
   text: string,
   md: RenderedMarkdown,
+  mentions: Mention[] = [],
 ) {
   const target = room.findEventById(messageId);
   const sender = target?.getSender() ?? '';
@@ -118,7 +171,10 @@ export function replyMessageContent(
     (target?.getContent()['body'] as string) ?? '',
   );
   const firstLine = origBody.split('\n')[0] ?? '';
-  const replyHtml = md.formatted ? md.html : escapeHtml(text);
+  const replyHtml = applyMentionPills(
+    md.formatted ? md.html : escapeHtml(text),
+    mentions,
+  );
   const roomLink = `https://matrix.to/#/${room.roomId}/${messageId}`;
   const userLink = `https://matrix.to/#/${sender}`;
   const mxReply =
@@ -132,6 +188,8 @@ export function replyMessageContent(
     format: 'org.matrix.custom.html',
     formatted_body: `${mxReply}${replyHtml}`,
     'm.relates_to': { 'm.in_reply_to': { event_id: messageId } },
+    // A reply pings the message's author, plus anyone @-mentioned in the reply.
+    ...mentionsBlock([sender, ...mentions.map((m) => m.userId)]),
   };
 }
 

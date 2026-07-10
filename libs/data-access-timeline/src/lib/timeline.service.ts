@@ -35,7 +35,9 @@ import {
   reactionsFor,
   renderMarkdown,
   replyMessageContent,
+  textMessageContent,
   type MessageView,
+  type Mention,
 } from '@trinity/util-matrix';
 
 const SCROLLBACK = 30;
@@ -214,7 +216,7 @@ export class TimelineService {
    * and sent as `formatted_body` — but only when it actually adds formatting; plain
    * text is sent as-is. The local echo appears via the timeline listener.
    */
-  send(body: string): Observable<void> {
+  send(body: string, mentions: Mention[] = []): Observable<void> {
     const text = body.trim();
     return defer(() => {
       const ctx = this.context();
@@ -222,12 +224,14 @@ export class TimelineService {
         return of(void 0);
       }
       const { client, room } = ctx;
-      const md = renderMarkdown(this.sanitizer, text);
-      return from(
-        md.formatted
-          ? client.sendHtmlMessage(room.roomId, text, md.html)
-          : client.sendTextMessage(room.roomId, text),
+      // Build the content (rather than sendText/HtmlMessage) so mentions carry
+      // `m.mentions` + matrix.to pills. The SDK still creates the local echo.
+      const content = textMessageContent(
+        text,
+        renderMarkdown(this.sanitizer, text),
+        mentions,
       );
+      return from(client.sendMessage(room.roomId, content as never));
     }).pipe(map(() => void 0));
   }
 
@@ -268,7 +272,11 @@ export class TimelineService {
   }
 
   /** Edit a previously-sent message via an `m.replace` relation. */
-  edit(messageId: string, newBody: string): Observable<void> {
+  edit(
+    messageId: string,
+    newBody: string,
+    mentions: Mention[] = [],
+  ): Observable<void> {
     const text = newBody.trim();
     return defer(() => {
       const ctx = this.context();
@@ -280,6 +288,7 @@ export class TimelineService {
         messageId,
         text,
         renderMarkdown(this.sanitizer, text),
+        mentions,
       );
       // `content` is a valid m.replace payload; the SDK's content union doesn't
       // model it, so assert past it.
@@ -303,7 +312,11 @@ export class TimelineService {
   }
 
   /** Send a reply to a message (`m.in_reply_to`), with a plain-text quote fallback. */
-  reply(messageId: string, body: string): Observable<void> {
+  reply(
+    messageId: string,
+    body: string,
+    mentions: Mention[] = [],
+  ): Observable<void> {
     const text = body.trim();
     return defer(() => {
       const ctx = this.context();
@@ -316,6 +329,7 @@ export class TimelineService {
         messageId,
         text,
         renderMarkdown(this.sanitizer, text),
+        mentions,
       );
       return from(client.sendMessage(room.roomId, content as never));
     }).pipe(map(() => void 0));

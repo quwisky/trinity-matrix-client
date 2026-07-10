@@ -516,7 +516,9 @@ describe('ThreadsService', () => {
     expect(client.fetchRoomEvent).toHaveBeenCalledWith('!r:hs', '$missing');
     expect(room.getThread('$missing')).not.toBeNull();
     // ...and only then is the threaded reply sent.
-    expect(sent).toEqual([['text', '$missing', 'hi']]);
+    expect(sent).toEqual([
+      ['message', '$missing', { msgtype: 'm.text', body: 'hi' }],
+    ]);
   });
 
   it('aborts the threaded send when the root cannot be fetched', async () => {
@@ -599,9 +601,11 @@ describe('ThreadsService', () => {
 
       await firstValueFrom(svc.sendToThread('hello thread'));
 
-      // The SDK adds the m.thread relation when given the threadId — here we assert
-      // the call carries the thread root so the message stays in the thread.
-      expect(sent[0]).toEqual(['text', '$root', 'hello thread']);
+      // Built content via sendMessage now (so mentions can add m.mentions); the SDK
+      // adds the m.thread relation from the threadId, so the message stays in-thread.
+      expect(sent[0][0]).toBe('message');
+      expect(sent[0][1]).toBe('$root'); // threadId
+      expect(sent[0][2]).toEqual({ msgtype: 'm.text', body: 'hello thread' });
     });
 
     it('sends markdown as formatted HTML into the thread', async () => {
@@ -609,10 +613,11 @@ describe('ThreadsService', () => {
 
       await firstValueFrom(svc.sendToThread('**bold**'));
 
-      expect(sent[0][0]).toBe('html');
+      expect(sent[0][0]).toBe('message');
       expect(sent[0][1]).toBe('$root'); // threadId
-      expect(sent[0][2]).toBe('**bold**');
-      expect(sent[0][3]).toContain('<strong>bold</strong>');
+      const content = sent[0][2] as Record<string, unknown>;
+      expect(content['body']).toBe('**bold**');
+      expect(content['formatted_body']).toContain('<strong>bold</strong>');
     });
 
     it('edits an own thread message via an m.replace, scoped to the thread', async () => {

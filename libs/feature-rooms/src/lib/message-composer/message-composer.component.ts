@@ -37,8 +37,21 @@ import {
   GifSettingsService,
   type GifResult,
 } from '@trinity/data-access-gif';
+import { type Mention } from '@trinity/util-matrix';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
+
+/** A room member offered by the @-mention autocomplete. */
+export interface MentionMember {
+  userId: string;
+  name: string;
+}
+
+/** What the composer emits on submit: the message text plus any @-mentioned users. */
+export interface ComposerSubmit {
+  text: string;
+  mentions: Mention[];
+}
 
 const MAX_HEIGHT_PX = 200;
 
@@ -52,6 +65,14 @@ const EMOJI_TRIGGER = /(?:^|\s):([a-z0-9_+-]{2,})$/i;
 const EMOJI_COMPLETE = /(?:^|\s):([a-z0-9_+-]+):$/i;
 /** How many suggestions the menu offers at once. */
 const EMOJI_SUGGESTION_LIMIT = 8;
+
+/**
+ * An `@mention` being typed at the caret: `@` at a word boundary (so an email's
+ * `a@b` doesn't trigger) followed by the query so far (may be empty right after `@`).
+ */
+const MENTION_TRIGGER = /(?:^|\s)@([^\s@]*)$/;
+/** How many member suggestions the mention menu offers at once. */
+const MENTION_SUGGESTION_LIMIT = 8;
 
 /**
  * Discord-style composer: Enter sends, Shift+Enter inserts a newline. In edit mode
@@ -100,9 +121,11 @@ export class MessageComposerComponent {
   readonly roomId = input<string | null>(null);
   /** Sender name of the message being replied to, or '' when not replying. */
   readonly replyingTo = input('');
+  /** Room members, for the @-mention autocomplete (empty disables mentions). */
+  readonly members = input<MentionMember[]>([]);
   /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
   readonly uploadProgress = input<number | null>(null);
-  readonly submitText = output<string>();
+  readonly submitText = output<ComposerSubmit>();
   /** A staged attachment plus its optional caption, emitted on submit. */
   readonly submitMedia = output<{ file: File; caption: string }>();
   readonly cancelEdit = output<void>();
@@ -138,6 +161,34 @@ export class MessageComposerComponent {
   readonly emojiOpen = computed(() => this.emojiMatches().length > 0);
   /** Index of the highlighted suggestion. */
   readonly emojiActiveIndex = signal(0);
+  /** The `@mention` query under the caret, or null when the menu is closed. */
+  readonly mentionQuery = signal<string | null>(null);
+  /** Members matching the current query (prefix matches first), capped for the menu. */
+  readonly mentionMatches = computed<MentionMember[]>(() => {
+    const q = this.mentionQuery();
+    if (q === null) {
+      return [];
+    }
+    const query = q.toLowerCase();
+    return this.members()
+      .filter(
+        (m) =>
+          m.name.toLowerCase().includes(query) ||
+          m.userId.toLowerCase().includes(query),
+      )
+      .sort(
+        (a, b) =>
+          Number(b.name.toLowerCase().startsWith(query)) -
+          Number(a.name.toLowerCase().startsWith(query)),
+      )
+      .slice(0, MENTION_SUGGESTION_LIMIT);
+  });
+  /** The mention menu shows only when a query yields at least one member. */
+  readonly mentionOpen = computed(() => this.mentionMatches().length > 0);
+  /** Index of the highlighted member suggestion. */
+  readonly mentionActiveIndex = signal(0);
+  /** Users chosen via the mention menu, for `m.mentions` + pills on submit. */
+  private readonly mentions = signal<Mention[]>([]);
   /** Whether to show a determinate bar — true once the first real fraction lands.
    * Until then (metadata probe + thumbnail upload) the bar is indeterminate so it
    * reads as "working" rather than a stalled 0%. */
@@ -178,6 +229,7 @@ export class MessageComposerComponent {
         this.wasRoomId = id;
         untracked(() => {
           this.clearPending();
+          this.mentions.set([]); // tracked mentions belong to the old conversation
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!this.editing()) {
             if (prev != null) {
@@ -190,10 +242,14 @@ export class MessageComposerComponent {
       }
     });
 
-    // Highlight the first suggestion whenever the result set changes.
+    // Highlight the first suggestion whenever either result set changes.
     effect(() => {
       this.emojiMatches();
       this.emojiActiveIndex.set(0);
+    });
+    effect(() => {
+      this.mentionMatches();
+      this.mentionActiveIndex.set(0);
     });
     // Focus the input when a reply is started.
     effect(() => {
@@ -253,6 +309,7 @@ export class MessageComposerComponent {
     // rewriting the value/caret during composition drops characters.
     if (!(event as InputEvent).isComposing) {
       this.syncEmojiAutocomplete();
+      this.syncMentionAutocomplete();
     }
   }
 
@@ -261,6 +318,11 @@ export class MessageComposerComponent {
     // An Enter that confirms an IME candidate must reach neither send nor
     // accept — let the composition commit normally.
     if (keyEvent.isComposing) {
+      return;
+    }
+    if (this.mentionOpen()) {
+      keyEvent.preventDefault();
+      this.acceptMention();
       return;
     }
     if (this.emojiOpen()) {
@@ -275,25 +337,32 @@ export class MessageComposerComponent {
     this.submit();
   }
 
-  /** Tab accepts the highlighted suggestion when the emoji menu is open. */
+  /** Tab accepts the highlighted suggestion when a menu is open. */
   onTab(event: Event): void {
-    if (this.emojiOpen()) {
+    if (this.mentionOpen()) {
+      event.preventDefault();
+      this.acceptMention();
+    } else if (this.emojiOpen()) {
       event.preventDefault();
       this.acceptEmoji();
     }
   }
 
-  /** Arrow Down moves the emoji highlight when the menu is open. */
+  /** Arrow Down moves the highlight when a menu is open. */
   onArrowDown(event: Event): void {
-    if (this.emojiOpen()) {
+    if (this.mentionOpen()) {
+      event.preventDefault();
+      this.moveMentionSelection(1);
+    } else if (this.emojiOpen()) {
       event.preventDefault();
       this.moveEmojiSelection(1);
     }
   }
 
-  /** Closing the field hides the menu; a menu click keeps focus (see template). */
+  /** Closing the field hides any open menu; a menu click keeps focus (see template). */
   onBlur(): void {
     this.emojiQuery.set(null);
+    this.mentionQuery.set(null);
   }
 
   /** Send on Enter / the send button: a staged attachment (with the text as its
@@ -312,7 +381,7 @@ export class MessageComposerComponent {
       }
       this.clearPending();
       this.text.set('');
-      this.emojiQuery.set(null);
+      this.resetMenus();
       queueMicrotask(() => this.autoGrow());
       return;
     }
@@ -320,13 +389,75 @@ export class MessageComposerComponent {
     if (!value) {
       return;
     }
-    this.submitText.emit(value);
-    this.emojiQuery.set(null);
+    this.submitText.emit({ text: value, mentions: this.activeMentions() });
+    this.resetMenus();
     if (!this.editing()) {
       // Edits clear via editing → false; new messages clear here.
       this.text.set('');
       queueMicrotask(() => this.autoGrow());
     }
+  }
+
+  /** Close both autocomplete menus and forget the tracked mentions. */
+  private resetMenus(): void {
+    this.emojiQuery.set(null);
+    this.mentionQuery.set(null);
+    this.mentions.set([]);
+  }
+
+  /** Recompute the mention menu from the `@query` under the caret. */
+  private syncMentionAutocomplete(): void {
+    const el = this.textarea()?.nativeElement;
+    const caret = el?.selectionStart ?? this.text().length;
+    const trigger = MENTION_TRIGGER.exec(this.text().slice(0, caret));
+    this.mentionQuery.set(trigger ? trigger[1] : null);
+  }
+
+  /** Accept a member: swap the `@query` for `@Name ` and record the mention. */
+  acceptMention(index = this.mentionActiveIndex()): void {
+    const member = this.mentionMatches()[index];
+    if (!member) {
+      return;
+    }
+    const el = this.textarea()?.nativeElement;
+    const caret = el?.selectionStart ?? this.text().length;
+    const trigger = MENTION_TRIGGER.exec(this.text().slice(0, caret));
+    const display = `@${member.name}`;
+    const start = trigger ? caret - trigger[1].length - 1 : caret; // drop "@query"
+    this.replaceRange(start, caret, `${display} `);
+    this.mentions.update((list) => [
+      ...list,
+      { userId: member.userId, display },
+    ]);
+    this.mentionQuery.set(null);
+  }
+
+  private moveMentionSelection(delta: number): void {
+    const n = this.mentionMatches().length;
+    if (n === 0) {
+      return;
+    }
+    const next = (this.mentionActiveIndex() + delta + n) % n;
+    this.mentionActiveIndex.set(next);
+    queueMicrotask(() =>
+      document
+        .getElementById(`mention-suggestion-${next}`)
+        ?.scrollIntoView?.({ block: 'nearest' }),
+    );
+  }
+
+  /** Chosen mentions still present in the text (deleted ones dropped), deduped. */
+  private activeMentions(): Mention[] {
+    const text = this.text();
+    const seen = new Set<string>();
+    const out: Mention[] = [];
+    for (const mention of this.mentions()) {
+      if (text.includes(mention.display) && !seen.has(mention.userId)) {
+        seen.add(mention.userId);
+        out.push(mention);
+      }
+    }
+    return out;
   }
 
   /**
@@ -560,6 +691,10 @@ export class MessageComposerComponent {
   }
 
   onEscape(): void {
+    if (this.mentionOpen()) {
+      this.mentionQuery.set(null);
+      return;
+    }
     if (this.emojiOpen()) {
       this.emojiQuery.set(null);
       return;
@@ -602,6 +737,11 @@ export class MessageComposerComponent {
   }
 
   onArrowUp(event: Event): void {
+    if (this.mentionOpen()) {
+      event.preventDefault();
+      this.moveMentionSelection(-1);
+      return;
+    }
     if (this.emojiOpen()) {
       event.preventDefault();
       this.moveEmojiSelection(-1);

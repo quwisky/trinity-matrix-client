@@ -153,9 +153,9 @@ describe('ThreadViewComponent', () => {
     const { fixture, sendToThread, editInThread, replyInThread } =
       await build();
 
-    fixture.componentInstance.onSubmit('hello thread');
+    fixture.componentInstance.onSubmit({ text: 'hello thread', mentions: [] });
 
-    expect(sendToThread).toHaveBeenCalledWith('hello thread');
+    expect(sendToThread).toHaveBeenCalledWith('hello thread', []);
     expect(editInThread).not.toHaveBeenCalled();
     expect(replyInThread).not.toHaveBeenCalled();
   });
@@ -167,9 +167,9 @@ describe('ThreadViewComponent', () => {
     const cmp = fixture.componentInstance;
 
     cmp.startEdit(row('$r1', '@me:hs', 'typo'));
-    cmp.onSubmit('fixed');
+    cmp.onSubmit({ text: 'fixed', mentions: [] });
 
-    expect(editInThread).toHaveBeenCalledWith('$r1', 'fixed');
+    expect(editInThread).toHaveBeenCalledWith('$r1', 'fixed', []);
     expect(sendToThread).not.toHaveBeenCalled();
     expect(cmp.editingId()).toBeNull();
   });
@@ -181,9 +181,9 @@ describe('ThreadViewComponent', () => {
     const cmp = fixture.componentInstance;
 
     cmp.startReply(row('$r1', '@b:hs', 'a reply'));
-    cmp.onSubmit('replying');
+    cmp.onSubmit({ text: 'replying', mentions: [] });
 
-    expect(replyInThread).toHaveBeenCalledWith('$r1', 'replying');
+    expect(replyInThread).toHaveBeenCalledWith('$r1', 'replying', []);
     expect(sendToThread).not.toHaveBeenCalled();
     expect(cmp.replyingToId()).toBeNull();
   });

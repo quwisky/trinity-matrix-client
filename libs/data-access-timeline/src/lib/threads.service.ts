@@ -43,6 +43,8 @@ import {
   myReactionId,
   renderMarkdown,
   replyMessageContent,
+  textMessageContent,
+  type Mention,
 } from '@trinity/util-matrix';
 
 /** A distinct participant of a thread, for compact avatar/name display. */
@@ -473,7 +475,7 @@ export class ThreadsService {
     }
   }
 
-  sendToThread(body: string): Observable<void> {
+  sendToThread(body: string, mentions: Mention[] = []): Observable<void> {
     const text = body.trim();
     return defer(() => {
       const ctx = this.threadContext();
@@ -481,16 +483,17 @@ export class ThreadsService {
         return of(void 0);
       }
       const { client, room, roomId, threadId } = ctx;
-      const md = renderMarkdown(this.sanitizer, text);
+      // Build the content so mentions carry `m.mentions` + matrix.to pills.
+      const content = textMessageContent(
+        text,
+        renderMarkdown(this.sanitizer, text),
+        mentions,
+      );
       // Ensure a local Thread exists (fetching the root if needed) *before*
       // sending, so the threaded echo has a home; a fetch failure aborts the send.
       return this.ensureThread(room, threadId).pipe(
         switchMap(() =>
-          from(
-            md.formatted
-              ? client.sendHtmlMessage(roomId, threadId, text, md.html)
-              : client.sendTextMessage(roomId, threadId, text),
-          ),
+          from(client.sendMessage(roomId, threadId, content as never)),
         ),
       );
     }).pipe(map(() => void 0));
@@ -539,7 +542,11 @@ export class ThreadsService {
   }
 
   /** Edit an own message in the thread via an `m.replace` (stays in the thread). */
-  editInThread(messageId: string, newBody: string): Observable<void> {
+  editInThread(
+    messageId: string,
+    newBody: string,
+    mentions: Mention[] = [],
+  ): Observable<void> {
     const text = newBody.trim();
     return defer(() => {
       const ctx = this.threadContext();
@@ -551,6 +558,7 @@ export class ThreadsService {
         messageId,
         text,
         renderMarkdown(this.sanitizer, text),
+        mentions,
       );
       return from(client.sendMessage(roomId, threadId, content as never));
     }).pipe(map(() => void 0));
@@ -561,7 +569,11 @@ export class ThreadsService {
    * `m.in_reply_to`, so the SDK adds the thread relation with `is_falling_back:
    * false` — a genuine in-thread reply that quotes the target.
    */
-  replyInThread(messageId: string, body: string): Observable<void> {
+  replyInThread(
+    messageId: string,
+    body: string,
+    mentions: Mention[] = [],
+  ): Observable<void> {
     const text = body.trim();
     return defer(() => {
       const ctx = this.threadContext();
@@ -574,6 +586,7 @@ export class ThreadsService {
         messageId,
         text,
         renderMarkdown(this.sanitizer, text),
+        mentions,
       );
       return from(client.sendMessage(roomId, threadId, content as never));
     }).pipe(map(() => void 0));

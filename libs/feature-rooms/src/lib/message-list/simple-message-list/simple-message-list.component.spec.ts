@@ -406,8 +406,8 @@ describe('SimpleMessageListComponent', () => {
     it('routes a plain submit to send', async () => {
       const cmp = await make();
       let sent: string | null = null;
-      cmp.send.subscribe((t) => (sent = t));
-      cmp.onSubmit('hello');
+      cmp.send.subscribe((s) => (sent = s.body));
+      cmp.onSubmit({ text: 'hello', mentions: [] });
       expect(sent).toBe('hello');
     });
 
@@ -416,8 +416,8 @@ describe('SimpleMessageListComponent', () => {
       let edited: { id: string; body: string } | null = null;
       cmp.editMessage.subscribe((e) => (edited = e));
       cmp.editingId.set('$7');
-      cmp.onSubmit('fixed');
-      expect(edited).toEqual({ id: '$7', body: 'fixed' });
+      cmp.onSubmit({ text: 'fixed', mentions: [] });
+      expect(edited).toEqual({ id: '$7', body: 'fixed', mentions: [] });
       expect(cmp.editingId()).toBeNull();
     });
 
@@ -426,8 +426,8 @@ describe('SimpleMessageListComponent', () => {
       let replied: { id: string; body: string } | null = null;
       cmp.reply.subscribe((e) => (replied = e));
       cmp.replyingToId.set('$3');
-      cmp.onSubmit('re');
-      expect(replied).toEqual({ id: '$3', body: 're' });
+      cmp.onSubmit({ text: 're', mentions: [] });
+      expect(replied).toEqual({ id: '$3', body: 're', mentions: [] });
       expect(cmp.replyingToId()).toBeNull();
     });
 

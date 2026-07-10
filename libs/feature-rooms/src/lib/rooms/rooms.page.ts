@@ -54,6 +54,7 @@ import {
 } from '@trinity/data-access-rooms';
 import { type SwitcherSelection } from '@trinity/data-access-search';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
+import { type Mention } from '@trinity/util-matrix';
 import { FeatureFlagsService } from '@trinity/platform-native';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -785,10 +786,10 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
-  onSend(text: string): void {
+  onSend({ body, mentions }: { body: string; mentions: Mention[] }): void {
     // The local echo (and its failed/retry state) surfaces the result.
     this.timeline
-      .send(text)
+      .send(body, mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
   }
@@ -812,9 +813,9 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   // Edit/delete/react have no visible local echo, so a failure would otherwise be
   // silent — surface it as a toast. (Send/reply produce an echo with a retry.)
-  onEdit(edit: { id: string; body: string }): void {
+  onEdit(edit: { id: string; body: string; mentions: Mention[] }): void {
     this.runAction(
-      this.timeline.edit(edit.id, edit.body),
+      this.timeline.edit(edit.id, edit.body, edit.mentions),
       'Could not edit the message.',
     );
   }
@@ -833,9 +834,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     );
   }
 
-  onReply(reply: { id: string; body: string }): void {
+  onReply(reply: { id: string; body: string; mentions: Mention[] }): void {
     this.timeline
-      .reply(reply.id, reply.body)
+      .reply(reply.id, reply.body, reply.mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
   }
