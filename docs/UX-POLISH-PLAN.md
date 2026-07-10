@@ -134,10 +134,11 @@ component). Built-in SDK support.
 A "Forward" toolbar action that reuses the existing user-picker to choose a destination and re-sends the
 event content. Note: forwarding media into an E2EE room needs re-encryption/re-reference (adds nuance).
 
-### 12. Link / URL previews — **M / Med**
+### 12. Link / URL previews — **Dropped**
 
-`client.getUrlPreview` + a preview card. **Off by default in encrypted rooms** (previews leak the viewer's
-IP), with a per-room/global toggle — so most value is in public rooms.
+> **Dropped** — built (OpenGraph card via `client.getUrlPreview`) and then removed on request: the
+> homeserver-side preview fetch leaks the viewer's IP and the URL, and the value didn't justify the
+> privacy trade-off in an E2EE-first client. Bare URLs are still made clickable on render (see #0/linkify).
 
 ### 13. Polls (MSC3381) — **L / Med**
 
