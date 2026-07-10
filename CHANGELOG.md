@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Export / import room keys.** The Security section can now save your message keys to a
+  passphrase-protected file (the interoperable Matrix megolm `.txt` format that Element
+  reads/writes) and import them back — a key backup independent of the server.
 - **Security settings.** A new **Security** section in Settings surfaces your end-to-end
   encryption posture — whether encryption/secure backup is set up, whether this session is
   verified, and whether key backup is on — and launches the recovery-setup, recovery-key

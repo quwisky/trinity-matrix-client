@@ -13,7 +13,12 @@ import {
   MatrixClientService,
   reprojectOnAccountSwitch,
 } from '@trinity/data-access-matrix-client';
-import { runPasswordUia, type PasswordPrompt } from '@trinity/util-matrix';
+import {
+  decryptMegolmKeyFile,
+  encryptMegolmKeyFile,
+  runPasswordUia,
+  type PasswordPrompt,
+} from '@trinity/util-matrix';
 
 /**
  * Where this device stands relative to the account's encryption setup:
@@ -172,6 +177,38 @@ export class CryptoService {
       );
       return { privateKey };
     });
+  }
+
+  /**
+   * Export this device's Megolm room keys as a passphrase-encrypted file, in the
+   * interoperable Matrix key-export format (the same `.txt` Element reads/writes). Cold —
+   * exports + encrypts on subscribe. A safety net independent of the server key backup.
+   */
+  exportRoomKeys(passphrase: string): Observable<string> {
+    return defer(() =>
+      from(
+        (async (): Promise<string> => {
+          const json = await this.requireCrypto().exportRoomKeysAsJson();
+          return encryptMegolmKeyFile(json, passphrase);
+        })(),
+      ),
+    );
+  }
+
+  /**
+   * Import Megolm room keys from a passphrase-encrypted export file. Cold — decrypts +
+   * imports on subscribe. A wrong passphrase (or a corrupted file) surfaces as an error
+   * rather than importing nothing.
+   */
+  importRoomKeys(armored: string, passphrase: string): Observable<void> {
+    return defer(() =>
+      from(
+        (async (): Promise<void> => {
+          const json = await decryptMegolmKeyFile(armored, passphrase);
+          await this.requireCrypto().importRoomKeysAsJson(json);
+        })(),
+      ),
+    );
   }
 
   /**

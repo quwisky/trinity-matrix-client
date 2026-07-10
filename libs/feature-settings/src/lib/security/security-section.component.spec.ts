@@ -3,9 +3,10 @@ import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { render } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { CryptoService, type CryptoStatus } from '@trinity/data-access-crypto';
+import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { EncryptionDialogService } from '@trinity/ui';
 import { SecuritySectionComponent } from './security-section.component';
 
@@ -15,11 +16,20 @@ async function build(
     verified?: boolean;
     backup?: boolean;
   } = {},
+  over: {
+    exportRoomKeys?: ReturnType<typeof vi.fn>;
+    importRoomKeys?: ReturnType<typeof vi.fn>;
+    prompt?: ReturnType<typeof vi.fn>;
+  } = {},
 ) {
   const refresh = vi.fn(() => of(undefined));
   const openUnlock = vi.fn().mockResolvedValue(undefined);
   const openVerify = vi.fn().mockResolvedValue(undefined);
   const navigate = vi.fn().mockResolvedValue(true);
+  const exportRoomKeys = over.exportRoomKeys ?? vi.fn(() => of('ARMORED'));
+  const importRoomKeys = over.importRoomKeys ?? vi.fn(() => of(undefined));
+  const prompt = over.prompt ?? vi.fn().mockResolvedValue('pw');
+  const toastShow = vi.fn();
   const { fixture, container } = await render(SecuritySectionComponent, {
     providers: [
       MockProvider(CryptoService, {
@@ -27,8 +37,12 @@ async function build(
         keyBackupActive: signal(opts.backup ?? false).asReadonly(),
         thisDeviceVerified: signal(opts.verified ?? false).asReadonly(),
         refresh,
+        exportRoomKeys,
+        importRoomKeys,
       }),
       MockProvider(EncryptionDialogService, { openUnlock, openVerify }),
+      MockProvider(TrnAlertService, { prompt }),
+      MockProvider(TrnToastService, { show: toastShow }),
       MockProvider(Router, { navigate }),
     ],
   });
@@ -39,7 +53,19 @@ async function build(
     openUnlock,
     openVerify,
     navigate,
+    exportRoomKeys,
+    importRoomKeys,
+    prompt,
+    toastShow,
   };
+}
+
+/** A synthetic file-input change event carrying a text file (or none). jsdom's File
+ * has no `.text()`, so stub just what onKeyFile reads. */
+function fileEvent(text?: string): Event {
+  const files =
+    text === undefined ? [] : [{ text: () => Promise.resolve(text) }];
+  return { target: { files, value: '' } } as unknown as Event;
 }
 
 describe('SecuritySectionComponent', () => {
@@ -108,5 +134,63 @@ describe('SecuritySectionComponent', () => {
   it('reflects key backup being off', async () => {
     const { container } = await build({ backup: false });
     expect(container.textContent).toContain('Key backup is off');
+  });
+
+  it('exports room keys with the entered passphrase and toasts', async () => {
+    const { cmp, exportRoomKeys, prompt, toastShow } = await build();
+
+    await cmp.exportKeys();
+
+    expect(prompt).toHaveBeenCalled();
+    expect(exportRoomKeys).toHaveBeenCalledWith('pw');
+    expect(toastShow).toHaveBeenCalledWith(
+      'Room keys exported.',
+      expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
+  it('does not export when the passphrase prompt is cancelled', async () => {
+    const prompt = vi.fn().mockResolvedValue(null);
+    const { cmp, exportRoomKeys } = await build({}, { prompt });
+
+    await cmp.exportKeys();
+
+    expect(exportRoomKeys).not.toHaveBeenCalled();
+  });
+
+  it('imports room keys from the picked file with its passphrase', async () => {
+    const { cmp, importRoomKeys, toastShow } = await build();
+
+    await cmp.onKeyFile(fileEvent('ARMORED-FILE'));
+
+    expect(importRoomKeys).toHaveBeenCalledWith('ARMORED-FILE', 'pw');
+    expect(toastShow).toHaveBeenCalledWith(
+      'Room keys imported.',
+      expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
+  it('does nothing when no file is picked', async () => {
+    const { cmp, importRoomKeys } = await build();
+
+    await cmp.onKeyFile(fileEvent(undefined));
+
+    expect(importRoomKeys).not.toHaveBeenCalled();
+  });
+
+  it('surfaces an import failure (e.g. wrong passphrase) as a toast', async () => {
+    const importRoomKeys = vi.fn(() =>
+      throwError(
+        () => new Error('Incorrect passphrase, or the key file is corrupted.'),
+      ),
+    );
+    const { cmp, toastShow } = await build({}, { importRoomKeys });
+
+    await cmp.onKeyFile(fileEvent('ARMORED-FILE'));
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.stringContaining('Incorrect passphrase'),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
   });
 });
