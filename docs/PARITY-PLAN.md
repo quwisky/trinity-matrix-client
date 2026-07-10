@@ -17,7 +17,8 @@ If you build parity roughly in ROI order, these are the highest-value, mostly-ch
 1. **Leave a room** — ✅ **shipped** (menu action → `RoomsService.leave`).
 2. **Redact others' messages as a moderator** — ✅ **shipped** (power-gated delete on others' rows).
 3. **Room settings panel** — ✅ **shipped** (name / topic / avatar, power-gated dialog).
-4. **Member info panel** (M) — the launch surface for DM/mention/ignore/kick/ban/power-level.
+4. **Member info panel** — ✅ **shipped** (click a member → info + Message/Copy, and the launch
+   surface for kick/ban/power-level).
 5. **Cross-user verification** (M) — the single biggest hole in a "security-first" client.
 6. **Per-room notification level** — ✅ **shipped** (mute / mentions-only, via the UX track).
 
@@ -27,17 +28,18 @@ If you build parity roughly in ROI order, these are the highest-value, mostly-ch
 
 **Already shipped:** create room/DM, invite, spaces (create/manage/hierarchy/join/leave), favourites,
 pin, role **display** (Admin/Moderator/Member sections), **leave a room**, **redact others' messages
-as a moderator**, and a **room settings dialog** (edit name/topic/avatar). What's still missing is the
-rest of the ability to _act_ on members.
+as a moderator**, a **room settings dialog** (edit name/topic/avatar), a **member info panel**, and
+acting on members from it — **kick / ban** and **promote / demote** (power-level editing). What's
+still missing is the wider room-config and directory surface.
 
 | Feature                                                  | Size | Value |
 | -------------------------------------------------------- | ---- | ----- |
 | ✅ Leave a normal room (Forget-after-leaving: follow-up) | S    | High  |
 | ✅ Redact other users' messages as a moderator           | S    | High  |
 | ✅ Room settings / info panel: edit name, topic, avatar  | M    | High  |
-| Member info panel with per-member actions                | M    | High  |
-| Kick / ban / unban (with a ban list)                     | M    | High  |
-| Promote / demote members (power-level editing)           | M    | Med   |
+| ✅ Member info panel with per-member actions             | M    | High  |
+| ✅ Kick / ban (unban + ban-list view: follow-up)         | M    | High  |
+| ✅ Promote / demote members (power-level editing)        | M    | Med   |
 | Ignore / block a user (account-wide)                     | M    | Med   |
 | Join rules / history visibility / guest access           | M    | Med   |
 | Directory publish + canonical/local aliases              | M    | Med   |
@@ -61,15 +63,20 @@ rest of the ability to _act_ on members.
   power-gated dialog editing name/topic (`setRoomName`/`setRoomTopic`) and avatar
   (`uploadContent` → `sendStateEvent(m.room.avatar)`) via `RoomSettingsService`. This is the container
   that now unblocks join-rules, aliases, ban-list, and power-level editing.
-- **Member info panel (M):** clicking a member does nothing today (`MemberListComponent` has no action
-  output). This panel is the home for DM / mention / ignore / verify / kick / ban / power-level — build it
-  early because most member-level features need a launch surface.
-- **Kick/ban (M):** `client.kick/ban/unban` + power-level checks + a ban-list view (depends on room settings).
-- **Power-level editing (M):** natural completion of the role-sections feature; `setPowerLevel` is unused
-  today. Admin-only; hangs off the member panel.
+- **Member info panel (M) — ✅ done:** clicking a member opens a room-scoped `MemberInfoComponent`
+  (avatar, id, live presence, role) via `MemberInfoService`, offering Message (→ DM) and Copy user id,
+  and — when the viewer's power permits — the kick / ban / role actions below. The launch surface the
+  rest of the member features hang off.
+- **Kick/ban (M) — ✅ done:** `RoomModerationService.kick/ban` (cold `client.kick/ban`, optional reason)
+  gated by `canModerate` (strictly out-ranks the target AND meets the room's kick/ban power). Shown in
+  the member panel; the homeserver enforces the real rule. _Unban + a ban-list view remain a follow-up._
+- **Power-level editing (M) — ✅ done:** `RoomModerationService.setPowerLevel` + a "Make <role>" control
+  in the member panel offering presets at or below the viewer's own level (can't raise anyone above
+  yourself). Gated on `maySendStateEvent(m.room.power_levels)` + out-ranking the target.
 
-**Sequencing:** ~~Leave + Redact-others~~ ✅ → ~~Room settings panel~~ ✅ → **Member info panel (next)** →
-Kick/ban + Power-levels → join-rules/aliases/report → directory browsing (larger, discovery-focused).
+**Sequencing:** ~~Leave + Redact-others~~ ✅ → ~~Room settings panel~~ ✅ → ~~Member info panel~~ ✅ →
+~~Kick/ban + Power-levels~~ ✅ → **join-rules/aliases/report + Ignore/block (next)** → directory browsing
+(larger, discovery-focused).
 
 ---
 
@@ -152,7 +159,8 @@ screen (larger, keyword rules) → deactivate + 3PIDs (account-management cluste
 
 ## Recommended entry point
 
-The **safety + control quick wins** are done — Leave-a-room, Redact-others, Per-room mute, and one of the
-two unblocking containers (the **Room settings panel**). Next, build the second container — the **Member
-info panel** — then layer the member actions it launches (Ignore/block, Kick/ban, power-level editing) and
-**cross-user verification** on top.
+The **safety + control quick wins** and the whole **moderation cluster** are done — Leave-a-room,
+Redact-others, Per-room mute, the **Room settings panel**, the **Member info panel**, and acting on
+members from it (**kick / ban** and **power-level editing**). What's left is the wider room-config surface
+(join-rules / history-visibility / aliases, report, unban + ban-list), the account-wide **Ignore/block**
+safety control, and — the biggest remaining security gap — **cross-user verification**.
