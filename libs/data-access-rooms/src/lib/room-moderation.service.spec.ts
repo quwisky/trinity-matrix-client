@@ -18,6 +18,7 @@ function setup(
   const kick = vi.fn().mockResolvedValue({});
   const ban = vi.fn().mockResolvedValue({});
   const setPowerLevel = vi.fn().mockResolvedValue({});
+  const reportEvent = vi.fn().mockResolvedValue({});
   const me = opts.me ?? '@me:hs';
   const myLevel = opts.myLevel ?? 100;
   const targetLevel = opts.targetLevel ?? 0;
@@ -37,6 +38,7 @@ function setup(
     kick,
     ban,
     setPowerLevel,
+    reportEvent,
     getRoom: () => room,
     getUserId: () => me,
   };
@@ -54,6 +56,7 @@ function setup(
     kick,
     ban,
     setPowerLevel,
+    reportEvent,
   };
 }
 
@@ -83,6 +86,16 @@ describe('RoomModerationService', () => {
 
     await firstValueFrom(action);
     expect(setPowerLevel).toHaveBeenCalledWith('!r:hs', '@bob:hs', 50);
+  });
+
+  it('reportMessage is cold and reports the event with a reason on subscribe', async () => {
+    const { svc, reportEvent } = setup();
+
+    const action = svc.reportMessage('!r:hs', '$evt', 'spam');
+    expect(reportEvent).not.toHaveBeenCalled(); // cold
+
+    await firstValueFrom(action);
+    expect(reportEvent).toHaveBeenCalledWith('!r:hs', '$evt', -100, 'spam');
   });
 
   it('canModerate lets an admin kick/ban/set-power over a lower-power member', () => {

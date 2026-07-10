@@ -104,6 +104,14 @@
       <ng-icon name="lucideForward" />
       Forward
     </button>
+    <button
+      hlmDropdownMenuItem
+      (triggered)="action.emit({ type: 'report' })"
+      data-testid="msg-report"
+    >
+      <ng-icon name="lucideFlag" />
+      Report message
+    </button>
     @if (caps().canEdit) {
       <button
         hlmDropdownMenuItem

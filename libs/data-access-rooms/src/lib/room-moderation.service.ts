@@ -46,6 +46,25 @@ export class RoomModerationService {
     });
   }
 
+  /**
+   * Report a message to the room's server admins (`reportEvent`, MSC/CS report API),
+   * with a reason. Score -100 flags it as the most offensive. Cold — runs on subscribe.
+   */
+  reportMessage(
+    roomId: string,
+    eventId: string,
+    reason: string,
+  ): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      return from(
+        this.matrix.instance.reportEvent(roomId, eventId, -100, reason),
+      ).pipe(map(() => void 0));
+    });
+  }
+
   /** Set a member's power level in the room (promote / demote). Cold. */
   setPowerLevel(
     roomId: string,

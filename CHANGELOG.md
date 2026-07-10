@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Report a message.** The message ⋯ menu now has **Report message** — flag a message to
+  the room's server administrators, with an optional reason (`reportEvent`), from the main
+  timeline or a thread.
 - **Block (ignore) a member.** A member's info panel now has a **Block** / **Unblock**
   action that ignores them account-wide (`m.ignored_user_list`) — hiding their messages
   everywhere and syncing across your devices. It needs no room-admin rights, so it works
