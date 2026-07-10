@@ -136,6 +136,7 @@ function fakeRoom(
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   encrypted = false,
   members: ReturnType<typeof fakeMember>[] = [],
+  fullyReadEventId: string | null = null,
 ) {
   return {
     roomId: '!r:hs',
@@ -149,6 +150,10 @@ function fakeRoom(
       getMxcAvatarUrl: () => null,
     }),
     getMembers: () => members,
+    getAccountData: (type: string) =>
+      type === 'm.fully_read' && fullyReadEventId
+        ? { getContent: () => ({ event_id: fullyReadEventId }) }
+        : undefined,
     relations: {
       getChildEventsForEvent: (
         id: string,
@@ -184,6 +189,7 @@ function fakeClient(room: ReturnType<typeof fakeRoom>, sent: unknown[][]) {
       return Promise.resolve({});
     },
     sendReadReceipt: () => Promise.resolve({}),
+    setRoomReadMarkers: vi.fn(() => Promise.resolve({})),
     scrollback: () => Promise.resolve(room),
     sendTextMessage: (_rid: string, body: string) => {
       sent.push(['text', body]);
@@ -1293,6 +1299,79 @@ describe('TimelineService', () => {
         { userId: '@x:hs', typing: true, name: 'X', roomId: '!other:hs' },
       );
       expect(svc.typingNames()).toEqual([]);
+    });
+  });
+
+  describe('unread divider', () => {
+    /** Open a room whose fully-read marker sits at `fullyReadEventId`. */
+    function setupUnread(
+      events: ReturnType<typeof fakeEvent>[],
+      fullyReadEventId: string | null,
+    ) {
+      const room = fakeRoom(events, {}, false, [], fullyReadEventId);
+      const client = fakeClient(room, []);
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(client), mediaProvider()],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return { svc, client };
+    }
+
+    const msgs = [
+      fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+      fakeEvent({ id: '$2', sender: '@alice:hs', body: 'b' }),
+      fakeEvent({ id: '$3', sender: '@alice:hs', body: 'c' }),
+    ];
+
+    it('points at the first message after the read marker', () => {
+      const { svc } = setupUnread(msgs, '$1');
+      expect(svc.firstUnreadId()).toBe('$2');
+    });
+
+    it('is null when the marker is the newest message', () => {
+      const { svc } = setupUnread(msgs, '$3');
+      expect(svc.firstUnreadId()).toBeNull();
+    });
+
+    it('is null when there is no read marker', () => {
+      const { svc } = setupUnread(msgs, null);
+      expect(svc.firstUnreadId()).toBeNull();
+    });
+
+    it('is null when the marker is not among the loaded messages', () => {
+      const { svc } = setupUnread(msgs, '$missing');
+      expect(svc.firstUnreadId()).toBeNull();
+    });
+
+    it('skips the user’s own messages after the marker', () => {
+      const { svc } = setupUnread(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          fakeEvent({ id: '$2', sender: '@me:hs', body: 'mine' }),
+          fakeEvent({ id: '$3', sender: '@alice:hs', body: 'theirs' }),
+        ],
+        '$1',
+      );
+      expect(svc.firstUnreadId()).toBe('$3');
+    });
+
+    it('stays put as the room is read (marker captured on open)', () => {
+      const { svc } = setupUnread(msgs, '$1');
+      // markRead ran on open and advanced the server marker, but the divider anchor
+      // was captured beforehand, so it still points at $2.
+      expect(svc.firstUnreadId()).toBe('$2');
+    });
+
+    it('advances the persisted fully-read marker when marking read', () => {
+      const { client } = setupUnread(msgs, '$1');
+      expect(client.setRoomReadMarkers).toHaveBeenCalledWith('!r:hs', '$3');
+    });
+
+    it('clears the divider when the room closes', () => {
+      const { svc } = setupUnread(msgs, '$1');
+      svc.close();
+      expect(svc.firstUnreadId()).toBeNull();
     });
   });
 });

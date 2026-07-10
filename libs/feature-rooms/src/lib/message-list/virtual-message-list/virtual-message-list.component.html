@@ -2,6 +2,17 @@
   announcement()
 }}</span>
 
+@if (showJumpToUnread()) {
+  <button
+    type="button"
+    class="jump-unread"
+    data-testid="jump-to-unread"
+    (click)="jumpToUnread()"
+  >
+    ↑ New messages
+  </button>
+}
+
 <div class="scroll" #scroll (scroll)="onScroll()">
   @if (loadingOlder()) {
     <div class="load-older">Loading older messages…</div>
@@ -10,6 +21,11 @@
   <div class="vpad" [style.height.px]="topPad()"></div>
 
   @for (row of windowedRows(); track row.id) {
+    @if (row.id === firstUnreadId()) {
+      <div class="new-divider" data-testid="new-messages-divider">
+        <span class="new-divider__label">New messages</span>
+      </div>
+    }
     <trn-message-row
       [row]="row"
       [threadSummary]="threadSummaries()[row.id] ?? null"

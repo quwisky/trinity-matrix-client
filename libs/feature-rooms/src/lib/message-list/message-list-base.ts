@@ -70,6 +70,11 @@ export abstract class MessageListBase {
   readonly members = input<MentionMember[]>([]);
   /** Display names of members currently typing in the room (excludes the local user). */
   readonly typingNames = input<string[]>([]);
+  /**
+   * Event id of the first unread message — a "New messages" divider renders before it,
+   * and a jump-to-unread pill appears while it's off-screen. Null when nothing is unread.
+   */
+  readonly firstUnreadId = input<string | null>(null);
   /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
   readonly uploadProgress = input<number | null>(null);
   /**
@@ -120,6 +125,10 @@ export abstract class MessageListBase {
 
   /** Live-region text announcing a newly-arrived incoming message to screen readers. */
   readonly announcement = signal('');
+
+  /** Whether the jump-to-unread pill is shown — true while unread exist and the
+   * "New messages" divider is scrolled out of the viewport. */
+  readonly showJumpToUnread = signal(false);
 
   protected readonly alert = inject(TrnAlertService);
   private readonly reactionPicker = inject(ReactionPickerService);
@@ -173,6 +182,51 @@ export abstract class MessageListBase {
       this.roomId();
       untracked(() => this.resetOnRoomChange());
     });
+
+    // Re-evaluate the jump-to-unread pill when the unread anchor or the message set
+    // changes (e.g. the divider row (dis)appears). Deferred a frame so the row/divider
+    // is laid out before we measure it.
+    effect(() => {
+      this.firstUnreadId();
+      this.messages();
+      requestAnimationFrame(() => this.updateJumpToUnread());
+    });
+  }
+
+  /**
+   * Show the jump-to-unread pill while there are unread messages whose "New messages"
+   * divider is not currently within the viewport (so on open — pinned to the bottom with
+   * unread above — it shows; scrolling the divider into view hides it). Called from each
+   * list's scroll handler and when the unread anchor changes.
+   */
+  protected updateJumpToUnread(): void {
+    const id = this.firstUnreadId();
+    const scroll = this.scrollEl()?.nativeElement;
+    if (!id || !scroll) {
+      this.showJumpToUnread.set(false);
+      return;
+    }
+    const divider = scroll.querySelector<HTMLElement>(
+      '[data-testid="new-messages-divider"]',
+    );
+    if (!divider) {
+      // Not rendered — the (windowed) viewport doesn't include the divider, so it's
+      // off-screen: offer the jump.
+      this.showJumpToUnread.set(true);
+      return;
+    }
+    const viewTop = scroll.scrollTop;
+    const viewBottom = viewTop + scroll.clientHeight;
+    const pos = divider.offsetTop;
+    this.showJumpToUnread.set(pos < viewTop || pos > viewBottom);
+  }
+
+  /** Scroll the "New messages" divider (first unread) into view. */
+  jumpToUnread(): void {
+    const id = this.firstUnreadId();
+    if (id) {
+      this.jumpTo(id);
+    }
   }
 
   /** Reset per-room state on a room switch. Subclasses override to add scroll state. */

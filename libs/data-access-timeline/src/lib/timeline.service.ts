@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import {
   Direction,
@@ -106,6 +106,36 @@ export class TimelineService {
   // pagination/backfill (which leaves the latest unchanged) doesn't re-ack.
   private lastReadEventId: string | null = null;
 
+  // The persisted fully-read marker (`m.fully_read`) as it stood when the room was
+  // opened — captured once so the "New messages" divider stays put for the whole
+  // session even as markRead advances the server-side marker. Null when the room has
+  // no marker yet (first visit) or none is loaded.
+  private readonly _readMarker = signal<string | null>(null);
+
+  /**
+   * Event id of the first unread message: the message right after the on-open
+   * {@link _readMarker} that isn't the user's own. Drives the "New messages" divider
+   * and the jump-to-unread control. Null when nothing is unread (or the marker isn't a
+   * loaded message).
+   */
+  readonly firstUnreadId = computed<string | null>(() => {
+    const marker = this._readMarker();
+    if (!marker) {
+      return null;
+    }
+    const msgs = this._messages();
+    const markerIdx = msgs.findIndex((m) => m.id === marker);
+    if (markerIdx < 0) {
+      return null; // the marker isn't among the loaded messages — no divider
+    }
+    for (let i = markerIdx + 1; i < msgs.length; i++) {
+      if (!msgs[i].isOwn) {
+        return msgs[i].id; // first message after the marker that someone else sent
+      }
+    }
+    return null;
+  });
+
   // User ids the current projection renders a member for: every message's sender
   // (its header) plus every reply's quoted sender (its preview). Recomputed each
   // refresh; the member listener re-projects only when one of *these* members
@@ -174,6 +204,9 @@ export class TimelineService {
     room.on(RoomStateEvent.Members, this.onMember);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     client.on(RoomMemberEvent.Typing, this.onTyping);
+    // Capture the persisted read marker BEFORE the first refresh (which marks read and
+    // advances it), so the "New messages" divider anchors where the user left off.
+    this._readMarker.set(this.readMarkerOf(room));
     // Re-ack the open room on refocus: while unfocused markRead holds the receipt
     // so its unread accrues, so we mark it read again when the window returns.
     if (typeof window !== 'undefined') {
@@ -201,6 +234,7 @@ export class TimelineService {
     this.room = null;
     this.roomId = null;
     this.lastReadEventId = null;
+    this._readMarker.set(null);
     this.relevantSenders.clear();
     this.viewCache.clear();
     this._messages.set([]);
@@ -524,9 +558,21 @@ export class TimelineService {
     this.lastReadEventId = id;
     try {
       void this.matrix.instance.sendReadReceipt(latest)?.catch(() => undefined);
+      // Also advance the persisted fully-read marker so the unread anchor survives
+      // reloads and other devices (the divider reads it on the next open).
+      void this.matrix.instance
+        .setRoomReadMarkers(this.room.roomId, id)
+        ?.catch(() => undefined);
     } catch {
       // A missing/unsupported receipt API must never break room viewing.
     }
+  }
+
+  /** The room's persisted fully-read marker event id (`m.fully_read`), or null. */
+  private readMarkerOf(room: Room): string | null {
+    const content = room.getAccountData?.(EventType.FullyRead)?.getContent();
+    const eventId = content?.['event_id'];
+    return typeof eventId === 'string' ? eventId : null;
   }
 }
 

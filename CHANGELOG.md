@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **"New messages" divider and jump-to-unread.** Trinity now persists a fully-read
+  marker (`m.fully_read`) alongside the read receipt, so returning to a busy room shows a
+  "New messages" divider at exactly where you left off — and, when that divider is
+  scrolled out of view, a "↑ New messages" pill that jumps you straight to it. The
+  divider stays put for the visit even as new messages are marked read, and the marker
+  now survives reloads and syncs across your devices.
 - **Set your own presence and status.** A new **Settings → Presence** section lets you
   publish your online state — Online, Away, or Offline — and an optional status message,
   the counterpart to the presence dots already shown for other people. Homeservers that

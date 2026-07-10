@@ -535,4 +535,50 @@ describe('SimpleMessageListComponent', () => {
       expect(writeText).toHaveBeenCalledWith('body $1');
     });
   });
+
+  describe('unread divider', () => {
+    const three = [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      msg('$2', '@a:hs', 'Alice', 2000),
+      msg('$3', '@a:hs', 'Alice', 3000),
+    ];
+
+    it('renders a "New messages" divider before the first unread row', async () => {
+      const { container } = await render(SimpleMessageListComponent, {
+        inputs: { messages: three, firstUnreadId: '$2' },
+      });
+
+      const divider = container.querySelector(
+        '[data-testid=new-messages-divider]',
+      );
+      expect(divider).not.toBeNull();
+      // The divider sits immediately before the $2 row.
+      expect(
+        divider?.nextElementSibling
+          ?.querySelector('[data-mid]')
+          ?.getAttribute('data-mid'),
+      ).toBe('$2');
+    });
+
+    it('renders no divider when nothing is unread', async () => {
+      const { container } = await render(SimpleMessageListComponent, {
+        inputs: { messages: three, firstUnreadId: null },
+      });
+      expect(
+        container.querySelector('[data-testid=new-messages-divider]'),
+      ).toBeNull();
+    });
+
+    it('jumpToUnread scrolls to the first unread message', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: { messages: three, firstUnreadId: '$2' },
+      });
+      const cmp = fixture.componentInstance;
+      const jumpTo = vi.spyOn(cmp, 'jumpTo');
+
+      cmp.jumpToUnread();
+
+      expect(jumpTo).toHaveBeenCalledWith('$2');
+    });
+  });
 });

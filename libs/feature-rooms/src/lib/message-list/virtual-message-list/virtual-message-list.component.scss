@@ -49,3 +49,50 @@
   line-height: 1.2rem;
   color: var(--trinity-text-muted);
 }
+
+// Anchor the absolutely-positioned jump-to-unread pill to the list.
+:host {
+  position: relative;
+}
+
+.new-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  color: var(--trinity-accent);
+  font-size: 12px;
+  font-weight: 600;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--trinity-accent);
+    opacity: 0.5;
+  }
+}
+
+.new-divider__label {
+  flex: 0 0 auto;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.jump-unread {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 5;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--trinity-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+  transform: translateX(-50%);
+}
