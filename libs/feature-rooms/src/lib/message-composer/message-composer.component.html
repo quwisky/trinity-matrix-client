@@ -155,6 +155,17 @@
   >
     <ng-icon name="lucidePlus" aria-hidden="true" />
   </button>
+  <button
+    type="button"
+    class="composer__attach"
+    hlmTooltip="Create poll"
+    aria-label="Create poll"
+    data-testid="composer-poll"
+    [disabled]="editing()"
+    (click)="openPollDialog()"
+  >
+    <ng-icon name="lucideVote" aria-hidden="true" />
+  </button>
   <textarea
     #ta
     hlmTextarea

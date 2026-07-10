@@ -29,6 +29,8 @@
         [row]="row"
         [caps]="rowCaps(row)"
         (action)="onRowAction(row, $event)"
+        (pollVote)="onPollVote($event)"
+        (pollEnd)="onPollEnd($event)"
       />
     } @empty {
       <div class="thread__empty">No replies in this thread yet.</div>

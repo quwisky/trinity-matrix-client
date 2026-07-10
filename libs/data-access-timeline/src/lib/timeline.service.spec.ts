@@ -404,6 +404,40 @@ describe('TimelineService', () => {
     ).rejects.toThrow();
   });
 
+  it('creates a poll via an m.poll.start event', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+    await firstValueFrom(svc.createPoll('Best fruit?', ['Apple', 'Pear']));
+    const event = sent.find((c) => c[0] === 'event');
+    expect(event?.[1]).toBe('m.poll.start');
+    const content = event?.[2] as Record<string, { answers: unknown[] }>;
+    expect(content['m.poll.start'].answers).toHaveLength(2);
+  });
+
+  it('rejects a poll with fewer than two options', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+    await firstValueFrom(svc.createPoll('Best fruit?', ['Apple', '  ']));
+    expect(sent.some((c) => c[0] === 'event')).toBe(false);
+  });
+
+  it('casts a poll vote via an m.poll.response event', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+    await firstValueFrom(svc.votePoll('$p', 'a1'));
+    const event = sent.find((c) => c[0] === 'event');
+    expect(event?.[1]).toBe('m.poll.response');
+    const content = event?.[2] as Record<string, { answers: string[] }>;
+    expect(content['m.poll.response'].answers).toEqual(['a1']);
+  });
+
+  it('ends a poll via an m.poll.end event', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+    await firstValueFrom(svc.endPoll('$p'));
+    expect(sent.find((c) => c[0] === 'event')?.[1]).toBe('m.poll.end');
+  });
+
   it('adds m.mentions and a matrix.to pill when a message mentions someone', async () => {
     const sent: unknown[][] = [];
     const svc = setup([], sent);

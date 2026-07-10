@@ -9,6 +9,7 @@ import {
 } from 'matrix-js-sdk';
 import DOMPurify from 'dompurify';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
+import { buildPollView, isPollStart, type PollView } from './poll';
 
 /**
  * Shared, framework-free projection of a `matrix-js-sdk` {@link MatrixEvent} into a
@@ -18,7 +19,7 @@ import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
  */
 
 export type MessageKind =
-  'text' | 'emote' | 'notice' | 'redacted' | 'unsupported' | MediaKind;
+  'text' | 'emote' | 'notice' | 'redacted' | 'unsupported' | 'poll' | MediaKind;
 
 /** An aggregated reaction (`m.annotation`) on a message. */
 export interface ReactionView {
@@ -70,6 +71,8 @@ export interface MessageView {
   captionHtml: string | null;
   /** Members whose read receipt sits on this message ("seen by"), excluding you. */
   readReceipts: ReceiptView[];
+  /** The projected poll (question + live tallies) when `kind` is `'poll'`, else null. */
+  poll: PollView | null;
 }
 
 /** A member who has read up to a message, for the "seen by" receipt avatars. */
@@ -127,6 +130,9 @@ export function buildMessageView(
   // `||` (not `??`) so an empty display name still falls back to the mxid.
   const senderName = member?.name || senderId;
   const decryptionFailed = event.isDecryptionFailure();
+  // A poll renders as its own kind, driven by the projected PollView rather than the
+  // usual message body — so branch before renderBody (which expects m.room.message).
+  const poll = isPollStart(event) ? buildPollView(client, room, event) : null;
   const {
     body,
     html,
@@ -134,7 +140,16 @@ export function buildMessageView(
     media,
     caption = null,
     captionHtml = null,
-  } = renderBody(event, decryptionFailed);
+  } = poll
+    ? {
+        body: poll.question,
+        html: null,
+        kind: 'poll' as const,
+        media: null,
+        caption: null,
+        captionHtml: null,
+      }
+    : renderBody(event, decryptionFailed);
   return {
     id: event.getId() ?? '',
     senderId,
@@ -155,11 +170,15 @@ export function buildMessageView(
     caption,
     captionHtml,
     readReceipts: readReceiptsFor(client, room, event),
+    poll,
   };
 }
 
-/** True when an event should render as a message row (not an aggregated edit). */
+/** True when an event should render as a message row (a plain message, or a poll). */
 export function isDisplayableMessage(event: MatrixEvent): boolean {
+  if (isPollStart(event)) {
+    return true;
+  }
   return (
     event.getType() === EventType.RoomMessage &&
     !event.isRelation(RelationType.Replace)

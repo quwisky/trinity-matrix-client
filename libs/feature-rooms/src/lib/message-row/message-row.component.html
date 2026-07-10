@@ -42,7 +42,14 @@
           <span class="msg__edited">(edited)</span>
         }
       </div>
-      @if (r.media) {
+      @if (r.poll; as poll) {
+        <trn-poll
+          [poll]="poll"
+          [canEnd]="r.isOwn"
+          (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
+          (end)="pollEnd.emit(poll.id)"
+        />
+      } @else if (r.media) {
         <trn-media-attachment class="msg__media" [media]="r.media" />
         @if (r.captionHtml) {
           <div
@@ -94,7 +101,14 @@
   } @else {
     <span class="msg__gutter">{{ r.timestamp | date: 'shortTime' }}</span>
     <div class="msg__body">
-      @if (r.media) {
+      @if (r.poll; as poll) {
+        <trn-poll
+          [poll]="poll"
+          [canEnd]="r.isOwn"
+          (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
+          (end)="pollEnd.emit(poll.id)"
+        />
+      } @else if (r.media) {
         <trn-media-attachment class="msg__media" [media]="r.media" />
         @if (r.captionHtml) {
           <div

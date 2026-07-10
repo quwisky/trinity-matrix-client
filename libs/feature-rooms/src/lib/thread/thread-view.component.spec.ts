@@ -30,6 +30,7 @@ function msg(id: string, senderId: string, body: string): MessageView {
     caption: null,
     captionHtml: null,
     readReceipts: [],
+    poll: null,
   };
 }
 

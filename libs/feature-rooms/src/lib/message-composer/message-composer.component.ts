@@ -20,6 +20,7 @@ import {
   lucidePlus,
   lucideSend,
   lucideSmile,
+  lucideVote,
 } from '@ng-icons/lucide';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
 import { HlmTextarea } from '@trinity/helm/textarea';
@@ -40,6 +41,7 @@ import {
 import { type Mention } from '@trinity/util-matrix';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
+import { CreatePollService } from '../poll/create-poll.service';
 
 /** A room member offered by the @-mention autocomplete. */
 export interface MentionMember {
@@ -98,6 +100,7 @@ const MENTION_SUGGESTION_LIMIT = 8;
       lucidePlus,
       lucideSend,
       lucideSmile,
+      lucideVote,
     }),
   ],
   templateUrl: './message-composer.component.html',
@@ -209,6 +212,7 @@ export class MessageComposerComponent {
     viewChild<ElementRef<HTMLInputElement>>('fileInput');
   private readonly picker = inject(MediaPickerService);
   private readonly toast = inject(TrnToastService);
+  private readonly createPollSvc = inject(CreatePollService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly emojiSearch = inject(EmojiSearch);
   private readonly emojiService = inject(EmojiService);
@@ -511,6 +515,11 @@ export class MessageComposerComponent {
     if (native) {
       this.insertEmoji(native);
     }
+  }
+
+  /** Open the create-poll dialog (starts a poll in the active room on confirm). */
+  openPollDialog(): void {
+    void this.createPollSvc.open();
   }
 
   /** Toggle the emoji picker, closing the GIF grid (only one overlay at a time). */

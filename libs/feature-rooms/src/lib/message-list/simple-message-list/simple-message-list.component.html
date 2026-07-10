@@ -30,6 +30,8 @@
       [caps]="rowCaps(row)"
       (action)="onRowAction(row, $event)"
       (matrixLink)="matrixLink.emit($event)"
+      (pollVote)="pollVote.emit($event)"
+      (pollEnd)="pollEnd.emit($event)"
     />
   } @empty {
     <div class="empty">No messages yet.</div>

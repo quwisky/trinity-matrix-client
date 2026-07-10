@@ -20,7 +20,7 @@ import { lucideX } from '@ng-icons/lucide';
 import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { ThreadsService } from '@trinity/data-access-timeline';
+import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
 import { RoomsService } from '@trinity/data-access-rooms';
 import { isEditableMessage, type MessageView } from '@trinity/util-matrix';
 import {
@@ -81,6 +81,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly rooms = inject(RoomsService);
   private readonly reactionPicker = inject(ReactionPickerService);
   private readonly forwardSvc = inject(ForwardService);
+  private readonly timeline = inject(TimelineService);
   private readonly dialogRef =
     inject<DialogRef<void, ThreadViewComponent>>(DialogRef);
   private readonly alert = inject(TrnAlertService);
@@ -238,6 +239,19 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
       this.threads.toggleReactionInThread(messageId, key),
       'Could not update the reaction.',
     );
+  }
+
+  /** Cast a vote on a poll in the thread (room-level m.poll.response). */
+  onPollVote({ pollId, answerId }: { pollId: string; answerId: string }): void {
+    this.runAction(
+      this.timeline.votePoll(pollId, answerId),
+      'Could not cast your vote.',
+    );
+  }
+
+  /** Close a poll from the thread view. */
+  onPollEnd(pollId: string): void {
+    this.runAction(this.timeline.endPoll(pollId), 'Could not end the poll.');
   }
 
   /** Open the full emoji picker and, on a pick, react to the thread message with it. */

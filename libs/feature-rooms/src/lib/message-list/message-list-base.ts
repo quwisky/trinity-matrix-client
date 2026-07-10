@@ -111,6 +111,10 @@ export abstract class MessageListBase {
   readonly typing = output<boolean>();
   /** A `matrix.to` permalink clicked in a message body, for the host to route in-app. */
   readonly matrixLink = output<MatrixLinkTarget>();
+  /** A vote cast on a poll (the host sends the response). */
+  readonly pollVote = output<{ pollId: string; answerId: string }>();
+  /** A request to close a poll (the host sends the end event). */
+  readonly pollEnd = output<string>();
 
   /** "X is typing…" text for the row above the composer, or '' when nobody is typing. */
   readonly typingLabel = computed(() => formatTypingNotice(this.typingNames()));

@@ -32,6 +32,7 @@ function msg(
     caption: null,
     captionHtml: null,
     readReceipts: [],
+    poll: null,
   };
 }
 

@@ -881,6 +881,19 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.timeline.setTyping(typing);
   }
 
+  /** Cast a vote on a poll (m.poll.response). */
+  onPollVote({ pollId, answerId }: { pollId: string; answerId: string }): void {
+    this.runAction(
+      this.timeline.votePoll(pollId, answerId),
+      'Could not cast your vote.',
+    );
+  }
+
+  /** Close a poll (m.poll.end). */
+  onPollEnd(pollId: string): void {
+    this.runAction(this.timeline.endPoll(pollId), 'Could not end the poll.');
+  }
+
   onSendMedia({ file, caption }: { file: File; caption: string }): void {
     // The upload phase has no echo, so drive a determinate progress bar from the
     // upload fraction and surface a failure as a toast. Once the event is sent the

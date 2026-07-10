@@ -201,6 +201,8 @@
             (reply)="onReply($event)"
             (typing)="onTyping($event)"
             (matrixLink)="onMatrixLink($event)"
+            (pollVote)="onPollVote($event)"
+            (pollEnd)="onPollEnd($event)"
           />
         } @else {
           <trn-simple-message-list
@@ -230,6 +232,8 @@
             (reply)="onReply($event)"
             (typing)="onTyping($event)"
             (matrixLink)="onMatrixLink($event)"
+            (pollVote)="onPollVote($event)"
+            (pollEnd)="onPollEnd($event)"
           />
         }
         @if (membersOpen()) {

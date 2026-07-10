@@ -45,6 +45,7 @@ function row(overrides: Partial<MessageRow> = {}): MessageRow {
     caption: null,
     captionHtml: null,
     readReceipts: [],
+    poll: null,
     showHeader: true,
     ...overrides,
   };
@@ -153,6 +154,7 @@ describe('MessageRowComponent', () => {
         caption: null,
         captionHtml: null,
         readReceipts: [],
+        poll: null,
       }),
     });
 

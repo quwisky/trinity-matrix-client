@@ -32,6 +32,11 @@ import {
   collectMessageSenders,
   editMessageContent,
   isDisplayableMessage,
+  isPollStart,
+  pollSignature,
+  pollStartContent,
+  pollResponseContent,
+  pollEndContent,
   mediaCaptionFields,
   myReactionId,
   reactionsFor,
@@ -376,6 +381,58 @@ export class TimelineService {
     }).pipe(map(() => void 0));
   }
 
+  /** Start a single-select poll (MSC3381) in the open room. Cold: runs on subscribe. */
+  createPoll(question: string, options: string[]): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      const clean = options.map((o) => o.trim()).filter(Boolean);
+      if (!ctx || !question.trim() || clean.length < 2) {
+        return of(void 0);
+      }
+      return from(
+        ctx.client.sendEvent(
+          ctx.room.roomId,
+          'm.poll.start' as never,
+          pollStartContent(question.trim(), clean) as never,
+        ),
+      );
+    }).pipe(map(() => void 0));
+  }
+
+  /** Cast (or change) the local user's vote on a poll. Cold: runs on subscribe. */
+  votePoll(pollId: string, answerId: string): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx) {
+        return of(void 0);
+      }
+      return from(
+        ctx.client.sendEvent(
+          ctx.room.roomId,
+          'm.poll.response' as never,
+          pollResponseContent(pollId, answerId) as never,
+        ),
+      );
+    }).pipe(map(() => void 0));
+  }
+
+  /** Close a poll so no further votes count (creator action). Cold: runs on subscribe. */
+  endPoll(pollId: string): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx) {
+        return of(void 0);
+      }
+      return from(
+        ctx.client.sendEvent(
+          ctx.room.roomId,
+          'm.poll.end' as never,
+          pollEndContent(pollId) as never,
+        ),
+      );
+    }).pipe(map(() => void 0));
+  }
+
   /**
    * Upload a picked file and send it as an `m.image`/`m.file`/`m.video`/`m.audio`
    * message — encrypting the bytes first when the room is E2EE. The upload phase has
@@ -648,6 +705,8 @@ function eventRevision(
     member?.getMxcAvatarUrl() ?? '',
     // Re-project when the "seen by" receipts on this event change.
     readReceiptUserIds(client, room, event).join(','),
+    // Re-project a poll when its votes or end state change.
+    isPollStart(event) ? pollSignature(room, event) : '',
   ].join('\x1f');
 }
 

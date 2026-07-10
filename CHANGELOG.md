@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Polls.** Create a poll from the composer (a question with two to eight answers),
+  and it renders in the timeline with a share bar per option and a live vote tally.
+  Tap an answer to vote (or change your vote); the poll's creator can end it, after
+  which the results are final. Built on the Matrix poll events (MSC3381), so it
+  interoperates with other clients.
 - **Forward messages to another conversation.** The message overflow menu now has a
   **Forward** action: pick a room or direct message from the switcher and the message
   is re-sent there as a standalone message. Works for text and media (including in
