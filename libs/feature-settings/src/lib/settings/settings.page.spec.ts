@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, type Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BUILD_INFO } from '@trinity/platform-native';
 import { SettingsPage } from './settings.page';
 
 // A trivial routed stand-in for each section sub-page, so the shell can be tested
@@ -67,7 +68,15 @@ async function harnessAt(url: string): Promise<{
   shell: SettingsPage;
   router: Router;
 }> {
-  TestBed.configureTestingModule({ providers: [provideRouter(ROUTES)] });
+  TestBed.configureTestingModule({
+    providers: [
+      provideRouter(ROUTES),
+      {
+        provide: BUILD_INFO,
+        useValue: { version: '9.9.9', commit: 'abc1234', builtAt: '' },
+      },
+    ],
+  });
   const harness = await RouterTestingHarness.create();
   const shell = await harness.navigateByUrl('/settings', SettingsPage);
   if (url !== '/settings') {
@@ -104,6 +113,16 @@ describe('SettingsPage (shell)', () => {
         el.querySelector(`[data-testid="settings-nav-${path}"]`),
       ).not.toBeNull();
     }
+  });
+
+  it('shows the running build version and commit in a footer', async () => {
+    stubMatchMedia(false);
+    const { harness } = await harnessAt('/settings');
+    const footer = (harness.fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="settings-build"]',
+    );
+    expect(footer?.textContent).toContain('9.9.9');
+    expect(footer?.textContent).toContain('abc1234');
   });
 
   it('keeps the category list at the index on the narrow layout', async () => {
@@ -170,7 +189,15 @@ describe('SettingsPage (shell)', () => {
 
   it('does not redirect a directly-opened section on the wide layout', async () => {
     stubMatchMedia(true); // wide, but a section is deep-linked from the start
-    TestBed.configureTestingModule({ providers: [provideRouter(ROUTES)] });
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(ROUTES),
+        {
+          provide: BUILD_INFO,
+          useValue: { version: '9.9.9', commit: 'abc1234', builtAt: '' },
+        },
+      ],
+    });
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/settings/devices'); // shell constructs here
     const router = TestBed.inject(Router);

@@ -109,6 +109,15 @@ test.describe('Settings', () => {
     });
   });
 
+  test('shows the app version and commit in the settings footer', async ({
+    page,
+  }) => {
+    // "Trinity v<version> · <commit>" — regenerated from git at build time.
+    await expect(page.getByTestId('settings-build')).toHaveText(
+      /Trinity v\d.*·.+/,
+    );
+  });
+
   test('sets your presence state and status message', async ({ page }) => {
     await openSection(page, 'presence');
 

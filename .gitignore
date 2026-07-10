@@ -29,6 +29,9 @@ log.txt
 /out-tsc
 /bazel-out
 
+# Generated at build time from package.json + git (scripts/gen-build-info.mjs)
+/apps/trinity/src/app/build-info.ts
+
 # Electron desktop shell (self-contained; not an Nx project)
 /electron/node_modules
 /electron/dist

@@ -6,8 +6,16 @@
   "prefix": "trn",
   "tags": ["type:app", "scope:matrix"],
   "targets": {
+    "build-info": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node scripts/gen-build-info.mjs"
+      }
+    },
     "build": {
       "executor": "@angular-devkit/build-angular:application",
+      "dependsOn": ["build-info"],
       "outputs": ["{workspaceRoot}/www"],
       "options": {
         "outputPath": {
@@ -85,6 +93,7 @@
     },
     "serve": {
       "executor": "@angular-devkit/build-angular:dev-server",
+      "dependsOn": ["build-info"],
       "configurations": {
         "production": {
           "buildTarget": "trinity:build:production"

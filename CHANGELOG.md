@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **App version and commit in Settings.** The Settings screen now shows the running
+  build's version and git commit in a small footer (e.g. `Trinity v0.0.1 · a1b2c3d`),
+  regenerated from `package.json` + git at build time — handy for bug reports.
 - **Polls.** Create a poll from the composer (a question with two to eight answers),
   and it renders in the timeline with a share bar per option and a live vote tally.
   Tap an answer to vote (or change your vote); the poll's creator can end it, after

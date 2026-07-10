@@ -22,6 +22,16 @@
   padding: 8px;
 }
 
+// Version + commit of the running build, tucked below the section list.
+.settings__build {
+  margin: 0;
+  margin-top: auto;
+  padding: 10px 12px 4px;
+  color: var(--trinity-text-muted);
+  font-size: 11px;
+  user-select: text;
+}
+
 .settings__item {
   display: flex;
   align-items: center;
