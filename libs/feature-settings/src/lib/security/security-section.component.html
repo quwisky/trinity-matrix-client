@@ -1,0 +1,96 @@
+<div data-testid="security-settings">
+  <h2
+    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+  >
+    Security
+  </h2>
+
+  <!-- Encryption / secure backup -->
+  <section
+    class="flex flex-col gap-2 px-4 py-3"
+    data-testid="security-encryption"
+  >
+    <span class="text-sm font-medium">End-to-end encryption</span>
+    @switch (status()) {
+      @case ('ready') {
+        <p class="text-[13px] text-muted-foreground">
+          Your messages are secured with end-to-end encryption on this device.
+        </p>
+      }
+      @case ('needs-setup') {
+        <p class="text-[13px] text-muted-foreground">
+          Set up secure backup so you never lose access to your encrypted
+          messages.
+        </p>
+        <button
+          hlmBtn
+          size="sm"
+          class="self-start"
+          (click)="setUp()"
+          data-testid="security-setup"
+        >
+          Set up recovery
+        </button>
+      }
+      @case ('needs-recovery') {
+        <p class="text-[13px] text-muted-foreground">
+          This device isn’t verified yet. Restore access with your recovery key,
+          or verify with another signed-in session below.
+        </p>
+        <button
+          hlmBtn
+          size="sm"
+          class="self-start"
+          (click)="unlock()"
+          data-testid="security-unlock"
+        >
+          Enter recovery key
+        </button>
+      }
+      @default {
+        <p class="text-[13px] text-muted-foreground">
+          Checking encryption status…
+        </p>
+      }
+    }
+  </section>
+
+  <!-- This session's verification -->
+  <section class="flex flex-col gap-2 px-4 py-3" data-testid="security-session">
+    <span class="text-sm font-medium">This session</span>
+    @if (sessionVerified()) {
+      <p
+        class="text-[13px] text-muted-foreground"
+        data-testid="security-session-verified"
+      >
+        This session is verified.
+      </p>
+    } @else {
+      <p class="text-[13px] text-muted-foreground">
+        This session isn’t verified yet.
+      </p>
+      <button
+        hlmBtn
+        size="sm"
+        variant="outline"
+        class="self-start"
+        (click)="verifySession()"
+        data-testid="security-verify"
+      >
+        Verify with another device
+      </button>
+    }
+  </section>
+
+  <!-- Key backup -->
+  <section class="flex flex-col gap-1 px-4 py-3" data-testid="security-backup">
+    <span class="text-sm font-medium">Key backup</span>
+    <p class="text-[13px] text-muted-foreground">
+      @if (keyBackupActive()) {
+        Your message keys are backed up to the server.
+      } @else {
+        Key backup is off — set up recovery to back up your message keys.
+      }
+    </p>
+  </section>
+</div>
