@@ -7,7 +7,14 @@ import { login, fillLabeledInput, synapseSession } from './support/app.mts';
 // itself when the disposable Synapse wasn't available (no Docker).
 const session = synapseSession();
 
-const SECTIONS = ['profile', 'appearance', 'devices', 'gifs', 'experimental'];
+const SECTIONS = [
+  'profile',
+  'presence',
+  'appearance',
+  'devices',
+  'gifs',
+  'experimental',
+];
 
 // A 1x1 transparent PNG — a valid image the homeserver accepts as an avatar.
 const PNG_1x1 = Buffer.from(
@@ -98,6 +105,21 @@ test.describe('Settings', () => {
 
     // The profile header reflects the persisted name (Save round-trips the HS).
     await expect(page.getByTestId('profile-display-name')).toHaveText(name, {
+      timeout: 20_000,
+    });
+  });
+
+  test('sets your presence state and status message', async ({ page }) => {
+    await openSection(page, 'presence');
+
+    // Each presence state is offered; pick "Away" and add a status message.
+    await expect(page.getByTestId('presence-online')).toBeVisible();
+    await page.getByTestId('presence-unavailable').click();
+    await page.getByTestId('presence-status').fill('at lunch');
+
+    // Save round-trips setPresence to the homeserver; the section confirms.
+    await page.getByTestId('presence-save').click();
+    await expect(page.getByTestId('presence-saved')).toBeVisible({
       timeout: 20_000,
     });
   });

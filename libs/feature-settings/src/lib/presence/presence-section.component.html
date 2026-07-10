@@ -1,0 +1,71 @@
+<div>
+  <h2
+    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+  >
+    Presence
+  </h2>
+
+  <hlm-radio-group
+    class="px-4 py-2"
+    [value]="stateDraft()"
+    (valueChange)="onStateChange($event)"
+  >
+    @for (state of options; track state) {
+      <label
+        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+        [attr.data-testid]="'presence-' + state"
+      >
+        <hlm-radio [value]="state"><hlm-radio-indicator /></hlm-radio>
+        {{ labelFor(state) }}
+      </label>
+    }
+  </hlm-radio-group>
+
+  <div
+    class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
+  >
+    <div class="min-w-0 flex-1">
+      <label hlmLabel for="presence-status">Status message</label>
+      <input
+        id="presence-status"
+        hlmInput
+        type="text"
+        autocomplete="off"
+        [attr.maxlength]="maxLength"
+        class="mt-1"
+        placeholder="What are you up to?"
+        [value]="statusDraft()"
+        (input)="onStatusInput($event)"
+        data-testid="presence-status"
+      />
+    </div>
+    <button
+      hlmBtn
+      size="sm"
+      class="ml-auto shrink-0"
+      [disabled]="!dirty() || saving()"
+      (click)="save()"
+      data-testid="presence-save"
+    >
+      Save
+    </button>
+  </div>
+
+  @if (error(); as message) {
+    <p class="block px-4 py-2 text-[13px] text-destructive" role="alert">
+      {{ message }}
+    </p>
+  } @else if (justSaved()) {
+    <p
+      class="block px-4 py-2 text-[13px] text-muted-foreground"
+      data-testid="presence-saved"
+    >
+      Your presence has been updated.
+    </p>
+  } @else {
+    <p class="block px-4 py-2 text-[13px] text-muted-foreground">
+      Others see this state and message. Some homeservers disable or rate-limit
+      presence, so it may not always take effect.
+    </p>
+  }
+</div>

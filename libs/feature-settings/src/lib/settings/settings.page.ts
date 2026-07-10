@@ -22,6 +22,7 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
   lucideChevronRight,
+  lucideCircleDot,
   lucideFlaskConical,
   lucideImage,
   lucideMonitorSmartphone,
@@ -41,6 +42,7 @@ interface SettingsMenuItem {
 
 const MENU: readonly SettingsMenuItem[] = [
   { path: 'profile', label: 'Profile', icon: 'lucideUser' },
+  { path: 'presence', label: 'Presence', icon: 'lucideCircleDot' },
   { path: 'appearance', label: 'Appearance', icon: 'lucidePalette' },
   { path: 'devices', label: 'Devices', icon: 'lucideMonitorSmartphone' },
   { path: 'gifs', label: 'GIFs', icon: 'lucideImage' },
@@ -75,6 +77,7 @@ const WIDE_QUERY = '(min-width: 768px)';
       lucideArrowLeft,
       lucideChevronRight,
       lucideUser,
+      lucideCircleDot,
       lucidePalette,
       lucideMonitorSmartphone,
       lucideImage,

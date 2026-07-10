@@ -11,7 +11,14 @@ import { SettingsPage } from './settings.page';
 @Component({ selector: 'trn-stub-section', template: 'section' })
 class StubSectionComponent {}
 
-const SECTIONS = ['profile', 'appearance', 'devices', 'gifs', 'experimental'];
+const SECTIONS = [
+  'profile',
+  'presence',
+  'appearance',
+  'devices',
+  'gifs',
+  'experimental',
+];
 
 const ROUTES: Routes = [
   {
@@ -90,7 +97,7 @@ describe('SettingsPage (shell)', () => {
     const el = harness.fixture.nativeElement as HTMLElement;
 
     expect(el.querySelectorAll('[data-testid^="settings-nav-"]').length).toBe(
-      5,
+      SECTIONS.length,
     );
     for (const path of SECTIONS) {
       expect(

@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Set your own presence and status.** A new **Settings → Presence** section lets you
+  publish your online state — Online, Away, or Offline — and an optional status message,
+  the counterpart to the presence dots already shown for other people. Homeservers that
+  disable or rate-limit presence are handled gracefully.
 - **Spoilers are now hidden until you reveal them.** Messages containing spoiler
   content (`data-mx-spoiler`) previously showed it in the clear; it now renders as a
   black bar that you click — or focus and press Enter/Space — to uncover. A first click

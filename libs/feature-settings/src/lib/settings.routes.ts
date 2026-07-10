@@ -5,6 +5,7 @@ import { AppearanceSettingsComponent } from './appearance/appearance-settings.co
 import { ExperimentalSettingsComponent } from './experimental/experimental-settings.component';
 import { DevicesSectionComponent } from './devices/devices-section.component';
 import { GifsSectionComponent } from './gifs/gifs-section.component';
+import { PresenceSectionComponent } from './presence/presence-section.component';
 
 /**
  * Settings routes: the {@link SettingsPage} shell hosts a submenu + a routed detail
@@ -16,6 +17,7 @@ export const settingsRoutes: Routes = [
     component: SettingsPage,
     children: [
       { path: 'profile', component: ProfileSettingsComponent },
+      { path: 'presence', component: PresenceSectionComponent },
       { path: 'appearance', component: AppearanceSettingsComponent },
       { path: 'devices', component: DevicesSectionComponent },
       { path: 'gifs', component: GifsSectionComponent },

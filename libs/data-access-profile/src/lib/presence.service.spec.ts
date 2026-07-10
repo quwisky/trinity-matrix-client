@@ -2,6 +2,7 @@ import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { UserEvent } from 'matrix-js-sdk';
+import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PresenceService } from './presence.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
@@ -10,19 +11,28 @@ import { MatrixClientService } from '@trinity/data-access-matrix-client';
 const SELF = '@self:hs';
 
 /** A fake SDK client: getUser reports seeded presence; on/off track the listener. */
-function fakeClient(users: Record<string, string> = {}) {
+function fakeClient(
+  users: Record<string, string> = {},
+  statuses: Record<string, string> = {},
+) {
   return {
     on: vi.fn(),
     off: vi.fn(),
     getUserId: vi.fn(() => SELF),
     getUser: vi.fn((id: string) =>
-      id in users ? { userId: id, presence: users[id] } : null,
+      id in users
+        ? { userId: id, presence: users[id], presenceStatusMsg: statuses[id] }
+        : null,
     ),
+    setPresence: vi.fn(() => Promise.resolve()),
   };
 }
 
-function setup(users: Record<string, string> = {}) {
-  const client = fakeClient(users);
+function setup(
+  users: Record<string, string> = {},
+  statuses: Record<string, string> = {},
+) {
+  const client = fakeClient(users, statuses);
   const activeUserId = signal<string | null>(null);
   TestBed.configureTestingModule({
     providers: [
@@ -161,5 +171,48 @@ describe('PresenceService', () => {
       expect.any(Function),
     );
     expect(state()).toBe('offline'); // re-seeded from the new client
+  });
+
+  describe('own presence', () => {
+    it('seeds myPresence and myStatusMessage from the client', () => {
+      const { svc } = setup({ [SELF]: 'unavailable' }, { [SELF]: 'brb' });
+      svc.loadOwnPresence();
+      expect(svc.myPresence()).toBe('unavailable');
+      expect(svc.myStatusMessage()).toBe('brb');
+    });
+
+    it('defaults own presence to online when the server has none', () => {
+      const { svc } = setup(); // getUser(self) → null
+      svc.loadOwnPresence();
+      expect(svc.myPresence()).toBe('online');
+      expect(svc.myStatusMessage()).toBe('');
+    });
+
+    it('publishes presence + trimmed status and updates the signals', async () => {
+      const { svc, client } = setup();
+      await firstValueFrom(svc.setOwnPresence('unavailable', '  heads down  '));
+      expect(client.setPresence).toHaveBeenCalledWith({
+        presence: 'unavailable',
+        status_msg: 'heads down',
+      });
+      expect(svc.myPresence()).toBe('unavailable');
+      expect(svc.myStatusMessage()).toBe('heads down');
+    });
+
+    it('omits an empty status message', async () => {
+      const { svc, client } = setup();
+      await firstValueFrom(svc.setOwnPresence('offline', '   '));
+      expect(client.setPresence).toHaveBeenCalledWith({
+        presence: 'offline',
+        status_msg: undefined,
+      });
+      expect(svc.myStatusMessage()).toBe('');
+    });
+
+    it('is cold — nothing is sent until subscribed', () => {
+      const { svc, client } = setup();
+      svc.setOwnPresence('online', 'hi'); // not subscribed
+      expect(client.setPresence).not.toHaveBeenCalled();
+    });
   });
 });

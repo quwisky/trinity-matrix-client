@@ -1,5 +1,6 @@
 import { Injectable, NgZone, Signal, inject, signal } from '@angular/core';
 import { MatrixClient, UserEvent, type User } from 'matrix-js-sdk';
+import { Observable, defer, from, tap, throwError } from 'rxjs';
 import { type PresenceState, toPresenceState } from '@trinity/util-matrix';
 import {
   MatrixClientService,
@@ -29,6 +30,13 @@ export class PresenceService {
     string,
     ReturnType<typeof signal<PresenceState>>
   >();
+
+  // The signed-in user's own presence + status message, as last set from this client.
+  // Seeded by loadOwnPresence(); the presence-settings control reads and writes these.
+  private readonly _myPresence = signal<PresenceState>('online');
+  readonly myPresence = this._myPresence.asReadonly();
+  private readonly _myStatusMessage = signal('');
+  readonly myStatusMessage = this._myStatusMessage.asReadonly();
 
   /** Matrix events fire outside Angular's zone; re-enter so the signal write renders. */
   private readonly onPresence = (_event: unknown, user: User): void => {
@@ -99,6 +107,49 @@ export class PresenceService {
   disconnect(): void {
     this.connectedClient?.off(UserEvent.Presence, this.onPresence);
     this.connectedClient = null;
+  }
+
+  /**
+   * Seed {@link myPresence} / {@link myStatusMessage} from the signed-in user's current
+   * server state, for the presence-settings control to edit. A homeserver usually does
+   * not echo your own presence, so an unknown state defaults to `online`.
+   */
+  loadOwnPresence(): void {
+    if (!this.matrix.isInitialized) {
+      return;
+    }
+    const client = this.matrix.instance;
+    const user = client.getUser(client.getUserId() ?? '');
+    this._myPresence.set(
+      user?.presence ? toPresenceState(user.presence) : 'online',
+    );
+    this._myStatusMessage.set(user?.presenceStatusMsg ?? '');
+  }
+
+  /**
+   * Publish the signed-in user's presence and optional status message. Cold — fires on
+   * subscribe (see the actions pattern) — and updates {@link myPresence} /
+   * {@link myStatusMessage} on success. Homeservers may disable or rate-limit presence,
+   * in which case the call rejects and the caller surfaces it.
+   */
+  setOwnPresence(presence: PresenceState, statusMsg: string): Observable<void> {
+    const trimmed = statusMsg.trim();
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      return from(
+        this.matrix.instance.setPresence({
+          presence,
+          status_msg: trimmed || undefined,
+        }),
+      ).pipe(
+        tap(() => {
+          this._myPresence.set(presence);
+          this._myStatusMessage.set(trimmed);
+        }),
+      );
+    });
   }
 
   /**
