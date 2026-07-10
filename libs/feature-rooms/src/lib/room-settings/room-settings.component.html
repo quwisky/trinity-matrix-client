@@ -46,7 +46,35 @@
       ></textarea>
     </label>
 
-    @if (!canEditName() && !canEditTopic() && !canEditAvatar()) {
+    <label class="room-settings__field">
+      <span class="room-settings__label">Who can join</span>
+      <select
+        hlmInput
+        class="w-full"
+        formControlName="joinRule"
+        data-testid="room-settings-join-rule"
+      >
+        @for (option of joinRuleOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </label>
+
+    <label class="room-settings__field">
+      <span class="room-settings__label">Who can read history</span>
+      <select
+        hlmInput
+        class="w-full"
+        formControlName="historyVisibility"
+        data-testid="room-settings-history"
+      >
+        @for (option of historyOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </label>
+
+    @if (!canSave() && !canEditAvatar()) {
       <p class="room-settings__note">
         You don’t have permission to change this room’s settings.
       </p>
@@ -65,7 +93,7 @@
       <button
         hlmBtn
         type="submit"
-        [disabled]="saving() || (!canEditName() && !canEditTopic())"
+        [disabled]="saving() || !canSave()"
         data-testid="room-settings-save"
       >
         {{ saving() ? 'Saving…' : 'Save' }}

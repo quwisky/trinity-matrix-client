@@ -100,6 +100,71 @@ test.describe('Room settings', () => {
     ).toHaveCount(0);
   });
 
+  test('an admin changes who can join and read history', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}ac`;
+    const user = `access-user-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Access ${runId}`;
+
+    await registerUser(request, user, pass);
+    const { access_token } = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json());
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((r) => r.json());
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+
+    await page.getByTestId('open-room-settings').click();
+    await expect(page.getByTestId('room-settings')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Open the room up: anyone can join, and history is world-readable.
+    await page.getByTestId('room-settings-join-rule').selectOption('public');
+    await page
+      .getByTestId('room-settings-history')
+      .selectOption('world_readable');
+    await page.getByTestId('room-settings-save').click();
+
+    // Both state events round-trip to the homeserver.
+    const stateValue = async (type: string, key: string): Promise<unknown> => {
+      const res = await request.get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/${type}/`,
+        { headers: { Authorization: `Bearer ${access_token}` } },
+      );
+      return res.ok() ? (await res.json())[key] : undefined;
+    };
+    await expect
+      .poll(() => stateValue('m.room.join_rules', 'join_rule'), {
+        timeout: 20_000,
+      })
+      .toBe('public');
+    await expect
+      .poll(
+        () => stateValue('m.room.history_visibility', 'history_visibility'),
+        {
+          timeout: 20_000,
+        },
+      )
+      .toBe('world_readable');
+  });
+
   test('an admin changes the room photo', async ({ page, request }) => {
     const hs = session.hs as string;
     const runId = `${Date.now().toString(36)}a`;

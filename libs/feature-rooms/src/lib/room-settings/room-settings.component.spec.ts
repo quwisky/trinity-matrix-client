@@ -1,6 +1,7 @@
 import { render } from '@testing-library/angular';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import { RoomSettingsService } from '@trinity/data-access-rooms';
+import { HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -10,19 +11,28 @@ async function build(
   inputs: Partial<{
     name: string;
     topic: string;
+    joinRule: JoinRule;
+    historyVisibility: HistoryVisibility;
     canEditName: boolean;
     canEditTopic: boolean;
     canEditAvatar: boolean;
+    canEditJoinRule: boolean;
+    canEditHistory: boolean;
   }> = {},
   over: {
     setName?: ReturnType<typeof vi.fn>;
     setTopic?: ReturnType<typeof vi.fn>;
     setAvatar?: ReturnType<typeof vi.fn>;
+    setJoinRule?: ReturnType<typeof vi.fn>;
+    setHistoryVisibility?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const setName = over.setName ?? vi.fn(() => of(undefined));
   const setTopic = over.setTopic ?? vi.fn(() => of(undefined));
   const setAvatar = over.setAvatar ?? vi.fn(() => of(undefined));
+  const setJoinRule = over.setJoinRule ?? vi.fn(() => of(undefined));
+  const setHistoryVisibility =
+    over.setHistoryVisibility ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
   const { fixture } = await render(RoomSettingsComponent, {
@@ -36,7 +46,13 @@ async function build(
       ...inputs,
     },
     providers: [
-      MockProvider(RoomSettingsService, { setName, setTopic, setAvatar }),
+      MockProvider(RoomSettingsService, {
+        setName,
+        setTopic,
+        setAvatar,
+        setJoinRule,
+        setHistoryVisibility,
+      }),
       MockProvider(DialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
@@ -46,6 +62,8 @@ async function build(
     setName,
     setTopic,
     setAvatar,
+    setJoinRule,
+    setHistoryVisibility,
     close,
     toastShow,
   };
@@ -116,6 +134,55 @@ describe('RoomSettingsComponent', () => {
     cmp.save();
 
     expect(setName).not.toHaveBeenCalled();
+  });
+
+  it('seeds the join rule and history visibility from the current state', async () => {
+    const { cmp } = await build({
+      joinRule: JoinRule.Public,
+      historyVisibility: HistoryVisibility.WorldReadable,
+      canEditJoinRule: true,
+      canEditHistory: true,
+    });
+    expect(cmp.form.controls.joinRule.value).toBe(JoinRule.Public);
+    expect(cmp.form.controls.historyVisibility.value).toBe(
+      HistoryVisibility.WorldReadable,
+    );
+  });
+
+  it('writes a changed join rule and history visibility on save', async () => {
+    const { cmp, setJoinRule, setHistoryVisibility, close } = await build({
+      joinRule: JoinRule.Invite,
+      historyVisibility: HistoryVisibility.Shared,
+      canEditJoinRule: true,
+      canEditHistory: true,
+    });
+    cmp.form.controls.joinRule.setValue(JoinRule.Public);
+    cmp.form.controls.historyVisibility.setValue(HistoryVisibility.Joined);
+
+    cmp.save();
+
+    expect(setJoinRule).toHaveBeenCalledWith('!r:hs', JoinRule.Public);
+    expect(setHistoryVisibility).toHaveBeenCalledWith(
+      '!r:hs',
+      HistoryVisibility.Joined,
+    );
+    expect(close).toHaveBeenCalledWith(true);
+  });
+
+  it('disables the access controls and never writes them when not permitted', async () => {
+    const { cmp, setJoinRule, setHistoryVisibility } = await build({
+      joinRule: JoinRule.Invite,
+      canEditJoinRule: false,
+      canEditHistory: false,
+    });
+    expect(cmp.form.controls.joinRule.disabled).toBe(true);
+    expect(cmp.form.controls.historyVisibility.disabled).toBe(true);
+
+    cmp.form.controls.joinRule.setValue(JoinRule.Public);
+    cmp.save();
+
+    expect(setJoinRule).not.toHaveBeenCalled();
+    expect(setHistoryVisibility).not.toHaveBeenCalled();
   });
 
   it('keeps the dialog open and toasts on a write failure', async () => {

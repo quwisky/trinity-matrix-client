@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { EventType } from 'matrix-js-sdk';
+import { EventType, HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { Observable, defer, from, map, switchMap, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
@@ -8,7 +8,20 @@ export interface EditableRoomFields {
   name: boolean;
   topic: boolean;
   avatar: boolean;
+  joinRule: boolean;
+  history: boolean;
 }
+
+/** A room's access controls: who can join and how far back history is visible. */
+export interface RoomAccess {
+  joinRule: JoinRule;
+  historyVisibility: HistoryVisibility;
+}
+
+/** A room with no join-rules state defaults to invite-only, per the Matrix spec. */
+const DEFAULT_JOIN_RULE = JoinRule.Invite;
+/** A room with no history-visibility state defaults to `shared`, per the spec. */
+const DEFAULT_HISTORY_VISIBILITY = HistoryVisibility.Shared;
 
 /**
  * Writes a room's editable metadata — display name (`m.room.name`) and topic
@@ -75,21 +88,105 @@ export class RoomSettingsService {
     });
   }
 
+  /**
+   * Set who may join the room (`m.room.join_rules`) — e.g. public vs invite-only.
+   * Cold — runs on subscribe.
+   */
+  setJoinRule(roomId: string, joinRule: JoinRule): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      return from(
+        this.matrix.instance.sendStateEvent(
+          roomId,
+          EventType.RoomJoinRules,
+          { join_rule: joinRule },
+          '',
+        ),
+      ).pipe(map(() => void 0));
+    });
+  }
+
+  /**
+   * Set how far back new members can read history (`m.room.history_visibility`).
+   * Cold — runs on subscribe.
+   */
+  setHistoryVisibility(
+    roomId: string,
+    historyVisibility: HistoryVisibility,
+  ): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      return from(
+        this.matrix.instance.sendStateEvent(
+          roomId,
+          EventType.RoomHistoryVisibility,
+          { history_visibility: historyVisibility },
+          '',
+        ),
+      ).pipe(map(() => void 0));
+    });
+  }
+
+  /** The room's current join rule + history visibility, falling back to the spec defaults. */
+  currentAccess(roomId: string): RoomAccess {
+    const fallback: RoomAccess = {
+      joinRule: DEFAULT_JOIN_RULE,
+      historyVisibility: DEFAULT_HISTORY_VISIBILITY,
+    };
+    if (!this.matrix.isInitialized) {
+      return fallback;
+    }
+    const room = this.matrix.instance.getRoom(roomId);
+    if (!room) {
+      return fallback;
+    }
+    const joinRule = room.currentState
+      .getStateEvents(EventType.RoomJoinRules, '')
+      ?.getContent()?.['join_rule'];
+    const historyVisibility = room.currentState
+      .getStateEvents(EventType.RoomHistoryVisibility, '')
+      ?.getContent()?.['history_visibility'];
+    return {
+      joinRule: (joinRule as JoinRule) ?? DEFAULT_JOIN_RULE,
+      historyVisibility:
+        (historyVisibility as HistoryVisibility) ?? DEFAULT_HISTORY_VISIBILITY,
+    };
+  }
+
   /** Which fields the current user's power level lets them edit in `roomId`. */
   editableFields(roomId: string): EditableRoomFields {
+    const none: EditableRoomFields = {
+      name: false,
+      topic: false,
+      avatar: false,
+      joinRule: false,
+      history: false,
+    };
     if (!this.matrix.isInitialized) {
-      return { name: false, topic: false, avatar: false };
+      return none;
     }
     const client = this.matrix.instance;
     const room = client.getRoom(roomId);
     const userId = client.getUserId();
     if (!room || !userId) {
-      return { name: false, topic: false, avatar: false };
+      return none;
     }
     return {
       name: room.currentState.maySendStateEvent(EventType.RoomName, userId),
       topic: room.currentState.maySendStateEvent(EventType.RoomTopic, userId),
       avatar: room.currentState.maySendStateEvent(EventType.RoomAvatar, userId),
+      joinRule: room.currentState.maySendStateEvent(
+        EventType.RoomJoinRules,
+        userId,
+      ),
+      history: room.currentState.maySendStateEvent(
+        EventType.RoomHistoryVisibility,
+        userId,
+      ),
     };
   }
 }

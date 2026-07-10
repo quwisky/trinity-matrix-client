@@ -62,6 +62,7 @@ describe('RoomsPage action error feedback', () => {
   let alertConfirm: ReturnType<typeof vi.fn>;
   let roomsSignal: WritableSignal<RoomSummary[]>;
   let editableFields: ReturnType<typeof vi.fn>;
+  let currentAccess: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
@@ -71,7 +72,17 @@ describe('RoomsPage action error feedback', () => {
     leaveRoom = vi.fn(() => of(undefined));
     alertConfirm = vi.fn().mockResolvedValue(true);
     roomsSignal = signal<RoomSummary[]>([]);
-    editableFields = vi.fn(() => ({ name: true, topic: false, avatar: false }));
+    editableFields = vi.fn(() => ({
+      name: true,
+      topic: false,
+      avatar: false,
+      joinRule: false,
+      history: false,
+    }));
+    currentAccess = vi.fn(() => ({
+      joinRule: 'invite',
+      historyVisibility: 'shared',
+    }));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -79,7 +90,7 @@ describe('RoomsPage action error feedback', () => {
           leave: leaveRoom,
           rooms: roomsSignal,
         }),
-        MockProvider(RoomSettingsService, { editableFields }),
+        MockProvider(RoomSettingsService, { editableFields, currentAccess }),
         MockProvider(SpacesService),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService, { edit, sendMedia }),
@@ -231,11 +242,22 @@ describe('RoomsPage action error feedback', () => {
       },
     ]);
     page.activeRoomId.set('!r:hs');
-    editableFields.mockReturnValue({ name: true, topic: false, avatar: false });
+    editableFields.mockReturnValue({
+      name: true,
+      topic: false,
+      avatar: false,
+      joinRule: true,
+      history: false,
+    });
+    currentAccess.mockReturnValue({
+      joinRule: 'public',
+      historyVisibility: 'world_readable',
+    });
 
     page.onOpenRoomSettings();
 
     expect(editableFields).toHaveBeenCalledWith('!r:hs');
+    expect(currentAccess).toHaveBeenCalledWith('!r:hs');
     expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
       RoomSettingsComponent,
       {
@@ -244,9 +266,13 @@ describe('RoomsPage action error feedback', () => {
           name: 'General',
           topic: 'The topic',
           avatarMxc: null,
+          joinRule: 'public',
+          historyVisibility: 'world_readable',
           canEditName: true,
           canEditTopic: false,
           canEditAvatar: false,
+          canEditJoinRule: true,
+          canEditHistory: false,
         }),
       },
     );

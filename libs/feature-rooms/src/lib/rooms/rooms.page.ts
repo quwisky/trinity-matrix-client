@@ -898,17 +898,22 @@ export class RoomsPage implements OnInit, OnDestroy {
       return;
     }
     const editable = this.roomSettings.editableFields(room.id);
-    // The dialog writes on save; the name/topic update live via the rooms sync
-    // listeners, so nothing to do with the resolved result here.
+    const access = this.roomSettings.currentAccess(room.id);
+    // The dialog writes on save; the name/topic/access update live via the rooms
+    // sync listeners, so nothing to do with the resolved result here.
     void this.dialog.openAndWait(RoomSettingsComponent, {
       inputs: {
         roomId: room.id,
         name: room.name,
         topic: room.topic,
         avatarMxc: room.avatarMxc,
+        joinRule: access.joinRule,
+        historyVisibility: access.historyVisibility,
         canEditName: editable.name,
         canEditTopic: editable.topic,
         canEditAvatar: editable.avatar,
+        canEditJoinRule: editable.joinRule,
+        canEditHistory: editable.history,
       },
     });
   }

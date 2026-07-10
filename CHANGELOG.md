@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Control who can join and read history.** The room settings dialog now has **Who can
+  join** (invite-only or public) and **Who can read history** (from all history down to
+  world-readable) controls, gated by your power level. They write `m.room.join_rules` and
+  `m.room.history_visibility` and sync across clients.
 - **Stop sending read receipts.** A new **Privacy** section in Settings has a **Send read
   receipts** toggle. Turn it off and reading a message still clears your own unread badge,
   but privately (`m.read.private`) — other people no longer see when you've read their

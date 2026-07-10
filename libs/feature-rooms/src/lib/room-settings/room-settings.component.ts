@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { type Observable, catchError, forkJoin, map, of } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
@@ -22,6 +23,26 @@ import { initialOf } from '@trinity/util-matrix';
 
 /** Reject avatar uploads larger than this (before hitting a server 413). */
 const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
+
+/** The join-rule choices offered (a practical subset of the spec's options). */
+const JOIN_RULE_OPTIONS = [
+  { value: JoinRule.Invite, label: 'Invite only' },
+  { value: JoinRule.Public, label: 'Anyone can join' },
+] as const;
+
+/** The history-visibility choices offered, from most to least open. */
+const HISTORY_OPTIONS = [
+  { value: HistoryVisibility.Shared, label: 'Members — all history' },
+  {
+    value: HistoryVisibility.Invited,
+    label: 'Members — since they were invited',
+  },
+  { value: HistoryVisibility.Joined, label: 'Members — since they joined' },
+  {
+    value: HistoryVisibility.WorldReadable,
+    label: 'Anyone, even without joining',
+  },
+] as const;
 
 /**
  * Dialog to edit a room's name and topic (`m.room.name` / `m.room.topic`). The opener
@@ -42,9 +63,15 @@ export class RoomSettingsComponent implements OnInit {
   readonly name = input('');
   readonly topic = input('');
   readonly avatarMxc = input<string | null>(null);
+  readonly joinRule = input<JoinRule>(JoinRule.Invite);
+  readonly historyVisibility = input<HistoryVisibility>(
+    HistoryVisibility.Shared,
+  );
   readonly canEditName = input(false);
   readonly canEditTopic = input(false);
   readonly canEditAvatar = input(false);
+  readonly canEditJoinRule = input(false);
+  readonly canEditHistory = input(false);
 
   private readonly dialogRef =
     inject<DialogRef<boolean, RoomSettingsComponent>>(DialogRef);
@@ -62,18 +89,46 @@ export class RoomSettingsComponent implements OnInit {
   /** First letter of the room name, for the avatar fallback. */
   readonly avatarInitial = computed(() => initialOf(this.name()));
 
+  /** Whether the Save button applies to anything the viewer can change. */
+  readonly canSave = computed(
+    () =>
+      this.canEditName() ||
+      this.canEditTopic() ||
+      this.canEditJoinRule() ||
+      this.canEditHistory(),
+  );
+
+  readonly joinRuleOptions = JOIN_RULE_OPTIONS;
+  readonly historyOptions = HISTORY_OPTIONS;
+
   readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
     topic: new FormControl('', { nonNullable: true }),
+    joinRule: new FormControl<JoinRule>(JoinRule.Invite, { nonNullable: true }),
+    historyVisibility: new FormControl<HistoryVisibility>(
+      HistoryVisibility.Shared,
+      { nonNullable: true },
+    ),
   });
 
   ngOnInit(): void {
-    this.form.setValue({ name: this.name(), topic: this.topic() });
+    this.form.setValue({
+      name: this.name(),
+      topic: this.topic(),
+      joinRule: this.joinRule(),
+      historyVisibility: this.historyVisibility(),
+    });
     if (!this.canEditName()) {
       this.form.controls.name.disable();
     }
     if (!this.canEditTopic()) {
       this.form.controls.topic.disable();
+    }
+    if (!this.canEditJoinRule()) {
+      this.form.controls.joinRule.disable();
+    }
+    if (!this.canEditHistory()) {
+      this.form.controls.historyVisibility.disable();
     }
   }
 
@@ -96,6 +151,23 @@ export class RoomSettingsComponent implements OnInit {
       writes.push({
         field: 'topic',
         op: this.settings.setTopic(roomId, topic),
+      });
+    }
+    const joinRule = this.form.controls.joinRule.value;
+    if (this.canEditJoinRule() && joinRule !== this.joinRule()) {
+      writes.push({
+        field: 'join rule',
+        op: this.settings.setJoinRule(roomId, joinRule),
+      });
+    }
+    const historyVisibility = this.form.controls.historyVisibility.value;
+    if (
+      this.canEditHistory() &&
+      historyVisibility !== this.historyVisibility()
+    ) {
+      writes.push({
+        field: 'history visibility',
+        op: this.settings.setHistoryVisibility(roomId, historyVisibility),
       });
     }
     if (writes.length === 0) {
