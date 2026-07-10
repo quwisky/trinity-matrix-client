@@ -73,6 +73,18 @@ export interface MessageView {
   readReceipts: ReceiptView[];
   /** The projected poll (question + live tallies) when `kind` is `'poll'`, else null. */
   poll: PollView | null;
+  /**
+   * Authenticity shield for an encrypted message (grey = caution, red = warning), or
+   * null/absent when there's nothing to flag / the message isn't encrypted. Resolved
+   * asynchronously (the crypto trust API is async), so it's supplied by the caller.
+   */
+  shield?: MessageShield | null;
+}
+
+/** An authenticity shield on an encrypted message, with a human-readable reason. */
+export interface MessageShield {
+  level: 'grey' | 'red';
+  reason: string;
 }
 
 /** A member who has read up to a message, for the "seen by" receipt avatars. */
@@ -124,6 +136,7 @@ export function buildMessageView(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
+  shield: MessageShield | null = null,
 ): MessageView {
   const senderId = event.getSender() ?? '';
   const member = room.getMember(senderId);
@@ -171,6 +184,7 @@ export function buildMessageView(
     captionHtml,
     readReceipts: readReceiptsFor(client, room, event),
     poll,
+    shield,
   };
 }
 

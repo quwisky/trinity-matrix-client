@@ -102,6 +102,25 @@ describe('MessageRowComponent', () => {
     });
   }
 
+  it('renders an authenticity shield with its reason when the message has one', async () => {
+    const { container } = await renderRow({
+      row: row({
+        shield: { level: 'grey', reason: 'Sent from an unverified device.' },
+      }),
+    });
+
+    const shield = container.querySelector('[data-testid=msg-shield-grey]');
+    expect(shield).not.toBeNull();
+    expect(shield?.getAttribute('title')).toBe(
+      'Sent from an unverified device.',
+    );
+  });
+
+  it('renders no shield when the message has none', async () => {
+    const { container } = await renderRow({ row: row() });
+    expect(container.querySelector('[data-testid^=msg-shield-]')).toBeNull();
+  });
+
   it('renders a plain caption below a media attachment', async () => {
     const { container } = await renderRow({
       row: row({ kind: 'file', media: fileMedia(), caption: 'look at this' }),

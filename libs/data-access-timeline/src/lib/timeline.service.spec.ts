@@ -3,6 +3,10 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { ReceiptType, RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
+import {
+  EventShieldColour,
+  EventShieldReason,
+} from 'matrix-js-sdk/lib/crypto-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
@@ -83,6 +87,7 @@ function fakeEvent(o: {
   ts?: number;
   redacted?: boolean;
   decryptFail?: boolean;
+  encrypted?: boolean;
   status?: string;
   edited?: boolean;
   editRelation?: boolean;
@@ -115,6 +120,7 @@ function fakeEvent(o: {
     }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
+    isEncrypted: () => o.encrypted ?? false,
     isRelation: (relType?: string) =>
       o.editRelation === true &&
       (relType === undefined || relType === 'm.replace'),
@@ -1580,6 +1586,101 @@ describe('TimelineService', () => {
         fakeEvent({ id: '$1', sender: '@a:hs', body: 'no links here' }),
       ]);
       expect(svc.messages()[0].html).toBeNull();
+    });
+  });
+
+  describe('per-message authenticity shields', () => {
+    function shieldClient(
+      events: ReturnType<typeof fakeEvent>[],
+      getEncryptionInfoForEvent: ReturnType<typeof vi.fn>,
+    ) {
+      const room = {
+        roomId: '!r:hs',
+        getLiveTimeline: () => ({
+          getEvents: () => events,
+          getPaginationToken: () => null,
+        }),
+        getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+        relations: { getChildEventsForEvent: () => undefined },
+        on: () => {},
+        off: () => {},
+      };
+      return {
+        baseUrl: 'https://hs',
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: () => {},
+        off: () => {},
+        sendReadReceipt: () => Promise.resolve({}),
+        setRoomReadMarkers: () => Promise.resolve({}),
+        getCrypto: () => ({ getEncryptionInfoForEvent }),
+        scrollback: () => Promise.resolve(room),
+      };
+    }
+
+    function openWithShield(
+      getEncryptionInfoForEvent: ReturnType<typeof vi.fn>,
+      encrypted = true,
+    ) {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const events = [
+        fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi', encrypted }),
+      ];
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          matrixProvider(shieldClient(events, getEncryptionInfoForEvent)),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return svc;
+    }
+
+    it('projects a grey shield for an unverified-device message', async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.GREY,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      });
+      const svc = openWithShield(getInfo);
+
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].shield).toEqual({
+          level: 'grey',
+          reason: expect.any(String),
+        }),
+      );
+    });
+
+    it('projects a red shield for a red colour', async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.RED,
+        shieldReason: EventShieldReason.UNVERIFIED_IDENTITY,
+      });
+      const svc = openWithShield(getInfo);
+
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].shield?.level).toBe('red'),
+      );
+    });
+
+    it('leaves an unencrypted message without a shield (no crypto probe)', async () => {
+      const getInfo = vi.fn();
+      const svc = openWithShield(getInfo, false);
+
+      await Promise.resolve();
+      expect(svc.messages()[0].shield ?? null).toBeNull();
+      expect(getInfo).not.toHaveBeenCalled();
+    });
+
+    it('shows no shield when the colour resolves to NONE', async () => {
+      const getInfo = vi
+        .fn()
+        .mockResolvedValue({ shieldColour: EventShieldColour.NONE });
+      const svc = openWithShield(getInfo);
+
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalled());
+      expect(svc.messages()[0].shield ?? null).toBeNull();
     });
   });
 });

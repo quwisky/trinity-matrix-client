@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Per-message authenticity shields.** Encrypted messages now show a shield when their
+  authenticity is in question — sent from an unverified or unknown device, by an unverified
+  user, or with a key whose origin can't be guaranteed — with a tooltip explaining why. The
+  shields update live as device/user trust changes.
 - **Export / import room keys.** The Security section can now save your message keys to a
   passphrase-protected file (the interoperable Matrix megolm `.txt` format that Element
   reads/writes) and import them back — a key backup independent of the server.

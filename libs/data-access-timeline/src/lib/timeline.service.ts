@@ -15,6 +15,12 @@ import {
   type RoomState,
 } from 'matrix-js-sdk';
 import {
+  CryptoEvent,
+  EventShieldColour,
+  EventShieldReason,
+  type EventEncryptionInfo,
+} from 'matrix-js-sdk/lib/crypto-api';
+import {
   Observable,
   defer,
   finalize,
@@ -49,6 +55,7 @@ import {
   TYPING_REFRESH_MS,
   TYPING_TIMEOUT_MS,
   type MessageView,
+  type MessageShield,
   type Mention,
 } from '@trinity/util-matrix';
 
@@ -203,6 +210,17 @@ export class TimelineService {
    * actually looking at it. */
   private readonly onFocus = (): void => this.markRead();
 
+  /** Resolved authenticity shields per event id (async; patched back via {@link refresh}). */
+  private readonly shields = new Map<string, MessageShield | null>();
+
+  // Cross-signing / device trust changed: a message's shield may flip (e.g. a device
+  // the sender just verified). Re-resolve shields for the open room's events.
+  private readonly onTrust = (): void => {
+    if (this.room) {
+      void this.resolveShields(this.room);
+    }
+  };
+
   /** Start projecting a room's live timeline; attaches live + decryption listeners. */
   open(roomId: string): void {
     if (this.roomId === roomId || !this.matrix.isInitialized) {
@@ -224,6 +242,9 @@ export class TimelineService {
     room.on(RoomStateEvent.Members, this.onMember);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     client.on(RoomMemberEvent.Typing, this.onTyping);
+    client.on(CryptoEvent.UserTrustStatusChanged, this.onTrust);
+    client.on(CryptoEvent.DevicesUpdated, this.onTrust);
+    client.on(CryptoEvent.KeysChanged, this.onTrust);
     // Capture the persisted read marker BEFORE the first refresh (which marks read and
     // advances it), so the "New messages" divider anchors where the user left off.
     this._readMarker.set(this.readMarkerOf(room));
@@ -252,6 +273,12 @@ export class TimelineService {
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);
       this.matrix.instance.off(RoomMemberEvent.Typing, this.onTyping);
+      this.matrix.instance.off(
+        CryptoEvent.UserTrustStatusChanged,
+        this.onTrust,
+      );
+      this.matrix.instance.off(CryptoEvent.DevicesUpdated, this.onTrust);
+      this.matrix.instance.off(CryptoEvent.KeysChanged, this.onTrust);
     }
     this.room = null;
     this.roomId = null;
@@ -259,6 +286,7 @@ export class TimelineService {
     this._readMarker.set(null);
     this.relevantSenders.clear();
     this.viewCache.clear();
+    this.shields.clear();
     this._messages.set([]);
     this._typingNames.set([]);
     this._canRedactOthers.set(false);
@@ -621,13 +649,15 @@ export class TimelineService {
         seen.add(id);
         collectMessageSenders(room, e, relevant);
         // Reuse the existing view (preserving its object identity for OnPush)
-        // unless something this event renders from has actually changed.
-        const rev = eventRevision(client, room, e);
+        // unless something this event renders from has actually changed. The shield
+        // (resolved asynchronously) is folded into the rev so a trust change re-projects.
+        const shield = this.shields.get(id) ?? null;
+        const rev = eventRevision(client, room, e) + '\x1f' + shieldKey(shield);
         const cached = this.viewCache.get(id);
         if (cached && cached.rev === rev) {
           return cached.view;
         }
-        const view = buildMessageView(client, room, e);
+        const view = buildMessageView(client, room, e, shield);
         this.viewCache.set(id, { rev, view });
         return view;
       });
@@ -640,6 +670,9 @@ export class TimelineService {
       }
     }
     this._messages.set(views);
+    // Resolve encrypted-message authenticity shields off the async crypto API; when any
+    // resolve to a new value they're folded into the cache rev and re-projected.
+    void this.resolveShields(room, events);
     this._canLoadOlder.set(
       liveTimeline.getPaginationToken(Direction.Backward) !== null,
     );
@@ -648,6 +681,48 @@ export class TimelineService {
     // history doesn't re-send). Skipped while unfocused so an open room still
     // shows unread; onFocus re-acks on return.
     this.markRead(events);
+  }
+
+  /**
+   * Resolve authenticity shields for the room's encrypted messages off the async crypto
+   * API, storing them per event id. When any shield actually changes it triggers one more
+   * {@link refresh} (whose rev now differs, so only the changed rows rebuild) — which
+   * re-enters here, finds nothing new, and stops. Best-effort: a room switch mid-resolve
+   * or a missing crypto API bails without touching state.
+   */
+  private async resolveShields(
+    room: Room,
+    events: readonly MatrixEvent[] = room.getLiveTimeline().getEvents(),
+  ): Promise<void> {
+    const crypto = this.matrix.isInitialized
+      ? (this.matrix.instance.getCrypto?.() ?? null)
+      : null;
+    if (!crypto) {
+      return;
+    }
+    const encrypted = events.filter(
+      (e) => isDisplayableMessage(e) && !isThreadReply(e) && e.isEncrypted(),
+    );
+    let changed = false;
+    for (const event of encrypted) {
+      const id = event.getId() ?? '';
+      let shield: MessageShield | null = null;
+      try {
+        shield = toShield(await crypto.getEncryptionInfoForEvent(event));
+      } catch {
+        shield = null; // never let a shield probe break the timeline
+      }
+      if (this.roomId !== room.roomId) {
+        return; // switched rooms mid-resolve
+      }
+      if (shieldKey(this.shields.get(id) ?? null) !== shieldKey(shield)) {
+        this.shields.set(id, shield);
+        changed = true;
+      }
+    }
+    if (changed && this.roomId === room.roomId) {
+      this.refresh();
+    }
   }
 
   /**
@@ -723,6 +798,38 @@ function isThreadReply(event: MatrixEvent): boolean {
  * changes, so an unchanged message keeps its existing object and its OnPush row
  * is never touched.
  */
+/** Stable fingerprint of a shield for the cache rev + change detection ('' = none). */
+function shieldKey(shield: MessageShield | null): string {
+  return shield ? `${shield.level}:${shield.reason}` : '';
+}
+
+/** Map the SDK's encryption info to a {@link MessageShield}, or null for no shield. */
+function toShield(info: EventEncryptionInfo | null): MessageShield | null {
+  if (!info || info.shieldColour === EventShieldColour.NONE) {
+    return null;
+  }
+  return {
+    level: info.shieldColour === EventShieldColour.RED ? 'red' : 'grey',
+    reason: shieldReasonText(info.shieldReason),
+  };
+}
+
+/** A human-readable explanation for a shield reason code. */
+function shieldReasonText(reason: EventShieldReason | null): string {
+  switch (reason) {
+    case EventShieldReason.UNVERIFIED_IDENTITY:
+      return 'Sent by a user you haven’t verified.';
+    case EventShieldReason.UNSIGNED_DEVICE:
+      return 'Sent from a device its owner hasn’t verified.';
+    case EventShieldReason.UNKNOWN_DEVICE:
+      return 'Sent from an unknown or deleted device.';
+    case EventShieldReason.AUTHENTICITY_NOT_GUARANTEED:
+      return 'The authenticity of this message can’t be guaranteed.';
+    default:
+      return 'This message’s authenticity couldn’t be verified.';
+  }
+}
+
 function eventRevision(
   client: MatrixClient,
   room: Room,

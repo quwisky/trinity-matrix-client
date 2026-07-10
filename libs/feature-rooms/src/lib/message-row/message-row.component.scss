@@ -47,6 +47,18 @@
   font-size: 10px;
 }
 
+// Authenticity shield: grey = caution (default), red = warning.
+.msg__shield {
+  margin-left: 4px;
+  color: var(--trinity-text-muted);
+  font-size: 13px;
+  cursor: help;
+}
+
+.msg__shield--red {
+  color: var(--trinity-danger, #ef4444);
+}
+
 .msg__toolbar {
   position: absolute;
   top: -16px;

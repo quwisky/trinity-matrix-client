@@ -7,7 +7,7 @@ import {
   output,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideMessagesSquare } from '@ng-icons/lucide';
+import { lucideMessagesSquare, lucideShieldAlert } from '@ng-icons/lucide';
 import {
   AvatarComponent,
   MessageToolbarComponent,
@@ -77,7 +77,7 @@ export type MessageRowAction =
     MatrixLinkDirective,
     PollComponent,
   ],
-  viewProviders: [provideIcons({ lucideMessagesSquare })],
+  viewProviders: [provideIcons({ lucideMessagesSquare, lucideShieldAlert })],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',
 })
