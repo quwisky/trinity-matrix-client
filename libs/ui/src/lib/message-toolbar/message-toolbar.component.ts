@@ -19,6 +19,7 @@ import {
   lucideMessagesSquare,
   lucidePencil,
   lucidePin,
+  lucidePlus,
   lucideReply,
   lucideSmile,
   lucideTrash2,
@@ -39,6 +40,8 @@ export interface MessageToolbarCaps {
 /** A single action a user triggers from the message toolbar. */
 export type MessageAction =
   | { type: 'react'; key: string }
+  /** Open the full emoji picker to react with any emoji (beyond the quick set). */
+  | { type: 'react-more' }
   | { type: 'reply' }
   | { type: 'edit' }
   | { type: 'delete' }
@@ -80,6 +83,7 @@ let nextPickerId = 0;
       lucideMessagesSquare,
       lucideEllipsis,
       lucidePin,
+      lucidePlus,
       lucideCopy,
       lucidePencil,
       lucideTrash2,
@@ -103,6 +107,12 @@ export class MessageToolbarComponent {
 
   pick(emoji: string): void {
     this.action.emit({ type: 'react', key: emoji });
+    this.pickerOpen.set(false);
+  }
+
+  /** Escalate from the quick set to the full emoji picker (handled by the host). */
+  pickMore(): void {
+    this.action.emit({ type: 'react-more' });
     this.pickerOpen.set(false);
   }
 }

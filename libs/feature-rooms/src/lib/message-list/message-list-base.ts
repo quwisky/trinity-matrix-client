@@ -11,6 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/helm/overlay';
+import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
 import {
   formatTypingNotice,
@@ -121,6 +122,7 @@ export abstract class MessageListBase {
   readonly announcement = signal('');
 
   protected readonly alert = inject(TrnAlertService);
+  private readonly reactionPicker = inject(ReactionPickerService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   // Grouping rows, cached per event id so an unchanged message (same view object AND
@@ -275,6 +277,9 @@ export abstract class MessageListBase {
       case 'react':
         this.react.emit({ id: row.id, key: action.key });
         break;
+      case 'react-more':
+        void this.pickReaction(row.id);
+        break;
       case 'reply':
         this.startReply(row);
         break;
@@ -306,6 +311,14 @@ export abstract class MessageListBase {
         void unhandled;
         break;
       }
+    }
+  }
+
+  /** Open the full emoji picker and, on a pick, react to the message with it. */
+  private async pickReaction(id: string): Promise<void> {
+    const key = await this.reactionPicker.pick();
+    if (key) {
+      this.react.emit({ id, key });
     }
   }
 

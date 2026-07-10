@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
 import { type MessageView } from '@trinity/util-matrix';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { SimpleMessageListComponent } from './simple-message-list.component';
+import { ReactionPickerService } from '../../reaction-picker/reaction-picker.service';
 
 function msg(
   id: string,
@@ -409,6 +410,44 @@ describe('SimpleMessageListComponent', () => {
       cmp.send.subscribe((s) => (sent = s.body));
       cmp.onSubmit({ text: 'hello', mentions: [] });
       expect(sent).toBe('hello');
+    });
+
+    it('reacts with the emoji chosen from the full picker on react-more', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        providers: [
+          MockProvider(TrnAlertService),
+          MockProvider(ReactionPickerService, {
+            pick: () => Promise.resolve('🚀'),
+          }),
+        ],
+      });
+      const cmp = fixture.componentInstance;
+      let reacted: { id: string; key: string } | null = null;
+      cmp.react.subscribe((r) => (reacted = r));
+
+      cmp.onRowAction(row('$7'), { type: 'react-more' });
+      await Promise.resolve(); // let the picker promise settle
+
+      expect(reacted).toEqual({ id: '$7', key: '🚀' });
+    });
+
+    it('sends no reaction when the picker is dismissed', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        providers: [
+          MockProvider(TrnAlertService),
+          MockProvider(ReactionPickerService, {
+            pick: () => Promise.resolve(null),
+          }),
+        ],
+      });
+      const cmp = fixture.componentInstance;
+      let reacted = false;
+      cmp.react.subscribe(() => (reacted = true));
+
+      cmp.onRowAction(row('$7'), { type: 'react-more' });
+      await Promise.resolve();
+
+      expect(reacted).toBe(false);
     });
 
     it('derives the typing label from the typing member names', async () => {

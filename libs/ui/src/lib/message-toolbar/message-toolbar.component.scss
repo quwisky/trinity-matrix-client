@@ -39,6 +39,17 @@
   }
 }
 
+.toolbar__emoji--more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--trinity-text-muted);
+
+  &:hover {
+    color: var(--trinity-text-bright);
+  }
+}
+
 .toolbar__btn {
   display: flex;
   align-items: center;

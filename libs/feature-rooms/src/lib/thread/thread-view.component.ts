@@ -33,6 +33,7 @@ import {
   MessageComposerComponent,
   type ComposerSubmit,
 } from '../message-composer/message-composer.component';
+import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -77,6 +78,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
 export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly threads = inject(ThreadsService);
   private readonly rooms = inject(RoomsService);
+  private readonly reactionPicker = inject(ReactionPickerService);
   private readonly dialogRef =
     inject<DialogRef<void, ThreadViewComponent>>(DialogRef);
   private readonly alert = inject(TrnAlertService);
@@ -236,6 +238,14 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     );
   }
 
+  /** Open the full emoji picker and, on a pick, react to the thread message with it. */
+  private async pickReaction(messageId: string): Promise<void> {
+    const key = await this.reactionPicker.pick();
+    if (key) {
+      this.onReact(messageId, key);
+    }
+  }
+
   onRetry(messageId: string): void {
     this.threads.retryInThread(messageId);
   }
@@ -285,6 +295,9 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     switch (action.type) {
       case 'react':
         this.onReact(row.id, action.key);
+        break;
+      case 'react-more':
+        void this.pickReaction(row.id);
         break;
       case 'reply':
         this.startReply(row);

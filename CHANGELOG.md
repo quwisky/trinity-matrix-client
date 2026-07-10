@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **React with any emoji.** The message reaction popover kept only six quick emoji;
+  a new "+" button now opens the full emoji picker (search included), so you can react
+  with anything — in rooms and threads alike. The six one-tap reactions stay as a fast path.
 - **Typing indicators.** The composer now tells the room when you're typing, and an
   "X is typing…" row appears under the timeline when other members type — naming up to
   three of them and summarising beyond that. It clears the moment they send or stop, and

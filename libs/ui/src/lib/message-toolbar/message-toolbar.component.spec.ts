@@ -152,12 +152,31 @@ describe('MessageToolbarComponent', () => {
     cmp.pickerOpen.set(true);
     fixture.detectChanges();
 
-    const emojis =
-      container.querySelectorAll<HTMLButtonElement>('.toolbar__emoji');
+    // The "+" (more emoji) button also carries .toolbar__emoji; scope to the quick set.
+    const emojis = container.querySelectorAll<HTMLButtonElement>(
+      '.toolbar__emoji:not(.toolbar__emoji--more)',
+    );
     expect(emojis.length).toBe(cmp.quickEmojis.length);
     emojis[0].click();
 
     expect(action).toEqual({ type: 'react', key: cmp.quickEmojis[0] });
     expect(cmp.pickerOpen()).toBe(false); // closes after picking
+  });
+
+  it('escalates to the full picker via the "+" button', async () => {
+    const { fixture, container } = await render(MessageToolbarComponent);
+    const cmp = fixture.componentInstance;
+
+    let action: MessageAction | undefined;
+    cmp.action.subscribe((a) => (action = a));
+    cmp.pickerOpen.set(true);
+    fixture.detectChanges();
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="react-more"]')!
+      .click();
+
+    expect(action).toEqual({ type: 'react-more' });
+    expect(cmp.pickerOpen()).toBe(false); // closes the quick popover
   });
 });
