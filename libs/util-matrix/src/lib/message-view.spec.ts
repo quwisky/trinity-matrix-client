@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeMatrixHtml } from './message-view';
+import { linkifyText, sanitizeMatrixHtml } from './message-view';
 
 /** Parse sanitized HTML back into a document fragment for attribute assertions. */
 function parse(html: string): HTMLElement {
@@ -7,6 +7,43 @@ function parse(html: string): HTMLElement {
   el.innerHTML = html;
   return el;
 }
+
+describe('linkifyText', () => {
+  it('wraps a bare URL in an anchor, keeping the surrounding text', () => {
+    expect(linkifyText('check https://example.com now')).toBe(
+      'check <a href="https://example.com">https://example.com</a> now',
+    );
+  });
+
+  it('returns null when there is no URL (keeps plain-text rendering)', () => {
+    expect(linkifyText('just some text')).toBeNull();
+  });
+
+  it('leaves trailing sentence punctuation outside the link', () => {
+    expect(linkifyText('see https://example.com.')).toBe(
+      'see <a href="https://example.com">https://example.com</a>.',
+    );
+  });
+
+  it('linkifies multiple URLs', () => {
+    const html = linkifyText('https://a.com and https://b.com');
+    expect(html).toContain('<a href="https://a.com">https://a.com</a>');
+    expect(html).toContain('<a href="https://b.com">https://b.com</a>');
+  });
+
+  it('HTML-escapes the surrounding text and the URL', () => {
+    // The `<script>` is escaped (not executable), and `&` in the query is escaped.
+    const html = linkifyText('<script> https://x.com/?a=1&b=2');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('href="https://x.com/?a=1&amp;b=2"');
+  });
+
+  it('renders newlines as <br>', () => {
+    expect(linkifyText('a\nhttps://x.com')).toBe(
+      'a<br><a href="https://x.com">https://x.com</a>',
+    );
+  });
+});
 
 describe('sanitizeMatrixHtml — spoilers', () => {
   it('tags a spoiler with the mx-spoiler class and makes it keyboard-activatable', () => {

@@ -480,13 +480,15 @@ function renderBody(
     isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
   const html = strippedHtml === null ? null : sanitizeMatrixHtml(strippedHtml);
 
+  // Plain text (no formatted_body) still gets bare URLs linkified so they're clickable.
+  const textHtml = html ?? linkifyText(text);
   switch (content.msgtype) {
     case MsgType.Text:
-      return { body: text, html, kind: 'text', media: null };
+      return { body: text, html: textHtml, kind: 'text', media: null };
     case MsgType.Emote:
-      return { body: text, html, kind: 'emote', media: null };
+      return { body: text, html: textHtml, kind: 'emote', media: null };
     case MsgType.Notice:
-      return { body: text, html, kind: 'notice', media: null };
+      return { body: text, html: textHtml, kind: 'notice', media: null };
     case MsgType.Image:
     case MsgType.File:
     case MsgType.Audio:
@@ -634,6 +636,38 @@ export function stripReplyFallbackText(body: string): string {
 /** Strip the `<mx-reply>…</mx-reply>` fallback block from formatted (HTML) replies. */
 function stripReplyFallbackHtml(html: string): string {
   return html.replace(/<mx-reply>[\s\S]*?<\/mx-reply>/i, '');
+}
+
+/**
+ * Turn a plain-text body into HTML with clickable links: HTML-escape the text, wrap each
+ * http(s) URL in an `<a>`, and keep newlines as `<br>`. Returns `null` when the text has
+ * no URL, so a plain message keeps its lighter (pre-wrap) text rendering. Trailing
+ * sentence punctuation is left outside the link. Used so a bare URL is clickable even
+ * when the sender delivered it as plain text (no formatted_body).
+ */
+export function linkifyText(text: string): string | null {
+  // A local regex — its `lastIndex` advances across the loop and resets per call.
+  const re = /https?:\/\/[^\s<>"']+/g;
+  let hasLink = false;
+  let html = '';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const whole = match[0];
+    const url = whole.replace(/[.,;:!?)\]}>]+$/, '');
+    const trailing = whole.slice(url.length);
+    const safeUrl = escapeHtml(url);
+    html +=
+      escapeHtml(text.slice(lastIndex, match.index)) +
+      `<a href="${safeUrl}">${safeUrl}</a>` +
+      escapeHtml(trailing);
+    lastIndex = match.index + whole.length;
+    hasLink = true;
+  }
+  if (!hasLink) {
+    return null;
+  }
+  return (html + escapeHtml(text.slice(lastIndex))).replace(/\n/g, '<br>');
 }
 
 /** Escape text for safe interpolation into the `<mx-reply>` HTML fallback. */

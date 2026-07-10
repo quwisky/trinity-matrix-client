@@ -1473,4 +1473,26 @@ describe('TimelineService', () => {
       expect(second.readReceipts).toEqual([]);
     });
   });
+
+  describe('linkify', () => {
+    it('linkifies a bare URL in a plain-text message so it renders clickable', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$1',
+          sender: '@a:hs',
+          body: 'see https://example.com',
+        }),
+      ]);
+      expect(svc.messages()[0].html).toContain(
+        '<a href="https://example.com">https://example.com</a>',
+      );
+    });
+
+    it('leaves a plain message without a URL as plain text (no html)', () => {
+      const svc = setup([
+        fakeEvent({ id: '$1', sender: '@a:hs', body: 'no links here' }),
+      ]);
+      expect(svc.messages()[0].html).toBeNull();
+    });
+  });
 });

@@ -126,6 +126,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Links in messages are now clickable.** A bare URL in a message rendered as plain
+  text — because a plain-text message (no HTML formatting) wasn't linkified. URLs are
+  now turned into links when a message is displayed, so they're clickable regardless of
+  whether the sender's client included formatted HTML, and they open in a new tab.
 - New sessions now register with the device name **Trinity** instead of the stale
   **Trinity (Ionic)** — the app no longer runs on Ionic, so the label shown in
   Settings → Devices (and to other Matrix clients) shouldn't advertise it.
