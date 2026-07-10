@@ -36,6 +36,18 @@
       Copy user ID
     </button>
 
+    @if (!isSelf()) {
+      <button
+        hlmBtn
+        variant="ghost"
+        class="w-full"
+        (click)="toggleIgnore()"
+        data-testid="member-info-ignore"
+      >
+        {{ ignored() ? 'Unblock' : 'Block' }}
+      </button>
+    }
+
     @if (canKick() || canBan() || (canSetPower() && roleOptions().length)) {
       <div class="member-info__moderation">
         @if (canSetPower()) {

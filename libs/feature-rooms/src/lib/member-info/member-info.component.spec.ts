@@ -5,7 +5,10 @@ import {
   TrnAlertService,
   TrnToastService,
 } from '@trinity/helm/overlay';
-import { PresenceService } from '@trinity/data-access-profile';
+import {
+  IgnoredUsersService,
+  PresenceService,
+} from '@trinity/data-access-profile';
 import {
   RoomModerationService,
   type MemberSummary,
@@ -40,6 +43,9 @@ async function build(
     setPowerLevel?: ReturnType<typeof vi.fn>;
     alertPrompt?: ReturnType<typeof vi.fn>;
     alertConfirm?: ReturnType<typeof vi.fn>;
+    isIgnored?: boolean;
+    ignore?: ReturnType<typeof vi.fn>;
+    unignore?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const close = vi.fn();
@@ -49,6 +55,8 @@ async function build(
   const setPowerLevel = opts.setPowerLevel ?? vi.fn(() => of(undefined));
   const alertPrompt = opts.alertPrompt ?? vi.fn().mockResolvedValue('');
   const alertConfirm = opts.alertConfirm ?? vi.fn().mockResolvedValue(true);
+  const ignore = opts.ignore ?? vi.fn(() => of(undefined));
+  const unignore = opts.unignore ?? vi.fn(() => of(undefined));
   const { fixture, container } = await render(MemberInfoComponent, {
     inputs: {
       member: m,
@@ -71,6 +79,11 @@ async function build(
         ).asReadonly(),
       }),
       MockProvider(RoomModerationService, { kick, ban, setPowerLevel }),
+      MockProvider(IgnoredUsersService, {
+        isIgnored: () => opts.isIgnored ?? false,
+        ignore,
+        unignore,
+      }),
       MockProvider(TrnAlertService, {
         prompt: alertPrompt,
         confirm: alertConfirm,
@@ -87,6 +100,8 @@ async function build(
     setPowerLevel,
     alertPrompt,
     alertConfirm,
+    ignore,
+    unignore,
   };
 }
 
@@ -275,5 +290,39 @@ describe('MemberInfoComponent', () => {
     await cmp.setRole({ label: 'Admin', level: 100 });
 
     expect(setPowerLevel).not.toHaveBeenCalled();
+  });
+
+  it('offers Block for a not-yet-ignored member and blocks them on click', async () => {
+    const { cmp, container, ignore } = await build(member(), {
+      isIgnored: false,
+    });
+    const btn = container.querySelector<HTMLElement>(
+      '[data-testid="member-info-ignore"]',
+    );
+    expect(btn?.textContent?.trim()).toBe('Block');
+
+    cmp.toggleIgnore();
+
+    expect(ignore).toHaveBeenCalledWith('@bob:hs');
+    expect(cmp.ignored()).toBe(true); // button flips to "Unblock"
+  });
+
+  it('offers Unblock for an ignored member and unblocks them on click', async () => {
+    const { cmp, unignore } = await build(member(), { isIgnored: true });
+    expect(cmp.ignored()).toBe(true);
+
+    cmp.toggleIgnore();
+
+    expect(unignore).toHaveBeenCalledWith('@bob:hs');
+    expect(cmp.ignored()).toBe(false);
+  });
+
+  it('hides Block on your own row', async () => {
+    const { container } = await build(member({ userId: '@me:hs' }), {
+      activeUserId: '@me:hs',
+    });
+    expect(
+      container.querySelector('[data-testid="member-info-ignore"]'),
+    ).toBeNull();
   });
 });

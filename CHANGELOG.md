@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Block (ignore) a member.** A member's info panel now has a **Block** / **Unblock**
+  action that ignores them account-wide (`m.ignored_user_list`) — hiding their messages
+  everywhere and syncing across your devices. It needs no room-admin rights, so it works
+  even where you can't moderate.
 - **Promote or demote members.** A member's info panel now lets you change their role —
   Member, Moderator, or Admin — for any role at or below your own power level (you can't
   raise someone above yourself, or act on a peer/superior). Written to the room's

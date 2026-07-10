@@ -5,6 +5,7 @@ import {
   computed,
   inject,
   input,
+  linkedSignal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { type Observable } from 'rxjs';
@@ -18,7 +19,10 @@ import {
   RoomModerationService,
   type MemberSummary,
 } from '@trinity/data-access-rooms';
-import { PresenceService } from '@trinity/data-access-profile';
+import {
+  IgnoredUsersService,
+  PresenceService,
+} from '@trinity/data-access-profile';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { AvatarComponent } from '@trinity/ui';
 
@@ -62,8 +66,14 @@ export class MemberInfoComponent {
   private readonly toast = inject(TrnToastService);
   private readonly matrix = inject(MatrixClientService);
   private readonly moderation = inject(RoomModerationService);
+  private readonly ignoredUsers = inject(IgnoredUsersService);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
+
+  /** Whether this member is ignored (blocked); flips locally when toggled. */
+  readonly ignored = linkedSignal(() =>
+    this.ignoredUsers.isIgnored(this.member().userId),
+  );
 
   /** Live online status for the presence dot. */
   readonly presenceState = computed(() =>
@@ -100,6 +110,29 @@ export class MemberInfoComponent {
   copyId(): void {
     void navigator.clipboard?.writeText(this.member().userId);
     this.toast.show('User ID copied.', { duration: 2000 });
+  }
+
+  /** Block or unblock the member (account-wide ignore); flips the button on success. */
+  toggleIgnore(): void {
+    const userId = this.member().userId;
+    const wasIgnored = this.ignored();
+    const action = wasIgnored
+      ? this.ignoredUsers.unignore(userId)
+      : this.ignoredUsers.ignore(userId);
+    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => {
+        this.ignored.set(!wasIgnored);
+        this.toast.show(
+          wasIgnored ? 'Unblocked.' : "Blocked — you won't see their messages.",
+          { duration: 2500 },
+        );
+      },
+      error: () =>
+        this.toast.show('Could not update the block.', {
+          duration: 4000,
+          variant: 'destructive',
+        }),
+    });
   }
 
   /** Remove the member from the room (with an optional reason), on confirmation. */
