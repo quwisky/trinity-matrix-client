@@ -27,6 +27,9 @@ function msg(id: string, senderId: string, body: string): MessageView {
     status: null,
     kind: 'text',
     media: null,
+    caption: null,
+    captionHtml: null,
+    readReceipts: [],
   };
 }
 

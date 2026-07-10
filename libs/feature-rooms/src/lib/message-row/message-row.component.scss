@@ -393,3 +393,12 @@
     text-decoration: underline;
   }
 }
+
+// "Seen by" read-receipt avatars, tucked at the trailing edge under the message.
+.msg__receipts {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+  margin-top: 3px;
+  opacity: 0.85;
+}

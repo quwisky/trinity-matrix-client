@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **"Seen by" read receipts.** Messages now show small avatars of the members who have
+  read up to them, updating live as people catch up — so you can tell who's seen what.
 - **In-app navigation for Matrix links.** Clicking a `matrix.to` link in a message now
   stays in Trinity: a room link opens that room (resolving an alias and jumping to a
   linked message), and a person link opens a direct message with them. Ordinary web

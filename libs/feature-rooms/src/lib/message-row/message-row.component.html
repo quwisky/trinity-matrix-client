@@ -72,6 +72,24 @@
           (toggleReaction)="action.emit({ type: 'react', key: $event })"
         />
       }
+      @if (r.readReceipts.length) {
+        <div
+          class="msg__receipts"
+          data-testid="read-receipts"
+          [attr.aria-label]="seenByLabel(r.readReceipts)"
+        >
+          @for (receipt of r.readReceipts; track receipt.userId) {
+            <trn-avatar
+              class="msg__receipt"
+              aria-hidden="true"
+              [mxc]="receipt.avatarMxc"
+              [initial]="receipt.initial"
+              [name]="receipt.name"
+              [size]="16"
+            />
+          }
+        </div>
+      }
     </div>
   } @else {
     <span class="msg__gutter">{{ r.timestamp | date: 'shortTime' }}</span>
@@ -108,6 +126,24 @@
           [reactions]="r.reactions"
           (toggleReaction)="action.emit({ type: 'react', key: $event })"
         />
+      }
+      @if (r.readReceipts.length) {
+        <div
+          class="msg__receipts"
+          data-testid="read-receipts"
+          [attr.aria-label]="seenByLabel(r.readReceipts)"
+        >
+          @for (receipt of r.readReceipts; track receipt.userId) {
+            <trn-avatar
+              class="msg__receipt"
+              aria-hidden="true"
+              [mxc]="receipt.avatarMxc"
+              [initial]="receipt.initial"
+              [name]="receipt.name"
+              [size]="16"
+            />
+          }
+        </div>
       }
     </div>
   }

@@ -32,6 +32,7 @@ function msg(
     media: null,
     caption: null,
     captionHtml: null,
+    readReceipts: [],
   };
 }
 
@@ -102,6 +103,7 @@ describe('SimpleMessageListComponent', () => {
             media: null,
             caption: null,
             captionHtml: null,
+            readReceipts: [],
           },
         ],
       },

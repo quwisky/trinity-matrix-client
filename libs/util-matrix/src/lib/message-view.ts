@@ -68,6 +68,49 @@ export interface MessageView {
   caption: string | null;
   /** Sanitized HTML for a rich media caption (else null). */
   captionHtml: string | null;
+  /** Members whose read receipt sits on this message ("seen by"), excluding you. */
+  readReceipts: ReceiptView[];
+}
+
+/** A member who has read up to a message, for the "seen by" receipt avatars. */
+export interface ReceiptView {
+  userId: string;
+  name: string;
+  initial: string;
+  avatarMxc: string | null;
+}
+
+/** How many receipt avatars to show on a message before it gets noisy. */
+const MAX_RECEIPTS = 5;
+
+/** User ids (excluding the local user) whose read receipt sits on this event, capped. */
+export function readReceiptUserIds(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+): string[] {
+  const selfId = client.getUserId();
+  return (room.getUsersReadUpTo?.(event) ?? [])
+    .filter((id) => id !== selfId)
+    .slice(0, MAX_RECEIPTS);
+}
+
+/** The "seen by" receipts for this event: members whose read marker sits on it. */
+export function readReceiptsFor(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+): ReceiptView[] {
+  return readReceiptUserIds(client, room, event).map((userId) => {
+    const member = room.getMember(userId);
+    const name = member?.name || userId;
+    return {
+      userId,
+      name,
+      initial: initialOf(name),
+      avatarMxc: member?.getMxcAvatarUrl() ?? null,
+    };
+  });
 }
 
 /**
@@ -111,6 +154,7 @@ export function buildMessageView(
     media,
     caption,
     captionHtml,
+    readReceipts: readReceiptsFor(client, room, event),
   };
 }
 

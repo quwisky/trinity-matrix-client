@@ -158,6 +158,7 @@ function setup(
       name: MEMBERS[id] ?? id,
       getMxcAvatarUrl: () => null,
     }),
+    getUsersReadUpTo: () => [],
     relations: {
       getChildEventsForEvent: (
         id: string,

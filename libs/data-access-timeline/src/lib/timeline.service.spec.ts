@@ -137,6 +137,7 @@ function fakeRoom(
   encrypted = false,
   members: ReturnType<typeof fakeMember>[] = [],
   fullyReadEventId: string | null = null,
+  receiptsByEvent: Record<string, string[]> = {},
 ) {
   return {
     roomId: '!r:hs',
@@ -150,6 +151,8 @@ function fakeRoom(
       getMxcAvatarUrl: () => null,
     }),
     getMembers: () => members,
+    getUsersReadUpTo: (event: { getId: () => string }) =>
+      receiptsByEvent[event.getId()] ?? [],
     getAccountData: (type: string) =>
       type === 'm.fully_read' && fullyReadEventId
         ? { getContent: () => ({ event_id: fullyReadEventId }) }
@@ -1372,6 +1375,37 @@ describe('TimelineService', () => {
       const { svc } = setupUnread(msgs, '$1');
       svc.close();
       expect(svc.firstUnreadId()).toBeNull();
+    });
+  });
+
+  describe('read receipts (seen by)', () => {
+    function setupReceipts(
+      events: ReturnType<typeof fakeEvent>[],
+      receiptsByEvent: Record<string, string[]>,
+    ) {
+      const room = fakeRoom(events, {}, false, [], null, receiptsByEvent);
+      const client = fakeClient(room, []);
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(client), mediaProvider()],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return svc;
+    }
+
+    it('projects the members who read up to each message, excluding self', () => {
+      const svc = setupReceipts(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          fakeEvent({ id: '$2', sender: '@alice:hs', body: 'b' }),
+        ],
+        { $1: ['@bob:hs', '@me:hs'], $2: [] }, // self is filtered out
+      );
+
+      const [first, second] = svc.messages();
+      expect(first.readReceipts.map((r) => r.userId)).toEqual(['@bob:hs']);
+      expect(first.readReceipts[0].name).toBe('Alice'); // resolved from room state
+      expect(second.readReceipts).toEqual([]);
     });
   });
 });

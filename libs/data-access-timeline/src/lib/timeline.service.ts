@@ -34,6 +34,7 @@ import {
   mediaCaptionFields,
   myReactionId,
   reactionsFor,
+  readReceiptUserIds,
   renderMarkdown,
   replyMessageContent,
   textMessageContent,
@@ -144,6 +145,8 @@ export class TimelineService {
 
   private readonly onTimeline = (): void => this.refresh();
   private readonly onLocalEcho = (): void => this.refresh();
+  // Others' read receipts moved — re-project so the "seen by" avatars follow them.
+  private readonly onReceipt = (): void => this.refresh();
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.roomId) {
       this.refresh();
@@ -201,6 +204,7 @@ export class TimelineService {
     this.room = room;
     room.on(RoomEvent.Timeline, this.onTimeline);
     room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
+    room.on(RoomEvent.Receipt, this.onReceipt);
     room.on(RoomStateEvent.Members, this.onMember);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     client.on(RoomMemberEvent.Typing, this.onTyping);
@@ -226,6 +230,7 @@ export class TimelineService {
     }
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
     this.room?.off(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
+    this.room?.off(RoomEvent.Receipt, this.onReceipt);
     this.room?.off(RoomStateEvent.Members, this.onMember);
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);
@@ -613,6 +618,8 @@ function eventRevision(
     replyTargetSignature(room, event.replyEventId),
     member?.name ?? senderId,
     member?.getMxcAvatarUrl() ?? '',
+    // Re-project when the "seen by" receipts on this event change.
+    readReceiptUserIds(client, room, event).join(','),
   ].join('\x1f');
 }
 

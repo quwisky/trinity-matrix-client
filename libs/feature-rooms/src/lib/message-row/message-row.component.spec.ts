@@ -44,6 +44,7 @@ function row(overrides: Partial<MessageRow> = {}): MessageRow {
     media: null,
     caption: null,
     captionHtml: null,
+    readReceipts: [],
     showHeader: true,
     ...overrides,
   };
@@ -151,11 +152,33 @@ describe('MessageRowComponent', () => {
         media: fileMedia(),
         caption: null,
         captionHtml: null,
+        readReceipts: [],
       }),
     });
 
     expect(container.querySelector('trn-media-attachment')).toBeTruthy();
     expect(container.querySelector('.msg__text')).toBeNull();
+  });
+
+  it('renders a "seen by" avatar per read receipt with a labelled group', async () => {
+    const { container } = await renderRow({
+      row: row({
+        readReceipts: [
+          { userId: '@bob:hs', name: 'Bob', initial: 'B', avatarMxc: null },
+          { userId: '@cara:hs', name: 'Cara', initial: 'C', avatarMxc: null },
+        ],
+      }),
+    });
+
+    const receipts = container.querySelector('[data-testid=read-receipts]');
+    expect(receipts).toBeTruthy();
+    expect(receipts?.querySelectorAll('trn-avatar').length).toBe(2);
+    expect(receipts?.getAttribute('aria-label')).toBe('Seen by Bob, Cara');
+  });
+
+  it('renders no "seen by" group when nothing has been read', async () => {
+    const { container } = await renderRow({ row: row({ readReceipts: [] }) });
+    expect(container.querySelector('[data-testid=read-receipts]')).toBeNull();
   });
 
   it('renders the message body and the hover toolbar', async () => {
