@@ -57,6 +57,8 @@ export abstract class MessageListBase {
   readonly threadSummaries = input<Record<string, ThreadSummary>>({});
   /** Whether the current user may pin/unpin in this room (drives the per-row Pin item). */
   readonly canPin = input(false);
+  /** Whether the current user may redact OTHER people's messages here (a moderator). */
+  readonly canRedactOthers = input(false);
   /** Currently-pinned event ids, for the per-row pinned state. */
   readonly pinnedIds = input<readonly string[]>([]);
   readonly loadingOlder = input(false);
@@ -314,12 +316,14 @@ export abstract class MessageListBase {
    */
   private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
     const canPin = this.canPin();
+    const canRedactOthers = this.canRedactOthers();
     const pinnedIds = this.pinnedIds();
     const caps = new Map<string, MessageRowCaps>();
     for (const message of this.messages()) {
       caps.set(message.id, {
         editable: this.isEditable(message),
-        deletable: message.isOwn && !message.status,
+        // Own messages are always deletable; a moderator can also redact others'.
+        deletable: (message.isOwn || canRedactOthers) && !message.status,
         canPin,
         pinned: pinnedIds.includes(message.id),
         canThread: true,

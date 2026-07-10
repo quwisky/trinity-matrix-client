@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Moderators can delete others' messages.** If your power level in a room meets its
+  redaction requirement (a moderator or admin), the message ⋯ menu now offers **Delete
+  message** on other people's messages too, not just your own — redacting them for
+  everyone. Regular members still only see it on their own messages.
 - **Leave a room.** Each room's ⋮ menu in the channel list now has a **Leave room**
   action: confirm, and you leave the room and it drops out of your list. Previously you
   could unlink a room from a space or decline an invite, but there was no way to exit a

@@ -287,11 +287,13 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
    * per CD would defeat the OnPush {@link MessageRowComponent} and re-render every row.
    */
   private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
+    const canRedactOthers = this.timeline.canRedactOthers();
     const caps = new Map<string, MessageRowCaps>();
     for (const row of this.rows()) {
       caps.set(row.id, {
         editable: this.isEditable(row),
-        deletable: row.isOwn && !row.status,
+        // Own messages are always deletable; a moderator can also redact others'.
+        deletable: (row.isOwn || canRedactOthers) && !row.status,
         canPin: false,
         pinned: false,
         canThread: false,

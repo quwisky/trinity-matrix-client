@@ -55,6 +55,24 @@ describe('SimpleMessageListComponent', () => {
     expect(container.textContent).toContain('body $2');
   });
 
+  it('marks others’ messages deletable only when canRedactOthers (moderator)', async () => {
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [msg('$1', '@a:hs', 'Alice', 1000)], // not own
+        canRedactOthers: false,
+      },
+    });
+    const cmp = fixture.componentInstance;
+    const row = { ...msg('$1', '@a:hs', 'Alice', 1000), showHeader: true };
+
+    // A regular member can't delete someone else's message.
+    expect(cmp.rowCaps(row).deletable).toBe(false);
+
+    // A moderator (canRedactOthers) can.
+    fixture.componentRef.setInput('canRedactOthers', true);
+    expect(cmp.rowCaps(row).deletable).toBe(true);
+  });
+
   it('resets the edit/reply target and suppresses announcements on room change', async () => {
     const { fixture } = await render(SimpleMessageListComponent, {
       inputs: {

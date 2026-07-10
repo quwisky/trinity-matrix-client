@@ -140,7 +140,10 @@ function fakeRoom(
   members: ReturnType<typeof fakeMember>[] = [],
   fullyReadEventId: string | null = null,
   receiptsByEvent: Record<string, string[]> = {},
+  power: { mine?: number; redact?: number } = {},
 ) {
+  const myPower = power.mine ?? 0;
+  const redactLevel = power.redact ?? 50;
   return {
     roomId: '!r:hs',
     getLiveTimeline: () => ({
@@ -151,7 +154,12 @@ function fakeRoom(
     getMember: (id: string) => ({
       name: id === '@me:hs' ? 'Me' : 'Alice',
       getMxcAvatarUrl: () => null,
+      powerLevel: id === '@me:hs' ? myPower : 0,
     }),
+    currentState: {
+      hasSufficientPowerLevelFor: (_action: string, level: number) =>
+        level >= redactLevel,
+    },
     getMembers: () => members,
     getUsersReadUpTo: (event: { getId: () => string }) =>
       receiptsByEvent[event.getId()] ?? [],
@@ -224,8 +232,9 @@ function setup(
   sent: unknown[][] = [],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   encrypted = false,
+  power: { mine?: number; redact?: number } = {},
 ) {
-  const room = fakeRoom(events, reactions, encrypted);
+  const room = fakeRoom(events, reactions, encrypted, [], null, {}, power);
   const client = fakeClient(room, sent);
 
   TestBed.configureTestingModule({
@@ -478,6 +487,24 @@ describe('TimelineService', () => {
     await firstValueFrom(svc.redact('$x'));
 
     expect(sent[0]).toEqual(['redact', '$x']);
+  });
+
+  it('canRedactOthers is false for a regular member (power below redact level)', () => {
+    const svc = setup([], [], {}, false, { mine: 0, redact: 50 });
+    expect(svc.canRedactOthers()).toBe(false);
+  });
+
+  it('canRedactOthers is true for a moderator (power meets redact level)', () => {
+    const svc = setup([], [], {}, false, { mine: 50, redact: 50 });
+    expect(svc.canRedactOthers()).toBe(true);
+  });
+
+  it('canRedactOthers resets to false when the room closes', () => {
+    const svc = setup([], [], {}, false, { mine: 100, redact: 50 });
+    expect(svc.canRedactOthers()).toBe(true);
+
+    svc.close();
+    expect(svc.canRedactOthers()).toBe(false);
   });
 
   it('aggregates reactions onto messages and flags the user’s own', () => {
