@@ -5,18 +5,40 @@
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'apps/trinity/src/app/build-info.ts');
 
-const version = JSON.parse(
-  readFileSync(join(ROOT, 'package.json'), 'utf8'),
-).version;
+/** Render the build-info.ts source for the given values (pure). */
+export function renderBuildInfo({ version, commit, builtAt }) {
+  return `import { type BuildInfo } from '@trinity/platform-native';
 
-function git(command) {
+// Generated (and git-ignored) by scripts/gen-build-info.mjs from package.json + git.
+// The build/serve targets regenerate it via the \`build-info\` Nx dependency, so it is
+// never committed; nothing but main.ts imports it.
+export const BUILD_INFO_VALUE: BuildInfo = {
+  version: '${version}',
+  commit: '${commit}',
+  builtAt: '${builtAt}',
+};
+`;
+}
+
+/** Blank out the timestamp so an unchanged version/commit doesn't count as a change. */
+export function stripTimestamp(source) {
+  return source.replace(/builtAt: '[^']*'/, "builtAt: ''");
+}
+
+/** The commit label: short hash (or `unknown`), suffixed `-dirty` on a modified tree. */
+export function commitLabel(shortHash, porcelain) {
+  return `${shortHash || 'unknown'}${porcelain ? '-dirty' : ''}`;
+}
+
+/** Default git runner: returns stdout trimmed, or '' when git isn't available. */
+function runGit(root, command) {
   try {
-    return execSync(command, { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] })
+    return execSync(command, { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] })
       .toString()
       .trim();
   } catch {
@@ -24,33 +46,43 @@ function git(command) {
   }
 }
 
-// Append `-dirty` when there are uncommitted changes, so a build off a modified tree
-// is honest about not matching the named commit.
-const commit = git('git rev-parse --short HEAD') || 'unknown';
-const dirty = git('git status --porcelain') ? '-dirty' : '';
+/**
+ * Read version + git state and (re)write `outFile` only when the version/commit changed
+ * (the timestamp alone never triggers a write). `git` and `now` are injectable for tests.
+ * Returns `{ version, commit, wrote }`.
+ */
+export function generate({
+  root,
+  outFile,
+  git = runGit,
+  now = () => new Date().toISOString(),
+}) {
+  const version = JSON.parse(
+    readFileSync(join(root, 'package.json'), 'utf8'),
+  ).version;
+  const commit = commitLabel(
+    git(root, 'git rev-parse --short HEAD'),
+    git(root, 'git status --porcelain'),
+  );
+  const contents = renderBuildInfo({ version, commit, builtAt: now() });
 
-const contents = `import { type BuildInfo } from '@trinity/platform-native';
-
-// Generated (and git-ignored) by scripts/gen-build-info.mjs from package.json + git.
-// The build/serve targets regenerate it via the \`build-info\` Nx dependency, so it is
-// never committed; nothing but main.ts imports it.
-export const BUILD_INFO_VALUE: BuildInfo = {
-  version: '${version}',
-  commit: '${commit}${dirty}',
-  builtAt: '${new Date().toISOString()}',
-};
-`;
-
-// Compare ignoring builtAt so an unchanged version/commit doesn't rewrite the file.
-const stripTimestamp = (source) =>
-  source.replace(/builtAt: '[^']*'/, "builtAt: ''");
-let current = '';
-try {
-  current = readFileSync(OUT, 'utf8');
-} catch {
-  // No existing file — write below.
+  let current = '';
+  try {
+    current = readFileSync(outFile, 'utf8');
+  } catch {
+    // No existing file — write below.
+  }
+  const wrote = stripTimestamp(current) !== stripTimestamp(contents);
+  if (wrote) {
+    writeFileSync(outFile, contents);
+  }
+  return { version, commit, wrote };
 }
-if (stripTimestamp(current) !== stripTimestamp(contents)) {
-  writeFileSync(OUT, contents);
-  console.log(`[build-info] ${version} (${commit}${dirty})`);
+
+// Run only when invoked directly (not when imported by a test).
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  const { version, commit, wrote } = generate({ root: ROOT, outFile: OUT });
+  if (wrote) {
+    console.log(`[build-info] ${version} (${commit})`);
+  }
 }
