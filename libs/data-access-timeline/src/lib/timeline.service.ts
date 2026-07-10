@@ -4,6 +4,7 @@ import {
   Direction,
   EventType,
   MatrixEventEvent,
+  ReceiptType,
   RoomEvent,
   RoomMemberEvent,
   RoomStateEvent,
@@ -26,6 +27,7 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
+import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   annotationContent,
   buildMessageView,
@@ -67,6 +69,7 @@ export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly mediaSvc = inject(MediaService);
+  private readonly privacy = inject(PrivacySettingsService);
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();
@@ -675,7 +678,15 @@ export class TimelineService {
     }
     this.lastReadEventId = id;
     try {
-      void this.matrix.instance.sendReadReceipt(latest)?.catch(() => undefined);
+      // When the user has turned off read receipts, still ack — but privately
+      // (`m.read.private`), so their unread badge clears without other users
+      // seeing that they read it.
+      const receiptType = this.privacy.sendReadReceipts()
+        ? ReceiptType.Read
+        : ReceiptType.ReadPrivate;
+      void this.matrix.instance
+        .sendReadReceipt(latest, receiptType)
+        ?.catch(() => undefined);
       // Also advance the persisted fully-read marker so the unread anchor survives
       // reloads and other devices (the divider reads it on the next open).
       void this.matrix.instance

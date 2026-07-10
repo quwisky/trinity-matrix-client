@@ -1,12 +1,21 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
-import { RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
+import { ReceiptType, RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access-media';
+import { PrivacySettingsService } from '@trinity/platform-native';
 import { TYPING_REFRESH_MS } from '@trinity/util-matrix';
+
+/** A PrivacySettingsService mock with a fixed send-read-receipts preference. */
+function privacyProvider(sendReadReceipts: boolean) {
+  return MockProvider(PrivacySettingsService, {
+    sendReadReceipts: signal(sendReadReceipts).asReadonly(),
+  });
+}
 
 /** A MediaService mock whose uploadMedia echoes a descriptor for the room's mode. */
 function mediaProvider() {
@@ -828,6 +837,57 @@ describe('TimelineService', () => {
     expect(received).toHaveLength(1);
     expect(received[0].getId()).toBe('$a'); // not the pending echo
   });
+
+  it.each([
+    { sendReceipts: true, expected: ReceiptType.Read, label: 'public' },
+    {
+      sendReceipts: false,
+      expected: ReceiptType.ReadPrivate,
+      label: 'private',
+    },
+  ])(
+    'sends a $label read receipt when send-read-receipts is $sendReceipts',
+    ({ sendReceipts, expected }) => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const received: { id: string; type: string }[] = [];
+      const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
+      const room = {
+        roomId: '!r:hs',
+        getLiveTimeline: () => ({
+          getEvents: () => events,
+          getPaginationToken: () => null,
+        }),
+        getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+        relations: { getChildEventsForEvent: () => undefined },
+        on: () => {},
+        off: () => {},
+      };
+      const client = {
+        baseUrl: 'https://hs',
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: () => {},
+        off: () => {},
+        sendReadReceipt: (e: { getId: () => string }, type: string) => {
+          received.push({ id: e.getId(), type });
+          return Promise.resolve({});
+        },
+        setRoomReadMarkers: () => Promise.resolve({}),
+        scrollback: () => Promise.resolve(room),
+      };
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          matrixProvider(client),
+          privacyProvider(sendReceipts),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+
+      expect(received).toEqual([{ id: '$a', type: expected }]);
+    },
+  );
 
   it('does not ack the open room while the window is unfocused (badge accrues)', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false); // app not in focus

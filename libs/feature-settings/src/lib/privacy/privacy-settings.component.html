@@ -1,0 +1,19 @@
+<h2
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Privacy
+</h2>
+<label
+  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+  data-testid="privacy-send-read-receipts"
+>
+  <hlm-checkbox
+    [checked]="privacy.sendReadReceipts()"
+    (checkedChange)="privacy.setSendReadReceipts($event)"
+  />
+  Send read receipts
+</label>
+<p class="block px-4 py-2 text-[13px] text-muted-foreground">
+  Let others see when you've read their messages. When off, your unread badges
+  still clear, but your reading stays private to you on this device.
+</p>

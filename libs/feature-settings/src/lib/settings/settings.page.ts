@@ -28,6 +28,7 @@ import {
   lucideKeyRound,
   lucideMonitorSmartphone,
   lucidePalette,
+  lucideShield,
   lucideUser,
 } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
@@ -48,6 +49,7 @@ const MENU: readonly SettingsMenuItem[] = [
   { path: 'appearance', label: 'Appearance', icon: 'lucidePalette' },
   { path: 'devices', label: 'Devices', icon: 'lucideMonitorSmartphone' },
   { path: 'account', label: 'Account', icon: 'lucideKeyRound' },
+  { path: 'privacy', label: 'Privacy', icon: 'lucideShield' },
   { path: 'gifs', label: 'GIFs', icon: 'lucideImage' },
   { path: 'experimental', label: 'Experimental', icon: 'lucideFlaskConical' },
 ];
@@ -84,6 +86,7 @@ const WIDE_QUERY = '(min-width: 768px)';
       lucidePalette,
       lucideMonitorSmartphone,
       lucideKeyRound,
+      lucideShield,
       lucideImage,
       lucideFlaskConical,
     }),

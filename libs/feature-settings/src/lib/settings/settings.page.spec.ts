@@ -18,6 +18,7 @@ const SECTIONS = [
   'appearance',
   'devices',
   'account',
+  'privacy',
   'gifs',
   'experimental',
 ];

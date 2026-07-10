@@ -22,6 +22,7 @@ import {
   BUILD_INFO,
   DraftStoreService,
   FeatureFlagsService,
+  PrivacySettingsService,
   StoragePersistenceService,
   ThemeService,
   TrinityErrorHandler,
@@ -63,6 +64,9 @@ bootstrapApplication(AppComponent, {
     provideAppInitializer(() => inject(ThemeService).init()),
     // Load persisted experimental feature flags (e.g. virtualized timeline).
     provideAppInitializer(() => inject(FeatureFlagsService).init()),
+    // Load persisted privacy preferences (e.g. whether to send read receipts)
+    // before the timeline sends its first receipt.
+    provideAppInitializer(() => inject(PrivacySettingsService).init()),
     // Load persisted per-conversation composer drafts before any composer mounts,
     // so a half-typed message is restored on cold start.
     provideAppInitializer(() => inject(DraftStoreService).init()),

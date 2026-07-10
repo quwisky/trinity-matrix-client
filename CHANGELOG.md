@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Stop sending read receipts.** A new **Privacy** section in Settings has a **Send read
+  receipts** toggle. Turn it off and reading a message still clears your own unread badge,
+  but privately (`m.read.private`) — other people no longer see when you've read their
+  messages. It's a per-device choice and applies to both the main timeline and threads.
 - **Change your account password.** Settings now has an **Account** section to change your
   password: enter your current password, a new one (confirmed), and the change is applied
   server-side. Your other signed-in sessions stay logged in, and a wrong current password
