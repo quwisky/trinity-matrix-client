@@ -119,6 +119,17 @@
             hlmBtn
             variant="ghost"
             size="icon"
+            (click)="onOpenRoomSettings()"
+            hlmTooltip="Room settings"
+            aria-label="Room settings"
+            data-testid="open-room-settings"
+          >
+            <ng-icon class="text-xl" name="lucideSettings" />
+          </button>
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
             (click)="openThreadsList()"
             hlmTooltip="Threads"
             aria-label="Threads"

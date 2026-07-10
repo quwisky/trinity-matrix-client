@@ -20,6 +20,7 @@ import {
   lucideMessagesSquare,
   lucidePin,
   lucideSearch,
+  lucideSettings,
   lucideUserPlus,
   lucideUsers,
 } from '@ng-icons/lucide';
@@ -49,11 +50,13 @@ import {
 } from '@trinity/data-access-profile';
 import {
   RoomsService,
+  RoomSettingsService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
+import { RoomSettingsComponent } from '../room-settings/room-settings.component';
 import { type SwitcherSelection } from '@trinity/data-access-search';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
 import { type MatrixLinkTarget, type Mention } from '@trinity/util-matrix';
@@ -110,6 +113,7 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
       lucideMessagesSquare,
       lucidePin,
       lucideSearch,
+      lucideSettings,
       lucideUserPlus,
       lucideUsers,
     }),
@@ -140,6 +144,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly dialog = inject(TrnDialogService);
+  private readonly roomSettings = inject(RoomSettingsService);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
   private readonly actionSheet = inject(TrnActionSheetService);
@@ -854,6 +859,26 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe({
         error: () => void this.showError('Could not update notifications.'),
       });
+  }
+
+  /** Header "Room settings": edit the active room's name and topic in a dialog. */
+  onOpenRoomSettings(): void {
+    const room = this.activeRoom();
+    if (!room) {
+      return;
+    }
+    const editable = this.roomSettings.editableFields(room.id);
+    // The dialog writes on save; the name/topic update live via the rooms sync
+    // listeners, so nothing to do with the resolved result here.
+    void this.dialog.openAndWait(RoomSettingsComponent, {
+      inputs: {
+        roomId: room.id,
+        name: room.name,
+        topic: room.topic,
+        canEditName: editable.name,
+        canEditTopic: editable.topic,
+      },
+    });
   }
 
   /** Open the threads-list panel for the active room (header "Threads" button). */

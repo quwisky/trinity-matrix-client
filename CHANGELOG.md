@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Edit a room's name and topic.** A new ⚙ button in the room header opens a **Room
+  settings** dialog to change the room's name and topic. Fields you don't have permission
+  to change (by power level) are read-only, and the dialog says so when you can't edit
+  either. Changes save to `m.room.name` / `m.room.topic` and sync across clients.
 - **Moderators can delete others' messages.** If your power level in a room meets its
   redaction requirement (a moderator or admin), the message ⋯ menu now offers **Delete
   message** on other people's messages too, not just your own — redacting them for

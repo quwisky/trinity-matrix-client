@@ -1,0 +1,53 @@
+<div class="room-settings" data-testid="room-settings">
+  <h2 class="room-settings__title">Room settings</h2>
+
+  <form [formGroup]="form" class="room-settings__form" (ngSubmit)="save()">
+    <label class="room-settings__field">
+      <span class="room-settings__label">Name</span>
+      <input
+        hlmInput
+        class="w-full"
+        formControlName="name"
+        autocomplete="off"
+        data-testid="room-settings-name"
+      />
+    </label>
+
+    <label class="room-settings__field">
+      <span class="room-settings__label">Topic</span>
+      <textarea
+        hlmInput
+        class="room-settings__topic w-full"
+        formControlName="topic"
+        rows="3"
+        data-testid="room-settings-topic"
+      ></textarea>
+    </label>
+
+    @if (!canEditName() && !canEditTopic()) {
+      <p class="room-settings__note">
+        You don’t have permission to change this room’s settings.
+      </p>
+    }
+
+    <div class="room-settings__actions">
+      <button
+        hlmBtn
+        type="button"
+        variant="ghost"
+        (click)="close()"
+        data-testid="room-settings-cancel"
+      >
+        Cancel
+      </button>
+      <button
+        hlmBtn
+        type="submit"
+        [disabled]="saving() || (!canEditName() && !canEditTopic())"
+        data-testid="room-settings-save"
+      >
+        {{ saving() ? 'Saving…' : 'Save' }}
+      </button>
+    </div>
+  </form>
+</div>

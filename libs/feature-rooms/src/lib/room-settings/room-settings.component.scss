@@ -1,0 +1,52 @@
+.room-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 340px;
+  max-width: 92vw;
+  padding: 20px 18px 16px;
+  border: 1px solid var(--trinity-divider);
+  border-radius: 12px;
+  background: var(--trinity-sidebar);
+}
+
+.room-settings__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--trinity-text-bright);
+}
+
+.room-settings__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.room-settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.room-settings__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--trinity-text-muted);
+}
+
+.room-settings__topic {
+  resize: vertical;
+  min-height: 64px;
+}
+
+.room-settings__note {
+  font-size: 13px;
+  color: var(--trinity-text-muted);
+}
+
+.room-settings__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
