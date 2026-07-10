@@ -243,6 +243,15 @@
   }
 }
 
+// Touch devices have no hover, so the kebab — the only way into a room's options and
+// its Notifications submenu — would be invisible and unreachable. Keep it shown there.
+// (Keyboard users still reveal it via the :focus-within rule on .channel-row above.)
+@media (hover: none) {
+  .channel__menu {
+    opacity: 1;
+  }
+}
+
 // Not-yet-joined child rooms / sub-spaces: muted rows with a Join (or Open) action.
 .joinable {
   display: flex;

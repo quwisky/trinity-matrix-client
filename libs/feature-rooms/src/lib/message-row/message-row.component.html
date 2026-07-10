@@ -42,18 +42,34 @@
           <span class="msg__edited">(edited)</span>
         }
       </div>
-      @if (r.media) {
+      @if (r.poll; as poll) {
+        <trn-poll
+          [poll]="poll"
+          [canEnd]="r.isOwn"
+          (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
+          (end)="pollEnd.emit(poll.id)"
+        />
+      } @else if (r.media) {
         <trn-media-attachment class="msg__media" [media]="r.media" />
         @if (r.captionHtml) {
           <div
             class="msg__text msg__text--html"
+            trnSpoilerReveal
+            trnMatrixLink
+            (matrixLink)="matrixLink.emit($event)"
             [innerHTML]="r.captionHtml"
           ></div>
         } @else if (r.caption) {
           <p class="msg__text">{{ r.caption }}</p>
         }
       } @else if (r.html) {
-        <div class="msg__text msg__text--html" [innerHTML]="r.html"></div>
+        <div
+          class="msg__text msg__text--html"
+          trnSpoilerReveal
+          trnMatrixLink
+          (matrixLink)="matrixLink.emit($event)"
+          [innerHTML]="r.html"
+        ></div>
       } @else {
         <p class="msg__text">{{ r.body }}</p>
       }
@@ -63,15 +79,43 @@
           (toggleReaction)="action.emit({ type: 'react', key: $event })"
         />
       }
+      @if (r.readReceipts.length) {
+        <div
+          class="msg__receipts"
+          data-testid="read-receipts"
+          [attr.aria-label]="seenByLabel(r.readReceipts)"
+        >
+          @for (receipt of r.readReceipts; track receipt.userId) {
+            <trn-avatar
+              class="msg__receipt"
+              aria-hidden="true"
+              [mxc]="receipt.avatarMxc"
+              [initial]="receipt.initial"
+              [name]="receipt.name"
+              [size]="16"
+            />
+          }
+        </div>
+      }
     </div>
   } @else {
     <span class="msg__gutter">{{ r.timestamp | date: 'shortTime' }}</span>
     <div class="msg__body">
-      @if (r.media) {
+      @if (r.poll; as poll) {
+        <trn-poll
+          [poll]="poll"
+          [canEnd]="r.isOwn"
+          (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
+          (end)="pollEnd.emit(poll.id)"
+        />
+      } @else if (r.media) {
         <trn-media-attachment class="msg__media" [media]="r.media" />
         @if (r.captionHtml) {
           <div
             class="msg__text msg__text--cont msg__text--html"
+            trnSpoilerReveal
+            trnMatrixLink
+            (matrixLink)="matrixLink.emit($event)"
             [innerHTML]="r.captionHtml"
           ></div>
         } @else if (r.caption) {
@@ -80,6 +124,9 @@
       } @else if (r.html) {
         <div
           class="msg__text msg__text--cont msg__text--html"
+          trnSpoilerReveal
+          trnMatrixLink
+          (matrixLink)="matrixLink.emit($event)"
           [innerHTML]="r.html"
         ></div>
       } @else {
@@ -93,6 +140,24 @@
           [reactions]="r.reactions"
           (toggleReaction)="action.emit({ type: 'react', key: $event })"
         />
+      }
+      @if (r.readReceipts.length) {
+        <div
+          class="msg__receipts"
+          data-testid="read-receipts"
+          [attr.aria-label]="seenByLabel(r.readReceipts)"
+        >
+          @for (receipt of r.readReceipts; track receipt.userId) {
+            <trn-avatar
+              class="msg__receipt"
+              aria-hidden="true"
+              [mxc]="receipt.avatarMxc"
+              [initial]="receipt.initial"
+              [name]="receipt.name"
+              [size]="16"
+            />
+          }
+        </div>
       }
     </div>
   }

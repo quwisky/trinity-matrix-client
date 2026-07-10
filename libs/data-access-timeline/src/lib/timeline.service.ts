@@ -1,10 +1,11 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import {
   Direction,
   EventType,
   MatrixEventEvent,
   RoomEvent,
+  RoomMemberEvent,
   RoomStateEvent,
   type MatrixClient,
   type MatrixEvent,
@@ -21,6 +22,7 @@ import {
   of,
   switchMap,
   tap,
+  throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
@@ -30,12 +32,22 @@ import {
   collectMessageSenders,
   editMessageContent,
   isDisplayableMessage,
+  isPollStart,
+  pollSignature,
+  pollStartContent,
+  pollResponseContent,
+  pollEndContent,
   mediaCaptionFields,
   myReactionId,
   reactionsFor,
+  readReceiptUserIds,
   renderMarkdown,
   replyMessageContent,
+  textMessageContent,
+  TYPING_REFRESH_MS,
+  TYPING_TIMEOUT_MS,
   type MessageView,
+  type Mention,
 } from '@trinity/util-matrix';
 
 const SCROLLBACK = 30;
@@ -65,6 +77,17 @@ export class TimelineService {
   private readonly _canLoadOlder = signal(false);
   readonly canLoadOlder = this._canLoadOlder.asReadonly();
 
+  // Display names of the *other* members currently typing in the open room, projected
+  // from the room's `m.typing` ephemeral (via RoomMemberEvent.Typing). Drives the
+  // "X is typing…" row under the timeline.
+  private readonly _typingNames = signal<string[]>([]);
+  readonly typingNames = this._typingNames.asReadonly();
+
+  // Timestamp (ms) of the last `sendTyping(true)` we issued for the open room, so we
+  // refresh the flag at most every {@link TYPING_REFRESH_MS} instead of per keystroke;
+  // 0 means we are not currently marked as typing.
+  private typingSentAt = 0;
+
   private roomId: string | null = null;
 
   /** The room currently open in the timeline, or null when none is. Lets other
@@ -90,6 +113,36 @@ export class TimelineService {
   // pagination/backfill (which leaves the latest unchanged) doesn't re-ack.
   private lastReadEventId: string | null = null;
 
+  // The persisted fully-read marker (`m.fully_read`) as it stood when the room was
+  // opened — captured once so the "New messages" divider stays put for the whole
+  // session even as markRead advances the server-side marker. Null when the room has
+  // no marker yet (first visit) or none is loaded.
+  private readonly _readMarker = signal<string | null>(null);
+
+  /**
+   * Event id of the first unread message: the message right after the on-open
+   * {@link _readMarker} that isn't the user's own. Drives the "New messages" divider
+   * and the jump-to-unread control. Null when nothing is unread (or the marker isn't a
+   * loaded message).
+   */
+  readonly firstUnreadId = computed<string | null>(() => {
+    const marker = this._readMarker();
+    if (!marker) {
+      return null;
+    }
+    const msgs = this._messages();
+    const markerIdx = msgs.findIndex((m) => m.id === marker);
+    if (markerIdx < 0) {
+      return null; // the marker isn't among the loaded messages — no divider
+    }
+    for (let i = markerIdx + 1; i < msgs.length; i++) {
+      if (!msgs[i].isOwn) {
+        return msgs[i].id; // first message after the marker that someone else sent
+      }
+    }
+    return null;
+  });
+
   // User ids the current projection renders a member for: every message's sender
   // (its header) plus every reply's quoted sender (its preview). Recomputed each
   // refresh; the member listener re-projects only when one of *these* members
@@ -98,6 +151,8 @@ export class TimelineService {
 
   private readonly onTimeline = (): void => this.refresh();
   private readonly onLocalEcho = (): void => this.refresh();
+  // Others' read receipts moved — re-project so the "seen by" avatars follow them.
+  private readonly onReceipt = (): void => this.refresh();
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.roomId) {
       this.refresh();
@@ -118,6 +173,18 @@ export class TimelineService {
       this.relevantSenders.has(member.userId)
     ) {
       this.refresh();
+    }
+  };
+
+  // A member started/stopped typing in the open room. The event carries the changed
+  // member; re-read the room's whole typing set so the signal always reflects everyone
+  // currently typing, not just this one delta.
+  private readonly onTyping = (
+    _event: MatrixEvent,
+    member: RoomMember,
+  ): void => {
+    if (member.roomId === this.roomId) {
+      this.refreshTyping();
     }
   };
 
@@ -143,8 +210,13 @@ export class TimelineService {
     this.room = room;
     room.on(RoomEvent.Timeline, this.onTimeline);
     room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
+    room.on(RoomEvent.Receipt, this.onReceipt);
     room.on(RoomStateEvent.Members, this.onMember);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
+    client.on(RoomMemberEvent.Typing, this.onTyping);
+    // Capture the persisted read marker BEFORE the first refresh (which marks read and
+    // advances it), so the "New messages" divider anchors where the user left off.
+    this._readMarker.set(this.readMarkerOf(room));
     // Re-ack the open room on refocus: while unfocused markRead holds the receipt
     // so its unread accrues, so we mark it read again when the window returns.
     if (typeof window !== 'undefined') {
@@ -157,21 +229,27 @@ export class TimelineService {
 
   /** Detach listeners and clear the timeline. */
   close(): void {
+    // Don't leave ourselves marked as typing in a room we're navigating away from.
+    this.setTyping(false);
     if (typeof window !== 'undefined') {
       window.removeEventListener('focus', this.onFocus);
     }
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
     this.room?.off(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
+    this.room?.off(RoomEvent.Receipt, this.onReceipt);
     this.room?.off(RoomStateEvent.Members, this.onMember);
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);
+      this.matrix.instance.off(RoomMemberEvent.Typing, this.onTyping);
     }
     this.room = null;
     this.roomId = null;
     this.lastReadEventId = null;
+    this._readMarker.set(null);
     this.relevantSenders.clear();
     this.viewCache.clear();
     this._messages.set([]);
+    this._typingNames.set([]);
     this._canLoadOlder.set(false);
   }
 
@@ -210,11 +288,54 @@ export class TimelineService {
   }
 
   /**
+   * Broadcast whether the local user is typing in the open room. Fire-and-forget:
+   * the composer calls this on input (start) and on send/close (stop). Starts are
+   * throttled to one `sendTyping(true)` per {@link TYPING_REFRESH_MS} — the server
+   * keeps the flag alive for {@link TYPING_TIMEOUT_MS}, so it never lapses mid-compose
+   * yet we don't hit the network on every keystroke. A no-op when no room is open.
+   */
+  setTyping(typing: boolean): void {
+    const ctx = this.context();
+    if (!ctx) {
+      return;
+    }
+    const now = Date.now();
+    if (typing) {
+      if (this.typingSentAt && now - this.typingSentAt < TYPING_REFRESH_MS) {
+        return; // already marked typing and refreshed recently — nothing to do
+      }
+      this.typingSentAt = now;
+      void ctx.client.sendTyping(ctx.room.roomId, true, TYPING_TIMEOUT_MS);
+    } else {
+      if (!this.typingSentAt) {
+        return; // we weren't marked as typing — nothing to clear
+      }
+      this.typingSentAt = 0;
+      void ctx.client.sendTyping(ctx.room.roomId, false, 0);
+    }
+  }
+
+  /** Re-read the open room's typing set into `typingNames`, excluding the local user. */
+  private refreshTyping(): void {
+    const ctx = this.context();
+    if (!ctx) {
+      this._typingNames.set([]);
+      return;
+    }
+    const selfId = ctx.client.getUserId();
+    const names = ctx.room
+      .getMembers()
+      .filter((member) => member.typing && member.userId !== selfId)
+      .map((member) => member.name);
+    this._typingNames.set(names);
+  }
+
+  /**
    * Send a message to the active room. Markdown is rendered to HTML, sanitized,
    * and sent as `formatted_body` — but only when it actually adds formatting; plain
    * text is sent as-is. The local echo appears via the timeline listener.
    */
-  send(body: string): Observable<void> {
+  send(body: string, mentions: Mention[] = []): Observable<void> {
     const text = body.trim();
     return defer(() => {
       const ctx = this.context();
@@ -222,11 +343,92 @@ export class TimelineService {
         return of(void 0);
       }
       const { client, room } = ctx;
-      const md = renderMarkdown(this.sanitizer, text);
+      // Build the content (rather than sendText/HtmlMessage) so mentions carry
+      // `m.mentions` + matrix.to pills. The SDK still creates the local echo.
+      const content = textMessageContent(
+        text,
+        renderMarkdown(this.sanitizer, text),
+        mentions,
+      );
+      return from(client.sendMessage(room.roomId, content as never));
+    }).pipe(map(() => void 0));
+  }
+
+  /**
+   * Forward a message to another room: copy its content — dropping any reply/edit/thread
+   * relation so it lands as a standalone message — and send it there. Works across rooms
+   * and for media (an encrypted attachment carries its own key in the content, so the
+   * target room's members can still decrypt it). Cold: runs on subscribe.
+   */
+  forwardMessage(
+    sourceRoomId: string,
+    eventId: string,
+    targetRoomId: string,
+  ): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      const client = this.matrix.instance;
+      const event = client.getRoom(sourceRoomId)?.findEventById(eventId);
+      if (!event) {
+        return throwError(() => new Error('Message not found.'));
+      }
+      const content = { ...event.getContent() };
+      delete content['m.relates_to'];
+      delete content['m.new_content'];
+      return from(client.sendMessage(targetRoomId, content as never));
+    }).pipe(map(() => void 0));
+  }
+
+  /** Start a single-select poll (MSC3381) in the open room. Cold: runs on subscribe. */
+  createPoll(question: string, options: string[]): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      const clean = options.map((o) => o.trim()).filter(Boolean);
+      if (!ctx || !question.trim() || clean.length < 2) {
+        return of(void 0);
+      }
       return from(
-        md.formatted
-          ? client.sendHtmlMessage(room.roomId, text, md.html)
-          : client.sendTextMessage(room.roomId, text),
+        ctx.client.sendEvent(
+          ctx.room.roomId,
+          'm.poll.start' as never,
+          pollStartContent(question.trim(), clean) as never,
+        ),
+      );
+    }).pipe(map(() => void 0));
+  }
+
+  /** Cast (or change) the local user's vote on a poll. Cold: runs on subscribe. */
+  votePoll(pollId: string, answerId: string): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx) {
+        return of(void 0);
+      }
+      return from(
+        ctx.client.sendEvent(
+          ctx.room.roomId,
+          'm.poll.response' as never,
+          pollResponseContent(pollId, answerId) as never,
+        ),
+      );
+    }).pipe(map(() => void 0));
+  }
+
+  /** Close a poll so no further votes count (creator action). Cold: runs on subscribe. */
+  endPoll(pollId: string): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx) {
+        return of(void 0);
+      }
+      return from(
+        ctx.client.sendEvent(
+          ctx.room.roomId,
+          'm.poll.end' as never,
+          pollEndContent(pollId) as never,
+        ),
       );
     }).pipe(map(() => void 0));
   }
@@ -268,7 +470,11 @@ export class TimelineService {
   }
 
   /** Edit a previously-sent message via an `m.replace` relation. */
-  edit(messageId: string, newBody: string): Observable<void> {
+  edit(
+    messageId: string,
+    newBody: string,
+    mentions: Mention[] = [],
+  ): Observable<void> {
     const text = newBody.trim();
     return defer(() => {
       const ctx = this.context();
@@ -280,6 +486,7 @@ export class TimelineService {
         messageId,
         text,
         renderMarkdown(this.sanitizer, text),
+        mentions,
       );
       // `content` is a valid m.replace payload; the SDK's content union doesn't
       // model it, so assert past it.
@@ -303,7 +510,11 @@ export class TimelineService {
   }
 
   /** Send a reply to a message (`m.in_reply_to`), with a plain-text quote fallback. */
-  reply(messageId: string, body: string): Observable<void> {
+  reply(
+    messageId: string,
+    body: string,
+    mentions: Mention[] = [],
+  ): Observable<void> {
     const text = body.trim();
     return defer(() => {
       const ctx = this.context();
@@ -316,6 +527,7 @@ export class TimelineService {
         messageId,
         text,
         renderMarkdown(this.sanitizer, text),
+        mentions,
       );
       return from(client.sendMessage(room.roomId, content as never));
     }).pipe(map(() => void 0));
@@ -436,9 +648,21 @@ export class TimelineService {
     this.lastReadEventId = id;
     try {
       void this.matrix.instance.sendReadReceipt(latest)?.catch(() => undefined);
+      // Also advance the persisted fully-read marker so the unread anchor survives
+      // reloads and other devices (the divider reads it on the next open).
+      void this.matrix.instance
+        .setRoomReadMarkers(this.room.roomId, id)
+        ?.catch(() => undefined);
     } catch {
       // A missing/unsupported receipt API must never break room viewing.
     }
+  }
+
+  /** The room's persisted fully-read marker event id (`m.fully_read`), or null. */
+  private readMarkerOf(room: Room): string | null {
+    const content = room.getAccountData?.(EventType.FullyRead)?.getContent();
+    const eventId = content?.['event_id'];
+    return typeof eventId === 'string' ? eventId : null;
   }
 }
 
@@ -479,6 +703,10 @@ function eventRevision(
     replyTargetSignature(room, event.replyEventId),
     member?.name ?? senderId,
     member?.getMxcAvatarUrl() ?? '',
+    // Re-project when the "seen by" receipts on this event change.
+    readReceiptUserIds(client, room, event).join(','),
+    // Re-project a poll when its votes or end state change.
+    isPollStart(event) ? pollSignature(room, event) : '',
   ].join('\x1f');
 }
 

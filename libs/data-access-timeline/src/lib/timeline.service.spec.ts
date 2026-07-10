@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access-media';
+import { TYPING_REFRESH_MS } from '@trinity/util-matrix';
 
 /** A MediaService mock whose uploadMedia echoes a descriptor for the room's mode. */
 function mediaProvider() {
@@ -81,6 +82,7 @@ function fakeEvent(o: {
   filename?: string;
   file?: unknown;
   info?: Record<string, unknown>;
+  relatesTo?: unknown;
 }) {
   return {
     getId: () => o.id,
@@ -100,6 +102,7 @@ function fakeEvent(o: {
       ...(o.filename !== undefined ? { filename: o.filename } : {}),
       ...(o.file !== undefined ? { file: o.file } : {}),
       ...(o.info !== undefined ? { info: o.info } : {}),
+      ...(o.relatesTo !== undefined ? { 'm.relates_to': o.relatesTo } : {}),
     }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
@@ -125,10 +128,18 @@ function fakeRelations(
   return { getSortedAnnotationsByKey: () => annotations };
 }
 
+/** A room member as {@link TimelineService.refreshTyping} reads it. */
+function fakeMember(userId: string, typing: boolean, name = userId) {
+  return { userId, typing, name, roomId: '!r:hs' };
+}
+
 function fakeRoom(
   events: ReturnType<typeof fakeEvent>[],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   encrypted = false,
+  members: ReturnType<typeof fakeMember>[] = [],
+  fullyReadEventId: string | null = null,
+  receiptsByEvent: Record<string, string[]> = {},
 ) {
   return {
     roomId: '!r:hs',
@@ -141,6 +152,13 @@ function fakeRoom(
       name: id === '@me:hs' ? 'Me' : 'Alice',
       getMxcAvatarUrl: () => null,
     }),
+    getMembers: () => members,
+    getUsersReadUpTo: (event: { getId: () => string }) =>
+      receiptsByEvent[event.getId()] ?? [],
+    getAccountData: (type: string) =>
+      type === 'm.fully_read' && fullyReadEventId
+        ? { getContent: () => ({ event_id: fullyReadEventId }) }
+        : undefined,
     relations: {
       getChildEventsForEvent: (
         id: string,
@@ -159,13 +177,24 @@ function fakeRoom(
 
 /** A fake matrix-js-sdk client that records everything it is asked to send. */
 function fakeClient(room: ReturnType<typeof fakeRoom>, sent: unknown[][]) {
+  // Captured event listeners keyed by event name, so a test can fire e.g. the
+  // RoomMember.typing handler the service registers in open().
+  const handlers = new Map<string, (...args: unknown[]) => void>();
   return {
     baseUrl: 'https://hs',
     getRoom: () => room,
     getUserId: () => '@me:hs',
-    on: () => {},
+    handlers,
+    on: (event: string, handler: (...args: unknown[]) => void) => {
+      handlers.set(event, handler);
+    },
     off: () => {},
+    sendTyping: (_rid: string, isTyping: boolean) => {
+      sent.push(['typing', isTyping]);
+      return Promise.resolve({});
+    },
     sendReadReceipt: () => Promise.resolve({}),
+    setRoomReadMarkers: vi.fn(() => Promise.resolve({})),
     scrollback: () => Promise.resolve(room),
     sendTextMessage: (_rid: string, body: string) => {
       sent.push(['text', body]);
@@ -336,10 +365,92 @@ describe('TimelineService', () => {
     await firstValueFrom(svc.send('hello there'));
     await firstValueFrom(svc.send('**bold**'));
 
-    expect(sent[0]).toEqual(['text', 'hello there']);
-    expect(sent[1][0]).toBe('html');
-    expect(sent[1][1]).toBe('**bold**');
-    expect(sent[1][2]).toContain('<strong>bold</strong>');
+    // Both go through sendMessage(content) now so mentions can add m.mentions.
+    expect(sent[0][0]).toBe('message');
+    expect(sent[0][1]).toEqual({ msgtype: 'm.text', body: 'hello there' });
+    expect(sent[1][0]).toBe('message');
+    const rich = sent[1][1] as Record<string, unknown>;
+    expect(rich['body']).toBe('**bold**');
+    expect(rich['format']).toBe('org.matrix.custom.html');
+    expect(rich['formatted_body']).toContain('<strong>bold</strong>');
+  });
+
+  it('forwards a message content to another room, dropping any relation', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup(
+      [
+        fakeEvent({
+          id: '$src',
+          sender: '@a:hs',
+          body: 'forward me',
+          relatesTo: { rel_type: 'm.thread', event_id: '$root' },
+        }),
+      ],
+      sent,
+    );
+
+    await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!target:hs'));
+
+    const message = sent.find((c) => c[0] === 'message');
+    const content = message?.[1] as Record<string, unknown>;
+    expect(content['body']).toBe('forward me');
+    expect(content['m.relates_to']).toBeUndefined(); // standalone, not a thread reply
+  });
+
+  it('errors when forwarding an event that cannot be found', async () => {
+    const svc = setup([]);
+    await expect(
+      firstValueFrom(svc.forwardMessage('!r:hs', '$missing', '!target:hs')),
+    ).rejects.toThrow();
+  });
+
+  it('creates a poll via an m.poll.start event', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+    await firstValueFrom(svc.createPoll('Best fruit?', ['Apple', 'Pear']));
+    const event = sent.find((c) => c[0] === 'event');
+    expect(event?.[1]).toBe('m.poll.start');
+    const content = event?.[2] as Record<string, { answers: unknown[] }>;
+    expect(content['m.poll.start'].answers).toHaveLength(2);
+  });
+
+  it('rejects a poll with fewer than two options', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+    await firstValueFrom(svc.createPoll('Best fruit?', ['Apple', '  ']));
+    expect(sent.some((c) => c[0] === 'event')).toBe(false);
+  });
+
+  it('casts a poll vote via an m.poll.response event', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+    await firstValueFrom(svc.votePoll('$p', 'a1'));
+    const event = sent.find((c) => c[0] === 'event');
+    expect(event?.[1]).toBe('m.poll.response');
+    const content = event?.[2] as Record<string, { answers: string[] }>;
+    expect(content['m.poll.response'].answers).toEqual(['a1']);
+  });
+
+  it('ends a poll via an m.poll.end event', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+    await firstValueFrom(svc.endPoll('$p'));
+    expect(sent.find((c) => c[0] === 'event')?.[1]).toBe('m.poll.end');
+  });
+
+  it('adds m.mentions and a matrix.to pill when a message mentions someone', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(
+      svc.send('hi @Bob', [{ userId: '@bob:hs', display: '@Bob' }]),
+    );
+
+    const content = sent[0][1] as Record<string, unknown>;
+    expect(content['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
+    expect(content['formatted_body']).toContain(
+      '<a href="https://matrix.to/#/@bob:hs">@Bob</a>',
+    );
   });
 
   it('edits a message as an m.replace with new content', async () => {
@@ -1168,6 +1279,220 @@ describe('TimelineService', () => {
       await firstValueFrom(send$);
 
       expect(sent).toHaveLength(0);
+    });
+  });
+
+  describe('typing', () => {
+    /** Open a room with the given members and return handles for typing assertions. */
+    function setupTyping(members: ReturnType<typeof fakeMember>[] = []) {
+      const sent: unknown[][] = [];
+      const room = fakeRoom([], {}, false, members);
+      const client = fakeClient(room, sent);
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(client), mediaProvider()],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return { svc, client, sent };
+    }
+
+    /** Only the typing calls the client recorded, in order. */
+    const typingCalls = (sent: unknown[][]) =>
+      sent.filter((call) => call[0] === 'typing');
+
+    it('broadcasts a typing notification when the composer reports typing', () => {
+      const { svc, sent } = setupTyping();
+      svc.setTyping(true);
+      expect(typingCalls(sent)).toEqual([['typing', true]]);
+    });
+
+    it('throttles repeated starts, then refreshes once the interval elapses', () => {
+      let now = 1000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const { svc, sent } = setupTyping();
+
+      svc.setTyping(true);
+      svc.setTyping(true); // still within the refresh window → no second request
+      expect(typingCalls(sent)).toEqual([['typing', true]]);
+
+      now += TYPING_REFRESH_MS + 1; // window elapsed → one refresh allowed
+      svc.setTyping(true);
+      expect(typingCalls(sent)).toEqual([
+        ['typing', true],
+        ['typing', true],
+      ]);
+    });
+
+    it('stops typing only when currently marked as typing', () => {
+      const { svc, sent } = setupTyping();
+
+      svc.setTyping(false); // never started → nothing to clear
+      expect(typingCalls(sent)).toEqual([]);
+
+      svc.setTyping(true);
+      svc.setTyping(false);
+      expect(typingCalls(sent)).toEqual([
+        ['typing', true],
+        ['typing', false],
+      ]);
+    });
+
+    it('stops typing when the room closes', () => {
+      const { svc, sent } = setupTyping();
+      svc.setTyping(true);
+      svc.close();
+      expect(typingCalls(sent)).toContainEqual(['typing', false]);
+    });
+
+    it('projects other typing members into typingNames, excluding self', () => {
+      const { svc, client } = setupTyping([
+        fakeMember('@alice:hs', true, 'Alice'),
+        fakeMember('@me:hs', true, 'Me'), // the local user never lists themselves
+        fakeMember('@bob:hs', false, 'Bob'), // present but not typing
+      ]);
+
+      // Fire the RoomMember.typing listener the service registered in open().
+      client.handlers.get('RoomMember.typing')?.(
+        {},
+        fakeMember('@alice:hs', true, 'Alice'),
+      );
+
+      expect(svc.typingNames()).toEqual(['Alice']);
+    });
+
+    it('ignores typing changes from other rooms', () => {
+      const { svc, client } = setupTyping([fakeMember('@alice:hs', true)]);
+      client.handlers.get('RoomMember.typing')?.(
+        {},
+        { userId: '@x:hs', typing: true, name: 'X', roomId: '!other:hs' },
+      );
+      expect(svc.typingNames()).toEqual([]);
+    });
+  });
+
+  describe('unread divider', () => {
+    /** Open a room whose fully-read marker sits at `fullyReadEventId`. */
+    function setupUnread(
+      events: ReturnType<typeof fakeEvent>[],
+      fullyReadEventId: string | null,
+    ) {
+      const room = fakeRoom(events, {}, false, [], fullyReadEventId);
+      const client = fakeClient(room, []);
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(client), mediaProvider()],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return { svc, client };
+    }
+
+    const msgs = [
+      fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+      fakeEvent({ id: '$2', sender: '@alice:hs', body: 'b' }),
+      fakeEvent({ id: '$3', sender: '@alice:hs', body: 'c' }),
+    ];
+
+    it('points at the first message after the read marker', () => {
+      const { svc } = setupUnread(msgs, '$1');
+      expect(svc.firstUnreadId()).toBe('$2');
+    });
+
+    it('is null when the marker is the newest message', () => {
+      const { svc } = setupUnread(msgs, '$3');
+      expect(svc.firstUnreadId()).toBeNull();
+    });
+
+    it('is null when there is no read marker', () => {
+      const { svc } = setupUnread(msgs, null);
+      expect(svc.firstUnreadId()).toBeNull();
+    });
+
+    it('is null when the marker is not among the loaded messages', () => {
+      const { svc } = setupUnread(msgs, '$missing');
+      expect(svc.firstUnreadId()).toBeNull();
+    });
+
+    it('skips the user’s own messages after the marker', () => {
+      const { svc } = setupUnread(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          fakeEvent({ id: '$2', sender: '@me:hs', body: 'mine' }),
+          fakeEvent({ id: '$3', sender: '@alice:hs', body: 'theirs' }),
+        ],
+        '$1',
+      );
+      expect(svc.firstUnreadId()).toBe('$3');
+    });
+
+    it('stays put as the room is read (marker captured on open)', () => {
+      const { svc } = setupUnread(msgs, '$1');
+      // markRead ran on open and advanced the server marker, but the divider anchor
+      // was captured beforehand, so it still points at $2.
+      expect(svc.firstUnreadId()).toBe('$2');
+    });
+
+    it('advances the persisted fully-read marker when marking read', () => {
+      const { client } = setupUnread(msgs, '$1');
+      expect(client.setRoomReadMarkers).toHaveBeenCalledWith('!r:hs', '$3');
+    });
+
+    it('clears the divider when the room closes', () => {
+      const { svc } = setupUnread(msgs, '$1');
+      svc.close();
+      expect(svc.firstUnreadId()).toBeNull();
+    });
+  });
+
+  describe('read receipts (seen by)', () => {
+    function setupReceipts(
+      events: ReturnType<typeof fakeEvent>[],
+      receiptsByEvent: Record<string, string[]>,
+    ) {
+      const room = fakeRoom(events, {}, false, [], null, receiptsByEvent);
+      const client = fakeClient(room, []);
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(client), mediaProvider()],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return svc;
+    }
+
+    it('projects the members who read up to each message, excluding self', () => {
+      const svc = setupReceipts(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          fakeEvent({ id: '$2', sender: '@alice:hs', body: 'b' }),
+        ],
+        { $1: ['@bob:hs', '@me:hs'], $2: [] }, // self is filtered out
+      );
+
+      const [first, second] = svc.messages();
+      expect(first.readReceipts.map((r) => r.userId)).toEqual(['@bob:hs']);
+      expect(first.readReceipts[0].name).toBe('Alice'); // resolved from room state
+      expect(second.readReceipts).toEqual([]);
+    });
+  });
+
+  describe('linkify', () => {
+    it('linkifies a bare URL in a plain-text message so it renders clickable', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$1',
+          sender: '@a:hs',
+          body: 'see https://example.com',
+        }),
+      ]);
+      expect(svc.messages()[0].html).toContain(
+        '<a href="https://example.com">https://example.com</a>',
+      );
+    });
+
+    it('leaves a plain message without a URL as plain text (no html)', () => {
+      const svc = setup([
+        fakeEvent({ id: '$1', sender: '@a:hs', body: 'no links here' }),
+      ]);
+      expect(svc.messages()[0].html).toBeNull();
     });
   });
 });

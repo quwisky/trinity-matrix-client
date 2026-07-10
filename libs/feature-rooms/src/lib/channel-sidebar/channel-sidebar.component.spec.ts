@@ -17,6 +17,10 @@ import {
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
+import {
+  RoomNotificationsService,
+  type RoomNotifyMode,
+} from '@trinity/data-access-notifications';
 import { type PresenceState } from '@trinity/util-matrix';
 import {
   ChannelSidebarComponent,
@@ -98,6 +102,7 @@ async function renderSidebar(
     childrenLoading?: boolean;
     childrenError?: string | null;
     invites?: PendingInvite[];
+    notifyMode?: RoomNotifyMode;
   } = {},
 ) {
   const signals = {
@@ -119,6 +124,9 @@ async function renderSidebar(
       }),
       MockProvider(InvitesService, { pendingInvites: signals.pendingInvites }),
       MockProvider(RoomsService),
+      MockProvider(RoomNotificationsService, {
+        modeFor: () => opts.notifyMode ?? 'all',
+      }),
       { provide: PresenceService, useValue: presenceStub },
     ],
   });
@@ -630,6 +638,137 @@ describe('ChannelSidebarComponent', () => {
     document.querySelector<HTMLElement>('[data-testid="room-remove"]')?.click();
 
     expect(removed).toBe('!a:hs');
+  });
+
+  it('offers a Notifications entry in the room kebab menu', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+    });
+
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+
+    const notify = document.querySelector<HTMLElement>(
+      '[data-testid="room-notify"]',
+    );
+    expect(notify?.textContent).toContain('Notifications');
+  });
+
+  it('reads the room’s current notification level for the menu', async () => {
+    const { fixture } = await renderSidebar({
+      inputs: { rooms: [room({ id: '!a:hs' })] },
+      notifyMode: 'mentions',
+    });
+    expect(fixture.componentInstance.notifyMode('!a:hs')).toBe('mentions');
+  });
+
+  it('emits setNotifyMode when a level is chosen from the submenu', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+      notifyMode: 'all',
+    });
+    const picks: { roomId: string; mode: RoomNotifyMode }[] = [];
+    fixture.componentInstance.setNotifyMode.subscribe((event) =>
+      picks.push(event),
+    );
+
+    // Open the kebab, reveal the Notifications submenu, then pick Mute.
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+    document.querySelector<HTMLElement>('[data-testid="room-notify"]')!.click();
+    fixture.detectChanges();
+    const muteItem = document.querySelector<HTMLElement>(
+      '[data-testid="room-notify-mute"]',
+    );
+    expect(muteItem).not.toBeNull();
+    // The current level ('all') is the checked radio; Mute is not yet checked.
+    expect(
+      document
+        .querySelector('[data-testid="room-notify-all"]')
+        ?.getAttribute('aria-checked'),
+    ).toBe('true');
+    muteItem!.click();
+
+    expect(picks).toEqual([{ roomId: '!a:hs', mode: 'mute' }]);
+  });
+
+  // One render per case (a second render() in the same test re-configures an already
+  // instantiated TestBed and throws), so parametrise rather than loop.
+  it.each(['mentions', 'mute'] as const)(
+    'checks the %s radio matching the room’s current level',
+    async (mode) => {
+      const { fixture, container } = await renderSidebar({
+        inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+        notifyMode: mode,
+      });
+      container.querySelector<HTMLElement>('.channel__menu')!.click();
+      fixture.detectChanges();
+      document
+        .querySelector<HTMLElement>('[data-testid="room-notify"]')!
+        .click();
+      fixture.detectChanges();
+
+      const ariaChecked = (id: string): string | null | undefined =>
+        document
+          .querySelector(`[data-testid="${id}"]`)
+          ?.getAttribute('aria-checked');
+      expect(ariaChecked(`room-notify-${mode}`)).toBe('true');
+      for (const other of (['all', 'mentions', 'mute'] as const).filter(
+        (m) => m !== mode,
+      )) {
+        expect(ariaChecked(`room-notify-${other}`)).toBe('false');
+      }
+    },
+  );
+
+  it('emits the mentions level when chosen from the submenu', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+      notifyMode: 'all',
+    });
+    const picks: { roomId: string; mode: RoomNotifyMode }[] = [];
+    fixture.componentInstance.setNotifyMode.subscribe((event) =>
+      picks.push(event),
+    );
+
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+    document.querySelector<HTMLElement>('[data-testid="room-notify"]')!.click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="room-notify-mentions"]')!
+      .click();
+
+    expect(picks).toEqual([{ roomId: '!a:hs', mode: 'mentions' }]);
+  });
+
+  it('emits the level for the specific room whose menu was opened', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!a:hs', name: 'general' }),
+          room({ id: '!b:hs', name: 'random' }),
+        ],
+      },
+    });
+    const picks: { roomId: string; mode: RoomNotifyMode }[] = [];
+    fixture.componentInstance.setNotifyMode.subscribe((event) =>
+      picks.push(event),
+    );
+
+    // Open the SECOND room's kebab → Notifications submenu → Mute; the emit must carry
+    // that row's id, not the first (or last) room's.
+    const kebabs = container.querySelectorAll<HTMLElement>('.channel__menu');
+    expect(kebabs).toHaveLength(2);
+    kebabs[1].click();
+    fixture.detectChanges();
+    document.querySelector<HTMLElement>('[data-testid="room-notify"]')!.click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="room-notify-mute"]')!
+      .click();
+
+    expect(picks).toEqual([{ roomId: '!b:hs', mode: 'mute' }]);
   });
 
   it('shows loading then error states for the space hierarchy', async () => {

@@ -283,6 +283,16 @@
           <ng-icon name="lucideStar" />
           {{ room.favourite ? 'Unfavourite' : 'Favourite' }}
         </button>
+        <div hlmDropdownMenuSeparator></div>
+        <button
+          hlmDropdownMenuItem
+          [hlmDropdownMenuSubTrigger]="notifyMenu"
+          data-testid="room-notify"
+        >
+          <ng-icon name="lucideBell" />
+          Notifications
+          <hlm-dropdown-menu-item-sub-indicator />
+        </button>
         @if (spaceActive()) {
           <div hlmDropdownMenuSeparator></div>
           <button
@@ -296,6 +306,44 @@
           </button>
         }
       </div>
+
+      <ng-template #notifyMenu>
+        <div hlmDropdownMenuSub>
+          @let mode = notifyMode(room.id);
+          <button
+            hlmDropdownMenuRadio
+            [checked]="mode === 'all'"
+            [keepOpen]="false"
+            (triggered)="setNotifyMode.emit({ roomId: room.id, mode: 'all' })"
+            data-testid="room-notify-all"
+          >
+            <hlm-dropdown-menu-radio-indicator />
+            All messages
+          </button>
+          <button
+            hlmDropdownMenuRadio
+            [checked]="mode === 'mentions'"
+            [keepOpen]="false"
+            (triggered)="
+              setNotifyMode.emit({ roomId: room.id, mode: 'mentions' })
+            "
+            data-testid="room-notify-mentions"
+          >
+            <hlm-dropdown-menu-radio-indicator />
+            Mentions &amp; keywords only
+          </button>
+          <button
+            hlmDropdownMenuRadio
+            [checked]="mode === 'mute'"
+            [keepOpen]="false"
+            (triggered)="setNotifyMode.emit({ roomId: room.id, mode: 'mute' })"
+            data-testid="room-notify-mute"
+          >
+            <hlm-dropdown-menu-radio-indicator />
+            Mute
+          </button>
+        </div>
+      </ng-template>
     </ng-template>
   </ng-template>
 

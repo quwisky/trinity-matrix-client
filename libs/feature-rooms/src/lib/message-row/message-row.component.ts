@@ -15,9 +15,16 @@ import {
   type MessageToolbarCaps,
 } from '@trinity/ui';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
-import { type MessageView } from '@trinity/util-matrix';
+import {
+  type MatrixLinkTarget,
+  type MessageView,
+  type ReceiptView,
+} from '@trinity/util-matrix';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
+import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
+import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
+import { PollComponent } from '../poll/poll.component';
 
 /** A {@link MessageView} plus Discord-style grouping flag (own header vs continuation). */
 export interface MessageRow extends MessageView {
@@ -66,6 +73,9 @@ export type MessageRowAction =
     MediaAttachmentComponent,
     MessageReactionsComponent,
     MessageToolbarComponent,
+    SpoilerRevealDirective,
+    MatrixLinkDirective,
+    PollComponent,
   ],
   viewProviders: [provideIcons({ lucideMessagesSquare })],
   templateUrl: './message-row.component.html',
@@ -91,6 +101,14 @@ export class MessageRowComponent {
    */
   readonly action = output<MessageRowAction>();
 
+  /** A `matrix.to` permalink clicked in the message body, for the host to route in-app. */
+  readonly matrixLink = output<MatrixLinkTarget>();
+
+  /** A vote cast on this row's poll (the host sends the m.poll.response). */
+  readonly pollVote = output<{ pollId: string; answerId: string }>();
+  /** A request to close this row's poll (the host sends the m.poll.end). */
+  readonly pollEnd = output<string>();
+
   /** Capabilities the overflow toolbar needs, projected from {@link caps}. */
   readonly toolbarCaps = computed<MessageToolbarCaps>(() => {
     const c = this.caps();
@@ -110,5 +128,10 @@ export class MessageRowComponent {
     return summary.unreadCount > 0
       ? `${base}, ${summary.unreadCount} unread`
       : base;
+  }
+
+  /** Accessible label for the "seen by" receipt avatars (the avatars are decorative). */
+  seenByLabel(receipts: readonly ReceiptView[]): string {
+    return `Seen by ${receipts.map((r) => r.name).join(', ')}`;
   }
 }

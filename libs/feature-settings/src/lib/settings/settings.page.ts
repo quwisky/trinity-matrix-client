@@ -22,6 +22,7 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
   lucideChevronRight,
+  lucideCircleDot,
   lucideFlaskConical,
   lucideImage,
   lucideMonitorSmartphone,
@@ -31,6 +32,7 @@ import {
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { PageHeaderComponent } from '@trinity/ui';
+import { BUILD_INFO } from '@trinity/platform-native';
 
 /** One row of the settings submenu, routing to its section sub-page. */
 interface SettingsMenuItem {
@@ -41,6 +43,7 @@ interface SettingsMenuItem {
 
 const MENU: readonly SettingsMenuItem[] = [
   { path: 'profile', label: 'Profile', icon: 'lucideUser' },
+  { path: 'presence', label: 'Presence', icon: 'lucideCircleDot' },
   { path: 'appearance', label: 'Appearance', icon: 'lucidePalette' },
   { path: 'devices', label: 'Devices', icon: 'lucideMonitorSmartphone' },
   { path: 'gifs', label: 'GIFs', icon: 'lucideImage' },
@@ -75,6 +78,7 @@ const WIDE_QUERY = '(min-width: 768px)';
       lucideArrowLeft,
       lucideChevronRight,
       lucideUser,
+      lucideCircleDot,
       lucidePalette,
       lucideMonitorSmartphone,
       lucideImage,
@@ -87,8 +91,12 @@ export class SettingsPage {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly build = inject(BUILD_INFO);
 
   readonly menu = MENU;
+
+  /** "Trinity v0.0.1 · a1b2c3d" for the settings footer. */
+  readonly buildLabel = `Trinity v${this.build.version} · ${this.build.commit}`;
 
   /** The active section path (e.g. 'profile'), or null on the bare `/settings` index. */
   private readonly activePath = toSignal(

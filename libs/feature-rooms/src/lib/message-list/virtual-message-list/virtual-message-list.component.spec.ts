@@ -31,6 +31,8 @@ function msg(
     media: null,
     caption: null,
     captionHtml: null,
+    readReceipts: [],
+    poll: null,
   };
 }
 

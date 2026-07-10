@@ -20,7 +20,8 @@ import { lucideX } from '@ng-icons/lucide';
 import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { ThreadsService } from '@trinity/data-access-timeline';
+import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
+import { RoomsService } from '@trinity/data-access-rooms';
 import { isEditableMessage, type MessageView } from '@trinity/util-matrix';
 import {
   MessageRowComponent,
@@ -28,7 +29,12 @@ import {
   type MessageRowAction,
   type MessageRowCaps,
 } from '../message-row/message-row.component';
-import { MessageComposerComponent } from '../message-composer/message-composer.component';
+import {
+  MessageComposerComponent,
+  type ComposerSubmit,
+} from '../message-composer/message-composer.component';
+import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
+import { ForwardService } from '../forward/forward.service';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -72,6 +78,10 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
 })
 export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly threads = inject(ThreadsService);
+  private readonly rooms = inject(RoomsService);
+  private readonly reactionPicker = inject(ReactionPickerService);
+  private readonly forwardSvc = inject(ForwardService);
+  private readonly timeline = inject(TimelineService);
   private readonly dialogRef =
     inject<DialogRef<void, ThreadViewComponent>>(DialogRef);
   private readonly alert = inject(TrnAlertService);
@@ -82,6 +92,12 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   readonly rootEventId = input.required<string>();
   /** Notifies any @Output-bound host that the view closed (for symmetry/tests). */
   readonly closed = output<void>();
+
+  /** The room's members, for the thread composer's @-mention autocomplete. */
+  readonly members = computed(() => {
+    this.rooms.memberRevision(); // recompute when membership changes
+    return this.rooms.membersOf(this.roomId());
+  });
 
   /** Id of the thread message being edited, or null. */
   readonly editingId = signal<string | null>(null);
@@ -149,25 +165,25 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   }
 
   /** Composer submit — routes to an edit or reply when active, else a new send. */
-  onSubmit(text: string): void {
+  onSubmit({ text, mentions }: ComposerSubmit): void {
     const editId = this.editingId();
     const replyId = this.replyingToId();
     if (editId) {
       this.editingId.set(null);
       this.runAction(
-        this.threads.editInThread(editId, text),
+        this.threads.editInThread(editId, text, mentions),
         'Could not edit the message.',
       );
     } else if (replyId) {
       this.replyingToId.set(null);
       // The reply's local echo (and its failed/retry state) surfaces the result.
       this.threads
-        .replyInThread(replyId, text)
+        .replyInThread(replyId, text, mentions)
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe();
     } else {
       this.threads
-        .sendToThread(text)
+        .sendToThread(text, mentions)
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe();
     }
@@ -225,6 +241,27 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     );
   }
 
+  /** Cast a vote on a poll in the thread (room-level m.poll.response). */
+  onPollVote({ pollId, answerId }: { pollId: string; answerId: string }): void {
+    this.runAction(
+      this.timeline.votePoll(pollId, answerId),
+      'Could not cast your vote.',
+    );
+  }
+
+  /** Close a poll from the thread view. */
+  onPollEnd(pollId: string): void {
+    this.runAction(this.timeline.endPoll(pollId), 'Could not end the poll.');
+  }
+
+  /** Open the full emoji picker and, on a pick, react to the thread message with it. */
+  private async pickReaction(messageId: string): Promise<void> {
+    const key = await this.reactionPicker.pick();
+    if (key) {
+      this.onReact(messageId, key);
+    }
+  }
+
   onRetry(messageId: string): void {
     this.threads.retryInThread(messageId);
   }
@@ -275,11 +312,17 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
       case 'react':
         this.onReact(row.id, action.key);
         break;
+      case 'react-more':
+        void this.pickReaction(row.id);
+        break;
       case 'reply':
         this.startReply(row);
         break;
       case 'copy':
         this.onCopy(row);
+        break;
+      case 'forward':
+        void this.forwardSvc.forward(this.roomId(), row.id);
         break;
       case 'edit':
         this.startEdit(row);

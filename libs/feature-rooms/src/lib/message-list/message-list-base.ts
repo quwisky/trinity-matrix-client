@@ -11,13 +11,25 @@ import {
   viewChild,
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/helm/overlay';
+import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
+import { ForwardService } from '../forward/forward.service';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
-import { isEditableMessage, type MessageView } from '@trinity/util-matrix';
+import {
+  formatTypingNotice,
+  isEditableMessage,
+  type MatrixLinkTarget,
+  type MessageView,
+  type Mention,
+} from '@trinity/util-matrix';
 import {
   type MessageRow,
   type MessageRowAction,
   type MessageRowCaps,
 } from '../message-row/message-row.component';
+import {
+  type ComposerSubmit,
+  type MentionMember,
+} from '../message-composer/message-composer.component';
 
 /** Fallback caps for a row not present in the memoized map (defensive; unreached). */
 const DEFAULT_ROW_CAPS: MessageRowCaps = {
@@ -56,6 +68,15 @@ export abstract class MessageListBase {
    * otherwise a pending edit/reply target and the scroll anchors leak between rooms.
    */
   readonly roomId = input<string | null>(null);
+  /** Room members, forwarded to the composer's @-mention autocomplete. */
+  readonly members = input<MentionMember[]>([]);
+  /** Display names of members currently typing in the room (excludes the local user). */
+  readonly typingNames = input<string[]>([]);
+  /**
+   * Event id of the first unread message — a "New messages" divider renders before it,
+   * and a jump-to-unread pill appears while it's off-screen. Null when nothing is unread.
+   */
+  readonly firstUnreadId = input<string | null>(null);
   /** Attachment upload fraction in [0, 1], or null when no upload is in flight. */
   readonly uploadProgress = input<number | null>(null);
   /**
@@ -75,13 +96,28 @@ export abstract class MessageListBase {
   readonly openThread = output<string>();
   /** Pin or unpin this event id (host resolves which, given its current pinned state). */
   readonly togglePin = output<string>();
-  readonly send = output<string>();
+  readonly send = output<{ body: string; mentions: Mention[] }>();
   readonly sendMedia = output<{ file: File; caption: string }>();
   readonly retry = output<string>();
-  readonly editMessage = output<{ id: string; body: string }>();
+  readonly editMessage = output<{
+    id: string;
+    body: string;
+    mentions: Mention[];
+  }>();
   readonly deleteMessage = output<string>();
   readonly react = output<{ id: string; key: string }>();
-  readonly reply = output<{ id: string; body: string }>();
+  readonly reply = output<{ id: string; body: string; mentions: Mention[] }>();
+  /** The composer's typing state changed — host debounces it into a typing notification. */
+  readonly typing = output<boolean>();
+  /** A `matrix.to` permalink clicked in a message body, for the host to route in-app. */
+  readonly matrixLink = output<MatrixLinkTarget>();
+  /** A vote cast on a poll (the host sends the response). */
+  readonly pollVote = output<{ pollId: string; answerId: string }>();
+  /** A request to close a poll (the host sends the end event). */
+  readonly pollEnd = output<string>();
+
+  /** "X is typing…" text for the row above the composer, or '' when nobody is typing. */
+  readonly typingLabel = computed(() => formatTypingNotice(this.typingNames()));
 
   readonly editingId = signal<string | null>(null);
   readonly editingDraft = computed(
@@ -98,7 +134,13 @@ export abstract class MessageListBase {
   /** Live-region text announcing a newly-arrived incoming message to screen readers. */
   readonly announcement = signal('');
 
+  /** Whether the jump-to-unread pill is shown — true while unread exist and the
+   * "New messages" divider is scrolled out of the viewport. */
+  readonly showJumpToUnread = signal(false);
+
   protected readonly alert = inject(TrnAlertService);
+  private readonly reactionPicker = inject(ReactionPickerService);
+  private readonly forwardSvc = inject(ForwardService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   // Grouping rows, cached per event id so an unchanged message (same view object AND
@@ -149,6 +191,51 @@ export abstract class MessageListBase {
       this.roomId();
       untracked(() => this.resetOnRoomChange());
     });
+
+    // Re-evaluate the jump-to-unread pill when the unread anchor or the message set
+    // changes (e.g. the divider row (dis)appears). Deferred a frame so the row/divider
+    // is laid out before we measure it.
+    effect(() => {
+      this.firstUnreadId();
+      this.messages();
+      requestAnimationFrame(() => this.updateJumpToUnread());
+    });
+  }
+
+  /**
+   * Show the jump-to-unread pill while there are unread messages whose "New messages"
+   * divider is not currently within the viewport (so on open — pinned to the bottom with
+   * unread above — it shows; scrolling the divider into view hides it). Called from each
+   * list's scroll handler and when the unread anchor changes.
+   */
+  protected updateJumpToUnread(): void {
+    const id = this.firstUnreadId();
+    const scroll = this.scrollEl()?.nativeElement;
+    if (!id || !scroll) {
+      this.showJumpToUnread.set(false);
+      return;
+    }
+    const divider = scroll.querySelector<HTMLElement>(
+      '[data-testid="new-messages-divider"]',
+    );
+    if (!divider) {
+      // Not rendered — the (windowed) viewport doesn't include the divider, so it's
+      // off-screen: offer the jump.
+      this.showJumpToUnread.set(true);
+      return;
+    }
+    const viewTop = scroll.scrollTop;
+    const viewBottom = viewTop + scroll.clientHeight;
+    const pos = divider.offsetTop;
+    this.showJumpToUnread.set(pos < viewTop || pos > viewBottom);
+  }
+
+  /** Scroll the "New messages" divider (first unread) into view. */
+  jumpToUnread(): void {
+    const id = this.firstUnreadId();
+    if (id) {
+      this.jumpTo(id);
+    }
   }
 
   /** Reset per-room state on a room switch. Subclasses override to add scroll state. */
@@ -253,11 +340,17 @@ export abstract class MessageListBase {
       case 'react':
         this.react.emit({ id: row.id, key: action.key });
         break;
+      case 'react-more':
+        void this.pickReaction(row.id);
+        break;
       case 'reply':
         this.startReply(row);
         break;
       case 'copy':
         this.onCopy(row);
+        break;
+      case 'forward':
+        void this.forwardSvc.forward(this.roomId() ?? '', row.id);
         break;
       case 'edit':
         this.startEdit(row);
@@ -287,6 +380,14 @@ export abstract class MessageListBase {
     }
   }
 
+  /** Open the full emoji picker and, on a pick, react to the message with it. */
+  private async pickReaction(id: string): Promise<void> {
+    const key = await this.reactionPicker.pick();
+    if (key) {
+      this.react.emit({ id, key });
+    }
+  }
+
   async onDelete(row: MessageRow): Promise<void> {
     const confirmed = await this.alert.confirm({
       header: 'Delete message',
@@ -300,17 +401,17 @@ export abstract class MessageListBase {
   }
 
   /** Composer submit — routes to an edit or reply when active, else a new send. */
-  onSubmit(text: string): void {
+  onSubmit({ text, mentions }: ComposerSubmit): void {
     const editId = this.editingId();
     const replyId = this.replyingToId();
     if (editId) {
-      this.editMessage.emit({ id: editId, body: text });
+      this.editMessage.emit({ id: editId, body: text, mentions });
       this.editingId.set(null);
     } else if (replyId) {
-      this.reply.emit({ id: replyId, body: text });
+      this.reply.emit({ id: replyId, body: text, mentions });
       this.replyingToId.set(null);
     } else {
-      this.send.emit(text);
+      this.send.emit({ body: text, mentions });
     }
   }
 }

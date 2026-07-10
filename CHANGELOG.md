@@ -8,6 +8,59 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **App version and commit in Settings.** The Settings screen now shows the running
+  build's version and git commit in a small footer (e.g. `Trinity v0.0.1 · a1b2c3d`),
+  regenerated from `package.json` + git at build time — handy for bug reports.
+- **Polls.** Create a poll from the composer (a question with two to eight answers),
+  and it renders in the timeline with a share bar per option and a live vote tally.
+  Tap an answer to vote (or change your vote); the poll's creator can end it, after
+  which the results are final. Built on the Matrix poll events (MSC3381), so it
+  interoperates with other clients.
+- **Forward messages to another conversation.** The message overflow menu now has a
+  **Forward** action: pick a room or direct message from the switcher and the message
+  is re-sent there as a standalone message. Works for text and media (including in
+  encrypted rooms, since an attachment carries its own key), from rooms and threads.
+- **"Seen by" read receipts.** Messages now show small avatars of the members who have
+  read up to them, updating live as people catch up — so you can tell who's seen what.
+- **In-app navigation for Matrix links.** Clicking a `matrix.to` link in a message now
+  stays in Trinity: a room link opens that room (resolving an alias and jumping to a
+  linked message), and a person link (including a mention) opens a small profile card —
+  avatar, name, online status, and a **Message** button to start a direct message.
+  Ordinary web links open in a new tab instead of navigating away from the app.
+- **Per-room notification level.** Each room's ⋮ menu in the channel list has a
+  **Notifications** submenu to set how a room notifies you — **All messages**, **Mentions &
+  keywords only**, or **Mute** — persisted as Matrix push rules so it follows you across
+  devices. Muting suppresses even mentions; mentions-only keeps highlight pings while
+  silencing everything else.
+- **"New messages" divider and jump-to-unread.** Trinity now persists a fully-read
+  marker (`m.fully_read`) alongside the read receipt, so returning to a busy room shows a
+  "New messages" divider at exactly where you left off — and, when that divider is
+  scrolled out of view, a "↑ New messages" pill that jumps you straight to it. The
+  divider stays put for the visit even as new messages are marked read, and the marker
+  now survives reloads and syncs across your devices.
+- **Set your own presence and status.** A new **Settings → Presence** section lets you
+  publish your online state — Online, Away, or Offline — and an optional status message,
+  the counterpart to the presence dots already shown for other people. Homeservers that
+  disable or rate-limit presence are handled gracefully.
+- **Spoilers are now hidden until you reveal them.** Messages containing spoiler
+  content (`data-mx-spoiler`) previously showed it in the clear; it now renders as a
+  black bar that you click — or focus and press Enter/Space — to uncover. A first click
+  that lands on a link inside a spoiler only reveals it rather than following the link.
+- **React with any emoji.** The message reaction popover kept only six quick emoji;
+  a new "+" button now opens the full emoji picker (search included), so you can react
+  with anything — in rooms and threads alike. The six one-tap reactions stay as a fast path.
+- **Typing indicators.** The composer now tells the room when you're typing, and an
+  "X is typing…" row appears under the timeline when other members type — naming up to
+  three of them and summarising beyond that. It clears the moment they send or stop, and
+  Trinity stops advertising your own typing as soon as you send or leave the room.
+- **@-mention people from the composer.** Type `@` and a name to pick a room member
+  from an autocomplete menu; the sent message links them and, crucially, carries
+  `m.mentions` so they're actually notified — including replies, which now ping the
+  message's author. Works in rooms and threads, for new messages, replies, and edits.
+- **Message drafts are kept per conversation.** A half-typed message now stays with
+  its room (or thread) when you switch away and comes back when you return, and it
+  survives a reload or app restart. Previously the composer was shared across rooms,
+  so an unsent message bled into the next room you opened and was lost on reload.
 - **Settings, reorganised into a browsable submenu.** The settings screen is now a
   menu of sections — **Profile**, **Appearance**, **Devices**, **GIFs**, and
   **Experimental** — each on its own page. On desktop the menu and the selected
@@ -75,6 +128,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Links in messages are now clickable.** A bare URL in a message rendered as plain
+  text — because a plain-text message (no HTML formatting) wasn't linkified. URLs are
+  now turned into links when a message is displayed, so they're clickable regardless of
+  whether the sender's client included formatted HTML, and they open in a new tab.
 - New sessions now register with the device name **Trinity** instead of the stale
   **Trinity (Ionic)** — the app no longer runs on Ionic, so the label shown in
   Settings → Devices (and to other Matrix clients) shouldn't advertise it.

@@ -48,6 +48,7 @@
       (declineInvite)="onDeclineInvite($event)"
       (openSettings)="goToSettings()"
       (logout)="logout($event)"
+      (setNotifyMode)="onSetNotifyMode($event)"
     />
   </aside>
 
@@ -171,6 +172,9 @@
             [loadingOlder]="timeline.loadingOlder()"
             [canLoadOlder]="timeline.canLoadOlder()"
             [roomId]="activeRoomId()"
+            [members]="members()"
+            [typingNames]="timeline.typingNames()"
+            [firstUnreadId]="timeline.firstUnreadId()"
             [roomName]="room.name"
             [uploadProgress]="uploadProgress()"
             [jumpToId]="messageSearchTarget()"
@@ -185,6 +189,10 @@
             (deleteMessage)="onDelete($event)"
             (react)="onReact($event)"
             (reply)="onReply($event)"
+            (typing)="onTyping($event)"
+            (matrixLink)="onMatrixLink($event)"
+            (pollVote)="onPollVote($event)"
+            (pollEnd)="onPollEnd($event)"
           />
         } @else {
           <trn-simple-message-list
@@ -195,6 +203,9 @@
             [loadingOlder]="timeline.loadingOlder()"
             [canLoadOlder]="timeline.canLoadOlder()"
             [roomId]="activeRoomId()"
+            [members]="members()"
+            [typingNames]="timeline.typingNames()"
+            [firstUnreadId]="timeline.firstUnreadId()"
             [roomName]="room.name"
             [uploadProgress]="uploadProgress()"
             [jumpToId]="messageSearchTarget()"
@@ -209,6 +220,10 @@
             (deleteMessage)="onDelete($event)"
             (react)="onReact($event)"
             (reply)="onReply($event)"
+            (typing)="onTyping($event)"
+            (matrixLink)="onMatrixLink($event)"
+            (pollVote)="onPollVote($event)"
+            (pollEnd)="onPollEnd($event)"
           />
         }
         @if (membersOpen()) {

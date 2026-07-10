@@ -19,6 +19,8 @@ import {
   PUSH_CONFIG,
 } from '@trinity/data-access-notifications';
 import {
+  BUILD_INFO,
+  DraftStoreService,
   FeatureFlagsService,
   StoragePersistenceService,
   ThemeService,
@@ -34,6 +36,7 @@ import { provideSpartanHlm } from '@trinity/helm/utils';
 import { routes } from './app/app.routes';
 import { AppComponent, NavigationFocusService } from '@trinity/feature-shell';
 import { environment } from './environments/environment';
+import { BUILD_INFO_VALUE } from './app/build-info';
 
 // Desktop (hand-rolled Electron) detection. The preload bridge exposes
 // `trinityDesktop.isElectron`; we fall back to the Electron user-agent token in
@@ -60,6 +63,9 @@ bootstrapApplication(AppComponent, {
     provideAppInitializer(() => inject(ThemeService).init()),
     // Load persisted experimental feature flags (e.g. virtualized timeline).
     provideAppInitializer(() => inject(FeatureFlagsService).init()),
+    // Load persisted per-conversation composer drafts before any composer mounts,
+    // so a half-typed message is restored on cold start.
+    provideAppInitializer(() => inject(DraftStoreService).init()),
     // Ask the browser to make our IndexedDB persistent so multi-account sync +
     // crypto stores aren't evicted under storage pressure (best-effort; no-op where
     // unsupported). Fire-and-forget — nothing blocks startup on the prompt.
@@ -87,6 +93,8 @@ bootstrapApplication(AppComponent, {
     },
     // Push-gateway config for PushService (null = push disabled; see environment.ts).
     { provide: PUSH_CONFIG, useValue: environment.push },
+    // Running build's version/commit (regenerated at build), shown in Settings.
+    { provide: BUILD_INFO, useValue: BUILD_INFO_VALUE },
     // Lazy loaders so EncryptionDialogService (ui) can present the unlock/verify
     // pages as desktop modals without ui/core importing feature-crypto. Dynamic
     // imports (as in app.routes / verification-host) keep the feature in its own

@@ -115,4 +115,36 @@ describe('ProfileService', () => {
     expect(client.setAvatarUrl).toHaveBeenCalledWith('mxc://hs/new');
     expect(svc.profile()?.avatarMxc).toBe('mxc://hs/new');
   });
+
+  it('fetches another user’s profile without touching the own-profile signal', async () => {
+    const { svc, client } = setup({
+      getProfileInfo: vi
+        .fn()
+        .mockResolvedValue({ displayname: 'Bob', avatar_url: 'mxc://hs/b' }),
+    });
+
+    const profile = await firstValueFrom(svc.fetch('@bob:hs'));
+
+    expect(client.getProfileInfo).toHaveBeenCalledWith('@bob:hs');
+    expect(profile).toEqual({
+      userId: '@bob:hs',
+      displayName: 'Bob',
+      avatarMxc: 'mxc://hs/b',
+    });
+    expect(svc.profile()).toBeNull(); // the signed-in profile is left untouched
+  });
+
+  it('resolves an empty profile for a user the homeserver has none for', async () => {
+    const { svc } = setup({
+      getProfileInfo: vi
+        .fn()
+        .mockRejectedValue({ httpStatus: 404, errcode: 'M_NOT_FOUND' }),
+    });
+
+    expect(await firstValueFrom(svc.fetch('@ghost:hs'))).toEqual({
+      userId: '@ghost:hs',
+      displayName: '',
+      avatarMxc: null,
+    });
+  });
 });

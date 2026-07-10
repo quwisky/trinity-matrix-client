@@ -1,0 +1,49 @@
+<div class="poll" data-testid="poll">
+  <div class="poll__question">{{ poll().question }}</div>
+
+  <ul class="poll__options">
+    @for (option of poll().options; track option.id) {
+      <li>
+        <button
+          type="button"
+          class="poll__option"
+          [class.poll__option--chosen]="option.chosen"
+          [class.poll__option--ended]="poll().ended"
+          [attr.aria-pressed]="option.chosen"
+          [disabled]="poll().ended"
+          (click)="onVote(option.id)"
+        >
+          <span
+            class="poll__bar"
+            [style.width.%]="percentages()[option.id]"
+            aria-hidden="true"
+          ></span>
+          <span class="poll__option-text">{{ option.text }}</span>
+          <span class="poll__option-count"
+            >{{ option.votes }} ({{ percentages()[option.id] }}%)</span
+          >
+        </button>
+      </li>
+    }
+  </ul>
+
+  <div class="poll__footer">
+    <span class="poll__total">
+      {{ poll().totalVotes }}
+      {{ poll().totalVotes === 1 ? 'vote' : 'votes' }}
+      @if (poll().ended) {
+        · Final results
+      }
+    </span>
+    @if (canEnd() && !poll().ended) {
+      <button
+        type="button"
+        class="poll__end"
+        data-testid="poll-end"
+        (click)="end.emit()"
+      >
+        End poll
+      </button>
+    }
+  </div>
+</div>

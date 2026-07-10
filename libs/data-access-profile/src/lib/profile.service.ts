@@ -54,6 +54,26 @@ export class ProfileService {
     });
   }
 
+  /**
+   * Fetch any user's public profile from the homeserver (for a user info card). Unlike
+   * {@link load} this is for an arbitrary user and does not touch the signed-in
+   * {@link profile} signal. A user with no profile resolves to an empty one.
+   */
+  fetch(userId: string): Observable<UserProfile> {
+    return defer(() =>
+      from(this.matrix.instance.getProfileInfo(userId)).pipe(
+        map((info) =>
+          this.build(userId, info.displayname, info.avatar_url ?? null),
+        ),
+        catchError((err) =>
+          isNotFound(err)
+            ? of(this.build(userId, undefined, null))
+            : throwError(() => err),
+        ),
+      ),
+    );
+  }
+
   /** Set the display name (an empty name renders as the user id). */
   setDisplayName(name: string): Observable<void> {
     const trimmed = name.trim();

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
 import { type MessageView } from '@trinity/util-matrix';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { SimpleMessageListComponent } from './simple-message-list.component';
+import { ReactionPickerService } from '../../reaction-picker/reaction-picker.service';
 
 function msg(
   id: string,
@@ -31,6 +32,8 @@ function msg(
     media: null,
     caption: null,
     captionHtml: null,
+    readReceipts: [],
+    poll: null,
   };
 }
 
@@ -101,6 +104,8 @@ describe('SimpleMessageListComponent', () => {
             media: null,
             caption: null,
             captionHtml: null,
+            readReceipts: [],
+            poll: null,
           },
         ],
       },
@@ -406,9 +411,73 @@ describe('SimpleMessageListComponent', () => {
     it('routes a plain submit to send', async () => {
       const cmp = await make();
       let sent: string | null = null;
-      cmp.send.subscribe((t) => (sent = t));
-      cmp.onSubmit('hello');
+      cmp.send.subscribe((s) => (sent = s.body));
+      cmp.onSubmit({ text: 'hello', mentions: [] });
       expect(sent).toBe('hello');
+    });
+
+    it('reacts with the emoji chosen from the full picker on react-more', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        providers: [
+          MockProvider(TrnAlertService),
+          MockProvider(ReactionPickerService, {
+            pick: () => Promise.resolve('🚀'),
+          }),
+        ],
+      });
+      const cmp = fixture.componentInstance;
+      let reacted: { id: string; key: string } | null = null;
+      cmp.react.subscribe((r) => (reacted = r));
+
+      cmp.onRowAction(row('$7'), { type: 'react-more' });
+      await Promise.resolve(); // let the picker promise settle
+
+      expect(reacted).toEqual({ id: '$7', key: '🚀' });
+    });
+
+    it('sends no reaction when the picker is dismissed', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        providers: [
+          MockProvider(TrnAlertService),
+          MockProvider(ReactionPickerService, {
+            pick: () => Promise.resolve(null),
+          }),
+        ],
+      });
+      const cmp = fixture.componentInstance;
+      let reacted = false;
+      cmp.react.subscribe(() => (reacted = true));
+
+      cmp.onRowAction(row('$7'), { type: 'react-more' });
+      await Promise.resolve();
+
+      expect(reacted).toBe(false);
+    });
+
+    it('derives the typing label from the typing member names', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: { typingNames: [] },
+        providers: [MockProvider(TrnAlertService)],
+      });
+      const cmp = fixture.componentInstance;
+      expect(cmp.typingLabel()).toBe('');
+
+      fixture.componentRef.setInput('typingNames', ['Alice', 'Bob']);
+      fixture.detectChanges();
+      expect(cmp.typingLabel()).toBe('Alice and Bob are typing…');
+    });
+
+    it('shows the typing row only while someone is typing', async () => {
+      const { fixture, container } = await render(SimpleMessageListComponent, {
+        inputs: { typingNames: ['Alice'] },
+        providers: [MockProvider(TrnAlertService)],
+      });
+      const indicator = () => container.querySelector('.typing-indicator');
+      expect(indicator()?.textContent?.trim()).toBe('Alice is typing…');
+
+      fixture.componentRef.setInput('typingNames', []);
+      fixture.detectChanges();
+      expect(indicator()).toBeNull();
     });
 
     it('routes a submit to editMessage while editing, then clears the target', async () => {
@@ -416,8 +485,8 @@ describe('SimpleMessageListComponent', () => {
       let edited: { id: string; body: string } | null = null;
       cmp.editMessage.subscribe((e) => (edited = e));
       cmp.editingId.set('$7');
-      cmp.onSubmit('fixed');
-      expect(edited).toEqual({ id: '$7', body: 'fixed' });
+      cmp.onSubmit({ text: 'fixed', mentions: [] });
+      expect(edited).toEqual({ id: '$7', body: 'fixed', mentions: [] });
       expect(cmp.editingId()).toBeNull();
     });
 
@@ -426,8 +495,8 @@ describe('SimpleMessageListComponent', () => {
       let replied: { id: string; body: string } | null = null;
       cmp.reply.subscribe((e) => (replied = e));
       cmp.replyingToId.set('$3');
-      cmp.onSubmit('re');
-      expect(replied).toEqual({ id: '$3', body: 're' });
+      cmp.onSubmit({ text: 're', mentions: [] });
+      expect(replied).toEqual({ id: '$3', body: 're', mentions: [] });
       expect(cmp.replyingToId()).toBeNull();
     });
 
@@ -468,6 +537,52 @@ describe('SimpleMessageListComponent', () => {
       });
       cmp.onCopy(row('$1'));
       expect(writeText).toHaveBeenCalledWith('body $1');
+    });
+  });
+
+  describe('unread divider', () => {
+    const three = [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      msg('$2', '@a:hs', 'Alice', 2000),
+      msg('$3', '@a:hs', 'Alice', 3000),
+    ];
+
+    it('renders a "New messages" divider before the first unread row', async () => {
+      const { container } = await render(SimpleMessageListComponent, {
+        inputs: { messages: three, firstUnreadId: '$2' },
+      });
+
+      const divider = container.querySelector(
+        '[data-testid=new-messages-divider]',
+      );
+      expect(divider).not.toBeNull();
+      // The divider sits immediately before the $2 row.
+      expect(
+        divider?.nextElementSibling
+          ?.querySelector('[data-mid]')
+          ?.getAttribute('data-mid'),
+      ).toBe('$2');
+    });
+
+    it('renders no divider when nothing is unread', async () => {
+      const { container } = await render(SimpleMessageListComponent, {
+        inputs: { messages: three, firstUnreadId: null },
+      });
+      expect(
+        container.querySelector('[data-testid=new-messages-divider]'),
+      ).toBeNull();
+    });
+
+    it('jumpToUnread scrolls to the first unread message', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: { messages: three, firstUnreadId: '$2' },
+      });
+      const cmp = fixture.componentInstance;
+      const jumpTo = vi.spyOn(cmp, 'jumpTo');
+
+      cmp.jumpToUnread();
+
+      expect(jumpTo).toHaveBeenCalledWith('$2');
     });
   });
 });

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, type ComponentInput } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
-import { ThemeService } from '@trinity/platform-native';
+import { DraftStoreService, ThemeService } from '@trinity/platform-native';
 import {
   GifService,
   GifSettingsService,
@@ -13,8 +13,20 @@ import {
   type GifResult,
 } from '@trinity/data-access-gif';
 import { TrnToastService } from '@trinity/helm/overlay';
-import { MessageComposerComponent } from './message-composer.component';
+import {
+  MessageComposerComponent,
+  type ComposerSubmit,
+} from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
+
+// The draft store persists to Capacitor Preferences (debounced); stub it so the
+// composer's real DraftStoreService is a no-op on the storage side.
+vi.mock('@capacitor/preferences', () => ({
+  Preferences: {
+    get: vi.fn().mockResolvedValue({ value: null }),
+    set: vi.fn().mockResolvedValue(undefined),
+  },
+}));
 
 describe('MessageComposerComponent', () => {
   beforeEach(() => {
@@ -43,7 +55,7 @@ describe('MessageComposerComponent', () => {
     const cmp = fixture.componentInstance;
 
     let sent: string | undefined;
-    cmp.submitText.subscribe((t) => (sent = t));
+    cmp.submitText.subscribe((e) => (sent = e.text));
 
     cmp.text.set('  hello  ');
     cmp.onEnter(enter());
@@ -79,7 +91,7 @@ describe('MessageComposerComponent', () => {
     expect(cmp.text()).toBe('old text');
 
     let submitted: string | undefined;
-    cmp.submitText.subscribe((t) => (submitted = t));
+    cmp.submitText.subscribe((e) => (submitted = e.text));
     cmp.text.set('new text');
     cmp.onEnter(enter());
 
@@ -894,5 +906,228 @@ describe('MessageComposerComponent', () => {
       expect.objectContaining({ variant: 'destructive' }),
     );
     expect(cmp.gifDownloading()).toBe(false);
+  });
+
+  describe('draft persistence', () => {
+    it('restores the saved draft for the conversation on mount', async () => {
+      const store = new DraftStoreService();
+      store.set('!a:hs', 'half a message');
+      const { fixture } = await renderComposer({ roomId: '!a:hs' }, [
+        { provide: DraftStoreService, useValue: store },
+      ]);
+
+      expect(fixture.componentInstance.text()).toBe('half a message');
+    });
+
+    it('keeps a half-typed message per conversation when switching rooms', async () => {
+      const { fixture } = await renderComposer({ roomId: '!a:hs' });
+      const cmp = fixture.componentInstance;
+
+      cmp.text.set('draft for A');
+      fixture.detectChanges(); // flush the save effect
+
+      // Switch to a room with no draft — A's text must not leak into it.
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('');
+
+      // Switch back — A's draft is restored.
+      fixture.componentRef.setInput('roomId', '!a:hs');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('draft for A');
+    });
+
+    it('drops the draft once the message is sent', async () => {
+      const { fixture } = await renderComposer({ roomId: '!a:hs' });
+      const cmp = fixture.componentInstance;
+      const store = TestBed.inject(DraftStoreService);
+
+      cmp.text.set('to send');
+      fixture.detectChanges();
+      expect(store.get('!a:hs')).toBe('to send');
+
+      cmp.onEnter(enter());
+      fixture.detectChanges();
+
+      expect(cmp.text()).toBe('');
+      expect(store.get('!a:hs')).toBe('');
+    });
+
+    it('does not save the edit body, and restores the compose draft after editing', async () => {
+      const { fixture } = await renderComposer({ roomId: '!a:hs' });
+      const cmp = fixture.componentInstance;
+      const store = TestBed.inject(DraftStoreService);
+
+      cmp.text.set('my draft');
+      fixture.detectChanges();
+      expect(store.get('!a:hs')).toBe('my draft');
+
+      // Enter edit mode with a different body.
+      fixture.componentRef.setInput('editing', true);
+      fixture.componentRef.setInput('editTargetId', '$m');
+      fixture.componentRef.setInput('draft', 'editing an old message');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('editing an old message');
+      expect(store.get('!a:hs')).toBe('my draft'); // edit body isn't the draft
+
+      // Leaving edit mode brings the compose draft back.
+      fixture.componentRef.setInput('editing', false);
+      fixture.componentRef.setInput('editTargetId', null);
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('my draft');
+    });
+  });
+
+  describe('mention autocomplete', () => {
+    const MEMBERS = [
+      { userId: '@alice:hs', name: 'Alice' },
+      { userId: '@bob:hs', name: 'Bob' },
+    ];
+
+    it('opens the member menu for an @query and inserts the pick', async () => {
+      const { fixture, container } = await renderComposer({ members: MEMBERS });
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      ta.value = 'hey @al';
+      ta.selectionStart = ta.selectionEnd = 7;
+      cmp.onInput({ target: ta } as unknown as Event);
+
+      // Only Alice matches "al"; the menu is open.
+      expect(cmp.mentionOpen()).toBe(true);
+      expect(cmp.mentionMatches().map((m) => m.userId)).toEqual(['@alice:hs']);
+
+      ta.selectionStart = 7;
+      cmp.acceptMention();
+
+      expect(cmp.text()).toBe('hey @Alice ');
+      expect(cmp.mentionOpen()).toBe(false);
+    });
+
+    it('emits the @-mentioned users on submit', async () => {
+      const { fixture, container } = await renderComposer({ members: MEMBERS });
+      const cmp = fixture.componentInstance;
+      let submit: ComposerSubmit | undefined;
+      cmp.submitText.subscribe((e) => (submit = e));
+
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      ta.value = 'hi @al';
+      ta.selectionStart = ta.selectionEnd = 6;
+      cmp.onInput({ target: ta } as unknown as Event);
+      ta.selectionStart = 6;
+      cmp.acceptMention();
+
+      cmp.onEnter(enter());
+
+      expect(submit?.text).toBe('hi @Alice');
+      expect(submit?.mentions).toEqual([
+        { userId: '@alice:hs', display: '@Alice' },
+      ]);
+    });
+
+    it('drops a mention whose text was deleted before sending', async () => {
+      const { fixture, container } = await renderComposer({ members: MEMBERS });
+      const cmp = fixture.componentInstance;
+      let submit: ComposerSubmit | undefined;
+      cmp.submitText.subscribe((e) => (submit = e));
+
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      ta.value = '@al';
+      ta.selectionStart = ta.selectionEnd = 3;
+      cmp.onInput({ target: ta } as unknown as Event);
+      ta.selectionStart = 3;
+      cmp.acceptMention(); // text = "@Alice "
+
+      // The user deletes the mention text before sending.
+      cmp.text.set('never mind');
+      cmp.onEnter(enter());
+
+      expect(submit?.text).toBe('never mind');
+      expect(submit?.mentions).toEqual([]);
+    });
+
+    it('does not open the menu for an @ inside a word (e.g. an email)', async () => {
+      const { fixture, container } = await renderComposer({ members: MEMBERS });
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      ta.value = 'mail a@bob';
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+      cmp.onInput({ target: ta } as unknown as Event);
+
+      expect(cmp.mentionOpen()).toBe(false); // '@' not at a word boundary
+    });
+
+    it('navigates the menu with the arrow keys and accepts with Tab', async () => {
+      const { fixture, container } = await renderComposer({ members: MEMBERS });
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      ta.value = '@';
+      ta.selectionStart = ta.selectionEnd = 1;
+      cmp.onInput({ target: ta } as unknown as Event);
+      expect(cmp.mentionMatches().map((m) => m.name)).toEqual(['Alice', 'Bob']);
+
+      cmp.onArrowDown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      expect(cmp.mentionActiveIndex()).toBe(1); // Bob highlighted
+
+      ta.selectionStart = 1;
+      cmp.onTab(new KeyboardEvent('keydown', { key: 'Tab' }));
+      expect(cmp.text()).toBe('@Bob ');
+    });
+
+    it('forgets tracked mentions when the conversation changes', async () => {
+      const { fixture, container } = await renderComposer({
+        roomId: '!a:hs',
+        members: MEMBERS,
+      });
+      const cmp = fixture.componentInstance;
+      let submit: ComposerSubmit | undefined;
+      cmp.submitText.subscribe((e) => (submit = e));
+
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      ta.value = '@al';
+      ta.selectionStart = ta.selectionEnd = 3;
+      cmp.onInput({ target: ta } as unknown as Event);
+      ta.selectionStart = 3;
+      cmp.acceptMention(); // tracks @Alice for room A
+
+      // Switch rooms, then type similar text by hand (not via the menu).
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.detectChanges();
+      cmp.text.set('@Alice again');
+      cmp.onEnter(enter());
+
+      expect(submit?.mentions).toEqual([]); // the old room's tracking was dropped
+    });
+  });
+
+  describe('typing notifications', () => {
+    it('emits typing=true while the field has text, false when it is emptied', async () => {
+      const { fixture, container } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const states: boolean[] = [];
+      cmp.typing.subscribe((t) => states.push(t));
+
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+      ta.value = 'hi';
+      cmp.onInput({ target: ta } as unknown as Event);
+      ta.value = '   '; // cleared to whitespace → not typing
+      cmp.onInput({ target: ta } as unknown as Event);
+
+      expect(states).toEqual([true, false]);
+    });
+
+    it('emits typing=false when a message is sent', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const states: boolean[] = [];
+      cmp.typing.subscribe((t) => states.push(t));
+
+      cmp.text.set('hello');
+      cmp.onEnter(enter());
+
+      expect(states.at(-1)).toBe(false);
+    });
   });
 });

@@ -9,6 +9,7 @@ import {
 } from '@trinity/data-access-invites';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
+import { RoomNotificationsService } from '@trinity/data-access-notifications';
 import { PinnedMessagesService } from '@trinity/data-access-pinned';
 import {
   RoomsService,
@@ -32,6 +33,7 @@ import { RoomsPage } from './rooms.page';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import { UserCardService } from '../user-card/user-card.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
 
@@ -51,11 +53,13 @@ describe('RoomsPage action error feedback', () => {
   let edit: ReturnType<typeof vi.fn>;
   let toastShow: ReturnType<typeof vi.fn>;
   let sendMedia: ReturnType<typeof vi.fn>;
+  let setNotifyMode: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
     edit = vi.fn();
     sendMedia = vi.fn(() => of(undefined));
+    setNotifyMode = vi.fn(() => of(undefined));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -88,6 +92,7 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService, { show: toastShow }),
+        MockProvider(RoomNotificationsService, { setMode: setNotifyMode }),
       ],
     });
     return TestBed.inject(RoomsPage);
@@ -116,6 +121,27 @@ describe('RoomsPage action error feedback', () => {
 
   // Favouriting moved into ChannelSidebarComponent (it now calls RoomsService
   // directly), so that behaviour is covered by channel-sidebar.component.spec.ts.
+
+  it('applies a notification level chosen from the sidebar room menu', () => {
+    const page = build();
+
+    page.onSetNotifyMode({ roomId: '!r:hs', mode: 'mentions' });
+
+    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mentions');
+    expect(toastShow).not.toHaveBeenCalled();
+  });
+
+  it('shows a danger toast when setting a notification level fails', () => {
+    const page = build();
+    setNotifyMode.mockReturnValue(throwError(() => new Error('nope')));
+
+    page.onSetNotifyMode({ roomId: '!r:hs', mode: 'mute' });
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
 
   it('opens the threads-list panel for the active room', () => {
     const page = build();
@@ -856,6 +882,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   let inviteUser: ReturnType<typeof vi.fn>;
   let acceptInvite: ReturnType<typeof vi.fn>;
   let declineInvite: ReturnType<typeof vi.fn>;
+  let userCardOpen: ReturnType<typeof vi.fn>;
   let pending: WritableSignal<PendingInvite[]>;
 
   function pendingInvite(over: Partial<PendingInvite> = {}): PendingInvite {
@@ -880,6 +907,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     inviteUser = vi.fn(() => of(undefined));
     acceptInvite = vi.fn(() => of(undefined));
     declineInvite = vi.fn(() => of(undefined));
+    userCardOpen = vi.fn().mockResolvedValue(null);
     pending = signal<PendingInvite[]>([]);
     TestBed.configureTestingModule({
       providers: [
@@ -897,6 +925,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           declineInvite,
         }),
         MockProvider(UserPickerService, { pick }),
+        MockProvider(UserCardService, { open: userCardOpen }),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
         MockProvider(TimelineService),
@@ -964,6 +993,31 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     await page.onStartDm();
 
+    expect(createDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows a user card for a mention link, starting a DM only if messaged', async () => {
+    const page = build();
+    userCardOpen.mockResolvedValue('@bob:hs'); // the viewer chose "Message"
+
+    page.onMatrixLink({ kind: 'user', userId: '@bob:hs' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(userCardOpen).toHaveBeenCalledWith('@bob:hs');
+    expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
+    expect(page.activeRoomId()).toBe('!dm:hs');
+  });
+
+  it('opens no conversation when the user card is dismissed', async () => {
+    const page = build();
+    userCardOpen.mockResolvedValue(null); // dismissed
+
+    page.onMatrixLink({ kind: 'user', userId: '@bob:hs' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(userCardOpen).toHaveBeenCalledWith('@bob:hs');
     expect(createDirectMessage).not.toHaveBeenCalled();
   });
 

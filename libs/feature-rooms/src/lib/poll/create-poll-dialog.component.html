@@ -1,0 +1,55 @@
+<div
+  class="flex w-[92vw] max-w-[440px] flex-col gap-3 rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
+>
+  <h2 class="text-base font-semibold">Create poll</h2>
+
+  <div>
+    <label hlmLabel for="poll-question">Question</label>
+    <input
+      id="poll-question"
+      hlmInput
+      class="mt-1 w-full"
+      placeholder="Ask something…"
+      [value]="question()"
+      (input)="onQuestion($event)"
+      data-testid="poll-question"
+    />
+  </div>
+
+  <div class="flex flex-col gap-2">
+    @for (option of options(); track $index) {
+      <input
+        hlmInput
+        class="w-full"
+        [placeholder]="'Option ' + ($index + 1)"
+        [value]="option"
+        (input)="onOption($index, $event)"
+        [attr.data-testid]="'poll-option-' + $index"
+      />
+    }
+    @if (options().length < maxOptions) {
+      <button
+        hlmBtn
+        variant="ghost"
+        size="sm"
+        class="self-start"
+        (click)="addOption()"
+        data-testid="poll-add-option"
+      >
+        Add option
+      </button>
+    }
+  </div>
+
+  <div class="flex justify-end gap-2">
+    <button hlmBtn variant="ghost" (click)="cancel()">Cancel</button>
+    <button
+      hlmBtn
+      [disabled]="!valid()"
+      (click)="create()"
+      data-testid="poll-create"
+    >
+      Create
+    </button>
+  </div>
+</div>

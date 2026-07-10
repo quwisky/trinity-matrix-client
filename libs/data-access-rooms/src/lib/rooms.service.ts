@@ -338,6 +338,25 @@ export class RoomsService {
   }
 
   /**
+   * Resolve a room id or alias to a room id. A `!id:hs` resolves immediately; a
+   * `#alias:hs` is looked up on the homeserver. Cold: runs on subscribe. Used to route
+   * `matrix.to` room permalinks (which may carry either form) to an actual room.
+   */
+  resolveRoomId(roomIdOrAlias: string): Observable<string> {
+    return defer(() => {
+      if (roomIdOrAlias.startsWith('!')) {
+        return of(roomIdOrAlias);
+      }
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      return from(this.matrix.instance.getRoomIdForAlias(roomIdOrAlias)).pipe(
+        map((res) => res.room_id),
+      );
+    });
+  }
+
+  /**
    * Open (or reuse) a 1:1 direct message with `userId` and resolve its room id.
    *
    * If `m.direct` account data already records a DM with this user that we have not

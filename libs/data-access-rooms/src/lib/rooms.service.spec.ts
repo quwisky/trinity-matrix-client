@@ -464,6 +464,9 @@ describe('RoomsService writes', () => {
       ],
     });
     const membershipById = opts?.joinedRooms ?? {};
+    const getRoomIdForAlias = vi
+      .fn()
+      .mockResolvedValue({ room_id: '!aliased:hs' });
     const client = {
       getRooms: () => [],
       getRoom: (id: string) =>
@@ -478,12 +481,34 @@ describe('RoomsService writes', () => {
       invite,
       setAccountData,
       searchUserDirectory,
+      getRoomIdForAlias,
       on: vi.fn(),
       off: vi.fn(),
     };
     const { svc } = provideRooms(client);
-    return { svc, createRoom, invite, setAccountData, searchUserDirectory };
+    return {
+      svc,
+      createRoom,
+      invite,
+      setAccountData,
+      searchUserDirectory,
+      getRoomIdForAlias,
+    };
   }
+
+  it('resolveRoomId passes a room id through without a lookup', async () => {
+    const { svc, getRoomIdForAlias } = setupWrites();
+    expect(await firstValueFrom(svc.resolveRoomId('!r:hs'))).toBe('!r:hs');
+    expect(getRoomIdForAlias).not.toHaveBeenCalled();
+  });
+
+  it('resolveRoomId looks up a room alias on the homeserver', async () => {
+    const { svc, getRoomIdForAlias } = setupWrites();
+    expect(await firstValueFrom(svc.resolveRoomId('#general:hs'))).toBe(
+      '!aliased:hs',
+    );
+    expect(getRoomIdForAlias).toHaveBeenCalledWith('#general:hs');
+  });
 
   it('createRoom creates an encrypted, invite-only room and resolves its id', async () => {
     const { svc, createRoom } = setupWrites();

@@ -313,6 +313,7 @@ export class VirtualMessageListComponent extends MessageListBase {
     this.atBottomSig.set(
       el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX,
     );
+    this.updateJumpToUnread(); // divider may have scrolled in/out of the window
     if (this.pendingPrepend || this.loadingOlder() || !this.canLoadOlder()) {
       return;
     }

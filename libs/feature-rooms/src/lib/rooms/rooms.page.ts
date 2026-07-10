@@ -39,6 +39,8 @@ import { MediaService } from '@trinity/data-access-media';
 import {
   NotificationService,
   PushService,
+  RoomNotificationsService,
+  type RoomNotifyMode,
 } from '@trinity/data-access-notifications';
 import { PinnedMessagesService } from '@trinity/data-access-pinned';
 import {
@@ -54,9 +56,11 @@ import {
 } from '@trinity/data-access-rooms';
 import { type SwitcherSelection } from '@trinity/data-access-search';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
+import { type MatrixLinkTarget, type Mention } from '@trinity/util-matrix';
 import { FeatureFlagsService } from '@trinity/platform-native';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import { UserCardService } from '../user-card/user-card.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
 import {
@@ -122,6 +126,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly threadPanel = inject(ThreadPanelService);
   private readonly pinnedPanel = inject(PinnedPanelService);
   private readonly userPicker = inject(UserPickerService);
+  private readonly userCard = inject(UserCardService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly messageSearch = inject(MessageSearchService);
   private readonly media = inject(MediaService);
@@ -131,6 +136,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly presence = inject(PresenceService);
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
+  private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly dialog = inject(TrnDialogService);
@@ -724,6 +730,55 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.closeDrawer(); // collapse the drawer on mobile after picking a room
   }
 
+  /**
+   * Route a `matrix.to` permalink clicked in a message, in-app. A user shows a profile
+   * card (from which the viewer can start a DM); a room resolves its id/alias and — if
+   * we're joined — opens it, then jumps to a linked event. A room we haven't joined
+   * surfaces a toast rather than navigating.
+   */
+  onMatrixLink(target: MatrixLinkTarget): void {
+    if (target.kind === 'user') {
+      void this.openUserCard(target.userId);
+      return;
+    }
+    this.rooms
+      .resolveRoomId(target.roomIdOrAlias)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (roomId) => this.openLinkedRoom(roomId, target.eventId),
+        error: () => void this.showError('Could not open that room.'),
+      });
+  }
+
+  /** Show the user card; if they pick "Message", open (or reuse) a DM with the user. */
+  private async openUserCard(userId: string): Promise<void> {
+    const messageUserId = await this.userCard.open(userId);
+    if (!messageUserId) {
+      return; // dismissed — no conversation is opened
+    }
+    runWithBusy(this.rooms.createDirectMessage(messageUserId), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe((roomId) => this.onSelectRoom(roomId));
+  }
+
+  /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
+  private openLinkedRoom(roomId: string, eventId?: string): void {
+    if (!this.rooms.rooms().some((r) => r.id === roomId)) {
+      void this.showError("You're not in that room.");
+      return;
+    }
+    if (roomId !== this.activeRoomId()) {
+      this.onSelectRoom(roomId);
+    }
+    if (eventId) {
+      // Jump to the linked event (a no-op until it's in the loaded timeline).
+      this.messageSearchTarget.set(eventId);
+      this.jumpRequest.update((n) => n + 1);
+    }
+  }
+
   /** Toggle the mobile navigation drawer (no-op visual at md+, where it's static). */
   toggleDrawer(): void {
     this.drawerOpen.update((open) => !open);
@@ -745,6 +800,26 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (roomId) {
       void this.threadPanel.open(roomId, rootEventId);
     }
+  }
+
+  /** Sidebar room ⋮ menu: apply a chosen notification level (all / mentions / mute). */
+  onSetNotifyMode({
+    roomId,
+    mode,
+  }: {
+    roomId: string;
+    mode: RoomNotifyMode;
+  }): void {
+    this.setNotifyMode(roomId, mode);
+  }
+
+  private setNotifyMode(roomId: string, mode: RoomNotifyMode): void {
+    this.roomNotifications
+      .setMode(roomId, mode)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => void this.showError('Could not update notifications.'),
+      });
   }
 
   /** Open the threads-list panel for the active room (header "Threads" button). */
@@ -785,12 +860,30 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
-  onSend(text: string): void {
+  onSend({ body, mentions }: { body: string; mentions: Mention[] }): void {
     // The local echo (and its failed/retry state) surfaces the result.
     this.timeline
-      .send(text)
+      .send(body, mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+
+  /** Composer typing state → a (throttled) Matrix typing notification for the room. */
+  onTyping(typing: boolean): void {
+    this.timeline.setTyping(typing);
+  }
+
+  /** Cast a vote on a poll (m.poll.response). */
+  onPollVote({ pollId, answerId }: { pollId: string; answerId: string }): void {
+    this.runAction(
+      this.timeline.votePoll(pollId, answerId),
+      'Could not cast your vote.',
+    );
+  }
+
+  /** Close a poll (m.poll.end). */
+  onPollEnd(pollId: string): void {
+    this.runAction(this.timeline.endPoll(pollId), 'Could not end the poll.');
   }
 
   onSendMedia({ file, caption }: { file: File; caption: string }): void {
@@ -812,9 +905,9 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   // Edit/delete/react have no visible local echo, so a failure would otherwise be
   // silent — surface it as a toast. (Send/reply produce an echo with a retry.)
-  onEdit(edit: { id: string; body: string }): void {
+  onEdit(edit: { id: string; body: string; mentions: Mention[] }): void {
     this.runAction(
-      this.timeline.edit(edit.id, edit.body),
+      this.timeline.edit(edit.id, edit.body, edit.mentions),
       'Could not edit the message.',
     );
   }
@@ -833,9 +926,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     );
   }
 
-  onReply(reply: { id: string; body: string }): void {
+  onReply(reply: { id: string; body: string; mentions: Mention[] }): void {
     this.timeline
-      .reply(reply.id, reply.body)
+      .reply(reply.id, reply.body, reply.mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
   }

@@ -1,0 +1,11 @@
+<emoji-mart
+  class="reaction-picker"
+  data-testid="reaction-picker"
+  [isNative]="true"
+  [showPreview]="false"
+  [darkMode]="isDarkMode()"
+  [emojiSize]="20"
+  title="Pick a reaction"
+  emoji=""
+  (emojiSelect)="onSelect($event)"
+/>

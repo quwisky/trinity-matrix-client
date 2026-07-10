@@ -166,6 +166,7 @@ export class SimpleMessageListComponent extends MessageListBase {
     // effect only auto-scrolls incoming messages when they're already there.
     this.atBottom =
       el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    this.updateJumpToUnread(); // divider may have scrolled in/out of view
     if (this.pendingPrepend || this.loadingOlder() || !this.canLoadOlder()) {
       return;
     }

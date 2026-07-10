@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { DomSanitizer } from '@angular/platform-browser';
-import type { MatrixEvent } from 'matrix-js-sdk';
-import { mediaCaptionFields, messagePreview } from './message-content';
+import type { MatrixEvent, Room } from 'matrix-js-sdk';
+import {
+  editMessageContent,
+  mediaCaptionFields,
+  messagePreview,
+  renderMarkdown,
+  replyMessageContent,
+  textMessageContent,
+  type Mention,
+} from './message-content';
 
 // mediaCaptionFields only uses the sanitizer via renderMarkdown (marked → sanitize);
 // a passthrough stub is enough to exercise the markdown branch without a DOM.
@@ -50,6 +58,105 @@ describe('mediaCaptionFields', () => {
     const fields = mediaCaptionFields(sanitizer, 'pic.png', 'just text');
     expect(fields['format']).toBeUndefined();
     expect(fields['formatted_body']).toBeUndefined();
+  });
+});
+
+/** Extract `m.mentions.user_ids` from a built content object. */
+function mentionIds(content: unknown): string[] {
+  const block = (content as Record<string, { user_ids?: string[] }>)[
+    'm.mentions'
+  ];
+  return block?.user_ids ?? [];
+}
+
+const ALICE: Mention = { userId: '@alice:hs', display: '@Alice' };
+
+describe('mentions in content builders', () => {
+  it('adds m.mentions and a matrix.to pill for a plain-text mention', () => {
+    const text = 'hey @Alice';
+    const content = textMessageContent(text, renderMarkdown(sanitizer, text), [
+      ALICE,
+    ]);
+
+    expect(content.body).toBe('hey @Alice'); // plain body keeps the readable @name
+    expect(content.format).toBe('org.matrix.custom.html');
+    expect(content.formatted_body).toContain(
+      '<a href="https://matrix.to/#/@alice:hs">@Alice</a>',
+    );
+    expect(mentionIds(content)).toEqual(['@alice:hs']);
+  });
+
+  it('stays plain text with no mention and no markdown', () => {
+    const text = 'just text';
+    expect(textMessageContent(text, renderMarkdown(sanitizer, text))).toEqual({
+      msgtype: 'm.text',
+      body: 'just text',
+    });
+  });
+
+  it("keeps an edit's mentions in m.new_content, off the top-level replace", () => {
+    const text = 'fixed @Alice';
+    const content = editMessageContent(
+      '$m',
+      text,
+      renderMarkdown(sanitizer, text),
+      [ALICE],
+    ) as Record<string, unknown>;
+
+    // No top-level m.mentions → editing keeps existing pings from re-notifying.
+    expect(mentionIds(content)).toEqual([]);
+    const newContent = content['m.new_content'];
+    expect(mentionIds(newContent)).toEqual(['@alice:hs']);
+    expect((newContent as Record<string, string>)['formatted_body']).toContain(
+      'matrix.to/#/@alice:hs',
+    );
+  });
+
+  it('a reply pings the replied-to author plus any reply mentions', () => {
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => ({
+        getSender: () => '@bob:hs',
+        getContent: () => ({ body: 'original' }),
+      }),
+    } as unknown as Room;
+    const text = 'thanks @Alice';
+    const content = replyMessageContent(
+      room,
+      '$t',
+      text,
+      renderMarkdown(sanitizer, text),
+      [ALICE],
+    );
+
+    expect(mentionIds(content)).toEqual(
+      expect.arrayContaining(['@bob:hs', '@alice:hs']),
+    );
+    expect(content.formatted_body).toContain('matrix.to/#/@alice:hs');
+  });
+
+  it('pills and lists every mention in a multi-mention message', () => {
+    const text = 'hi @Alice and @Bob';
+    const content = textMessageContent(text, renderMarkdown(sanitizer, text), [
+      ALICE,
+      { userId: '@bob:hs', display: '@Bob' },
+    ]);
+
+    expect(mentionIds(content)).toEqual(['@alice:hs', '@bob:hs']);
+    expect(content.formatted_body).toContain('matrix.to/#/@alice:hs');
+    expect(content.formatted_body).toContain('matrix.to/#/@bob:hs');
+  });
+
+  it('HTML-escapes a mention display in the pill', () => {
+    const text = 'hi @A&B';
+    const content = textMessageContent(text, renderMarkdown(sanitizer, text), [
+      { userId: '@ab:hs', display: '@A&B' },
+    ]);
+
+    // The pill text is escaped (matches the form marked emitted); no raw ampersand.
+    expect(content.formatted_body).toContain(
+      '<a href="https://matrix.to/#/@ab:hs">@A&amp;B</a>',
+    );
   });
 });
 

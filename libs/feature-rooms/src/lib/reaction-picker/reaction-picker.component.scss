@@ -1,0 +1,9 @@
+:host {
+  display: block;
+}
+
+// emoji-mart sizes itself; keep it from overflowing a narrow dialog on mobile.
+.reaction-picker {
+  display: block;
+  max-width: 100%;
+}

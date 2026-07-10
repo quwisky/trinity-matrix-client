@@ -104,6 +104,38 @@
       }
     </ul>
   }
+  @if (mentionOpen()) {
+    <ul
+      id="mention-suggestions"
+      class="composer__emoji-menu"
+      role="listbox"
+      aria-label="Member suggestions"
+      data-testid="mention-autocomplete"
+    >
+      @for (member of mentionMatches(); track member.userId; let i = $index) {
+        <li role="presentation">
+          <button
+            type="button"
+            tabindex="-1"
+            [id]="'mention-suggestion-' + i"
+            class="composer__emoji-suggestion"
+            [class.composer__emoji-suggestion--active]="
+              i === mentionActiveIndex()
+            "
+            role="option"
+            [attr.aria-selected]="i === mentionActiveIndex()"
+            (mousedown)="$event.preventDefault()"
+            (mouseenter)="mentionActiveIndex.set(i)"
+            (click)="acceptMention(i)"
+          >
+            <span class="composer__emoji-suggestion-code">{{
+              member.name
+            }}</span>
+          </button>
+        </li>
+      }
+    </ul>
+  }
   <input
     #fileInput
     type="file"
@@ -123,10 +155,22 @@
   >
     <ng-icon name="lucidePlus" aria-hidden="true" />
   </button>
+  <button
+    type="button"
+    class="composer__attach"
+    hlmTooltip="Create poll"
+    aria-label="Create poll"
+    data-testid="composer-poll"
+    [disabled]="editing()"
+    (click)="openPollDialog()"
+  >
+    <ng-icon name="lucideVote" aria-hidden="true" />
+  </button>
   <textarea
     #ta
     hlmTextarea
     class="composer__input"
+    data-testid="composer-input"
     rows="1"
     [value]="text()"
     [placeholder]="
@@ -137,9 +181,19 @@
           : placeholder() || 'Message #' + roomName()
     "
     aria-autocomplete="list"
-    [attr.aria-controls]="emojiOpen() ? 'emoji-suggestions' : null"
+    [attr.aria-controls]="
+      mentionOpen()
+        ? 'mention-suggestions'
+        : emojiOpen()
+          ? 'emoji-suggestions'
+          : null
+    "
     [attr.aria-activedescendant]="
-      emojiOpen() ? 'emoji-suggestion-' + emojiActiveIndex() : null
+      mentionOpen()
+        ? 'mention-suggestion-' + mentionActiveIndex()
+        : emojiOpen()
+          ? 'emoji-suggestion-' + emojiActiveIndex()
+          : null
     "
     (input)="onInput($event)"
     (keydown.enter)="onEnter($event)"
