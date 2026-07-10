@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Spoilers are now hidden until you reveal them.** Messages containing spoiler
+  content (`data-mx-spoiler`) previously showed it in the clear; it now renders as a
+  black bar that you click — or focus and press Enter/Space — to uncover. A first click
+  that lands on a link inside a spoiler only reveals it rather than following the link.
 - **React with any emoji.** The message reaction popover kept only six quick emoji;
   a new "+" button now opens the full emoji picker (search included), so you can react
   with anything — in rooms and threads alike. The six one-tap reactions stay as a fast path.

@@ -345,6 +345,28 @@
     max-width: 100%;
     border-radius: 4px;
   }
+
+  // Spoilers render as a black bar until clicked/activated. The sanitizer tags them
+  // `mx-spoiler` (data-mx-spoiler doesn't survive Angular's [innerHTML] sanitizer);
+  // the renderer's SpoilerRevealDirective adds `is-revealed` on activation.
+  .mx-spoiler {
+    border-radius: 3px;
+    transition:
+      background-color 0.12s ease,
+      color 0.12s ease;
+  }
+
+  .mx-spoiler:not(.is-revealed) {
+    background-color: var(--trinity-text-bright);
+    color: transparent;
+    cursor: pointer;
+    user-select: none;
+
+    // Conceal nested links/images/code while keeping the bar's width.
+    * {
+      visibility: hidden;
+    }
+  }
 }
 
 // Local-echo send states.

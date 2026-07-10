@@ -324,6 +324,16 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       node.removeAttribute('class');
     }
   }
+  // Normalise a spoiler for the renderer. `data-mx-spoiler` marks it in Matrix HTML,
+  // but Angular's `[innerHTML]` sanitizer (the defence-in-depth re-scrub at the render
+  // leaf) drops all `data-*` attributes — so tag it with the sanctioned `mx-spoiler`
+  // class instead (class/tabindex/role all survive that pass). Focusable + role=button
+  // so keyboard users can reveal it too (pointer users get click-to-reveal).
+  if (node.hasAttribute('data-mx-spoiler')) {
+    node.classList.add('mx-spoiler');
+    node.setAttribute('tabindex', '0');
+    node.setAttribute('role', 'button');
+  }
 });
 
 // Memoize sanitization by raw input: DOMPurify is a pure function of the html

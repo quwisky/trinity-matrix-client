@@ -125,6 +125,25 @@ describe('MessageRowComponent', () => {
     expect(html?.innerHTML).toContain('<strong>look here</strong>');
   });
 
+  it('conceals a spoiler and reveals it on click', async () => {
+    // The html is what buildMessageView already ran through sanitizeMatrixHtml — the
+    // mx-spoiler class (not data-mx-spoiler) is what survives Angular's [innerHTML]
+    // re-sanitization and reaches the DOM.
+    const { container } = await renderRow({
+      row: row({
+        body: 'the answer is 42',
+        html: 'the answer is <span class="mx-spoiler" tabindex="0" role="button">42</span>',
+      }),
+    });
+
+    const spoiler = container.querySelector<HTMLElement>('.mx-spoiler');
+    expect(spoiler).toBeTruthy(); // class survived the render-leaf sanitizer
+    expect(spoiler?.classList.contains('is-revealed')).toBe(false);
+
+    spoiler!.click();
+    expect(spoiler?.classList.contains('is-revealed')).toBe(true);
+  });
+
   it('renders no caption text for an uncaptioned media message', async () => {
     const { container } = await renderRow({
       row: row({

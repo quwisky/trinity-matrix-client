@@ -47,13 +47,18 @@
         @if (r.captionHtml) {
           <div
             class="msg__text msg__text--html"
+            trnSpoilerReveal
             [innerHTML]="r.captionHtml"
           ></div>
         } @else if (r.caption) {
           <p class="msg__text">{{ r.caption }}</p>
         }
       } @else if (r.html) {
-        <div class="msg__text msg__text--html" [innerHTML]="r.html"></div>
+        <div
+          class="msg__text msg__text--html"
+          trnSpoilerReveal
+          [innerHTML]="r.html"
+        ></div>
       } @else {
         <p class="msg__text">{{ r.body }}</p>
       }
@@ -72,6 +77,7 @@
         @if (r.captionHtml) {
           <div
             class="msg__text msg__text--cont msg__text--html"
+            trnSpoilerReveal
             [innerHTML]="r.captionHtml"
           ></div>
         } @else if (r.caption) {
@@ -80,6 +86,7 @@
       } @else if (r.html) {
         <div
           class="msg__text msg__text--cont msg__text--html"
+          trnSpoilerReveal
           [innerHTML]="r.html"
         ></div>
       } @else {

@@ -18,6 +18,7 @@ import { type ThreadSummary } from '@trinity/data-access-timeline';
 import { type MessageView } from '@trinity/util-matrix';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
+import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 
 /** A {@link MessageView} plus Discord-style grouping flag (own header vs continuation). */
 export interface MessageRow extends MessageView {
@@ -66,6 +67,7 @@ export type MessageRowAction =
     MediaAttachmentComponent,
     MessageReactionsComponent,
     MessageToolbarComponent,
+    SpoilerRevealDirective,
   ],
   viewProviders: [provideIcons({ lucideMessagesSquare })],
   templateUrl: './message-row.component.html',
