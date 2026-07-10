@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { type Observable, forkJoin } from 'rxjs';
+import { type Observable, catchError, forkJoin, map, of } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
@@ -77,35 +77,55 @@ export class RoomSettingsComponent implements OnInit {
     }
   }
 
-  /** Persist the changed, editable fields; close on success, toast on failure. */
+  /**
+   * Persist each changed, editable field independently and report the real outcome:
+   * close on full success; on failure keep the dialog open with a toast that names what
+   * did and didn't save (each write is its own state event, so a partial failure is
+   * possible and must not claim "nothing saved"). Re-Saving is idempotent.
+   */
   save(): void {
     const roomId = this.roomId();
     const name = this.form.controls.name.value.trim();
     const topic = this.form.controls.topic.value.trim();
-    const writes: Observable<void>[] = [];
+    const writes: { field: string; op: Observable<void> }[] = [];
     // A room name shouldn't be blanked from here — only write a non-empty change.
     if (this.canEditName() && name && name !== this.name().trim()) {
-      writes.push(this.settings.setName(roomId, name));
+      writes.push({ field: 'name', op: this.settings.setName(roomId, name) });
     }
     if (this.canEditTopic() && topic !== this.topic().trim()) {
-      writes.push(this.settings.setTopic(roomId, topic));
+      writes.push({
+        field: 'topic',
+        op: this.settings.setTopic(roomId, topic),
+      });
     }
     if (writes.length === 0) {
       this.dialogRef.close(false);
       return;
     }
     this.saving.set(true);
-    forkJoin(writes)
+    forkJoin(
+      writes.map(({ field, op }) =>
+        op.pipe(
+          map(() => ({ field, ok: true })),
+          catchError(() => of({ field, ok: false })),
+        ),
+      ),
+    )
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => this.dialogRef.close(true),
-        error: () => {
-          this.saving.set(false);
-          this.toast.show('Could not save room settings.', {
-            duration: 4000,
-            variant: 'destructive',
-          });
-        },
+      .subscribe((results) => {
+        const failed = results.filter((r) => !r.ok).map((r) => r.field);
+        if (failed.length === 0) {
+          this.dialogRef.close(true);
+          return;
+        }
+        const saved = results.filter((r) => r.ok).map((r) => r.field);
+        this.saving.set(false);
+        this.toast.show(
+          saved.length
+            ? `Saved the ${saved.join(' and ')}, but couldn't update the ${failed.join(' and ')}.`
+            : 'Could not save room settings.',
+          { duration: 4000, variant: 'destructive' },
+        );
       });
   }
 

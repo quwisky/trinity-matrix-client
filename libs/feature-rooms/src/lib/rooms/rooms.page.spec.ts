@@ -13,6 +13,7 @@ import { RoomNotificationsService } from '@trinity/data-access-notifications';
 import { PinnedMessagesService } from '@trinity/data-access-pinned';
 import {
   RoomsService,
+  RoomSettingsService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
@@ -35,6 +36,7 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { MemberInfoService } from '../member-info/member-info.service';
+import { RoomSettingsComponent } from '../room-settings/room-settings.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
 
@@ -57,6 +59,8 @@ describe('RoomsPage action error feedback', () => {
   let setNotifyMode: ReturnType<typeof vi.fn>;
   let leaveRoom: ReturnType<typeof vi.fn>;
   let alertConfirm: ReturnType<typeof vi.fn>;
+  let roomsSignal: WritableSignal<RoomSummary[]>;
+  let editableFields: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
@@ -65,13 +69,16 @@ describe('RoomsPage action error feedback', () => {
     setNotifyMode = vi.fn(() => of(undefined));
     leaveRoom = vi.fn(() => of(undefined));
     alertConfirm = vi.fn().mockResolvedValue(true);
+    roomsSignal = signal<RoomSummary[]>([]);
+    editableFields = vi.fn(() => ({ name: true, topic: false, avatar: false }));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         MockProvider(RoomsService, {
           leave: leaveRoom,
-          rooms: signal<RoomSummary[]>([]).asReadonly(),
+          rooms: roomsSignal,
         }),
+        MockProvider(RoomSettingsService, { editableFields }),
         MockProvider(SpacesService),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService, { edit, sendMedia }),
@@ -200,6 +207,47 @@ describe('RoomsPage action error feedback', () => {
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('opens room settings, mapping each edit permission to a dialog input', () => {
+    const page = build();
+    roomsSignal.set([
+      {
+        id: '!r:hs',
+        name: 'General',
+        initial: 'G',
+        avatarMxc: null,
+        topic: 'The topic',
+        memberCount: 2,
+        encrypted: false,
+        unreadCount: 0,
+        highlightCount: 0,
+        hasUnread: false,
+        lastMessage: '',
+        activityTs: 0,
+        favourite: false,
+      },
+    ]);
+    page.activeRoomId.set('!r:hs');
+    editableFields.mockReturnValue({ name: true, topic: false, avatar: false });
+
+    page.onOpenRoomSettings();
+
+    expect(editableFields).toHaveBeenCalledWith('!r:hs');
+    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
+      RoomSettingsComponent,
+      {
+        inputs: expect.objectContaining({
+          roomId: '!r:hs',
+          name: 'General',
+          topic: 'The topic',
+          avatarMxc: null,
+          canEditName: true,
+          canEditTopic: false,
+          canEditAvatar: false,
+        }),
+      },
     );
   });
 

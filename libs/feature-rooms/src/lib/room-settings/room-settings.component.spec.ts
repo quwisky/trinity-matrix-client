@@ -16,11 +16,12 @@ async function build(
   }> = {},
   over: {
     setName?: ReturnType<typeof vi.fn>;
+    setTopic?: ReturnType<typeof vi.fn>;
     setAvatar?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const setName = over.setName ?? vi.fn(() => of(undefined));
-  const setTopic = vi.fn(() => of(undefined));
+  const setTopic = over.setTopic ?? vi.fn(() => of(undefined));
   const setAvatar = over.setAvatar ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
@@ -128,6 +129,25 @@ describe('RoomSettingsComponent', () => {
       expect.any(String),
       expect.objectContaining({ variant: 'destructive' }),
     );
+    expect(close).not.toHaveBeenCalledWith(true);
+  });
+
+  it('reports a partial failure accurately and stays open', async () => {
+    const setTopic = vi.fn(() => throwError(() => new Error('nope')));
+    const { cmp, close, toastShow } = await build(
+      { name: 'Old', topic: 'oldT' },
+      { setTopic },
+    );
+    cmp.form.controls.name.setValue('New');
+    cmp.form.controls.topic.setValue('newT');
+
+    cmp.save();
+
+    // Name saved, topic failed → the toast names both, and the dialog stays open.
+    const [message, options] = toastShow.mock.calls[0];
+    expect(message).toContain('name');
+    expect(message).toContain('topic');
+    expect(options).toMatchObject({ variant: 'destructive' });
     expect(close).not.toHaveBeenCalledWith(true);
   });
 
