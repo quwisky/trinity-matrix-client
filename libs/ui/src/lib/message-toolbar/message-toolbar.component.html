@@ -96,6 +96,14 @@
       <ng-icon name="lucideCopy" />
       Copy text
     </button>
+    <button
+      hlmDropdownMenuItem
+      (triggered)="action.emit({ type: 'forward' })"
+      data-testid="msg-forward"
+    >
+      <ng-icon name="lucideForward" />
+      Forward
+    </button>
     @if (caps().canEdit) {
       <button
         hlmDropdownMenuItem

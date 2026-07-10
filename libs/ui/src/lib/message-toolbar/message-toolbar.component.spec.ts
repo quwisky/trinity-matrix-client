@@ -69,6 +69,19 @@ describe('MessageToolbarComponent', () => {
     fixture.destroy();
   });
 
+  it('offers Forward in the overflow menu and emits it', async () => {
+    const { fixture, container } = await render(MessageToolbarComponent);
+    const cmp = fixture.componentInstance;
+    let action: MessageAction | undefined;
+    cmp.action.subscribe((a) => (action = a));
+
+    openMenu(container, fixture);
+    document.querySelector<HTMLElement>('[data-testid="msg-forward"]')?.click();
+
+    expect(action).toEqual({ type: 'forward' });
+    fixture.destroy();
+  });
+
   it('reveals Edit and Delete in the menu when permitted and emits on click', async () => {
     const { fixture, container } = await render(MessageToolbarComponent, {
       inputs: { caps: caps({ canEdit: true, canDelete: true }) },

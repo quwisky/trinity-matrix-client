@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
+import { ForwardService } from '../forward/forward.service';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
 import {
   formatTypingNotice,
@@ -135,6 +136,7 @@ export abstract class MessageListBase {
 
   protected readonly alert = inject(TrnAlertService);
   private readonly reactionPicker = inject(ReactionPickerService);
+  private readonly forwardSvc = inject(ForwardService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   // Grouping rows, cached per event id so an unchanged message (same view object AND
@@ -342,6 +344,9 @@ export abstract class MessageListBase {
         break;
       case 'copy':
         this.onCopy(row);
+        break;
+      case 'forward':
+        void this.forwardSvc.forward(this.roomId() ?? '', row.id);
         break;
       case 'edit':
         this.startEdit(row);

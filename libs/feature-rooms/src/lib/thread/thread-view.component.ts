@@ -34,6 +34,7 @@ import {
   type ComposerSubmit,
 } from '../message-composer/message-composer.component';
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
+import { ForwardService } from '../forward/forward.service';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -79,6 +80,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly threads = inject(ThreadsService);
   private readonly rooms = inject(RoomsService);
   private readonly reactionPicker = inject(ReactionPickerService);
+  private readonly forwardSvc = inject(ForwardService);
   private readonly dialogRef =
     inject<DialogRef<void, ThreadViewComponent>>(DialogRef);
   private readonly alert = inject(TrnAlertService);
@@ -304,6 +306,9 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         break;
       case 'copy':
         this.onCopy(row);
+        break;
+      case 'forward':
+        void this.forwardSvc.forward(this.roomId(), row.id);
         break;
       case 'edit':
         this.startEdit(row);

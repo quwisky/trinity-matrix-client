@@ -82,6 +82,7 @@ function fakeEvent(o: {
   filename?: string;
   file?: unknown;
   info?: Record<string, unknown>;
+  relatesTo?: unknown;
 }) {
   return {
     getId: () => o.id,
@@ -101,6 +102,7 @@ function fakeEvent(o: {
       ...(o.filename !== undefined ? { filename: o.filename } : {}),
       ...(o.file !== undefined ? { file: o.file } : {}),
       ...(o.info !== undefined ? { info: o.info } : {}),
+      ...(o.relatesTo !== undefined ? { 'm.relates_to': o.relatesTo } : {}),
     }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
@@ -371,6 +373,35 @@ describe('TimelineService', () => {
     expect(rich['body']).toBe('**bold**');
     expect(rich['format']).toBe('org.matrix.custom.html');
     expect(rich['formatted_body']).toContain('<strong>bold</strong>');
+  });
+
+  it('forwards a message content to another room, dropping any relation', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup(
+      [
+        fakeEvent({
+          id: '$src',
+          sender: '@a:hs',
+          body: 'forward me',
+          relatesTo: { rel_type: 'm.thread', event_id: '$root' },
+        }),
+      ],
+      sent,
+    );
+
+    await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!target:hs'));
+
+    const message = sent.find((c) => c[0] === 'message');
+    const content = message?.[1] as Record<string, unknown>;
+    expect(content['body']).toBe('forward me');
+    expect(content['m.relates_to']).toBeUndefined(); // standalone, not a thread reply
+  });
+
+  it('errors when forwarding an event that cannot be found', async () => {
+    const svc = setup([]);
+    await expect(
+      firstValueFrom(svc.forwardMessage('!r:hs', '$missing', '!target:hs')),
+    ).rejects.toThrow();
   });
 
   it('adds m.mentions and a matrix.to pill when a message mentions someone', async () => {

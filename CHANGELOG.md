@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Forward messages to another conversation.** The message overflow menu now has a
+  **Forward** action: pick a room or direct message from the switcher and the message
+  is re-sent there as a standalone message. Works for text and media (including in
+  encrypted rooms, since an attachment carries its own key), from rooms and threads.
 - **"Seen by" read receipts.** Messages now show small avatars of the members who have
   read up to them, updating live as people catch up — so you can tell who's seen what.
 - **In-app navigation for Matrix links.** Clicking a `matrix.to` link in a message now

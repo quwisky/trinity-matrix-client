@@ -22,6 +22,7 @@ import {
   of,
   switchMap,
   tap,
+  throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
@@ -345,6 +346,33 @@ export class TimelineService {
         mentions,
       );
       return from(client.sendMessage(room.roomId, content as never));
+    }).pipe(map(() => void 0));
+  }
+
+  /**
+   * Forward a message to another room: copy its content — dropping any reply/edit/thread
+   * relation so it lands as a standalone message — and send it there. Works across rooms
+   * and for media (an encrypted attachment carries its own key in the content, so the
+   * target room's members can still decrypt it). Cold: runs on subscribe.
+   */
+  forwardMessage(
+    sourceRoomId: string,
+    eventId: string,
+    targetRoomId: string,
+  ): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      const client = this.matrix.instance;
+      const event = client.getRoom(sourceRoomId)?.findEventById(eventId);
+      if (!event) {
+        return throwError(() => new Error('Message not found.'));
+      }
+      const content = { ...event.getContent() };
+      delete content['m.relates_to'];
+      delete content['m.new_content'];
+      return from(client.sendMessage(targetRoomId, content as never));
     }).pipe(map(() => void 0));
   }
 
