@@ -77,6 +77,9 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   });
 }
 
+const LEVELS = ['all', 'mentions', 'mute'] as const;
+type Level = (typeof LEVELS)[number];
+
 // Open the room row's ⋮ menu in the channel list, then its Notifications submenu.
 async function openNotifyMenu(page: Page, roomName: string): Promise<void> {
   const row = page.locator('.channel-row', { hasText: roomName }).first();
@@ -88,10 +91,40 @@ async function openNotifyMenu(page: Page, roomName: string): Promise<void> {
   });
 }
 
+// Pick a level radio and wait for the service's push-rule cache refresh — the
+// `GET /pushrules/` that `applyMode` issues after every write — so the reopened menu
+// reflects the persisted choice deterministically (works for every level transition,
+// which write different rule endpoints). Selecting a radio also closes the menu.
+async function pickLevel(page: Page, level: Level): Promise<void> {
+  await Promise.all([
+    page.waitForResponse(
+      (r) =>
+        /\/pushrules\/?$/.test(new URL(r.url()).pathname) &&
+        r.request().method() === 'GET',
+      { timeout: 15_000 },
+    ),
+    page.getByTestId(`room-notify-${level}`).click(),
+  ]);
+}
+
+// With the Notifications submenu open, assert exactly `level` is the checked radio.
+async function expectChecked(page: Page, level: Level): Promise<void> {
+  for (const l of LEVELS) {
+    await expect(page.getByTestId(`room-notify-${l}`)).toHaveAttribute(
+      'aria-checked',
+      l === level ? 'true' : 'false',
+      { timeout: 15_000 },
+    );
+  }
+}
+
 test.describe('Per-room notifications', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('mutes a room and remembers the choice', async ({ page, request }) => {
+  test('sets each notification level from the room menu and remembers it', async ({
+    page,
+    request,
+  }) => {
     const runId = `${Date.now().toString(36)}n`;
     const { user, roomName } = await seedRoom(
       request,
@@ -102,25 +135,17 @@ test.describe('Per-room notifications', () => {
     await login(page, user);
     await openRoom(page, roomName);
 
-    // Open the room's ⋮ menu → Notifications submenu and mute the room, waiting for the
-    // override push-rule write to land so the reopened menu reflects the persisted choice.
+    // A fresh room defaults to "All messages".
     await openNotifyMenu(page, roomName);
-    await Promise.all([
-      page.waitForResponse(
-        (r) =>
-          /\/pushrules\/global\/override\//.test(r.url()) &&
-          r.request().method() === 'PUT',
-        { timeout: 15_000 },
-      ),
-      page.getByTestId('room-notify-mute').click(),
-    ]);
+    await expectChecked(page, 'all');
 
-    // Reopen — the persisted selection (Mute) is now the checked radio.
-    await openNotifyMenu(page, roomName);
-    await expect(page.getByTestId('room-notify-mute')).toHaveAttribute(
-      'aria-checked',
-      'true',
-      { timeout: 15_000 },
-    );
+    // Walk every level in turn: pick it (which writes push rules + closes the menu),
+    // then reopen and confirm it is now the persisted, checked radio. This exercises the
+    // add-override (mute), room-rule (mentions), and clear (back to all) write paths.
+    for (const level of ['mute', 'mentions', 'all'] as const) {
+      await pickLevel(page, level); // menu is already open from the previous reopen
+      await openNotifyMenu(page, roomName);
+      await expectChecked(page, level);
+    }
   });
 });

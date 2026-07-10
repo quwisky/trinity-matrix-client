@@ -742,6 +742,35 @@ describe('ChannelSidebarComponent', () => {
     expect(picks).toEqual([{ roomId: '!a:hs', mode: 'mentions' }]);
   });
 
+  it('emits the level for the specific room whose menu was opened', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!a:hs', name: 'general' }),
+          room({ id: '!b:hs', name: 'random' }),
+        ],
+      },
+    });
+    const picks: { roomId: string; mode: RoomNotifyMode }[] = [];
+    fixture.componentInstance.setNotifyMode.subscribe((event) =>
+      picks.push(event),
+    );
+
+    // Open the SECOND room's kebab → Notifications submenu → Mute; the emit must carry
+    // that row's id, not the first (or last) room's.
+    const kebabs = container.querySelectorAll<HTMLElement>('.channel__menu');
+    expect(kebabs).toHaveLength(2);
+    kebabs[1].click();
+    fixture.detectChanges();
+    document.querySelector<HTMLElement>('[data-testid="room-notify"]')!.click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="room-notify-mute"]')!
+      .click();
+
+    expect(picks).toEqual([{ roomId: '!b:hs', mode: 'mute' }]);
+  });
+
   it('shows loading then error states for the space hierarchy', async () => {
     const { fixture, container, signals } = await renderSidebar({
       inputs: { spaceActive: true },
