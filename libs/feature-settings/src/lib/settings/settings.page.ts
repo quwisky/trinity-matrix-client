@@ -25,6 +25,7 @@ import {
   lucideCircleDot,
   lucideFlaskConical,
   lucideImage,
+  lucideKeyRound,
   lucideMonitorSmartphone,
   lucidePalette,
   lucideUser,
@@ -46,6 +47,7 @@ const MENU: readonly SettingsMenuItem[] = [
   { path: 'presence', label: 'Presence', icon: 'lucideCircleDot' },
   { path: 'appearance', label: 'Appearance', icon: 'lucidePalette' },
   { path: 'devices', label: 'Devices', icon: 'lucideMonitorSmartphone' },
+  { path: 'account', label: 'Account', icon: 'lucideKeyRound' },
   { path: 'gifs', label: 'GIFs', icon: 'lucideImage' },
   { path: 'experimental', label: 'Experimental', icon: 'lucideFlaskConical' },
 ];
@@ -81,6 +83,7 @@ const WIDE_QUERY = '(min-width: 768px)';
       lucideCircleDot,
       lucidePalette,
       lucideMonitorSmartphone,
+      lucideKeyRound,
       lucideImage,
       lucideFlaskConical,
     }),

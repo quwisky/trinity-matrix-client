@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Change your account password.** Settings now has an **Account** section to change your
+  password: enter your current password, a new one (confirmed), and the change is applied
+  server-side. Your other signed-in sessions stay logged in, and a wrong current password
+  is reported clearly rather than as a raw error.
 - **Report a message.** The message ⋯ menu now has **Report message** — flag a message to
   the room's server administrators, with an optional reason (`reportEvent`), from the main
   timeline or a thread.

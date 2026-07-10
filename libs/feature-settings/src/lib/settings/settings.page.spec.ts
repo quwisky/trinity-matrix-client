@@ -17,6 +17,7 @@ const SECTIONS = [
   'presence',
   'appearance',
   'devices',
+  'account',
   'gifs',
   'experimental',
 ];

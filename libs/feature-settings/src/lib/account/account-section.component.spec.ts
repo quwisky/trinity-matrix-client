@@ -1,0 +1,102 @@
+import { TestBed } from '@angular/core/testing';
+import { of, throwError } from 'rxjs';
+import { render } from '@testing-library/angular';
+import { MockProvider } from 'ng-mocks';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthService } from '@trinity/data-access-auth';
+import { TrnToastService } from '@trinity/helm/overlay';
+import { AccountSectionComponent } from './account-section.component';
+
+describe('AccountSectionComponent', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  async function renderSection() {
+    const result = await render(AccountSectionComponent, {
+      providers: [MockProvider(AuthService), MockProvider(TrnToastService)],
+    });
+    const auth = TestBed.inject(AuthService);
+    const toast = TestBed.inject(TrnToastService);
+    // changePassword is a cold Observable the component feeds to runWithBusy.
+    vi.mocked(auth.changePassword).mockReturnValue(of(undefined));
+    return { ...result, cmp: result.fixture.componentInstance, auth, toast };
+  }
+
+  it('changes the password, clears the form, and toasts on success', async () => {
+    const { cmp, auth, toast } = await renderSection();
+    cmp.form.setValue({
+      currentPassword: 'old-pw',
+      newPassword: 'new-secret-pw',
+      confirmPassword: 'new-secret-pw',
+    });
+
+    cmp.submit();
+
+    expect(auth.changePassword).toHaveBeenCalledWith('old-pw', 'new-secret-pw');
+    expect(cmp.form.getRawValue().newPassword).toBe(''); // reset()
+    expect(cmp.error()).toBeNull();
+    expect(toast.show).toHaveBeenCalledWith(
+      'Password changed.',
+      expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
+  it('refuses a mismatched confirmation without calling the service', async () => {
+    const { cmp, auth } = await renderSection();
+    cmp.form.setValue({
+      currentPassword: 'old-pw',
+      newPassword: 'new-secret-pw',
+      confirmPassword: 'different-pw',
+    });
+
+    cmp.submit();
+
+    expect(cmp.error()).toContain('don’t match');
+    expect(auth.changePassword).not.toHaveBeenCalled();
+  });
+
+  it('refuses reusing the current password', async () => {
+    const { cmp, auth } = await renderSection();
+    cmp.form.setValue({
+      currentPassword: 'same-secret-pw',
+      newPassword: 'same-secret-pw',
+      confirmPassword: 'same-secret-pw',
+    });
+
+    cmp.submit();
+
+    expect(cmp.error()).toContain('different');
+    expect(auth.changePassword).not.toHaveBeenCalled();
+  });
+
+  it('blocks a too-short new password (form invalid)', async () => {
+    const { cmp, auth } = await renderSection();
+    cmp.form.setValue({
+      currentPassword: 'old-pw',
+      newPassword: 'short',
+      confirmPassword: 'short',
+    });
+
+    cmp.submit();
+
+    expect(cmp.error()).toContain('at least');
+    expect(auth.changePassword).not.toHaveBeenCalled();
+  });
+
+  it('shows the service error inline and keeps the form intact', async () => {
+    const { cmp, auth, toast } = await renderSection();
+    vi.mocked(auth.changePassword).mockReturnValue(
+      throwError(() => new Error('Your current password is incorrect.')),
+    );
+    cmp.form.setValue({
+      currentPassword: 'wrong-pw',
+      newPassword: 'new-secret-pw',
+      confirmPassword: 'new-secret-pw',
+    });
+
+    cmp.submit();
+
+    expect(cmp.error()).toBe('Your current password is incorrect.');
+    expect(cmp.form.getRawValue().newPassword).toBe('new-secret-pw'); // not reset
+    expect(toast.show).not.toHaveBeenCalled();
+  });
+});

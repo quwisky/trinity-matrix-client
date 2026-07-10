@@ -15,7 +15,7 @@ vi.mock('matrix-js-sdk', async (importActual) => {
   };
 });
 
-import { AutoDiscovery, createClient } from 'matrix-js-sdk';
+import { AutoDiscovery, MatrixError, createClient } from 'matrix-js-sdk';
 import { AuthService } from './auth.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
@@ -28,6 +28,14 @@ const createClientMock = vi.mocked(createClient);
 
 function homeserver(state: string, base_url?: string) {
   return { 'm.homeserver': { state, base_url } } as never;
+}
+
+/** A user-interactive-auth 401 offering the password stage for `session`. */
+function uia(session: string): MatrixError {
+  return new MatrixError(
+    { flows: [{ stages: ['m.login.password'] }], session },
+    401,
+  );
 }
 
 describe('AuthService', () => {
@@ -362,6 +370,90 @@ describe('AuthService', () => {
       expect(matrix.remove).toHaveBeenCalledWith('@me:hs');
       expect(storage.remove).toHaveBeenCalledWith('@me:hs');
       expect(storage.clear).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('changePassword', () => {
+    // isInitialized/instance are getters ng-mocks leaves undefined; define them per
+    // test so changePassword sees a live client (or, for the guard test, no session).
+    function useClient(client: {
+      setPassword: unknown;
+      getUserId: unknown;
+    }): void {
+      const matrix = TestBed.inject(MatrixClientService);
+      Object.defineProperty(matrix, 'isInitialized', {
+        get: () => true,
+        configurable: true,
+      });
+      Object.defineProperty(matrix, 'instance', {
+        get: () => client,
+        configurable: true,
+      });
+    }
+
+    it('sets the new password when the server needs no interactive auth', async () => {
+      const client = {
+        setPassword: vi.fn().mockResolvedValue(undefined),
+        getUserId: vi.fn(() => '@me:hs'),
+      };
+      useClient(client);
+
+      await expect(
+        firstValueFrom(auth.changePassword('old-pw', 'new-secret-pw')),
+      ).resolves.toBeUndefined();
+
+      // First attempt carries no auth; other sessions stay signed in (false).
+      expect(client.setPassword).toHaveBeenCalledWith(
+        {},
+        'new-secret-pw',
+        false,
+      );
+    });
+
+    it('satisfies the UIA password stage with the current password', async () => {
+      const client = {
+        setPassword: vi
+          .fn()
+          .mockRejectedValueOnce(uia('sess-1'))
+          .mockResolvedValueOnce(undefined),
+        getUserId: vi.fn(() => '@me:hs'),
+      };
+      useClient(client);
+
+      await expect(
+        firstValueFrom(auth.changePassword('old-pw', 'new-secret-pw')),
+      ).resolves.toBeUndefined();
+
+      expect(client.setPassword).toHaveBeenCalledTimes(2);
+      expect(client.setPassword.mock.calls[1][0]).toMatchObject({
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: '@me:hs' },
+        password: 'old-pw',
+        session: 'sess-1',
+      });
+    });
+
+    it('surfaces a rejected current password as a clear error', async () => {
+      // The server keeps returning 401 (wrong password) — the single attempt is spent,
+      // so the UIA helper cancels and we map that to a human message.
+      const client = {
+        setPassword: vi
+          .fn()
+          .mockRejectedValueOnce(uia('sess-1'))
+          .mockRejectedValueOnce(uia('sess-2')),
+        getUserId: vi.fn(() => '@me:hs'),
+      };
+      useClient(client);
+
+      await expect(
+        firstValueFrom(auth.changePassword('wrong-pw', 'new-secret-pw')),
+      ).rejects.toThrow('Your current password is incorrect.');
+    });
+
+    it('errors without touching the client when not signed in', async () => {
+      await expect(
+        firstValueFrom(auth.changePassword('old-pw', 'new-secret-pw')),
+      ).rejects.toThrow('Not signed in.');
     });
   });
 });
