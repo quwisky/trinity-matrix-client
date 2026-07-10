@@ -914,6 +914,7 @@ export class RoomsPage implements OnInit, OnDestroy {
         canEditAvatar: editable.avatar,
         canEditJoinRule: editable.joinRule,
         canEditHistory: editable.history,
+        canManageBans: this.moderation.canManageBans(room.id),
       },
     });
   }

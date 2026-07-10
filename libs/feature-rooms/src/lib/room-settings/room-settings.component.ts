@@ -20,6 +20,7 @@ import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import { RoomSettingsService } from '@trinity/data-access-rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util-matrix';
+import { BannedMembersComponent } from '../banned-members/banned-members.component';
 
 /** Reject avatar uploads larger than this (before hitting a server 413). */
 const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
@@ -45,16 +46,24 @@ const HISTORY_OPTIONS = [
 ] as const;
 
 /**
- * Dialog to edit a room's name and topic (`m.room.name` / `m.room.topic`). The opener
- * seeds the current values and which fields the viewer's power level lets them change;
- * fields they can't edit render read-only. Save writes only the fields that changed and
- * closes resolving `true` (so the host can refresh/toast); errors keep the dialog open
- * with a toast. Presented via {@link TrnDialogService}.
+ * Dialog to edit a room's identity (name/topic/avatar) and access controls (join rule +
+ * history visibility). The opener seeds the current values and which fields the viewer's
+ * power level lets them change; fields they can't edit render read-only. Save writes only
+ * the fields that changed and closes resolving `true` (so the host can refresh/toast);
+ * errors keep the dialog open with a toast. Viewers who can ban also see the room's banned
+ * members (with an Unban action) via {@link BannedMembersComponent}. Presented via
+ * {@link TrnDialogService}.
  */
 @Component({
   selector: 'trn-room-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, HlmButton, HlmInput, AvatarComponent],
+  imports: [
+    ReactiveFormsModule,
+    HlmButton,
+    HlmInput,
+    AvatarComponent,
+    BannedMembersComponent,
+  ],
   templateUrl: './room-settings.component.html',
   styleUrl: './room-settings.component.scss',
 })
@@ -72,6 +81,8 @@ export class RoomSettingsComponent implements OnInit {
   readonly canEditAvatar = input(false);
   readonly canEditJoinRule = input(false);
   readonly canEditHistory = input(false);
+  /** Whether the viewer may manage (view + lift) this room's bans. */
+  readonly canManageBans = input(false);
 
   private readonly dialogRef =
     inject<DialogRef<boolean, RoomSettingsComponent>>(DialogRef);

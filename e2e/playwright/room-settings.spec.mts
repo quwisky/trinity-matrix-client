@@ -40,6 +40,25 @@ async function registerUser(
   }
 }
 
+/** Log in over the API and return the access token. */
+async function tokenFor(
+  request: APIRequestContext,
+  hs: string,
+  user: string,
+  pass: string,
+): Promise<string> {
+  const json = await request
+    .post(`${hs}/_matrix/client/v3/login`, {
+      data: {
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user },
+        password: pass,
+      },
+    })
+    .then((r) => r.json());
+  return json.access_token as string;
+}
+
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
   const channel = page.locator('.channel', { hasText: roomName });
@@ -163,6 +182,89 @@ test.describe('Room settings', () => {
         },
       )
       .toBe('world_readable');
+  });
+
+  test('an admin unbans a member from the banned list', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}ub`;
+    const admin = `unban-admin-${runId}`;
+    const adminPass = `${admin}-pass`;
+    const target = `unban-target-${runId}`;
+    const targetPass = `${target}-pass`;
+    const targetName = `Banned ${runId}`;
+    const roomName = `Bans ${runId}`;
+
+    await registerUser(request, admin, adminPass);
+    await registerUser(request, target, targetPass);
+    const adminAuth = {
+      Authorization: `Bearer ${await tokenFor(request, hs, admin, adminPass)}`,
+    };
+    const targetLogin = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: target },
+          password: targetPass,
+        },
+      })
+      .then((r) => r.json());
+    const targetId = targetLogin.user_id as string;
+    const targetAuth = { Authorization: `Bearer ${targetLogin.access_token}` };
+
+    await request.put(
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(targetId)}/displayname`,
+      { headers: targetAuth, data: { displayname: targetName } },
+    );
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: adminAuth,
+        data: { name: roomName, preset: 'private_chat', invite: [targetId] },
+      })
+      .then((r) => r.json());
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
+      { headers: targetAuth },
+    );
+    // The admin bans the target so they appear in the room's banned list.
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/ban`,
+      { headers: adminAuth, data: { user_id: targetId, reason: 'spam' } },
+    );
+
+    await login(page, {
+      available: true,
+      hs,
+      user: admin,
+      pass: adminPass,
+    } as SynapseSession);
+    await openRoom(page, roomName);
+
+    await page.getByTestId('open-room-settings').click();
+    await expect(page.getByTestId('banned-members')).toBeVisible({
+      timeout: 10_000,
+    });
+    const row = page
+      .getByTestId('banned-member')
+      .filter({ hasText: targetName });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+
+    // Unban them: the row disappears and the ban is lifted server-side.
+    await row.getByTestId('banned-member-unban').click();
+    await expect(page.getByText(`Unbanned ${targetName}.`)).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const membership = async (): Promise<unknown> => {
+      const res = await request.get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/m.room.member/${encodeURIComponent(targetId)}`,
+        { headers: adminAuth },
+      );
+      return res.ok() ? (await res.json()).membership : undefined;
+    };
+    await expect.poll(membership, { timeout: 20_000 }).toBe('leave');
   });
 
   test('an admin changes the room photo', async ({ page, request }) => {

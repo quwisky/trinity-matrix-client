@@ -63,6 +63,7 @@ describe('RoomsPage action error feedback', () => {
   let roomsSignal: WritableSignal<RoomSummary[]>;
   let editableFields: ReturnType<typeof vi.fn>;
   let currentAccess: ReturnType<typeof vi.fn>;
+  let canManageBans: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
@@ -83,6 +84,7 @@ describe('RoomsPage action error feedback', () => {
       joinRule: 'invite',
       historyVisibility: 'shared',
     }));
+    canManageBans = vi.fn(() => false);
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -91,6 +93,7 @@ describe('RoomsPage action error feedback', () => {
           rooms: roomsSignal,
         }),
         MockProvider(RoomSettingsService, { editableFields, currentAccess }),
+        MockProvider(RoomModerationService, { canManageBans }),
         MockProvider(SpacesService),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService, { edit, sendMedia }),
@@ -253,11 +256,13 @@ describe('RoomsPage action error feedback', () => {
       joinRule: 'public',
       historyVisibility: 'world_readable',
     });
+    canManageBans.mockReturnValue(true);
 
     page.onOpenRoomSettings();
 
     expect(editableFields).toHaveBeenCalledWith('!r:hs');
     expect(currentAccess).toHaveBeenCalledWith('!r:hs');
+    expect(canManageBans).toHaveBeenCalledWith('!r:hs');
     expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
       RoomSettingsComponent,
       {
@@ -273,6 +278,7 @@ describe('RoomsPage action error feedback', () => {
           canEditAvatar: false,
           canEditJoinRule: true,
           canEditHistory: false,
+          canManageBans: true,
         }),
       },
     );

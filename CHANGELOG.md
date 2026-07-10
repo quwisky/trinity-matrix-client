@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **View and lift room bans.** The room settings dialog now shows a **Banned members** list
+  (with each ban's reason) for anyone whose power level lets them ban, each with an **Unban**
+  action that lets the member be re-invited or rejoin.
 - **Control who can join and read history.** The room settings dialog now has **Who can
   join** (invite-only or public) and **Who can read history** (from all history down to
   world-readable) controls, gated by your power level. They write `m.room.join_rules` and

@@ -5,6 +5,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { RoomModerationService } from './room-moderation.service';
 
+interface FakeBan {
+  userId: string;
+  name: string;
+  reason?: string;
+}
+
 function setup(
   opts: {
     myLevel?: number;
@@ -13,10 +19,12 @@ function setup(
     maySetPower?: boolean;
     me?: string;
     noRoom?: boolean;
+    bans?: FakeBan[];
   } = {},
 ) {
   const kick = vi.fn().mockResolvedValue({});
   const ban = vi.fn().mockResolvedValue({});
+  const unban = vi.fn().mockResolvedValue({});
   const setPowerLevel = vi.fn().mockResolvedValue({});
   const reportEvent = vi.fn().mockResolvedValue({});
   const me = opts.me ?? '@me:hs';
@@ -28,6 +36,14 @@ function setup(
         getMember: (id: string) => ({
           powerLevel: id === me ? myLevel : targetLevel,
         }),
+        getMembersWithMembership: (_membership: string) =>
+          (opts.bans ?? []).map((b) => ({
+            userId: b.userId,
+            name: b.name,
+            events: {
+              member: { getContent: () => ({ reason: b.reason }) },
+            },
+          })),
         currentState: {
           hasSufficientPowerLevelFor: (action: string, level: number) =>
             opts.may ? opts.may(action) : level >= 50,
@@ -37,6 +53,7 @@ function setup(
   const instance = {
     kick,
     ban,
+    unban,
     setPowerLevel,
     reportEvent,
     getRoom: () => room,
@@ -55,6 +72,7 @@ function setup(
     svc: TestBed.inject(RoomModerationService),
     kick,
     ban,
+    unban,
     setPowerLevel,
     reportEvent,
   };
@@ -76,6 +94,44 @@ describe('RoomModerationService', () => {
 
     await firstValueFrom(svc.ban('!r:hs', '@bob:hs'));
     expect(ban).toHaveBeenCalledWith('!r:hs', '@bob:hs', undefined);
+  });
+
+  it('unban is cold and lifts the ban on subscribe', async () => {
+    const { svc, unban } = setup();
+
+    const action = svc.unban('!r:hs', '@bob:hs');
+    expect(unban).not.toHaveBeenCalled(); // cold
+
+    await firstValueFrom(action);
+    expect(unban).toHaveBeenCalledWith('!r:hs', '@bob:hs');
+  });
+
+  it('bannedMembers lists banned members with reasons, sorted by name', () => {
+    const { svc } = setup({
+      bans: [
+        { userId: '@zed:hs', name: 'Zed', reason: 'spam' },
+        { userId: '@amy:hs', name: 'Amy' },
+      ],
+    });
+    expect(svc.bannedMembers('!r:hs')).toEqual([
+      { userId: '@amy:hs', name: 'Amy', reason: null },
+      { userId: '@zed:hs', name: 'Zed', reason: 'spam' },
+    ]);
+  });
+
+  it('bannedMembers is empty for an unknown room', () => {
+    const { svc } = setup({ noRoom: true });
+    expect(svc.bannedMembers('!r:hs')).toEqual([]);
+  });
+
+  it('canManageBans is true when the viewer meets the ban power level', () => {
+    expect(setup({ myLevel: 100 }).svc.canManageBans('!r:hs')).toBe(true);
+  });
+
+  it('canManageBans is false when the viewer lacks the ban power level', () => {
+    expect(
+      setup({ myLevel: 0, may: () => false }).svc.canManageBans('!r:hs'),
+    ).toBe(false);
   });
 
   it('setPowerLevel is cold and promotes/demotes on subscribe', async () => {

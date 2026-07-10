@@ -1,6 +1,9 @@
 import { render } from '@testing-library/angular';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
-import { RoomSettingsService } from '@trinity/data-access-rooms';
+import {
+  RoomModerationService,
+  RoomSettingsService,
+} from '@trinity/data-access-rooms';
 import { HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
@@ -18,6 +21,7 @@ async function build(
     canEditAvatar: boolean;
     canEditJoinRule: boolean;
     canEditHistory: boolean;
+    canManageBans: boolean;
   }> = {},
   over: {
     setName?: ReturnType<typeof vi.fn>;
@@ -35,7 +39,7 @@ async function build(
     over.setHistoryVisibility ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
-  const { fixture } = await render(RoomSettingsComponent, {
+  const { fixture, container } = await render(RoomSettingsComponent, {
     inputs: {
       roomId: '!r:hs',
       name: '',
@@ -53,12 +57,17 @@ async function build(
         setJoinRule,
         setHistoryVisibility,
       }),
+      MockProvider(RoomModerationService, {
+        bannedMembers: () => [],
+        unban: () => of(undefined),
+      }),
       MockProvider(DialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
   return {
     cmp: fixture.componentInstance,
+    container,
     setName,
     setTopic,
     setAvatar,
@@ -167,6 +176,18 @@ describe('RoomSettingsComponent', () => {
       HistoryVisibility.Joined,
     );
     expect(close).toHaveBeenCalledWith(true);
+  });
+
+  it('hides the banned-members section when the viewer cannot manage bans', async () => {
+    const { container } = await build({ canManageBans: false });
+    expect(container.querySelector('[data-testid=banned-members]')).toBeNull();
+  });
+
+  it('shows the banned-members section when the viewer can manage bans', async () => {
+    const { container } = await build({ canManageBans: true });
+    expect(
+      container.querySelector('[data-testid=banned-members]'),
+    ).not.toBeNull();
   });
 
   it('disables the access controls and never writes them when not permitted', async () => {

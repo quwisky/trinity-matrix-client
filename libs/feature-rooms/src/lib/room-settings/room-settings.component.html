@@ -80,6 +80,10 @@
       </p>
     }
 
+    @if (canManageBans()) {
+      <trn-banned-members [roomId]="roomId()" />
+    }
+
     <div class="room-settings__actions">
       <button
         hlmBtn
