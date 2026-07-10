@@ -15,10 +15,11 @@ import {
   type MessageToolbarCaps,
 } from '@trinity/ui';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
-import { type MessageView } from '@trinity/util-matrix';
+import { type MatrixLinkTarget, type MessageView } from '@trinity/util-matrix';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
+import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 
 /** A {@link MessageView} plus Discord-style grouping flag (own header vs continuation). */
 export interface MessageRow extends MessageView {
@@ -68,6 +69,7 @@ export type MessageRowAction =
     MessageReactionsComponent,
     MessageToolbarComponent,
     SpoilerRevealDirective,
+    MatrixLinkDirective,
   ],
   viewProviders: [provideIcons({ lucideMessagesSquare })],
   templateUrl: './message-row.component.html',
@@ -92,6 +94,9 @@ export class MessageRowComponent {
    * jump-to-quoted-message. The host pairs it with `row` to run the effect.
    */
   readonly action = output<MessageRowAction>();
+
+  /** A `matrix.to` permalink clicked in the message body, for the host to route in-app. */
+  readonly matrixLink = output<MatrixLinkTarget>();
 
   /** Capabilities the overflow toolbar needs, projected from {@link caps}. */
   readonly toolbarCaps = computed<MessageToolbarCaps>(() => {

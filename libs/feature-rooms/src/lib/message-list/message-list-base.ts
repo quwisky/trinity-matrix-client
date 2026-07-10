@@ -16,6 +16,7 @@ import { type ThreadSummary } from '@trinity/data-access-timeline';
 import {
   formatTypingNotice,
   isEditableMessage,
+  type MatrixLinkTarget,
   type MessageView,
   type Mention,
 } from '@trinity/util-matrix';
@@ -107,6 +108,8 @@ export abstract class MessageListBase {
   readonly reply = output<{ id: string; body: string; mentions: Mention[] }>();
   /** The composer's typing state changed — host debounces it into a typing notification. */
   readonly typing = output<boolean>();
+  /** A `matrix.to` permalink clicked in a message body, for the host to route in-app. */
+  readonly matrixLink = output<MatrixLinkTarget>();
 
   /** "X is typing…" text for the row above the composer, or '' when nobody is typing. */
   readonly typingLabel = computed(() => formatTypingNotice(this.typingNames()));

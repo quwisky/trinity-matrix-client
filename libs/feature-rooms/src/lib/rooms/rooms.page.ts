@@ -57,7 +57,7 @@ import {
 } from '@trinity/data-access-rooms';
 import { type SwitcherSelection } from '@trinity/data-access-search';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
-import { type Mention } from '@trinity/util-matrix';
+import { type MatrixLinkTarget, type Mention } from '@trinity/util-matrix';
 import { FeatureFlagsService } from '@trinity/platform-native';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -728,6 +728,45 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.threads.open(id); // project this room's thread summaries for indicators
     this.pinned.open(id); // project this room's pinned messages
     this.closeDrawer(); // collapse the drawer on mobile after picking a room
+  }
+
+  /**
+   * Route a `matrix.to` permalink clicked in a message, in-app. A user opens (or reuses)
+   * a DM; a room resolves its id/alias and — if we're joined — opens it, then jumps to a
+   * linked event. A room we haven't joined surfaces a toast rather than navigating.
+   */
+  onMatrixLink(target: MatrixLinkTarget): void {
+    if (target.kind === 'user') {
+      runWithBusy(this.rooms.createDirectMessage(target.userId), {
+        busy: this.spaceBusy,
+        error: this.spaceError,
+        destroyRef: this.destroyRef,
+      }).subscribe((roomId) => this.onSelectRoom(roomId));
+      return;
+    }
+    this.rooms
+      .resolveRoomId(target.roomIdOrAlias)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (roomId) => this.openLinkedRoom(roomId, target.eventId),
+        error: () => void this.showError('Could not open that room.'),
+      });
+  }
+
+  /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
+  private openLinkedRoom(roomId: string, eventId?: string): void {
+    if (!this.rooms.rooms().some((r) => r.id === roomId)) {
+      void this.showError("You're not in that room.");
+      return;
+    }
+    if (roomId !== this.activeRoomId()) {
+      this.onSelectRoom(roomId);
+    }
+    if (eventId) {
+      // Jump to the linked event (a no-op until it's in the loaded timeline).
+      this.messageSearchTarget.set(eventId);
+      this.jumpRequest.update((n) => n + 1);
+    }
   }
 
   /** Toggle the mobile navigation drawer (no-op visual at md+, where it's static). */

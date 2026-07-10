@@ -200,6 +200,7 @@
             (react)="onReact($event)"
             (reply)="onReply($event)"
             (typing)="onTyping($event)"
+            (matrixLink)="onMatrixLink($event)"
           />
         } @else {
           <trn-simple-message-list
@@ -228,6 +229,7 @@
             (react)="onReact($event)"
             (reply)="onReply($event)"
             (typing)="onTyping($event)"
+            (matrixLink)="onMatrixLink($event)"
           />
         }
         @if (membersOpen()) {
