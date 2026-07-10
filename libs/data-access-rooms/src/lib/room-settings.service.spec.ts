@@ -10,6 +10,8 @@ function setup(
 ) {
   const setRoomName = vi.fn().mockResolvedValue({});
   const setRoomTopic = vi.fn().mockResolvedValue({});
+  const uploadContent = vi.fn().mockResolvedValue({ content_uri: 'mxc://a/b' });
+  const sendStateEvent = vi.fn().mockResolvedValue({});
   const room = opts.noRoom
     ? null
     : {
@@ -21,6 +23,8 @@ function setup(
   const instance = {
     setRoomName,
     setRoomTopic,
+    uploadContent,
+    sendStateEvent,
     getRoom: () => room,
     getUserId: () => '@me:hs',
   };
@@ -37,6 +41,8 @@ function setup(
     svc: TestBed.inject(RoomSettingsService),
     setRoomName,
     setRoomTopic,
+    uploadContent,
+    sendStateEvent,
   };
 }
 
@@ -58,13 +64,36 @@ describe('RoomSettingsService', () => {
     expect(setRoomTopic).toHaveBeenCalledWith('!r:hs', 'hello');
   });
 
-  it('editableFields reflects per-field power (name yes, topic no)', () => {
+  it('setAvatar uploads the file then writes m.room.avatar', async () => {
+    const { svc, uploadContent, sendStateEvent } = setup();
+    const file = new File(['x'], 'photo.png', { type: 'image/png' });
+
+    await firstValueFrom(svc.setAvatar('!r:hs', file));
+
+    expect(uploadContent).toHaveBeenCalledWith(file, expect.any(Object));
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      '!r:hs',
+      'm.room.avatar',
+      { url: 'mxc://a/b' },
+      '',
+    );
+  });
+
+  it('editableFields reflects per-field power (name yes, topic/avatar no)', () => {
     const { svc } = setup({ may: (type) => type === 'm.room.name' });
-    expect(svc.editableFields('!r:hs')).toEqual({ name: true, topic: false });
+    expect(svc.editableFields('!r:hs')).toEqual({
+      name: true,
+      topic: false,
+      avatar: false,
+    });
   });
 
   it('editableFields is all-false when the room is unknown', () => {
     const { svc } = setup({ noRoom: true });
-    expect(svc.editableFields('!r:hs')).toEqual({ name: false, topic: false });
+    expect(svc.editableFields('!r:hs')).toEqual({
+      name: false,
+      topic: false,
+      avatar: false,
+    });
   });
 });

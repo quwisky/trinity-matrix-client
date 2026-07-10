@@ -875,8 +875,10 @@ export class RoomsPage implements OnInit, OnDestroy {
         roomId: room.id,
         name: room.name,
         topic: room.topic,
+        avatarMxc: room.avatarMxc,
         canEditName: editable.name,
         canEditTopic: editable.topic,
+        canEditAvatar: editable.avatar,
       },
     });
   }

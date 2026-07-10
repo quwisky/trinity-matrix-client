@@ -12,11 +12,16 @@ async function build(
     topic: string;
     canEditName: boolean;
     canEditTopic: boolean;
+    canEditAvatar: boolean;
   }> = {},
-  over: { setName?: ReturnType<typeof vi.fn> } = {},
+  over: {
+    setName?: ReturnType<typeof vi.fn>;
+    setAvatar?: ReturnType<typeof vi.fn>;
+  } = {},
 ) {
   const setName = over.setName ?? vi.fn(() => of(undefined));
   const setTopic = vi.fn(() => of(undefined));
+  const setAvatar = over.setAvatar ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
   const { fixture } = await render(RoomSettingsComponent, {
@@ -26,10 +31,11 @@ async function build(
       topic: '',
       canEditName: true,
       canEditTopic: true,
+      canEditAvatar: true,
       ...inputs,
     },
     providers: [
-      MockProvider(RoomSettingsService, { setName, setTopic }),
+      MockProvider(RoomSettingsService, { setName, setTopic, setAvatar }),
       MockProvider(DialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
@@ -38,9 +44,17 @@ async function build(
     cmp: fixture.componentInstance,
     setName,
     setTopic,
+    setAvatar,
     close,
     toastShow,
   };
+}
+
+/** A synthetic file-input change event carrying `file` (or none). */
+function pickEvent(file?: File): Event {
+  return {
+    target: { files: file ? [file] : [], value: '' },
+  } as unknown as Event;
 }
 
 describe('RoomSettingsComponent', () => {
@@ -105,5 +119,31 @@ describe('RoomSettingsComponent', () => {
       expect.objectContaining({ variant: 'destructive' }),
     );
     expect(close).not.toHaveBeenCalledWith(true);
+  });
+
+  it('uploads a picked image as the room avatar', async () => {
+    const { cmp, setAvatar, toastShow } = await build();
+    const file = new File(['x'], 'photo.png', { type: 'image/png' });
+
+    cmp.onAvatarPicked(pickEvent(file));
+
+    expect(setAvatar).toHaveBeenCalledWith('!r:hs', file);
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
+  it('rejects a non-image file without uploading', async () => {
+    const { cmp, setAvatar, toastShow } = await build();
+    const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
+
+    cmp.onAvatarPicked(pickEvent(file));
+
+    expect(setAvatar).not.toHaveBeenCalled();
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
   });
 });

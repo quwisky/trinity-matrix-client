@@ -22,6 +22,12 @@
   gap: 12px;
 }
 
+.room-settings__avatar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .room-settings__field {
   display: flex;
   flex-direction: column;

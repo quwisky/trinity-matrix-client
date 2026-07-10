@@ -99,4 +99,49 @@ test.describe('Room settings', () => {
       page.locator('.channel', { hasText: originalName }),
     ).toHaveCount(0);
   });
+
+  test('an admin changes the room photo', async ({ page, request }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}a`;
+    const user = `photo-user-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Photo ${runId}`;
+
+    await registerUser(request, user, pass);
+    const { access_token } = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json());
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${access_token}` },
+      data: { name: roomName, preset: 'private_chat' },
+    });
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+
+    await page.getByTestId('open-room-settings').click();
+    await expect(page.getByTestId('room-settings')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Set a 1×1 PNG on the (hidden) file input, which uploads it as the avatar.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    await page
+      .locator('.room-settings input[type="file"]')
+      .setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png });
+
+    // The upload + m.room.avatar write succeed, surfacing the success toast.
+    await expect(page.getByText('Room photo updated.')).toBeVisible({
+      timeout: 30_000,
+    });
+  });
 });
