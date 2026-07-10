@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Promote or demote members.** A member's info panel now lets you change their role —
+  Member, Moderator, or Admin — for any role at or below your own power level (you can't
+  raise someone above yourself, or act on a peer/superior). Written to the room's
+  `m.room.power_levels`.
 - **Kick and ban members.** From a member's info panel, a moderator or admin can now
   **Remove from room** (kick) or **Ban** them, with an optional reason. The actions show
   only when your power level out-ranks the member and meets the room's kick/ban

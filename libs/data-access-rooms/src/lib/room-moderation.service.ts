@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { EventType } from 'matrix-js-sdk';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
@@ -6,6 +7,10 @@ import { MatrixClientService } from '@trinity/data-access-matrix-client';
 export interface ModerationCaps {
   kick: boolean;
   ban: boolean;
+  /** Whether the viewer may change this member's power level. */
+  setPower: boolean;
+  /** The viewer's own power level — caps the roles they can assign. */
+  myPower: number;
 }
 
 /**
@@ -41,31 +46,55 @@ export class RoomModerationService {
     });
   }
 
+  /** Set a member's power level in the room (promote / demote). Cold. */
+  setPowerLevel(
+    roomId: string,
+    userId: string,
+    level: number,
+  ): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      return from(
+        this.matrix.instance.setPowerLevel(roomId, userId, level),
+      ).pipe(map(() => void 0));
+    });
+  }
+
   /**
    * Whether the current user may kick / ban `targetUserId` in `roomId`: they must
    * out-rank the target and meet the room's kick / ban power requirement. You can never
    * kick or ban yourself here (leaving is a separate action).
    */
   canModerate(roomId: string, targetUserId: string): ModerationCaps {
+    const deny: ModerationCaps = {
+      kick: false,
+      ban: false,
+      setPower: false,
+      myPower: 0,
+    };
     if (!this.matrix.isInitialized) {
-      return { kick: false, ban: false };
+      return deny;
     }
     const client = this.matrix.instance;
     const room = client.getRoom(roomId);
     const me = client.getUserId();
     if (!room || !me || targetUserId === me) {
-      return { kick: false, ban: false };
+      return deny;
     }
     const myLevel = room.getMember(me)?.powerLevel ?? 0;
     const targetLevel = room.getMember(targetUserId)?.powerLevel ?? 0;
     // Must strictly out-rank the target to act on them.
     if (myLevel <= targetLevel) {
-      return { kick: false, ban: false };
+      return { ...deny, myPower: myLevel };
     }
     const state = room.currentState;
     return {
       kick: state.hasSufficientPowerLevelFor('kick', myLevel),
       ban: state.hasSufficientPowerLevelFor('ban', myLevel),
+      setPower: state.maySendStateEvent(EventType.RoomPowerLevels, me),
+      myPower: myLevel,
     };
   }
 }

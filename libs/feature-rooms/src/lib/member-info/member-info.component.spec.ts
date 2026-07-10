@@ -33,22 +33,30 @@ async function build(
     activeUserId?: string;
     canKick?: boolean;
     canBan?: boolean;
+    canSetPower?: boolean;
+    myPower?: number;
     kick?: ReturnType<typeof vi.fn>;
     ban?: ReturnType<typeof vi.fn>;
+    setPowerLevel?: ReturnType<typeof vi.fn>;
     alertPrompt?: ReturnType<typeof vi.fn>;
+    alertConfirm?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const close = vi.fn();
   const toastShow = vi.fn();
   const kick = opts.kick ?? vi.fn(() => of(undefined));
   const ban = opts.ban ?? vi.fn(() => of(undefined));
+  const setPowerLevel = opts.setPowerLevel ?? vi.fn(() => of(undefined));
   const alertPrompt = opts.alertPrompt ?? vi.fn().mockResolvedValue('');
+  const alertConfirm = opts.alertConfirm ?? vi.fn().mockResolvedValue(true);
   const { fixture, container } = await render(MemberInfoComponent, {
     inputs: {
       member: m,
       roomId: '!r:hs',
       canKick: opts.canKick ?? false,
       canBan: opts.canBan ?? false,
+      canSetPower: opts.canSetPower ?? false,
+      myPower: opts.myPower ?? 0,
     },
     providers: [
       MockProvider(DialogRef, { close }),
@@ -62,8 +70,11 @@ async function build(
           opts.activeUserId ?? '@me:hs',
         ).asReadonly(),
       }),
-      MockProvider(RoomModerationService, { kick, ban }),
-      MockProvider(TrnAlertService, { prompt: alertPrompt }),
+      MockProvider(RoomModerationService, { kick, ban, setPowerLevel }),
+      MockProvider(TrnAlertService, {
+        prompt: alertPrompt,
+        confirm: alertConfirm,
+      }),
     ],
   });
   return {
@@ -73,7 +84,9 @@ async function build(
     toastShow,
     kick,
     ban,
+    setPowerLevel,
     alertPrompt,
+    alertConfirm,
   };
 }
 
@@ -208,5 +221,59 @@ describe('MemberInfoComponent', () => {
       expect.objectContaining({ variant: 'destructive' }),
     );
     expect(close).not.toHaveBeenCalled();
+  });
+
+  it('offers roles at or below your level, minus the member’s current one', async () => {
+    const { cmp } = await build(member({ powerLevel: 0 }), {
+      canSetPower: true,
+      myPower: 100,
+    });
+    // Member (0) is the current role and excluded; Moderator + Admin remain.
+    expect(cmp.roleOptions().map((r) => r.level)).toEqual([50, 100]);
+  });
+
+  it('renders a button only for each assignable role', async () => {
+    const { container } = await build(member({ powerLevel: 0 }), {
+      canSetPower: true,
+      myPower: 50, // can reach Moderator, not Admin
+    });
+    expect(
+      container.querySelector('[data-testid="member-info-role-50"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="member-info-role-100"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="member-info-role-0"]'),
+    ).toBeNull(); // current role
+  });
+
+  it('changes the role on confirm and closes', async () => {
+    const setPowerLevel = vi.fn(() => of(undefined));
+    const { cmp, close } = await build(member({ powerLevel: 0 }), {
+      canSetPower: true,
+      myPower: 100,
+      setPowerLevel,
+    });
+
+    await cmp.setRole({ label: 'Moderator', level: 50 });
+
+    expect(setPowerLevel).toHaveBeenCalledWith('!r:hs', '@bob:hs', 50);
+    expect(close).toHaveBeenCalledWith(null);
+  });
+
+  it('does not change the role when the confirmation is cancelled', async () => {
+    const setPowerLevel = vi.fn(() => of(undefined));
+    const alertConfirm = vi.fn().mockResolvedValue(false);
+    const { cmp } = await build(member({ powerLevel: 0 }), {
+      canSetPower: true,
+      myPower: 100,
+      setPowerLevel,
+      alertConfirm,
+    });
+
+    await cmp.setRole({ label: 'Admin', level: 100 });
+
+    expect(setPowerLevel).not.toHaveBeenCalled();
   });
 });

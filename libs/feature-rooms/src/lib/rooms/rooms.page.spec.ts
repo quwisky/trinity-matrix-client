@@ -1020,7 +1020,12 @@ describe('RoomsPage room / DM / invite actions', () => {
     declineInvite = vi.fn(() => of(undefined));
     userCardOpen = vi.fn().mockResolvedValue(null);
     memberInfoOpen = vi.fn().mockResolvedValue(null);
-    canModerate = vi.fn(() => ({ kick: false, ban: false }));
+    canModerate = vi.fn(() => ({
+      kick: false,
+      ban: false,
+      setPower: false,
+      myPower: 0,
+    }));
     pending = signal<PendingInvite[]>([]);
     TestBed.configureTestingModule({
       providers: [
@@ -1156,6 +1161,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(memberInfoOpen).toHaveBeenCalledWith(bob, '!r:hs', {
       kick: false,
       ban: false,
+      setPower: false,
+      myPower: 0,
     });
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
     expect(page.activeRoomId()).toBe('!dm:hs');

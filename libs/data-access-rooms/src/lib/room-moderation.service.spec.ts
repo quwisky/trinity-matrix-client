@@ -10,12 +10,14 @@ function setup(
     myLevel?: number;
     targetLevel?: number;
     may?: (action: string) => boolean;
+    maySetPower?: boolean;
     me?: string;
     noRoom?: boolean;
   } = {},
 ) {
   const kick = vi.fn().mockResolvedValue({});
   const ban = vi.fn().mockResolvedValue({});
+  const setPowerLevel = vi.fn().mockResolvedValue({});
   const me = opts.me ?? '@me:hs';
   const myLevel = opts.myLevel ?? 100;
   const targetLevel = opts.targetLevel ?? 0;
@@ -28,9 +30,16 @@ function setup(
         currentState: {
           hasSufficientPowerLevelFor: (action: string, level: number) =>
             opts.may ? opts.may(action) : level >= 50,
+          maySendStateEvent: () => opts.maySetPower ?? true,
         },
       };
-  const instance = { kick, ban, getRoom: () => room, getUserId: () => me };
+  const instance = {
+    kick,
+    ban,
+    setPowerLevel,
+    getRoom: () => room,
+    getUserId: () => me,
+  };
   TestBed.configureTestingModule({
     providers: [
       RoomModerationService,
@@ -40,7 +49,12 @@ function setup(
       }),
     ],
   });
-  return { svc: TestBed.inject(RoomModerationService), kick, ban };
+  return {
+    svc: TestBed.inject(RoomModerationService),
+    kick,
+    ban,
+    setPowerLevel,
+  };
 }
 
 describe('RoomModerationService', () => {
@@ -61,11 +75,23 @@ describe('RoomModerationService', () => {
     expect(ban).toHaveBeenCalledWith('!r:hs', '@bob:hs', undefined);
   });
 
-  it('canModerate allows an admin to kick/ban a lower-power member', () => {
+  it('setPowerLevel is cold and promotes/demotes on subscribe', async () => {
+    const { svc, setPowerLevel } = setup();
+
+    const action = svc.setPowerLevel('!r:hs', '@bob:hs', 50);
+    expect(setPowerLevel).not.toHaveBeenCalled(); // cold
+
+    await firstValueFrom(action);
+    expect(setPowerLevel).toHaveBeenCalledWith('!r:hs', '@bob:hs', 50);
+  });
+
+  it('canModerate lets an admin kick/ban/set-power over a lower-power member', () => {
     const { svc } = setup({ myLevel: 100, targetLevel: 0 });
     expect(svc.canModerate('!r:hs', '@bob:hs')).toEqual({
       kick: true,
       ban: true,
+      setPower: true,
+      myPower: 100,
     });
   });
 
@@ -74,6 +100,8 @@ describe('RoomModerationService', () => {
     expect(svc.canModerate('!r:hs', '@bob:hs')).toEqual({
       kick: false,
       ban: false,
+      setPower: false,
+      myPower: 0,
     });
   });
 
@@ -82,10 +110,12 @@ describe('RoomModerationService', () => {
     expect(svc.canModerate('!r:hs', '@bob:hs')).toEqual({
       kick: false,
       ban: false,
+      setPower: false,
+      myPower: 50,
     });
   });
 
-  it('canModerate reflects the per-action power requirement (kick yes, ban no)', () => {
+  it('canModerate reflects per-action power (kick yes, ban no) and reports myPower', () => {
     const { svc } = setup({
       myLevel: 60,
       targetLevel: 0,
@@ -94,6 +124,17 @@ describe('RoomModerationService', () => {
     expect(svc.canModerate('!r:hs', '@bob:hs')).toEqual({
       kick: true,
       ban: false,
+      setPower: true,
+      myPower: 60,
+    });
+  });
+
+  it('canModerate denies setPower when the power-levels event is not sendable', () => {
+    const { svc } = setup({ myLevel: 100, targetLevel: 0, maySetPower: false });
+    expect(svc.canModerate('!r:hs', '@bob:hs')).toMatchObject({
+      kick: true,
+      ban: true,
+      setPower: false,
     });
   });
 
@@ -102,6 +143,8 @@ describe('RoomModerationService', () => {
     expect(svc.canModerate('!r:hs', '@me:hs')).toEqual({
       kick: false,
       ban: false,
+      setPower: false,
+      myPower: 0,
     });
   });
 });

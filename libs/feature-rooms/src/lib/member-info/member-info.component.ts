@@ -22,12 +22,19 @@ import { PresenceService } from '@trinity/data-access-profile';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { AvatarComponent } from '@trinity/ui';
 
+/** Preset roles the panel can assign, by the standard power-level convention. */
+const ROLE_PRESETS = [
+  { label: 'Member', level: 0 },
+  { label: 'Moderator', level: 50 },
+  { label: 'Admin', level: 100 },
+] as const;
+
 /**
  * A room-scoped info panel for a member (avatar, name, id, live presence, role), shown
- * when a member row is clicked. It is the launch surface for member actions: today it
- * offers **Message** (closes resolving the user id so the host opens/reuses a DM) and
- * **Copy user ID**; kick / ban / power-level / verify hang off here later. Owns
- * presentation only — the DM itself is the host's job.
+ * when a member row is clicked. It is the launch surface for member actions: **Message**
+ * (closes resolving the user id so the host opens/reuses a DM), **Copy user ID**, and —
+ * when the viewer's power permits — **change role** and **remove / ban**. The moderation
+ * writes run here; the host only handles the DM and computes the permission caps.
  */
 @Component({
   selector: 'trn-member-info',
@@ -44,6 +51,10 @@ export class MemberInfoComponent {
   readonly canKick = input(false);
   /** Whether the viewer may ban this member. */
   readonly canBan = input(false);
+  /** Whether the viewer may change this member's power level (promote / demote). */
+  readonly canSetPower = input(false);
+  /** The viewer's own power level — caps which roles they can assign. */
+  readonly myPower = input(0);
 
   private readonly dialogRef =
     inject<DialogRef<string | null, MemberInfoComponent>>(DialogRef);
@@ -71,6 +82,13 @@ export class MemberInfoComponent {
       return 'Admin';
     }
     return power >= 50 ? 'Moderator' : 'Member';
+  });
+
+  /** Roles the viewer may assign: presets at or below their own level, minus the current one. */
+  readonly roleOptions = computed(() => {
+    const my = this.myPower();
+    const current = this.member().powerLevel;
+    return ROLE_PRESETS.filter((r) => r.level <= my && r.level !== current);
   });
 
   /** Start (or reuse) a direct message with this member — the host does the navigation. */
@@ -125,6 +143,28 @@ export class MemberInfoComponent {
         reason || undefined,
       ),
       'Could not ban them.',
+    );
+  }
+
+  /** Promote / demote the member to a preset role, on confirmation. */
+  async setRole(option: { label: string; level: number }): Promise<void> {
+    const confirmed = await this.alert.confirm({
+      header: 'Change role',
+      message: `Change ${this.member().name}'s role to ${option.label}?`,
+      confirmText: 'Change',
+      // A demotion is the weightier direction — style its confirm as destructive.
+      destructive: option.level < this.member().powerLevel,
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.run(
+      this.moderation.setPowerLevel(
+        this.roomId(),
+        this.member().userId,
+        option.level,
+      ),
+      'Could not change their role.',
     );
   }
 

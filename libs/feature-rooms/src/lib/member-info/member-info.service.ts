@@ -23,12 +23,24 @@ export class MemberInfoService {
   open(
     member: MemberSummary,
     roomId: string,
-    caps: ModerationCaps = { kick: false, ban: false },
+    caps: ModerationCaps = {
+      kick: false,
+      ban: false,
+      setPower: false,
+      myPower: 0,
+    },
   ): Promise<string | null> {
     return this.dialog.openAndWait<string, MemberInfoComponent>(
       MemberInfoComponent,
       {
-        inputs: { member, roomId, canKick: caps.kick, canBan: caps.ban },
+        inputs: {
+          member,
+          roomId,
+          canKick: caps.kick,
+          canBan: caps.ban,
+          canSetPower: caps.setPower,
+          myPower: caps.myPower,
+        },
       },
     );
   }

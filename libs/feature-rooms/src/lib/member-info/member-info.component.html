@@ -36,8 +36,21 @@
       Copy user ID
     </button>
 
-    @if (canKick() || canBan()) {
+    @if (canKick() || canBan() || (canSetPower() && roleOptions().length)) {
       <div class="member-info__moderation">
+        @if (canSetPower()) {
+          @for (option of roleOptions(); track option.level) {
+            <button
+              hlmBtn
+              variant="outline"
+              class="w-full"
+              (click)="setRole(option)"
+              [attr.data-testid]="'member-info-role-' + option.level"
+            >
+              Make {{ option.label }}
+            </button>
+          }
+        }
         @if (canKick()) {
           <button
             hlmBtn
