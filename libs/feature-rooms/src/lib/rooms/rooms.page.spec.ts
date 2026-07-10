@@ -39,6 +39,7 @@ import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
+import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
 
@@ -289,6 +290,27 @@ describe('RoomsPage action error feedback', () => {
         }),
       },
     );
+  });
+
+  it('opens the room directory and selects a room joined from it', async () => {
+    const page = build();
+    const dialog = TestBed.inject(TrnDialogService);
+    vi.mocked(dialog.openAndWait).mockResolvedValue('!joined:hs');
+
+    await page.onExploreRooms();
+
+    expect(dialog.openAndWait).toHaveBeenCalledWith(RoomDirectoryComponent);
+    expect(page.activeRoomId()).toBe('!joined:hs'); // onSelectRoom ran
+  });
+
+  it('does not select a room when the directory is dismissed', async () => {
+    const page = build();
+    const dialog = TestBed.inject(TrnDialogService);
+    vi.mocked(dialog.openAndWait).mockResolvedValue(null);
+
+    await page.onExploreRooms();
+
+    expect(page.activeRoomId()).toBeNull();
   });
 
   it('opens the threads-list panel for the active room', () => {
@@ -1330,6 +1352,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       expect.objectContaining({
         buttons: expect.arrayContaining([
           expect.objectContaining({ text: 'Create a room' }),
+          expect.objectContaining({ text: 'Explore public rooms' }),
           expect.objectContaining({ text: 'Start a direct message' }),
         ]),
       }),

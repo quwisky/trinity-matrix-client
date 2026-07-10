@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Explore public rooms.** The Home **+** menu now has **Explore public rooms** — a
+  directory browser that searches your homeserver's public rooms, paginates with **Load
+  more**, and lets you **Join** one straight from the results (it then opens in your list).
 - **Manage a room's addresses.** The room settings dialog now has an **Addresses** section
   (for anyone whose power level lets them) to publish or remove local aliases
   (`#address:server`) in the homeserver directory and choose which one is the room's main

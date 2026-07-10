@@ -60,6 +60,7 @@ import {
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
+import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { type SwitcherSelection } from '@trinity/data-access-search';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
@@ -645,12 +646,16 @@ export class RoomsPage implements OnInit, OnDestroy {
       });
   }
 
-  /** Home "+": choose between creating a room and starting a DM. */
+  /** Home "+": choose between creating a room, exploring the directory, and a DM. */
   onNewChat(): void {
     this.actionSheet.open({
       header: 'New message',
       buttons: [
         { text: 'Create a room', handler: () => void this.onCreateRoom() },
+        {
+          text: 'Explore public rooms',
+          handler: () => void this.onExploreRooms(),
+        },
         {
           text: 'Start a direct message',
           handler: () => void this.onStartDm(),
@@ -658,6 +663,18 @@ export class RoomsPage implements OnInit, OnDestroy {
         { text: 'Cancel', role: 'cancel' },
       ],
     });
+  }
+
+  /** Browse the public room directory; select a room joined from it. */
+  async onExploreRooms(): Promise<void> {
+    const roomId = await this.dialog.openAndWait<string | null>(
+      RoomDirectoryComponent,
+    );
+    if (roomId) {
+      // A joined public room lives under Home — surface it there and open it.
+      this.onSelectSpace(null);
+      this.onSelectRoom(roomId);
+    }
   }
 
   /** Prompt for a name, create a standalone encrypted room, then select it. */

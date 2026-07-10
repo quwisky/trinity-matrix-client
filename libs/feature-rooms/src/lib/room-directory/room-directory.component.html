@@ -1,0 +1,105 @@
+<div
+  class="flex max-h-[80vh] w-[min(90vw,32rem)] flex-col gap-3 p-4"
+  data-testid="room-directory"
+>
+  <h2 class="text-lg font-semibold">Explore rooms</h2>
+
+  <form class="flex items-center gap-2" (ngSubmit)="search()">
+    <input
+      hlmInput
+      class="min-w-0 flex-1"
+      [formControl]="query"
+      placeholder="Search public rooms"
+      autocomplete="off"
+      data-testid="directory-search"
+    />
+    <button
+      hlmBtn
+      type="submit"
+      size="sm"
+      [disabled]="loading()"
+      data-testid="directory-search-btn"
+    >
+      Search
+    </button>
+  </form>
+
+  @if (error(); as message) {
+    <p class="text-sm text-destructive" data-testid="directory-error">
+      {{ message }}
+    </p>
+  }
+
+  <div class="min-h-0 flex-1 overflow-y-auto">
+    @if (isEmpty()) {
+      <p class="text-sm text-muted-foreground" data-testid="directory-empty">
+        No public rooms found.
+      </p>
+    } @else {
+      <ul class="flex flex-col gap-1">
+        @for (room of rooms(); track room.roomId) {
+          <li
+            class="flex items-center gap-3 rounded p-2"
+            data-testid="directory-room"
+          >
+            <trn-avatar
+              [mxc]="room.avatarMxc"
+              [name]="room.name"
+              [initial]="initialFor(room)"
+              [size]="40"
+            />
+            <span class="flex min-w-0 flex-1 flex-col">
+              <span class="truncate text-sm font-medium">{{ room.name }}</span>
+              <span class="truncate text-xs text-muted-foreground">
+                {{ room.memberCount }} members
+              </span>
+              @if (room.topic) {
+                <span class="truncate text-xs text-muted-foreground">
+                  {{ room.topic }}
+                </span>
+              }
+            </span>
+            <button
+              hlmBtn
+              type="button"
+              variant="outline"
+              size="sm"
+              [disabled]="joining() === room.roomId"
+              (click)="join(room)"
+              data-testid="directory-join"
+            >
+              {{ joining() === room.roomId ? 'Joining…' : 'Join' }}
+            </button>
+          </li>
+        }
+      </ul>
+
+      @if (hasMore()) {
+        <button
+          hlmBtn
+          type="button"
+          variant="ghost"
+          size="sm"
+          class="mt-2 w-full"
+          [disabled]="loading()"
+          (click)="loadMore()"
+          data-testid="directory-load-more"
+        >
+          {{ loading() ? 'Loading…' : 'Load more' }}
+        </button>
+      }
+    }
+  </div>
+
+  <div class="flex justify-end">
+    <button
+      hlmBtn
+      type="button"
+      variant="ghost"
+      (click)="close()"
+      data-testid="directory-close"
+    >
+      Close
+    </button>
+  </div>
+</div>
