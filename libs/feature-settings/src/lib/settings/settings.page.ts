@@ -21,6 +21,7 @@ import { filter, map } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
+  lucideBell,
   lucideChevronRight,
   lucideCircleDot,
   lucideFlaskConical,
@@ -49,6 +50,7 @@ const MENU: readonly SettingsMenuItem[] = [
   { path: 'appearance', label: 'Appearance', icon: 'lucidePalette' },
   { path: 'devices', label: 'Devices', icon: 'lucideMonitorSmartphone' },
   { path: 'account', label: 'Account', icon: 'lucideKeyRound' },
+  { path: 'notifications', label: 'Notifications', icon: 'lucideBell' },
   { path: 'privacy', label: 'Privacy', icon: 'lucideShield' },
   { path: 'gifs', label: 'GIFs', icon: 'lucideImage' },
   { path: 'experimental', label: 'Experimental', icon: 'lucideFlaskConical' },
@@ -86,6 +88,7 @@ const WIDE_QUERY = '(min-width: 768px)';
       lucidePalette,
       lucideMonitorSmartphone,
       lucideKeyRound,
+      lucideBell,
       lucideShield,
       lucideImage,
       lucideFlaskConical,

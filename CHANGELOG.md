@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Notification settings.** A new **Notifications** section in Settings has account-level
+  toggles for what notifies you — a master switch plus per-category rules (mentions, @room,
+  invitations, calls, direct chats, rooms, and their encrypted variants). They map to your
+  homeserver's push rules and sync across every device on your account.
 - **Explore public rooms.** The Home **+** menu now has **Explore public rooms** — a
   directory browser that searches your homeserver's public rooms, paginates with **Load
   more**, and lets you **Join** one straight from the results (it then opens in your list).
