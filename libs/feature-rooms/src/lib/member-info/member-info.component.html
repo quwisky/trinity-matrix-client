@@ -35,5 +35,32 @@
     >
       Copy user ID
     </button>
+
+    @if (canKick() || canBan()) {
+      <div class="member-info__moderation">
+        @if (canKick()) {
+          <button
+            hlmBtn
+            variant="outline"
+            class="member-info__danger w-full"
+            (click)="kick()"
+            data-testid="member-info-kick"
+          >
+            Remove from room
+          </button>
+        }
+        @if (canBan()) {
+          <button
+            hlmBtn
+            variant="destructive"
+            class="w-full"
+            (click)="ban()"
+            data-testid="member-info-ban"
+          >
+            Ban from room
+          </button>
+        }
+      </div>
+    }
   </div>
 </div>

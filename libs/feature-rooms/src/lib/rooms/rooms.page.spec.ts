@@ -14,6 +14,7 @@ import { PinnedMessagesService } from '@trinity/data-access-pinned';
 import {
   RoomsService,
   RoomSettingsService,
+  RoomModerationService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
@@ -992,6 +993,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   let declineInvite: ReturnType<typeof vi.fn>;
   let userCardOpen: ReturnType<typeof vi.fn>;
   let memberInfoOpen: ReturnType<typeof vi.fn>;
+  let canModerate: ReturnType<typeof vi.fn>;
   let pending: WritableSignal<PendingInvite[]>;
 
   function pendingInvite(over: Partial<PendingInvite> = {}): PendingInvite {
@@ -1018,6 +1020,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     declineInvite = vi.fn(() => of(undefined));
     userCardOpen = vi.fn().mockResolvedValue(null);
     memberInfoOpen = vi.fn().mockResolvedValue(null);
+    canModerate = vi.fn(() => ({ kick: false, ban: false }));
     pending = signal<PendingInvite[]>([]);
     TestBed.configureTestingModule({
       providers: [
@@ -1037,6 +1040,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(UserPickerService, { pick }),
         MockProvider(UserCardService, { open: userCardOpen }),
         MockProvider(MemberInfoService, { open: memberInfoOpen }),
+        MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
         MockProvider(TimelineService),
@@ -1148,7 +1152,11 @@ describe('RoomsPage room / DM / invite actions', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(memberInfoOpen).toHaveBeenCalledWith(bob, '!r:hs');
+    expect(canModerate).toHaveBeenCalledWith('!r:hs', '@bob:hs');
+    expect(memberInfoOpen).toHaveBeenCalledWith(bob, '!r:hs', {
+      kick: false,
+      ban: false,
+    });
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
     expect(page.activeRoomId()).toBe('!dm:hs');
   });

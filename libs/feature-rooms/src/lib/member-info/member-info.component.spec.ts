@@ -1,10 +1,18 @@
 import { signal } from '@angular/core';
 import { render } from '@testing-library/angular';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import {
+  DialogRef,
+  TrnAlertService,
+  TrnToastService,
+} from '@trinity/helm/overlay';
 import { PresenceService } from '@trinity/data-access-profile';
-import { type MemberSummary } from '@trinity/data-access-rooms';
+import {
+  RoomModerationService,
+  type MemberSummary,
+} from '@trinity/data-access-rooms';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MockProvider } from 'ng-mocks';
+import { of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemberInfoComponent } from './member-info.component';
 
@@ -19,11 +27,29 @@ function member(over: Partial<MemberSummary> = {}): MemberSummary {
   };
 }
 
-async function build(m: MemberSummary = member(), activeUserId = '@me:hs') {
+async function build(
+  m: MemberSummary = member(),
+  opts: {
+    activeUserId?: string;
+    canKick?: boolean;
+    canBan?: boolean;
+    kick?: ReturnType<typeof vi.fn>;
+    ban?: ReturnType<typeof vi.fn>;
+    alertPrompt?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
   const close = vi.fn();
   const toastShow = vi.fn();
+  const kick = opts.kick ?? vi.fn(() => of(undefined));
+  const ban = opts.ban ?? vi.fn(() => of(undefined));
+  const alertPrompt = opts.alertPrompt ?? vi.fn().mockResolvedValue('');
   const { fixture, container } = await render(MemberInfoComponent, {
-    inputs: { member: m, roomId: '!r:hs' },
+    inputs: {
+      member: m,
+      roomId: '!r:hs',
+      canKick: opts.canKick ?? false,
+      canBan: opts.canBan ?? false,
+    },
     providers: [
       MockProvider(DialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
@@ -32,11 +58,23 @@ async function build(m: MemberSummary = member(), activeUserId = '@me:hs') {
         useValue: { presenceFor: () => signal('online') },
       },
       MockProvider(MatrixClientService, {
-        activeUserId: signal<string | null>(activeUserId).asReadonly(),
+        activeUserId: signal<string | null>(
+          opts.activeUserId ?? '@me:hs',
+        ).asReadonly(),
       }),
+      MockProvider(RoomModerationService, { kick, ban }),
+      MockProvider(TrnAlertService, { prompt: alertPrompt }),
     ],
   });
-  return { cmp: fixture.componentInstance, container, close, toastShow };
+  return {
+    cmp: fixture.componentInstance,
+    container,
+    close,
+    toastShow,
+    kick,
+    ban,
+    alertPrompt,
+  };
 }
 
 describe('MemberInfoComponent', () => {
@@ -83,10 +121,9 @@ describe('MemberInfoComponent', () => {
   });
 
   it('hides the Message action on your own row', async () => {
-    const { cmp, container } = await build(
-      member({ userId: '@me:hs' }),
-      '@me:hs',
-    );
+    const { cmp, container } = await build(member({ userId: '@me:hs' }), {
+      activeUserId: '@me:hs',
+    });
     expect(cmp.isSelf()).toBe(true);
     expect(
       container.querySelector('[data-testid="member-info-message"]'),
@@ -95,5 +132,81 @@ describe('MemberInfoComponent', () => {
     expect(
       container.querySelector('[data-testid="member-info-copy"]'),
     ).not.toBeNull();
+  });
+
+  it('shows kick/ban actions when permitted', async () => {
+    const { container } = await build(member(), {
+      canKick: true,
+      canBan: true,
+    });
+    expect(
+      container.querySelector('[data-testid="member-info-kick"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="member-info-ban"]'),
+    ).not.toBeNull();
+  });
+
+  it('hides kick/ban actions without permission', async () => {
+    const { container } = await build(); // canKick/canBan default false
+    expect(
+      container.querySelector('[data-testid="member-info-kick"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="member-info-ban"]'),
+    ).toBeNull();
+  });
+
+  it('kicks the member with the entered reason and closes on confirm', async () => {
+    const alertPrompt = vi.fn().mockResolvedValue('spam');
+    const { cmp, kick, close } = await build(member(), {
+      canKick: true,
+      alertPrompt,
+    });
+
+    await cmp.kick();
+
+    expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', 'spam');
+    expect(close).toHaveBeenCalledWith(null);
+  });
+
+  it('does not kick when the confirmation is cancelled', async () => {
+    const alertPrompt = vi.fn().mockResolvedValue(null); // cancelled
+    const { cmp, kick } = await build(member(), { canKick: true, alertPrompt });
+
+    await cmp.kick();
+
+    expect(kick).not.toHaveBeenCalled();
+  });
+
+  it('bans the member (no reason → undefined) and closes on confirm', async () => {
+    const alertPrompt = vi.fn().mockResolvedValue('');
+    const { cmp, ban, close } = await build(member(), {
+      canBan: true,
+      alertPrompt,
+    });
+
+    await cmp.ban();
+
+    expect(ban).toHaveBeenCalledWith('!r:hs', '@bob:hs', undefined);
+    expect(close).toHaveBeenCalledWith(null);
+  });
+
+  it('toasts and stays open when a moderation action fails', async () => {
+    const kick = vi.fn(() => throwError(() => new Error('nope')));
+    const alertPrompt = vi.fn().mockResolvedValue('');
+    const { cmp, close, toastShow } = await build(member(), {
+      canKick: true,
+      kick,
+      alertPrompt,
+    });
+
+    await cmp.kick();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+    expect(close).not.toHaveBeenCalled();
   });
 });

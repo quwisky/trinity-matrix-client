@@ -54,3 +54,18 @@
   width: 100%;
   margin-top: 4px;
 }
+
+// The moderation actions sit below a divider so they read as a separate, weightier group.
+.member-info__moderation {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--trinity-divider);
+}
+
+.member-info__danger {
+  color: var(--trinity-danger, #e5484d);
+}

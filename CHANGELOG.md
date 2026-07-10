@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Kick and ban members.** From a member's info panel, a moderator or admin can now
+  **Remove from room** (kick) or **Ban** them, with an optional reason. The actions show
+  only when your power level out-ranks the member and meets the room's kick/ban
+  requirement, so you can't act on someone at or above your own rank.
 - **Member info panel.** Clicking a member in the member list now opens a panel showing
   their name, ID, live online status, and role (Admin / Moderator / Member), with
   **Message** (start or reuse a direct message) and **Copy user ID** actions — the launch

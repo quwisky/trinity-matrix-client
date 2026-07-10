@@ -51,6 +51,7 @@ import {
 import {
   RoomsService,
   RoomSettingsService,
+  RoomModerationService,
   SpacesService,
   UnreadAggregatorService,
   type MemberSummary,
@@ -148,6 +149,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly dialog = inject(TrnDialogService);
   private readonly roomSettings = inject(RoomSettingsService);
+  private readonly moderation = inject(RoomModerationService);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
   private readonly actionSheet = inject(TrnActionSheetService);
@@ -812,7 +814,10 @@ export class RoomsPage implements OnInit, OnDestroy {
     member: MemberSummary,
     roomId: string,
   ): Promise<void> {
-    const messageUserId = await this.memberInfo.open(member, roomId);
+    // Kick/ban actions are gated by the viewer's power over this member; the panel
+    // resolves a user id only for "Message" (kick/ban close it themselves via sync).
+    const caps = this.moderation.canModerate(roomId, member.userId);
+    const messageUserId = await this.memberInfo.open(member, roomId, caps);
     if (messageUserId) {
       this.startDirectMessage(messageUserId);
     }
