@@ -1,0 +1,27 @@
+<div class="user-card" data-testid="user-card">
+  <trn-avatar
+    class="user-card__avatar"
+    [mxc]="profile()?.avatarMxc ?? null"
+    [initial]="initial()"
+    [name]="displayName()"
+    [size]="64"
+    [presence]="presenceState()"
+  />
+  <div class="user-card__id">
+    <span class="user-card__name" data-testid="user-card-name">{{
+      displayName()
+    }}</span>
+    <span class="user-card__handle">{{ userId() }}</span>
+  </div>
+
+  <div class="user-card__actions">
+    <button
+      hlmBtn
+      class="w-full"
+      (click)="message()"
+      data-testid="user-card-message"
+    >
+      Message
+    </button>
+  </div>
+</div>

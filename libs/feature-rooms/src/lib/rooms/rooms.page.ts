@@ -61,6 +61,7 @@ import { type MatrixLinkTarget, type Mention } from '@trinity/util-matrix';
 import { FeatureFlagsService } from '@trinity/platform-native';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import { UserCardService } from '../user-card/user-card.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
 import {
@@ -127,6 +128,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly threadPanel = inject(ThreadPanelService);
   private readonly pinnedPanel = inject(PinnedPanelService);
   private readonly userPicker = inject(UserPickerService);
+  private readonly userCard = inject(UserCardService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly messageSearch = inject(MessageSearchService);
   private readonly media = inject(MediaService);
@@ -731,17 +733,14 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   /**
-   * Route a `matrix.to` permalink clicked in a message, in-app. A user opens (or reuses)
-   * a DM; a room resolves its id/alias and — if we're joined — opens it, then jumps to a
-   * linked event. A room we haven't joined surfaces a toast rather than navigating.
+   * Route a `matrix.to` permalink clicked in a message, in-app. A user shows a profile
+   * card (from which the viewer can start a DM); a room resolves its id/alias and — if
+   * we're joined — opens it, then jumps to a linked event. A room we haven't joined
+   * surfaces a toast rather than navigating.
    */
   onMatrixLink(target: MatrixLinkTarget): void {
     if (target.kind === 'user') {
-      runWithBusy(this.rooms.createDirectMessage(target.userId), {
-        busy: this.spaceBusy,
-        error: this.spaceError,
-        destroyRef: this.destroyRef,
-      }).subscribe((roomId) => this.onSelectRoom(roomId));
+      void this.openUserCard(target.userId);
       return;
     }
     this.rooms
@@ -751,6 +750,19 @@ export class RoomsPage implements OnInit, OnDestroy {
         next: (roomId) => this.openLinkedRoom(roomId, target.eventId),
         error: () => void this.showError('Could not open that room.'),
       });
+  }
+
+  /** Show the user card; if they pick "Message", open (or reuse) a DM with the user. */
+  private async openUserCard(userId: string): Promise<void> {
+    const messageUserId = await this.userCard.open(userId);
+    if (!messageUserId) {
+      return; // dismissed — no conversation is opened
+    }
+    runWithBusy(this.rooms.createDirectMessage(messageUserId), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe((roomId) => this.onSelectRoom(roomId));
   }
 
   /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */

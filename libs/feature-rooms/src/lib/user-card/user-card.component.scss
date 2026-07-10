@@ -1,0 +1,43 @@
+.user-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 260px;
+  max-width: 92vw;
+  padding: 20px 16px 16px;
+  border: 1px solid var(--trinity-divider);
+  border-radius: 12px;
+  background: var(--trinity-sidebar);
+  text-align: center;
+}
+
+.user-card__avatar {
+  flex: 0 0 auto;
+}
+
+.user-card__id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+}
+
+.user-card__name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--trinity-text-bright);
+  overflow-wrap: anywhere;
+}
+
+.user-card__handle {
+  font-size: 13px;
+  color: var(--trinity-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.user-card__actions {
+  width: 100%;
+  margin-top: 4px;
+}

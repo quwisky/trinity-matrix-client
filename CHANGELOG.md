@@ -24,8 +24,9 @@ All notable changes to this project are documented here. The format is based on
   read up to them, updating live as people catch up — so you can tell who's seen what.
 - **In-app navigation for Matrix links.** Clicking a `matrix.to` link in a message now
   stays in Trinity: a room link opens that room (resolving an alias and jumping to a
-  linked message), and a person link opens a direct message with them. Ordinary web
-  links open in a new tab instead of navigating away from the app.
+  linked message), and a person link (including a mention) opens a small profile card —
+  avatar, name, online status, and a **Message** button to start a direct message.
+  Ordinary web links open in a new tab instead of navigating away from the app.
 - **Per-room notification level.** A new bell in the room header lets you set how a room
   notifies you — **All messages**, **Mentions & keywords only**, or **Mute** — persisted
   as Matrix push rules so it follows you across devices. Muting suppresses even mentions;

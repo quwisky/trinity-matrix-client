@@ -32,6 +32,7 @@ import { RoomsPage } from './rooms.page';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import { UserCardService } from '../user-card/user-card.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
 
@@ -856,6 +857,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   let inviteUser: ReturnType<typeof vi.fn>;
   let acceptInvite: ReturnType<typeof vi.fn>;
   let declineInvite: ReturnType<typeof vi.fn>;
+  let userCardOpen: ReturnType<typeof vi.fn>;
   let pending: WritableSignal<PendingInvite[]>;
 
   function pendingInvite(over: Partial<PendingInvite> = {}): PendingInvite {
@@ -880,6 +882,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     inviteUser = vi.fn(() => of(undefined));
     acceptInvite = vi.fn(() => of(undefined));
     declineInvite = vi.fn(() => of(undefined));
+    userCardOpen = vi.fn().mockResolvedValue(null);
     pending = signal<PendingInvite[]>([]);
     TestBed.configureTestingModule({
       providers: [
@@ -897,6 +900,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           declineInvite,
         }),
         MockProvider(UserPickerService, { pick }),
+        MockProvider(UserCardService, { open: userCardOpen }),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
         MockProvider(TimelineService),
@@ -964,6 +968,31 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     await page.onStartDm();
 
+    expect(createDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows a user card for a mention link, starting a DM only if messaged', async () => {
+    const page = build();
+    userCardOpen.mockResolvedValue('@bob:hs'); // the viewer chose "Message"
+
+    page.onMatrixLink({ kind: 'user', userId: '@bob:hs' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(userCardOpen).toHaveBeenCalledWith('@bob:hs');
+    expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
+    expect(page.activeRoomId()).toBe('!dm:hs');
+  });
+
+  it('opens no conversation when the user card is dismissed', async () => {
+    const page = build();
+    userCardOpen.mockResolvedValue(null); // dismissed
+
+    page.onMatrixLink({ kind: 'user', userId: '@bob:hs' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(userCardOpen).toHaveBeenCalledWith('@bob:hs');
     expect(createDirectMessage).not.toHaveBeenCalled();
   });
 

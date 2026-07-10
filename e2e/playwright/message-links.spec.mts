@@ -113,4 +113,77 @@ test.describe('matrix.to link navigation', () => {
       { timeout: 20_000 },
     );
   });
+
+  test('clicking a mention shows a user card, not an empty room', async ({
+    page,
+    request,
+  }) => {
+    const runId = `${Date.now().toString(36)}u`;
+    const hs = session.hs as string;
+    const user = `mention-user-${runId}`;
+    const pass = `${user}-pass`;
+    const bob = `mention-bob-${runId}`;
+    await registerUser(request, user, pass);
+    await registerUser(request, bob, `${bob}-pass`);
+
+    const token = (u: string, p: string) =>
+      request
+        .post(`${hs}/_matrix/client/v3/login`, {
+          data: {
+            type: 'm.login.password',
+            identifier: { type: 'm.id.user', user: u },
+            password: p,
+          },
+        })
+        .then((r) => r.json());
+    const owner = await token(user, pass);
+    const bobLogin = await token(bob, `${bob}-pass`);
+    const bobId = bobLogin.user_id as string;
+    const bobName = `Bobby${runId}`;
+    await request.put(
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(bobId)}/displayname`,
+      {
+        headers: { Authorization: `Bearer ${bobLogin.access_token}` },
+        data: { displayname: bobName },
+      },
+    );
+
+    const headers = { Authorization: `Bearer ${owner.access_token}` };
+    const roomName = `Mention Room ${runId}`;
+    const roomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers,
+        data: { name: roomName },
+      })
+      .then((r) => r.json())
+      .then((j) => j.room_id as string);
+
+    // A message mentioning Bob (a matrix.to user permalink, as a pill does).
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/mention-${runId}`,
+      {
+        headers,
+        data: {
+          msgtype: 'm.text',
+          body: `hey ${bobName}`,
+          format: 'org.matrix.custom.html',
+          formatted_body: `hey <a href="https://matrix.to/#/${bobId}">${bobName}</a>`,
+        },
+      },
+    );
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+
+    // Clicking the mention opens a user card — it does not navigate anywhere.
+    await page.locator('.scroll a', { hasText: bobName }).first().click();
+    const card = page.getByTestId('user-card');
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card.getByTestId('user-card-name')).toHaveText(bobName);
+    // Still in the same room (no empty room opened behind the card).
+    await expect(page.getByTestId('composer-input')).toHaveAttribute(
+      'placeholder',
+      new RegExp(roomName),
+    );
+  });
 });
