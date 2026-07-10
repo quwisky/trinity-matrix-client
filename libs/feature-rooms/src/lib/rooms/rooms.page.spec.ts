@@ -75,6 +75,7 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(SpacesService),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService, { edit, sendMedia }),
+        MockProvider(MediaService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -161,8 +162,12 @@ describe('RoomsPage action error feedback', () => {
     expect(alertConfirm).toHaveBeenCalled();
     expect(leaveRoom).toHaveBeenCalledWith('!r:hs');
     expect(page.activeRoomId()).toBeNull();
-    // Tear the open room's projections down so they stop listening on it.
+    // Tear every open-room projection down so none keeps listening on it.
     expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
+    expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
+    expect(TestBed.inject(ThreadsService).closeThread).toHaveBeenCalled();
+    expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
+    expect(TestBed.inject(MediaService).releaseAll).toHaveBeenCalled();
   });
 
   it('leaves a room but keeps a different open room selected', async () => {
@@ -1113,6 +1118,25 @@ describe('RoomsPage room / DM / invite actions', () => {
     });
 
     expect(memberInfoOpen).not.toHaveBeenCalled();
+  });
+
+  it('opens no conversation when the member panel is dismissed', async () => {
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+    memberInfoOpen.mockResolvedValue(null); // dismissed
+
+    page.onSelectMember({
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(memberInfoOpen).toHaveBeenCalled();
+    expect(createDirectMessage).not.toHaveBeenCalled();
   });
 
   it('invites the picked user to the active room and toasts success', async () => {

@@ -84,6 +84,16 @@ describe('RoomSettingsComponent', () => {
     expect(close).toHaveBeenCalledWith(true);
   });
 
+  it('clears the topic on save when emptied (unlike the name)', async () => {
+    const { cmp, setTopic, close } = await build({ name: 'N', topic: 'old' });
+    cmp.form.controls.topic.setValue('');
+
+    cmp.save();
+
+    expect(setTopic).toHaveBeenCalledWith('!r:hs', '');
+    expect(close).toHaveBeenCalledWith(true);
+  });
+
   it('writes nothing and closes false when nothing changed', async () => {
     const { cmp, setName, setTopic, close } = await build({
       name: 'Same',
@@ -137,6 +147,20 @@ describe('RoomSettingsComponent', () => {
   it('rejects a non-image file without uploading', async () => {
     const { cmp, setAvatar, toastShow } = await build();
     const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
+
+    cmp.onAvatarPicked(pickEvent(file));
+
+    expect(setAvatar).not.toHaveBeenCalled();
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('rejects an image larger than 8 MB without uploading', async () => {
+    const { cmp, setAvatar, toastShow } = await build();
+    const file = new File(['x'], 'big.png', { type: 'image/png' });
+    Object.defineProperty(file, 'size', { value: 8 * 1024 * 1024 + 1 });
 
     cmp.onAvatarPicked(pickEvent(file));
 

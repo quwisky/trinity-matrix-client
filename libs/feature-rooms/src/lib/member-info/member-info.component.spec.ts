@@ -3,6 +3,7 @@ import { render } from '@testing-library/angular';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import { PresenceService } from '@trinity/data-access-profile';
 import { type MemberSummary } from '@trinity/data-access-rooms';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemberInfoComponent } from './member-info.component';
@@ -18,7 +19,7 @@ function member(over: Partial<MemberSummary> = {}): MemberSummary {
   };
 }
 
-async function build(m: MemberSummary = member()) {
+async function build(m: MemberSummary = member(), activeUserId = '@me:hs') {
   const close = vi.fn();
   const toastShow = vi.fn();
   const { fixture, container } = await render(MemberInfoComponent, {
@@ -30,6 +31,9 @@ async function build(m: MemberSummary = member()) {
         provide: PresenceService,
         useValue: { presenceFor: () => signal('online') },
       },
+      MockProvider(MatrixClientService, {
+        activeUserId: signal<string | null>(activeUserId).asReadonly(),
+      }),
     ],
   });
   return { cmp: fixture.componentInstance, container, close, toastShow };
@@ -76,5 +80,20 @@ describe('MemberInfoComponent', () => {
     const { cmp, close } = await build();
     cmp.close();
     expect(close).toHaveBeenCalledWith(null);
+  });
+
+  it('hides the Message action on your own row', async () => {
+    const { cmp, container } = await build(
+      member({ userId: '@me:hs' }),
+      '@me:hs',
+    );
+    expect(cmp.isSelf()).toBe(true);
+    expect(
+      container.querySelector('[data-testid="member-info-message"]'),
+    ).toBeNull();
+    // Copy user ID stays available.
+    expect(
+      container.querySelector('[data-testid="member-info-copy"]'),
+    ).not.toBeNull();
   });
 });

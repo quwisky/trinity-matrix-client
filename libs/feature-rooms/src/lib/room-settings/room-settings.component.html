@@ -46,7 +46,7 @@
       ></textarea>
     </label>
 
-    @if (!canEditName() && !canEditTopic()) {
+    @if (!canEditName() && !canEditTopic() && !canEditAvatar()) {
       <p class="room-settings__note">
         You don’t have permission to change this room’s settings.
       </p>

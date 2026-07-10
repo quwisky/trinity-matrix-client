@@ -10,6 +10,10 @@
   border-radius: 12px;
   background: var(--trinity-sidebar);
   text-align: center;
+
+  // The panel mounts in the CDK overlay (outside .members), so tell the avatar's
+  // presence dot what surface it rings against — else the ring halos (see member-list).
+  --trn-presence-ring: var(--trinity-sidebar);
 }
 
 .member-info__avatar {

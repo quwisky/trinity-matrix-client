@@ -16,14 +16,16 @@
   </div>
 
   <div class="member-info__actions">
-    <button
-      hlmBtn
-      class="w-full"
-      (click)="message()"
-      data-testid="member-info-message"
-    >
-      Message
-    </button>
+    @if (!isSelf()) {
+      <button
+        hlmBtn
+        class="w-full"
+        (click)="message()"
+        data-testid="member-info-message"
+      >
+        Message
+      </button>
+    }
     <button
       hlmBtn
       variant="ghost"

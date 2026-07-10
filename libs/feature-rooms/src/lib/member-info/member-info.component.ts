@@ -9,6 +9,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import { type MemberSummary } from '@trinity/data-access-rooms';
 import { PresenceService } from '@trinity/data-access-profile';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { AvatarComponent } from '@trinity/ui';
 
 /**
@@ -34,10 +35,16 @@ export class MemberInfoComponent {
     inject<DialogRef<string | null, MemberInfoComponent>>(DialogRef);
   private readonly presence = inject(PresenceService);
   private readonly toast = inject(TrnToastService);
+  private readonly matrix = inject(MatrixClientService);
 
   /** Live online status for the presence dot. */
   readonly presenceState = computed(() =>
     this.presence.presenceFor(this.member().userId)(),
+  );
+
+  /** Whether this row is the signed-in user — no point messaging yourself. */
+  readonly isSelf = computed(
+    () => this.member().userId === this.matrix.activeUserId(),
   );
 
   /** The member's role in the room, by the standard power-level convention. */
