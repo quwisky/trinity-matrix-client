@@ -267,6 +267,75 @@ test.describe('Room settings', () => {
     await expect.poll(membership, { timeout: 20_000 }).toBe('leave');
   });
 
+  test('an admin adds a room address and makes it the main one', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}al`;
+    const user = `alias-user-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Addr ${runId}`;
+
+    await registerUser(request, user, pass);
+    const login1 = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json());
+    const auth = { Authorization: `Bearer ${login1.access_token}` };
+    const server = (login1.user_id as string).split(':')[1];
+    const localpart = `addr-${runId}`;
+    const alias = `#${localpart}:${server}`;
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: auth,
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((r) => r.json());
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+
+    await page.getByTestId('open-room-settings').click();
+    await expect(page.getByTestId('room-aliases')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Add a new local address; it appears in the list and resolves in the directory.
+    await page.getByTestId('room-alias-input').fill(localpart);
+    await page.getByTestId('room-alias-add').click();
+    const row = page.getByTestId('room-alias').filter({ hasText: alias });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+
+    const resolvedRoom = async (): Promise<unknown> => {
+      const res = await request.get(
+        `${hs}/_matrix/client/v3/directory/room/${encodeURIComponent(alias)}`,
+        { headers: auth },
+      );
+      return res.ok() ? (await res.json()).room_id : undefined;
+    };
+    await expect.poll(resolvedRoom, { timeout: 20_000 }).toBe(room_id);
+
+    // Make it the main (canonical) address; the state event round-trips.
+    await row.getByTestId('room-alias-set-main').click();
+    await expect(page.getByTestId('room-alias-main')).toBeVisible({
+      timeout: 10_000,
+    });
+    const canonical = async (): Promise<unknown> => {
+      const res = await request.get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/m.room.canonical_alias/`,
+        { headers: auth },
+      );
+      return res.ok() ? (await res.json()).alias : undefined;
+    };
+    await expect.poll(canonical, { timeout: 20_000 }).toBe(alias);
+  });
+
   test('an admin changes the room photo', async ({ page, request }) => {
     const hs = session.hs as string;
     const runId = `${Date.now().toString(36)}a`;

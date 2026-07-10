@@ -1,6 +1,7 @@
 import { render } from '@testing-library/angular';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
+  RoomAliasesService,
   RoomModerationService,
   RoomSettingsService,
 } from '@trinity/data-access-rooms';
@@ -22,6 +23,7 @@ async function build(
     canEditJoinRule: boolean;
     canEditHistory: boolean;
     canManageBans: boolean;
+    canManageAliases: boolean;
   }> = {},
   over: {
     setName?: ReturnType<typeof vi.fn>;
@@ -60,6 +62,11 @@ async function build(
       MockProvider(RoomModerationService, {
         bannedMembers: () => [],
         unban: () => of(undefined),
+      }),
+      MockProvider(RoomAliasesService, {
+        serverName: () => 'hs',
+        currentCanonical: () => null,
+        localAliases: () => of([]),
       }),
       MockProvider(DialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
@@ -187,6 +194,13 @@ describe('RoomSettingsComponent', () => {
     const { container } = await build({ canManageBans: true });
     expect(
       container.querySelector('[data-testid=banned-members]'),
+    ).not.toBeNull();
+  });
+
+  it('shows the addresses section only when the viewer can manage aliases', async () => {
+    const { container } = await build({ canManageAliases: true });
+    expect(
+      container.querySelector('[data-testid=room-aliases]'),
     ).not.toBeNull();
   });
 

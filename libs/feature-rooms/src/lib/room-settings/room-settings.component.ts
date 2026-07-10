@@ -21,6 +21,7 @@ import { RoomSettingsService } from '@trinity/data-access-rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util-matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
+import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 
 /** Reject avatar uploads larger than this (before hitting a server 413). */
 const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
@@ -63,6 +64,7 @@ const HISTORY_OPTIONS = [
     HlmInput,
     AvatarComponent,
     BannedMembersComponent,
+    RoomAliasesComponent,
   ],
   templateUrl: './room-settings.component.html',
   styleUrl: './room-settings.component.scss',
@@ -83,6 +85,8 @@ export class RoomSettingsComponent implements OnInit {
   readonly canEditHistory = input(false);
   /** Whether the viewer may manage (view + lift) this room's bans. */
   readonly canManageBans = input(false);
+  /** Whether the viewer may manage this room's published addresses. */
+  readonly canManageAliases = input(false);
 
   private readonly dialogRef =
     inject<DialogRef<boolean, RoomSettingsComponent>>(DialogRef);

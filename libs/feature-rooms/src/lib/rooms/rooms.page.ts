@@ -52,6 +52,7 @@ import {
   RoomsService,
   RoomSettingsService,
   RoomModerationService,
+  RoomAliasesService,
   SpacesService,
   UnreadAggregatorService,
   type MemberSummary,
@@ -150,6 +151,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly dialog = inject(TrnDialogService);
   private readonly roomSettings = inject(RoomSettingsService);
   private readonly moderation = inject(RoomModerationService);
+  private readonly aliases = inject(RoomAliasesService);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
   private readonly actionSheet = inject(TrnActionSheetService);
@@ -915,6 +917,7 @@ export class RoomsPage implements OnInit, OnDestroy {
         canEditJoinRule: editable.joinRule,
         canEditHistory: editable.history,
         canManageBans: this.moderation.canManageBans(room.id),
+        canManageAliases: this.aliases.canManageAliases(room.id),
       },
     });
   }

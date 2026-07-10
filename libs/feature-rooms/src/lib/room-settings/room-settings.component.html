@@ -80,6 +80,10 @@
       </p>
     }
 
+    @if (canManageAliases()) {
+      <trn-room-aliases [roomId]="roomId()" />
+    }
+
     @if (canManageBans()) {
       <trn-banned-members [roomId]="roomId()" />
     }

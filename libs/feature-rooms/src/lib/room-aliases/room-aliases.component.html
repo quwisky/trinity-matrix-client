@@ -1,0 +1,83 @@
+<section class="room-settings__field" data-testid="room-aliases">
+  <span class="room-settings__label">Addresses</span>
+
+  @if (isEmpty()) {
+    <p class="text-sm text-muted-foreground" data-testid="room-aliases-empty">
+      This room has no addresses yet.
+    </p>
+  } @else {
+    <ul class="flex flex-col gap-2">
+      @for (alias of aliases(); track alias) {
+        <li
+          class="flex items-center justify-between gap-3"
+          data-testid="room-alias"
+        >
+          <span class="flex min-w-0 items-center gap-2">
+            <span class="truncate text-sm">{{ alias }}</span>
+            @if (alias === canonical()) {
+              <span
+                class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                data-testid="room-alias-main"
+              >
+                Main
+              </span>
+            }
+          </span>
+          <span class="flex shrink-0 items-center gap-1">
+            @if (alias !== canonical()) {
+              <button
+                hlmBtn
+                type="button"
+                variant="ghost"
+                size="sm"
+                (click)="setMain(alias)"
+                data-testid="room-alias-set-main"
+              >
+                Make main
+              </button>
+            }
+            <button
+              hlmBtn
+              type="button"
+              variant="outline"
+              size="sm"
+              [disabled]="isRemoving(alias)"
+              (click)="remove(alias)"
+              data-testid="room-alias-remove"
+            >
+              {{ isRemoving(alias) ? 'Removing…' : 'Remove' }}
+            </button>
+          </span>
+        </li>
+      }
+    </ul>
+  }
+
+  <div class="flex items-center gap-2">
+    <span class="text-sm text-muted-foreground">#</span>
+    <input
+      hlmInput
+      class="min-w-0 flex-1"
+      [formControl]="newLocalpart"
+      placeholder="new-address"
+      autocomplete="off"
+      data-testid="room-alias-input"
+    />
+    @if (serverName) {
+      <span class="truncate text-sm text-muted-foreground"
+        >:{{ serverName }}</span
+      >
+    }
+    <button
+      hlmBtn
+      type="button"
+      variant="outline"
+      size="sm"
+      [disabled]="adding()"
+      (click)="add()"
+      data-testid="room-alias-add"
+    >
+      {{ adding() ? 'Adding…' : 'Add' }}
+    </button>
+  </div>
+</section>

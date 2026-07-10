@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Manage a room's addresses.** The room settings dialog now has an **Addresses** section
+  (for anyone whose power level lets them) to publish or remove local aliases
+  (`#address:server`) in the homeserver directory and choose which one is the room's main
+  (canonical) address.
 - **View and lift room bans.** The room settings dialog now shows a **Banned members** list
   (with each ban's reason) for anyone whose power level lets them ban, each with an **Unban**
   action that lets the member be re-invited or rejoin.
