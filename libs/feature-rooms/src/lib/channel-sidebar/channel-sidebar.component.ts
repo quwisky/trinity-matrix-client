@@ -10,12 +10,18 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
+  HlmDropdownMenuItemSubIndicator,
   HlmDropdownMenuLabel,
+  HlmDropdownMenuRadio,
+  HlmDropdownMenuRadioIndicator,
   HlmDropdownMenuSeparator,
+  HlmDropdownMenuSub,
+  HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  lucideBell,
   lucideCheck,
   lucideCircleMinus,
   lucideCommand,
@@ -39,6 +45,10 @@ import {
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
+import {
+  RoomNotificationsService,
+  type RoomNotifyMode,
+} from '@trinity/data-access-notifications';
 import { initialOf, type PresenceState } from '@trinity/util-matrix';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 
@@ -59,11 +69,17 @@ export interface AccountSummary extends UserProfile {
     HlmDropdownMenuTrigger,
     HlmDropdownMenu,
     HlmDropdownMenuItem,
+    HlmDropdownMenuItemSubIndicator,
     HlmDropdownMenuLabel,
+    HlmDropdownMenuRadio,
+    HlmDropdownMenuRadioIndicator,
     HlmDropdownMenuSeparator,
+    HlmDropdownMenuSub,
+    HlmDropdownMenuSubTrigger,
   ],
   viewProviders: [
     provideIcons({
+      lucideBell,
       lucideCheck,
       lucideCircleMinus,
       lucideCommand,
@@ -84,6 +100,7 @@ export class ChannelSidebarComponent {
   private readonly invitesSvc = inject(InvitesService);
   private readonly roomsSvc = inject(RoomsService);
   private readonly presence = inject(PresenceService);
+  private readonly roomNotifications = inject(RoomNotificationsService);
 
   readonly spaceName = input('Home');
   /** Whether a space (not Home) is selected — gates the header space actions. */
@@ -156,6 +173,8 @@ export class ChannelSidebarComponent {
   readonly addAccount = output<void>();
   /** Sign out the given account (the active one, from the user panel). */
   readonly logout = output<string>();
+  /** Set a room's notification level (all / mentions / mute) from its ⋮ menu. */
+  readonly setNotifyMode = output<{ roomId: string; mode: RoomNotifyMode }>();
 
   /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
   readonly badgeLabel = unreadBadgeLabel;
@@ -174,5 +193,14 @@ export class ChannelSidebarComponent {
   /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service. */
   toggleFavourite(room: RoomSummary): void {
     this.roomsSvc.setFavourite(room.id, !room.favourite);
+  }
+
+  /**
+   * The room's current notification level, read fresh from its push rules to seed the
+   * ⋮ menu's radio checks. Re-read each time the submenu opens (the write is delegated to
+   * the host via {@link setNotifyMode}), so the check reflects the persisted preference.
+   */
+  notifyMode(roomId: string): RoomNotifyMode {
+    return this.roomNotifications.modeFor(roomId);
   }
 }

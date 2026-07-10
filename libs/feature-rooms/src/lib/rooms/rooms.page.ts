@@ -15,7 +15,6 @@ import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
-  lucideBell,
   lucideLock,
   lucideMenu,
   lucideMessagesSquare,
@@ -106,7 +105,6 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
   ],
   viewProviders: [
     provideIcons({
-      lucideBell,
       lucideLock,
       lucideMenu,
       lucideMessagesSquare,
@@ -804,33 +802,15 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
   }
 
-  /** Header bell: choose the active room's notification level (all / mentions / mute). */
-  openNotifyMenu(): void {
-    const roomId = this.activeRoomId();
-    if (!roomId) {
-      return;
-    }
-    const current = this.roomNotifications.modeFor(roomId);
-    const label = (mode: RoomNotifyMode, text: string): string =>
-      mode === current ? `✓ ${text}` : text;
-    this.actionSheet.open({
-      header: 'Notifications',
-      buttons: [
-        {
-          text: label('all', 'All messages'),
-          handler: () => this.setNotifyMode(roomId, 'all'),
-        },
-        {
-          text: label('mentions', 'Mentions & keywords only'),
-          handler: () => this.setNotifyMode(roomId, 'mentions'),
-        },
-        {
-          text: label('mute', 'Mute'),
-          handler: () => this.setNotifyMode(roomId, 'mute'),
-        },
-        { text: 'Cancel', role: 'cancel' },
-      ],
-    });
+  /** Sidebar room ⋮ menu: apply a chosen notification level (all / mentions / mute). */
+  onSetNotifyMode({
+    roomId,
+    mode,
+  }: {
+    roomId: string;
+    mode: RoomNotifyMode;
+  }): void {
+    this.setNotifyMode(roomId, mode);
   }
 
   private setNotifyMode(roomId: string, mode: RoomNotifyMode): void {

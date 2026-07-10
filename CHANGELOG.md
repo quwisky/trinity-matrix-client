@@ -27,10 +27,11 @@ All notable changes to this project are documented here. The format is based on
   linked message), and a person link (including a mention) opens a small profile card —
   avatar, name, online status, and a **Message** button to start a direct message.
   Ordinary web links open in a new tab instead of navigating away from the app.
-- **Per-room notification level.** A new bell in the room header lets you set how a room
-  notifies you — **All messages**, **Mentions & keywords only**, or **Mute** — persisted
-  as Matrix push rules so it follows you across devices. Muting suppresses even mentions;
-  mentions-only keeps highlight pings while silencing everything else.
+- **Per-room notification level.** Each room's ⋮ menu in the channel list has a
+  **Notifications** submenu to set how a room notifies you — **All messages**, **Mentions &
+  keywords only**, or **Mute** — persisted as Matrix push rules so it follows you across
+  devices. Muting suppresses even mentions; mentions-only keeps highlight pings while
+  silencing everything else.
 - **"New messages" divider and jump-to-unread.** Trinity now persists a fully-read
   marker (`m.fully_read`) alongside the read receipt, so returning to a busy room shows a
   "New messages" divider at exactly where you left off — and, when that divider is

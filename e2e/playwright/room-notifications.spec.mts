@@ -7,9 +7,9 @@ import {
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
-// End-to-end for the per-room notification level: the header bell opens an
-// All / Mentions / Mute chooser; picking one writes push rules, and reopening the
-// chooser shows the persisted selection. Needs a Synapse homeserver (Docker).
+// End-to-end for the per-room notification level: the room's ⋮ menu in the channel list
+// has a Notifications submenu (All / Mentions / Mute); picking one writes push rules, and
+// reopening the submenu shows the persisted selection. Needs a Synapse homeserver (Docker).
 const session = synapseSession();
 
 const SYNAPSE_HTTP = 'http://localhost:8008';
@@ -77,6 +77,17 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   });
 }
 
+// Open the room row's ⋮ menu in the channel list, then its Notifications submenu.
+async function openNotifyMenu(page: Page, roomName: string): Promise<void> {
+  const row = page.locator('.channel-row', { hasText: roomName }).first();
+  await row.hover();
+  await row.getByRole('button', { name: `Options for ${roomName}` }).click();
+  await page.getByTestId('room-notify').click(); // reveal the Notifications submenu
+  await expect(page.getByTestId('room-notify-all')).toBeVisible({
+    timeout: 10_000,
+  });
+}
+
 test.describe('Per-room notifications', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
@@ -91,17 +102,25 @@ test.describe('Per-room notifications', () => {
     await login(page, user);
     await openRoom(page, roomName);
 
-    // Open the notification chooser and mute the room.
-    await page.getByTestId('room-notifications').click();
-    await expect(
-      page.getByRole('button', { name: 'All messages' }),
-    ).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: 'Mute', exact: true }).click();
+    // Open the room's ⋮ menu → Notifications submenu and mute the room, waiting for the
+    // override push-rule write to land so the reopened menu reflects the persisted choice.
+    await openNotifyMenu(page, roomName);
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          /\/pushrules\/global\/override\//.test(r.url()) &&
+          r.request().method() === 'PUT',
+        { timeout: 15_000 },
+      ),
+      page.getByTestId('room-notify-mute').click(),
+    ]);
 
-    // Reopen — the persisted selection (Mute) is now marked with a check.
-    await page.getByTestId('room-notifications').click();
-    await expect(page.getByRole('button', { name: '✓ Mute' })).toBeVisible({
-      timeout: 15_000,
-    });
+    // Reopen — the persisted selection (Mute) is now the checked radio.
+    await openNotifyMenu(page, roomName);
+    await expect(page.getByTestId('room-notify-mute')).toHaveAttribute(
+      'aria-checked',
+      'true',
+      { timeout: 15_000 },
+    );
   });
 });

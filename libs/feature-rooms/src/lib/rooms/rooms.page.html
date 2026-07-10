@@ -48,6 +48,7 @@
       (declineInvite)="onDeclineInvite($event)"
       (openSettings)="goToSettings()"
       (logout)="logout($event)"
+      (setNotifyMode)="onSetNotifyMode($event)"
     />
   </aside>
 
@@ -112,17 +113,6 @@
             data-testid="invite-people"
           >
             <ng-icon class="text-xl" name="lucideUserPlus" />
-          </button>
-          <button
-            hlmBtn
-            variant="ghost"
-            size="icon"
-            (click)="openNotifyMenu()"
-            hlmTooltip="Notifications"
-            aria-label="Notifications"
-            data-testid="room-notifications"
-          >
-            <ng-icon class="text-xl" name="lucideBell" />
           </button>
           <button
             hlmBtn
