@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Per-room notification level.** A new bell in the room header lets you set how a room
+  notifies you — **All messages**, **Mentions & keywords only**, or **Mute** — persisted
+  as Matrix push rules so it follows you across devices. Muting suppresses even mentions;
+  mentions-only keeps highlight pings while silencing everything else.
 - **"New messages" divider and jump-to-unread.** Trinity now persists a fully-read
   marker (`m.fully_read`) alongside the read receipt, so returning to a busy room shows a
   "New messages" divider at exactly where you left off — and, when that divider is

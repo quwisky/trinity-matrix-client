@@ -15,6 +15,7 @@ import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  lucideBell,
   lucideLock,
   lucideMenu,
   lucideMessagesSquare,
@@ -39,6 +40,8 @@ import { MediaService } from '@trinity/data-access-media';
 import {
   NotificationService,
   PushService,
+  RoomNotificationsService,
+  type RoomNotifyMode,
 } from '@trinity/data-access-notifications';
 import { PinnedMessagesService } from '@trinity/data-access-pinned';
 import {
@@ -102,6 +105,7 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
   ],
   viewProviders: [
     provideIcons({
+      lucideBell,
       lucideLock,
       lucideMenu,
       lucideMessagesSquare,
@@ -132,6 +136,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly presence = inject(PresenceService);
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
+  private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly dialog = inject(TrnDialogService);
@@ -746,6 +751,44 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (roomId) {
       void this.threadPanel.open(roomId, rootEventId);
     }
+  }
+
+  /** Header bell: choose the active room's notification level (all / mentions / mute). */
+  openNotifyMenu(): void {
+    const roomId = this.activeRoomId();
+    if (!roomId) {
+      return;
+    }
+    const current = this.roomNotifications.modeFor(roomId);
+    const label = (mode: RoomNotifyMode, text: string): string =>
+      mode === current ? `✓ ${text}` : text;
+    this.actionSheet.open({
+      header: 'Notifications',
+      buttons: [
+        {
+          text: label('all', 'All messages'),
+          handler: () => this.setNotifyMode(roomId, 'all'),
+        },
+        {
+          text: label('mentions', 'Mentions & keywords only'),
+          handler: () => this.setNotifyMode(roomId, 'mentions'),
+        },
+        {
+          text: label('mute', 'Mute'),
+          handler: () => this.setNotifyMode(roomId, 'mute'),
+        },
+        { text: 'Cancel', role: 'cancel' },
+      ],
+    });
+  }
+
+  private setNotifyMode(roomId: string, mode: RoomNotifyMode): void {
+    this.roomNotifications
+      .setMode(roomId, mode)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => void this.showError('Could not update notifications.'),
+      });
   }
 
   /** Open the threads-list panel for the active room (header "Threads" button). */

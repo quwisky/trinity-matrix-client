@@ -117,6 +117,17 @@
             hlmBtn
             variant="ghost"
             size="icon"
+            (click)="openNotifyMenu()"
+            hlmTooltip="Notifications"
+            aria-label="Notifications"
+            data-testid="room-notifications"
+          >
+            <ng-icon class="text-xl" name="lucideBell" />
+          </button>
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
             (click)="openThreadsList()"
             hlmTooltip="Threads"
             aria-label="Threads"
