@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import { render } from '@testing-library/angular';
-import { ThreadsService } from '@trinity/data-access-timeline';
+import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
 import { type MessageView } from '@trinity/util-matrix';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -40,7 +40,11 @@ function row(id: string, senderId: string, body: string): MessageRow {
 
 async function build(
   messages: MessageView[] = [],
-  state: { canPaginate?: boolean; loadingOlder?: boolean } = {},
+  state: {
+    canPaginate?: boolean;
+    loadingOlder?: boolean;
+    canRedactOthers?: boolean;
+  } = {},
 ) {
   const threadMessages = signal<MessageView[]>(messages);
   const canPaginateThread = signal(state.canPaginate ?? false);
@@ -69,6 +73,9 @@ async function build(
         replyInThread,
         toggleReactionInThread,
         retryInThread,
+      }),
+      MockProvider(TimelineService, {
+        canRedactOthers: signal(state.canRedactOthers ?? false).asReadonly(),
       }),
       MockProvider(DialogRef, { close: dismiss }),
     ],
@@ -208,6 +215,24 @@ describe('ThreadViewComponent', () => {
     fixture.componentInstance.onRetry('$echo');
 
     expect(retryInThread).toHaveBeenCalledWith('$echo');
+  });
+
+  it('lets a moderator delete another member’s thread message', async () => {
+    const { fixture } = await build([msg('$1', '@a:hs', 'hi')], {
+      canRedactOthers: true,
+    });
+    const target = { ...msg('$1', '@a:hs', 'hi'), showHeader: true };
+
+    expect(fixture.componentInstance.rowCaps(target).deletable).toBe(true);
+  });
+
+  it('does not let a regular member delete others’ thread messages', async () => {
+    const { fixture } = await build([msg('$1', '@a:hs', 'hi')], {
+      canRedactOthers: false,
+    });
+    const target = { ...msg('$1', '@a:hs', 'hi'), showHeader: true };
+
+    expect(fixture.componentInstance.rowCaps(target).deletable).toBe(false);
   });
 
   it('shows a "Load older" affordance and paginates when it can load older', async () => {
