@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Leave a room.** Each room's ⋮ menu in the channel list now has a **Leave room**
+  action: confirm, and you leave the room and it drops out of your list. Previously you
+  could unlink a room from a space or decline an invite, but there was no way to exit a
+  joined room. If the room you leave is the one open, the timeline pane clears.
 - **App version and commit in Settings.** The Settings screen now shows the running
   build's version and git commit in a small footer (e.g. `Trinity v0.0.1 · a1b2c3d`),
   regenerated from `package.json` + git at build time — handy for bug reports.

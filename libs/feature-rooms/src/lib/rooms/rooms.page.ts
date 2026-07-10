@@ -599,6 +599,40 @@ export class RoomsPage implements OnInit, OnDestroy {
     }).subscribe();
   }
 
+  /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely. */
+  async onLeaveRoom(roomId: string): Promise<void> {
+    const name =
+      this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this room';
+    const confirmed = await this.alert.confirm({
+      header: 'Leave room',
+      message: `Leave “${name}”? You'll stop receiving its messages and need a new invite (or a public join) to come back.`,
+      confirmText: 'Leave',
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.rooms
+      .leave(roomId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        // The room drops from the sidebar via sync. If it was the open one, tear the
+        // room panes down (mirroring ngOnDestroy / onSelectRoom) so the timeline,
+        // threads, and pinned projections stop listening on a room we just left.
+        next: () => {
+          if (this.activeRoomId() === roomId) {
+            this.activeRoomId.set(null);
+            this.timeline.close();
+            this.threads.close();
+            this.threads.closeThread();
+            this.pinned.close();
+            this.media.releaseAll();
+          }
+        },
+        error: () => void this.showError('Could not leave the room.'),
+      });
+  }
+
   /** Home "+": choose between creating a room and starting a DM. */
   onNewChat(): void {
     this.actionSheet.open({

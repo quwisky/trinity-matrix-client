@@ -54,17 +54,25 @@ describe('RoomsPage action error feedback', () => {
   let toastShow: ReturnType<typeof vi.fn>;
   let sendMedia: ReturnType<typeof vi.fn>;
   let setNotifyMode: ReturnType<typeof vi.fn>;
+  let leaveRoom: ReturnType<typeof vi.fn>;
+  let alertConfirm: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
     edit = vi.fn();
     sendMedia = vi.fn(() => of(undefined));
     setNotifyMode = vi.fn(() => of(undefined));
+    leaveRoom = vi.fn(() => of(undefined));
+    alertConfirm = vi.fn().mockResolvedValue(true);
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        MockProvider(RoomsService),
+        MockProvider(RoomsService, {
+          leave: leaveRoom,
+          rooms: signal<RoomSummary[]>([]).asReadonly(),
+        }),
         MockProvider(SpacesService),
+        MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService, { edit, sendMedia }),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -136,6 +144,52 @@ describe('RoomsPage action error feedback', () => {
     setNotifyMode.mockReturnValue(throwError(() => new Error('nope')));
 
     page.onSetNotifyMode({ roomId: '!r:hs', mode: 'mute' });
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('leaves a room after confirmation and clears it if it was the open one', async () => {
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+
+    await page.onLeaveRoom('!r:hs');
+
+    expect(alertConfirm).toHaveBeenCalled();
+    expect(leaveRoom).toHaveBeenCalledWith('!r:hs');
+    expect(page.activeRoomId()).toBeNull();
+    // Tear the open room's projections down so they stop listening on it.
+    expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
+  });
+
+  it('leaves a room but keeps a different open room selected', async () => {
+    const page = build();
+    page.activeRoomId.set('!other:hs');
+
+    await page.onLeaveRoom('!r:hs');
+
+    expect(leaveRoom).toHaveBeenCalledWith('!r:hs');
+    expect(page.activeRoomId()).toBe('!other:hs');
+    // The open room wasn't the one left, so its projections stay put.
+    expect(TestBed.inject(TimelineService).close).not.toHaveBeenCalled();
+  });
+
+  it('does not leave a room when the confirmation is cancelled', async () => {
+    const page = build();
+    alertConfirm.mockResolvedValue(false);
+
+    await page.onLeaveRoom('!r:hs');
+
+    expect(leaveRoom).not.toHaveBeenCalled();
+  });
+
+  it('shows a danger toast when leaving a room fails', async () => {
+    const page = build();
+    leaveRoom.mockReturnValue(throwError(() => new Error('nope')));
+
+    await page.onLeaveRoom('!r:hs');
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),

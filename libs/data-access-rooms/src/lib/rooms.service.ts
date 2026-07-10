@@ -317,6 +317,20 @@ export class RoomsService {
   }
 
   /**
+   * Leave a joined room. Cold — runs on subscribe. On success the client emits
+   * `RoomEvent.MyMembership`, which drops the room from {@link rooms} (the list is
+   * filtered to `join`), so no explicit refresh is needed; errors reach the subscriber.
+   */
+  leave(roomId: string): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      return from(this.matrix.instance.leave(roomId)).pipe(map(() => void 0));
+    });
+  }
+
+  /**
    * Create a standalone (not space-linked) E2EE room and resolve its room id. Like
    * {@link SpacesService.createRoomInSpace} the room carries `m.room.encryption`
    * (Megolm) in its `initial_state` so it is encrypted from the first event, but it

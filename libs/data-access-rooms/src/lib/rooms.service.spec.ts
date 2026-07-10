@@ -467,6 +467,7 @@ describe('RoomsService writes', () => {
     const getRoomIdForAlias = vi
       .fn()
       .mockResolvedValue({ room_id: '!aliased:hs' });
+    const leave = vi.fn().mockResolvedValue({});
     const client = {
       getRooms: () => [],
       getRoom: (id: string) =>
@@ -482,6 +483,7 @@ describe('RoomsService writes', () => {
       setAccountData,
       searchUserDirectory,
       getRoomIdForAlias,
+      leave,
       on: vi.fn(),
       off: vi.fn(),
     };
@@ -493,6 +495,7 @@ describe('RoomsService writes', () => {
       setAccountData,
       searchUserDirectory,
       getRoomIdForAlias,
+      leave,
     };
   }
 
@@ -529,6 +532,25 @@ describe('RoomsService writes', () => {
           },
         ],
       }),
+    );
+  });
+
+  it('leave is cold and leaves the room on subscribe', async () => {
+    const { svc, leave } = setupWrites();
+
+    const action = svc.leave('!r:hs');
+    expect(leave).not.toHaveBeenCalled(); // cold — nothing until subscribed
+
+    await firstValueFrom(action);
+    expect(leave).toHaveBeenCalledWith('!r:hs');
+  });
+
+  it('leave surfaces a homeserver failure to the subscriber', async () => {
+    const { svc, leave } = setupWrites();
+    leave.mockRejectedValue(new Error('M_FORBIDDEN'));
+
+    await expect(firstValueFrom(svc.leave('!r:hs'))).rejects.toThrow(
+      'M_FORBIDDEN',
     );
   });
 
