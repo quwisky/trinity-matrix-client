@@ -98,11 +98,27 @@
     </button>
     <button
       hlmDropdownMenuItem
+      (triggered)="action.emit({ type: 'copy-link' })"
+      data-testid="msg-copy-link"
+    >
+      <ng-icon name="lucideLink" />
+      Copy link
+    </button>
+    <button
+      hlmDropdownMenuItem
       (triggered)="action.emit({ type: 'forward' })"
       data-testid="msg-forward"
     >
       <ng-icon name="lucideForward" />
       Forward
+    </button>
+    <button
+      hlmDropdownMenuItem
+      (triggered)="action.emit({ type: 'view-source' })"
+      data-testid="msg-view-source"
+    >
+      <ng-icon name="lucideCode" />
+      View source
     </button>
     <button
       hlmDropdownMenuItem

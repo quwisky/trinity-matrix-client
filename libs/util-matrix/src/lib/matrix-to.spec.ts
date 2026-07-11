@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { parseMatrixToLink } from './matrix-to';
+import { messagePermalink, parseMatrixToLink } from './matrix-to';
+
+describe('messagePermalink', () => {
+  it('builds a matrix.to permalink to an event, percent-encoding the ids', () => {
+    expect(messagePermalink('!room:hs', '$evt')).toBe(
+      'https://matrix.to/#/!room%3Ahs/%24evt',
+    );
+  });
+
+  it('round-trips back through parseMatrixToLink', () => {
+    expect(parseMatrixToLink(messagePermalink('!room:hs', '$evt'))).toEqual({
+      kind: 'room',
+      roomIdOrAlias: '!room:hs',
+      eventId: '$evt',
+    });
+  });
+});
 
 describe('parseMatrixToLink', () => {
   it('parses a user permalink', () => {

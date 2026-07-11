@@ -404,6 +404,15 @@ export class TimelineService {
     this._typingNames.set(names);
   }
 
+  /** The raw (effective) JSON of an event for "view source", or null if not loaded. */
+  rawEvent(roomId: string, eventId: string): object | null {
+    if (!this.matrix.isInitialized) {
+      return null;
+    }
+    const event = this.matrix.instance.getRoom(roomId)?.findEventById(eventId);
+    return event?.getEffectiveEvent() ?? null;
+  }
+
   /**
    * Send a message to the active room. Markdown is rendered to HTML, sanitized,
    * and sent as `formatted_body` — but only when it actually adds formatting; plain

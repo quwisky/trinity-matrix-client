@@ -6,6 +6,7 @@ import { type MessageView } from '@trinity/util-matrix';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { SimpleMessageListComponent } from './simple-message-list.component';
 import { ReactionPickerService } from '../../reaction-picker/reaction-picker.service';
+import { MessageSourceService } from '../../message-source/message-source.service';
 
 function msg(
   id: string,
@@ -555,6 +556,41 @@ describe('SimpleMessageListComponent', () => {
       });
       cmp.onCopy(row('$1'));
       expect(writeText).toHaveBeenCalledWith('body $1');
+    });
+
+    it('copies a matrix.to permalink for copy-link', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: { roomId: '!a:hs' },
+        providers: [MockProvider(TrnAlertService)],
+      });
+      const writeText = vi.fn();
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      });
+
+      fixture.componentInstance.onRowAction(row('$1'), { type: 'copy-link' });
+
+      expect(writeText).toHaveBeenCalledWith(
+        'https://matrix.to/#/!a%3Ahs/%241',
+      );
+    });
+
+    it('opens the source dialog for view-source', async () => {
+      const open = vi.fn();
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: { roomId: '!a:hs' },
+        providers: [
+          MockProvider(TrnAlertService),
+          MockProvider(MessageSourceService, { open }),
+        ],
+      });
+
+      fixture.componentInstance.onRowAction(row('$1'), {
+        type: 'view-source',
+      });
+
+      expect(open).toHaveBeenCalledWith('!a:hs', '$1');
     });
   });
 

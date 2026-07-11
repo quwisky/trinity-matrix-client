@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Message context actions.** A message's ⋯ menu now has **Copy link** (a `matrix.to`
+  permalink to the message) and **View source** (the event's raw JSON, in a dialog).
 - **Room-upgrade banner.** When a room has been upgraded to a new version, the old room
   now shows a banner with **Go to the new room** — which joins and opens the successor.
 - **Slash commands.** The composer now understands IRC-style commands: **/me** (send an

@@ -11,6 +11,17 @@ export type MatrixLinkTarget =
 /** matrix.to permalinks live entirely in the fragment: `https://matrix.to/#/<...>`. */
 const MATRIX_TO_PREFIX = /^https?:\/\/matrix\.to\/#\//i;
 
+/**
+ * Build a `matrix.to` permalink to a specific message (`https://matrix.to/#/<room>/<event>`).
+ * The sigil-prefixed ids are percent-encoded, matching what {@link parseMatrixToLink} decodes.
+ */
+export function messagePermalink(
+  roomIdOrAlias: string,
+  eventId: string,
+): string {
+  return `https://matrix.to/#/${encodeURIComponent(roomIdOrAlias)}/${encodeURIComponent(eventId)}`;
+}
+
 /** Strip a `?via=…` (or any) query string from a single permalink segment. */
 function stripQuery(segment: string): string {
   const q = segment.indexOf('?');
