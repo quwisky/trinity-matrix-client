@@ -51,6 +51,7 @@ import {
   readReceiptUserIds,
   renderMarkdown,
   replyMessageContent,
+  slashCommandContent,
   textMessageContent,
   TYPING_REFRESH_MS,
   TYPING_TIMEOUT_MS,
@@ -402,13 +403,16 @@ export class TimelineService {
         return of(void 0);
       }
       const { client, room } = ctx;
-      // Build the content (rather than sendText/HtmlMessage) so mentions carry
-      // `m.mentions` + matrix.to pills. The SDK still creates the local echo.
-      const content = textMessageContent(
-        text,
-        renderMarkdown(this.sanitizer, text),
-        mentions,
-      );
+      // A leading slash command (/me, /shrug, /plain, /spoiler) rewrites the content;
+      // otherwise build the normal text content (rather than sendText/HtmlMessage) so
+      // mentions carry `m.mentions` + matrix.to pills. The SDK creates the local echo.
+      const content =
+        slashCommandContent(text, (md) => renderMarkdown(this.sanitizer, md)) ??
+        textMessageContent(
+          text,
+          renderMarkdown(this.sanitizer, text),
+          mentions,
+        );
       return from(client.sendMessage(room.roomId, content as never));
     }).pipe(map(() => void 0));
   }

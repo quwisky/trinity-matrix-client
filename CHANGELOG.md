@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Slash commands.** The composer now understands IRC-style commands: **/me** (send an
+  emote), **/shrug** (append ¯\\_(ツ)_/¯), **/plain** (send without markdown), and **/spoiler**
+  (hide text behind a spoiler). Anything else starting with `/` is sent as-is.
 - **Link previews.** Messages with a link now show an Open-Graph preview card (title,
   site, description, thumbnail), fetched through your homeserver. They're suppressed in
   encrypted rooms by default — so a link in an E2EE message is never disclosed to the

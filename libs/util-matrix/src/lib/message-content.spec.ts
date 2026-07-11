@@ -5,10 +5,13 @@ import {
   editMessageContent,
   mediaCaptionFields,
   messagePreview,
+  parseSlashCommand,
   renderMarkdown,
   replyMessageContent,
+  slashCommandContent,
   textMessageContent,
   type Mention,
+  type RenderedMarkdown,
 } from './message-content';
 
 // mediaCaptionFields only uses the sanitizer via renderMarkdown (marked → sanitize);
@@ -16,6 +19,77 @@ import {
 const sanitizer = {
   sanitize: (_ctx: unknown, html: string | null) => html,
 } as unknown as DomSanitizer;
+
+describe('parseSlashCommand', () => {
+  it('parses a known command and its trimmed argument', () => {
+    expect(parseSlashCommand('/me waves hello')).toEqual({
+      command: 'me',
+      arg: 'waves hello',
+    });
+    expect(parseSlashCommand('/shrug')).toEqual({ command: 'shrug', arg: '' });
+  });
+
+  it('is case-insensitive on the command', () => {
+    expect(parseSlashCommand('/ME hi')?.command).toBe('me');
+  });
+
+  it('returns null for unknown commands and non-commands', () => {
+    expect(parseSlashCommand('/method chain')).toBeNull(); // not /me
+    expect(parseSlashCommand('/etc/passwd')).toBeNull();
+    expect(parseSlashCommand('hello /me')).toBeNull(); // not leading
+    expect(parseSlashCommand('/unknown x')).toBeNull();
+  });
+});
+
+describe('slashCommandContent', () => {
+  const plain: RenderedMarkdown = { formatted: false, html: '' };
+  const render = () => plain;
+
+  it('builds an m.emote for /me', () => {
+    expect(slashCommandContent('/me waves', render)).toMatchObject({
+      msgtype: 'm.emote',
+      body: 'waves',
+    });
+  });
+
+  it('appends the shrug for /shrug (with and without text)', () => {
+    expect(slashCommandContent('/shrug', render)).toMatchObject({
+      msgtype: 'm.text',
+      body: '¯\\_(ツ)_/¯',
+    });
+    expect(
+      (slashCommandContent('/shrug oh well', render) as { body: string }).body,
+    ).toBe('oh well ¯\\_(ツ)_/¯');
+  });
+
+  it('sends /plain as plain text (no formatting)', () => {
+    expect(slashCommandContent('/plain **not bold**', render)).toEqual({
+      msgtype: 'm.text',
+      body: '**not bold**',
+    });
+  });
+
+  it('wraps /spoiler text in a spoiler span', () => {
+    const content = slashCommandContent(
+      '/spoiler the butler did it',
+      render,
+    ) as {
+      formatted_body: string;
+    };
+    expect(content.formatted_body).toBe(
+      '<span data-mx-spoiler>the butler did it</span>',
+    );
+  });
+
+  it('returns null for a non-command (send it literally)', () => {
+    expect(slashCommandContent('just a message', render)).toBeNull();
+  });
+
+  it('returns null for an empty-argument command (nothing to send)', () => {
+    expect(slashCommandContent('/me', render)).toBeNull();
+    expect(slashCommandContent('/spoiler', render)).toBeNull();
+  });
+});
 
 describe('mediaCaptionFields', () => {
   it('uses the filename as the body when there is no caption', () => {

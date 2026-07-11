@@ -399,6 +399,25 @@ describe('TimelineService', () => {
     expect(rich['formatted_body']).toContain('<strong>bold</strong>');
   });
 
+  it('interprets a /me slash command as an emote', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(svc.send('/me waves'));
+
+    expect(sent[0][0]).toBe('message');
+    expect(sent[0][1]).toMatchObject({ msgtype: 'm.emote', body: 'waves' });
+  });
+
+  it('appends the shrug for a /shrug slash command', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(svc.send('/shrug'));
+
+    expect(sent[0][1]).toEqual({ msgtype: 'm.text', body: '¯\\_(ツ)_/¯' });
+  });
+
   it('forwards a message content to another room, dropping any relation', async () => {
     const sent: unknown[][] = [];
     const svc = setup(

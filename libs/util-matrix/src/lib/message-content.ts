@@ -123,6 +123,82 @@ export function textMessageContent(
   return { msgtype: MsgType.Text, body: text };
 }
 
+/** The classic shrug the `/shrug` command appends. */
+const SHRUG = '¯\\_(ツ)_/¯';
+
+/** The IRC-style commands the composer recognizes. */
+const SLASH_COMMANDS = ['me', 'shrug', 'plain', 'spoiler'] as const;
+const SLASH_RE = new RegExp(
+  `^/(${SLASH_COMMANDS.join('|')})(?:[ \\t]+([\\s\\S]*))?$`,
+  'i',
+);
+
+/**
+ * Parse a leading IRC-style slash command (`/me`, `/shrug`, `/plain`, `/spoiler`) into its
+ * name + trimmed argument, or null when the text isn't one of them (so it sends literally —
+ * `/method`, `/etc/passwd`, and unknown commands are all left as plain text).
+ */
+export function parseSlashCommand(
+  text: string,
+): { command: string; arg: string } | null {
+  const match = SLASH_RE.exec(text);
+  return match
+    ? { command: match[1].toLowerCase(), arg: (match[2] ?? '').trim() }
+    : null;
+}
+
+/** `m.emote` content (`/me`), rich when the markdown adds formatting. */
+export function emoteMessageContent(text: string, md: RenderedMarkdown) {
+  if (md.formatted) {
+    return {
+      msgtype: MsgType.Emote,
+      body: text,
+      format: 'org.matrix.custom.html',
+      formatted_body: md.html,
+    };
+  }
+  return { msgtype: MsgType.Emote, body: text };
+}
+
+/** `m.text` spoiler content (`/spoiler`) — an `<span data-mx-spoiler>` formatted body. */
+export function spoilerMessageContent(text: string) {
+  return {
+    msgtype: MsgType.Text,
+    body: text,
+    format: 'org.matrix.custom.html',
+    formatted_body: `<span data-mx-spoiler>${escapeHtml(text)}</span>`,
+  };
+}
+
+/**
+ * Build the message content for a leading slash command, or null when the text isn't a
+ * recognized command (send it as a normal message). `renderHtml` renders the argument's
+ * markdown (injected so this stays DI-free). Empty-argument `/me`/`/plain`/`/spoiler` also
+ * return null — nothing to send — so the raw text isn't swallowed.
+ */
+export function slashCommandContent(
+  text: string,
+  renderHtml: (markdown: string) => RenderedMarkdown,
+): Record<string, unknown> | null {
+  const parsed = parseSlashCommand(text);
+  if (!parsed) {
+    return null;
+  }
+  const { command, arg } = parsed;
+  switch (command) {
+    case 'me':
+      return arg ? emoteMessageContent(arg, renderHtml(arg)) : null;
+    case 'shrug':
+      return { msgtype: MsgType.Text, body: arg ? `${arg} ${SHRUG}` : SHRUG };
+    case 'plain':
+      return arg ? { msgtype: MsgType.Text, body: arg } : null;
+    case 'spoiler':
+      return arg ? spoilerMessageContent(arg) : null;
+    default:
+      return null;
+  }
+}
+
 /**
  * `m.replace` edit content targeting `messageId`, with the leading `* ` fallback.
  * Mentions land in `m.new_content` (the effective content) — not the top-level
