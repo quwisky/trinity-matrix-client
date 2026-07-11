@@ -20,6 +20,7 @@ function room(over: Partial<PublicRoomSummary> = {}): PublicRoomSummary {
     alias: '#general:hs',
     avatarMxc: null,
     memberCount: 3,
+    isSpace: false,
     ...over,
   };
 }
@@ -59,7 +60,11 @@ async function build(
 describe('RoomDirectoryComponent', () => {
   it('loads the first page of public rooms on open', async () => {
     const { cmp, search, container } = await build();
-    expect(search).toHaveBeenCalledWith({ term: '', since: undefined });
+    expect(search).toHaveBeenCalledWith({
+      term: '',
+      since: undefined,
+      spaces: false,
+    });
     expect(cmp.rooms()).toHaveLength(1);
     expect(container.textContent).toContain('General');
   });
@@ -73,7 +78,40 @@ describe('RoomDirectoryComponent', () => {
     expect(search).toHaveBeenLastCalledWith({
       term: 'chess',
       since: undefined,
+      spaces: false,
     });
+  });
+
+  it('runs the search and prevents the native form navigation on submit', async () => {
+    const { cmp, search } = await build();
+    const event = new Event('submit', { cancelable: true });
+
+    cmp.onSubmit(event);
+
+    expect(event.defaultPrevented).toBe(true); // no page reload
+    expect(search).toHaveBeenCalledTimes(2); // ngOnInit + submit
+  });
+
+  it('switches to Spaces mode and re-runs the search restricted to spaces', async () => {
+    const { cmp, search } = await build();
+
+    cmp.setMode('spaces');
+
+    expect(cmp.mode()).toBe('spaces');
+    expect(search).toHaveBeenLastCalledWith({
+      term: '',
+      since: undefined,
+      spaces: true,
+    });
+  });
+
+  it('ignores selecting the mode already active', async () => {
+    const { cmp, search } = await build();
+    const calls = search.mock.calls.length;
+
+    cmp.setMode('rooms');
+
+    expect(search.mock.calls.length).toBe(calls); // no extra query
   });
 
   it('appends the next page and threads the pagination token on load more', async () => {
@@ -90,7 +128,11 @@ describe('RoomDirectoryComponent', () => {
 
     cmp.loadMore();
 
-    expect(search).toHaveBeenLastCalledWith({ term: '', since: 'tok' });
+    expect(search).toHaveBeenLastCalledWith({
+      term: '',
+      since: 'tok',
+      spaces: false,
+    });
     expect(cmp.rooms().map((r) => r.roomId)).toEqual(['!a:hs', '!b:hs']);
     expect(cmp.hasMore()).toBe(false);
   });
@@ -109,7 +151,18 @@ describe('RoomDirectoryComponent', () => {
     cmp.join(room({ roomId: '!r:hs', alias: '#general:hs' }));
 
     expect(join).toHaveBeenCalledWith('#general:hs'); // alias preferred
-    expect(close).toHaveBeenCalledWith('!joined:hs');
+    expect(close).toHaveBeenCalledWith({
+      roomId: '!joined:hs',
+      isSpace: false,
+    });
+  });
+
+  it('flags the joined entry as a space when closing', async () => {
+    const { cmp, close } = await build();
+
+    cmp.join(room({ alias: null, isSpace: true }));
+
+    expect(close).toHaveBeenCalledWith({ roomId: '!joined:hs', isSpace: true });
   });
 
   it('joins by room id when there is no alias', async () => {

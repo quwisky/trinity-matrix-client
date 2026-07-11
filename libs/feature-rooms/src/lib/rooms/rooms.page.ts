@@ -61,7 +61,10 @@ import {
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
-import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
+import {
+  RoomDirectoryComponent,
+  type DirectoryJoin,
+} from '../room-directory/room-directory.component';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { type SwitcherSelection } from '@trinity/data-access-search';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
@@ -669,15 +672,22 @@ export class RoomsPage implements OnInit, OnDestroy {
     });
   }
 
-  /** Browse the public room directory; select a room joined from it. */
+  /** Browse the public directory; open a room — or select a space — joined from it. */
   async onExploreRooms(): Promise<void> {
-    const roomId = await this.dialog.openAndWait<string | null>(
+    const joined = await this.dialog.openAndWait<DirectoryJoin | null>(
       RoomDirectoryComponent,
     );
-    if (roomId) {
-      // A joined public room lives under Home — surface it there and open it.
-      this.onSelectSpace(null);
-      this.onSelectRoom(roomId);
+    if (!joined) {
+      return;
+    }
+    if (joined.isSpace) {
+      // A joined space lands in the rail — select it there.
+      this.onSelectSpace(joined.roomId);
+    } else {
+      // A joined public room is a spaceless non-DM, so it lives in the Rooms view
+      // (Home shows DMs only) — switch there so it's listed, then open it.
+      this.onShowRooms();
+      this.onSelectRoom(joined.roomId);
     }
   }
 

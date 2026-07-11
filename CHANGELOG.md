@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Browse public spaces.** The Explore directory now has a **Rooms / Spaces** toggle, so
+  you can discover and join public Spaces (not just rooms) from your homeserver's directory;
+  a joined space appears in the rail and is selected, a joined room opens in the Rooms view.
 - **Share your location.** A location button in the composer sends your current position
   as an `m.location` message, rendered as a card with the coordinates and an "Open in maps"
   link (no embedded map tiles, so the strict content-security policy stays intact).
@@ -218,6 +221,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Searching the public directory no longer reloads the app.** The Explore directory's
+  search form performed a native browser submit (it had no Angular form binding), which
+  navigated away and closed the dialog instead of running the search. It now searches in
+  place.
 - **Links in messages are now clickable.** A bare URL in a message rendered as plain
   text — because a plain-text message (no HTML formatting) wasn't linkified. URLs are
   now turned into links when a message is displayed, so they're clickable regardless of

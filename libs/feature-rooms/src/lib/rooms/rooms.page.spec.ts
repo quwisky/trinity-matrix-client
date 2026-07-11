@@ -305,12 +305,31 @@ describe('RoomsPage action error feedback', () => {
   it('opens the room directory and selects a room joined from it', async () => {
     const page = build();
     const dialog = TestBed.inject(TrnDialogService);
-    vi.mocked(dialog.openAndWait).mockResolvedValue('!joined:hs');
+    vi.mocked(dialog.openAndWait).mockResolvedValue({
+      roomId: '!joined:hs',
+      isSpace: false,
+    });
 
     await page.onExploreRooms();
 
     expect(dialog.openAndWait).toHaveBeenCalledWith(RoomDirectoryComponent);
+    expect(page.roomsView()).toBe(true); // listed in the Rooms view
+    expect(page.activeSpaceId()).toBeNull();
     expect(page.activeRoomId()).toBe('!joined:hs'); // onSelectRoom ran
+  });
+
+  it('selects a space joined from the directory in the rail', async () => {
+    const page = build();
+    const dialog = TestBed.inject(TrnDialogService);
+    vi.mocked(dialog.openAndWait).mockResolvedValue({
+      roomId: '!space:hs',
+      isSpace: true,
+    });
+
+    await page.onExploreRooms();
+
+    expect(page.activeSpaceId()).toBe('!space:hs'); // onSelectSpace ran
+    expect(page.activeRoomId()).toBeNull(); // no room opened
   });
 
   it('does not select a room when the directory is dismissed', async () => {
