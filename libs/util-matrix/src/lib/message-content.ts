@@ -149,13 +149,18 @@ export function parseSlashCommand(
 }
 
 /** `m.emote` content (`/me`), rich when the markdown adds formatting. */
-export function emoteMessageContent(text: string, md: RenderedMarkdown) {
-  if (md.formatted) {
+export function emoteMessageContent(
+  text: string,
+  md: RenderedMarkdown,
+  mentions: Mention[] = [],
+) {
+  if (md.formatted || mentions.length > 0) {
     return {
       msgtype: MsgType.Emote,
       body: text,
       format: 'org.matrix.custom.html',
-      formatted_body: md.html,
+      formatted_body: applyMentionPills(md.html, mentions),
+      ...mentionsBlock(mentions.map((m) => m.userId)),
     };
   }
   return { msgtype: MsgType.Emote, body: text };
@@ -218,6 +223,7 @@ export function spoilerMessageContent(text: string) {
 export function slashCommandContent(
   text: string,
   renderHtml: (markdown: string) => RenderedMarkdown,
+  mentions: Mention[] = [],
 ): Record<string, unknown> | null {
   const parsed = parseSlashCommand(text);
   if (!parsed) {
@@ -226,7 +232,9 @@ export function slashCommandContent(
   const { command, arg } = parsed;
   switch (command) {
     case 'me':
-      return arg ? emoteMessageContent(arg, renderHtml(arg)) : null;
+      // `/me` is the emote path, so carry any @-mentions (pills + `m.mentions`)
+      // through — otherwise a `/me waves at @bob` wouldn't notify Bob.
+      return arg ? emoteMessageContent(arg, renderHtml(arg), mentions) : null;
     case 'shrug':
       return { msgtype: MsgType.Text, body: arg ? `${arg} ${SHRUG}` : SHRUG };
     case 'plain':

@@ -173,6 +173,19 @@
       } @else {
         <p class="msg__text msg__text--cont">{{ r.body }}</p>
       }
+      @if (r.shield; as shield) {
+        <ng-icon
+          name="lucideShieldAlert"
+          class="msg__shield msg__shield--cont"
+          [class.msg__shield--red]="shield.level === 'red'"
+          [attr.title]="shield.reason"
+          [attr.aria-label]="shield.reason"
+          [attr.data-testid]="'msg-shield-' + shield.level"
+        />
+      }
+      @if (r.previewUrl) {
+        <trn-link-preview [url]="r.previewUrl" />
+      }
       @if (r.edited) {
         <span class="msg__edited">(edited)</span>
       }

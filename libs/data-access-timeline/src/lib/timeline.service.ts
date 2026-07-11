@@ -448,7 +448,11 @@ export class TimelineService {
       // otherwise build the normal text content (rather than sendText/HtmlMessage) so
       // mentions carry `m.mentions` + matrix.to pills. The SDK creates the local echo.
       const content =
-        slashCommandContent(text, (md) => renderMarkdown(this.sanitizer, md)) ??
+        slashCommandContent(
+          text,
+          (md) => renderMarkdown(this.sanitizer, md),
+          mentions,
+        ) ??
         textMessageContent(
           text,
           renderMarkdown(this.sanitizer, text),
@@ -783,10 +787,16 @@ export class TimelineService {
       });
     this.relevantSenders = relevant;
     // Drop cache entries for events no longer in the timeline (redacted-away,
-    // replaced by their remote id, or scrolled out under a window cap).
+    // replaced by their remote id, or scrolled out under a window cap). Prune the
+    // shields map on the same key set so it can't grow unbounded across a session.
     for (const id of [...this.viewCache.keys()]) {
       if (!seen.has(id)) {
         this.viewCache.delete(id);
+      }
+    }
+    for (const id of [...this.shields.keys()]) {
+      if (!seen.has(id)) {
+        this.shields.delete(id);
       }
     }
     this._messages.set(views);

@@ -103,6 +103,21 @@ describe('slashCommandContent', () => {
     });
   });
 
+  it('carries @-mentions through /me (pill + m.mentions)', () => {
+    const html = '<p>waves at @Bob</p>';
+    const content = slashCommandContent(
+      '/me waves at @Bob',
+      () => ({ formatted: false, html }),
+      [{ userId: '@bob:hs', display: '@Bob' }],
+    ) as Record<string, unknown>;
+
+    expect(content['msgtype']).toBe('m.emote');
+    expect(content['formatted_body']).toContain(
+      '<a href="https://matrix.to/#/@bob:hs">@Bob</a>',
+    );
+    expect(content['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
+  });
+
   it('appends the shrug for /shrug (with and without text)', () => {
     expect(slashCommandContent('/shrug', render)).toMatchObject({
       msgtype: 'm.text',

@@ -698,7 +698,12 @@ export class RoomsPage implements OnInit, OnDestroy {
       busy: this.spaceBusy,
       error: this.spaceError,
       destroyRef: this.destroyRef,
-    }).subscribe((joinedId) => this.onSelectRoom(joinedId));
+    }).subscribe((joinedId) => {
+      // Surface the successor in the sidebar (Home shows DMs only) so it isn't
+      // opened-but-invisible, mirroring onExploreRooms.
+      this.onShowRooms();
+      this.onSelectRoom(joinedId);
+    });
   }
 
   /** Prompt for a name, create a standalone encrypted room, then select it. */
@@ -944,10 +949,11 @@ export class RoomsPage implements OnInit, OnDestroy {
       });
   }
 
-  /** Mark every unread room read (header action). */
+  /** Mark the currently-visible unread rooms read (header action). Scoped to the
+   * sidebar's rooms so it matches the button, which is gated on their unread state. */
   onMarkAllRead(): void {
     this.rooms
-      .markAllRead()
+      .markAllRead(this.visibleRooms().map((room) => room.id))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not mark rooms read.'),

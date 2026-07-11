@@ -142,6 +142,12 @@ export class MessageComposerComponent {
   readonly replyingTo = input('');
   /** Room members, for the @-mention autocomplete (empty disables mentions). */
   readonly members = input<MentionMember[]>([]);
+  /**
+   * Whether to offer the room-scoped rich actions (poll, location, sticker, voice).
+   * These act on the *active room* via their own services, so they can't be routed
+   * into a thread — the thread composer sets this false to hide them.
+   */
+  readonly richActions = input(true);
   /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
   readonly uploadProgress = input<number | null>(null);
   readonly submitText = output<ComposerSubmit>();
@@ -175,6 +181,10 @@ export class MessageComposerComponent {
   private readonly voiceElapsed = signal(0);
   /** Interval handle for the recording timer, cleared on stop/cancel/destroy. */
   private voiceTimer: ReturnType<typeof setInterval> | null = null;
+  /** True between a start() call and its mic-acquisition resolving (re-entry guard). */
+  private voiceStarting = false;
+  /** Set on teardown so an in-flight mic acquisition can abort instead of orphaning. */
+  private destroyed = false;
   /** `m:ss` label for the running recording timer. */
   readonly voiceTimeLabel = computed(() => {
     const total = this.voiceElapsed();
@@ -270,8 +280,9 @@ export class MessageComposerComponent {
     this.destroyRef.onDestroy(() => this.setPreview(null));
     // Stop a running recording timer (and release the mic) if torn down mid-record.
     this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
       this.clearVoiceTimer();
-      if (this.recordingVoice()) {
+      if (this.recordingVoice() || this.voiceStarting) {
         this.voiceRecorder.cancel();
       }
     });
@@ -286,6 +297,12 @@ export class MessageComposerComponent {
         this.wasRoomId = id;
         untracked(() => {
           this.clearPending();
+          // A recording belongs to the room it was started in — cancel it on a
+          // room/thread switch so the mic doesn't stay open and a later Send can't
+          // post the clip to the wrong room.
+          if (this.recordingVoice()) {
+            this.cancelVoiceRecording();
+          }
           this.mentions.set([]); // tracked mentions belong to the old conversation
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!this.editing()) {
@@ -617,16 +634,30 @@ export class MessageComposerComponent {
 
   /** Begin recording a voice message; toasts and resets if the mic is unavailable. */
   async startVoiceRecording(): Promise<void> {
-    if (this.recordingVoice()) {
+    // Guard re-entry: `recordingVoice` isn't set until the async mic acquisition
+    // resolves, so a second click before then would open a second mic stream and
+    // orphan the first. `voiceStarting` closes that window synchronously.
+    if (this.recordingVoice() || this.voiceStarting) {
       return;
     }
+    this.voiceStarting = true;
+    const roomAtStart = this.roomId();
     try {
       await this.voiceRecorder.start();
     } catch {
+      this.voiceStarting = false;
       this.toast.show('Could not access the microphone.', {
         duration: 4000,
         variant: 'destructive',
       });
+      return;
+    }
+    this.voiceStarting = false;
+    // The view may have been torn down, or the room switched, during acquisition —
+    // don't leave a stream open / timer ticking (and never bind the clip to a room
+    // the user has since left).
+    if (this.destroyed || this.roomId() !== roomAtStart) {
+      this.voiceRecorder.cancel();
       return;
     }
     this.recordingVoice.set(true);

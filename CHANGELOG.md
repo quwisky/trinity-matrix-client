@@ -229,6 +229,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **"Mark as read" now respects your read-receipt privacy.** Marking a room (or all rooms)
+  read sent a public read receipt even when you'd turned read receipts off — leaking your
+  read position to other members. It now acks privately when the setting is off, like the
+  automatic on-view path.
+- **Authenticity shields and link previews now show on grouped messages.** A shield (or an
+  Open-Graph preview) only rendered on the first message of a Discord-style group, so a
+  suspicious — or link-bearing — continuation message showed neither. Both now render on
+  every message.
+- **Polls and shared locations can no longer be "edited".** They offered a text-edit
+  affordance that would have corrupted the poll/location; only text messages are editable.
+- **Voice recording is more robust.** A recording is now cancelled when you switch rooms
+  (so the mic doesn't stay open and a later send can't post to the wrong room), a double-tap
+  can't open two microphone streams, and a torn-down composer no longer leaves the mic on.
+- **Link previews recover from a hiccup.** A one-off homeserver error while fetching a
+  preview was cached for the whole session, permanently hiding that link's card; a transient
+  failure now retries on the next view.
+- **Copied message links are resolvable.** A copied `matrix.to` permalink to a room-by-ID now
+  includes a `?via=` server hint, so recipients not already in the room can open it.
+- **Thread replies understand slash commands** (`/me`, `/shrug`, `/plain`, `/spoiler`), and
+  the thread composer no longer shows poll/location/sticker/voice buttons that would have
+  posted to the main room instead of the thread. `/me` now also carries @-mentions.
 - **Searching the public directory no longer reloads the app.** The Explore directory's
   search form performed a native browser submit (it had no Angular form binding), which
   navigated away and closed the dialog instead of running the search. It now searches in

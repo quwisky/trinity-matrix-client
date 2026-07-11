@@ -571,8 +571,9 @@ describe('SimpleMessageListComponent', () => {
 
       fixture.componentInstance.onRowAction(row('$1'), { type: 'copy-link' });
 
+      // A room-ID permalink carries a `?via=` routing hint (the room's origin server).
       expect(writeText).toHaveBeenCalledWith(
-        'https://matrix.to/#/!a%3Ahs/%241',
+        'https://matrix.to/#/!a%3Ahs/%241?via=hs',
       );
     });
 

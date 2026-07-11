@@ -62,7 +62,17 @@ test.describe('Message authenticity shields', () => {
       })
       .then((r) => r.json());
     const ownerAuth = { Authorization: `Bearer ${login1.access_token}` };
-    const readerId = `@${reader}:${(login1.user_id as string).split(':')[1]}`;
+    const readerLogin = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: reader },
+          password: readerPass,
+        },
+      })
+      .then((r) => r.json());
+    const readerAuth = { Authorization: `Bearer ${readerLogin.access_token}` };
+    const readerId = readerLogin.user_id as string;
 
     // A plaintext room (no encryption initial_state) — its messages get no shield.
     const { room_id } = await request
@@ -71,6 +81,12 @@ test.describe('Message authenticity shields', () => {
         data: { name: roomName, preset: 'private_chat', invite: [readerId] },
       })
       .then((r) => r.json());
+    // The reader must actually join, else the room lands as an invite (not a joined
+    // `.channel`) in their rail and the timeline never opens.
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
+      { headers: readerAuth },
+    );
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${runId}-msg`,
       { headers: ownerAuth, data: { msgtype: 'm.text', body } },
@@ -87,8 +103,12 @@ test.describe('Message authenticity shields', () => {
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
     await channel.first().click();
 
-    // The message renders, and it carries no authenticity shield (plaintext room).
-    await expect(page.getByText(body)).toBeVisible({ timeout: 20_000 });
+    // The message renders in the timeline (scope to the message text, not the
+    // sidebar preview which shows the same body), and carries no authenticity
+    // shield (plaintext room).
+    await expect(page.locator('.msg__text', { hasText: body })).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(page.locator('[data-testid^="msg-shield-"]')).toHaveCount(0);
   });
 });

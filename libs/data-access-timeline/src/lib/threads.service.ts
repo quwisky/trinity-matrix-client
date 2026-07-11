@@ -44,6 +44,7 @@ import {
   myReactionId,
   renderMarkdown,
   replyMessageContent,
+  slashCommandContent,
   textMessageContent,
   type Mention,
 } from '@trinity/util-matrix';
@@ -485,12 +486,20 @@ export class ThreadsService {
         return of(void 0);
       }
       const { client, room, roomId, threadId } = ctx;
-      // Build the content so mentions carry `m.mentions` + matrix.to pills.
-      const content = textMessageContent(
-        text,
-        renderMarkdown(this.sanitizer, text),
-        mentions,
-      );
+      // A leading slash command (/me, /shrug, /plain, /spoiler) rewrites the content
+      // just like the main composer; otherwise build the normal text content so
+      // mentions carry `m.mentions` + matrix.to pills.
+      const content =
+        slashCommandContent(
+          text,
+          (md) => renderMarkdown(this.sanitizer, md),
+          mentions,
+        ) ??
+        textMessageContent(
+          text,
+          renderMarkdown(this.sanitizer, text),
+          mentions,
+        );
       // Ensure a local Thread exists (fetching the root if needed) *before*
       // sending, so the threaded echo has a home; a fetch failure aborts the send.
       return this.ensureThread(room, threadId).pipe(

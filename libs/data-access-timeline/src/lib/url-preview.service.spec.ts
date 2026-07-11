@@ -61,4 +61,22 @@ describe('UrlPreviewService', () => {
 
     expect(getUrlPreview).toHaveBeenCalledTimes(1);
   });
+
+  it('does not cache a transient failure — a later view retries and can render', async () => {
+    const getUrlPreview = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('temporary')) // first view: homeserver hiccup
+      .mockResolvedValueOnce({ 'og:title': 'Recovered' }); // later view: OK
+    const { svc } = setup(getUrlPreview);
+
+    expect(await firstValueFrom(svc.preview('https://x.test'))).toBeNull();
+    // The failure must not be cached, so the card can appear once the server recovers.
+    expect(await firstValueFrom(svc.preview('https://x.test'))).toEqual({
+      url: 'https://x.test',
+      title: 'Recovered',
+      description: null,
+      imageMxc: null,
+    });
+    expect(getUrlPreview).toHaveBeenCalledTimes(2);
+  });
 });

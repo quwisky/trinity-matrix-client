@@ -132,6 +132,21 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('[data-testid^=msg-shield-]')).toBeNull();
   });
 
+  it('shows the shield and link preview on a grouped continuation row too', async () => {
+    const { container } = await renderRow({
+      row: row({
+        showHeader: false, // grouped continuation message
+        shield: { level: 'red', reason: 'Sent from an unverified device.' },
+        previewUrl: 'https://example.com',
+      }),
+    });
+
+    expect(
+      container.querySelector('[data-testid=msg-shield-red]'),
+    ).not.toBeNull();
+    expect(container.querySelector('trn-link-preview')).not.toBeNull();
+  });
+
   it('renders a sticker as a resolved image, not a media attachment', async () => {
     const { container } = await render(MessageRowComponent, {
       inputs: {

@@ -5,6 +5,7 @@ import {
   MatrixEventEvent,
   NotificationCountType,
   Preset,
+  ReceiptType,
   RoomEvent,
   RoomStateEvent,
   type MatrixClient,
@@ -25,6 +26,7 @@ import {
   MatrixClientService,
   reprojectOnAccountSwitch,
 } from '@trinity/data-access-matrix-client';
+import { PrivacySettingsService } from '@trinity/platform-native';
 import { messagePreview } from '@trinity/util-matrix';
 import {
   isValidUserId,
@@ -102,6 +104,7 @@ export interface MemberSummary {
 @Injectable({ providedIn: 'root' })
 export class RoomsService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly privacy = inject(PrivacySettingsService);
   private readonly zone = inject(NgZone);
 
   /**
@@ -352,20 +355,43 @@ export class RoomsService {
       const client = this.matrix.instance;
       const room = client.getRoom(roomId);
       const events = room?.getLiveTimeline().getEvents() ?? [];
-      const latest = [...events].reverse().find((event) => !event.status);
+      // Walk backward for the newest confirmed (non-local-echo) event — no array
+      // copy/reverse, since markAllRead runs this per unread room.
+      let latest: (typeof events)[number] | undefined;
+      for (let i = events.length - 1; i >= 0; i--) {
+        if (!events[i].status) {
+          latest = events[i];
+          break;
+        }
+      }
       const latestId = latest?.getId();
       if (!latest || !latestId) {
         return of(void 0);
       }
       void client.setRoomReadMarkers(roomId, latestId)?.catch(() => undefined);
-      return from(client.sendReadReceipt(latest)).pipe(map(() => void 0));
+      // Honor the read-receipt privacy setting: when off, ack privately
+      // (`m.read.private`) so the badge clears without telling other members —
+      // mirroring the auto-on-view path in TimelineService.markRead.
+      const receiptType = this.privacy.sendReadReceipts()
+        ? ReceiptType.Read
+        : ReceiptType.ReadPrivate;
+      return from(client.sendReadReceipt(latest, receiptType)).pipe(
+        map(() => void 0),
+      );
     });
   }
 
-  /** Mark every room with unread messages read. Cold — acks them all in parallel. */
-  markAllRead(): Observable<void> {
+  /**
+   * Mark unread rooms read, in parallel. Pass `roomIds` to restrict to a scope (e.g.
+   * the rooms currently shown in the sidebar) so the action matches the affordance
+   * that triggered it; omit to ack every unread room. Cold — runs on subscribe.
+   */
+  markAllRead(roomIds?: readonly string[]): Observable<void> {
     return defer(() => {
-      const unread = this.rooms().filter((room) => room.hasUnread);
+      const scope = roomIds ? new Set(roomIds) : null;
+      const unread = this.rooms().filter(
+        (room) => room.hasUnread && (!scope || scope.has(room.id)),
+      );
       if (unread.length === 0) {
         return of(void 0);
       }

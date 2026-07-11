@@ -187,28 +187,30 @@
   >
     <ng-icon name="lucidePlus" aria-hidden="true" />
   </button>
-  <button
-    type="button"
-    class="composer__attach"
-    hlmTooltip="Create poll"
-    aria-label="Create poll"
-    data-testid="composer-poll"
-    [disabled]="editing()"
-    (click)="openPollDialog()"
-  >
-    <ng-icon name="lucideVote" aria-hidden="true" />
-  </button>
-  <button
-    type="button"
-    class="composer__attach"
-    hlmTooltip="Share location"
-    aria-label="Share location"
-    data-testid="composer-location"
-    [disabled]="editing()"
-    (click)="shareLocation()"
-  >
-    <ng-icon name="lucideMapPin" aria-hidden="true" />
-  </button>
+  @if (richActions()) {
+    <button
+      type="button"
+      class="composer__attach"
+      hlmTooltip="Create poll"
+      aria-label="Create poll"
+      data-testid="composer-poll"
+      [disabled]="editing()"
+      (click)="openPollDialog()"
+    >
+      <ng-icon name="lucideVote" aria-hidden="true" />
+    </button>
+    <button
+      type="button"
+      class="composer__attach"
+      hlmTooltip="Share location"
+      aria-label="Share location"
+      data-testid="composer-location"
+      [disabled]="editing()"
+      (click)="shareLocation()"
+    >
+      <ng-icon name="lucideMapPin" aria-hidden="true" />
+    </button>
+  }
   <textarea
     #ta
     hlmTextarea
@@ -261,30 +263,32 @@
       <ng-icon name="lucideImagePlay" aria-hidden="true" />
     </button>
   }
-  <button
-    type="button"
-    class="composer__sticker"
-    hlmTooltip="Sticker"
-    aria-label="Send a sticker"
-    data-testid="composer-sticker"
-    [disabled]="uploadProgress() !== null || editing()"
-    [attr.aria-expanded]="stickerPickerOpen()"
-    (click)="toggleStickerPicker()"
-  >
-    <ng-icon name="lucideSticker" aria-hidden="true" />
-  </button>
-  @if (voiceSupported && !recordingVoice()) {
+  @if (richActions()) {
     <button
       type="button"
-      class="composer__voice"
-      hlmTooltip="Record voice message"
-      aria-label="Record voice message"
-      data-testid="composer-voice"
+      class="composer__sticker"
+      hlmTooltip="Sticker"
+      aria-label="Send a sticker"
+      data-testid="composer-sticker"
       [disabled]="uploadProgress() !== null || editing()"
-      (click)="startVoiceRecording()"
+      [attr.aria-expanded]="stickerPickerOpen()"
+      (click)="toggleStickerPicker()"
     >
-      <ng-icon name="lucideMic" aria-hidden="true" />
+      <ng-icon name="lucideSticker" aria-hidden="true" />
     </button>
+    @if (voiceSupported && !recordingVoice()) {
+      <button
+        type="button"
+        class="composer__voice"
+        hlmTooltip="Record voice message"
+        aria-label="Record voice message"
+        data-testid="composer-voice"
+        [disabled]="uploadProgress() !== null || editing()"
+        (click)="startVoiceRecording()"
+      >
+        <ng-icon name="lucideMic" aria-hidden="true" />
+      </button>
+    }
   }
   <button
     type="button"

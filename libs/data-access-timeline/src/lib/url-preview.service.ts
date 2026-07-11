@@ -7,6 +7,7 @@ import {
   map,
   of,
   shareReplay,
+  tap,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
@@ -46,6 +47,16 @@ export class UrlPreviewService {
       );
     }).pipe(
       catchError(() => of(null)), // previews disabled / unreachable → no card
+      // Cache a resolved preview, but drop a null (transient failure / not-signed-in
+      // / nothing to show) so a later view re-fetches — a one-off homeserver error
+      // must not suppress the card for the rest of the session.
+      tap((preview) => {
+        if (preview) {
+          this.cache.set(url, of(preview));
+        } else {
+          this.cache.delete(url);
+        }
+      }),
       shareReplay(1),
     );
     this.cache.set(url, request);

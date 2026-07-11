@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription } from 'rxjs';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
@@ -44,6 +45,8 @@ export class RoomDirectoryComponent implements OnInit {
   private readonly directory = inject(PublicRoomsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
+  /** The in-flight directory request, so a reset can supersede it. */
+  private searchSub?: Subscription;
 
   readonly query = new FormControl('', { nonNullable: true });
 
@@ -131,12 +134,17 @@ export class RoomDirectoryComponent implements OnInit {
 
   private runSearch(reset: boolean): void {
     if (this.loading()) {
-      return;
+      // A reset (new term / Rooms↔Spaces switch) supersedes an in-flight request;
+      // a load-more must not stack behind one, so it still bails.
+      if (!reset) {
+        return;
+      }
+      this.searchSub?.unsubscribe();
     }
     this.loading.set(true);
     this.error.set(null);
     const since = reset ? undefined : (this.nextBatch() ?? undefined);
-    this.directory
+    this.searchSub = this.directory
       .search({
         term: this.query.value,
         since,

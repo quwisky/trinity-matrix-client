@@ -699,6 +699,16 @@ describe('ChannelSidebarComponent', () => {
     expect(all).toBe(true);
   });
 
+  it('hides the mark-all-read header action when no room is unread', async () => {
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: false })],
+      },
+    });
+
+    expect(container.querySelector('[data-testid="mark-all-read"]')).toBeNull();
+  });
+
   it('offers a Notifications entry in the room kebab menu', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },

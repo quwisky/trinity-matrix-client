@@ -59,6 +59,14 @@
   color: var(--trinity-danger, #ef4444);
 }
 
+// On a grouped continuation row there's no header to sit in, so show the shield
+// inline with its own gap and no left margin borrowed from the author name.
+.msg__shield--cont {
+  display: inline-flex;
+  margin-left: 0;
+  vertical-align: middle;
+}
+
 .msg__toolbar {
   position: absolute;
   top: -16px;

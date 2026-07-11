@@ -102,6 +102,7 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(RoomsService, {
           leave: leaveRoom,
           rooms: roomsSignal,
+          directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
           markRead: markReadFn,
           markAllRead: markAllReadFn,
         }),
@@ -348,6 +349,7 @@ describe('RoomsPage action error feedback', () => {
     page.onGoToUpgradedRoom('!old:hs');
 
     expect(joinPublicRoom).toHaveBeenCalledWith('!old:hs');
+    expect(page.roomsView()).toBe(true); // surfaced in the Rooms view, not opened invisibly
     expect(page.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
   });
 

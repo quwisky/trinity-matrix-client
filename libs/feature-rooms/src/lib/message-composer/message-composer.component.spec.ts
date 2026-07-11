@@ -920,6 +920,26 @@ describe('MessageComposerComponent', () => {
     body: 'Party Blob',
   };
 
+  it('hides the room-scoped actions (poll/location/sticker/voice) when richActions is off', async () => {
+    // The thread composer sets richActions=false: those actions post to the active
+    // room, not the thread, so they must not be offered there.
+    const { container } = await renderComposer({ richActions: false }, [
+      MockProvider(VoiceRecorderService, { supported: true }),
+    ]);
+    for (const id of [
+      'composer-poll',
+      'composer-location',
+      'composer-sticker',
+      'composer-voice',
+    ]) {
+      expect(container.querySelector(`[data-testid=${id}]`)).toBeNull();
+    }
+    // Text-routable affordances stay available in a thread.
+    expect(
+      container.querySelector('[data-testid=composer-attach]'),
+    ).not.toBeNull();
+  });
+
   it('toggling the sticker picker closes the emoji and GIF overlays', async () => {
     const { fixture } = await renderComposer({}, gifProviders());
     const cmp = fixture.componentInstance;
@@ -1035,6 +1055,46 @@ describe('MessageComposerComponent', () => {
       await Promise.resolve();
 
       expect(sendVoiceMessage).toHaveBeenCalledWith(recording);
+      expect(cmp.recordingVoice()).toBe(false);
+    });
+
+    it('ignores a second start while the mic is still being acquired', async () => {
+      let resolveStart!: () => void;
+      const start = vi.fn(
+        () => new Promise<void>((resolve) => (resolveStart = resolve)),
+      );
+      const cancel = vi.fn();
+      const { fixture } = await renderComposer({}, [
+        MockProvider(VoiceRecorderService, {
+          supported: true,
+          start,
+          stop: () => Promise.resolve(recording),
+          cancel,
+        }),
+        MockProvider(TimelineService, {}),
+      ]);
+      const cmp = fixture.componentInstance;
+
+      const first = cmp.startVoiceRecording();
+      const second = cmp.startVoiceRecording(); // clicked again during acquisition
+      resolveStart();
+      await Promise.all([first, second]);
+
+      expect(start).toHaveBeenCalledTimes(1); // only one mic stream opened
+      expect(cmp.recordingVoice()).toBe(true);
+    });
+
+    it('cancels an in-progress recording when the room switches', async () => {
+      const { providers, cancel } = voiceProviders();
+      const { fixture } = await renderComposer({ roomId: '!a:hs' }, providers);
+      const cmp = fixture.componentInstance;
+      await cmp.startVoiceRecording();
+      expect(cmp.recordingVoice()).toBe(true);
+
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.detectChanges();
+
+      expect(cancel).toHaveBeenCalled();
       expect(cmp.recordingVoice()).toBe(false);
     });
 

@@ -254,16 +254,19 @@ export function isDisplayableMessage(event: MatrixEvent): boolean {
 
 /**
  * Whether the current user may edit this view: own, confirmed (no pending/failed
- * send), decrypted, not redacted, and text (media isn't editable). Shared by the
- * main timeline and the in-thread composer so the rule stays in one place.
+ * send), decrypted, and an editable *text* kind. Only `text`/`emote`/`notice` carry
+ * an editable body — media, stickers, polls, and locations are not free text and a
+ * text `m.replace` would corrupt them (a poll/location has no `media` to gate on).
+ * Shared by the main timeline and the in-thread composer so the rule stays in one place.
  */
 export function isEditableMessage(message: MessageView): boolean {
   return (
     message.isOwn &&
     !message.status &&
     !message.decryptionFailed &&
-    message.kind !== 'redacted' &&
-    !message.media
+    (message.kind === 'text' ||
+      message.kind === 'emote' ||
+      message.kind === 'notice')
   );
 }
 

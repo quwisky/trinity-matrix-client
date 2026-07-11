@@ -70,15 +70,35 @@ export class VoiceMessageComponent {
     formatTime(this.playing() ? this.elapsed() : this.durationSec()),
   );
 
+  /** The URL currently pinned in the media cache (so eviction can't revoke it). */
+  private pinnedUrl: string | null = null;
+
   constructor() {
     effect((onCleanup) => {
       const media = this.media();
       this.src.set(null);
       const sub: Subscription = this.mediaService
         .resolveMedia(media, 'full')
-        .subscribe((url) => this.src.set(url));
-      onCleanup(() => sub.unsubscribe());
+        .subscribe((url) => {
+          // Pin the clip's object URL while it's bound to <audio> — the shared media
+          // cache would otherwise evict/revoke it under pressure mid-playback.
+          this.repin(url);
+          this.src.set(url);
+        });
+      onCleanup(() => {
+        sub.unsubscribe();
+        this.repin(null);
+      });
     });
+  }
+
+  private repin(url: string | null): void {
+    if (url === this.pinnedUrl) {
+      return;
+    }
+    this.mediaService.unpin(this.pinnedUrl);
+    this.mediaService.pin(url);
+    this.pinnedUrl = url;
   }
 
   barHeight(amplitude: number): number {

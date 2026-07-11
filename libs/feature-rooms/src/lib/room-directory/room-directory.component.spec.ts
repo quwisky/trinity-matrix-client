@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { render } from '@testing-library/angular';
 import { MockComponent, MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
@@ -103,6 +103,28 @@ describe('RoomDirectoryComponent', () => {
       since: undefined,
       spaces: true,
     });
+  });
+
+  it('switching mode supersedes an in-flight search (no dropped results)', async () => {
+    // First (ngOnInit) search never completes; switching to Spaces must still run.
+    const roomsPage$ = new Subject<PublicRoomsPage>();
+    const search = vi
+      .fn()
+      .mockReturnValueOnce(roomsPage$)
+      .mockReturnValueOnce(
+        of(page({ rooms: [room({ roomId: '!space:hs' })] })),
+      );
+    const { cmp } = await build({ search });
+
+    cmp.setMode('spaces'); // while the initial request is still pending
+
+    expect(search).toHaveBeenLastCalledWith({
+      term: '',
+      since: undefined,
+      spaces: true,
+    });
+    expect(cmp.rooms().map((r) => r.roomId)).toEqual(['!space:hs']);
+    expect(cmp.loading()).toBe(false);
   });
 
   it('ignores selecting the mode already active', async () => {

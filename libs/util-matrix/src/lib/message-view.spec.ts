@@ -1,10 +1,65 @@
 import { describe, expect, it } from 'vitest';
 import {
   firstUrl,
+  isEditableMessage,
   linkifyText,
   parseGeoUri,
   sanitizeMatrixHtml,
+  type MessageKind,
+  type MessageView,
 } from './message-view';
+
+function view(over: Partial<MessageView> = {}): MessageView {
+  return {
+    id: '$1',
+    senderId: '@me:hs',
+    senderName: 'Me',
+    senderInitial: 'M',
+    senderAvatarMxc: null,
+    body: 'hi',
+    html: null,
+    timestamp: 0,
+    isOwn: true,
+    decryptionFailed: false,
+    edited: false,
+    reactions: [],
+    replyTo: null,
+    status: null,
+    kind: 'text',
+    media: null,
+    caption: null,
+    captionHtml: null,
+    readReceipts: [],
+    poll: null,
+    ...over,
+  };
+}
+
+describe('isEditableMessage', () => {
+  it('allows editing own confirmed text/emote/notice messages', () => {
+    for (const kind of ['text', 'emote', 'notice'] as MessageKind[]) {
+      expect(isEditableMessage(view({ kind }))).toBe(true);
+    }
+  });
+
+  it('never edits polls or locations (a text replace would corrupt them)', () => {
+    // media is null for both, so the old `!message.media` gate wrongly allowed it.
+    expect(isEditableMessage(view({ kind: 'poll' }))).toBe(false);
+    expect(
+      isEditableMessage(
+        view({ kind: 'location', location: { lat: 1, lng: 2, label: 'x' } }),
+      ),
+    ).toBe(false);
+    expect(isEditableMessage(view({ kind: 'unsupported' }))).toBe(false);
+  });
+
+  it('never edits others’ messages, unsent/failed sends, or decryption failures', () => {
+    expect(isEditableMessage(view({ isOwn: false }))).toBe(false);
+    expect(isEditableMessage(view({ status: 'sending' }))).toBe(false);
+    expect(isEditableMessage(view({ status: 'failed' }))).toBe(false);
+    expect(isEditableMessage(view({ decryptionFailed: true }))).toBe(false);
+  });
+});
 
 describe('parseGeoUri', () => {
   it('parses lat/lng from a geo URI', () => {

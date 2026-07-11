@@ -113,4 +113,27 @@ describe('VoiceRecorderService', () => {
     expect(trackStop).toHaveBeenCalled();
     expect(svc.recording).toBe(false);
   });
+
+  it('start() rejects when recording is unsupported', async () => {
+    vi.stubGlobal('MediaRecorder', undefined);
+    await expect(make().start()).rejects.toThrow(/available/i);
+  });
+
+  it('stop() closes the AudioContext and yields an empty waveform on decode failure', async () => {
+    const close = vi.fn(async () => undefined);
+    class FailingAudioContext {
+      decodeAudioData = vi.fn(async () => {
+        throw new Error('bad codec');
+      });
+      close = close;
+    }
+    vi.stubGlobal('AudioContext', FailingAudioContext);
+    const svc = make();
+    await svc.start();
+
+    const recording = await svc.stop();
+
+    expect(recording?.waveform).toEqual([]); // decode failure never breaks the send
+    expect(close).toHaveBeenCalled(); // context released regardless
+  });
 });
