@@ -4,6 +4,7 @@ import {
   Direction,
   EventType,
   MatrixEventEvent,
+  ReceiptType,
   RoomEvent,
   RoomMemberEvent,
   RoomStateEvent,
@@ -26,6 +27,7 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
+import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   annotationContent,
   buildMessageView,
@@ -67,6 +69,7 @@ export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly mediaSvc = inject(MediaService);
+  private readonly privacy = inject(PrivacySettingsService);
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();
@@ -82,6 +85,13 @@ export class TimelineService {
   // "X is typing…" row under the timeline.
   private readonly _typingNames = signal<string[]>([]);
   readonly typingNames = this._typingNames.asReadonly();
+
+  // Whether the current user's power level lets them redact OTHER users' messages
+  // (a moderator/admin). Computed on room open; the homeserver is the real authority,
+  // so a mid-session power change is picked up on the next open (and the server rejects
+  // a redaction we shouldn't have sent). Gates the delete affordance on others' rows.
+  private readonly _canRedactOthers = signal(false);
+  readonly canRedactOthers = this._canRedactOthers.asReadonly();
 
   // Timestamp (ms) of the last `sendTyping(true)` we issued for the open room, so we
   // refresh the flag at most every {@link TYPING_REFRESH_MS} instead of per keystroke;
@@ -217,6 +227,7 @@ export class TimelineService {
     // Capture the persisted read marker BEFORE the first refresh (which marks read and
     // advances it), so the "New messages" divider anchors where the user left off.
     this._readMarker.set(this.readMarkerOf(room));
+    this.updateRedactOthersPermission(room);
     // Re-ack the open room on refocus: while unfocused markRead holds the receipt
     // so its unread accrues, so we mark it read again when the window returns.
     if (typeof window !== 'undefined') {
@@ -250,7 +261,27 @@ export class TimelineService {
     this.viewCache.clear();
     this._messages.set([]);
     this._typingNames.set([]);
+    this._canRedactOthers.set(false);
     this._canLoadOlder.set(false);
+  }
+
+  /**
+   * Recompute whether the current user may redact other people's messages in `room`:
+   * their power level meets the room's `redact` requirement. Own messages are always
+   * deletable elsewhere; this only widens the affordance to moderators.
+   */
+  private updateRedactOthersPermission(room: Room): void {
+    const userId = this.matrix.isInitialized
+      ? this.matrix.instance.getUserId()
+      : null;
+    if (!userId) {
+      this._canRedactOthers.set(false);
+      return;
+    }
+    const level = room.getMember(userId)?.powerLevel ?? 0;
+    this._canRedactOthers.set(
+      room.currentState?.hasSufficientPowerLevelFor?.('redact', level) ?? false,
+    );
   }
 
   /** Page in older history (backward pagination via `scrollback`). */
@@ -647,7 +678,15 @@ export class TimelineService {
     }
     this.lastReadEventId = id;
     try {
-      void this.matrix.instance.sendReadReceipt(latest)?.catch(() => undefined);
+      // When the user has turned off read receipts, still ack — but privately
+      // (`m.read.private`), so their unread badge clears without other users
+      // seeing that they read it.
+      const receiptType = this.privacy.sendReadReceipts()
+        ? ReceiptType.Read
+        : ReceiptType.ReadPrivate;
+      void this.matrix.instance
+        .sendReadReceipt(latest, receiptType)
+        ?.catch(() => undefined);
       // Also advance the persisted fully-read marker so the unread anchor survives
       // reloads and other devices (the divider reads it on the next open).
       void this.matrix.instance

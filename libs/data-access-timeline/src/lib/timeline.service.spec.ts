@@ -1,12 +1,21 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
-import { RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
+import { ReceiptType, RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access-media';
+import { PrivacySettingsService } from '@trinity/platform-native';
 import { TYPING_REFRESH_MS } from '@trinity/util-matrix';
+
+/** A PrivacySettingsService mock with a fixed send-read-receipts preference. */
+function privacyProvider(sendReadReceipts: boolean) {
+  return MockProvider(PrivacySettingsService, {
+    sendReadReceipts: signal(sendReadReceipts).asReadonly(),
+  });
+}
 
 /** A MediaService mock whose uploadMedia echoes a descriptor for the room's mode. */
 function mediaProvider() {
@@ -140,7 +149,10 @@ function fakeRoom(
   members: ReturnType<typeof fakeMember>[] = [],
   fullyReadEventId: string | null = null,
   receiptsByEvent: Record<string, string[]> = {},
+  power: { mine?: number; redact?: number } = {},
 ) {
+  const myPower = power.mine ?? 0;
+  const redactLevel = power.redact ?? 50;
   return {
     roomId: '!r:hs',
     getLiveTimeline: () => ({
@@ -151,7 +163,12 @@ function fakeRoom(
     getMember: (id: string) => ({
       name: id === '@me:hs' ? 'Me' : 'Alice',
       getMxcAvatarUrl: () => null,
+      powerLevel: id === '@me:hs' ? myPower : 0,
     }),
+    currentState: {
+      hasSufficientPowerLevelFor: (_action: string, level: number) =>
+        level >= redactLevel,
+    },
     getMembers: () => members,
     getUsersReadUpTo: (event: { getId: () => string }) =>
       receiptsByEvent[event.getId()] ?? [],
@@ -224,8 +241,9 @@ function setup(
   sent: unknown[][] = [],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   encrypted = false,
+  power: { mine?: number; redact?: number } = {},
 ) {
-  const room = fakeRoom(events, reactions, encrypted);
+  const room = fakeRoom(events, reactions, encrypted, [], null, {}, power);
   const client = fakeClient(room, sent);
 
   TestBed.configureTestingModule({
@@ -478,6 +496,24 @@ describe('TimelineService', () => {
     await firstValueFrom(svc.redact('$x'));
 
     expect(sent[0]).toEqual(['redact', '$x']);
+  });
+
+  it('canRedactOthers is false for a regular member (power below redact level)', () => {
+    const svc = setup([], [], {}, false, { mine: 0, redact: 50 });
+    expect(svc.canRedactOthers()).toBe(false);
+  });
+
+  it('canRedactOthers is true for a moderator (power meets redact level)', () => {
+    const svc = setup([], [], {}, false, { mine: 50, redact: 50 });
+    expect(svc.canRedactOthers()).toBe(true);
+  });
+
+  it('canRedactOthers resets to false when the room closes', () => {
+    const svc = setup([], [], {}, false, { mine: 100, redact: 50 });
+    expect(svc.canRedactOthers()).toBe(true);
+
+    svc.close();
+    expect(svc.canRedactOthers()).toBe(false);
   });
 
   it('aggregates reactions onto messages and flags the user’s own', () => {
@@ -801,6 +837,57 @@ describe('TimelineService', () => {
     expect(received).toHaveLength(1);
     expect(received[0].getId()).toBe('$a'); // not the pending echo
   });
+
+  it.each([
+    { sendReceipts: true, expected: ReceiptType.Read, label: 'public' },
+    {
+      sendReceipts: false,
+      expected: ReceiptType.ReadPrivate,
+      label: 'private',
+    },
+  ])(
+    'sends a $label read receipt when send-read-receipts is $sendReceipts',
+    ({ sendReceipts, expected }) => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const received: { id: string; type: string }[] = [];
+      const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
+      const room = {
+        roomId: '!r:hs',
+        getLiveTimeline: () => ({
+          getEvents: () => events,
+          getPaginationToken: () => null,
+        }),
+        getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+        relations: { getChildEventsForEvent: () => undefined },
+        on: () => {},
+        off: () => {},
+      };
+      const client = {
+        baseUrl: 'https://hs',
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: () => {},
+        off: () => {},
+        sendReadReceipt: (e: { getId: () => string }, type: string) => {
+          received.push({ id: e.getId(), type });
+          return Promise.resolve({});
+        },
+        setRoomReadMarkers: () => Promise.resolve({}),
+        scrollback: () => Promise.resolve(room),
+      };
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          matrixProvider(client),
+          privacyProvider(sendReceipts),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+
+      expect(received).toEqual([{ id: '$a', type: expected }]);
+    },
+  );
 
   it('does not ack the open room while the window is unfocused (badge accrues)', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false); // app not in focus

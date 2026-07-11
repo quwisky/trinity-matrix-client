@@ -1,0 +1,24 @@
+<div>
+  <h2
+    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+  >
+    Notifications
+  </h2>
+  <p class="px-4 py-1 text-[13px] text-muted-foreground">
+    Choose what notifies you. These settings apply to every device signed in to
+    your account.
+  </p>
+
+  @for (rule of toggles; track rule.id) {
+    <label
+      class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+      [attr.data-testid]="'notif-' + rule.id"
+    >
+      <hlm-checkbox
+        [checked]="checked(rule)"
+        (checkedChange)="toggle(rule, $event)"
+      />
+      {{ rule.label }}
+    </label>
+  }
+</div>

@@ -1,0 +1,91 @@
+<div class="member-info" data-testid="member-info">
+  <trn-avatar
+    class="member-info__avatar"
+    [mxc]="member().avatarMxc"
+    [initial]="member().initial"
+    [name]="member().name"
+    [size]="64"
+    [presence]="presenceState()"
+  />
+  <div class="member-info__id">
+    <span class="member-info__name" data-testid="member-info-name">{{
+      member().name
+    }}</span>
+    <span class="member-info__handle">{{ member().userId }}</span>
+    <span class="member-info__role">{{ role() }}</span>
+  </div>
+
+  <div class="member-info__actions">
+    @if (!isSelf()) {
+      <button
+        hlmBtn
+        class="w-full"
+        (click)="message()"
+        data-testid="member-info-message"
+      >
+        Message
+      </button>
+    }
+    <button
+      hlmBtn
+      variant="ghost"
+      class="w-full"
+      (click)="copyId()"
+      data-testid="member-info-copy"
+    >
+      Copy user ID
+    </button>
+
+    @if (!isSelf()) {
+      <button
+        hlmBtn
+        variant="ghost"
+        class="w-full"
+        (click)="toggleIgnore()"
+        data-testid="member-info-ignore"
+      >
+        {{ ignored() ? 'Unblock' : 'Block' }}
+      </button>
+    }
+
+    @if (canKick() || canBan() || (canSetPower() && roleOptions().length)) {
+      <div class="member-info__moderation">
+        @if (canSetPower()) {
+          @for (option of roleOptions(); track option.level) {
+            <button
+              hlmBtn
+              variant="outline"
+              class="w-full"
+              (click)="setRole(option)"
+              [attr.data-testid]="'member-info-role-' + option.level"
+            >
+              Make {{ option.label }}
+            </button>
+          }
+        }
+        @if (canKick()) {
+          <button
+            hlmBtn
+            variant="outline"
+            class="member-info__danger w-full"
+            (click)="kick()"
+            data-testid="member-info-kick"
+          >
+            Remove from room
+          </button>
+        }
+        @if (canBan()) {
+          <button
+            hlmBtn
+            variant="destructive"
+            class="w-full"
+            (click)="ban()"
+            data-testid="member-info-ban"
+          >
+            Ban from room
+          </button>
+        }
+      </div>
+    }
+  </div>
+</div>

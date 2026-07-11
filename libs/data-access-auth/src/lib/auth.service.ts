@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { AutoDiscovery, createClient } from 'matrix-js-sdk';
+import { AutoDiscovery, createClient, type AuthDict } from 'matrix-js-sdk';
 import {
   Observable,
   catchError,
@@ -9,13 +9,19 @@ import {
   of,
   switchMap,
   tap,
+  throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { AvatarService } from '@trinity/data-access-media';
 import { MediaService } from '@trinity/data-access-media';
 import { PushService } from '@trinity/data-access-notifications';
 import { SessionStorageService } from '@trinity/platform-native';
-import { MatrixSession } from '@trinity/util-matrix';
+import {
+  MatrixSession,
+  UiaCancelledError,
+  runPasswordUia,
+  type PasswordPrompt,
+} from '@trinity/util-matrix';
 
 const DEVICE_DISPLAY_NAME = 'Trinity';
 
@@ -184,6 +190,51 @@ export class AuthService {
         return active ? this.storage.setActive(active) : of(void 0);
       }),
     );
+  }
+
+  /**
+   * Change the active account's password. Cold — runs on subscribe. The homeserver
+   * requires a user-interactive-auth (UIA) password stage, which we satisfy with the
+   * supplied `currentPassword` via {@link runPasswordUia}; a rejected password surfaces
+   * as a clear "incorrect password" error rather than a raw UIA failure. Other sessions
+   * are kept signed in (`logoutDevices: false`).
+   */
+  changePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      const client = this.matrix.instance;
+      let provided = false;
+      const promptPassword: PasswordPrompt = () => {
+        // A second prompt means the server rejected the first — bail rather than loop.
+        if (provided) {
+          return Promise.resolve(null);
+        }
+        provided = true;
+        return Promise.resolve(currentPassword);
+      };
+      return from(
+        runPasswordUia(
+          (auth) =>
+            client.setPassword(auth ?? ({} as AuthDict), newPassword, false),
+          promptPassword,
+          client.getUserId() ?? '',
+        ),
+      ).pipe(
+        map(() => void 0),
+        catchError((err) =>
+          throwError(() =>
+            err instanceof UiaCancelledError
+              ? new Error('Your current password is incorrect.')
+              : err,
+          ),
+        ),
+      );
+    });
   }
 
   /**

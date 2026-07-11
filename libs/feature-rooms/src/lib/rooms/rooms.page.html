@@ -43,6 +43,7 @@
       (leaveSpace)="onLeaveSpace()"
       (joinRoom)="onJoinChild($event)"
       (removeRoom)="onRemoveFromSpace($event)"
+      (leaveRoom)="onLeaveRoom($event)"
       (openChildSpace)="onSelectSpace($event)"
       (acceptInvite)="onAcceptInvite($event)"
       (declineInvite)="onDeclineInvite($event)"
@@ -118,6 +119,17 @@
             hlmBtn
             variant="ghost"
             size="icon"
+            (click)="onOpenRoomSettings()"
+            hlmTooltip="Room settings"
+            aria-label="Room settings"
+            data-testid="open-room-settings"
+          >
+            <ng-icon class="text-xl" name="lucideSettings" />
+          </button>
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
             (click)="openThreadsList()"
             hlmTooltip="Threads"
             aria-label="Threads"
@@ -168,6 +180,7 @@
             [messages]="timeline.messages()"
             [threadSummaries]="threads.summaries()"
             [canPin]="pinned.canPin()"
+            [canRedactOthers]="timeline.canRedactOthers()"
             [pinnedIds]="pinned.pinnedEventIds()"
             [loadingOlder]="timeline.loadingOlder()"
             [canLoadOlder]="timeline.canLoadOlder()"
@@ -199,6 +212,7 @@
             [messages]="timeline.messages()"
             [threadSummaries]="threads.summaries()"
             [canPin]="pinned.canPin()"
+            [canRedactOthers]="timeline.canRedactOthers()"
             [pinnedIds]="pinned.pinnedEventIds()"
             [loadingOlder]="timeline.loadingOlder()"
             [canLoadOlder]="timeline.canLoadOlder()"
@@ -227,7 +241,11 @@
           />
         }
         @if (membersOpen()) {
-          <trn-member-list class="chat-members" [members]="members()" />
+          <trn-member-list
+            class="chat-members"
+            [members]="members()"
+            (selectMember)="onSelectMember($event)"
+          />
         }
       } @else {
         <div class="chat-empty">

@@ -16,6 +16,7 @@ import {
 import {
   lucideCopy,
   lucideEllipsis,
+  lucideFlag,
   lucideForward,
   lucideMessagesSquare,
   lucidePencil,
@@ -48,6 +49,7 @@ export type MessageAction =
   | { type: 'delete' }
   | { type: 'copy' }
   | { type: 'forward' }
+  | { type: 'report' }
   | { type: 'pin' }
   | { type: 'thread' };
 
@@ -88,6 +90,7 @@ let nextPickerId = 0;
       lucidePlus,
       lucideCopy,
       lucideForward,
+      lucideFlag,
       lucidePencil,
       lucideTrash2,
     }),

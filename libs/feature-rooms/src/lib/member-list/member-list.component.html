@@ -13,19 +13,25 @@
       </span>
       <ul class="members__list" role="list">
         @for (row of section.rows; track row.member.userId) {
-          <li
-            class="member"
-            [class.member--offline]="row.presence === 'offline'"
-            [title]="row.member.userId"
-          >
-            <trn-avatar
-              [mxc]="row.member.avatarMxc"
-              [initial]="row.member.initial"
-              [name]="row.member.name"
-              [size]="32"
-              [presence]="row.presence"
-            />
-            <span class="member__name">{{ row.member.name }}</span>
+          <li class="members__item">
+            <button
+              class="member"
+              type="button"
+              [class.member--offline]="row.presence === 'offline'"
+              [title]="row.member.userId"
+              [attr.aria-label]="'View ' + row.member.name"
+              (click)="selectMember.emit(row.member)"
+              data-testid="member-row"
+            >
+              <trn-avatar
+                [mxc]="row.member.avatarMxc"
+                [initial]="row.member.initial"
+                [name]="row.member.name"
+                [size]="32"
+                [presence]="row.presence"
+              />
+              <span class="member__name">{{ row.member.name }}</span>
+            </button>
           </li>
         }
       </ul>

@@ -6,6 +6,9 @@ import { ExperimentalSettingsComponent } from './experimental/experimental-setti
 import { DevicesSectionComponent } from './devices/devices-section.component';
 import { GifsSectionComponent } from './gifs/gifs-section.component';
 import { PresenceSectionComponent } from './presence/presence-section.component';
+import { AccountSectionComponent } from './account/account-section.component';
+import { PrivacySettingsComponent } from './privacy/privacy-settings.component';
+import { NotificationsSectionComponent } from './notifications/notifications-section.component';
 
 /**
  * Settings routes: the {@link SettingsPage} shell hosts a submenu + a routed detail
@@ -20,6 +23,9 @@ export const settingsRoutes: Routes = [
       { path: 'presence', component: PresenceSectionComponent },
       { path: 'appearance', component: AppearanceSettingsComponent },
       { path: 'devices', component: DevicesSectionComponent },
+      { path: 'account', component: AccountSectionComponent },
+      { path: 'notifications', component: NotificationsSectionComponent },
+      { path: 'privacy', component: PrivacySettingsComponent },
       { path: 'gifs', component: GifsSectionComponent },
       { path: 'experimental', component: ExperimentalSettingsComponent },
     ],

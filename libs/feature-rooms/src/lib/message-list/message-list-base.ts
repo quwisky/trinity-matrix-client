@@ -13,6 +13,7 @@ import {
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
 import { ForwardService } from '../forward/forward.service';
+import { ReportService } from '../report/report.service';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
 import {
   formatTypingNotice,
@@ -57,6 +58,8 @@ export abstract class MessageListBase {
   readonly threadSummaries = input<Record<string, ThreadSummary>>({});
   /** Whether the current user may pin/unpin in this room (drives the per-row Pin item). */
   readonly canPin = input(false);
+  /** Whether the current user may redact OTHER people's messages here (a moderator). */
+  readonly canRedactOthers = input(false);
   /** Currently-pinned event ids, for the per-row pinned state. */
   readonly pinnedIds = input<readonly string[]>([]);
   readonly loadingOlder = input(false);
@@ -141,6 +144,7 @@ export abstract class MessageListBase {
   protected readonly alert = inject(TrnAlertService);
   private readonly reactionPicker = inject(ReactionPickerService);
   private readonly forwardSvc = inject(ForwardService);
+  private readonly reportSvc = inject(ReportService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   // Grouping rows, cached per event id so an unchanged message (same view object AND
@@ -314,12 +318,14 @@ export abstract class MessageListBase {
    */
   private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
     const canPin = this.canPin();
+    const canRedactOthers = this.canRedactOthers();
     const pinnedIds = this.pinnedIds();
     const caps = new Map<string, MessageRowCaps>();
     for (const message of this.messages()) {
       caps.set(message.id, {
         editable: this.isEditable(message),
-        deletable: message.isOwn && !message.status,
+        // Own messages are always deletable; a moderator can also redact others'.
+        deletable: (message.isOwn || canRedactOthers) && !message.status,
         canPin,
         pinned: pinnedIds.includes(message.id),
         canThread: true,
@@ -351,6 +357,9 @@ export abstract class MessageListBase {
         break;
       case 'forward':
         void this.forwardSvc.forward(this.roomId() ?? '', row.id);
+        break;
+      case 'report':
+        void this.reportSvc.report(this.roomId() ?? '', row.id);
         break;
       case 'edit':
         this.startEdit(row);

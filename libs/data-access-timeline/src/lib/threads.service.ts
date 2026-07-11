@@ -28,6 +28,7 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
+import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   buildMessageView,
   collectMessageSenders,
@@ -117,6 +118,7 @@ export class ThreadsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly mediaSvc = inject(MediaService);
+  private readonly privacy = inject(PrivacySettingsService);
 
   private readonly _summaries = signal<Record<string, ThreadSummary>>({});
   /** Thread summaries for the active room, keyed by thread-root event id. */
@@ -763,9 +765,13 @@ export class ThreadsService {
     this.lastReadEventId = id;
     try {
       // The event carries its thread id, so the SDK scopes the receipt to the
-      // thread (rather than the main timeline) automatically.
+      // thread (rather than the main timeline) automatically. Respect the read-
+      // receipt privacy toggle: send privately (`m.read.private`) when it's off.
+      const receiptType = this.privacy.sendReadReceipts()
+        ? ReceiptType.Read
+        : ReceiptType.ReadPrivate;
       void this.matrix.instance
-        .sendReadReceipt(target, ReceiptType.Read)
+        .sendReadReceipt(target, receiptType)
         ?.catch(() => undefined);
     } catch {
       // A missing/unsupported receipt API must never break thread viewing.

@@ -1,0 +1,71 @@
+.member-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 260px;
+  max-width: 92vw;
+  padding: 20px 16px 16px;
+  border: 1px solid var(--trinity-divider);
+  border-radius: 12px;
+  background: var(--trinity-sidebar);
+  text-align: center;
+
+  // The panel mounts in the CDK overlay (outside .members), so tell the avatar's
+  // presence dot what surface it rings against — else the ring halos (see member-list).
+  --trn-presence-ring: var(--trinity-sidebar);
+}
+
+.member-info__avatar {
+  flex: 0 0 auto;
+}
+
+.member-info__id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+}
+
+.member-info__name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--trinity-text-bright);
+  overflow-wrap: anywhere;
+}
+
+.member-info__handle {
+  font-size: 13px;
+  color: var(--trinity-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.member-info__role {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--trinity-text-muted);
+}
+
+.member-info__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+// The moderation actions sit below a divider so they read as a separate, weightier group.
+.member-info__moderation {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--trinity-divider);
+}
+
+.member-info__danger {
+  color: var(--trinity-danger, #e5484d);
+}

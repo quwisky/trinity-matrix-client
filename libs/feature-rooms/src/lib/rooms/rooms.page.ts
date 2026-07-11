@@ -20,6 +20,7 @@ import {
   lucideMessagesSquare,
   lucidePin,
   lucideSearch,
+  lucideSettings,
   lucideUserPlus,
   lucideUsers,
 } from '@ng-icons/lucide';
@@ -49,11 +50,18 @@ import {
 } from '@trinity/data-access-profile';
 import {
   RoomsService,
+  RoomSettingsService,
+  RoomModerationService,
+  RoomAliasesService,
   SpacesService,
   UnreadAggregatorService,
+  type MemberSummary,
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
+import { RoomSettingsComponent } from '../room-settings/room-settings.component';
+import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
+import { MemberInfoService } from '../member-info/member-info.service';
 import { type SwitcherSelection } from '@trinity/data-access-search';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
 import { type MatrixLinkTarget, type Mention } from '@trinity/util-matrix';
@@ -110,6 +118,7 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
       lucideMessagesSquare,
       lucidePin,
       lucideSearch,
+      lucideSettings,
       lucideUserPlus,
       lucideUsers,
     }),
@@ -127,6 +136,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly pinnedPanel = inject(PinnedPanelService);
   private readonly userPicker = inject(UserPickerService);
   private readonly userCard = inject(UserCardService);
+  private readonly memberInfo = inject(MemberInfoService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly messageSearch = inject(MessageSearchService);
   private readonly media = inject(MediaService);
@@ -140,6 +150,9 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly dialog = inject(TrnDialogService);
+  private readonly roomSettings = inject(RoomSettingsService);
+  private readonly moderation = inject(RoomModerationService);
+  private readonly aliases = inject(RoomAliasesService);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
   private readonly actionSheet = inject(TrnActionSheetService);
@@ -599,12 +612,50 @@ export class RoomsPage implements OnInit, OnDestroy {
     }).subscribe();
   }
 
-  /** Home "+": choose between creating a room and starting a DM. */
+  /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely. */
+  async onLeaveRoom(roomId: string): Promise<void> {
+    const name =
+      this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this room';
+    const confirmed = await this.alert.confirm({
+      header: 'Leave room',
+      message: `Leave “${name}”? You'll stop receiving its messages and need a new invite (or a public join) to come back.`,
+      confirmText: 'Leave',
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.rooms
+      .leave(roomId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        // The room drops from the sidebar via sync. If it was the open one, tear the
+        // room panes down (mirroring ngOnDestroy / onSelectRoom) so the timeline,
+        // threads, and pinned projections stop listening on a room we just left.
+        next: () => {
+          if (this.activeRoomId() === roomId) {
+            this.activeRoomId.set(null);
+            this.timeline.close();
+            this.threads.close();
+            this.threads.closeThread();
+            this.pinned.close();
+            this.media.releaseAll();
+          }
+        },
+        error: () => void this.showError('Could not leave the room.'),
+      });
+  }
+
+  /** Home "+": choose between creating a room, exploring the directory, and a DM. */
   onNewChat(): void {
     this.actionSheet.open({
       header: 'New message',
       buttons: [
         { text: 'Create a room', handler: () => void this.onCreateRoom() },
+        {
+          text: 'Explore public rooms',
+          handler: () => void this.onExploreRooms(),
+        },
         {
           text: 'Start a direct message',
           handler: () => void this.onStartDm(),
@@ -612,6 +663,18 @@ export class RoomsPage implements OnInit, OnDestroy {
         { text: 'Cancel', role: 'cancel' },
       ],
     });
+  }
+
+  /** Browse the public room directory; select a room joined from it. */
+  async onExploreRooms(): Promise<void> {
+    const roomId = await this.dialog.openAndWait<string | null>(
+      RoomDirectoryComponent,
+    );
+    if (roomId) {
+      // A joined public room lives under Home — surface it there and open it.
+      this.onSelectSpace(null);
+      this.onSelectRoom(roomId);
+    }
   }
 
   /** Prompt for a name, create a standalone encrypted room, then select it. */
@@ -753,10 +816,35 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Show the user card; if they pick "Message", open (or reuse) a DM with the user. */
   private async openUserCard(userId: string): Promise<void> {
     const messageUserId = await this.userCard.open(userId);
-    if (!messageUserId) {
-      return; // dismissed — no conversation is opened
+    if (messageUserId) {
+      this.startDirectMessage(messageUserId);
     }
-    runWithBusy(this.rooms.createDirectMessage(messageUserId), {
+  }
+
+  /** Member-list row: open the member's info panel; "Message" opens/reuses a DM. */
+  onSelectMember(member: MemberSummary): void {
+    const roomId = this.activeRoomId();
+    if (roomId) {
+      void this.openMemberInfo(member, roomId);
+    }
+  }
+
+  private async openMemberInfo(
+    member: MemberSummary,
+    roomId: string,
+  ): Promise<void> {
+    // Kick/ban actions are gated by the viewer's power over this member; the panel
+    // resolves a user id only for "Message" (kick/ban close it themselves via sync).
+    const caps = this.moderation.canModerate(roomId, member.userId);
+    const messageUserId = await this.memberInfo.open(member, roomId, caps);
+    if (messageUserId) {
+      this.startDirectMessage(messageUserId);
+    }
+  }
+
+  /** Open (or reuse) a direct message with `userId` and navigate to it. */
+  private startDirectMessage(userId: string): void {
+    runWithBusy(this.rooms.createDirectMessage(userId), {
       busy: this.spaceBusy,
       error: this.spaceError,
       destroyRef: this.destroyRef,
@@ -820,6 +908,35 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe({
         error: () => void this.showError('Could not update notifications.'),
       });
+  }
+
+  /** Header "Room settings": edit the active room's name and topic in a dialog. */
+  onOpenRoomSettings(): void {
+    const room = this.activeRoom();
+    if (!room) {
+      return;
+    }
+    const editable = this.roomSettings.editableFields(room.id);
+    const access = this.roomSettings.currentAccess(room.id);
+    // The dialog writes on save; the name/topic/access update live via the rooms
+    // sync listeners, so nothing to do with the resolved result here.
+    void this.dialog.openAndWait(RoomSettingsComponent, {
+      inputs: {
+        roomId: room.id,
+        name: room.name,
+        topic: room.topic,
+        avatarMxc: room.avatarMxc,
+        joinRule: access.joinRule,
+        historyVisibility: access.historyVisibility,
+        canEditName: editable.name,
+        canEditTopic: editable.topic,
+        canEditAvatar: editable.avatar,
+        canEditJoinRule: editable.joinRule,
+        canEditHistory: editable.history,
+        canManageBans: this.moderation.canManageBans(room.id),
+        canManageAliases: this.aliases.canManageAliases(room.id),
+      },
+    });
   }
 
   /** Open the threads-list panel for the active room (header "Threads" button). */

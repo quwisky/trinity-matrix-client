@@ -156,6 +156,8 @@ export class ChannelSidebarComponent {
   readonly joinRoom = output<SpaceChildRoom>();
   /** Remove (unlink) a joined channel from the active space, by room id. */
   readonly removeRoom = output<string>();
+  /** Leave a joined room entirely (not just unlink from a space), by room id. */
+  readonly leaveRoom = output<string>();
   /** Open a joined sub-space (select it in the rail), by room id. */
   readonly openChildSpace = output<string>();
   /** Accept / decline a pending invite by room id. */

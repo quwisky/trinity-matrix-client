@@ -13,6 +13,9 @@ import { RoomNotificationsService } from '@trinity/data-access-notifications';
 import { PinnedMessagesService } from '@trinity/data-access-pinned';
 import {
   RoomsService,
+  RoomSettingsService,
+  RoomModerationService,
+  RoomAliasesService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
@@ -34,6 +37,9 @@ import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
+import { MemberInfoService } from '../member-info/member-info.service';
+import { RoomSettingsComponent } from '../room-settings/room-settings.component';
+import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
 
@@ -54,18 +60,49 @@ describe('RoomsPage action error feedback', () => {
   let toastShow: ReturnType<typeof vi.fn>;
   let sendMedia: ReturnType<typeof vi.fn>;
   let setNotifyMode: ReturnType<typeof vi.fn>;
+  let leaveRoom: ReturnType<typeof vi.fn>;
+  let alertConfirm: ReturnType<typeof vi.fn>;
+  let roomsSignal: WritableSignal<RoomSummary[]>;
+  let editableFields: ReturnType<typeof vi.fn>;
+  let currentAccess: ReturnType<typeof vi.fn>;
+  let canManageBans: ReturnType<typeof vi.fn>;
+  let canManageAliases: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
     edit = vi.fn();
     sendMedia = vi.fn(() => of(undefined));
     setNotifyMode = vi.fn(() => of(undefined));
+    leaveRoom = vi.fn(() => of(undefined));
+    alertConfirm = vi.fn().mockResolvedValue(true);
+    roomsSignal = signal<RoomSummary[]>([]);
+    editableFields = vi.fn(() => ({
+      name: true,
+      topic: false,
+      avatar: false,
+      joinRule: false,
+      history: false,
+    }));
+    currentAccess = vi.fn(() => ({
+      joinRule: 'invite',
+      historyVisibility: 'shared',
+    }));
+    canManageBans = vi.fn(() => false);
+    canManageAliases = vi.fn(() => false);
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        MockProvider(RoomsService),
+        MockProvider(RoomsService, {
+          leave: leaveRoom,
+          rooms: roomsSignal,
+        }),
+        MockProvider(RoomSettingsService, { editableFields, currentAccess }),
+        MockProvider(RoomModerationService, { canManageBans }),
+        MockProvider(RoomAliasesService, { canManageAliases }),
         MockProvider(SpacesService),
+        MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService, { edit, sendMedia }),
+        MockProvider(MediaService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -141,6 +178,139 @@ describe('RoomsPage action error feedback', () => {
       expect.any(String),
       expect.objectContaining({ variant: 'destructive' }),
     );
+  });
+
+  it('leaves a room after confirmation and clears it if it was the open one', async () => {
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+
+    await page.onLeaveRoom('!r:hs');
+
+    expect(alertConfirm).toHaveBeenCalled();
+    expect(leaveRoom).toHaveBeenCalledWith('!r:hs');
+    expect(page.activeRoomId()).toBeNull();
+    // Tear every open-room projection down so none keeps listening on it.
+    expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
+    expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
+    expect(TestBed.inject(ThreadsService).closeThread).toHaveBeenCalled();
+    expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
+    expect(TestBed.inject(MediaService).releaseAll).toHaveBeenCalled();
+  });
+
+  it('leaves a room but keeps a different open room selected', async () => {
+    const page = build();
+    page.activeRoomId.set('!other:hs');
+
+    await page.onLeaveRoom('!r:hs');
+
+    expect(leaveRoom).toHaveBeenCalledWith('!r:hs');
+    expect(page.activeRoomId()).toBe('!other:hs');
+    // The open room wasn't the one left, so its projections stay put.
+    expect(TestBed.inject(TimelineService).close).not.toHaveBeenCalled();
+  });
+
+  it('does not leave a room when the confirmation is cancelled', async () => {
+    const page = build();
+    alertConfirm.mockResolvedValue(false);
+
+    await page.onLeaveRoom('!r:hs');
+
+    expect(leaveRoom).not.toHaveBeenCalled();
+  });
+
+  it('shows a danger toast when leaving a room fails', async () => {
+    const page = build();
+    leaveRoom.mockReturnValue(throwError(() => new Error('nope')));
+
+    await page.onLeaveRoom('!r:hs');
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('opens room settings, mapping each edit permission to a dialog input', () => {
+    const page = build();
+    roomsSignal.set([
+      {
+        id: '!r:hs',
+        name: 'General',
+        initial: 'G',
+        avatarMxc: null,
+        topic: 'The topic',
+        memberCount: 2,
+        encrypted: false,
+        unreadCount: 0,
+        highlightCount: 0,
+        hasUnread: false,
+        lastMessage: '',
+        activityTs: 0,
+        favourite: false,
+      },
+    ]);
+    page.activeRoomId.set('!r:hs');
+    editableFields.mockReturnValue({
+      name: true,
+      topic: false,
+      avatar: false,
+      joinRule: true,
+      history: false,
+    });
+    currentAccess.mockReturnValue({
+      joinRule: 'public',
+      historyVisibility: 'world_readable',
+    });
+    canManageBans.mockReturnValue(true);
+    canManageAliases.mockReturnValue(true);
+
+    page.onOpenRoomSettings();
+
+    expect(editableFields).toHaveBeenCalledWith('!r:hs');
+    expect(currentAccess).toHaveBeenCalledWith('!r:hs');
+    expect(canManageBans).toHaveBeenCalledWith('!r:hs');
+    expect(canManageAliases).toHaveBeenCalledWith('!r:hs');
+    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
+      RoomSettingsComponent,
+      {
+        inputs: expect.objectContaining({
+          roomId: '!r:hs',
+          name: 'General',
+          topic: 'The topic',
+          avatarMxc: null,
+          joinRule: 'public',
+          historyVisibility: 'world_readable',
+          canEditName: true,
+          canEditTopic: false,
+          canEditAvatar: false,
+          canEditJoinRule: true,
+          canEditHistory: false,
+          canManageBans: true,
+          canManageAliases: true,
+        }),
+      },
+    );
+  });
+
+  it('opens the room directory and selects a room joined from it', async () => {
+    const page = build();
+    const dialog = TestBed.inject(TrnDialogService);
+    vi.mocked(dialog.openAndWait).mockResolvedValue('!joined:hs');
+
+    await page.onExploreRooms();
+
+    expect(dialog.openAndWait).toHaveBeenCalledWith(RoomDirectoryComponent);
+    expect(page.activeRoomId()).toBe('!joined:hs'); // onSelectRoom ran
+  });
+
+  it('does not select a room when the directory is dismissed', async () => {
+    const page = build();
+    const dialog = TestBed.inject(TrnDialogService);
+    vi.mocked(dialog.openAndWait).mockResolvedValue(null);
+
+    await page.onExploreRooms();
+
+    expect(page.activeRoomId()).toBeNull();
   });
 
   it('opens the threads-list panel for the active room', () => {
@@ -883,6 +1053,8 @@ describe('RoomsPage room / DM / invite actions', () => {
   let acceptInvite: ReturnType<typeof vi.fn>;
   let declineInvite: ReturnType<typeof vi.fn>;
   let userCardOpen: ReturnType<typeof vi.fn>;
+  let memberInfoOpen: ReturnType<typeof vi.fn>;
+  let canModerate: ReturnType<typeof vi.fn>;
   let pending: WritableSignal<PendingInvite[]>;
 
   function pendingInvite(over: Partial<PendingInvite> = {}): PendingInvite {
@@ -908,6 +1080,13 @@ describe('RoomsPage room / DM / invite actions', () => {
     acceptInvite = vi.fn(() => of(undefined));
     declineInvite = vi.fn(() => of(undefined));
     userCardOpen = vi.fn().mockResolvedValue(null);
+    memberInfoOpen = vi.fn().mockResolvedValue(null);
+    canModerate = vi.fn(() => ({
+      kick: false,
+      ban: false,
+      setPower: false,
+      myPower: 0,
+    }));
     pending = signal<PendingInvite[]>([]);
     TestBed.configureTestingModule({
       providers: [
@@ -926,6 +1105,8 @@ describe('RoomsPage room / DM / invite actions', () => {
         }),
         MockProvider(UserPickerService, { pick }),
         MockProvider(UserCardService, { open: userCardOpen }),
+        MockProvider(MemberInfoService, { open: memberInfoOpen }),
+        MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
         MockProvider(TimelineService),
@@ -1021,6 +1202,67 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(createDirectMessage).not.toHaveBeenCalled();
   });
 
+  it('opens a member info panel and starts a DM only if messaged', async () => {
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+    const bob = {
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+    };
+    memberInfoOpen.mockResolvedValue('@bob:hs'); // the viewer chose "Message"
+
+    page.onSelectMember(bob);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(canModerate).toHaveBeenCalledWith('!r:hs', '@bob:hs');
+    expect(memberInfoOpen).toHaveBeenCalledWith(bob, '!r:hs', {
+      kick: false,
+      ban: false,
+      setPower: false,
+      myPower: 0,
+    });
+    expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
+    expect(page.activeRoomId()).toBe('!dm:hs');
+  });
+
+  it('opens no member info panel without an active room', () => {
+    const page = build();
+    page.activeRoomId.set(null);
+
+    page.onSelectMember({
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+    });
+
+    expect(memberInfoOpen).not.toHaveBeenCalled();
+  });
+
+  it('opens no conversation when the member panel is dismissed', async () => {
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+    memberInfoOpen.mockResolvedValue(null); // dismissed
+
+    page.onSelectMember({
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(memberInfoOpen).toHaveBeenCalled();
+    expect(createDirectMessage).not.toHaveBeenCalled();
+  });
+
   it('invites the picked user to the active room and toasts success', async () => {
     const page = build();
     page.activeRoomId.set('!r:hs');
@@ -1110,6 +1352,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       expect.objectContaining({
         buttons: expect.arrayContaining([
           expect.objectContaining({ text: 'Create a room' }),
+          expect.objectContaining({ text: 'Explore public rooms' }),
           expect.objectContaining({ text: 'Start a direct message' }),
         ]),
       }),

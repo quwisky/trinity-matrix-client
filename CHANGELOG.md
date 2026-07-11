@@ -8,6 +8,63 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Notification settings.** A new **Notifications** section in Settings has account-level
+  toggles for what notifies you — a master switch plus per-category rules (mentions, @room,
+  invitations, calls, direct chats, rooms, and their encrypted variants). They map to your
+  homeserver's push rules and sync across every device on your account.
+- **Explore public rooms.** The Home **+** menu now has **Explore public rooms** — a
+  directory browser that searches your homeserver's public rooms, paginates with **Load
+  more**, and lets you **Join** one straight from the results (it then opens in your list).
+- **Manage a room's addresses.** The room settings dialog now has an **Addresses** section
+  (for anyone whose power level lets them) to publish or remove local aliases
+  (`#address:server`) in the homeserver directory and choose which one is the room's main
+  (canonical) address.
+- **View and lift room bans.** The room settings dialog now shows a **Banned members** list
+  (with each ban's reason) for anyone whose power level lets them ban, each with an **Unban**
+  action that lets the member be re-invited or rejoin.
+- **Control who can join and read history.** The room settings dialog now has **Who can
+  join** (invite-only or public) and **Who can read history** (from all history down to
+  world-readable) controls, gated by your power level. They write `m.room.join_rules` and
+  `m.room.history_visibility` and sync across clients.
+- **Stop sending read receipts.** A new **Privacy** section in Settings has a **Send read
+  receipts** toggle. Turn it off and reading a message still clears your own unread badge,
+  but privately (`m.read.private`) — other people no longer see when you've read their
+  messages. It's a per-device choice and applies to both the main timeline and threads.
+- **Change your account password.** Settings now has an **Account** section to change your
+  password: enter your current password, a new one (confirmed), and the change is applied
+  server-side. Your other signed-in sessions stay logged in, and a wrong current password
+  is reported clearly rather than as a raw error.
+- **Report a message.** The message ⋯ menu now has **Report message** — flag a message to
+  the room's server administrators, with an optional reason (`reportEvent`), from the main
+  timeline or a thread.
+- **Block (ignore) a member.** A member's info panel now has a **Block** / **Unblock**
+  action that ignores them account-wide (`m.ignored_user_list`) — hiding their messages
+  everywhere and syncing across your devices. It needs no room-admin rights, so it works
+  even where you can't moderate.
+- **Promote or demote members.** A member's info panel now lets you change their role —
+  Member, Moderator, or Admin — for any role at or below your own power level (you can't
+  raise someone above yourself, or act on a peer/superior). Written to the room's
+  `m.room.power_levels`.
+- **Kick and ban members.** From a member's info panel, a moderator or admin can now
+  **Remove from room** (kick) or **Ban** them, with an optional reason. The actions show
+  only when your power level out-ranks the member and meets the room's kick/ban
+  requirement, so you can't act on someone at or above your own rank.
+- **Member info panel.** Clicking a member in the member list now opens a panel showing
+  their name, ID, live online status, and role (Admin / Moderator / Member), with
+  **Message** (start or reuse a direct message) and **Copy user ID** actions — the launch
+  surface for further per-member actions.
+- **Edit a room's name, topic, and photo.** A new ⚙ button in the room header opens a
+  **Room settings** dialog to change the room's name, topic, and avatar. Fields you don't
+  have permission to change (by power level) are read-only. Changes save to `m.room.name`
+  / `m.room.topic` / `m.room.avatar` and sync across clients.
+- **Moderators can delete others' messages.** If your power level in a room meets its
+  redaction requirement (a moderator or admin), the message ⋯ menu now offers **Delete
+  message** on other people's messages too, not just your own — redacting them for
+  everyone. Regular members still only see it on their own messages.
+- **Leave a room.** Each room's ⋮ menu in the channel list now has a **Leave room**
+  action: confirm, and you leave the room and it drops out of your list. Previously you
+  could unlink a room from a space or decline an invite, but there was no way to exit a
+  joined room. If the room you leave is the one open, the timeline pane clears.
 - **App version and commit in Settings.** The Settings screen now shows the running
   build's version and git commit in a small footer (e.g. `Trinity v0.0.1 · a1b2c3d`),
   regenerated from `package.json` + git at build time — handy for bug reports.

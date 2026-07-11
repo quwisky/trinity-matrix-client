@@ -640,6 +640,20 @@ describe('ChannelSidebarComponent', () => {
     expect(removed).toBe('!a:hs');
   });
 
+  it('emits leaveRoom from the room kebab menu', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+    });
+    let left: string | undefined;
+    fixture.componentInstance.leaveRoom.subscribe((id) => (left = id));
+
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+    document.querySelector<HTMLElement>('[data-testid="room-leave"]')!.click();
+
+    expect(left).toBe('!a:hs');
+  });
+
   it('offers a Notifications entry in the room kebab menu', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },

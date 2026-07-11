@@ -1,0 +1,38 @@
+<section class="room-settings__field" data-testid="banned-members">
+  <span class="room-settings__label">Banned members</span>
+
+  @if (isEmpty()) {
+    <p class="text-sm text-muted-foreground" data-testid="banned-members-empty">
+      No one is banned.
+    </p>
+  } @else {
+    <ul class="flex flex-col gap-2">
+      @for (member of banned(); track member.userId) {
+        <li
+          class="flex items-center justify-between gap-3"
+          data-testid="banned-member"
+        >
+          <span class="flex min-w-0 flex-col">
+            <span class="truncate text-sm font-medium">{{ member.name }}</span>
+            @if (member.reason) {
+              <span class="truncate text-xs text-muted-foreground">
+                {{ member.reason }}
+              </span>
+            }
+          </span>
+          <button
+            hlmBtn
+            type="button"
+            variant="outline"
+            size="sm"
+            [disabled]="isPending(member.userId)"
+            (click)="unban(member)"
+            data-testid="banned-member-unban"
+          >
+            {{ isPending(member.userId) ? 'Unbanning…' : 'Unban' }}
+          </button>
+        </li>
+      }
+    </ul>
+  }
+</section>

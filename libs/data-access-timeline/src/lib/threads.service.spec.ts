@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
@@ -11,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ThreadsService } from './threads.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access-media';
+import { PrivacySettingsService } from '@trinity/platform-native';
 
 const MEMBERS: Record<string, string> = {
   '@me:hs': 'Me',
@@ -126,6 +128,7 @@ function setup(
   sent: unknown[][] = [],
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   extraEvents: FakeEvent[] = [],
+  sendReadReceipts = true,
 ) {
   const all = [
     ...extraEvents,
@@ -233,6 +236,9 @@ function setup(
       }),
       MockProvider(MediaService, {
         uploadMedia: fakeMediaService().uploadMedia,
+      }),
+      MockProvider(PrivacySettingsService, {
+        sendReadReceipts: signal(sendReadReceipts).asReadonly(),
       }),
     ],
   });
@@ -1005,6 +1011,36 @@ describe('ThreadsService', () => {
 
       // Receipt for the latest reply (not the root), with ReceiptType.Read.
       expect(receipts).toEqual([['$r1', 'm.read']]);
+    });
+
+    it('sends a private thread receipt when send-read-receipts is off', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'reply',
+        ts: 1000,
+      });
+      const receipts: [string, string][] = [];
+      const { svc, client } = setup(
+        [fakeThread({ id: '$root', rootEvent: root, events: [root, reply] })],
+        [],
+        {},
+        [],
+        false, // send-read-receipts off → ack privately
+      );
+      (
+        client as unknown as {
+          sendReadReceipt: (e: FakeEvent, t: string) => Promise<unknown>;
+        }
+      ).sendReadReceipt = (event, type) => {
+        receipts.push([event.getId(), type]);
+        return Promise.resolve({});
+      };
+
+      svc.openThread('!r:hs', '$root');
+
+      expect(receipts).toEqual([['$r1', 'm.read.private']]);
     });
 
     it('does not throw when the read-receipt API is unavailable', () => {

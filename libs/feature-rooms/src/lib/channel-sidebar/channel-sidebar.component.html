@@ -293,8 +293,8 @@
           Notifications
           <hlm-dropdown-menu-item-sub-indicator />
         </button>
+        <div hlmDropdownMenuSeparator></div>
         @if (spaceActive()) {
-          <div hlmDropdownMenuSeparator></div>
           <button
             hlmDropdownMenuItem
             variant="destructive"
@@ -305,6 +305,15 @@
             Remove from space
           </button>
         }
+        <button
+          hlmDropdownMenuItem
+          variant="destructive"
+          (triggered)="leaveRoom.emit(room.id)"
+          data-testid="room-leave"
+        >
+          <ng-icon name="lucideLogOut" />
+          Leave room
+        </button>
       </div>
 
       <ng-template #notifyMenu>
