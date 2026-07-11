@@ -52,4 +52,8 @@ export interface MediaPayload {
   thumbnailFile: EncryptedFileInfo | null;
   /** `info.thumbnail_info.mimetype`, if a thumbnail is present. */
   thumbnailMimeType?: string;
+  /** True for an MSC3245 voice message (an `m.audio` marked as voice). */
+  isVoice?: boolean;
+  /** MSC1767 waveform amplitudes (`[0, 1024]`) for a voice message, else absent. */
+  waveform?: number[];
 }

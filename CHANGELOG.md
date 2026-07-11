@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Voice messages.** A microphone button in the composer records a voice message and sends
+  it (MSC3245 `m.audio` with a waveform); recordings are encrypted in E2EE rooms like any
+  other attachment. Received voice messages render as a compact player with a play control,
+  the waveform, and a running time.
 - **Send stickers.** A sticker button in the composer opens a picker of your image packs
   (the interoperable MSC2545 format — your personal pack plus any joined room's packs) and
   sends the chosen image as an `m.sticker`, rendered inline in the timeline. Set up a pack

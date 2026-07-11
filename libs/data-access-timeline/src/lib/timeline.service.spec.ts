@@ -97,6 +97,9 @@ function fakeEvent(o: {
   file?: unknown;
   info?: Record<string, unknown>;
   relatesTo?: unknown;
+  voice?: boolean;
+  waveform?: number[];
+  durationMs?: number;
 }) {
   return {
     getId: () => o.id,
@@ -117,6 +120,15 @@ function fakeEvent(o: {
       ...(o.file !== undefined ? { file: o.file } : {}),
       ...(o.info !== undefined ? { info: o.info } : {}),
       ...(o.relatesTo !== undefined ? { 'm.relates_to': o.relatesTo } : {}),
+      ...(o.voice ? { 'org.matrix.msc3245.voice': {} } : {}),
+      ...(o.voice || o.waveform || o.durationMs !== undefined
+        ? {
+            'org.matrix.msc1767.audio': {
+              ...(o.durationMs !== undefined ? { duration: o.durationMs } : {}),
+              ...(o.waveform !== undefined ? { waveform: o.waveform } : {}),
+            },
+          }
+        : {}),
     }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
@@ -1265,6 +1277,46 @@ describe('TimelineService', () => {
       expect(m.captionHtml).toContain('<strong>here</strong>'); // sanitized rich caption
     });
 
+    it('flags an MSC3245 voice message and exposes its waveform', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$voice',
+          sender: '@a:hs',
+          msgtype: 'm.audio',
+          url: 'mxc://hs/clip',
+          info: { mimetype: 'audio/webm', size: 10 },
+          voice: true,
+          waveform: [0, 512, 1024],
+          durationMs: 3000,
+        }),
+      ]);
+
+      const m = svc.messages()[0];
+      expect(m.kind).toBe('audio');
+      expect(m.media).toMatchObject({
+        kind: 'audio',
+        isVoice: true,
+        waveform: [0, 512, 1024],
+        durationMs: 3000,
+      });
+    });
+
+    it('leaves a plain m.audio unflagged as voice', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$aud',
+          sender: '@a:hs',
+          msgtype: 'm.audio',
+          url: 'mxc://hs/song',
+          info: { mimetype: 'audio/mpeg', size: 100, duration: 60000 },
+        }),
+      ]);
+
+      const media = svc.messages()[0].media;
+      expect(media?.kind).toBe('audio');
+      expect(media?.isVoice).toBeUndefined();
+    });
+
     it('projects an m.file event to a file MediaPayload', () => {
       const svc = setup([
         fakeEvent({
@@ -1383,6 +1435,48 @@ describe('TimelineService', () => {
           new File([], 'empty.bin', { type: 'application/octet-stream' }),
           '',
         ),
+      );
+
+      expect(sent).toHaveLength(0);
+    });
+
+    it('uploads a recording and sends it as an MSC3245 voice message', async () => {
+      const sent: unknown[][] = [];
+      const svc = setup([], sent);
+
+      await firstValueFrom(
+        svc.sendVoiceMessage({
+          blob: new Blob([new Uint8Array([1, 2, 3, 4])], {
+            type: 'audio/webm',
+          }),
+          durationMs: 4200,
+          waveform: [0, 512, 1024],
+          mimeType: 'audio/webm',
+        }),
+      );
+
+      expect(sent[0][0]).toBe('message');
+      const content = sent[0][1] as Record<string, unknown>;
+      expect(content['msgtype']).toBe('m.audio');
+      expect(content['url']).toBe('mxc://hs/up');
+      expect(content['org.matrix.msc3245.voice']).toEqual({});
+      expect(content['org.matrix.msc1767.audio']).toEqual({
+        duration: 4200,
+        waveform: [0, 512, 1024],
+      });
+    });
+
+    it('is a no-op for an empty recording', async () => {
+      const sent: unknown[][] = [];
+      const svc = setup([], sent);
+
+      await firstValueFrom(
+        svc.sendVoiceMessage({
+          blob: new Blob([]),
+          durationMs: 0,
+          waveform: [],
+          mimeType: 'audio/webm',
+        }),
       );
 
       expect(sent).toHaveLength(0);

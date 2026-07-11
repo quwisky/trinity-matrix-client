@@ -17,11 +17,13 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideImagePlay,
   lucideMapPin,
+  lucideMic,
   lucidePaperclip,
   lucidePlus,
   lucideSend,
   lucideSmile,
   lucideSticker,
+  lucideTrash2,
   lucideVote,
 } from '@ng-icons/lucide';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
@@ -34,7 +36,11 @@ import {
   type EmojiData,
   type EmojiEvent,
 } from '@ctrl/ngx-emoji-mart/ngx-emoji';
-import { DraftStoreService, ThemeService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  ThemeService,
+  VoiceRecorderService,
+} from '@trinity/platform-native';
 import {
   GifService,
   GifSettingsService,
@@ -103,11 +109,13 @@ const MENTION_SUGGESTION_LIMIT = 8;
     provideIcons({
       lucideImagePlay,
       lucideMapPin,
+      lucideMic,
       lucidePaperclip,
       lucidePlus,
       lucideSend,
       lucideSmile,
       lucideSticker,
+      lucideTrash2,
       lucideVote,
     }),
   ],
@@ -161,6 +169,19 @@ export class MessageComposerComponent {
   readonly gifPickerOpen = signal(false);
   /** Whether the sticker grid is open (mutually exclusive with the other overlays). */
   readonly stickerPickerOpen = signal(false);
+  /** True while a voice message is being recorded. */
+  readonly recordingVoice = signal(false);
+  /** Elapsed recording time in seconds, for the live timer. */
+  private readonly voiceElapsed = signal(0);
+  /** Interval handle for the recording timer, cleared on stop/cancel/destroy. */
+  private voiceTimer: ReturnType<typeof setInterval> | null = null;
+  /** `m:ss` label for the running recording timer. */
+  readonly voiceTimeLabel = computed(() => {
+    const total = this.voiceElapsed();
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  });
   /** True while a chosen GIF is being fetched, before its media upload starts. */
   readonly gifDownloading = signal(false);
   /** The GIF affordance is offered only once a provider + API key are configured. */
@@ -225,7 +246,13 @@ export class MessageComposerComponent {
   private readonly createPollSvc = inject(CreatePollService);
   private readonly locationShare = inject(LocationShareService);
   private readonly timeline = inject(TimelineService);
+  private readonly voiceRecorder = inject(VoiceRecorderService);
   private readonly destroyRef = inject(DestroyRef);
+
+  /** Whether this device can record voice (mic + MediaRecorder present). */
+  get voiceSupported(): boolean {
+    return this.voiceRecorder.supported;
+  }
   private readonly emojiSearch = inject(EmojiSearch);
   private readonly emojiService = inject(EmojiService);
   private readonly theme = inject(ThemeService);
@@ -241,6 +268,13 @@ export class MessageComposerComponent {
   constructor() {
     // Revoke a staged image's preview object URL on teardown.
     this.destroyRef.onDestroy(() => this.setPreview(null));
+    // Stop a running recording timer (and release the mic) if torn down mid-record.
+    this.destroyRef.onDestroy(() => {
+      this.clearVoiceTimer();
+      if (this.recordingVoice()) {
+        this.voiceRecorder.cancel();
+      }
+    });
 
     // On a room/thread change: drop the staged (unsent) attachment — it was staged
     // to send here — and swap drafts. The composer instance is reused across rooms,
@@ -579,6 +613,73 @@ export class MessageComposerComponent {
             variant: 'destructive',
           }),
       });
+  }
+
+  /** Begin recording a voice message; toasts and resets if the mic is unavailable. */
+  async startVoiceRecording(): Promise<void> {
+    if (this.recordingVoice()) {
+      return;
+    }
+    try {
+      await this.voiceRecorder.start();
+    } catch {
+      this.toast.show('Could not access the microphone.', {
+        duration: 4000,
+        variant: 'destructive',
+      });
+      return;
+    }
+    this.recordingVoice.set(true);
+    this.voiceElapsed.set(0);
+    this.voiceTimer = setInterval(
+      () => this.voiceElapsed.update((s) => s + 1),
+      1000,
+    );
+  }
+
+  /** Stop recording and send the clip as a voice message. */
+  stopVoiceRecording(): void {
+    if (!this.recordingVoice()) {
+      return;
+    }
+    this.clearVoiceTimer();
+    this.recordingVoice.set(false);
+    void this.voiceRecorder.stop().then((recording) => {
+      if (!recording || recording.blob.size === 0) {
+        return;
+      }
+      // A voice message is standalone; drop any active reply (as media does).
+      if (this.replyingTo()) {
+        this.cancelReply.emit();
+      }
+      this.timeline
+        .sendVoiceMessage(recording)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          error: () =>
+            this.toast.show('Could not send that voice message.', {
+              duration: 4000,
+              variant: 'destructive',
+            }),
+        });
+    });
+  }
+
+  /** Abort the recording, discarding the clip. */
+  cancelVoiceRecording(): void {
+    if (!this.recordingVoice()) {
+      return;
+    }
+    this.clearVoiceTimer();
+    this.recordingVoice.set(false);
+    this.voiceRecorder.cancel();
+  }
+
+  private clearVoiceTimer(): void {
+    if (this.voiceTimer !== null) {
+      clearInterval(this.voiceTimer);
+      this.voiceTimer = null;
+    }
   }
 
   /** A GIF was chosen → download it and send it through the media path (works in

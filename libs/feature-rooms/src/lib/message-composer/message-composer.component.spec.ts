@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, type ComponentInput } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
-import { DraftStoreService, ThemeService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  ThemeService,
+  VoiceRecorderService,
+} from '@trinity/platform-native';
 import {
   GifService,
   GifSettingsService,
@@ -975,6 +979,108 @@ describe('MessageComposerComponent', () => {
       expect.stringContaining('Could not send'),
       expect.objectContaining({ variant: 'destructive' }),
     );
+  });
+
+  describe('voice messages', () => {
+    const recording = {
+      blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/webm' }),
+      durationMs: 3000,
+      waveform: [0, 512, 1024],
+      mimeType: 'audio/webm',
+    };
+
+    /** Providers wiring a fake recorder + a spyable voice-send. */
+    function voiceProviders(
+      over: {
+        start?: () => Promise<void>;
+        stop?: () => Promise<typeof recording | null>;
+        sendVoiceMessage?: ReturnType<typeof vi.fn>;
+      } = {},
+    ) {
+      const cancel = vi.fn();
+      const sendVoiceMessage = over.sendVoiceMessage ?? vi.fn(() => of(void 0));
+      return {
+        cancel,
+        sendVoiceMessage,
+        providers: [
+          MockProvider(VoiceRecorderService, {
+            supported: true,
+            start: over.start ?? (() => Promise.resolve()),
+            stop: over.stop ?? (() => Promise.resolve(recording)),
+            cancel,
+          }),
+          MockProvider(TimelineService, { sendVoiceMessage }),
+        ] as Provider[],
+      };
+    }
+
+    it('shows the mic button and starts recording on click', async () => {
+      const { providers } = voiceProviders();
+      const { fixture } = await renderComposer({}, providers);
+      const cmp = fixture.componentInstance;
+
+      await cmp.startVoiceRecording();
+
+      expect(cmp.recordingVoice()).toBe(true);
+    });
+
+    it('stops recording and sends the clip as a voice message', async () => {
+      const { providers, sendVoiceMessage } = voiceProviders();
+      const { fixture } = await renderComposer({}, providers);
+      const cmp = fixture.componentInstance;
+      await cmp.startVoiceRecording();
+
+      cmp.stopVoiceRecording();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(sendVoiceMessage).toHaveBeenCalledWith(recording);
+      expect(cmp.recordingVoice()).toBe(false);
+    });
+
+    it('cancels a recording without sending', async () => {
+      const { providers, cancel, sendVoiceMessage } = voiceProviders();
+      const { fixture } = await renderComposer({}, providers);
+      const cmp = fixture.componentInstance;
+      await cmp.startVoiceRecording();
+
+      cmp.cancelVoiceRecording();
+
+      expect(cancel).toHaveBeenCalled();
+      expect(cmp.recordingVoice()).toBe(false);
+      expect(sendVoiceMessage).not.toHaveBeenCalled();
+    });
+
+    it('toasts and stays idle when the mic can’t be accessed', async () => {
+      const { providers } = voiceProviders({
+        start: () => Promise.reject(new Error('denied')),
+      });
+      const { fixture } = await renderComposer({}, providers);
+      const cmp = fixture.componentInstance;
+
+      await cmp.startVoiceRecording();
+
+      expect(cmp.recordingVoice()).toBe(false);
+      expect(TestBed.inject(TrnToastService).show).toHaveBeenCalledWith(
+        expect.stringContaining('microphone'),
+        expect.objectContaining({ variant: 'destructive' }),
+      );
+    });
+
+    it('does not send an empty clip', async () => {
+      const { providers, sendVoiceMessage } = voiceProviders({
+        stop: () => Promise.resolve({ ...recording, blob: new Blob([]) }),
+      });
+      const { fixture } = await renderComposer({}, providers);
+      const cmp = fixture.componentInstance;
+      await cmp.startVoiceRecording();
+
+      cmp.stopVoiceRecording();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(sendVoiceMessage).not.toHaveBeenCalled();
+    });
   });
 
   describe('draft persistence', () => {

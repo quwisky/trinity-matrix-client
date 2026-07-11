@@ -168,6 +168,31 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('trn-media-attachment')).toBeNull();
   });
 
+  it('renders a voice message player instead of a media attachment', async () => {
+    const { container } = await renderRow({
+      row: row({
+        kind: 'audio',
+        media: {
+          kind: 'audio',
+          mxc: 'mxc://hs/clip',
+          file: null,
+          filename: 'Voice message',
+          mimeType: 'audio/webm',
+          durationMs: 3000,
+          isVoice: true,
+          waveform: [0, 512, 1024],
+          thumbnailMxc: null,
+          thumbnailFile: null,
+        },
+      }),
+    });
+
+    expect(
+      container.querySelector('[data-testid=voice-message]'),
+    ).not.toBeNull();
+    expect(container.querySelector('trn-media-attachment')).toBeNull();
+  });
+
   it('renders a link-preview element when the message has a previewUrl', async () => {
     const { container } = await renderRow({
       row: row({ previewUrl: 'https://example.com' }),

@@ -33,7 +33,10 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import {
+  PrivacySettingsService,
+  type VoiceRecording,
+} from '@trinity/platform-native';
 import {
   annotationContent,
   buildMessageView,
@@ -55,6 +58,7 @@ import {
   slashCommandContent,
   stickerContent,
   textMessageContent,
+  voiceMessageContent,
   TYPING_REFRESH_MS,
   TYPING_TIMEOUT_MS,
   type MessageView,
@@ -64,6 +68,17 @@ import {
 } from '@trinity/util-matrix';
 
 const SCROLLBACK = 30;
+
+/** File extension for a recorded voice clip's MIME type (best-effort, default webm). */
+function voiceExtension(mimeType: string): string {
+  if (mimeType.includes('ogg')) {
+    return 'ogg';
+  }
+  if (mimeType.includes('mp4') || mimeType.includes('mpeg')) {
+    return 'm4a';
+  }
+  return 'webm';
+}
 
 /** The open room's tombstone: it was replaced by a successor room (`m.room.tombstone`). */
 export interface RoomTombstone {
@@ -476,6 +491,46 @@ export class TimelineService {
         ),
       ).pipe(map(() => void 0));
     });
+  }
+
+  /**
+   * Upload a recorded clip and send it as an MSC3245 voice message (an `m.audio`
+   * with the voice marker + waveform), encrypting the bytes first in an E2EE room.
+   * Cold — runs on subscribe.
+   */
+  sendVoiceMessage(recording: VoiceRecording): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx || recording.blob.size === 0) {
+        return of(void 0);
+      }
+      const { client, room } = ctx;
+      const encrypt = room.hasEncryptionStateEvent();
+      const file = new File(
+        [recording.blob],
+        `voice-message.${voiceExtension(recording.mimeType)}`,
+        { type: recording.mimeType },
+      );
+      return this.mediaSvc.uploadMedia(file, encrypt).pipe(
+        switchMap((media) =>
+          from(
+            client.sendMessage(
+              room.roomId,
+              voiceMessageContent(
+                {
+                  mxc: media.mxc,
+                  file: media.file,
+                  mimeType: media.info.mimetype,
+                  size: media.info.size,
+                },
+                recording.durationMs,
+                recording.waveform,
+              ) as never,
+            ),
+          ),
+        ),
+      );
+    }).pipe(map(() => void 0));
   }
 
   /**

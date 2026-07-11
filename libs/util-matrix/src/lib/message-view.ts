@@ -10,6 +10,7 @@ import {
 import DOMPurify from 'dompurify';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { buildPollView, isPollStart, type PollView } from './poll';
+import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
 
 /**
  * Shared, framework-free projection of a `matrix-js-sdk` {@link MatrixEvent} into a
@@ -704,6 +705,18 @@ function buildMediaPayload(
     'attachment';
 
   const thumbInfo = (info['thumbnail_info'] ?? {}) as Record<string, unknown>;
+  // MSC3245: an audio message marked as a voice message, with an MSC1767 waveform.
+  const isVoice = kind === 'audio' && content[MSC3245_VOICE] !== undefined;
+  const audioExt = (
+    content[MSC1767_AUDIO] && typeof content[MSC1767_AUDIO] === 'object'
+      ? content[MSC1767_AUDIO]
+      : {}
+  ) as Record<string, unknown>;
+  const waveform = Array.isArray(audioExt['waveform'])
+    ? (audioExt['waveform'] as unknown[]).filter(
+        (n): n is number => typeof n === 'number',
+      )
+    : [];
   return {
     kind,
     mxc,
@@ -717,7 +730,9 @@ function buildMediaPayload(
     durationMs:
       typeof info['duration'] === 'number'
         ? (info['duration'] as number)
-        : undefined,
+        : typeof audioExt['duration'] === 'number'
+          ? (audioExt['duration'] as number)
+          : undefined,
     thumbnailMxc:
       typeof info['thumbnail_url'] === 'string'
         ? (info['thumbnail_url'] as string)
@@ -727,6 +742,7 @@ function buildMediaPayload(
       typeof thumbInfo['mimetype'] === 'string'
         ? (thumbInfo['mimetype'] as string)
         : undefined,
+    ...(isVoice ? { isVoice: true, waveform } : {}),
   };
 }
 

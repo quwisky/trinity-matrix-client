@@ -201,7 +201,7 @@ Effort: **S** ≤ half-day · **M** ~1 day · **L** multi-day.
 | 3a  | Location sharing        | `m.location` via geolocation; render coords + "open in maps" (no map tiles → CSP-safe).        | M      | ✅  |
 | 3b  | Public space directory  | Browse public _spaces_ — extends `PublicRoomsService` with a `room_type` filter.               | M      | ✅  |
 | 3c  | Stickers / custom emoji | Image packs (MSC2545) from account-data/room-state; a picker sending `m.sticker`.              | L      | ✅  |
-| 3d  | Voice messages          | `MediaRecorder` → `m.audio` + MSC3245 voice metadata + waveform; reuses the media upload path. | L      | ⚠️  |
+| 3d  | Voice messages          | `MediaRecorder` → `m.audio` + MSC3245 voice metadata + waveform; reuses the media upload path. | L      | ✅  |
 
 ### Blocked here (Tier C)
 
