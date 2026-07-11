@@ -154,6 +154,25 @@ export class VerificationService {
     );
   }
 
+  /**
+   * Request cross-user verification of `userId` over a direct-message room (emoji SAS).
+   * The request is sent as an event in `roomId` (a DM with that user), and the active
+   * verification is adopted so the app's host presents the SAS UI. Cold — runs on subscribe.
+   */
+  startUserVerification(userId: string, roomId: string): Observable<void> {
+    return defer(() =>
+      from(
+        (async (): Promise<void> => {
+          const request = await this.requireCrypto().requestVerificationDM(
+            userId,
+            roomId,
+          );
+          this.adopt(request);
+        })(),
+      ),
+    );
+  }
+
   /** Accept an incoming verification request. */
   accept(): Observable<void> {
     return defer(() => from(this.requireRequest().accept()));

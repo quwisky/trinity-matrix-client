@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Verify another user.** A member's info panel now has a **Verify** action that starts
+  emoji-SAS verification with them over a direct message — establishing cross-user trust
+  (previously you could only verify your own other sessions).
 - **Per-message authenticity shields.** Encrypted messages now show a shield when their
   authenticity is in question — sent from an unverified or unknown device, by an unverified
   user, or with a key whose origin can't be guaranteed — with a tooltip explaining why. The

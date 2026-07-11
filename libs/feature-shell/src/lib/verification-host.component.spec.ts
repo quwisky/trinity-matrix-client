@@ -87,4 +87,19 @@ describe('VerificationHostComponent', () => {
 
     expect(open).not.toHaveBeenCalled();
   });
+
+  it('presents a modal for an outgoing cross-user verification', async () => {
+    const { fixture, active, open } = await setup();
+
+    // Outgoing (incoming: false) but cross-user (isSelfVerification: false) — the
+    // /encryption/verify route only owns outgoing *self* verification, so the host shows this.
+    active.set({
+      ...incoming(),
+      incoming: false,
+      isSelfVerification: false,
+      otherUserId: '@bob:hs',
+    });
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
+  });
 });

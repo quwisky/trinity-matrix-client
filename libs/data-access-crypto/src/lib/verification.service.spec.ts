@@ -69,6 +69,8 @@ function fakeRequest(
     initiatedByMe?: boolean;
     otherDeviceId?: string;
     cancellationCode?: string | null;
+    otherUserId?: string;
+    isSelfVerification?: boolean;
   } = {},
 ) {
   const e = emitter();
@@ -77,8 +79,8 @@ function fakeRequest(
     ...e,
     phase: opts.phase ?? VerificationPhase.Requested,
     initiatedByMe: opts.initiatedByMe ?? false,
-    isSelfVerification: true,
-    otherUserId: '@me:hs',
+    isSelfVerification: opts.isSelfVerification ?? true,
+    otherUserId: opts.otherUserId ?? '@me:hs',
     otherDeviceId: opts.otherDeviceId ?? 'OTHER',
     cancellationCode: opts.cancellationCode ?? null,
     accept: vi.fn().mockResolvedValue(undefined),
@@ -101,6 +103,7 @@ function fakeRequest(
 function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
   const crypto = {
     requestOwnUserVerification: vi.fn(),
+    requestVerificationDM: vi.fn(),
     getVerificationRequestsToDeviceInProgress: vi.fn(() =>
       opts.inProgress ? [opts.inProgress] : [],
     ),
@@ -173,6 +176,27 @@ describe('VerificationService', () => {
     );
 
     expect(svc.active()?.otherDeviceId).toBe('A'); // first one kept
+  });
+
+  it('starts a cross-user verification over a DM and adopts it', async () => {
+    const { svc, crypto } = setup();
+    svc.connect();
+    const req = fakeRequest({
+      phase: VerificationPhase.Requested,
+      initiatedByMe: true,
+      otherUserId: '@bob:hs',
+      isSelfVerification: false,
+    });
+    crypto.requestVerificationDM.mockResolvedValue(req);
+
+    await firstValueFrom(svc.startUserVerification('@bob:hs', '!dm:hs'));
+
+    expect(crypto.requestVerificationDM).toHaveBeenCalledWith(
+      '@bob:hs',
+      '!dm:hs',
+    );
+    expect(svc.active()?.otherUserId).toBe('@bob:hs');
+    expect(svc.active()?.isSelfVerification).toBe(false);
   });
 
   it('drives the SAS flow: start → waiting → emoji shown', async () => {

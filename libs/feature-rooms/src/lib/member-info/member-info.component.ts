@@ -8,7 +8,7 @@ import {
   linkedSignal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { type Observable } from 'rxjs';
+import { switchMap, type Observable } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import {
   DialogRef,
@@ -17,6 +17,7 @@ import {
 } from '@trinity/helm/overlay';
 import {
   RoomModerationService,
+  RoomsService,
   type MemberSummary,
 } from '@trinity/data-access-rooms';
 import {
@@ -24,6 +25,7 @@ import {
   PresenceService,
 } from '@trinity/data-access-profile';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { VerificationService } from '@trinity/data-access-crypto';
 import { AvatarComponent } from '@trinity/ui';
 
 /** Preset roles the panel can assign, by the standard power-level convention. */
@@ -67,6 +69,8 @@ export class MemberInfoComponent {
   private readonly matrix = inject(MatrixClientService);
   private readonly moderation = inject(RoomModerationService);
   private readonly ignoredUsers = inject(IgnoredUsersService);
+  private readonly rooms = inject(RoomsService);
+  private readonly verification = inject(VerificationService);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -104,6 +108,31 @@ export class MemberInfoComponent {
   /** Start (or reuse) a direct message with this member — the host does the navigation. */
   message(): void {
     this.dialogRef.close(this.member().userId);
+  }
+
+  /**
+   * Verify this member (cross-user emoji SAS). Ensure a DM with them exists, request
+   * verification over it, and close — the app's verification host then presents the SAS
+   * comparison. Failure keeps the panel open with a toast.
+   */
+  verify(): void {
+    const userId = this.member().userId;
+    this.rooms
+      .createDirectMessage(userId)
+      .pipe(
+        switchMap((roomId) =>
+          this.verification.startUserVerification(userId, roomId),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: () => this.dialogRef.close(null),
+        error: () =>
+          this.toast.show('Could not start verification.', {
+            duration: 4000,
+            variant: 'destructive',
+          }),
+      });
   }
 
   /** Copy the member's user id to the clipboard, confirming with a toast. */

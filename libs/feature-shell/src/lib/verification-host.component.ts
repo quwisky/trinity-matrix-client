@@ -5,7 +5,10 @@ import {
   inject,
 } from '@angular/core';
 import type { DialogRef } from '@angular/cdk/dialog';
-import { VerificationService } from '@trinity/data-access-crypto';
+import {
+  VerificationService,
+  type VerificationView,
+} from '@trinity/data-access-crypto';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/ui';
 import { TrnDialogService } from '@trinity/helm/overlay';
@@ -13,9 +16,10 @@ import { TrnDialogService } from '@trinity/helm/overlay';
 /**
  * App-level, route-independent host for device verification. Incoming requests can
  * arrive on any route, so this owns `VerificationService.connect()` (once the
- * client is live) and presents the verification UI in a modal when *another*
- * device asks to verify. Self-initiated verification uses the `/encryption/verify`
- * route instead, so we only pop the modal for incoming requests. Renders nothing.
+ * client is live) and presents the verification UI in a modal for any verification
+ * except an outgoing *self*-verification — which the `/encryption/verify` route drives
+ * itself. So the modal pops for incoming requests (self or cross-user) and for an
+ * outgoing cross-user verification started from the member panel. Renders nothing.
  */
 @Component({
   selector: 'trn-verification-host',
@@ -46,16 +50,24 @@ export class VerificationHostComponent {
       }
     });
 
-    // Present the dialog for an incoming request; dismiss once it's cleared.
+    // Present the dialog for any verification the route doesn't own; dismiss when cleared.
     effect(() => {
-      const active = this.verification.active();
-      const shouldShow = !!active && active.incoming;
+      const shouldShow = this.shouldPresent(this.verification.active());
       if (shouldShow && !this.ref) {
         void this.present();
       } else if (!shouldShow && this.ref) {
         this.dismissModal();
       }
     });
+  }
+
+  /**
+   * Whether the host should present `active` in a modal: any incoming request, or an
+   * outgoing *cross-user* verification. An outgoing self-verification is excluded — the
+   * `/encryption/verify` route drives that one, so the host must not double up.
+   */
+  private shouldPresent(active: VerificationView | null): boolean {
+    return !!active && (active.incoming || !active.isSelfVerification);
   }
 
   private async present(): Promise<void> {
@@ -72,7 +84,7 @@ export class VerificationHostComponent {
       // feature-crypto stays out of the main bundle until actually needed.
       const DeviceVerificationPage = await loadPage();
       // The request may have been cleared while the chunk was loading.
-      if (!this.verification.active()?.incoming) {
+      if (!this.shouldPresent(this.verification.active())) {
         return;
       }
       // disableClose: the page owns teardown so a backdrop/escape tap can't leave
