@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Security settings.** A new **Security** section in Settings surfaces your end-to-end
+  encryption posture — whether encryption/secure backup is set up, whether this session is
+  verified, and whether key backup is on — and launches the recovery-setup, recovery-key
+  unlock, and device-verification flows to fix each.
 - **Notification settings.** A new **Notifications** section in Settings has account-level
   toggles for what notifies you — a master switch plus per-category rules (mentions, @room,
   invitations, calls, direct chats, rooms, and their encrypted variants). They map to your
