@@ -5,6 +5,7 @@ import {
   computed,
   input,
   output,
+  signal,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideMessagesSquare, lucideShieldAlert } from '@ng-icons/lucide';
@@ -131,6 +132,9 @@ export class MessageRowComponent {
       ? `${base}, ${summary.unreadCount} unread`
       : base;
   }
+
+  /** Whether the "seen by" reader list is expanded (toggled from the receipt cluster). */
+  readonly seenByOpen = signal(false);
 
   /** Accessible label for the "seen by" receipt avatars (the avatars are decorative). */
   seenByLabel(receipts: readonly ReceiptView[]): string {

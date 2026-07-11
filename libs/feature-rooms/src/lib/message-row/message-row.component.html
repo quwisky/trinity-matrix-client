@@ -93,10 +93,13 @@
         />
       }
       @if (r.readReceipts.length) {
-        <div
+        <button
+          type="button"
           class="msg__receipts"
           data-testid="read-receipts"
           [attr.aria-label]="seenByLabel(r.readReceipts)"
+          [title]="seenByLabel(r.readReceipts)"
+          (click)="seenByOpen.set(!seenByOpen())"
         >
           @for (receipt of r.readReceipts; track receipt.userId) {
             <trn-avatar
@@ -108,7 +111,12 @@
               [size]="16"
             />
           }
-        </div>
+        </button>
+        @if (seenByOpen()) {
+          <span class="msg__seen-by" data-testid="seen-by-list">
+            {{ seenByLabel(r.readReceipts) }}
+          </span>
+        }
       }
     </div>
   } @else {
@@ -155,10 +163,13 @@
         />
       }
       @if (r.readReceipts.length) {
-        <div
+        <button
+          type="button"
           class="msg__receipts"
           data-testid="read-receipts"
           [attr.aria-label]="seenByLabel(r.readReceipts)"
+          [title]="seenByLabel(r.readReceipts)"
+          (click)="seenByOpen.set(!seenByOpen())"
         >
           @for (receipt of r.readReceipts; track receipt.userId) {
             <trn-avatar
@@ -170,7 +181,12 @@
               [size]="16"
             />
           }
-        </div>
+        </button>
+        @if (seenByOpen()) {
+          <span class="msg__seen-by" data-testid="seen-by-list">
+            {{ seenByLabel(r.readReceipts) }}
+          </span>
+        }
       }
     </div>
   }

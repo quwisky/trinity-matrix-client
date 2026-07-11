@@ -143,6 +143,26 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('trn-link-preview')).toBeNull();
   });
 
+  it('expands the "seen by" reader list when the receipt cluster is clicked', async () => {
+    const { container, fixture } = await renderRow({
+      row: row({
+        readReceipts: [
+          { userId: '@a:hs', name: 'Alice', initial: 'A', avatarMxc: null },
+        ],
+      }),
+    });
+    expect(container.querySelector('[data-testid=seen-by-list]')).toBeNull();
+
+    (
+      container.querySelector('[data-testid=read-receipts]') as HTMLElement
+    ).click();
+    fixture.detectChanges();
+
+    expect(
+      container.querySelector('[data-testid=seen-by-list]')?.textContent,
+    ).toContain('Seen by Alice');
+  });
+
   it('renders a plain caption below a media attachment', async () => {
     const { container } = await renderRow({
       row: row({ kind: 'file', media: fileMedia(), caption: 'look at this' }),
