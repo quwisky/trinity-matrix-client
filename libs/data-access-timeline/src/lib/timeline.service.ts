@@ -14,12 +14,7 @@ import {
   type RoomMember,
   type RoomState,
 } from 'matrix-js-sdk';
-import {
-  CryptoEvent,
-  EventShieldColour,
-  EventShieldReason,
-  type EventEncryptionInfo,
-} from 'matrix-js-sdk/lib/crypto-api';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   Observable,
   defer,
@@ -66,6 +61,7 @@ import {
   type Mention,
   type PackImage,
 } from '@trinity/util-matrix';
+import { resolveShieldsInto, shieldKey } from './shields';
 
 const SCROLLBACK = 30;
 
@@ -246,10 +242,11 @@ export class TimelineService {
   private readonly shields = new Map<string, MessageShield | null>();
 
   // Cross-signing / device trust changed: a message's shield may flip (e.g. a device
-  // the sender just verified). Re-resolve shields for the open room's events.
+  // the sender just verified). Force a full re-resolve of the open room's shields
+  // (bypassing the per-event skip that a benign refresh uses).
   private readonly onTrust = (): void => {
     if (this.room) {
-      void this.resolveShields(this.room);
+      void this.resolveShields(this.room, undefined, true);
     }
   };
 
@@ -850,6 +847,7 @@ export class TimelineService {
   private async resolveShields(
     room: Room,
     events: readonly MatrixEvent[] = room.getLiveTimeline().getEvents(),
+    force = false,
   ): Promise<void> {
     const crypto = this.matrix.isInitialized
       ? (this.matrix.instance.getCrypto?.() ?? null)
@@ -860,23 +858,10 @@ export class TimelineService {
     const encrypted = events.filter(
       (e) => isDisplayableMessage(e) && !isThreadReply(e) && e.isEncrypted(),
     );
-    let changed = false;
-    for (const event of encrypted) {
-      const id = event.getId() ?? '';
-      let shield: MessageShield | null = null;
-      try {
-        shield = toShield(await crypto.getEncryptionInfoForEvent(event));
-      } catch {
-        shield = null; // never let a shield probe break the timeline
-      }
-      if (this.roomId !== room.roomId) {
-        return; // switched rooms mid-resolve
-      }
-      if (shieldKey(this.shields.get(id) ?? null) !== shieldKey(shield)) {
-        this.shields.set(id, shield);
-        changed = true;
-      }
-    }
+    const changed = await resolveShieldsInto(crypto, encrypted, this.shields, {
+      force,
+      isStale: () => this.roomId !== room.roomId,
+    });
     if (changed && this.roomId === room.roomId) {
       this.refresh();
     }
@@ -955,38 +940,6 @@ function isThreadReply(event: MatrixEvent): boolean {
  * changes, so an unchanged message keeps its existing object and its OnPush row
  * is never touched.
  */
-/** Stable fingerprint of a shield for the cache rev + change detection ('' = none). */
-function shieldKey(shield: MessageShield | null): string {
-  return shield ? `${shield.level}:${shield.reason}` : '';
-}
-
-/** Map the SDK's encryption info to a {@link MessageShield}, or null for no shield. */
-function toShield(info: EventEncryptionInfo | null): MessageShield | null {
-  if (!info || info.shieldColour === EventShieldColour.NONE) {
-    return null;
-  }
-  return {
-    level: info.shieldColour === EventShieldColour.RED ? 'red' : 'grey',
-    reason: shieldReasonText(info.shieldReason),
-  };
-}
-
-/** A human-readable explanation for a shield reason code. */
-function shieldReasonText(reason: EventShieldReason | null): string {
-  switch (reason) {
-    case EventShieldReason.UNVERIFIED_IDENTITY:
-      return 'Sent by a user you haven’t verified.';
-    case EventShieldReason.UNSIGNED_DEVICE:
-      return 'Sent from a device its owner hasn’t verified.';
-    case EventShieldReason.UNKNOWN_DEVICE:
-      return 'Sent from an unknown or deleted device.';
-    case EventShieldReason.AUTHENTICITY_NOT_GUARANTEED:
-      return 'The authenticity of this message can’t be guaranteed.';
-    default:
-      return 'This message’s authenticity couldn’t be verified.';
-  }
-}
-
 function eventRevision(
   client: MatrixClient,
   room: Room,

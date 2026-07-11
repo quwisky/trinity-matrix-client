@@ -8,6 +8,10 @@ import {
   ThreadEvent,
   type MatrixClient,
 } from 'matrix-js-sdk';
+import {
+  EventShieldColour,
+  EventShieldReason,
+} from 'matrix-js-sdk/lib/crypto-api';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadsService } from './threads.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
@@ -44,6 +48,7 @@ function fakeEvent(o: {
   type?: string;
   redacted?: boolean;
   decryptFail?: boolean;
+  encrypted?: boolean;
   replyTo?: string;
   status?: string | null;
   editRelation?: boolean;
@@ -57,6 +62,7 @@ function fakeEvent(o: {
     getContent: () => ({ body: o.body ?? '', msgtype: 'm.text' }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
+    isEncrypted: () => o.encrypted ?? false,
     isRelation: (relType?: string) =>
       o.editRelation === true &&
       (relType === undefined || relType === 'm.replace'),
@@ -129,6 +135,7 @@ function setup(
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   extraEvents: FakeEvent[] = [],
   sendReadReceipts = true,
+  getEncryptionInfoForEvent?: ReturnType<typeof vi.fn>,
 ) {
   const all = [
     ...extraEvents,
@@ -223,6 +230,9 @@ function setup(
       sent.push(['resend', event.getId()]);
       return Promise.resolve({});
     },
+    ...(getEncryptionInfoForEvent
+      ? { getCrypto: () => ({ getEncryptionInfoForEvent }) }
+      : {}),
     ...emitter(),
   };
   TestBed.configureTestingModule({
@@ -553,6 +563,37 @@ describe('ThreadsService', () => {
     svc.openThread('!r:hs', '$root');
 
     expect(svc.threadMessages().map((m) => m.id)).toEqual(['$root', '$r1']);
+  });
+
+  it('projects an authenticity shield onto an encrypted thread message', async () => {
+    const getInfo = vi.fn().mockResolvedValue({
+      shieldColour: EventShieldColour.GREY,
+      shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+    });
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+    const reply = fakeEvent({
+      id: '$r1',
+      sender: '@a:hs',
+      body: 'secret reply',
+      encrypted: true,
+    });
+    const { svc } = setup(
+      [fakeThread({ id: '$root', rootEvent: root, events: [reply] })],
+      [],
+      {},
+      [],
+      true,
+      getInfo,
+    );
+
+    svc.openThread('!r:hs', '$root');
+
+    await vi.waitFor(() =>
+      expect(
+        svc.threadMessages().find((m) => m.id === '$r1')?.shield?.level,
+      ).toBe('grey'),
+    );
+    expect(getInfo).toHaveBeenCalled();
   });
 
   it('renders the unable-to-decrypt fallback for an E2EE failure in a thread', () => {

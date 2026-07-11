@@ -1896,6 +1896,7 @@ describe('TimelineService', () => {
       events: ReturnType<typeof fakeEvent>[],
       getEncryptionInfoForEvent: ReturnType<typeof vi.fn>,
     ) {
+      const handlers = new Map<string, (...args: unknown[]) => void>();
       const room = {
         roomId: '!r:hs',
         getLiveTimeline: () => ({
@@ -1904,14 +1905,19 @@ describe('TimelineService', () => {
         }),
         getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
         relations: { getChildEventsForEvent: () => undefined },
-        on: () => {},
+        on: (event: string, handler: (...a: unknown[]) => void) => {
+          handlers.set(`room:${event}`, handler);
+        },
         off: () => {},
       };
       return {
         baseUrl: 'https://hs',
+        handlers,
         getRoom: () => room,
         getUserId: () => '@me:hs',
-        on: () => {},
+        on: (event: string, handler: (...a: unknown[]) => void) => {
+          handlers.set(`client:${event}`, handler);
+        },
         off: () => {},
         sendReadReceipt: () => Promise.resolve({}),
         setRoomReadMarkers: () => Promise.resolve({}),
@@ -1928,15 +1934,13 @@ describe('TimelineService', () => {
       const events = [
         fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi', encrypted }),
       ];
+      const client = shieldClient(events, getEncryptionInfoForEvent);
       TestBed.configureTestingModule({
-        providers: [
-          TimelineService,
-          matrixProvider(shieldClient(events, getEncryptionInfoForEvent)),
-        ],
+        providers: [TimelineService, matrixProvider(client)],
       });
       const svc = TestBed.inject(TimelineService);
       svc.open('!r:hs');
-      return svc;
+      return { svc, handlers: client.handlers };
     }
 
     it('projects a grey shield for an unverified-device message', async () => {
@@ -1944,7 +1948,7 @@ describe('TimelineService', () => {
         shieldColour: EventShieldColour.GREY,
         shieldReason: EventShieldReason.UNSIGNED_DEVICE,
       });
-      const svc = openWithShield(getInfo);
+      const { svc } = openWithShield(getInfo);
 
       await vi.waitFor(() =>
         expect(svc.messages()[0].shield).toEqual({
@@ -1959,7 +1963,7 @@ describe('TimelineService', () => {
         shieldColour: EventShieldColour.RED,
         shieldReason: EventShieldReason.UNVERIFIED_IDENTITY,
       });
-      const svc = openWithShield(getInfo);
+      const { svc } = openWithShield(getInfo);
 
       await vi.waitFor(() =>
         expect(svc.messages()[0].shield?.level).toBe('red'),
@@ -1968,7 +1972,7 @@ describe('TimelineService', () => {
 
     it('leaves an unencrypted message without a shield (no crypto probe)', async () => {
       const getInfo = vi.fn();
-      const svc = openWithShield(getInfo, false);
+      const { svc } = openWithShield(getInfo, false);
 
       await Promise.resolve();
       expect(svc.messages()[0].shield ?? null).toBeNull();
@@ -1979,10 +1983,35 @@ describe('TimelineService', () => {
       const getInfo = vi
         .fn()
         .mockResolvedValue({ shieldColour: EventShieldColour.NONE });
-      const svc = openWithShield(getInfo);
+      const { svc } = openWithShield(getInfo);
 
       await vi.waitFor(() => expect(getInfo).toHaveBeenCalled());
       expect(svc.messages()[0].shield ?? null).toBeNull();
+    });
+
+    it('does not re-probe a resolved event on a benign refresh, but does on a trust change', async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.GREY,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      });
+      const { svc, handlers } = openWithShield(getInfo);
+
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].shield?.level).toBe('grey'),
+      );
+      const afterOpen = getInfo.mock.calls.length;
+
+      // A receipt triggers a refresh, but the event is already resolved (and not a
+      // decryption failure) — no extra crypto probe.
+      handlers.get('room:Room.receipt')?.();
+      await Promise.resolve();
+      expect(getInfo.mock.calls.length).toBe(afterOpen);
+
+      // A trust change forces a full re-resolve.
+      handlers.get('client:userTrustStatusChanged')?.();
+      await vi.waitFor(() =>
+        expect(getInfo.mock.calls.length).toBeGreaterThan(afterOpen),
+      );
     });
   });
 });

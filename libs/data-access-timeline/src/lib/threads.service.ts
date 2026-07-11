@@ -29,13 +29,16 @@ import {
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
 import { PrivacySettingsService } from '@trinity/platform-native';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   buildMessageView,
   collectMessageSenders,
   initialOf,
   isDisplayableMessage,
+  type MessageShield,
   type MessageView,
 } from '@trinity/util-matrix';
+import { resolveShieldsInto } from './shields';
 import {
   annotationContent,
   editMessageContent,
@@ -218,6 +221,17 @@ export class ThreadsService {
   // doesn't re-project the thread once per member.
   private threadRelevantSenders = new Set<string>();
 
+  /** Resolved authenticity shields for the opened thread's events, by event id. */
+  private readonly threadShields = new Map<string, MessageShield | null>();
+
+  // Cross-signing / device trust changed: a thread message's shield may flip, so
+  // force a full re-resolve of the opened thread's shields (mirrors TimelineService).
+  private readonly onThreadTrust = (): void => {
+    if (this.threadRoom) {
+      void this.resolveThreadShields(this.threadRoom, true);
+    }
+  };
+
   private readonly onThreadChanged = (): void => this.refreshThread();
   private readonly onThreadDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.threadRoomId) {
@@ -339,6 +353,9 @@ export class ThreadsService {
     room.on(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
     room.on(RoomStateEvent.Members, this.onThreadMember);
     client.on(MatrixEventEvent.Decrypted, this.onThreadDecrypted);
+    client.on(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
+    client.on(CryptoEvent.DevicesUpdated, this.onThreadTrust);
+    client.on(CryptoEvent.KeysChanged, this.onThreadTrust);
     this.refreshThread();
   }
 
@@ -357,16 +374,18 @@ export class ThreadsService {
       room.off(RoomStateEvent.Members, this.onThreadMember);
     }
     if (this.matrix.isInitialized) {
-      this.matrix.instance.off(
-        MatrixEventEvent.Decrypted,
-        this.onThreadDecrypted,
-      );
+      const client = this.matrix.instance;
+      client.off(MatrixEventEvent.Decrypted, this.onThreadDecrypted);
+      client.off(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
+      client.off(CryptoEvent.DevicesUpdated, this.onThreadTrust);
+      client.off(CryptoEvent.KeysChanged, this.onThreadTrust);
     }
     this.thread = null;
     this.threadRoom = null;
     this.threadRoomId = null;
     this.lastReadEventId = null;
     this.threadRelevantSenders.clear();
+    this.threadShields.clear();
     this._openThreadRootId.set(null);
     this._threadMessages.set([]);
     this._canPaginateThread.set(false);
@@ -717,27 +736,34 @@ export class ThreadsService {
     }
     const client = this.matrix.instance;
     const thread = this.thread ?? room.getThread(rootEventId);
-
-    // Replies live in the thread timeline; the root sits at the top. Dedupe so a
-    // root already present in the thread timeline isn't repeated.
-    const replies = (thread?.events ?? []).filter(isDisplayableMessage);
-    const seen = new Set(replies.map((e) => e.getId()));
-    const ordered: MatrixEvent[] = [];
-    const root = thread?.rootEvent ?? room.findEventById(rootEventId);
-    if (root && !seen.has(root.getId())) {
-      ordered.push(root);
-    }
-    ordered.push(...replies);
+    const ordered = this.orderedThreadEvents(room, rootEventId, thread);
 
     const relevant = new Set<string>();
+    const seenIds = new Set<string>();
     for (const e of ordered) {
       collectMessageSenders(room, e, relevant);
+      seenIds.add(e.getId() ?? '');
     }
     this.threadRelevantSenders = relevant;
+    // Drop shields for events no longer in the thread so the map can't grow unbounded.
+    for (const id of [...this.threadShields.keys()]) {
+      if (!seenIds.has(id)) {
+        this.threadShields.delete(id);
+      }
+    }
 
     this._threadMessages.set(
-      ordered.map((e) => buildMessageView(client, room, e)),
+      ordered.map((e) =>
+        buildMessageView(
+          client,
+          room,
+          e,
+          this.threadShields.get(e.getId() ?? '') ?? null,
+        ),
+      ),
     );
+    // Resolve encrypted-message shields off the async crypto API; a change re-refreshes.
+    void this.resolveThreadShields(room, false, ordered);
 
     // A thread's own live timeline carries a backward pagination token while
     // older replies remain server-side; absent (or no timeline) means none left.
@@ -752,6 +778,54 @@ export class ThreadsService {
     // thread-scoped receipt). Deduped, so live replies mark read but paginating
     // older history — which leaves the latest unchanged — does not re-send.
     this.markThreadRead();
+  }
+
+  /** The opened thread's events, root first then replies (deduped). */
+  private orderedThreadEvents(
+    room: Room,
+    rootEventId: string,
+    thread: Thread | null = this.thread ?? room.getThread(rootEventId),
+  ): MatrixEvent[] {
+    const replies = (thread?.events ?? []).filter(isDisplayableMessage);
+    const seen = new Set(replies.map((e) => e.getId()));
+    const ordered: MatrixEvent[] = [];
+    const root = thread?.rootEvent ?? room.findEventById(rootEventId);
+    if (root && !seen.has(root.getId())) {
+      ordered.push(root);
+    }
+    ordered.push(...replies);
+    return ordered;
+  }
+
+  /**
+   * Resolve authenticity shields for the opened thread's encrypted messages off the
+   * async crypto API (identical rules to {@link TimelineService}), re-projecting the
+   * thread once when any shield changes. `force` re-probes even already-resolved
+   * events (a trust change); otherwise only new/undecrypted events are probed.
+   */
+  private async resolveThreadShields(
+    room: Room,
+    force: boolean,
+    events?: readonly MatrixEvent[],
+  ): Promise<void> {
+    const rootEventId = this._openThreadRootId();
+    const crypto = this.matrix.isInitialized
+      ? (this.matrix.instance.getCrypto?.() ?? null)
+      : null;
+    if (!crypto || !rootEventId) {
+      return;
+    }
+    const ordered = events ?? this.orderedThreadEvents(room, rootEventId);
+    const encrypted = ordered.filter((e) => e.isEncrypted());
+    const changed = await resolveShieldsInto(
+      crypto,
+      encrypted,
+      this.threadShields,
+      { force, isStale: () => this.threadRoomId !== room.roomId },
+    );
+    if (changed && this.threadRoomId === room.roomId) {
+      this.refreshThread();
+    }
   }
 
   /**

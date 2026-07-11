@@ -13,7 +13,52 @@ const SAMPLE = JSON.stringify([
   { room_id: '!r:hs', session_id: 'abc', session_key: 'deadbeef' },
 ]);
 
+/**
+ * A fixed golden vector (salt/iv = 0x11/0x22, 1000 rounds) generated with an
+ * independent implementation of the documented format. Decrypting it locks the wire
+ * layout AND the crypto pipeline (PBKDF2-SHA512 → AES-CTR + HMAC-SHA256, key-half
+ * split): a format-affecting regression that a self-symmetric round-trip would hide
+ * (both sides change together) breaks this vector, since it was produced elsewhere.
+ */
+const GOLDEN_VECTOR = [
+  '-----BEGIN MEGOLM SESSION DATA-----',
+  'AREREREREREREREREREREREiIiIiIiIiIiIiIiIiIiIiAAAD6Cy1F399rrZtkQ438vUlM5WPDl1cAiSgN6UPsalpvHdn16XWPqZD/lV2zUfhiUZuyb54t2oYWw==',
+  '-----END MEGOLM SESSION DATA-----',
+].join('\n');
+const GOLDEN_PASSPHRASE = 'test-passphrase';
+const GOLDEN_PLAINTEXT = '[{"session":"golden"}]';
+
+/** Decode the base64 body between the armor lines to inspect the wire format. */
+function decodeArmor(armored: string): Uint8Array {
+  const b64 = armored
+    .replace('-----BEGIN MEGOLM SESSION DATA-----', '')
+    .replace('-----END MEGOLM SESSION DATA-----', '')
+    .replace(/\s+/g, '');
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 describe('megolm key-file crypto', () => {
+  it('decrypts a fixed golden vector (locks the interoperable format)', async () => {
+    expect(await decryptMegolmKeyFile(GOLDEN_VECTOR, GOLDEN_PASSPHRASE)).toBe(
+      GOLDEN_PLAINTEXT,
+    );
+  });
+
+  it('lays out the wire format: version, salt, iv, big-endian iterations, then a 32-byte MAC', async () => {
+    const body = decodeArmor(await encryptMegolmKeyFile('hello', 'pw', ITER));
+
+    expect(body[0]).toBe(1); // version byte
+    // iterations are a big-endian uint32 at offset 1 + 16(salt) + 16(iv) = 33.
+    expect(new DataView(body.buffer).getUint32(33, false)).toBe(ITER);
+    // total = 37-byte header + ciphertext('hello' → 5) + 32-byte HMAC.
+    expect(body.length).toBe(37 + 5 + 32);
+  });
+
   it('wraps the ciphertext in the interoperable megolm armor', async () => {
     const armored = await encryptMegolmKeyFile(SAMPLE, 'hunter2', ITER);
     expect(armored).toContain('-----BEGIN MEGOLM SESSION DATA-----');
