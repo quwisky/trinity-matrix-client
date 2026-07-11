@@ -28,6 +28,7 @@ import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { PollComponent } from '../poll/poll.component';
 import { LinkPreviewComponent } from '../link-preview/link-preview.component';
 import { LocationComponent } from '../location-share/location.component';
+import { StickerComponent } from '../sticker/sticker.component';
 
 /** A {@link MessageView} plus Discord-style grouping flag (own header vs continuation). */
 export interface MessageRow extends MessageView {
@@ -81,6 +82,7 @@ export type MessageRowAction =
     PollComponent,
     LinkPreviewComponent,
     LocationComponent,
+    StickerComponent,
   ],
   viewProviders: [provideIcons({ lucideMessagesSquare, lucideShieldAlert })],
   templateUrl: './message-row.component.html',

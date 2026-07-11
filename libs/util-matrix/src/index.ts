@@ -4,6 +4,7 @@ export * from './lib/session.model';
 export * from './lib/rust-crypto-store';
 export * from './lib/presence';
 export * from './lib/message-content';
+export * from './lib/image-pack';
 export * from './lib/typing';
 export * from './lib/matrix-to';
 export * from './lib/poll';

@@ -71,6 +71,12 @@
       (gifSelect)="onGifSelect($event)"
     />
   }
+  @if (stickerPickerOpen()) {
+    <trn-sticker-picker
+      class="composer__sticker-picker"
+      (stickerSelect)="onStickerSelect($event)"
+    />
+  }
   @if (emojiOpen()) {
     <ul
       id="emoji-suggestions"
@@ -229,6 +235,18 @@
       <ng-icon name="lucideImagePlay" aria-hidden="true" />
     </button>
   }
+  <button
+    type="button"
+    class="composer__sticker"
+    hlmTooltip="Sticker"
+    aria-label="Send a sticker"
+    data-testid="composer-sticker"
+    [disabled]="uploadProgress() !== null || editing()"
+    [attr.aria-expanded]="stickerPickerOpen()"
+    (click)="toggleStickerPicker()"
+  >
+    <ng-icon name="lucideSticker" aria-hidden="true" />
+  </button>
   <button
     type="button"
     class="composer__emoji"

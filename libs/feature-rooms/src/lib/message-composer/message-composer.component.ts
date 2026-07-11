@@ -21,6 +21,7 @@ import {
   lucidePlus,
   lucideSend,
   lucideSmile,
+  lucideSticker,
   lucideVote,
 } from '@ng-icons/lucide';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
@@ -39,9 +40,11 @@ import {
   GifSettingsService,
   type GifResult,
 } from '@trinity/data-access-gif';
-import { type Mention } from '@trinity/util-matrix';
+import { TimelineService } from '@trinity/data-access-timeline';
+import { type Mention, type PackImage } from '@trinity/util-matrix';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
+import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { CreatePollService } from '../poll/create-poll.service';
 import { LocationShareService } from '../location-share/location-share.service';
 
@@ -92,6 +95,7 @@ const MENTION_SUGGESTION_LIMIT = 8;
     HlmTextarea,
     PickerComponent,
     GifPickerComponent,
+    StickerPickerComponent,
     HlmProgress,
     HlmProgressIndicator,
   ],
@@ -103,6 +107,7 @@ const MENTION_SUGGESTION_LIMIT = 8;
       lucidePlus,
       lucideSend,
       lucideSmile,
+      lucideSticker,
       lucideVote,
     }),
   ],
@@ -154,6 +159,8 @@ export class MessageComposerComponent {
   readonly pickerOpen = signal(false);
   /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
   readonly gifPickerOpen = signal(false);
+  /** Whether the sticker grid is open (mutually exclusive with the other overlays). */
+  readonly stickerPickerOpen = signal(false);
   /** True while a chosen GIF is being fetched, before its media upload starts. */
   readonly gifDownloading = signal(false);
   /** The GIF affordance is offered only once a provider + API key are configured. */
@@ -217,6 +224,7 @@ export class MessageComposerComponent {
   private readonly toast = inject(TrnToastService);
   private readonly createPollSvc = inject(CreatePollService);
   private readonly locationShare = inject(LocationShareService);
+  private readonly timeline = inject(TimelineService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly emojiSearch = inject(EmojiSearch);
   private readonly emojiService = inject(EmojiService);
@@ -531,16 +539,46 @@ export class MessageComposerComponent {
     this.locationShare.share();
   }
 
-  /** Toggle the emoji picker, closing the GIF grid (only one overlay at a time). */
+  /** Toggle the emoji picker, closing the other overlays (only one at a time). */
   toggleEmojiPicker(): void {
     this.gifPickerOpen.set(false);
+    this.stickerPickerOpen.set(false);
     this.pickerOpen.set(!this.pickerOpen());
   }
 
-  /** Toggle the GIF grid, closing the emoji picker (only one overlay at a time). */
+  /** Toggle the GIF grid, closing the other overlays (only one at a time). */
   toggleGifPicker(): void {
     this.pickerOpen.set(false);
+    this.stickerPickerOpen.set(false);
     this.gifPickerOpen.set(!this.gifPickerOpen());
+  }
+
+  /** Toggle the sticker grid, closing the other overlays (only one at a time). */
+  toggleStickerPicker(): void {
+    this.pickerOpen.set(false);
+    this.gifPickerOpen.set(false);
+    this.stickerPickerOpen.set(!this.stickerPickerOpen());
+  }
+
+  /** A sticker was chosen → send it to the active room as an `m.sticker`. Sends
+   * immediately (like the GIF picker) and closes the grid. */
+  onStickerSelect(image: PackImage): void {
+    this.stickerPickerOpen.set(false);
+    // A sticker is a standalone message; drop any active reply so its banner
+    // doesn't linger (mirrors the media/GIF path).
+    if (this.replyingTo()) {
+      this.cancelReply.emit();
+    }
+    this.timeline
+      .sendSticker(image)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () =>
+          this.toast.show('Could not send that sticker.', {
+            duration: 4000,
+            variant: 'destructive',
+          }),
+      });
   }
 
   /** A GIF was chosen → download it and send it through the media path (works in
@@ -735,6 +773,10 @@ export class MessageComposerComponent {
     }
     if (this.gifPickerOpen()) {
       this.gifPickerOpen.set(false);
+      return;
+    }
+    if (this.stickerPickerOpen()) {
+      this.stickerPickerOpen.set(false);
       return;
     }
     if (this.pendingFile()) {

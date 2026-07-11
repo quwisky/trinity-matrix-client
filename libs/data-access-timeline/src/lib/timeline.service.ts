@@ -53,12 +53,14 @@ import {
   renderMarkdown,
   replyMessageContent,
   slashCommandContent,
+  stickerContent,
   textMessageContent,
   TYPING_REFRESH_MS,
   TYPING_TIMEOUT_MS,
   type MessageView,
   type MessageShield,
   type Mention,
+  type PackImage,
 } from '@trinity/util-matrix';
 
 const SCROLLBACK = 30;
@@ -453,6 +455,24 @@ export class TimelineService {
         client.sendMessage(
           room.roomId,
           locationMessageContent(lat, lng) as never,
+        ),
+      ).pipe(map(() => void 0));
+    });
+  }
+
+  /** Send a pack image as an `m.sticker` to the active room. Cold — runs on subscribe. */
+  sendSticker(image: PackImage): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx) {
+        return of(void 0);
+      }
+      const { client, room } = ctx;
+      return from(
+        client.sendEvent(
+          room.roomId,
+          EventType.Sticker,
+          stickerContent(image) as never,
         ),
       ).pipe(map(() => void 0));
     });

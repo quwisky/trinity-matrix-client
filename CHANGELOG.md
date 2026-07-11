@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Send stickers.** A sticker button in the composer opens a picker of your image packs
+  (the interoperable MSC2545 format — your personal pack plus any joined room's packs) and
+  sends the chosen image as an `m.sticker`, rendered inline in the timeline. Set up a pack
+  from another Matrix client and it shows up here.
 - **Browse public spaces.** The Explore directory now has a **Rooms / Spaces** toggle, so
   you can discover and join public Spaces (not just rooms) from your homeserver's directory;
   a joined space appears in the rail and is selected, a joined room opens in the Rooms view.

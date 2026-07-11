@@ -59,6 +59,12 @@
           (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
           (end)="pollEnd.emit(poll.id)"
         />
+      } @else if (r.kind === 'sticker') {
+        <trn-sticker
+          class="msg__sticker"
+          [mxc]="r.media?.mxc ?? null"
+          [label]="r.body"
+        />
       } @else if (r.location; as location) {
         <trn-location [location]="location" />
       } @else if (r.media) {
@@ -130,6 +136,12 @@
           [canEnd]="r.isOwn"
           (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
           (end)="pollEnd.emit(poll.id)"
+        />
+      } @else if (r.kind === 'sticker') {
+        <trn-sticker
+          class="msg__sticker"
+          [mxc]="r.media?.mxc ?? null"
+          [label]="r.body"
         />
       } @else if (r.location; as location) {
         <trn-location [location]="location" />

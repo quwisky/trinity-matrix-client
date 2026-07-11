@@ -26,6 +26,7 @@ export type MessageKind =
   | 'unsupported'
   | 'poll'
   | 'location'
+  | 'sticker'
   | MediaKind;
 
 /** A shared location (`m.location`), parsed from its `geo:` URI for the map card. */
@@ -236,9 +237,12 @@ export function buildMessageView(
   };
 }
 
-/** True when an event should render as a message row (a plain message, or a poll). */
+/** True when an event should render as a message row (a plain message, sticker, or poll). */
 export function isDisplayableMessage(event: MatrixEvent): boolean {
   if (isPollStart(event)) {
+    return true;
+  }
+  if (event.getType() === EventType.Sticker) {
     return true;
   }
   return (
@@ -529,6 +533,9 @@ function renderBody(
       media: null,
     };
   }
+  if (event.getType() === EventType.Sticker) {
+    return renderSticker(event.getContent());
+  }
   const content = event.getContent();
   const isReply = !!event.replyEventId;
   const raw = (content['body'] as string) ?? '';
@@ -608,6 +615,45 @@ function renderBody(
         media: null,
       };
   }
+}
+
+/**
+ * Project an `m.sticker` event into a small inline image. Unlike `m.image`, a sticker
+ * is always an image (pack images are public `mxc://`), so it bypasses the media
+ * pipeline's MIME gating and renders directly; a malformed one (no `url`) degrades to
+ * a plain label.
+ */
+function renderSticker(content: Record<string, unknown>): RenderedBody {
+  const url = typeof content['url'] === 'string' ? content['url'] : null;
+  const body =
+    typeof content['body'] === 'string' && content['body']
+      ? (content['body'] as string)
+      : 'Sticker';
+  if (!url || !url.startsWith('mxc://')) {
+    return { body, html: null, kind: 'unsupported', media: null };
+  }
+  const info = (
+    content['info'] && typeof content['info'] === 'object'
+      ? content['info']
+      : {}
+  ) as Record<string, unknown>;
+  const media: MediaPayload = {
+    kind: 'image',
+    mxc: url,
+    file: null,
+    filename: body,
+    mimeType:
+      typeof info['mimetype'] === 'string'
+        ? (info['mimetype'] as string)
+        : 'image/png',
+    size:
+      typeof info['size'] === 'number' ? (info['size'] as number) : undefined,
+    width: typeof info['w'] === 'number' ? (info['w'] as number) : undefined,
+    height: typeof info['h'] === 'number' ? (info['h'] as number) : undefined,
+    thumbnailMxc: null,
+    thumbnailFile: null,
+  };
+  return { body, html: null, kind: 'sticker', media };
 }
 
 /** MIME types we never render inline (script-bearing), forced to download-only. */

@@ -1,0 +1,32 @@
+<div class="sticker-picker" data-testid="sticker-picker">
+  @if (packs().length === 0) {
+    <p class="sticker-picker__empty" data-testid="sticker-picker-empty">
+      No stickers yet. Add an image pack from another Matrix client to send
+      stickers here.
+    </p>
+  } @else {
+    @for (pack of packs(); track pack.id) {
+      <section class="sticker-picker__pack">
+        <h3 class="sticker-picker__title">{{ pack.displayName }}</h3>
+        <div class="sticker-picker__grid">
+          @for (image of pack.images; track image.shortcode) {
+            <button
+              type="button"
+              class="sticker-picker__item"
+              [title]="image.body"
+              [attr.aria-label]="image.body"
+              data-testid="sticker-option"
+              (click)="select(image)"
+            >
+              <trn-sticker
+                [mxc]="image.url"
+                [label]="image.body"
+                [size]="thumbSize"
+              />
+            </button>
+          }
+        </div>
+      </section>
+    }
+  }
+</div>
