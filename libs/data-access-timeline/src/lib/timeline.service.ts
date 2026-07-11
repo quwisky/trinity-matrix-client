@@ -49,6 +49,7 @@ import {
   myReactionId,
   reactionsFor,
   readReceiptUserIds,
+  locationMessageContent,
   renderMarkdown,
   replyMessageContent,
   slashCommandContent,
@@ -438,6 +439,23 @@ export class TimelineService {
         );
       return from(client.sendMessage(room.roomId, content as never));
     }).pipe(map(() => void 0));
+  }
+
+  /** Send a shared location (`m.location`) to the active room. Cold — runs on subscribe. */
+  sendLocation(lat: number, lng: number): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx) {
+        return of(void 0);
+      }
+      const { client, room } = ctx;
+      return from(
+        client.sendMessage(
+          room.roomId,
+          locationMessageContent(lat, lng) as never,
+        ),
+      ).pipe(map(() => void 0));
+    });
   }
 
   /**

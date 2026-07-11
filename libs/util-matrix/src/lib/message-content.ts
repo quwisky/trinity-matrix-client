@@ -160,6 +160,23 @@ export function emoteMessageContent(text: string, md: RenderedMarkdown) {
   return { msgtype: MsgType.Emote, body: text };
 }
 
+/** `m.location` content for a shared point, with the `geo:` URI + MSC3488 fields. */
+export function locationMessageContent(
+  lat: number,
+  lng: number,
+  label = 'Shared location',
+) {
+  const geoUri = `geo:${lat},${lng}`;
+  return {
+    msgtype: MsgType.Location,
+    body: label,
+    geo_uri: geoUri,
+    'org.matrix.msc3488.location': { uri: geoUri, description: label },
+    'org.matrix.msc3488.asset': { type: 'm.self' },
+    'org.matrix.msc1767.text': label,
+  };
+}
+
 /** `m.text` spoiler content (`/spoiler`) — an `<span data-mx-spoiler>` formatted body. */
 export function spoilerMessageContent(text: string) {
   return {

@@ -19,7 +19,38 @@ import { buildPollView, isPollStart, type PollView } from './poll';
  */
 
 export type MessageKind =
-  'text' | 'emote' | 'notice' | 'redacted' | 'unsupported' | 'poll' | MediaKind;
+  | 'text'
+  | 'emote'
+  | 'notice'
+  | 'redacted'
+  | 'unsupported'
+  | 'poll'
+  | 'location'
+  | MediaKind;
+
+/** A shared location (`m.location`), parsed from its `geo:` URI for the map card. */
+export interface LocationView {
+  lat: number;
+  lng: number;
+  /** The description text (e.g. the sender's label), falling back to a default. */
+  label: string;
+}
+
+/** Parse a `geo:lat,lng` URI (ignoring any `;u=` uncertainty / altitude) into coords. */
+export function parseGeoUri(
+  geoUri: unknown,
+): { lat: number; lng: number } | null {
+  if (typeof geoUri !== 'string') {
+    return null;
+  }
+  const match = /^geo:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(geoUri.trim());
+  if (!match) {
+    return null;
+  }
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
 
 /** An aggregated reaction (`m.annotation`) on a message. */
 export interface ReactionView {
@@ -73,6 +104,8 @@ export interface MessageView {
   readReceipts: ReceiptView[];
   /** The projected poll (question + live tallies) when `kind` is `'poll'`, else null. */
   poll: PollView | null;
+  /** The shared location when `kind` is `'location'`, else null/absent. */
+  location?: LocationView | null;
   /**
    * Authenticity shield for an encrypted message (grey = caution, red = warning), or
    * null/absent when there's nothing to flag / the message isn't encrypted. Resolved
@@ -159,6 +192,7 @@ export function buildMessageView(
     media,
     caption = null,
     captionHtml = null,
+    location = null,
   } = poll
     ? {
         body: poll.question,
@@ -167,6 +201,7 @@ export function buildMessageView(
         media: null,
         caption: null,
         captionHtml: null,
+        location: null,
       }
     : renderBody(event, decryptionFailed);
   return {
@@ -190,6 +225,7 @@ export function buildMessageView(
     captionHtml,
     readReceipts: readReceiptsFor(client, room, event),
     poll,
+    location,
     shield,
     // Only preview links in unencrypted rooms — fetching a preview for an E2EE
     // message's URL would disclose it to the homeserver.
@@ -470,6 +506,7 @@ interface RenderedBody {
   media: MediaPayload | null;
   caption?: string | null;
   captionHtml?: string | null;
+  location?: LocationView | null;
 }
 
 function renderBody(
@@ -515,6 +552,25 @@ function renderBody(
       return { body: text, html: textHtml, kind: 'emote', media: null };
     case MsgType.Notice:
       return { body: text, html: textHtml, kind: 'notice', media: null };
+    case MsgType.Location: {
+      const geo = parseGeoUri(content['geo_uri']);
+      if (!geo) {
+        return {
+          body: text || '[location]',
+          html: null,
+          kind: 'unsupported',
+          media: null,
+        };
+      }
+      const label = text || 'Shared location';
+      return {
+        body: label,
+        html: null,
+        kind: 'location',
+        media: null,
+        location: { ...geo, label },
+      };
+    }
     case MsgType.Image:
     case MsgType.File:
     case MsgType.Audio:

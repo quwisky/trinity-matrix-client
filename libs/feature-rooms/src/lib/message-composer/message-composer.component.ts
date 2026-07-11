@@ -16,6 +16,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideImagePlay,
+  lucideMapPin,
   lucidePaperclip,
   lucidePlus,
   lucideSend,
@@ -42,6 +43,7 @@ import { type Mention } from '@trinity/util-matrix';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { CreatePollService } from '../poll/create-poll.service';
+import { LocationShareService } from '../location-share/location-share.service';
 
 /** A room member offered by the @-mention autocomplete. */
 export interface MentionMember {
@@ -96,6 +98,7 @@ const MENTION_SUGGESTION_LIMIT = 8;
   viewProviders: [
     provideIcons({
       lucideImagePlay,
+      lucideMapPin,
       lucidePaperclip,
       lucidePlus,
       lucideSend,
@@ -213,6 +216,7 @@ export class MessageComposerComponent {
   private readonly picker = inject(MediaPickerService);
   private readonly toast = inject(TrnToastService);
   private readonly createPollSvc = inject(CreatePollService);
+  private readonly locationShare = inject(LocationShareService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly emojiSearch = inject(EmojiSearch);
   private readonly emojiService = inject(EmojiService);
@@ -520,6 +524,11 @@ export class MessageComposerComponent {
   /** Open the create-poll dialog (starts a poll in the active room on confirm). */
   openPollDialog(): void {
     void this.createPollSvc.open();
+  }
+
+  /** Share the device's current location to the active room. */
+  shareLocation(): void {
+    this.locationShare.share();
   }
 
   /** Toggle the emoji picker, closing the GIF grid (only one overlay at a time). */

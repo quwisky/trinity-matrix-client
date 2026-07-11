@@ -3,6 +3,7 @@ import type { DomSanitizer } from '@angular/platform-browser';
 import type { MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   editMessageContent,
+  locationMessageContent,
   mediaCaptionFields,
   messagePreview,
   parseSlashCommand,
@@ -13,6 +14,21 @@ import {
   type Mention,
   type RenderedMarkdown,
 } from './message-content';
+
+describe('locationMessageContent', () => {
+  it('builds an m.location with a geo URI and MSC3488 fields', () => {
+    const content = locationMessageContent(52.51, 13.38, 'Berlin') as Record<
+      string,
+      unknown
+    >;
+    expect(content['msgtype']).toBe('m.location');
+    expect(content['geo_uri']).toBe('geo:52.51,13.38');
+    expect(content['body']).toBe('Berlin');
+    expect(content['org.matrix.msc3488.location']).toMatchObject({
+      uri: 'geo:52.51,13.38',
+    });
+  });
+});
 
 // mediaCaptionFields only uses the sanitizer via renderMarkdown (marked → sanitize);
 // a passthrough stub is enough to exercise the markdown branch without a DOM.

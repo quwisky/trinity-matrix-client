@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Share your location.** A location button in the composer sends your current position
+  as an `m.location` message, rendered as a card with the coordinates and an "Open in maps"
+  link (no embedded map tiles, so the strict content-security policy stays intact).
 - **Mark rooms as read.** A room's ⋮ menu now has **Mark as read** (when it has unread),
   and the channel-list header gains a **Mark all as read** action — both clear unread badges
   without opening the rooms.

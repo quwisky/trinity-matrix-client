@@ -399,6 +399,19 @@ describe('TimelineService', () => {
     expect(rich['formatted_body']).toContain('<strong>bold</strong>');
   });
 
+  it('sends a shared location as m.location', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(svc.sendLocation(52.51, 13.38));
+
+    expect(sent[0][0]).toBe('message');
+    expect(sent[0][1]).toMatchObject({
+      msgtype: 'm.location',
+      geo_uri: 'geo:52.51,13.38',
+    });
+  });
+
   it('interprets a /me slash command as an emote', async () => {
     const sent: unknown[][] = [];
     const svc = setup([], sent);

@@ -166,6 +166,17 @@
   >
     <ng-icon name="lucideVote" aria-hidden="true" />
   </button>
+  <button
+    type="button"
+    class="composer__attach"
+    hlmTooltip="Share location"
+    aria-label="Share location"
+    data-testid="composer-location"
+    [disabled]="editing()"
+    (click)="shareLocation()"
+  >
+    <ng-icon name="lucideMapPin" aria-hidden="true" />
+  </button>
   <textarea
     #ta
     hlmTextarea

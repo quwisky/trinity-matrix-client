@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { firstUrl, linkifyText, sanitizeMatrixHtml } from './message-view';
+import {
+  firstUrl,
+  linkifyText,
+  parseGeoUri,
+  sanitizeMatrixHtml,
+} from './message-view';
+
+describe('parseGeoUri', () => {
+  it('parses lat/lng from a geo URI', () => {
+    expect(parseGeoUri('geo:52.51,13.38')).toEqual({ lat: 52.51, lng: 13.38 });
+  });
+
+  it('handles negative coordinates and ignores an uncertainty suffix', () => {
+    expect(parseGeoUri('geo:-33.86,151.21;u=35')).toEqual({
+      lat: -33.86,
+      lng: 151.21,
+    });
+  });
+
+  it('returns null for a non-geo or malformed value', () => {
+    expect(parseGeoUri('https://example.com')).toBeNull();
+    expect(parseGeoUri('geo:not,coords')).toBeNull();
+    expect(parseGeoUri(undefined)).toBeNull();
+  });
+});
 
 describe('firstUrl', () => {
   it('returns the first http(s) URL', () => {
