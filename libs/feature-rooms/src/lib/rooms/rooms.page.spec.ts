@@ -69,6 +69,8 @@ describe('RoomsPage action error feedback', () => {
   let canManageBans: ReturnType<typeof vi.fn>;
   let canManageAliases: ReturnType<typeof vi.fn>;
   let joinPublicRoom: ReturnType<typeof vi.fn>;
+  let markReadFn: ReturnType<typeof vi.fn>;
+  let markAllReadFn: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
@@ -92,12 +94,16 @@ describe('RoomsPage action error feedback', () => {
     canManageBans = vi.fn(() => false);
     canManageAliases = vi.fn(() => false);
     joinPublicRoom = vi.fn(() => of('!new:hs'));
+    markReadFn = vi.fn(() => of(undefined));
+    markAllReadFn = vi.fn(() => of(undefined));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         MockProvider(RoomsService, {
           leave: leaveRoom,
           rooms: roomsSignal,
+          markRead: markReadFn,
+          markAllRead: markAllReadFn,
         }),
         MockProvider(RoomSettingsService, { editableFields, currentAccess }),
         MockProvider(RoomModerationService, { canManageBans }),
@@ -324,6 +330,18 @@ describe('RoomsPage action error feedback', () => {
 
     expect(joinPublicRoom).toHaveBeenCalledWith('!old:hs');
     expect(page.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
+  });
+
+  it('marks a room read via RoomsService', () => {
+    const page = build();
+    page.onMarkRead('!r:hs');
+    expect(markReadFn).toHaveBeenCalledWith('!r:hs');
+  });
+
+  it('marks all rooms read via RoomsService', () => {
+    const page = build();
+    page.onMarkAllRead();
+    expect(markAllReadFn).toHaveBeenCalled();
   });
 
   it('opens the threads-list panel for the active room', () => {

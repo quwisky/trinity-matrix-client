@@ -11,7 +11,16 @@ import {
   type Room,
   type RoomMember,
 } from 'matrix-js-sdk';
-import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
+import {
+  Observable,
+  defer,
+  forkJoin,
+  from,
+  map,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import {
   MatrixClientService,
   reprojectOnAccountSwitch,
@@ -327,6 +336,42 @@ export class RoomsService {
         return throwError(() => new Error('Not signed in.'));
       }
       return from(this.matrix.instance.leave(roomId)).pipe(map(() => void 0));
+    });
+  }
+
+  /**
+   * Mark a room read: ack its latest confirmed event with a read receipt + fully-read
+   * marker, clearing its unread badge. Cold — runs on subscribe; a no-op for an empty
+   * or unknown room. The client emits the receipt so {@link rooms} re-derives the badge.
+   */
+  markRead(roomId: string): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      const client = this.matrix.instance;
+      const room = client.getRoom(roomId);
+      const events = room?.getLiveTimeline().getEvents() ?? [];
+      const latest = [...events].reverse().find((event) => !event.status);
+      const latestId = latest?.getId();
+      if (!latest || !latestId) {
+        return of(void 0);
+      }
+      void client.setRoomReadMarkers(roomId, latestId)?.catch(() => undefined);
+      return from(client.sendReadReceipt(latest)).pipe(map(() => void 0));
+    });
+  }
+
+  /** Mark every room with unread messages read. Cold — acks them all in parallel. */
+  markAllRead(): Observable<void> {
+    return defer(() => {
+      const unread = this.rooms().filter((room) => room.hasUnread);
+      if (unread.length === 0) {
+        return of(void 0);
+      }
+      return forkJoin(unread.map((room) => this.markRead(room.id))).pipe(
+        map(() => void 0),
+      );
     });
   }
 

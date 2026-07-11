@@ -924,6 +924,26 @@ export class RoomsPage implements OnInit, OnDestroy {
       });
   }
 
+  /** Mark a single room read (from its ⋮ menu); the badge clears via sync. */
+  onMarkRead(roomId: string): void {
+    this.rooms
+      .markRead(roomId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => void this.showError('Could not mark the room read.'),
+      });
+  }
+
+  /** Mark every unread room read (header action). */
+  onMarkAllRead(): void {
+    this.rooms
+      .markAllRead()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => void this.showError('Could not mark rooms read.'),
+      });
+  }
+
   /** Header "Room settings": edit the active room's name and topic in a dialog. */
   onOpenRoomSettings(): void {
     const room = this.activeRoom();

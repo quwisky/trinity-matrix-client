@@ -23,6 +23,7 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideBell,
   lucideCheck,
+  lucideCheckCheck,
   lucideCircleMinus,
   lucideCommand,
   lucideEllipsisVertical,
@@ -81,6 +82,7 @@ export interface AccountSummary extends UserProfile {
     provideIcons({
       lucideBell,
       lucideCheck,
+      lucideCheckCheck,
       lucideCircleMinus,
       lucideCommand,
       lucideEllipsisVertical,
@@ -118,6 +120,8 @@ export class ChannelSidebarComponent {
   readonly otherRooms = computed(() =>
     this.rooms().filter((r) => !r.favourite),
   );
+  /** Whether any room has unread messages — gates the header "Mark all as read". */
+  readonly hasAnyUnread = computed(() => this.rooms().some((r) => r.hasUnread));
   /** Not-yet-joined channels of the active space (the "More Channels" list). */
   readonly joinableRooms = this.spacesSvc.notJoinedRooms;
   /** Sub-spaces of the active space (joined → Open, otherwise Join). */
@@ -177,6 +181,10 @@ export class ChannelSidebarComponent {
   readonly logout = output<string>();
   /** Set a room's notification level (all / mentions / mute) from its ⋮ menu. */
   readonly setNotifyMode = output<{ roomId: string; mode: RoomNotifyMode }>();
+  /** Mark a single room read (from its ⋮ menu), by room id. */
+  readonly markRead = output<string>();
+  /** Mark every room read (header action). */
+  readonly markAllRead = output<void>();
 
   /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
   readonly badgeLabel = unreadBadgeLabel;

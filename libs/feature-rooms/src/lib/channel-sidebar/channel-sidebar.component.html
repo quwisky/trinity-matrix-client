@@ -11,6 +11,17 @@
       >
         <ng-icon name="lucideCommand" aria-hidden="true" />
       </button>
+      @if (hasAnyUnread()) {
+        <button
+          class="sidebar__action"
+          (click)="markAllRead.emit()"
+          aria-label="Mark all as read"
+          title="Mark all as read"
+          data-testid="mark-all-read"
+        >
+          <ng-icon name="lucideCheckCheck" aria-hidden="true" />
+        </button>
+      }
       @if (spaceActive()) {
         <button
           class="sidebar__action"
@@ -283,6 +294,16 @@
           <ng-icon name="lucideStar" />
           {{ room.favourite ? 'Unfavourite' : 'Favourite' }}
         </button>
+        @if (room.hasUnread) {
+          <button
+            hlmDropdownMenuItem
+            (triggered)="markRead.emit(room.id)"
+            data-testid="room-mark-read"
+          >
+            <ng-icon name="lucideCheckCheck" />
+            Mark as read
+          </button>
+        }
         <div hlmDropdownMenuSeparator></div>
         <button
           hlmDropdownMenuItem

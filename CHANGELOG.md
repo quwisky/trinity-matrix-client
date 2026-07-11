@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Mark rooms as read.** A room's ⋮ menu now has **Mark as read** (when it has unread),
+  and the channel-list header gains a **Mark all as read** action — both clear unread badges
+  without opening the rooms.
 - **See who read a message.** Clicking the read-receipt avatars on a message now expands
   a "Seen by …" list of who has read up to it (also available as a hover tooltip).
 - **Message context actions.** A message's ⋯ menu now has **Copy link** (a `matrix.to`

@@ -654,6 +654,51 @@ describe('ChannelSidebarComponent', () => {
     expect(left).toBe('!a:hs');
   });
 
+  it('emits markRead from the kebab menu for an unread room', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+      },
+    });
+    let marked: string | undefined;
+    fixture.componentInstance.markRead.subscribe((id) => (marked = id));
+
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="room-mark-read"]')!
+      .click();
+
+    expect(marked).toBe('!a:hs');
+  });
+
+  it('does not offer Mark as read for a read room', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: false })],
+      },
+    });
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+    expect(document.querySelector('[data-testid="room-mark-read"]')).toBeNull();
+  });
+
+  it('emits markAllRead from the header when any room is unread', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+      },
+    });
+    let all = false;
+    fixture.componentInstance.markAllRead.subscribe(() => (all = true));
+
+    container
+      .querySelector<HTMLElement>('[data-testid="mark-all-read"]')!
+      .click();
+
+    expect(all).toBe(true);
+  });
+
   it('offers a Notifications entry in the room kebab menu', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
