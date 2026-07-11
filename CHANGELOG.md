@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Room-upgrade banner.** When a room has been upgraded to a new version, the old room
+  now shows a banner with **Go to the new room** — which joins and opens the successor.
 - **Slash commands.** The composer now understands IRC-style commands: **/me** (send an
   emote), **/shrug** (append ¯\\_(ツ)_/¯), **/plain** (send without markdown), and **/spoiler**
   (hide text behind a spoiler). Anything else starting with `/` is sent as-is.

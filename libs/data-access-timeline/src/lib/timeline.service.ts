@@ -62,6 +62,14 @@ import {
 
 const SCROLLBACK = 30;
 
+/** The open room's tombstone: it was replaced by a successor room (`m.room.tombstone`). */
+export interface RoomTombstone {
+  /** The successor room id to move to. */
+  replacementRoomId: string;
+  /** The upgrade message (e.g. "This room has been replaced"), if any. */
+  body: string;
+}
+
 /**
  * Projects the *active* room's live timeline into a `messages` signal of view
  * models. Re-maps on new events and on async E2EE decryption. The shell opens one
@@ -100,6 +108,11 @@ export class TimelineService {
   // a redaction we shouldn't have sent). Gates the delete affordance on others' rows.
   private readonly _canRedactOthers = signal(false);
   readonly canRedactOthers = this._canRedactOthers.asReadonly();
+
+  // The open room's tombstone (it was upgraded/replaced), or null. Drives a banner
+  // that links to the successor room. Recomputed on open + when state changes.
+  private readonly _tombstone = signal<RoomTombstone | null>(null);
+  readonly tombstone = this._tombstone.asReadonly();
 
   // Timestamp (ms) of the last `sendTyping(true)` we issued for the open room, so we
   // refresh the flag at most every {@link TYPING_REFRESH_MS} instead of per keystroke;
@@ -292,6 +305,7 @@ export class TimelineService {
     this._typingNames.set([]);
     this._canRedactOthers.set(false);
     this._canLoadOlder.set(false);
+    this._tombstone.set(null);
   }
 
   /**
@@ -685,6 +699,33 @@ export class TimelineService {
     // history doesn't re-send). Skipped while unfocused so an open room still
     // shows unread; onFocus re-acks on return.
     this.markRead(events);
+    // A tombstone lands as a state event → onTimeline → here; keep the banner current.
+    this.updateTombstone(room);
+  }
+
+  /**
+   * Recompute the open room's tombstone (successor room). Cheap, and guarded so an
+   * unchanged tombstone doesn't churn the signal (and re-render the banner) each refresh.
+   */
+  private updateTombstone(room: Room): void {
+    const content = room.currentState
+      ?.getStateEvents?.(EventType.RoomTombstone, '')
+      ?.getContent();
+    const replacement =
+      typeof content?.['replacement_room'] === 'string'
+        ? content['replacement_room']
+        : null;
+    if ((this._tombstone()?.replacementRoomId ?? null) === replacement) {
+      return;
+    }
+    this._tombstone.set(
+      replacement
+        ? {
+            replacementRoomId: replacement,
+            body: typeof content?.['body'] === 'string' ? content['body'] : '',
+          }
+        : null,
+    );
   }
 
   /**

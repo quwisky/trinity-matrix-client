@@ -53,6 +53,7 @@ import {
   RoomSettingsService,
   RoomModerationService,
   RoomAliasesService,
+  PublicRoomsService,
   SpacesService,
   UnreadAggregatorService,
   type MemberSummary,
@@ -84,6 +85,7 @@ import { SimpleMessageListComponent } from '../message-list/simple-message-list/
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
+import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 
@@ -110,6 +112,7 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
     VirtualMessageListComponent,
     EncryptionBannerComponent,
     ConnectivityBannerComponent,
+    TombstoneBannerComponent,
   ],
   viewProviders: [
     provideIcons({
@@ -153,6 +156,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly roomSettings = inject(RoomSettingsService);
   private readonly moderation = inject(RoomModerationService);
   private readonly aliases = inject(RoomAliasesService);
+  private readonly publicRooms = inject(PublicRoomsService);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
   private readonly actionSheet = inject(TrnActionSheetService);
@@ -675,6 +679,16 @@ export class RoomsPage implements OnInit, OnDestroy {
       this.onSelectSpace(null);
       this.onSelectRoom(roomId);
     }
+  }
+
+  /** Move to a room's upgraded successor (from the tombstone banner): join it, then open it. */
+  onGoToUpgradedRoom(roomId: string): void {
+    this.spaceError.set(null);
+    runWithBusy(this.publicRooms.join(roomId), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe((joinedId) => this.onSelectRoom(joinedId));
   }
 
   /** Prompt for a name, create a standalone encrypted room, then select it. */

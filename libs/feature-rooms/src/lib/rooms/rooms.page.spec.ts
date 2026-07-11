@@ -16,6 +16,7 @@ import {
   RoomSettingsService,
   RoomModerationService,
   RoomAliasesService,
+  PublicRoomsService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
@@ -67,6 +68,7 @@ describe('RoomsPage action error feedback', () => {
   let currentAccess: ReturnType<typeof vi.fn>;
   let canManageBans: ReturnType<typeof vi.fn>;
   let canManageAliases: ReturnType<typeof vi.fn>;
+  let joinPublicRoom: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
@@ -89,6 +91,7 @@ describe('RoomsPage action error feedback', () => {
     }));
     canManageBans = vi.fn(() => false);
     canManageAliases = vi.fn(() => false);
+    joinPublicRoom = vi.fn(() => of('!new:hs'));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -99,6 +102,7 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(RoomSettingsService, { editableFields, currentAccess }),
         MockProvider(RoomModerationService, { canManageBans }),
         MockProvider(RoomAliasesService, { canManageAliases }),
+        MockProvider(PublicRoomsService, { join: joinPublicRoom }),
         MockProvider(SpacesService),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService, { edit, sendMedia }),
@@ -311,6 +315,15 @@ describe('RoomsPage action error feedback', () => {
     await page.onExploreRooms();
 
     expect(page.activeRoomId()).toBeNull();
+  });
+
+  it('joins and opens the successor room from the tombstone banner', () => {
+    const page = build();
+
+    page.onGoToUpgradedRoom('!old:hs');
+
+    expect(joinPublicRoom).toHaveBeenCalledWith('!old:hs');
+    expect(page.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
   });
 
   it('opens the threads-list panel for the active room', () => {

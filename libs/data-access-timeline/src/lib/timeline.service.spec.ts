@@ -1662,6 +1662,68 @@ describe('TimelineService', () => {
     });
   });
 
+  describe('tombstone', () => {
+    function tombstoneClient(replacement: string | null) {
+      const events = [fakeEvent({ id: '$1', sender: '@a:hs', body: 'hi' })];
+      const room = {
+        roomId: '!r:hs',
+        getLiveTimeline: () => ({
+          getEvents: () => events,
+          getPaginationToken: () => null,
+        }),
+        getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+        relations: { getChildEventsForEvent: () => undefined },
+        currentState: {
+          getStateEvents: (type: string) =>
+            type === 'm.room.tombstone' && replacement
+              ? {
+                  getContent: () => ({
+                    replacement_room: replacement,
+                    body: 'upgraded',
+                  }),
+                }
+              : null,
+        },
+        on: () => {},
+        off: () => {},
+      };
+      return {
+        baseUrl: 'https://hs',
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: () => {},
+        off: () => {},
+        sendReadReceipt: () => Promise.resolve({}),
+        setRoomReadMarkers: () => Promise.resolve({}),
+        scrollback: () => Promise.resolve(room),
+      };
+    }
+
+    function openTombstoneRoom(replacement: string | null) {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          matrixProvider(tombstoneClient(replacement)),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return svc;
+    }
+
+    it('exposes the successor room when the room is tombstoned', () => {
+      expect(openTombstoneRoom('!new:hs').tombstone()).toEqual({
+        replacementRoomId: '!new:hs',
+        body: 'upgraded',
+      });
+    });
+
+    it('is null for a live (non-tombstoned) room', () => {
+      expect(openTombstoneRoom(null).tombstone()).toBeNull();
+    });
+  });
+
   describe('per-message authenticity shields', () => {
     function shieldClient(
       events: ReturnType<typeof fakeEvent>[],
