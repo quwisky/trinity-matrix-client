@@ -39,6 +39,7 @@ vi.mock('./window', () => ({
   createWindow: vi.fn(),
   focusMainWindow: vi.fn(),
   hardenContents: vi.fn(),
+  installPermissionPolicy: vi.fn(),
   setQuitting: vi.fn(),
 }));
 vi.mock('./tray', () => ({ createTray: vi.fn() }));

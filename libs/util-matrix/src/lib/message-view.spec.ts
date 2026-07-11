@@ -1,13 +1,41 @@
 import { describe, expect, it } from 'vitest';
+import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   firstUrl,
   isEditableMessage,
   linkifyText,
   parseGeoUri,
+  safeBuildMessageView,
   sanitizeMatrixHtml,
   type MessageKind,
   type MessageView,
 } from './message-view';
+
+describe('safeBuildMessageView', () => {
+  it('degrades a hostile event that throws to an unsupported row (no crash)', () => {
+    // A projection error must not propagate — it would crash the whole timeline map.
+    const hostile = {
+      getSender: () => '@evil:hs',
+      getType: () => 'm.room.message',
+      isDecryptionFailure: () => false,
+      isRedacted: () => false,
+      getContent: () => {
+        throw new Error('boom');
+      },
+      getId: () => '$x',
+      getTs: () => 123,
+    } as unknown as MatrixEvent;
+    const room = { getMember: () => null } as unknown as Room;
+    const client = { getUserId: () => '@me:hs' } as unknown as MatrixClient;
+
+    const view = safeBuildMessageView(client, room, hostile);
+
+    expect(view.kind).toBe('unsupported');
+    expect(view.body).toBe('[unsupported message]');
+    expect(view.id).toBe('$x');
+    expect(view.senderId).toBe('@evil:hs');
+  });
+});
 
 function view(over: Partial<MessageView> = {}): MessageView {
   return {

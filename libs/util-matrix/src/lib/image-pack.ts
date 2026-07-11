@@ -8,6 +8,14 @@
  * the picker consumes, keeping only images usable as stickers.
  */
 
+/**
+ * Cap on images parsed from a single pack. A pack comes from attacker-controlled
+ * account-data / room state and each image renders a component that fires a media
+ * resolve, so an unbounded pack is a resource-exhaustion vector — bound it well above
+ * any realistic pack size.
+ */
+const MAX_PACK_IMAGES = 256;
+
 /** Account-data event type carrying the user's personal image pack. */
 export const USER_EMOTES_EVENT = 'im.ponies.user_emotes';
 /** Room state event type carrying a room's image pack(s), keyed by state key. */
@@ -122,7 +130,7 @@ export function parseStickerPack(
   const parsed: PackImage[] = [];
   for (const [shortcode, raw] of Object.entries(
     images as Record<string, unknown>,
-  )) {
+  ).slice(0, MAX_PACK_IMAGES)) {
     const image = parseImage(shortcode, raw, packUsage);
     if (image) {
       parsed.push(image);

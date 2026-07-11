@@ -31,7 +31,7 @@ import { MediaService } from '@trinity/data-access-media';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
-  buildMessageView,
+  safeBuildMessageView,
   collectMessageSenders,
   initialOf,
   isDisplayableMessage,
@@ -754,7 +754,7 @@ export class ThreadsService {
 
     this._threadMessages.set(
       ordered.map((e) =>
-        buildMessageView(
+        safeBuildMessageView(
           client,
           room,
           e,

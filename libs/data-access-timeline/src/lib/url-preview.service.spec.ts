@@ -62,6 +62,24 @@ describe('UrlPreviewService', () => {
     expect(getUrlPreview).toHaveBeenCalledTimes(1);
   });
 
+  it('bounds the cache — the oldest entry is evicted past the limit', async () => {
+    const getUrlPreview = vi.fn(async (url: string) => ({ 'og:title': url }));
+    const { svc } = setup(getUrlPreview);
+
+    // Resolve well over the cap so eviction runs.
+    for (let i = 0; i < 300; i++) {
+      await firstValueFrom(svc.preview(`https://x.test/${i}`));
+    }
+    getUrlPreview.mockClear();
+
+    // The oldest URL was evicted, so it re-fetches instead of returning a cached hit.
+    await firstValueFrom(svc.preview('https://x.test/0'));
+    expect(getUrlPreview).toHaveBeenCalledWith(
+      'https://x.test/0',
+      expect.any(Number),
+    );
+  });
+
   it('does not cache a transient failure — a later view retries and can render', async () => {
     const getUrlPreview = vi
       .fn()

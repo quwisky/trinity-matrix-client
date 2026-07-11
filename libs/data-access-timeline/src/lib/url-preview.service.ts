@@ -27,6 +27,9 @@ export interface UrlPreview {
  * a link the homeserver could already see. A failed / preview-disabled request resolves to
  * null so the card simply doesn't render.
  */
+/** Cap on cached previews; distinct URLs across a session are otherwise unbounded. */
+const CACHE_LIMIT = 256;
+
 @Injectable({ providedIn: 'root' })
 export class UrlPreviewService {
   private readonly matrix = inject(MatrixClientService);
@@ -38,6 +41,7 @@ export class UrlPreviewService {
     if (cached) {
       return cached;
     }
+    this.evict();
     const request = defer(() => {
       if (!this.matrix.isInitialized) {
         return of(null);
@@ -61,6 +65,17 @@ export class UrlPreviewService {
     );
     this.cache.set(url, request);
     return request;
+  }
+
+  /** Drop the oldest entries (FIFO) so the per-session cache stays bounded. */
+  private evict(): void {
+    while (this.cache.size >= CACHE_LIMIT) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest === undefined) {
+        break;
+      }
+      this.cache.delete(oldest);
+    }
   }
 }
 

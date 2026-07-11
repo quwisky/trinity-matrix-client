@@ -108,4 +108,24 @@ describe('megolm key-file crypto', () => {
       /valid encrypted key export/i,
     );
   });
+
+  it('rejects an absurd iteration count before running PBKDF2 (DoS guard)', async () => {
+    const body = decodeArmor(await encryptMegolmKeyFile(SAMPLE, 'pw', ITER));
+    // Patch the big-endian uint32 iteration count (offset 33) to ~4.29 billion —
+    // running PBKDF2 for that would freeze the app, so it must be rejected up front.
+    new DataView(body.buffer).setUint32(33, 0xffffffff, false);
+    let binary = '';
+    for (const b of body) {
+      binary += String.fromCharCode(b);
+    }
+    const tampered = [
+      '-----BEGIN MEGOLM SESSION DATA-----',
+      btoa(binary),
+      '-----END MEGOLM SESSION DATA-----',
+    ].join('\n');
+
+    await expect(decryptMegolmKeyFile(tampered, 'pw')).rejects.toThrow(
+      /valid encrypted key export/i,
+    );
+  });
 });

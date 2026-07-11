@@ -6,6 +6,7 @@ import {
   createWindow,
   focusMainWindow,
   hardenContents,
+  installPermissionPolicy,
   setQuitting,
 } from './window';
 import { createTray } from './tray';
@@ -94,6 +95,9 @@ if (!app.requestSingleInstanceLock()) {
     // registerAppProtocol() serves `trinity://app` from. Scoped to remote
     // http(s) only; see cors.ts (does not weaken webSecurity/sandbox/isolation).
     installMatrixCors(session.defaultSession);
+    // Restrict renderer permission requests (mic + geolocation only); Electron would
+    // otherwise auto-approve camera and other powerful permissions.
+    installPermissionPolicy(session.defaultSession);
     buildMenu();
     createWindow();
     createTray();

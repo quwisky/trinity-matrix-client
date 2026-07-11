@@ -17,6 +17,11 @@ files:
 
 asar: true
 
+# Harden the packaged binary's fuses (disable RUN_AS_NODE / NODE_OPTIONS / --inspect)
+# so a local process can't re-launch the signed app as Node to inject code into the
+# keychain-privileged main process. Runs before signing; see afterPack.cjs.
+afterPack: ./afterPack.cjs
+
 # OS deep-link scheme for the desktop SSO callback
 # (eu.qwky.trinity://sso-callback?…). This declares the protocol in the packaged
 # artifacts so the OS routes the browser redirect back into the app:

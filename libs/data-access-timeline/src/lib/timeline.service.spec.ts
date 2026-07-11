@@ -1301,6 +1301,25 @@ describe('TimelineService', () => {
       });
     });
 
+    it('caps a hostile voice message’s waveform length (DoS guard)', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$huge',
+          sender: '@a:hs',
+          msgtype: 'm.audio',
+          url: 'mxc://hs/clip',
+          info: { mimetype: 'audio/webm', size: 10 },
+          voice: true,
+          waveform: Array.from({ length: 5000 }, () => 512),
+        }),
+      ]);
+
+      // Rendered one DOM node each, so the received array must be bounded.
+      expect(svc.messages()[0].media?.waveform?.length).toBeLessThanOrEqual(
+        512,
+      );
+    });
+
     it('leaves a plain m.audio unflagged as voice', () => {
       const svc = setup([
         fakeEvent({

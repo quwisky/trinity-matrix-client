@@ -55,6 +55,32 @@ export function hardenContents(contents: Electron.WebContents): void {
   contents.on('will-attach-webview', (event) => event.preventDefault());
 }
 
+/**
+ * Restrict renderer permission requests to the capabilities the app actually uses —
+ * microphone (voice messages) and geolocation (location sharing). Electron's default
+ * grants requests that reach `whenReady`; without a handler, camera and other
+ * powerful permissions would be auto-approved. Camera is denied (the app never uses
+ * it), so a `media` request is allowed only when it's audio-only.
+ */
+export function installPermissionPolicy(session: Electron.Session): void {
+  session.setPermissionRequestHandler(
+    (_contents, permission, callback, details) => {
+      if (permission === 'media') {
+        const wantsVideo =
+          'mediaTypes' in details &&
+          (details.mediaTypes ?? []).includes('video');
+        callback(!wantsVideo); // mic yes, camera no
+        return;
+      }
+      callback(permission === 'geolocation');
+    },
+  );
+  session.setPermissionCheckHandler(
+    (_contents, permission) =>
+      permission === 'media' || permission === 'geolocation',
+  );
+}
+
 export function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,

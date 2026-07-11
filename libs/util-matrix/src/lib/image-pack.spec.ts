@@ -114,6 +114,15 @@ describe('parseStickerPack', () => {
     expect(pack?.images.map((i) => i.shortcode)).toEqual(['ok']);
   });
 
+  it('caps the number of images parsed from a hostile pack', () => {
+    const images: Record<string, unknown> = {};
+    for (let i = 0; i < 1000; i++) {
+      images[`s${i}`] = { url: `mxc://hs/${i}` };
+    }
+    const pack = parseStickerPack({ images }, 'p', 'P');
+    expect(pack?.images.length).toBe(256); // MAX_PACK_IMAGES, not 1000
+  });
+
   it('returns null for malformed content or a pack with no sticker images', () => {
     expect(parseStickerPack(null, 'p', 'P')).toBeNull();
     expect(parseStickerPack({}, 'p', 'P')).toBeNull();

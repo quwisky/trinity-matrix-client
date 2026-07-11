@@ -252,6 +252,41 @@ describe('mentions in content builders', () => {
     );
   });
 
+  it('escapes a hostile user id in a mention-pill href (no attribute breakout)', () => {
+    const evil: Mention = {
+      userId: '@a"><img src=x onerror=alert(1)>:hs',
+      display: '@X',
+    };
+    const text = 'hi @X';
+    const html = textMessageContent(text, renderMarkdown(sanitizer, text), [
+      evil,
+    ]).formatted_body as string;
+
+    expect(html).not.toContain('"><img'); // no raw attribute breakout
+    expect(html).toContain('&quot;'); // the quote was escaped in the href
+  });
+
+  it('escapes a hostile sender id in a reply href', () => {
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => ({
+        getSender: () => '@a"><img src=x>:hs',
+        getContent: () => ({ body: 'orig' }),
+      }),
+    } as unknown as Room;
+
+    const html = replyMessageContent(
+      room,
+      '$t',
+      'hello',
+      renderMarkdown(sanitizer, 'hello'),
+      [],
+    ).formatted_body as string;
+
+    expect(html).not.toContain('"><img');
+    expect(html).toContain('&quot;');
+  });
+
   it('a reply pings the replied-to author plus any reply mentions', () => {
     const room = {
       roomId: '!r:hs',

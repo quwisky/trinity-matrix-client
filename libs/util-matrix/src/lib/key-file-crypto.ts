@@ -20,6 +20,14 @@ const TRAILER = '-----END MEGOLM SESSION DATA-----';
 /** PBKDF2 rounds for a fresh export — matches the interoperable default. */
 export const DEFAULT_KEY_FILE_ITERATIONS = 500_000;
 
+/**
+ * Upper bound on the iteration count we'll honor from an *imported* file. The count is
+ * an attacker-controlled uint32 read before HMAC verification, so an uncapped value
+ * (up to ~4.3 billion) would pin the main thread running PBKDF2 for minutes — a DoS.
+ * 10× the default is far above any legitimate exporter yet stays sub-second.
+ */
+const MAX_KEY_FILE_ITERATIONS = 5_000_000;
+
 const VERSION = 1;
 const SALT_LEN = 16;
 const IV_LEN = 16;
@@ -77,6 +85,11 @@ export async function decryptMegolmKeyFile(
     1 + SALT_LEN + IV_LEN,
     false,
   );
+  // The count is untrusted (read before verification): reject an absurd value rather
+  // than run PBKDF2 for it, which would freeze the app.
+  if (iterations < 1 || iterations > MAX_KEY_FILE_ITERATIONS) {
+    throw new Error('This file isn’t a valid encrypted key export.');
+  }
   const macOffset = body.length - MAC_LEN;
   const ciphertext = body.slice(HEADER_LEN, macOffset);
   const mac = body.slice(macOffset);

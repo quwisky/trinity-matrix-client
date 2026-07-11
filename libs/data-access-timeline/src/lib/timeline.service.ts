@@ -34,7 +34,7 @@ import {
 } from '@trinity/platform-native';
 import {
   annotationContent,
-  buildMessageView,
+  safeBuildMessageView,
   collectMessageSenders,
   editMessageContent,
   isDisplayableMessage,
@@ -778,7 +778,7 @@ export class TimelineService {
         if (cached && cached.rev === rev) {
           return cached.view;
         }
-        const view = buildMessageView(client, room, e, shield);
+        const view = safeBuildMessageView(client, room, e, shield);
         this.viewCache.set(id, { rev, view });
         return view;
       });

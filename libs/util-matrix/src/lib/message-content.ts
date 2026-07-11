@@ -48,8 +48,8 @@ function mentionsBlock(userIds: string[]): Record<string, unknown> {
 /**
  * Turn each mention's plain `@display` in the already-sanitized HTML into a
  * matrix.to pill link — once per mention (first not-yet-replaced occurrence). The
- * display is matched in its HTML-escaped form since it appears as text in the markup;
- * user ids can't contain `"`, so the href needs no further escaping.
+ * display is matched in its HTML-escaped form since it appears as text in the markup,
+ * and the id is HTML-escaped in the href (a legacy/federated id can carry `"`/`<`).
  */
 function applyMentionPills(html: string, mentions: Mention[]): string {
   let out = html;
@@ -59,7 +59,9 @@ function applyMentionPills(html: string, mentions: Mention[]): string {
     if (at === -1) {
       continue;
     }
-    const pill = `<a href="https://matrix.to/#/${mention.userId}">${needle}</a>`;
+    // Escape the id in the href too: a historical/federated user id can contain
+    // HTML-significant characters that would otherwise break out of the attribute.
+    const pill = `<a href="https://matrix.to/#/${escapeHtml(mention.userId)}">${needle}</a>`;
     out = out.slice(0, at) + pill + out.slice(at + needle.length);
   }
   return out;
@@ -298,8 +300,10 @@ export function replyMessageContent(
     md.formatted ? md.html : escapeHtml(text),
     mentions,
   );
-  const roomLink = `https://matrix.to/#/${room.roomId}/${messageId}`;
-  const userLink = `https://matrix.to/#/${sender}`;
+  // Escape the ids interpolated into the href attributes — a hostile sender/room id
+  // must not break out of the attribute and inject markup into the reply we emit.
+  const roomLink = `https://matrix.to/#/${escapeHtml(room.roomId)}/${escapeHtml(messageId)}`;
+  const userLink = `https://matrix.to/#/${escapeHtml(sender)}`;
   const mxReply =
     `<mx-reply><blockquote>` +
     `<a href="${roomLink}">In reply to</a> ` +

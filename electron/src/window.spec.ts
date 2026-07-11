@@ -12,7 +12,7 @@ vi.mock('electron', () => ({
   BrowserWindow: vi.fn(),
 }));
 
-import { hardenContents } from './window';
+import { hardenContents, installPermissionPolicy } from './window';
 
 /** Minimal WebContents fake that records its window-open handler + event listeners. */
 function fakeContents() {
@@ -61,5 +61,53 @@ describe('hardenContents', () => {
     const event = { preventDefault: vi.fn() };
     c.emit('will-attach-webview', event);
     expect(event.preventDefault).toHaveBeenCalled();
+  });
+});
+
+describe('installPermissionPolicy', () => {
+  function fakeSession() {
+    return {
+      setPermissionRequestHandler: vi.fn(),
+      setPermissionCheckHandler: vi.fn(),
+    };
+  }
+
+  it('allows only microphone (audio) and geolocation; denies the rest', () => {
+    const s = fakeSession();
+    installPermissionPolicy(s as never);
+    const request = s.setPermissionRequestHandler.mock.calls[0][0] as (
+      c: unknown,
+      p: string,
+      cb: (ok: boolean) => void,
+      d?: { mediaTypes?: string[] },
+    ) => void;
+    const decide = (
+      permission: string,
+      details?: { mediaTypes?: string[] },
+    ) => {
+      let granted: boolean | undefined;
+      request(null, permission, (ok) => (granted = ok), details);
+      return granted;
+    };
+
+    expect(decide('media', { mediaTypes: ['audio'] })).toBe(true); // mic
+    expect(decide('media', { mediaTypes: ['audio', 'video'] })).toBe(false); // camera
+    expect(decide('geolocation')).toBe(true);
+    expect(decide('notifications')).toBe(false);
+    expect(decide('clipboard-read')).toBe(false);
+    expect(decide('openExternal')).toBe(false);
+  });
+
+  it('the sync check handler mirrors the request policy', () => {
+    const s = fakeSession();
+    installPermissionPolicy(s as never);
+    const check = s.setPermissionCheckHandler.mock.calls[0][0] as (
+      c: unknown,
+      p: string,
+    ) => boolean;
+
+    expect(check(null, 'geolocation')).toBe(true);
+    expect(check(null, 'media')).toBe(true);
+    expect(check(null, 'midi')).toBe(false);
   });
 });

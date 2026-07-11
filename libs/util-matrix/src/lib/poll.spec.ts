@@ -154,6 +154,29 @@ describe('buildPollView', () => {
     expect(view.options[0].votes).toBe(1);
     expect(view.options[1].votes).toBe(0);
   });
+
+  it('does not throw when a hostile poll has a non-array `answers`', () => {
+    // Attacker sends {"m.poll.start":{"answers":5}}: without a guard `.map` throws
+    // and (via the timeline projection) takes down the whole room.
+    const hostile = {
+      getId: () => POLL_ID,
+      getType: () => 'm.poll.start',
+      getTs: () => 0,
+      getContent: () => ({
+        'm.poll.start': { question: { 'm.text': 'Q' }, answers: 5 },
+      }),
+    } as unknown as MatrixEvent;
+
+    const view = buildPollView(client, room([]), hostile);
+    expect(view.options).toEqual([]);
+    expect(view.question).toBe('Q');
+  });
+
+  it('caps the projected options at the MSC3381 limit (20)', () => {
+    const many = Array.from({ length: 100 }, (_, i) => `opt${i}`);
+    const view = buildPollView(client, room([]), startEvent('Q', many));
+    expect(view.options).toHaveLength(20);
+  });
 });
 
 describe('poll content builders', () => {

@@ -139,6 +139,13 @@ export interface ReceiptView {
 /** How many receipt avatars to show on a message before it gets noisy. */
 const MAX_RECEIPTS = 5;
 
+/**
+ * Cap on a received voice message's waveform bars. Renders one DOM node each, so an
+ * attacker-controlled `org.matrix.msc1767.audio.waveform` is bounded on receive; well
+ * above any sender's real bar count (send uses 60).
+ */
+const MAX_WAVEFORM_BARS = 512;
+
 /** User ids (excluding the local user) whose read receipt sits on this event, capped. */
 export function readReceiptUserIds(
   client: MatrixClient,
@@ -230,11 +237,73 @@ export function buildMessageView(
     location,
     shield,
     // Only preview links in unencrypted rooms — fetching a preview for an E2EE
-    // message's URL would disclose it to the homeserver.
+    // message's URL would disclose it to the homeserver. Fail CLOSED: if the SDK
+    // can't tell us the room's encryption state, treat it as encrypted (no preview).
     previewUrl:
-      kind === 'text' && !(room.hasEncryptionStateEvent?.() ?? false)
+      kind === 'text' && !(room.hasEncryptionStateEvent?.() ?? true)
         ? firstUrl(body)
         : null,
+  };
+}
+
+/**
+ * {@link buildMessageView} guarded against a hostile/malformed event: any projection
+ * error degrades that one event to an 'unsupported' row instead of throwing out of the
+ * timeline/thread projection loop (which would leave the whole room unrenderable and
+ * re-crash on every resync). Callers project untrusted, federated events, so they must
+ * use this rather than {@link buildMessageView} directly.
+ */
+export function safeBuildMessageView(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+  shield: MessageShield | null = null,
+): MessageView {
+  try {
+    return buildMessageView(client, room, event, shield);
+  } catch {
+    return unsupportedView(client, event);
+  }
+}
+
+/** A minimal, fully-defensive 'unsupported' fallback view for an un-projectable event. */
+function unsupportedView(
+  client: MatrixClient,
+  event: MatrixEvent,
+): MessageView {
+  const read = <T>(fn: () => T, fallback: T): T => {
+    try {
+      return fn();
+    } catch {
+      return fallback;
+    }
+  };
+  const senderId = read(() => event.getSender() ?? '', '');
+  const senderName = senderId || 'Unknown';
+  return {
+    id: read(() => event.getId() ?? '', ''),
+    senderId,
+    senderName,
+    senderInitial: initialOf(senderName),
+    senderAvatarMxc: null,
+    body: '[unsupported message]',
+    html: null,
+    timestamp: read(() => event.getTs(), 0),
+    isOwn: read(() => senderId === client.getUserId(), false),
+    decryptionFailed: false,
+    edited: false,
+    reactions: [],
+    replyTo: null,
+    status: null,
+    kind: 'unsupported',
+    media: null,
+    caption: null,
+    captionHtml: null,
+    readReceipts: [],
+    poll: null,
+    location: null,
+    shield: null,
+    previewUrl: null,
   };
 }
 
@@ -715,10 +784,12 @@ function buildMediaPayload(
       ? content[MSC1767_AUDIO]
       : {}
   ) as Record<string, unknown>;
+  // Cap the received waveform: it's attacker-controlled and rendered one DOM node
+  // per entry, so an unbounded array is a memory/CPU-exhaustion vector.
   const waveform = Array.isArray(audioExt['waveform'])
-    ? (audioExt['waveform'] as unknown[]).filter(
-        (n): n is number => typeof n === 'number',
-      )
+    ? (audioExt['waveform'] as unknown[])
+        .slice(0, MAX_WAVEFORM_BARS)
+        .filter((n): n is number => typeof n === 'number')
     : [];
   return {
     kind,
