@@ -17,3 +17,18 @@
   Let others see when you've read their messages. When off, your unread badges
   still clear, but your reading stays private to you on this device.
 </p>
+
+<label
+  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+  data-testid="privacy-link-previews"
+>
+  <hlm-checkbox
+    [checked]="privacy.linkPreviews()"
+    (checkedChange)="privacy.setLinkPreviews($event)"
+  />
+  Show link previews
+</label>
+<p class="block px-4 py-2 text-[13px] text-muted-foreground">
+  Show a preview for links in messages. Previews are fetched through your
+  homeserver, so they're only ever loaded in unencrypted rooms.
+</p>

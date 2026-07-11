@@ -79,6 +79,12 @@ export interface MessageView {
    * asynchronously (the crypto trust API is async), so it's supplied by the caller.
    */
   shield?: MessageShield | null;
+  /**
+   * The first URL in a plain-text message to show a link preview for, or null/absent.
+   * Only set for unencrypted rooms — a preview fetch would reveal an E2EE message's URL
+   * to the homeserver, so encrypted rooms never carry one.
+   */
+  previewUrl?: string | null;
 }
 
 /** An authenticity shield on an encrypted message, with a human-readable reason. */
@@ -185,6 +191,12 @@ export function buildMessageView(
     readReceipts: readReceiptsFor(client, room, event),
     poll,
     shield,
+    // Only preview links in unencrypted rooms — fetching a preview for an E2EE
+    // message's URL would disclose it to the homeserver.
+    previewUrl:
+      kind === 'text' && !(room.hasEncryptionStateEvent?.() ?? false)
+        ? firstUrl(body)
+        : null,
   };
 }
 
@@ -682,6 +694,15 @@ export function linkifyText(text: string): string | null {
     return null;
   }
   return (html + escapeHtml(text.slice(lastIndex))).replace(/\n/g, '<br>');
+}
+
+/** The first http(s) URL in `text` (trailing sentence punctuation trimmed), or null. */
+export function firstUrl(text: string): string | null {
+  const match = /https?:\/\/[^\s<>"']+/.exec(text);
+  if (!match) {
+    return null;
+  }
+  return match[0].replace(/[.,;:!?)\]}>]+$/, '');
 }
 
 /** Escape text for safe interpolation into the `<mx-reply>` HTML fallback. */

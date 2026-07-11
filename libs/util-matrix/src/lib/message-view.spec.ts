@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { linkifyText, sanitizeMatrixHtml } from './message-view';
+import { firstUrl, linkifyText, sanitizeMatrixHtml } from './message-view';
+
+describe('firstUrl', () => {
+  it('returns the first http(s) URL', () => {
+    expect(firstUrl('see https://example.com/x and http://b.test')).toBe(
+      'https://example.com/x',
+    );
+  });
+
+  it('trims trailing sentence punctuation', () => {
+    expect(firstUrl('go to https://example.com.')).toBe('https://example.com');
+    expect(firstUrl('(https://example.com)')).toBe('https://example.com');
+  });
+
+  it('returns null when there is no URL', () => {
+    expect(firstUrl('no links here')).toBeNull();
+  });
+});
 
 /** Parse sanitized HTML back into a document fragment for attribute assertions. */
 function parse(html: string): HTMLElement {

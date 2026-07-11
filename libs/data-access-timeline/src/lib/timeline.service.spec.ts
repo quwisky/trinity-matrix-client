@@ -1589,6 +1589,60 @@ describe('TimelineService', () => {
     });
   });
 
+  describe('link preview url', () => {
+    function urlRoomClient(encrypted: boolean) {
+      const events = [
+        fakeEvent({
+          id: '$1',
+          sender: '@a:hs',
+          body: 'see https://example.com',
+        }),
+      ];
+      const room = {
+        roomId: '!r:hs',
+        getLiveTimeline: () => ({
+          getEvents: () => events,
+          getPaginationToken: () => null,
+        }),
+        getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+        relations: { getChildEventsForEvent: () => undefined },
+        hasEncryptionStateEvent: () => encrypted,
+        on: () => {},
+        off: () => {},
+      };
+      return {
+        baseUrl: 'https://hs',
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: () => {},
+        off: () => {},
+        sendReadReceipt: () => Promise.resolve({}),
+        setRoomReadMarkers: () => Promise.resolve({}),
+        scrollback: () => Promise.resolve(room),
+      };
+    }
+
+    function openUrlRoom(encrypted: boolean) {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(urlRoomClient(encrypted))],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return svc;
+    }
+
+    it('sets previewUrl for a link in an unencrypted room', () => {
+      expect(openUrlRoom(false).messages()[0].previewUrl).toBe(
+        'https://example.com',
+      );
+    });
+
+    it('leaves previewUrl null in an encrypted room (privacy)', () => {
+      expect(openUrlRoom(true).messages()[0].previewUrl ?? null).toBeNull();
+    });
+  });
+
   describe('per-message authenticity shields', () => {
     function shieldClient(
       events: ReturnType<typeof fakeEvent>[],

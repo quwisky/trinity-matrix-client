@@ -29,3 +29,15 @@ https://localhost:8448 {
 
 	reverse_proxy synapse:8008
 }
+
+# Plain-HTTP Open-Graph page for the link-preview e2e. Synapse (on this docker
+# network, with url previews enabled + an empty IP blacklist) fetches
+# http://caddy:8080/og server-side and returns the OG metadata; the browser never
+# touches it. Not exposed to the host — only reachable inside the trinity-e2e network.
+:8080 {
+	@og path /og
+	header @og Content-Type "text/html; charset=utf-8"
+	respond @og 200 {
+		body `<!doctype html><html><head><meta property="og:title" content="Trinity E2E Preview"><meta property="og:description" content="A link preview served by the test harness."></head><body>ok</body></html>`
+	}
+}

@@ -116,6 +116,11 @@ async function ensureConfig() {
       'rc_message:',
       '  per_second: 100',
       '  burst_count: 100',
+      // Link previews for the URL-preview e2e. The empty IP blacklist lets Synapse
+      // fetch the harness OG page (http://caddy:8080/og) on the private docker network
+      // — safe here because this homeserver is disposable and network-isolated.
+      'url_preview_enabled: true',
+      'url_preview_ip_range_blacklist: []',
       // Permissive CORS isn't a Synapse config knob; matrix endpoints already send
       // Access-Control-Allow-Origin: *. Listed here only as a reminder.
     );

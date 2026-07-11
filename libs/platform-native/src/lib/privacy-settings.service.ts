@@ -2,6 +2,7 @@ import { Injectable, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 
 const SEND_READ_RECEIPTS_KEY = 'trinity.privacy.send-read-receipts';
+const LINK_PREVIEWS_KEY = 'trinity.privacy.link-previews';
 
 /**
  * Device-scoped privacy preferences, persisted across launches.
@@ -17,6 +18,7 @@ const SEND_READ_RECEIPTS_KEY = 'trinity.privacy.send-read-receipts';
 @Injectable({ providedIn: 'root' })
 export class PrivacySettingsService {
   private readonly _sendReadReceipts = signal(true);
+  private readonly _linkPreviews = signal(true);
 
   /**
    * Whether this device sends *public* read receipts (`m.read`) others can see.
@@ -25,24 +27,41 @@ export class PrivacySettingsService {
    */
   readonly sendReadReceipts = this._sendReadReceipts.asReadonly();
 
+  /**
+   * Whether to show link previews for URLs in messages. On by default. Previews are
+   * fetched via the homeserver, so they're only ever requested for unencrypted rooms
+   * (never for E2EE messages); this switch turns them off entirely.
+   */
+  readonly linkPreviews = this._linkPreviews.asReadonly();
+
   /** Read the saved preferences and apply them. Call once at app startup. */
   async init(): Promise<void> {
-    try {
-      const { value } = await Preferences.get({ key: SEND_READ_RECEIPTS_KEY });
-      if (value !== null) {
-        this._sendReadReceipts.set(value === 'true');
-      }
-    } catch {
-      // No stored value (or storage unavailable) → keep the default (on).
-    }
+    this._sendReadReceipts.set(await this.read(SEND_READ_RECEIPTS_KEY, true));
+    this._linkPreviews.set(await this.read(LINK_PREVIEWS_KEY, true));
   }
 
   /** Toggle + persist whether this device sends public read receipts. */
   setSendReadReceipts(on: boolean): void {
     this._sendReadReceipts.set(on);
-    void Preferences.set({
-      key: SEND_READ_RECEIPTS_KEY,
-      value: String(on),
-    }).catch(() => undefined);
+    this.persist(SEND_READ_RECEIPTS_KEY, on);
+  }
+
+  /** Toggle + persist whether link previews are shown. */
+  setLinkPreviews(on: boolean): void {
+    this._linkPreviews.set(on);
+    this.persist(LINK_PREVIEWS_KEY, on);
+  }
+
+  private async read(key: string, fallback: boolean): Promise<boolean> {
+    try {
+      const { value } = await Preferences.get({ key });
+      return value === null ? fallback : value === 'true';
+    } catch {
+      return fallback; // storage unavailable → keep the default
+    }
+  }
+
+  private persist(key: string, on: boolean): void {
+    void Preferences.set({ key, value: String(on) }).catch(() => undefined);
   }
 }

@@ -1,9 +1,14 @@
+import { signal } from '@angular/core';
 import { render } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import { of } from 'rxjs';
 import { MediaService } from '@trinity/data-access-media';
-import { type ThreadSummary } from '@trinity/data-access-timeline';
+import {
+  UrlPreviewService,
+  type ThreadSummary,
+} from '@trinity/data-access-timeline';
+import { PrivacySettingsService } from '@trinity/platform-native';
 import { type MediaPayload } from '@trinity/util-matrix';
 import { FileSaveService } from '../media-save/file-save.service';
 import {
@@ -91,13 +96,18 @@ describe('MessageRowComponent', () => {
   }) {
     return render(MessageRowComponent, {
       inputs,
-      // The media branch renders <trn-media-attachment>, which injects these.
+      // The media branch renders <trn-media-attachment>, and a previewUrl renders
+      // <trn-link-preview>, which inject these.
       providers: [
         MockProvider(MediaService, {
           resolveMedia: () => of(null),
           downloadMedia: () => of({ blob: new Blob(), filename: 'doc.pdf' }),
         }),
         MockProvider(FileSaveService, { save: () => of(undefined) }),
+        MockProvider(UrlPreviewService, { preview: () => of(null) }),
+        MockProvider(PrivacySettingsService, {
+          linkPreviews: signal(true).asReadonly(),
+        }),
       ],
     });
   }
@@ -119,6 +129,18 @@ describe('MessageRowComponent', () => {
   it('renders no shield when the message has none', async () => {
     const { container } = await renderRow({ row: row() });
     expect(container.querySelector('[data-testid^=msg-shield-]')).toBeNull();
+  });
+
+  it('renders a link-preview element when the message has a previewUrl', async () => {
+    const { container } = await renderRow({
+      row: row({ previewUrl: 'https://example.com' }),
+    });
+    expect(container.querySelector('trn-link-preview')).not.toBeNull();
+  });
+
+  it('renders no link-preview element without a previewUrl', async () => {
+    const { container } = await renderRow({ row: row() });
+    expect(container.querySelector('trn-link-preview')).toBeNull();
   });
 
   it('renders a plain caption below a media attachment', async () => {

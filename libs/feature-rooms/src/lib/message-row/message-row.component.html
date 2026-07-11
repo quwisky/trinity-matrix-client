@@ -83,6 +83,9 @@
       } @else {
         <p class="msg__text">{{ r.body }}</p>
       }
+      @if (r.previewUrl) {
+        <trn-link-preview [url]="r.previewUrl" />
+      }
       @if (r.reactions.length) {
         <trn-message-reactions
           [reactions]="r.reactions"

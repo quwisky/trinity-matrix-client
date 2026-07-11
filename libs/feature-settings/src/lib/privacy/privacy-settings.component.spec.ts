@@ -10,35 +10,71 @@ import { PrivacySettingsComponent } from './privacy-settings.component';
 
 describe('PrivacySettingsComponent', () => {
   let sendReadReceipts: ReturnType<typeof signal<boolean>>;
+  let linkPreviews: ReturnType<typeof signal<boolean>>;
 
   beforeEach(() => {
     sendReadReceipts = signal(true);
+    linkPreviews = signal(true);
   });
 
   function renderPage() {
     return render(PrivacySettingsComponent, {
-      providers: [MockProvider(PrivacySettingsService, { sendReadReceipts })],
+      providers: [
+        MockProvider(PrivacySettingsService, {
+          sendReadReceipts,
+          linkPreviews,
+        }),
+      ],
     });
+  }
+
+  /** The `hlm-checkbox` inside the labelled toggle with the given testid. */
+  function checkboxFor(
+    container: HTMLElement,
+    fixture: unknown,
+    testid: string,
+  ) {
+    return (
+      fixture as { debugElement: { queryAll: (p: unknown) => unknown[] } }
+    ).debugElement
+      .queryAll(By.directive(HlmCheckbox))
+      .find((c) =>
+        (c as { nativeElement: HTMLElement }).nativeElement.closest(
+          `[data-testid=${testid}]`,
+        ),
+      ) as { componentInstance: HlmCheckbox } | undefined;
   }
 
   it('reflects and toggles the send-read-receipts preference', async () => {
     const { fixture, container } = await renderPage();
+    const checkbox = checkboxFor(
+      container,
+      fixture,
+      'privacy-send-read-receipts',
+    )!;
+    expect(checkbox.componentInstance.checked()).toBe(true);
 
-    expect(
-      container.querySelector('[data-testid=privacy-send-read-receipts]'),
-    ).not.toBeNull();
-    const checkbox = fixture.debugElement.query(By.directive(HlmCheckbox));
-    expect(checkbox.componentInstance.checked()).toBe(true); // on by default
-
-    // The checkbox reflects the persisted signal.
     sendReadReceipts.set(false);
     fixture.detectChanges();
     expect(checkbox.componentInstance.checked()).toBe(false);
 
-    // Toggling emits checkedChange → the preference is persisted.
     checkbox.componentInstance.checkedChange.emit(true);
     expect(
       TestBed.inject(PrivacySettingsService).setSendReadReceipts,
     ).toHaveBeenCalledWith(true);
+  });
+
+  it('reflects and toggles the link-previews preference', async () => {
+    const { fixture, container } = await renderPage();
+    expect(
+      container.querySelector('[data-testid=privacy-link-previews]'),
+    ).not.toBeNull();
+    const checkbox = checkboxFor(container, fixture, 'privacy-link-previews')!;
+    expect(checkbox.componentInstance.checked()).toBe(true);
+
+    checkbox.componentInstance.checkedChange.emit(false);
+    expect(
+      TestBed.inject(PrivacySettingsService).setLinkPreviews,
+    ).toHaveBeenCalledWith(false);
   });
 });

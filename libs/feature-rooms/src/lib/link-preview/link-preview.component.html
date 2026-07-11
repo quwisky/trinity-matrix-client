@@ -1,0 +1,24 @@
+@if (preview(); as p) {
+  <a
+    class="link-preview"
+    [href]="p.url"
+    target="_blank"
+    rel="noopener noreferrer"
+    data-testid="link-preview"
+  >
+    @if (imageUrl(); as image) {
+      <img class="link-preview__image" [src]="image" alt="" />
+    }
+    <span class="link-preview__body">
+      @if (host(); as h) {
+        <span class="link-preview__host">{{ h }}</span>
+      }
+      @if (p.title) {
+        <span class="link-preview__title">{{ p.title }}</span>
+      }
+      @if (p.description) {
+        <span class="link-preview__desc">{{ p.description }}</span>
+      }
+    </span>
+  </a>
+}

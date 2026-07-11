@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Link previews.** Messages with a link now show an Open-Graph preview card (title,
+  site, description, thumbnail), fetched through your homeserver. They're suppressed in
+  encrypted rooms by default — so a link in an E2EE message is never disclosed to the
+  server — and can be turned off entirely from **Settings → Privacy → Show link previews**.
 - **Verify another user.** A member's info panel now has a **Verify** action that starts
   emoji-SAS verification with them over a direct message — establishing cross-user trust
   (previously you could only verify your own other sessions).
