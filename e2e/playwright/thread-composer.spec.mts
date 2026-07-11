@@ -7,20 +7,14 @@ import {
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
-// Covers sharing a location (composer-location → m.location): the location card
-// (data-testid="location-card") shows the coordinates + an OpenStreetMap link. The
-// browser's geolocation is overridden so the position is deterministic offline.
-// Needs a Synapse homeserver (Docker); self-skips otherwise.
+// Covers the thread composer (data-testid="thread-view"): the room-scoped actions
+// (poll/location/sticker/voice) are hidden there because they post to the main room,
+// not the thread; and a slash command typed in a thread is parsed (`/me waves` sends an
+// emote "waves", not the literal text). Needs a Synapse homeserver (Docker); self-skips.
 const session = synapseSession();
 
 const SYNAPSE_HTTP = 'http://localhost:8008';
 const REG_SECRET = 'trinity-e2e-shared-secret';
-
-// Override the device location so getCurrentPosition resolves deterministically.
-test.use({
-  permissions: ['geolocation'],
-  geolocation: { latitude: 40.7128, longitude: -74.006 },
-});
 
 async function registerUser(
   request: APIRequestContext,
@@ -54,18 +48,19 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   });
 }
 
-test.describe('Share location', () => {
+test.describe('Thread composer', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('shares the current location as a map card', async ({
+  test('hides room-scoped actions and parses slash commands in a thread', async ({
     page,
     request,
   }) => {
     const hs = session.hs as string;
-    const runId = `${Date.now().toString(36)}loc`;
-    const user = `loc-${runId}`;
+    const runId = `${Date.now().toString(36)}thr`;
+    const user = `thr-${runId}`;
     const pass = `${user}-pass`;
-    const roomName = `Location ${runId}`;
+    const roomName = `Thread ${runId}`;
+    const rootBody = `thread root ${runId}`;
 
     await registerUser(request, user, pass);
     const token = await request
@@ -86,26 +81,37 @@ test.describe('Share location', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openRoom(page, roomName);
 
-    await page.getByTestId('composer-location').click();
-
-    // The location card renders with the (overridden) coordinates + a maps link.
-    const card = page.getByTestId('location-card');
-    await expect(card).toBeVisible({ timeout: 20_000 });
-    await expect(card).toContainText('40.71280, -74.00600');
-    await expect(card).toHaveAttribute(
-      'href',
-      /openstreetmap\.org.*mlat=40\.7128/,
-    );
-
-    // A location isn't free text, so it offers no Edit affordance (a text m.replace
-    // would corrupt it) — even though it's the user's own message.
-    const row = page.locator('.scroll .msg', {
-      hasText: '40.71280, -74.00600',
-    });
+    // Send a message, then open a thread off it via the hover toolbar.
+    const composer = page.getByTestId('composer-input');
+    await composer.fill(rootBody);
+    await composer.press('Enter');
+    const row = page.locator('.scroll .msg', { hasText: rootBody });
+    await expect(row.first()).toBeVisible({ timeout: 20_000 });
     await row.first().hover();
-    await row.first().getByTestId('msg-more').click();
-    await expect(page.getByTestId('msg-edit')).toHaveCount(0);
-    // The menu did open (a non-edit action is present), so the absence is real.
-    await expect(page.getByTestId('msg-copy-link')).toBeVisible();
+    await row.first().getByRole('button', { name: 'Reply in thread' }).click();
+
+    const thread = page.getByTestId('thread-view');
+    await expect(thread).toBeVisible({ timeout: 15_000 });
+
+    // The room-only actions post to the main room, so the thread composer omits them.
+    for (const id of [
+      'composer-poll',
+      'composer-location',
+      'composer-sticker',
+      'composer-voice',
+    ]) {
+      await expect(thread.getByTestId(id)).toHaveCount(0);
+    }
+
+    // A slash command is parsed in the thread: `/me waves` sends an emote "waves".
+    const threadInput = thread.getByTestId('composer-input');
+    await threadInput.fill('/me waves');
+    await threadInput.press('Enter');
+
+    await expect(
+      thread.locator('.msg', { hasText: 'waves' }).first(),
+    ).toBeVisible({ timeout: 20_000 });
+    // The command was interpreted, not sent as literal text.
+    await expect(thread).not.toContainText('/me waves');
   });
 });

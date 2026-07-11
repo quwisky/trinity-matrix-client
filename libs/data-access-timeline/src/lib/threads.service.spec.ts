@@ -668,6 +668,30 @@ describe('ThreadsService', () => {
       expect(content['formatted_body']).toContain('<strong>bold</strong>');
     });
 
+    it('interprets a /me slash command in the thread as an emote', async () => {
+      const { svc, sent } = openedThread();
+
+      await firstValueFrom(svc.sendToThread('/me waves'));
+
+      expect(sent[0][0]).toBe('message');
+      expect(sent[0][1]).toBe('$root'); // threadId
+      expect(sent[0][2]).toMatchObject({ msgtype: 'm.emote', body: 'waves' });
+    });
+
+    it('carries @-mentions through a /me sent into a thread', async () => {
+      const { svc, sent } = openedThread();
+
+      await firstValueFrom(
+        svc.sendToThread('/me waves at @Bob', [
+          { userId: '@bob:hs', display: '@Bob' },
+        ]),
+      );
+
+      const content = sent[0][2] as Record<string, unknown>;
+      expect(content['msgtype']).toBe('m.emote');
+      expect(content['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
+    });
+
     it('edits an own thread message via an m.replace, scoped to the thread', async () => {
       const { svc, sent } = openedThread();
 
