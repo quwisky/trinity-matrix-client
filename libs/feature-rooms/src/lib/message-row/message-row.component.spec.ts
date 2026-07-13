@@ -108,6 +108,7 @@ describe('MessageRowComponent', () => {
         MockProvider(UrlPreviewService, { preview: () => of(null) }),
         MockProvider(PrivacySettingsService, {
           linkPreviews: signal(true).asReadonly(),
+          linkPreviewsInEncrypted: signal(false).asReadonly(),
         }),
       ],
     });
@@ -171,6 +172,7 @@ describe('MessageRowComponent', () => {
         MockProvider(UrlPreviewService, { preview: () => of(null) }),
         MockProvider(PrivacySettingsService, {
           linkPreviews: signal(true).asReadonly(),
+          linkPreviewsInEncrypted: signal(false).asReadonly(),
         }),
       ],
     });

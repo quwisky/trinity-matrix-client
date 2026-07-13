@@ -3,6 +3,7 @@ import { Preferences } from '@capacitor/preferences';
 
 const SEND_READ_RECEIPTS_KEY = 'trinity.privacy.send-read-receipts';
 const LINK_PREVIEWS_KEY = 'trinity.privacy.link-previews';
+const LINK_PREVIEWS_ENCRYPTED_KEY = 'trinity.privacy.link-previews-encrypted';
 
 /**
  * Device-scoped privacy preferences, persisted across launches.
@@ -19,6 +20,7 @@ const LINK_PREVIEWS_KEY = 'trinity.privacy.link-previews';
 export class PrivacySettingsService {
   private readonly _sendReadReceipts = signal(true);
   private readonly _linkPreviews = signal(true);
+  private readonly _linkPreviewsInEncrypted = signal(false);
 
   /**
    * Whether this device sends *public* read receipts (`m.read`) others can see.
@@ -29,15 +31,26 @@ export class PrivacySettingsService {
 
   /**
    * Whether to show link previews for URLs in messages. On by default. Previews are
-   * fetched via the homeserver, so they're only ever requested for unencrypted rooms
-   * (never for E2EE messages); this switch turns them off entirely.
+   * fetched via the homeserver; in unencrypted rooms that's a link the server already
+   * sees, so it's safe by default. This switch turns them off entirely.
    */
   readonly linkPreviews = this._linkPreviews.asReadonly();
+
+  /**
+   * Whether to ALSO show link previews in end-to-end-encrypted rooms. Off by default:
+   * fetching a preview sends the URL from an otherwise-encrypted message to the
+   * homeserver's preview service, disclosing a link the server couldn't otherwise see.
+   * Only consulted when {@link linkPreviews} is on.
+   */
+  readonly linkPreviewsInEncrypted = this._linkPreviewsInEncrypted.asReadonly();
 
   /** Read the saved preferences and apply them. Call once at app startup. */
   async init(): Promise<void> {
     this._sendReadReceipts.set(await this.read(SEND_READ_RECEIPTS_KEY, true));
     this._linkPreviews.set(await this.read(LINK_PREVIEWS_KEY, true));
+    this._linkPreviewsInEncrypted.set(
+      await this.read(LINK_PREVIEWS_ENCRYPTED_KEY, false),
+    );
   }
 
   /** Toggle + persist whether this device sends public read receipts. */
@@ -50,6 +63,12 @@ export class PrivacySettingsService {
   setLinkPreviews(on: boolean): void {
     this._linkPreviews.set(on);
     this.persist(LINK_PREVIEWS_KEY, on);
+  }
+
+  /** Toggle + persist whether link previews are also shown in encrypted rooms. */
+  setLinkPreviewsInEncrypted(on: boolean): void {
+    this._linkPreviewsInEncrypted.set(on);
+    this.persist(LINK_PREVIEWS_ENCRYPTED_KEY, on);
   }
 
   private async read(key: string, fallback: boolean): Promise<boolean> {

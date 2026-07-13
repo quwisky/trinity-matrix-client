@@ -230,10 +230,18 @@ export interface MessageView {
   shield?: MessageShield | null;
   /**
    * The first URL in a plain-text message to show a link preview for, or null/absent.
-   * Only set for unencrypted rooms — a preview fetch would reveal an E2EE message's URL
-   * to the homeserver, so encrypted rooms never carry one.
+   * Present regardless of room encryption; consumers combine it with
+   * {@link previewEncrypted} and the user's link-preview preferences to decide whether to
+   * actually fetch a preview (which discloses the URL to the homeserver's preview proxy).
    */
   previewUrl?: string | null;
+  /**
+   * Whether this message's room is end-to-end encrypted (fail-closed: true when the
+   * encryption state can't be determined). Gates {@link previewUrl}: previewing an
+   * encrypted message's link would disclose it to the homeserver, so it happens only when
+   * the user has explicitly opted into previews in encrypted rooms.
+   */
+  previewEncrypted?: boolean;
 }
 
 /** An authenticity shield on an encrypted message, with a human-readable reason. */
@@ -350,13 +358,14 @@ export function buildMessageView(
     poll,
     location,
     shield,
-    // Only preview links in unencrypted rooms — fetching a preview for an E2EE
-    // message's URL would disclose it to the homeserver. Fail CLOSED: if the SDK
-    // can't tell us the room's encryption state, treat it as encrypted (no preview).
-    previewUrl:
-      kind === 'text' && !(room.hasEncryptionStateEvent?.() ?? true)
-        ? firstUrl(body)
-        : null,
+    // The first URL in a plain-text message, for a link-preview card. Whether it's
+    // actually previewed is decided downstream from `previewEncrypted` + the user's
+    // preferences — a preview fetch discloses the URL to the homeserver, so in an
+    // encrypted room it happens only when the user has opted in.
+    previewUrl: kind === 'text' ? firstUrl(body) : null,
+    // Fail CLOSED: if the SDK can't report the room's encryption state, treat it as
+    // encrypted so a preview requires the explicit encrypted-rooms opt-in.
+    previewEncrypted: room.hasEncryptionStateEvent?.() ?? true,
   };
 }
 
@@ -418,6 +427,7 @@ function unsupportedView(
     location: null,
     shield: null,
     previewUrl: null,
+    previewEncrypted: true,
   };
 }
 

@@ -89,4 +89,29 @@ describe('PrivacySettingsService', () => {
       value: 'false',
     });
   });
+
+  it('defaults link previews in encrypted rooms to OFF', () => {
+    expect(service().linkPreviewsInEncrypted()).toBe(false);
+  });
+
+  it('restores a stored "true" encrypted-previews preference on init', async () => {
+    get.mockResolvedValue({ value: 'true' });
+    const svc = service();
+    await svc.init();
+    expect(svc.linkPreviewsInEncrypted()).toBe(true);
+    expect(get).toHaveBeenCalledWith({
+      key: 'trinity.privacy.link-previews-encrypted',
+    });
+  });
+
+  it('setLinkPreviewsInEncrypted updates the signal and persists the choice', () => {
+    const svc = service();
+
+    svc.setLinkPreviewsInEncrypted(true);
+    expect(svc.linkPreviewsInEncrypted()).toBe(true);
+    expect(set).toHaveBeenCalledWith({
+      key: 'trinity.privacy.link-previews-encrypted',
+      value: 'true',
+    });
+  });
 });

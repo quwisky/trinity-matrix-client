@@ -30,5 +30,23 @@
 </label>
 <p class="block px-4 py-2 text-[13px] text-muted-foreground">
   Show a preview for links in messages. Previews are fetched through your
-  homeserver, so they're only ever loaded in unencrypted rooms.
+  homeserver — in an unencrypted room, that's a link it can already see.
 </p>
+
+@if (privacy.linkPreviews()) {
+  <label
+    class="flex cursor-pointer items-center gap-3 py-2 pr-4 pl-8 text-sm font-medium"
+    data-testid="privacy-link-previews-encrypted"
+  >
+    <hlm-checkbox
+      [checked]="privacy.linkPreviewsInEncrypted()"
+      (checkedChange)="privacy.setLinkPreviewsInEncrypted($event)"
+    />
+    Show link previews in encrypted rooms
+  </label>
+  <p class="block py-2 pr-4 pl-8 text-[13px] text-muted-foreground">
+    ⚠ Off by default. Turning this on sends links from your encrypted messages
+    to your homeserver to fetch a preview — disclosing a link it otherwise
+    couldn't see.
+  </p>
+}

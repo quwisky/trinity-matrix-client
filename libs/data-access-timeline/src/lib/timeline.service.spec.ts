@@ -1837,14 +1837,18 @@ describe('TimelineService', () => {
       return svc;
     }
 
-    it('sets previewUrl for a link in an unencrypted room', () => {
-      expect(openUrlRoom(false).messages()[0].previewUrl).toBe(
-        'https://example.com',
-      );
+    it('sets previewUrl and marks the message unencrypted in a plaintext room', () => {
+      const message = openUrlRoom(false).messages()[0];
+      expect(message.previewUrl).toBe('https://example.com');
+      expect(message.previewEncrypted).toBe(false);
     });
 
-    it('leaves previewUrl null in an encrypted room (privacy)', () => {
-      expect(openUrlRoom(true).messages()[0].previewUrl ?? null).toBeNull();
+    it('sets previewUrl but marks the message encrypted in an E2EE room', () => {
+      // The URL is still surfaced; `previewEncrypted` gates whether it's actually
+      // previewed (the component needs the encrypted-rooms opt-in).
+      const message = openUrlRoom(true).messages()[0];
+      expect(message.previewUrl).toBe('https://example.com');
+      expect(message.previewEncrypted).toBe(true);
     });
   });
 

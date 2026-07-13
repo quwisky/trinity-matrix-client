@@ -21,8 +21,9 @@ const IMAGE_SIZE = 320;
 /**
  * A link-preview card under a message: title, host, description, and thumbnail from the
  * homeserver's Open-Graph proxy. Renders nothing until (and unless) a preview resolves,
- * and only fetches when the user's link-preview preference is on — the caller already
- * gates on the room being unencrypted (via `MessageView.previewUrl`).
+ * and only fetches when the user's link-preview preference is on. Fetching a preview
+ * discloses the URL to the homeserver, so for a message from an encrypted room
+ * (`encrypted`) it additionally requires the explicit "previews in encrypted rooms" opt-in.
  */
 @Component({
   selector: 'trn-link-preview',
@@ -32,6 +33,8 @@ const IMAGE_SIZE = 320;
 })
 export class LinkPreviewComponent {
   readonly url = input.required<string>();
+  /** Whether the message is from an encrypted room (needs the encrypted-rooms opt-in). */
+  readonly encrypted = input(false);
 
   private readonly previews = inject(UrlPreviewService);
   private readonly privacy = inject(PrivacySettingsService);
@@ -52,10 +55,14 @@ export class LinkPreviewComponent {
   });
 
   constructor() {
-    // Fetch when the URL (or the preference) changes; clear + skip when previews are off.
+    // Fetch when the URL (or a preference) changes; clear + skip when previews are off.
+    // In an encrypted room the fetch also needs the explicit encrypted-rooms opt-in,
+    // since it would send the message's URL to the homeserver.
     effect((onCleanup) => {
       const url = this.url();
-      const enabled = this.privacy.linkPreviews();
+      const enabled =
+        this.privacy.linkPreviews() &&
+        (!this.encrypted() || this.privacy.linkPreviewsInEncrypted());
       this.preview.set(null);
       this.imageUrl.set(null);
       if (!enabled) {

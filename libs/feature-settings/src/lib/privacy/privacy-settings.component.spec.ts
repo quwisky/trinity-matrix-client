@@ -11,10 +11,12 @@ import { PrivacySettingsComponent } from './privacy-settings.component';
 describe('PrivacySettingsComponent', () => {
   let sendReadReceipts: ReturnType<typeof signal<boolean>>;
   let linkPreviews: ReturnType<typeof signal<boolean>>;
+  let linkPreviewsInEncrypted: ReturnType<typeof signal<boolean>>;
 
   beforeEach(() => {
     sendReadReceipts = signal(true);
     linkPreviews = signal(true);
+    linkPreviewsInEncrypted = signal(false);
   });
 
   function renderPage() {
@@ -23,6 +25,7 @@ describe('PrivacySettingsComponent', () => {
         MockProvider(PrivacySettingsService, {
           sendReadReceipts,
           linkPreviews,
+          linkPreviewsInEncrypted,
         }),
       ],
     });
@@ -76,5 +79,37 @@ describe('PrivacySettingsComponent', () => {
     expect(
       TestBed.inject(PrivacySettingsService).setLinkPreviews,
     ).toHaveBeenCalledWith(false);
+  });
+
+  it('reveals the encrypted-rooms toggle only while link previews are on', async () => {
+    const { fixture, container } = await renderPage();
+    expect(
+      container.querySelector('[data-testid=privacy-link-previews-encrypted]'),
+    ).not.toBeNull();
+
+    linkPreviews.set(false);
+    fixture.detectChanges();
+    expect(
+      container.querySelector('[data-testid=privacy-link-previews-encrypted]'),
+    ).toBeNull();
+  });
+
+  it('reflects and toggles the encrypted-rooms previews preference', async () => {
+    const { fixture, container } = await renderPage();
+    const checkbox = checkboxFor(
+      container,
+      fixture,
+      'privacy-link-previews-encrypted',
+    )!;
+    expect(checkbox.componentInstance.checked()).toBe(false);
+
+    linkPreviewsInEncrypted.set(true);
+    fixture.detectChanges();
+    expect(checkbox.componentInstance.checked()).toBe(true);
+
+    checkbox.componentInstance.checkedChange.emit(true);
+    expect(
+      TestBed.inject(PrivacySettingsService).setLinkPreviewsInEncrypted,
+    ).toHaveBeenCalledWith(true);
   });
 });

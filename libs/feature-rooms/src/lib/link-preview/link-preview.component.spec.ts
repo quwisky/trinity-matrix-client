@@ -25,6 +25,8 @@ async function build(
   opts: {
     url?: string;
     enabled?: boolean;
+    encrypted?: boolean;
+    encryptedEnabled?: boolean;
     result?: UrlPreview | null;
     resolveImage?: string | null;
   } = {},
@@ -33,11 +35,17 @@ async function build(
   const previewFn = vi.fn(() => of(result));
   const resolver = vi.fn(() => of(opts.resolveImage ?? null));
   const { fixture, container } = await render(LinkPreviewComponent, {
-    inputs: { url: opts.url ?? 'https://example.com' },
+    inputs: {
+      url: opts.url ?? 'https://example.com',
+      encrypted: opts.encrypted ?? false,
+    },
     providers: [
       MockProvider(UrlPreviewService, { preview: previewFn }),
       MockProvider(PrivacySettingsService, {
         linkPreviews: signal(opts.enabled ?? true).asReadonly(),
+        linkPreviewsInEncrypted: signal(
+          opts.encryptedEnabled ?? false,
+        ).asReadonly(),
       }),
       { provide: AVATAR_RESOLVER, useValue: resolver },
     ],
@@ -65,6 +73,26 @@ describe('LinkPreviewComponent', () => {
   it('renders nothing when there is no preview to show', async () => {
     const { container } = await build({ result: null });
     expect(container.querySelector('[data-testid=link-preview]')).toBeNull();
+  });
+
+  it('does not fetch for an encrypted message without the encrypted-rooms opt-in', async () => {
+    const { container, previewFn } = await build({
+      encrypted: true,
+      encryptedEnabled: false,
+    });
+    expect(previewFn).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid=link-preview]')).toBeNull();
+  });
+
+  it('fetches for an encrypted message once the encrypted-rooms opt-in is on', async () => {
+    const { container, previewFn } = await build({
+      encrypted: true,
+      encryptedEnabled: true,
+    });
+    expect(previewFn).toHaveBeenCalled();
+    expect(
+      container.querySelector('[data-testid=link-preview]'),
+    ).not.toBeNull();
   });
 
   it('resolves the preview image via the avatar/media resolver', async () => {

@@ -94,7 +94,10 @@
         <p class="msg__text">{{ r.body }}</p>
       }
       @if (r.previewUrl) {
-        <trn-link-preview [url]="r.previewUrl" />
+        <trn-link-preview
+          [url]="r.previewUrl"
+          [encrypted]="r.previewEncrypted ?? true"
+        />
       }
       @if (r.reactions.length) {
         <trn-message-reactions
@@ -184,7 +187,10 @@
         />
       }
       @if (r.previewUrl) {
-        <trn-link-preview [url]="r.previewUrl" />
+        <trn-link-preview
+          [url]="r.previewUrl"
+          [encrypted]="r.previewEncrypted ?? true"
+        />
       }
       @if (r.edited) {
         <span class="msg__edited">(edited)</span>
