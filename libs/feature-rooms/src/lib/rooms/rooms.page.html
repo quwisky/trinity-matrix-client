@@ -50,6 +50,8 @@
       (openSettings)="goToSettings()"
       (logout)="logout($event)"
       (setNotifyMode)="onSetNotifyMode($event)"
+      (markRead)="onMarkRead($event)"
+      (markAllRead)="onMarkAllRead()"
     />
   </aside>
 
@@ -172,6 +174,7 @@
 
     <div class="chat-body">
       @if (activeRoom(); as room) {
+        <trn-tombstone-banner (goToRoom)="onGoToUpgradedRoom($event)" />
         <!-- The experimental flag swaps in the windowed timeline. Both take the
              same inputs/outputs (MessageListBase); flipping the flag re-creates the
              chosen component fresh. -->

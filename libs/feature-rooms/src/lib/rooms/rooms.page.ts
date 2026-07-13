@@ -53,6 +53,7 @@ import {
   RoomSettingsService,
   RoomModerationService,
   RoomAliasesService,
+  PublicRoomsService,
   SpacesService,
   UnreadAggregatorService,
   type MemberSummary,
@@ -60,7 +61,10 @@ import {
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
-import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
+import {
+  RoomDirectoryComponent,
+  type DirectoryJoin,
+} from '../room-directory/room-directory.component';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { type SwitcherSelection } from '@trinity/data-access-search';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
@@ -84,6 +88,7 @@ import { SimpleMessageListComponent } from '../message-list/simple-message-list/
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
+import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 
@@ -110,6 +115,7 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
     VirtualMessageListComponent,
     EncryptionBannerComponent,
     ConnectivityBannerComponent,
+    TombstoneBannerComponent,
   ],
   viewProviders: [
     provideIcons({
@@ -153,6 +159,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly roomSettings = inject(RoomSettingsService);
   private readonly moderation = inject(RoomModerationService);
   private readonly aliases = inject(RoomAliasesService);
+  private readonly publicRooms = inject(PublicRoomsService);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
   private readonly actionSheet = inject(TrnActionSheetService);
@@ -665,16 +672,38 @@ export class RoomsPage implements OnInit, OnDestroy {
     });
   }
 
-  /** Browse the public room directory; select a room joined from it. */
+  /** Browse the public directory; open a room — or select a space — joined from it. */
   async onExploreRooms(): Promise<void> {
-    const roomId = await this.dialog.openAndWait<string | null>(
+    const joined = await this.dialog.openAndWait<DirectoryJoin | null>(
       RoomDirectoryComponent,
     );
-    if (roomId) {
-      // A joined public room lives under Home — surface it there and open it.
-      this.onSelectSpace(null);
-      this.onSelectRoom(roomId);
+    if (!joined) {
+      return;
     }
+    if (joined.isSpace) {
+      // A joined space lands in the rail — select it there.
+      this.onSelectSpace(joined.roomId);
+    } else {
+      // A joined public room is a spaceless non-DM, so it lives in the Rooms view
+      // (Home shows DMs only) — switch there so it's listed, then open it.
+      this.onShowRooms();
+      this.onSelectRoom(joined.roomId);
+    }
+  }
+
+  /** Move to a room's upgraded successor (from the tombstone banner): join it, then open it. */
+  onGoToUpgradedRoom(roomId: string): void {
+    this.spaceError.set(null);
+    runWithBusy(this.publicRooms.join(roomId), {
+      busy: this.spaceBusy,
+      error: this.spaceError,
+      destroyRef: this.destroyRef,
+    }).subscribe((joinedId) => {
+      // Surface the successor in the sidebar (Home shows DMs only) so it isn't
+      // opened-but-invisible, mirroring onExploreRooms.
+      this.onShowRooms();
+      this.onSelectRoom(joinedId);
+    });
   }
 
   /** Prompt for a name, create a standalone encrypted room, then select it. */
@@ -907,6 +936,27 @@ export class RoomsPage implements OnInit, OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not update notifications.'),
+      });
+  }
+
+  /** Mark a single room read (from its ⋮ menu); the badge clears via sync. */
+  onMarkRead(roomId: string): void {
+    this.rooms
+      .markRead(roomId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => void this.showError('Could not mark the room read.'),
+      });
+  }
+
+  /** Mark the currently-visible unread rooms read (header action). Scoped to the
+   * sidebar's rooms so it matches the button, which is gated on their unread state. */
+  onMarkAllRead(): void {
+    this.rooms
+      .markAllRead(this.visibleRooms().map((room) => room.id))
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => void this.showError('Could not mark rooms read.'),
       });
   }
 

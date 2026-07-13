@@ -41,6 +41,15 @@
         hlmBtn
         variant="ghost"
         class="w-full"
+        (click)="verify()"
+        data-testid="member-info-verify"
+      >
+        Verify
+      </button>
+      <button
+        hlmBtn
+        variant="ghost"
+        class="w-full"
         (click)="toggleIgnore()"
         data-testid="member-info-ignore"
       >

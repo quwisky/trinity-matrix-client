@@ -5,9 +5,10 @@ import {
   computed,
   input,
   output,
+  signal,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideMessagesSquare } from '@ng-icons/lucide';
+import { lucideMessagesSquare, lucideShieldAlert } from '@ng-icons/lucide';
 import {
   AvatarComponent,
   MessageToolbarComponent,
@@ -25,6 +26,9 @@ import { MediaAttachmentComponent } from '../media-attachment/media-attachment.c
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { PollComponent } from '../poll/poll.component';
+import { LinkPreviewComponent } from '../link-preview/link-preview.component';
+import { LocationComponent } from '../location-share/location.component';
+import { VoiceMessageComponent } from '../voice-message/voice-message.component';
 
 /** A {@link MessageView} plus Discord-style grouping flag (own header vs continuation). */
 export interface MessageRow extends MessageView {
@@ -76,8 +80,11 @@ export type MessageRowAction =
     SpoilerRevealDirective,
     MatrixLinkDirective,
     PollComponent,
+    LinkPreviewComponent,
+    LocationComponent,
+    VoiceMessageComponent,
   ],
-  viewProviders: [provideIcons({ lucideMessagesSquare })],
+  viewProviders: [provideIcons({ lucideMessagesSquare, lucideShieldAlert })],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',
 })
@@ -129,6 +136,9 @@ export class MessageRowComponent {
       ? `${base}, ${summary.unreadCount} unread`
       : base;
   }
+
+  /** Whether the "seen by" reader list is expanded (toggled from the receipt cluster). */
+  readonly seenByOpen = signal(false);
 
   /** Accessible label for the "seen by" receipt avatars (the avatars are decorative). */
   seenByLabel(receipts: readonly ReceiptView[]): string {

@@ -1,0 +1,11 @@
+@if (tombstone(); as tombstone) {
+  <trn-banner tone="accent" data-testid="tombstone-banner">
+    <ng-icon trnBannerIcon name="lucideArchive" aria-hidden="true" />
+    This room has been upgraded and is no longer active.
+    <span trnBannerActions>
+      <button hlmBtn size="sm" (click)="go()" data-testid="tombstone-go">
+        Go to the new room
+      </button>
+    </span>
+  </trn-banner>
+}

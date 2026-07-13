@@ -41,10 +41,43 @@
   padding-top: 0;
 }
 
+// A room state / membership change: a compact, centered, muted system line.
+.msg--event {
+  justify-content: center;
+}
+
+.msg__event-text {
+  min-width: 0;
+  color: var(--trinity-text-muted);
+  font-size: 12px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .msg__edited {
   margin-left: 4px;
   color: var(--trinity-text-muted);
   font-size: 10px;
+}
+
+// Authenticity shield: grey = caution (default), red = warning.
+.msg__shield {
+  margin-left: 4px;
+  color: var(--trinity-text-muted);
+  font-size: 13px;
+  cursor: help;
+}
+
+.msg__shield--red {
+  color: var(--trinity-danger, #ef4444);
+}
+
+// On a grouped continuation row there's no header to sit in, so show the shield
+// inline with its own gap and no left margin borrowed from the author name.
+.msg__shield--cont {
+  display: inline-flex;
+  margin-left: 0;
+  vertical-align: middle;
 }
 
 .msg__toolbar {
@@ -398,7 +431,23 @@
 .msg__receipts {
   display: flex;
   gap: 2px;
-  justify-content: flex-end;
+
+  // A <button> shrink-wraps to its content, so `justify-content: flex-end` had no
+  // free space to push against — right-align the whole control with an auto margin.
+  width: fit-content;
   margin-top: 3px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: none;
   opacity: 0.85;
+  cursor: pointer;
+}
+
+.msg__seen-by {
+  display: block;
+  margin-top: 2px;
+  color: var(--trinity-text-muted);
+  font-size: 11px;
+  text-align: right;
 }

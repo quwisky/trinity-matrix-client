@@ -47,8 +47,8 @@ function mentionsBlock(userIds: string[]): Record<string, unknown> {
 /**
  * Turn each mention's plain `@display` in the already-sanitized HTML into a
  * matrix.to pill link — once per mention (first not-yet-replaced occurrence). The
- * display is matched in its HTML-escaped form since it appears as text in the markup;
- * user ids can't contain `"`, so the href needs no further escaping.
+ * display is matched in its HTML-escaped form since it appears as text in the markup,
+ * and the id is HTML-escaped in the href (a legacy/federated id can carry `"`/`<`).
  */
 function applyMentionPills(html: string, mentions: Mention[]): string {
   let out = html;
@@ -58,7 +58,9 @@ function applyMentionPills(html: string, mentions: Mention[]): string {
     if (at === -1) {
       continue;
     }
-    const pill = `<a href="https://matrix.to/#/${mention.userId}">${needle}</a>`;
+    // Escape the id in the href too: a historical/federated user id can contain
+    // HTML-significant characters that would otherwise break out of the attribute.
+    const pill = `<a href="https://matrix.to/#/${escapeHtml(mention.userId)}">${needle}</a>`;
     out = out.slice(0, at) + pill + out.slice(at + needle.length);
   }
   return out;
@@ -123,6 +125,107 @@ export function textMessageContent(
   return { msgtype: MsgType.Text, body: text };
 }
 
+/** The classic shrug the `/shrug` command appends. */
+const SHRUG = '¯\\_(ツ)_/¯';
+
+/** The IRC-style commands the composer recognizes. */
+const SLASH_COMMANDS = ['me', 'shrug', 'plain', 'spoiler'] as const;
+const SLASH_RE = new RegExp(
+  `^/(${SLASH_COMMANDS.join('|')})(?:[ \\t]+([\\s\\S]*))?$`,
+  'i',
+);
+
+/**
+ * Parse a leading IRC-style slash command (`/me`, `/shrug`, `/plain`, `/spoiler`) into its
+ * name + trimmed argument, or null when the text isn't one of them (so it sends literally —
+ * `/method`, `/etc/passwd`, and unknown commands are all left as plain text).
+ */
+export function parseSlashCommand(
+  text: string,
+): { command: string; arg: string } | null {
+  const match = SLASH_RE.exec(text);
+  return match
+    ? { command: match[1].toLowerCase(), arg: (match[2] ?? '').trim() }
+    : null;
+}
+
+/** `m.emote` content (`/me`), rich when the markdown adds formatting. */
+export function emoteMessageContent(
+  text: string,
+  md: RenderedMarkdown,
+  mentions: Mention[] = [],
+) {
+  if (md.formatted || mentions.length > 0) {
+    return {
+      msgtype: MsgType.Emote,
+      body: text,
+      format: 'org.matrix.custom.html',
+      formatted_body: applyMentionPills(md.html, mentions),
+      ...mentionsBlock(mentions.map((m) => m.userId)),
+    };
+  }
+  return { msgtype: MsgType.Emote, body: text };
+}
+
+/** `m.location` content for a shared point, with the `geo:` URI + MSC3488 fields. */
+export function locationMessageContent(
+  lat: number,
+  lng: number,
+  label = 'Shared location',
+) {
+  const geoUri = `geo:${lat},${lng}`;
+  return {
+    msgtype: MsgType.Location,
+    body: label,
+    geo_uri: geoUri,
+    'org.matrix.msc3488.location': { uri: geoUri, description: label },
+    'org.matrix.msc3488.asset': { type: 'm.self' },
+    'org.matrix.msc1767.text': label,
+  };
+}
+
+/** `m.text` spoiler content (`/spoiler`) — an `<span data-mx-spoiler>` formatted body. */
+export function spoilerMessageContent(text: string) {
+  return {
+    msgtype: MsgType.Text,
+    body: text,
+    format: 'org.matrix.custom.html',
+    formatted_body: `<span data-mx-spoiler>${escapeHtml(text)}</span>`,
+  };
+}
+
+/**
+ * Build the message content for a leading slash command, or null when the text isn't a
+ * recognized command (send it as a normal message). `renderHtml` renders the argument's
+ * markdown (injected so this stays DI-free). Empty-argument `/me`/`/plain`/`/spoiler` also
+ * return null — nothing to send — so the raw text isn't swallowed.
+ */
+export function slashCommandContent(
+  text: string,
+  renderHtml: (markdown: string) => RenderedMarkdown,
+  mentions: Mention[] = [],
+): Record<string, unknown> | null {
+  const parsed = parseSlashCommand(text);
+  if (!parsed) {
+    return null;
+  }
+  const { command, arg } = parsed;
+  switch (command) {
+    case 'me':
+      // `/me` is the emote path, so carry any @-mentions (pills + `m.mentions`)
+      // through — otherwise a `/me waves at @bob` wouldn't notify Bob.
+      return arg ? emoteMessageContent(arg, renderHtml(arg), mentions) : null;
+    case 'shrug':
+      return { msgtype: MsgType.Text, body: arg ? `${arg} ${SHRUG}` : SHRUG };
+    case 'plain':
+      return arg ? { msgtype: MsgType.Text, body: arg } : null;
+    case 'spoiler':
+      return arg ? spoilerMessageContent(arg) : null;
+    default:
+      return null;
+  }
+}
+
 /**
  * `m.replace` edit content targeting `messageId`, with the leading `* ` fallback.
  * Mentions land in `m.new_content` (the effective content) — not the top-level
@@ -175,8 +278,10 @@ export function replyMessageContent(
     md.formatted ? md.html : escapeHtml(text),
     mentions,
   );
-  const roomLink = `https://matrix.to/#/${room.roomId}/${messageId}`;
-  const userLink = `https://matrix.to/#/${sender}`;
+  // Escape the ids interpolated into the href attributes — a hostile sender/room id
+  // must not break out of the attribute and inject markup into the reply we emit.
+  const roomLink = `https://matrix.to/#/${escapeHtml(room.roomId)}/${escapeHtml(messageId)}`;
+  const userLink = `https://matrix.to/#/${escapeHtml(sender)}`;
   const mxReply =
     `<mx-reply><blockquote>` +
     `<a href="${roomLink}">In reply to</a> ` +

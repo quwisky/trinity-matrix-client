@@ -1,5 +1,191 @@
 import { describe, expect, it } from 'vitest';
-import { linkifyText, sanitizeMatrixHtml } from './message-view';
+import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
+import {
+  firstUrl,
+  isEditableMessage,
+  linkifyText,
+  parseGeoUri,
+  parseLocationInput,
+  safeBuildMessageView,
+  sanitizeMatrixHtml,
+  type MessageKind,
+  type MessageView,
+} from './message-view';
+
+describe('safeBuildMessageView', () => {
+  it('degrades a hostile event that throws to an unsupported row (no crash)', () => {
+    // A projection error must not propagate — it would crash the whole timeline map.
+    const hostile = {
+      getSender: () => '@evil:hs',
+      getType: () => 'm.room.message',
+      isDecryptionFailure: () => false,
+      isRedacted: () => false,
+      getContent: () => {
+        throw new Error('boom');
+      },
+      getId: () => '$x',
+      getTs: () => 123,
+    } as unknown as MatrixEvent;
+    const room = { getMember: () => null } as unknown as Room;
+    const client = { getUserId: () => '@me:hs' } as unknown as MatrixClient;
+
+    const view = safeBuildMessageView(client, room, hostile);
+
+    expect(view.kind).toBe('unsupported');
+    expect(view.body).toBe('[unsupported message]');
+    expect(view.id).toBe('$x');
+    expect(view.senderId).toBe('@evil:hs');
+  });
+});
+
+function view(over: Partial<MessageView> = {}): MessageView {
+  return {
+    id: '$1',
+    senderId: '@me:hs',
+    senderName: 'Me',
+    senderInitial: 'M',
+    senderAvatarMxc: null,
+    body: 'hi',
+    html: null,
+    timestamp: 0,
+    isOwn: true,
+    decryptionFailed: false,
+    edited: false,
+    reactions: [],
+    replyTo: null,
+    status: null,
+    kind: 'text',
+    media: null,
+    caption: null,
+    captionHtml: null,
+    readReceipts: [],
+    poll: null,
+    ...over,
+  };
+}
+
+describe('isEditableMessage', () => {
+  it('allows editing own confirmed text/emote/notice messages', () => {
+    for (const kind of ['text', 'emote', 'notice'] as MessageKind[]) {
+      expect(isEditableMessage(view({ kind }))).toBe(true);
+    }
+  });
+
+  it('never edits polls or locations (a text replace would corrupt them)', () => {
+    // media is null for both, so the old `!message.media` gate wrongly allowed it.
+    expect(isEditableMessage(view({ kind: 'poll' }))).toBe(false);
+    expect(
+      isEditableMessage(
+        view({ kind: 'location', location: { lat: 1, lng: 2, label: 'x' } }),
+      ),
+    ).toBe(false);
+    expect(isEditableMessage(view({ kind: 'unsupported' }))).toBe(false);
+  });
+
+  it('never edits others’ messages, unsent/failed sends, or decryption failures', () => {
+    expect(isEditableMessage(view({ isOwn: false }))).toBe(false);
+    expect(isEditableMessage(view({ status: 'sending' }))).toBe(false);
+    expect(isEditableMessage(view({ status: 'failed' }))).toBe(false);
+    expect(isEditableMessage(view({ decryptionFailed: true }))).toBe(false);
+  });
+});
+
+describe('parseGeoUri', () => {
+  it('parses lat/lng from a geo URI', () => {
+    expect(parseGeoUri('geo:52.51,13.38')).toEqual({ lat: 52.51, lng: 13.38 });
+  });
+
+  it('handles negative coordinates and ignores an uncertainty suffix', () => {
+    expect(parseGeoUri('geo:-33.86,151.21;u=35')).toEqual({
+      lat: -33.86,
+      lng: 151.21,
+    });
+  });
+
+  it('returns null for a non-geo or malformed value', () => {
+    expect(parseGeoUri('https://example.com')).toBeNull();
+    expect(parseGeoUri('geo:not,coords')).toBeNull();
+    expect(parseGeoUri(undefined)).toBeNull();
+  });
+});
+
+describe('parseLocationInput', () => {
+  it('parses a plain "lat, lng" pair (comma or space separated)', () => {
+    expect(parseLocationInput('48.8584, 2.2945')).toEqual({
+      lat: 48.8584,
+      lng: 2.2945,
+    });
+    expect(parseLocationInput('-33.8568 151.2153')).toEqual({
+      lat: -33.8568,
+      lng: 151.2153,
+    });
+  });
+
+  it('parses a geo: URI and rejects an out-of-range one', () => {
+    expect(parseLocationInput('geo:52.51,13.38')).toEqual({
+      lat: 52.51,
+      lng: 13.38,
+    });
+    // parseGeoUri itself doesn't range-check, so this exercises the range guard
+    // on the geo branch specifically.
+    expect(parseLocationInput('geo:91,0')).toBeNull();
+  });
+
+  it('parses an Apple Maps ?ll= link', () => {
+    expect(
+      parseLocationInput('https://maps.apple.com/?ll=48.8584,2.2945'),
+    ).toEqual({ lat: 48.8584, lng: 2.2945 });
+  });
+
+  it('parses an OpenStreetMap link (marker params and map fragment)', () => {
+    expect(
+      parseLocationInput(
+        'https://www.openstreetmap.org/?mlat=48.8584&mlon=2.2945#map=16/48.8584/2.2945',
+      ),
+    ).toEqual({ lat: 48.8584, lng: 2.2945 });
+    expect(
+      parseLocationInput('https://www.openstreetmap.org/#map=5/-33.86/151.21'),
+    ).toEqual({ lat: -33.86, lng: 151.21 });
+  });
+
+  it('parses a Google Maps link (@lat,lng segment and ?q= query)', () => {
+    expect(
+      parseLocationInput(
+        'https://www.google.com/maps/place/Eiffel+Tower/@48.8584,2.2945,17z',
+      ),
+    ).toEqual({ lat: 48.8584, lng: 2.2945 });
+    expect(
+      parseLocationInput('https://maps.google.com/?q=40.7128,-74.006'),
+    ).toEqual({ lat: 40.7128, lng: -74.006 });
+  });
+
+  it('rejects out-of-range, empty, and unrecognised input', () => {
+    expect(parseLocationInput('91, 0')).toBeNull();
+    expect(parseLocationInput('0, 181')).toBeNull();
+    expect(parseLocationInput('not a location')).toBeNull();
+    expect(parseLocationInput('https://example.com/no/coords/here')).toBeNull();
+    expect(parseLocationInput('   ')).toBeNull();
+    expect(parseLocationInput(undefined)).toBeNull();
+    expect(parseLocationInput(42)).toBeNull();
+  });
+});
+
+describe('firstUrl', () => {
+  it('returns the first http(s) URL', () => {
+    expect(firstUrl('see https://example.com/x and http://b.test')).toBe(
+      'https://example.com/x',
+    );
+  });
+
+  it('trims trailing sentence punctuation', () => {
+    expect(firstUrl('go to https://example.com.')).toBe('https://example.com');
+    expect(firstUrl('(https://example.com)')).toBe('https://example.com');
+  });
+
+  it('returns null when there is no URL', () => {
+    expect(firstUrl('no links here')).toBeNull();
+  });
+});
 
 /** Parse sanitized HTML back into a document fragment for attribute assertions. */
 function parse(html: string): HTMLElement {

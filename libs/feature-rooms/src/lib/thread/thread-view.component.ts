@@ -22,7 +22,11 @@ import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
 import { RoomsService } from '@trinity/data-access-rooms';
-import { isEditableMessage, type MessageView } from '@trinity/util-matrix';
+import {
+  isEditableMessage,
+  messagePermalink,
+  type MessageView,
+} from '@trinity/util-matrix';
 import {
   MessageRowComponent,
   type MessageRow,
@@ -36,6 +40,7 @@ import {
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
 import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
+import { MessageSourceService } from '../message-source/message-source.service';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -83,6 +88,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly reactionPicker = inject(ReactionPickerService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
+  private readonly sourceSvc = inject(MessageSourceService);
   private readonly timeline = inject(TimelineService);
   private readonly dialogRef =
     inject<DialogRef<void, ThreadViewComponent>>(DialogRef);
@@ -236,6 +242,13 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     void navigator.clipboard?.writeText(row.body);
   }
 
+  /** Copy a matrix.to permalink to this message. */
+  onCopyLink(row: MessageRow): void {
+    void navigator.clipboard?.writeText(
+      messagePermalink(this.roomId() ?? '', row.id),
+    );
+  }
+
   onReact(messageId: string, key: string): void {
     this.runAction(
       this.threads.toggleReactionInThread(messageId, key),
@@ -324,6 +337,12 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         break;
       case 'copy':
         this.onCopy(row);
+        break;
+      case 'copy-link':
+        this.onCopyLink(row);
+        break;
+      case 'view-source':
+        this.sourceSvc.open(this.roomId(), row.id);
         break;
       case 'forward':
         void this.forwardSvc.forward(this.roomId(), row.id);

@@ -4,13 +4,14 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
 // Covers the global Notifications settings (Settings → Notifications): each toggle maps
 // to a predefined push rule and writes via PushRulesService.setOn → setPushRuleEnabled.
-// Toggling "When someone posts @room" (.m.rule.roomnotif) must flip that rule's enabled
-// flag on the homeserver. Needs a Synapse homeserver (Docker); self-skips otherwise.
+// Toggling "When someone posts @room" (the intentional-mention rule .m.rule.is_room_mention)
+// must flip that rule's enabled flag on the homeserver. Needs a Synapse homeserver (Docker);
+// self-skips otherwise.
 const session = synapseSession();
 
 const SYNAPSE_HTTP = 'http://localhost:8008';
 const REG_SECRET = 'trinity-e2e-shared-secret';
-const RULE_ID = '.m.rule.roomnotif';
+const RULE_ID = '.m.rule.is_room_mention';
 
 async function registerUser(
   request: APIRequestContext,

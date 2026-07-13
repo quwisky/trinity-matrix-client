@@ -11,9 +11,11 @@ import {
 } from '@trinity/data-access-profile';
 import {
   RoomModerationService,
+  RoomsService,
   type MemberSummary,
 } from '@trinity/data-access-rooms';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { VerificationService } from '@trinity/data-access-crypto';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -46,6 +48,8 @@ async function build(
     isIgnored?: boolean;
     ignore?: ReturnType<typeof vi.fn>;
     unignore?: ReturnType<typeof vi.fn>;
+    createDirectMessage?: ReturnType<typeof vi.fn>;
+    startUserVerification?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const close = vi.fn();
@@ -57,6 +61,10 @@ async function build(
   const alertConfirm = opts.alertConfirm ?? vi.fn().mockResolvedValue(true);
   const ignore = opts.ignore ?? vi.fn(() => of(undefined));
   const unignore = opts.unignore ?? vi.fn(() => of(undefined));
+  const createDirectMessage =
+    opts.createDirectMessage ?? vi.fn(() => of('!dm:hs'));
+  const startUserVerification =
+    opts.startUserVerification ?? vi.fn(() => of(undefined));
   const { fixture, container } = await render(MemberInfoComponent, {
     inputs: {
       member: m,
@@ -79,6 +87,8 @@ async function build(
         ).asReadonly(),
       }),
       MockProvider(RoomModerationService, { kick, ban, setPowerLevel }),
+      MockProvider(RoomsService, { createDirectMessage }),
+      MockProvider(VerificationService, { startUserVerification }),
       MockProvider(IgnoredUsersService, {
         isIgnored: () => opts.isIgnored ?? false,
         ignore,
@@ -102,6 +112,8 @@ async function build(
     alertConfirm,
     ignore,
     unignore,
+    createDirectMessage,
+    startUserVerification,
   };
 }
 
@@ -113,6 +125,43 @@ describe('MemberInfoComponent', () => {
     expect(container.textContent).toContain('Bob');
     expect(container.textContent).toContain('@bob:hs');
     expect(container.textContent).toContain('Admin');
+  });
+
+  it('verifies a member over a DM and closes the panel', async () => {
+    const { cmp, createDirectMessage, startUserVerification, close } =
+      await build(member({ userId: '@bob:hs' }));
+
+    cmp.verify();
+
+    expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
+    expect(startUserVerification).toHaveBeenCalledWith('@bob:hs', '!dm:hs');
+    expect(close).toHaveBeenCalledWith(null);
+  });
+
+  it('keeps the panel open and toasts when starting verification fails', async () => {
+    const startUserVerification = vi.fn(() =>
+      throwError(() => new Error('nope')),
+    );
+    const { cmp, close, toastShow } = await build(member(), {
+      startUserVerification,
+    });
+
+    cmp.verify();
+
+    expect(close).not.toHaveBeenCalled();
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.stringContaining('Could not start verification'),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('hides the Verify action for your own row', async () => {
+    const { container } = await build(member({ userId: '@me:hs' }), {
+      activeUserId: '@me:hs',
+    });
+    expect(
+      container.querySelector('[data-testid=member-info-verify]'),
+    ).toBeNull();
   });
 
   // One render per case (a second render() re-configures an instantiated TestBed).

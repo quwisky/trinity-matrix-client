@@ -14,6 +14,7 @@ import {
   type RoomMember,
   type RoomState,
 } from 'matrix-js-sdk';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   Observable,
   defer,
@@ -27,13 +28,19 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import {
+  PrivacySettingsService,
+  type VoiceRecording,
+} from '@trinity/platform-native';
 import {
   annotationContent,
-  buildMessageView,
+  safeBuildMessageView,
+  buildTimelineEventView,
+  describeTimelineEvent,
   collectMessageSenders,
   editMessageContent,
   isDisplayableMessage,
+  isDisplayableStateEvent,
   isPollStart,
   pollSignature,
   pollStartContent,
@@ -43,16 +50,40 @@ import {
   myReactionId,
   reactionsFor,
   readReceiptUserIds,
+  locationMessageContent,
   renderMarkdown,
   replyMessageContent,
+  slashCommandContent,
   textMessageContent,
+  voiceMessageContent,
   TYPING_REFRESH_MS,
   TYPING_TIMEOUT_MS,
   type MessageView,
+  type MessageShield,
   type Mention,
 } from '@trinity/util-matrix';
+import { resolveShieldsInto, shieldKey } from './shields';
 
 const SCROLLBACK = 30;
+
+/** File extension for a recorded voice clip's MIME type (best-effort, default webm). */
+function voiceExtension(mimeType: string): string {
+  if (mimeType.includes('ogg')) {
+    return 'ogg';
+  }
+  if (mimeType.includes('mp4') || mimeType.includes('mpeg')) {
+    return 'm4a';
+  }
+  return 'webm';
+}
+
+/** The open room's tombstone: it was replaced by a successor room (`m.room.tombstone`). */
+export interface RoomTombstone {
+  /** The successor room id to move to. */
+  replacementRoomId: string;
+  /** The upgrade message (e.g. "This room has been replaced"), if any. */
+  body: string;
+}
 
 /**
  * Projects the *active* room's live timeline into a `messages` signal of view
@@ -92,6 +123,11 @@ export class TimelineService {
   // a redaction we shouldn't have sent). Gates the delete affordance on others' rows.
   private readonly _canRedactOthers = signal(false);
   readonly canRedactOthers = this._canRedactOthers.asReadonly();
+
+  // The open room's tombstone (it was upgraded/replaced), or null. Drives a banner
+  // that links to the successor room. Recomputed on open + when state changes.
+  private readonly _tombstone = signal<RoomTombstone | null>(null);
+  readonly tombstone = this._tombstone.asReadonly();
 
   // Timestamp (ms) of the last `sendTyping(true)` we issued for the open room, so we
   // refresh the flag at most every {@link TYPING_REFRESH_MS} instead of per keystroke;
@@ -146,7 +182,9 @@ export class TimelineService {
       return null; // the marker isn't among the loaded messages — no divider
     }
     for (let i = markerIdx + 1; i < msgs.length; i++) {
-      if (!msgs[i].isOwn) {
+      // A system line (join/leave/room change) isn't an unread *message*, so it must
+      // not anchor the "New messages" divider or the jump-to-unread pill.
+      if (!msgs[i].isOwn && msgs[i].kind !== 'event') {
         return msgs[i].id; // first message after the marker that someone else sent
       }
     }
@@ -203,6 +241,18 @@ export class TimelineService {
    * actually looking at it. */
   private readonly onFocus = (): void => this.markRead();
 
+  /** Resolved authenticity shields per event id (async; patched back via {@link refresh}). */
+  private readonly shields = new Map<string, MessageShield | null>();
+
+  // Cross-signing / device trust changed: a message's shield may flip (e.g. a device
+  // the sender just verified). Force a full re-resolve of the open room's shields
+  // (bypassing the per-event skip that a benign refresh uses).
+  private readonly onTrust = (): void => {
+    if (this.room) {
+      void this.resolveShields(this.room, undefined, true);
+    }
+  };
+
   /** Start projecting a room's live timeline; attaches live + decryption listeners. */
   open(roomId: string): void {
     if (this.roomId === roomId || !this.matrix.isInitialized) {
@@ -224,6 +274,9 @@ export class TimelineService {
     room.on(RoomStateEvent.Members, this.onMember);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     client.on(RoomMemberEvent.Typing, this.onTyping);
+    client.on(CryptoEvent.UserTrustStatusChanged, this.onTrust);
+    client.on(CryptoEvent.DevicesUpdated, this.onTrust);
+    client.on(CryptoEvent.KeysChanged, this.onTrust);
     // Capture the persisted read marker BEFORE the first refresh (which marks read and
     // advances it), so the "New messages" divider anchors where the user left off.
     this._readMarker.set(this.readMarkerOf(room));
@@ -252,6 +305,12 @@ export class TimelineService {
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);
       this.matrix.instance.off(RoomMemberEvent.Typing, this.onTyping);
+      this.matrix.instance.off(
+        CryptoEvent.UserTrustStatusChanged,
+        this.onTrust,
+      );
+      this.matrix.instance.off(CryptoEvent.DevicesUpdated, this.onTrust);
+      this.matrix.instance.off(CryptoEvent.KeysChanged, this.onTrust);
     }
     this.room = null;
     this.roomId = null;
@@ -259,10 +318,12 @@ export class TimelineService {
     this._readMarker.set(null);
     this.relevantSenders.clear();
     this.viewCache.clear();
+    this.shields.clear();
     this._messages.set([]);
     this._typingNames.set([]);
     this._canRedactOthers.set(false);
     this._canLoadOlder.set(false);
+    this._tombstone.set(null);
   }
 
   /**
@@ -361,6 +422,15 @@ export class TimelineService {
     this._typingNames.set(names);
   }
 
+  /** The raw (effective) JSON of an event for "view source", or null if not loaded. */
+  rawEvent(roomId: string, eventId: string): object | null {
+    if (!this.matrix.isInitialized) {
+      return null;
+    }
+    const event = this.matrix.instance.getRoom(roomId)?.findEventById(eventId);
+    return event?.getEffectiveEvent() ?? null;
+  }
+
   /**
    * Send a message to the active room. Markdown is rendered to HTML, sanitized,
    * and sent as `formatted_body` — but only when it actually adds formatting; plain
@@ -374,14 +444,78 @@ export class TimelineService {
         return of(void 0);
       }
       const { client, room } = ctx;
-      // Build the content (rather than sendText/HtmlMessage) so mentions carry
-      // `m.mentions` + matrix.to pills. The SDK still creates the local echo.
-      const content = textMessageContent(
-        text,
-        renderMarkdown(this.sanitizer, text),
-        mentions,
-      );
+      // A leading slash command (/me, /shrug, /plain, /spoiler) rewrites the content;
+      // otherwise build the normal text content (rather than sendText/HtmlMessage) so
+      // mentions carry `m.mentions` + matrix.to pills. The SDK creates the local echo.
+      const content =
+        slashCommandContent(
+          text,
+          (md) => renderMarkdown(this.sanitizer, md),
+          mentions,
+        ) ??
+        textMessageContent(
+          text,
+          renderMarkdown(this.sanitizer, text),
+          mentions,
+        );
       return from(client.sendMessage(room.roomId, content as never));
+    }).pipe(map(() => void 0));
+  }
+
+  /** Send a shared location (`m.location`) to the active room. Cold — runs on subscribe. */
+  sendLocation(lat: number, lng: number): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx) {
+        return of(void 0);
+      }
+      const { client, room } = ctx;
+      return from(
+        client.sendMessage(
+          room.roomId,
+          locationMessageContent(lat, lng) as never,
+        ),
+      ).pipe(map(() => void 0));
+    });
+  }
+
+  /**
+   * Upload a recorded clip and send it as an MSC3245 voice message (an `m.audio`
+   * with the voice marker + waveform), encrypting the bytes first in an E2EE room.
+   * Cold — runs on subscribe.
+   */
+  sendVoiceMessage(recording: VoiceRecording): Observable<void> {
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx || recording.blob.size === 0) {
+        return of(void 0);
+      }
+      const { client, room } = ctx;
+      const encrypt = room.hasEncryptionStateEvent();
+      const file = new File(
+        [recording.blob],
+        `voice-message.${voiceExtension(recording.mimeType)}`,
+        { type: recording.mimeType },
+      );
+      return this.mediaSvc.uploadMedia(file, encrypt).pipe(
+        switchMap((media) =>
+          from(
+            client.sendMessage(
+              room.roomId,
+              voiceMessageContent(
+                {
+                  mxc: media.mxc,
+                  file: media.file,
+                  mimeType: media.info.mimetype,
+                  size: media.info.size,
+                },
+                recording.durationMs,
+                recording.waveform,
+              ) as never,
+            ),
+          ),
+        ),
+      );
     }).pipe(map(() => void 0));
   }
 
@@ -615,31 +749,73 @@ export class TimelineService {
       // Threaded replies (`threadRootId` set on a non-root) are projected by
       // ThreadsService instead — the SDK already keeps them out of the live
       // timeline when thread support is on, but guard here too in case any leak.
-      .filter((e) => isDisplayableMessage(e) && !isThreadReply(e))
-      .map((e) => {
+      // Membership / room-state changes ride alongside messages as system lines.
+      .filter(
+        (e) =>
+          !isThreadReply(e) &&
+          (isDisplayableMessage(e) || isDisplayableStateEvent(e)),
+      )
+      .map((e): MessageView | null => {
         const id = e.getId() ?? '';
+        // A state / membership change → a compact "system" line. The summary fully
+        // determines the row, so it doubles as the cache rev (and re-derives on a late
+        // display-name resolution); a no-op change (null) is dropped entirely.
+        if (!isDisplayableMessage(e)) {
+          const summary = describeTimelineEvent(e, room);
+          if (!summary) {
+            return null;
+          }
+          seen.add(id);
+          collectMessageSenders(room, e, relevant);
+          // A membership line names the TARGET (state_key), whose display name can
+          // load late — register them too so a RoomStateEvent.Members for that member
+          // re-projects the line (same late-member fix as reply previews).
+          const target = e.getStateKey();
+          if (e.getType() === EventType.RoomMember && target) {
+            relevant.add(target);
+          }
+          const cached = this.viewCache.get(id);
+          if (cached && cached.rev === summary) {
+            return cached.view;
+          }
+          const view = buildTimelineEventView(client, room, e, summary);
+          this.viewCache.set(id, { rev: summary, view });
+          return view;
+        }
         seen.add(id);
         collectMessageSenders(room, e, relevant);
         // Reuse the existing view (preserving its object identity for OnPush)
-        // unless something this event renders from has actually changed.
-        const rev = eventRevision(client, room, e);
+        // unless something this event renders from has actually changed. The shield
+        // (resolved asynchronously) is folded into the rev so a trust change re-projects.
+        const shield = this.shields.get(id) ?? null;
+        const rev = eventRevision(client, room, e) + '\x1f' + shieldKey(shield);
         const cached = this.viewCache.get(id);
         if (cached && cached.rev === rev) {
           return cached.view;
         }
-        const view = buildMessageView(client, room, e);
+        const view = safeBuildMessageView(client, room, e, shield);
         this.viewCache.set(id, { rev, view });
         return view;
-      });
+      })
+      .filter((view): view is MessageView => view !== null);
     this.relevantSenders = relevant;
     // Drop cache entries for events no longer in the timeline (redacted-away,
-    // replaced by their remote id, or scrolled out under a window cap).
+    // replaced by their remote id, or scrolled out under a window cap). Prune the
+    // shields map on the same key set so it can't grow unbounded across a session.
     for (const id of [...this.viewCache.keys()]) {
       if (!seen.has(id)) {
         this.viewCache.delete(id);
       }
     }
+    for (const id of [...this.shields.keys()]) {
+      if (!seen.has(id)) {
+        this.shields.delete(id);
+      }
+    }
     this._messages.set(views);
+    // Resolve encrypted-message authenticity shields off the async crypto API; when any
+    // resolve to a new value they're folded into the cache rev and re-projected.
+    void this.resolveShields(room, events);
     this._canLoadOlder.set(
       liveTimeline.getPaginationToken(Direction.Backward) !== null,
     );
@@ -648,6 +824,63 @@ export class TimelineService {
     // history doesn't re-send). Skipped while unfocused so an open room still
     // shows unread; onFocus re-acks on return.
     this.markRead(events);
+    // A tombstone lands as a state event → onTimeline → here; keep the banner current.
+    this.updateTombstone(room);
+  }
+
+  /**
+   * Recompute the open room's tombstone (successor room). Cheap, and guarded so an
+   * unchanged tombstone doesn't churn the signal (and re-render the banner) each refresh.
+   */
+  private updateTombstone(room: Room): void {
+    const content = room.currentState
+      ?.getStateEvents?.(EventType.RoomTombstone, '')
+      ?.getContent();
+    const replacement =
+      typeof content?.['replacement_room'] === 'string'
+        ? content['replacement_room']
+        : null;
+    if ((this._tombstone()?.replacementRoomId ?? null) === replacement) {
+      return;
+    }
+    this._tombstone.set(
+      replacement
+        ? {
+            replacementRoomId: replacement,
+            body: typeof content?.['body'] === 'string' ? content['body'] : '',
+          }
+        : null,
+    );
+  }
+
+  /**
+   * Resolve authenticity shields for the room's encrypted messages off the async crypto
+   * API, storing them per event id. When any shield actually changes it triggers one more
+   * {@link refresh} (whose rev now differs, so only the changed rows rebuild) — which
+   * re-enters here, finds nothing new, and stops. Best-effort: a room switch mid-resolve
+   * or a missing crypto API bails without touching state.
+   */
+  private async resolveShields(
+    room: Room,
+    events: readonly MatrixEvent[] = room.getLiveTimeline().getEvents(),
+    force = false,
+  ): Promise<void> {
+    const crypto = this.matrix.isInitialized
+      ? (this.matrix.instance.getCrypto?.() ?? null)
+      : null;
+    if (!crypto) {
+      return;
+    }
+    const encrypted = events.filter(
+      (e) => isDisplayableMessage(e) && !isThreadReply(e) && e.isEncrypted(),
+    );
+    const changed = await resolveShieldsInto(crypto, encrypted, this.shields, {
+      force,
+      isStale: () => this.roomId !== room.roomId,
+    });
+    if (changed && this.roomId === room.roomId) {
+      this.refresh();
+    }
   }
 
   /**

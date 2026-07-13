@@ -2,9 +2,34 @@
   class="flex max-h-[80vh] w-[min(90vw,32rem)] flex-col gap-3 p-4"
   data-testid="room-directory"
 >
-  <h2 class="text-lg font-semibold">Explore rooms</h2>
+  <h2 class="text-lg font-semibold">
+    {{ mode() === 'spaces' ? 'Explore spaces' : 'Explore rooms' }}
+  </h2>
 
-  <form class="flex items-center gap-2" (ngSubmit)="search()">
+  <div class="flex gap-1" role="tablist">
+    <button
+      hlmBtn
+      type="button"
+      size="sm"
+      [variant]="mode() === 'rooms' ? 'default' : 'ghost'"
+      (click)="setMode('rooms')"
+      data-testid="directory-mode-rooms"
+    >
+      Rooms
+    </button>
+    <button
+      hlmBtn
+      type="button"
+      size="sm"
+      [variant]="mode() === 'spaces' ? 'default' : 'ghost'"
+      (click)="setMode('spaces')"
+      data-testid="directory-mode-spaces"
+    >
+      Spaces
+    </button>
+  </div>
+
+  <form class="flex items-center gap-2" (submit)="onSubmit($event)">
     <input
       hlmInput
       class="min-w-0 flex-1"

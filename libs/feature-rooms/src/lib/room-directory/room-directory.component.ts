@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription } from 'rxjs';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
@@ -19,11 +20,18 @@ import {
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util-matrix';
 
+/** What the directory resolves when a room/space is joined from it. */
+export interface DirectoryJoin {
+  roomId: string;
+  isSpace: boolean;
+}
+
 /**
- * Dialog to browse and join rooms from the homeserver's public directory. Loads the
- * first page on open, filters on a search term, and paginates with "Load more". Joining
- * a room closes the dialog resolving the joined room's ID so the host can select it;
- * closing otherwise resolves null. Presented via {@link TrnDialogService}.
+ * Dialog to browse and join rooms — or Spaces — from the homeserver's public directory.
+ * Loads the first page on open, filters on a search term, toggles between Rooms and
+ * Spaces, and paginates with "Load more". Joining closes the dialog resolving the joined
+ * id + whether it's a space so the host can open it appropriately; closing otherwise
+ * resolves null. Presented via {@link TrnDialogService}.
  */
 @Component({
   selector: 'trn-room-directory',
@@ -33,12 +41,17 @@ import { initialOf } from '@trinity/util-matrix';
 })
 export class RoomDirectoryComponent implements OnInit {
   private readonly dialogRef =
-    inject<DialogRef<string | null, RoomDirectoryComponent>>(DialogRef);
+    inject<DialogRef<DirectoryJoin | null, RoomDirectoryComponent>>(DialogRef);
   private readonly directory = inject(PublicRoomsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
+  /** The in-flight directory request, so a reset can supersede it. */
+  private searchSub?: Subscription;
 
   readonly query = new FormControl('', { nonNullable: true });
+
+  /** Browse normal rooms or Spaces. */
+  readonly mode = signal<'rooms' | 'spaces'>('rooms');
 
   /** The rooms found so far (accumulated across pages). */
   readonly rooms = signal<readonly PublicRoomSummary[]>([]);
@@ -60,8 +73,27 @@ export class RoomDirectoryComponent implements OnInit {
     this.runSearch(true);
   }
 
+  /**
+   * Handle the search form's native submit. The `<form>` has no Angular form
+   * directive (a lone `[formControl]`, no `[formGroup]`), so `ngSubmit` never binds
+   * and the browser would otherwise navigate away — prevent that and run the search.
+   */
+  onSubmit(event: Event): void {
+    event.preventDefault();
+    this.search();
+  }
+
   /** Run a fresh search from the current query term. */
   search(): void {
+    this.runSearch(true);
+  }
+
+  /** Switch between browsing rooms and Spaces, re-running the search. */
+  setMode(mode: 'rooms' | 'spaces'): void {
+    if (this.mode() === mode) {
+      return;
+    }
+    this.mode.set(mode);
     this.runSearch(true);
   }
 
@@ -84,7 +116,8 @@ export class RoomDirectoryComponent implements OnInit {
       .join(room.alias ?? room.roomId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (roomId) => this.dialogRef.close(roomId),
+        next: (roomId) =>
+          this.dialogRef.close({ roomId, isSpace: room.isSpace }),
         error: () => {
           this.joining.set(null);
           this.toast.show(`Could not join ${room.name}.`, {
@@ -101,13 +134,22 @@ export class RoomDirectoryComponent implements OnInit {
 
   private runSearch(reset: boolean): void {
     if (this.loading()) {
-      return;
+      // A reset (new term / Rooms↔Spaces switch) supersedes an in-flight request;
+      // a load-more must not stack behind one, so it still bails.
+      if (!reset) {
+        return;
+      }
+      this.searchSub?.unsubscribe();
     }
     this.loading.set(true);
     this.error.set(null);
     const since = reset ? undefined : (this.nextBatch() ?? undefined);
-    this.directory
-      .search({ term: this.query.value, since })
+    this.searchSub = this.directory
+      .search({
+        term: this.query.value,
+        since,
+        spaces: this.mode() === 'spaces',
+      })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (page) => {

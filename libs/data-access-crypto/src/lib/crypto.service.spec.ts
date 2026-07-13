@@ -1,8 +1,17 @@
+import { webcrypto } from 'node:crypto';
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { MatrixError } from 'matrix-js-sdk';
 import {
   deriveRecoveryKeyFromPassphrase,
@@ -47,6 +56,7 @@ interface CryptoOpts {
   backupInfo?: { version: string } | null;
   hasCrypto?: boolean;
   recoveryKey?: { encodedPrivateKey?: string; privateKey: Uint8Array };
+  exportedKeys?: string;
 }
 
 function setup(opts: CryptoOpts = {}) {
@@ -80,6 +90,8 @@ function setup(opts: CryptoOpts = {}) {
       .fn()
       .mockResolvedValue(undefined),
     checkKeyBackupAndEnable: vi.fn().mockResolvedValue(null),
+    exportRoomKeysAsJson: vi.fn().mockResolvedValue(opts.exportedKeys ?? '[]'),
+    importRoomKeysAsJson: vi.fn().mockResolvedValue(undefined),
   };
 
   const secretStorage = {
@@ -549,6 +561,44 @@ describe('CryptoService', () => {
 
       await expect(uia(makeRequest)).rejects.toBeInstanceOf(MatrixError);
       expect(prompt).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('room-key export / import', () => {
+    // The megolm file crypto uses WebCrypto subtle, absent in jsdom.
+    beforeAll(() => vi.stubGlobal('crypto', webcrypto));
+    afterAll(() => vi.unstubAllGlobals());
+
+    it('exports the SDK keys as an encrypted megolm file', async () => {
+      const { svc, crypto } = setup({
+        exportedKeys: JSON.stringify([{ room_id: '!r:hs', session_id: 's' }]),
+      });
+
+      const armored = await firstValueFrom(svc.exportRoomKeys('pw'));
+
+      expect(crypto.exportRoomKeysAsJson).toHaveBeenCalled();
+      expect(armored).toContain('-----BEGIN MEGOLM SESSION DATA-----');
+      expect(armored).not.toContain('!r:hs'); // encrypted, not plaintext
+    });
+
+    it('re-imports an exported file into the SDK (round-trip)', async () => {
+      const keys = JSON.stringify([{ room_id: '!r:hs', session_id: 's' }]);
+      const { svc, crypto } = setup({ exportedKeys: keys });
+
+      const armored = await firstValueFrom(svc.exportRoomKeys('pw'));
+      await firstValueFrom(svc.importRoomKeys(armored, 'pw'));
+
+      expect(crypto.importRoomKeysAsJson).toHaveBeenCalledWith(keys);
+    });
+
+    it('rejects an import with the wrong passphrase and imports nothing', async () => {
+      const { svc, crypto } = setup();
+      const armored = await firstValueFrom(svc.exportRoomKeys('right'));
+
+      await expect(
+        firstValueFrom(svc.importRoomKeys(armored, 'wrong')),
+      ).rejects.toThrow(/incorrect passphrase/i);
+      expect(crypto.importRoomKeysAsJson).not.toHaveBeenCalled();
     });
   });
 });

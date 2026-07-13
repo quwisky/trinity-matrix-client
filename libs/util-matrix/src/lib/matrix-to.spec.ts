@@ -1,5 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { parseMatrixToLink } from './matrix-to';
+import { messagePermalink, parseMatrixToLink } from './matrix-to';
+
+describe('messagePermalink', () => {
+  it('builds a permalink to an event, percent-encoding ids + a via for a room id', () => {
+    // A room-ID link needs a routing hint; default to the room's origin server.
+    expect(messagePermalink('!room:hs', '$evt')).toBe(
+      'https://matrix.to/#/!room%3Ahs/%24evt?via=hs',
+    );
+  });
+
+  it('omits via for an alias link (aliases resolve on their own)', () => {
+    expect(messagePermalink('#general:hs', '$evt')).toBe(
+      'https://matrix.to/#/%23general%3Ahs/%24evt',
+    );
+  });
+
+  it('uses explicitly supplied via servers when given', () => {
+    expect(messagePermalink('!room:hs', '$evt', ['a.org', 'b.org'])).toBe(
+      'https://matrix.to/#/!room%3Ahs/%24evt?via=a.org&via=b.org',
+    );
+  });
+
+  it('round-trips back through parseMatrixToLink (via stripped)', () => {
+    expect(parseMatrixToLink(messagePermalink('!room:hs', '$evt'))).toEqual({
+      kind: 'room',
+      roomIdOrAlias: '!room:hs',
+      eventId: '$evt',
+    });
+  });
+});
 
 describe('parseMatrixToLink', () => {
   it('parses a user permalink', () => {

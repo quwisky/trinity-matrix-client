@@ -39,6 +39,7 @@ vi.mock('./window', () => ({
   createWindow: vi.fn(),
   focusMainWindow: vi.fn(),
   hardenContents: vi.fn(),
+  installPermissionPolicy: vi.fn(),
   setQuitting: vi.fn(),
 }));
 vi.mock('./tray', () => ({ createTray: vi.fn() }));
@@ -47,6 +48,7 @@ vi.mock('./notifications', () => ({
   registerNotificationIpc: vi.fn(),
 }));
 vi.mock('./secure-store-ipc', () => ({ registerSecureStoreIpc: vi.fn() }));
+vi.mock('./geolocation-ipc', () => ({ registerGeolocationIpc: vi.fn() }));
 vi.mock('./dock-badge', () => ({ registerDockBadge: vi.fn() }));
 vi.mock('./deep-link', () => ({
   deepLinkFromArgv: vi.fn(),

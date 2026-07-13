@@ -1,0 +1,41 @@
+<div class="voice" data-testid="voice-message">
+  <button
+    type="button"
+    class="voice__play"
+    [attr.aria-label]="playing() ? 'Pause voice message' : 'Play voice message'"
+    [disabled]="!src()"
+    (click)="toggle()"
+  >
+    <ng-icon
+      [name]="playing() ? 'lucidePause' : 'lucidePlay'"
+      aria-hidden="true"
+    />
+  </button>
+
+  @if (bars().length) {
+    <div class="voice__wave" aria-hidden="true">
+      @for (bar of bars(); track $index) {
+        <span
+          class="voice__bar"
+          [class.voice__bar--played]="$index < playedBars()"
+          [style.height.%]="barHeight(bar)"
+        ></span>
+      }
+    </div>
+  } @else {
+    <div class="voice__wave voice__wave--empty" aria-hidden="true"></div>
+  }
+
+  <span class="voice__time" data-testid="voice-time">{{ timeLabel() }}</span>
+
+  <audio
+    #audio
+    class="voice__audio"
+    [src]="src()"
+    preload="metadata"
+    (play)="onPlay()"
+    (pause)="onPause()"
+    (timeupdate)="onTimeUpdate()"
+    (ended)="onEnded()"
+  ></audio>
+</div>

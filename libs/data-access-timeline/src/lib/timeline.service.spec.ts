@@ -3,6 +3,10 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { ReceiptType, RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
+import {
+  EventShieldColour,
+  EventShieldReason,
+} from 'matrix-js-sdk/lib/crypto-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
@@ -83,6 +87,7 @@ function fakeEvent(o: {
   ts?: number;
   redacted?: boolean;
   decryptFail?: boolean;
+  encrypted?: boolean;
   status?: string;
   edited?: boolean;
   editRelation?: boolean;
@@ -92,6 +97,13 @@ function fakeEvent(o: {
   file?: unknown;
   info?: Record<string, unknown>;
   relatesTo?: unknown;
+  voice?: boolean;
+  waveform?: number[];
+  durationMs?: number;
+  state?: boolean;
+  stateKey?: string;
+  content?: Record<string, unknown>;
+  prevContent?: Record<string, unknown>;
 }) {
   return {
     getId: () => o.id,
@@ -100,21 +112,37 @@ function fakeEvent(o: {
     getRoomId: () => '!r:hs',
     getType: () => o.type ?? 'm.room.message',
     getTs: () => o.ts ?? 0,
-    getContent: () => ({
-      body: o.body ?? '',
-      msgtype: o.msgtype ?? 'm.text',
-      format: o.format,
-      formatted_body: o.formattedBody,
-      // Media fields are only included when supplied, so non-media events keep
-      // their previous content shape exactly.
-      ...(o.url !== undefined ? { url: o.url } : {}),
-      ...(o.filename !== undefined ? { filename: o.filename } : {}),
-      ...(o.file !== undefined ? { file: o.file } : {}),
-      ...(o.info !== undefined ? { info: o.info } : {}),
-      ...(o.relatesTo !== undefined ? { 'm.relates_to': o.relatesTo } : {}),
-    }),
+    isState: () => o.state ?? o.stateKey !== undefined,
+    getStateKey: () => o.stateKey,
+    getPrevContent: () => o.prevContent ?? {},
+    getContent: () =>
+      o.content ?? {
+        body: o.body ?? '',
+        msgtype: o.msgtype ?? 'm.text',
+        format: o.format,
+        formatted_body: o.formattedBody,
+        // Media fields are only included when supplied, so non-media events keep
+        // their previous content shape exactly.
+        ...(o.url !== undefined ? { url: o.url } : {}),
+        ...(o.filename !== undefined ? { filename: o.filename } : {}),
+        ...(o.file !== undefined ? { file: o.file } : {}),
+        ...(o.info !== undefined ? { info: o.info } : {}),
+        ...(o.relatesTo !== undefined ? { 'm.relates_to': o.relatesTo } : {}),
+        ...(o.voice ? { 'org.matrix.msc3245.voice': {} } : {}),
+        ...(o.voice || o.waveform || o.durationMs !== undefined
+          ? {
+              'org.matrix.msc1767.audio': {
+                ...(o.durationMs !== undefined
+                  ? { duration: o.durationMs }
+                  : {}),
+                ...(o.waveform !== undefined ? { waveform: o.waveform } : {}),
+              },
+            }
+          : {}),
+      },
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
+    isEncrypted: () => o.encrypted ?? false,
     isRelation: (relType?: string) =>
       o.editRelation === true &&
       (relType === undefined || relType === 'm.replace'),
@@ -265,7 +293,15 @@ describe('TimelineService', () => {
   it('maps message events to views and drops non-messages', () => {
     const svc = setup([
       fakeEvent({ id: '$1', sender: '@alice:hs', body: 'hi' }),
-      fakeEvent({ id: '$m', sender: '@alice:hs', type: 'm.room.member' }),
+      // A no-op membership repeat (unchanged name + avatar) has nothing to show → dropped.
+      fakeEvent({
+        id: '$m',
+        sender: '@alice:hs',
+        type: 'm.room.member',
+        stateKey: '@alice:hs',
+        content: { membership: 'join', displayname: 'Alice' },
+        prevContent: { membership: 'join', displayname: 'Alice' },
+      }),
       fakeEvent({ id: '$2', sender: '@me:hs', body: 'yo' }),
     ]);
 
@@ -278,6 +314,38 @@ describe('TimelineService', () => {
       kind: 'text',
     });
     expect(msgs[1].isOwn).toBe(true);
+  });
+
+  it('renders room state and membership changes as system rows', () => {
+    const svc = setup([
+      fakeEvent({ id: '$1', sender: '@alice:hs', body: 'hi' }),
+      fakeEvent({
+        id: '$n',
+        sender: '@alice:hs',
+        type: 'm.room.name',
+        stateKey: '',
+        content: { name: 'General' },
+      }),
+      fakeEvent({
+        id: '$j',
+        sender: '@alice:hs',
+        type: 'm.room.member',
+        stateKey: '@alice:hs',
+        content: { membership: 'join' },
+      }),
+      fakeEvent({ id: '$2', sender: '@me:hs', body: 'yo' }),
+    ]);
+
+    const msgs = svc.messages();
+    expect(msgs.map((m) => m.id)).toEqual(['$1', '$n', '$j', '$2']);
+    expect(msgs[1]).toMatchObject({
+      kind: 'event',
+      summary: 'Alice set the room name to "General"',
+    });
+    expect(msgs[2]).toMatchObject({
+      kind: 'event',
+      summary: 'Alice joined the room',
+    });
   });
 
   it('exposes formatted_body HTML for markdown messages', () => {
@@ -391,6 +459,38 @@ describe('TimelineService', () => {
     expect(rich['body']).toBe('**bold**');
     expect(rich['format']).toBe('org.matrix.custom.html');
     expect(rich['formatted_body']).toContain('<strong>bold</strong>');
+  });
+
+  it('sends a shared location as m.location', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(svc.sendLocation(52.51, 13.38));
+
+    expect(sent[0][0]).toBe('message');
+    expect(sent[0][1]).toMatchObject({
+      msgtype: 'm.location',
+      geo_uri: 'geo:52.51,13.38',
+    });
+  });
+
+  it('interprets a /me slash command as an emote', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(svc.send('/me waves'));
+
+    expect(sent[0][0]).toBe('message');
+    expect(sent[0][1]).toMatchObject({ msgtype: 'm.emote', body: 'waves' });
+  });
+
+  it('appends the shrug for a /shrug slash command', async () => {
+    const sent: unknown[][] = [];
+    const svc = setup([], sent);
+
+    await firstValueFrom(svc.send('/shrug'));
+
+    expect(sent[0][1]).toEqual({ msgtype: 'm.text', body: '¯\\_(ツ)_/¯' });
   });
 
   it('forwards a message content to another room, dropping any relation', async () => {
@@ -667,6 +767,69 @@ describe('TimelineService', () => {
     const after = svc.messages().find((m) => m.id === '$reply');
     expect(after?.replyTo?.senderName).toBe('Alice');
     expect(after?.replyTo?.senderAvatarMxc).toBe('mxc://hs/av');
+  });
+
+  it('refreshes a membership system line when the target member loads late', () => {
+    const events = [
+      fakeEvent({
+        id: '$inv',
+        sender: '@me:hs',
+        type: 'm.room.member',
+        stateKey: '@bob:hs',
+        content: { membership: 'invite' }, // no displayname → resolved via room state
+      }),
+    ];
+    let bobLoaded = false;
+    let memberHandler: ((...a: unknown[]) => void) | undefined;
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+      }),
+      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      getMember: (id: string) => {
+        if (id === '@me:hs') {
+          return { name: 'Me', getMxcAvatarUrl: () => null };
+        }
+        return bobLoaded ? { name: 'Bob', getMxcAvatarUrl: () => null } : null;
+      },
+      relations: { getChildEventsForEvent: () => undefined },
+      hasEncryptionStateEvent: () => false,
+      on: (ev: string, cb: (...a: unknown[]) => void) => {
+        if (ev === RoomStateEvent.Members) {
+          memberHandler = cb;
+        }
+      },
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: () => Promise.resolve({}),
+      scrollback: () => Promise.resolve(room),
+    };
+    TestBed.configureTestingModule({
+      providers: [TimelineService, matrixProvider(client)],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    // Target member absent → the line names the raw mxid.
+    expect(svc.messages().find((m) => m.id === '$inv')?.summary).toBe(
+      'Me invited @bob:hs',
+    );
+
+    // Bob's profile arrives; the room re-emits its state Members event for him.
+    bobLoaded = true;
+    memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@bob:hs' });
+
+    expect(svc.messages().find((m) => m.id === '$inv')?.summary).toBe(
+      'Me invited Bob',
+    );
   });
 
   it('does not re-project when an unreferenced member changes', () => {
@@ -1167,6 +1330,65 @@ describe('TimelineService', () => {
       expect(m.captionHtml).toContain('<strong>here</strong>'); // sanitized rich caption
     });
 
+    it('flags an MSC3245 voice message and exposes its waveform', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$voice',
+          sender: '@a:hs',
+          msgtype: 'm.audio',
+          url: 'mxc://hs/clip',
+          info: { mimetype: 'audio/webm', size: 10 },
+          voice: true,
+          waveform: [0, 512, 1024],
+          durationMs: 3000,
+        }),
+      ]);
+
+      const m = svc.messages()[0];
+      expect(m.kind).toBe('audio');
+      expect(m.media).toMatchObject({
+        kind: 'audio',
+        isVoice: true,
+        waveform: [0, 512, 1024],
+        durationMs: 3000,
+      });
+    });
+
+    it('caps a hostile voice message’s waveform length (DoS guard)', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$huge',
+          sender: '@a:hs',
+          msgtype: 'm.audio',
+          url: 'mxc://hs/clip',
+          info: { mimetype: 'audio/webm', size: 10 },
+          voice: true,
+          waveform: Array.from({ length: 5000 }, () => 512),
+        }),
+      ]);
+
+      // Rendered one DOM node each, so the received array must be bounded.
+      expect(svc.messages()[0].media?.waveform?.length).toBeLessThanOrEqual(
+        512,
+      );
+    });
+
+    it('leaves a plain m.audio unflagged as voice', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$aud',
+          sender: '@a:hs',
+          msgtype: 'm.audio',
+          url: 'mxc://hs/song',
+          info: { mimetype: 'audio/mpeg', size: 100, duration: 60000 },
+        }),
+      ]);
+
+      const media = svc.messages()[0].media;
+      expect(media?.kind).toBe('audio');
+      expect(media?.isVoice).toBeUndefined();
+    });
+
     it('projects an m.file event to a file MediaPayload', () => {
       const svc = setup([
         fakeEvent({
@@ -1285,6 +1507,48 @@ describe('TimelineService', () => {
           new File([], 'empty.bin', { type: 'application/octet-stream' }),
           '',
         ),
+      );
+
+      expect(sent).toHaveLength(0);
+    });
+
+    it('uploads a recording and sends it as an MSC3245 voice message', async () => {
+      const sent: unknown[][] = [];
+      const svc = setup([], sent);
+
+      await firstValueFrom(
+        svc.sendVoiceMessage({
+          blob: new Blob([new Uint8Array([1, 2, 3, 4])], {
+            type: 'audio/webm',
+          }),
+          durationMs: 4200,
+          waveform: [0, 512, 1024],
+          mimeType: 'audio/webm',
+        }),
+      );
+
+      expect(sent[0][0]).toBe('message');
+      const content = sent[0][1] as Record<string, unknown>;
+      expect(content['msgtype']).toBe('m.audio');
+      expect(content['url']).toBe('mxc://hs/up');
+      expect(content['org.matrix.msc3245.voice']).toEqual({});
+      expect(content['org.matrix.msc1767.audio']).toEqual({
+        duration: 4200,
+        waveform: [0, 512, 1024],
+      });
+    });
+
+    it('is a no-op for an empty recording', async () => {
+      const sent: unknown[][] = [];
+      const svc = setup([], sent);
+
+      await firstValueFrom(
+        svc.sendVoiceMessage({
+          blob: new Blob([]),
+          durationMs: 0,
+          waveform: [],
+          mimeType: 'audio/webm',
+        }),
       );
 
       expect(sent).toHaveLength(0);
@@ -1511,6 +1775,35 @@ describe('TimelineService', () => {
       expect(svc.firstUnreadId()).toBe('$3');
     });
 
+    const joinEvent = () =>
+      fakeEvent({
+        id: '$e',
+        sender: '@alice:hs',
+        type: 'm.room.member',
+        stateKey: '@bob:hs',
+        content: { membership: 'join' },
+      });
+
+    it('anchors on the next message, skipping a system line after the marker', () => {
+      const { svc } = setupUnread(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          joinEvent(),
+          fakeEvent({ id: '$3', sender: '@alice:hs', body: 'theirs' }),
+        ],
+        '$1',
+      );
+      expect(svc.firstUnreadId()).toBe('$3');
+    });
+
+    it('is null when only system (membership) churn followed the marker', () => {
+      const { svc } = setupUnread(
+        [fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }), joinEvent()],
+        '$1',
+      );
+      expect(svc.firstUnreadId()).toBeNull();
+    });
+
     it('stays put as the room is read (marker captured on open)', () => {
       const { svc } = setupUnread(msgs, '$1');
       // markRead ran on open and advanced the server marker, but the divider anchor
@@ -1580,6 +1873,250 @@ describe('TimelineService', () => {
         fakeEvent({ id: '$1', sender: '@a:hs', body: 'no links here' }),
       ]);
       expect(svc.messages()[0].html).toBeNull();
+    });
+  });
+
+  describe('link preview url', () => {
+    function urlRoomClient(encrypted: boolean) {
+      const events = [
+        fakeEvent({
+          id: '$1',
+          sender: '@a:hs',
+          body: 'see https://example.com',
+        }),
+      ];
+      const room = {
+        roomId: '!r:hs',
+        getLiveTimeline: () => ({
+          getEvents: () => events,
+          getPaginationToken: () => null,
+        }),
+        getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+        relations: { getChildEventsForEvent: () => undefined },
+        hasEncryptionStateEvent: () => encrypted,
+        on: () => {},
+        off: () => {},
+      };
+      return {
+        baseUrl: 'https://hs',
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: () => {},
+        off: () => {},
+        sendReadReceipt: () => Promise.resolve({}),
+        setRoomReadMarkers: () => Promise.resolve({}),
+        scrollback: () => Promise.resolve(room),
+      };
+    }
+
+    function openUrlRoom(encrypted: boolean) {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(urlRoomClient(encrypted))],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return svc;
+    }
+
+    it('sets previewUrl and marks the message unencrypted in a plaintext room', () => {
+      const message = openUrlRoom(false).messages()[0];
+      expect(message.previewUrl).toBe('https://example.com');
+      expect(message.previewEncrypted).toBe(false);
+    });
+
+    it('sets previewUrl but marks the message encrypted in an E2EE room', () => {
+      // The URL is still surfaced; `previewEncrypted` gates whether it's actually
+      // previewed (the component needs the encrypted-rooms opt-in).
+      const message = openUrlRoom(true).messages()[0];
+      expect(message.previewUrl).toBe('https://example.com');
+      expect(message.previewEncrypted).toBe(true);
+    });
+  });
+
+  describe('tombstone', () => {
+    function tombstoneClient(replacement: string | null) {
+      const events = [fakeEvent({ id: '$1', sender: '@a:hs', body: 'hi' })];
+      const room = {
+        roomId: '!r:hs',
+        getLiveTimeline: () => ({
+          getEvents: () => events,
+          getPaginationToken: () => null,
+        }),
+        getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+        relations: { getChildEventsForEvent: () => undefined },
+        currentState: {
+          getStateEvents: (type: string) =>
+            type === 'm.room.tombstone' && replacement
+              ? {
+                  getContent: () => ({
+                    replacement_room: replacement,
+                    body: 'upgraded',
+                  }),
+                }
+              : null,
+        },
+        on: () => {},
+        off: () => {},
+      };
+      return {
+        baseUrl: 'https://hs',
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: () => {},
+        off: () => {},
+        sendReadReceipt: () => Promise.resolve({}),
+        setRoomReadMarkers: () => Promise.resolve({}),
+        scrollback: () => Promise.resolve(room),
+      };
+    }
+
+    function openTombstoneRoom(replacement: string | null) {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          matrixProvider(tombstoneClient(replacement)),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return svc;
+    }
+
+    it('exposes the successor room when the room is tombstoned', () => {
+      expect(openTombstoneRoom('!new:hs').tombstone()).toEqual({
+        replacementRoomId: '!new:hs',
+        body: 'upgraded',
+      });
+    });
+
+    it('is null for a live (non-tombstoned) room', () => {
+      expect(openTombstoneRoom(null).tombstone()).toBeNull();
+    });
+  });
+
+  describe('per-message authenticity shields', () => {
+    function shieldClient(
+      events: ReturnType<typeof fakeEvent>[],
+      getEncryptionInfoForEvent: ReturnType<typeof vi.fn>,
+    ) {
+      const handlers = new Map<string, (...args: unknown[]) => void>();
+      const room = {
+        roomId: '!r:hs',
+        getLiveTimeline: () => ({
+          getEvents: () => events,
+          getPaginationToken: () => null,
+        }),
+        getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+        relations: { getChildEventsForEvent: () => undefined },
+        on: (event: string, handler: (...a: unknown[]) => void) => {
+          handlers.set(`room:${event}`, handler);
+        },
+        off: () => {},
+      };
+      return {
+        baseUrl: 'https://hs',
+        handlers,
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: (event: string, handler: (...a: unknown[]) => void) => {
+          handlers.set(`client:${event}`, handler);
+        },
+        off: () => {},
+        sendReadReceipt: () => Promise.resolve({}),
+        setRoomReadMarkers: () => Promise.resolve({}),
+        getCrypto: () => ({ getEncryptionInfoForEvent }),
+        scrollback: () => Promise.resolve(room),
+      };
+    }
+
+    function openWithShield(
+      getEncryptionInfoForEvent: ReturnType<typeof vi.fn>,
+      encrypted = true,
+    ) {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const events = [
+        fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi', encrypted }),
+      ];
+      const client = shieldClient(events, getEncryptionInfoForEvent);
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(client)],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return { svc, handlers: client.handlers };
+    }
+
+    it('projects a grey shield for an unverified-device message', async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.GREY,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      });
+      const { svc } = openWithShield(getInfo);
+
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].shield).toEqual({
+          level: 'grey',
+          reason: expect.any(String),
+        }),
+      );
+    });
+
+    it('projects a red shield for a red colour', async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.RED,
+        shieldReason: EventShieldReason.UNVERIFIED_IDENTITY,
+      });
+      const { svc } = openWithShield(getInfo);
+
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].shield?.level).toBe('red'),
+      );
+    });
+
+    it('leaves an unencrypted message without a shield (no crypto probe)', async () => {
+      const getInfo = vi.fn();
+      const { svc } = openWithShield(getInfo, false);
+
+      await Promise.resolve();
+      expect(svc.messages()[0].shield ?? null).toBeNull();
+      expect(getInfo).not.toHaveBeenCalled();
+    });
+
+    it('shows no shield when the colour resolves to NONE', async () => {
+      const getInfo = vi
+        .fn()
+        .mockResolvedValue({ shieldColour: EventShieldColour.NONE });
+      const { svc } = openWithShield(getInfo);
+
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalled());
+      expect(svc.messages()[0].shield ?? null).toBeNull();
+    });
+
+    it('does not re-probe a resolved event on a benign refresh, but does on a trust change', async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.GREY,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      });
+      const { svc, handlers } = openWithShield(getInfo);
+
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].shield?.level).toBe('grey'),
+      );
+      const afterOpen = getInfo.mock.calls.length;
+
+      // A receipt triggers a refresh, but the event is already resolved (and not a
+      // decryption failure) — no extra crypto probe.
+      handlers.get('room:Room.receipt')?.();
+      await Promise.resolve();
+      expect(getInfo.mock.calls.length).toBe(afterOpen);
+
+      // A trust change forces a full re-resolve.
+      handlers.get('client:userTrustStatusChanged')?.();
+      await vi.waitFor(() =>
+        expect(getInfo.mock.calls.length).toBeGreaterThan(afterOpen),
+      );
     });
   });
 });

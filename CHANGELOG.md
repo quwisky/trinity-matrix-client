@@ -8,6 +8,52 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Room activity in the timeline.** Membership and room changes now appear inline as compact
+  system lines — who joined, left, was invited, removed, banned or unbanned; and when someone
+  sets or changes the room name, topic, avatar, main address, join rules, history visibility,
+  guest access, or turns on end-to-end encryption. No-op changes are omitted to keep it quiet.
+- **Voice messages.** A microphone button in the composer records a voice message and sends
+  it (MSC3245 `m.audio` with a waveform); recordings are encrypted in E2EE rooms like any
+  other attachment. Received voice messages render as a compact player with a play control,
+  the waveform, and a running time.
+- **Browse public spaces.** The Explore directory now has a **Rooms / Spaces** toggle, so
+  you can discover and join public Spaces (not just rooms) from your homeserver's directory;
+  a joined space appears in the rail and is selected, a joined room opens in the Rooms view.
+- **Share your location.** A location button in the composer sends your position as an
+  `m.location` message, rendered as a card with the coordinates and an "Open in maps" link
+  (no embedded map tiles, so the strict content-security policy stays intact). On the
+  desktop app — where the browser can't read a device position without a bundled Google API
+  key — you pick the point in a small dialog by pasting an OpenStreetMap/Google Maps link or
+  typing `lat, lng`, with an optional one-tap approximate (IP-based) estimate.
+- **Mark rooms as read.** A room's ⋮ menu now has **Mark as read** (when it has unread),
+  and the channel-list header gains a **Mark all as read** action — both clear unread badges
+  without opening the rooms.
+- **See who read a message.** Clicking the read-receipt avatars on a message now expands
+  a "Seen by …" list of who has read up to it (also available as a hover tooltip).
+- **Message context actions.** A message's ⋯ menu now has **Copy link** (a `matrix.to`
+  permalink to the message) and **View source** (the event's raw JSON, in a dialog).
+- **Room-upgrade banner.** When a room has been upgraded to a new version, the old room
+  now shows a banner with **Go to the new room** — which joins and opens the successor.
+- **Slash commands.** The composer now understands IRC-style commands: **/me** (send an
+  emote), **/shrug** (append ¯\\_(ツ)_/¯), **/plain** (send without markdown), and **/spoiler**
+  (hide text behind a spoiler). Anything else starting with `/` is sent as-is.
+- **Link previews.** Messages with a link now show an Open-Graph preview card (title,
+  site, description, thumbnail), fetched through your homeserver. They're suppressed in
+  encrypted rooms by default — so a link in an E2EE message is never disclosed to the
+  server — but you can opt in per device via **Settings → Privacy → Show link previews in
+  encrypted rooms** (with a clear warning), and turn previews off entirely from the same
+  section. If your homeserver doesn't provide previews (Synapse ships them off), that same
+  section now says so instead of leaving you guessing.
+- **Verify another user.** A member's info panel now has a **Verify** action that starts
+  emoji-SAS verification with them over a direct message — establishing cross-user trust
+  (previously you could only verify your own other sessions).
+- **Per-message authenticity shields.** Encrypted messages now show a shield when their
+  authenticity is in question — sent from an unverified or unknown device, by an unverified
+  user, or with a key whose origin can't be guaranteed — with a tooltip explaining why. The
+  shields update live as device/user trust changes.
+- **Export / import room keys.** The Security section can now save your message keys to a
+  passphrase-protected file (the interoperable Matrix megolm `.txt` format that Element
+  reads/writes) and import them back — a key backup independent of the server.
 - **Security settings.** A new **Security** section in Settings surfaces your end-to-end
   encryption posture — whether encryption/secure backup is set up, whether this session is
   verified, and whether key backup is on — and launches the recovery-setup, recovery-key
@@ -189,6 +235,38 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Mention notification toggles now work on every homeserver.** The "When someone mentions
+  my name" and "When someone posts @room" switches were bound to the legacy push-rule ids
+  (`.m.rule.contains_display_name` / `.m.rule.roomnotif`); on homeservers that use the newer
+  intentional-mention rules (`.m.rule.is_user_mention` / `.m.rule.is_room_mention`) the switch
+  couldn't be turned on. Each toggle now reads and writes whichever of those rules the server
+  actually defines (both, where a server ships both), so it always reflects and controls your
+  real setting.
+- **"Mark as read" now respects your read-receipt privacy.** Marking a room (or all rooms)
+  read sent a public read receipt even when you'd turned read receipts off — leaking your
+  read position to other members. It now acks privately when the setting is off, like the
+  automatic on-view path.
+- **Authenticity shields and link previews now show on grouped messages.** A shield (or an
+  Open-Graph preview) only rendered on the first message of a Discord-style group, so a
+  suspicious — or link-bearing — continuation message showed neither. Both now render on
+  every message.
+- **Polls and shared locations can no longer be "edited".** They offered a text-edit
+  affordance that would have corrupted the poll/location; only text messages are editable.
+- **Voice recording is more robust.** A recording is now cancelled when you switch rooms
+  (so the mic doesn't stay open and a later send can't post to the wrong room), a double-tap
+  can't open two microphone streams, and a torn-down composer no longer leaves the mic on.
+- **Link previews recover from a hiccup.** A one-off homeserver error while fetching a
+  preview was cached for the whole session, permanently hiding that link's card; a transient
+  failure now retries on the next view.
+- **Copied message links are resolvable.** A copied `matrix.to` permalink to a room-by-ID now
+  includes a `?via=` server hint, so recipients not already in the room can open it.
+- **Thread replies understand slash commands** (`/me`, `/shrug`, `/plain`, `/spoiler`), and
+  the thread composer no longer shows poll/location/voice buttons that would have
+  posted to the main room instead of the thread. `/me` now also carries @-mentions.
+- **Searching the public directory no longer reloads the app.** The Explore directory's
+  search form performed a native browser submit (it had no Angular form binding), which
+  navigated away and closed the dialog instead of running the search. It now searches in
+  place.
 - **Links in messages are now clickable.** A bare URL in a message rendered as plain
   text — because a plain-text message (no HTML formatting) wasn't linkified. URLs are
   now turned into links when a message is displayed, so they're clickable regardless of

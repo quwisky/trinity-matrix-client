@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, type ComponentInput } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
-import { DraftStoreService, ThemeService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  ThemeService,
+  VoiceRecorderService,
+} from '@trinity/platform-native';
 import {
   GifService,
   GifSettingsService,
@@ -13,11 +17,13 @@ import {
   type GifResult,
 } from '@trinity/data-access-gif';
 import { TrnToastService } from '@trinity/helm/overlay';
+import { TimelineService } from '@trinity/data-access-timeline';
 import {
   MessageComposerComponent,
   type ComposerSubmit,
 } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
+import { LocationShareService } from '../location-share/location-share.service';
 
 // The draft store persists to Capacitor Preferences (debounced); stub it so the
 // composer's real DraftStoreService is a no-op on the storage side.
@@ -906,6 +912,179 @@ describe('MessageComposerComponent', () => {
       expect.objectContaining({ variant: 'destructive' }),
     );
     expect(cmp.gifDownloading()).toBe(false);
+  });
+
+  it('hides the room-scoped actions (poll/location/voice) when richActions is off', async () => {
+    // The thread composer sets richActions=false: those actions post to the active
+    // room, not the thread, so they must not be offered there.
+    const { container } = await renderComposer({ richActions: false }, [
+      MockProvider(VoiceRecorderService, { supported: true }),
+    ]);
+    for (const id of ['composer-poll', 'composer-location', 'composer-voice']) {
+      expect(container.querySelector(`[data-testid=${id}]`)).toBeNull();
+    }
+    // Text-routable affordances stay available in a thread.
+    expect(
+      container.querySelector('[data-testid=composer-attach]'),
+    ).not.toBeNull();
+  });
+
+  it('disables the location button and shows a spinner while a share is in flight', async () => {
+    const { container } = await renderComposer({}, [
+      MockProvider(LocationShareService, {
+        sharing: signal(true).asReadonly(),
+        share: vi.fn(),
+      }),
+    ]);
+
+    const button = container.querySelector<HTMLButtonElement>(
+      '[data-testid=composer-location]',
+    );
+    expect(button?.disabled).toBe(true);
+    // The spinner only renders in the busy branch, so its presence proves the swap.
+    expect(button?.querySelector('hlm-spinner')).not.toBeNull();
+  });
+
+  describe('voice messages', () => {
+    const recording = {
+      blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/webm' }),
+      durationMs: 3000,
+      waveform: [0, 512, 1024],
+      mimeType: 'audio/webm',
+    };
+
+    /** Providers wiring a fake recorder + a spyable voice-send. */
+    function voiceProviders(
+      over: {
+        start?: () => Promise<void>;
+        stop?: () => Promise<typeof recording | null>;
+        sendVoiceMessage?: ReturnType<typeof vi.fn>;
+      } = {},
+    ) {
+      const cancel = vi.fn();
+      const sendVoiceMessage = over.sendVoiceMessage ?? vi.fn(() => of(void 0));
+      return {
+        cancel,
+        sendVoiceMessage,
+        providers: [
+          MockProvider(VoiceRecorderService, {
+            supported: true,
+            start: over.start ?? (() => Promise.resolve()),
+            stop: over.stop ?? (() => Promise.resolve(recording)),
+            cancel,
+          }),
+          MockProvider(TimelineService, { sendVoiceMessage }),
+        ] as Provider[],
+      };
+    }
+
+    it('shows the mic button and starts recording on click', async () => {
+      const { providers } = voiceProviders();
+      const { fixture } = await renderComposer({}, providers);
+      const cmp = fixture.componentInstance;
+
+      await cmp.startVoiceRecording();
+
+      expect(cmp.recordingVoice()).toBe(true);
+    });
+
+    it('stops recording and sends the clip as a voice message', async () => {
+      const { providers, sendVoiceMessage } = voiceProviders();
+      const { fixture } = await renderComposer({}, providers);
+      const cmp = fixture.componentInstance;
+      await cmp.startVoiceRecording();
+
+      cmp.stopVoiceRecording();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(sendVoiceMessage).toHaveBeenCalledWith(recording);
+      expect(cmp.recordingVoice()).toBe(false);
+    });
+
+    it('ignores a second start while the mic is still being acquired', async () => {
+      let resolveStart!: () => void;
+      const start = vi.fn(
+        () => new Promise<void>((resolve) => (resolveStart = resolve)),
+      );
+      const cancel = vi.fn();
+      const { fixture } = await renderComposer({}, [
+        MockProvider(VoiceRecorderService, {
+          supported: true,
+          start,
+          stop: () => Promise.resolve(recording),
+          cancel,
+        }),
+        MockProvider(TimelineService, {}),
+      ]);
+      const cmp = fixture.componentInstance;
+
+      const first = cmp.startVoiceRecording();
+      const second = cmp.startVoiceRecording(); // clicked again during acquisition
+      resolveStart();
+      await Promise.all([first, second]);
+
+      expect(start).toHaveBeenCalledTimes(1); // only one mic stream opened
+      expect(cmp.recordingVoice()).toBe(true);
+    });
+
+    it('cancels an in-progress recording when the room switches', async () => {
+      const { providers, cancel } = voiceProviders();
+      const { fixture } = await renderComposer({ roomId: '!a:hs' }, providers);
+      const cmp = fixture.componentInstance;
+      await cmp.startVoiceRecording();
+      expect(cmp.recordingVoice()).toBe(true);
+
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.detectChanges();
+
+      expect(cancel).toHaveBeenCalled();
+      expect(cmp.recordingVoice()).toBe(false);
+    });
+
+    it('cancels a recording without sending', async () => {
+      const { providers, cancel, sendVoiceMessage } = voiceProviders();
+      const { fixture } = await renderComposer({}, providers);
+      const cmp = fixture.componentInstance;
+      await cmp.startVoiceRecording();
+
+      cmp.cancelVoiceRecording();
+
+      expect(cancel).toHaveBeenCalled();
+      expect(cmp.recordingVoice()).toBe(false);
+      expect(sendVoiceMessage).not.toHaveBeenCalled();
+    });
+
+    it('toasts and stays idle when the mic can’t be accessed', async () => {
+      const { providers } = voiceProviders({
+        start: () => Promise.reject(new Error('denied')),
+      });
+      const { fixture } = await renderComposer({}, providers);
+      const cmp = fixture.componentInstance;
+
+      await cmp.startVoiceRecording();
+
+      expect(cmp.recordingVoice()).toBe(false);
+      expect(TestBed.inject(TrnToastService).show).toHaveBeenCalledWith(
+        expect.stringContaining('microphone'),
+        expect.objectContaining({ variant: 'destructive' }),
+      );
+    });
+
+    it('does not send an empty clip', async () => {
+      const { providers, sendVoiceMessage } = voiceProviders({
+        stop: () => Promise.resolve({ ...recording, blob: new Blob([]) }),
+      });
+      const { fixture } = await renderComposer({}, providers);
+      const cmp = fixture.componentInstance;
+      await cmp.startVoiceRecording();
+
+      cmp.stopVoiceRecording();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(sendVoiceMessage).not.toHaveBeenCalled();
+    });
   });
 
   describe('draft persistence', () => {

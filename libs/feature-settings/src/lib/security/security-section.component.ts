@@ -2,12 +2,16 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   OnInit,
   inject,
+  signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { HlmButton } from '@trinity/helm/button';
+import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { CryptoService } from '@trinity/data-access-crypto';
 import { EncryptionDialogService } from '@trinity/ui';
 
@@ -31,7 +35,12 @@ export class SecuritySectionComponent implements OnInit {
   private readonly crypto = inject(CryptoService);
   private readonly dialogs = inject(EncryptionDialogService);
   private readonly router = inject(Router);
+  private readonly alert = inject(TrnAlertService);
+  private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
+
+  private readonly fileInput =
+    viewChild<ElementRef<HTMLInputElement>>('keyFile');
 
   /** Where this device stands on encryption setup (drives the encryption card). */
   readonly status = this.crypto.status;
@@ -39,6 +48,9 @@ export class SecuritySectionComponent implements OnInit {
   readonly keyBackupActive = this.crypto.keyBackupActive;
   /** Whether this session is cross-signing verified. */
   readonly sessionVerified = this.crypto.thisDeviceVerified;
+
+  /** True while an export/import is in flight (disables the buttons). */
+  readonly busy = signal(false);
 
   ngOnInit(): void {
     // Recompute against the live crypto state when the page opens (it's connected at
@@ -61,5 +73,98 @@ export class SecuritySectionComponent implements OnInit {
   /** Verify this session against another signed-in one (emoji SAS). */
   verifySession(): void {
     void this.dialogs.openVerify({ returnTo: RETURN_TO });
+  }
+
+  /** Export this device's room keys to a passphrase-encrypted file. */
+  async exportKeys(): Promise<void> {
+    const passphrase = await this.alert.prompt({
+      header: 'Export room keys',
+      message:
+        'Choose a passphrase to protect the file. You’ll need it to import the keys again.',
+      placeholder: 'Passphrase',
+      inputType: 'password',
+      confirmText: 'Export',
+    });
+    if (!passphrase) {
+      return;
+    }
+    this.busy.set(true);
+    this.crypto
+      .exportRoomKeys(passphrase)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (armored) => {
+          this.busy.set(false);
+          this.download(armored);
+          this.toast.show('Room keys exported.', {
+            duration: 3000,
+            variant: 'success',
+          });
+        },
+        error: () => {
+          this.busy.set(false);
+          this.toast.show('Could not export your room keys.', {
+            duration: 4000,
+            variant: 'destructive',
+          });
+        },
+      });
+  }
+
+  /** Open the file picker to import keys from a previously-exported file. */
+  pickKeyFile(): void {
+    this.fileInput()?.nativeElement.click();
+  }
+
+  /** Read the picked export file, prompt for its passphrase, and import the keys. */
+  async onKeyFile(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // allow re-picking the same file
+    if (!file) {
+      return;
+    }
+    const passphrase = await this.alert.prompt({
+      header: 'Import room keys',
+      message: 'Enter the passphrase this file was exported with.',
+      placeholder: 'Passphrase',
+      inputType: 'password',
+      confirmText: 'Import',
+    });
+    if (!passphrase) {
+      return;
+    }
+    const armored = await file.text();
+    this.busy.set(true);
+    this.crypto
+      .importRoomKeys(armored, passphrase)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.busy.set(false);
+          this.toast.show('Room keys imported.', {
+            duration: 3000,
+            variant: 'success',
+          });
+        },
+        error: (err: unknown) => {
+          this.busy.set(false);
+          this.toast.show(
+            err instanceof Error
+              ? err.message
+              : 'Could not import the room keys.',
+            { duration: 4000, variant: 'destructive' },
+          );
+        },
+      });
+  }
+
+  /** Trigger a browser download of the armored key file (data URL — no blob URL needed). */
+  private download(armored: string): void {
+    const anchor = document.createElement('a');
+    anchor.href =
+      'data:text/plain;charset=utf-8,' + encodeURIComponent(armored);
+    anchor.download = 'trinity-room-keys.txt';
+    anchor.click();
   }
 }

@@ -6,6 +6,7 @@ import { type MessageView } from '@trinity/util-matrix';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { SimpleMessageListComponent } from './simple-message-list.component';
 import { ReactionPickerService } from '../../reaction-picker/reaction-picker.service';
+import { MessageSourceService } from '../../message-source/message-source.service';
 
 function msg(
   id: string,
@@ -37,6 +38,15 @@ function msg(
   };
 }
 
+function eventRow(id: string, summary: string, ts: number): MessageView {
+  return {
+    ...msg(id, '@a:hs', 'Alice', ts),
+    kind: 'event',
+    summary,
+    body: summary,
+  };
+}
+
 describe('SimpleMessageListComponent', () => {
   it('renders a row per message and groups consecutive senders', async () => {
     const { container } = await render(SimpleMessageListComponent, {
@@ -53,6 +63,29 @@ describe('SimpleMessageListComponent', () => {
     expect(container.querySelectorAll('.msg__avatar').length).toBe(2); // Alice + Bob headers
     expect(container.querySelectorAll('.msg--cont').length).toBe(1); // Alice's second line
     expect(container.textContent).toContain('body $2');
+  });
+
+  it('renders state events as system lines that break sender grouping', async () => {
+    const { container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$1', '@a:hs', 'Alice', 1000),
+          eventRow('$e', 'Alice changed the room name to "General"', 2000),
+          // Same sender as $1, but the event line between them breaks the group.
+          msg('$2', '@a:hs', 'Alice', 3000),
+        ],
+      },
+    });
+
+    const line = container.querySelector('[data-testid=timeline-event]');
+    expect(line).not.toBeNull();
+    expect(line?.textContent).toContain(
+      'Alice changed the room name to "General"',
+    );
+    expect(container.querySelectorAll('.msg--event').length).toBe(1);
+    // The message after the event shows its own header, not a continuation.
+    expect(container.querySelectorAll('.msg--cont').length).toBe(0);
+    expect(container.querySelectorAll('.msg__avatar').length).toBe(2);
   });
 
   it('marks others’ messages deletable only when canRedactOthers (moderator)', async () => {
@@ -555,6 +588,42 @@ describe('SimpleMessageListComponent', () => {
       });
       cmp.onCopy(row('$1'));
       expect(writeText).toHaveBeenCalledWith('body $1');
+    });
+
+    it('copies a matrix.to permalink for copy-link', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: { roomId: '!a:hs' },
+        providers: [MockProvider(TrnAlertService)],
+      });
+      const writeText = vi.fn();
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      });
+
+      fixture.componentInstance.onRowAction(row('$1'), { type: 'copy-link' });
+
+      // A room-ID permalink carries a `?via=` routing hint (the room's origin server).
+      expect(writeText).toHaveBeenCalledWith(
+        'https://matrix.to/#/!a%3Ahs/%241?via=hs',
+      );
+    });
+
+    it('opens the source dialog for view-source', async () => {
+      const open = vi.fn();
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: { roomId: '!a:hs' },
+        providers: [
+          MockProvider(TrnAlertService),
+          MockProvider(MessageSourceService, { open }),
+        ],
+      });
+
+      fixture.componentInstance.onRowAction(row('$1'), {
+        type: 'view-source',
+      });
+
+      expect(open).toHaveBeenCalledWith('!a:hs', '$1');
     });
   });
 

@@ -4,6 +4,11 @@ A prioritized plan for the gaps that make Trinity feel _unfinished_ next to Elem
 room admin**, **verification & security breadth**, and **notification / account / privacy settings**.
 Grounded in a codebase audit (what's already shipped vs. genuinely missing).
 
+> **Status (2026-07).** The moderation / room-admin cluster, the account & privacy settings, and a
+> Security section are **shipped** (see the ✅ rows below). What remains is captured — re-prioritized
+> into execution tracks — in [**Execution plan — next tracks**](#execution-plan--next-tracks) at the
+> bottom. That section is the live to-do list; the tables above are the audit it came from.
+
 Companion tracks: everyday UX polish ([UX-POLISH-PLAN.md](UX-POLISH-PLAN.md)), calls
 ([CALLS-PLAN.md](CALLS-PLAN.md)), native/ship-readiness ([NATIVE-READINESS-PLAN.md](NATIVE-READINESS-PLAN.md)),
 and the master [PLAN.md](PLAN.md).
@@ -38,13 +43,13 @@ still missing is the wider room-config and directory surface.
 | ✅ Redact other users' messages as a moderator           | S    | High  |
 | ✅ Room settings / info panel: edit name, topic, avatar  | M    | High  |
 | ✅ Member info panel with per-member actions             | M    | High  |
-| ✅ Kick / ban (unban + ban-list view: follow-up)         | M    | High  |
+| ✅ Kick / ban + **unban + ban-list view**                | M    | High  |
 | ✅ Promote / demote members (power-level editing)        | M    | Med   |
-| Ignore / block a user (account-wide)                     | M    | Med   |
-| Join rules / history visibility / guest access           | M    | Med   |
-| Directory publish + canonical/local aliases              | M    | Med   |
-| Report a message / room to server admins                 | S    | Med   |
-| Public room directory browsing + join by alias           | L    | Med   |
+| ✅ Ignore / block a user (account-wide)                  | M    | Med   |
+| ✅ Join rules / history visibility (guest access: n/a)   | M    | Med   |
+| ✅ Directory publish + canonical/local aliases           | M    | Med   |
+| ✅ Report a message / room to server admins              | S    | Med   |
+| ✅ Public room directory browsing + join by alias        | L    | Med   |
 | Space directory + nested-rail nav + child reorder        | L    | Med   |
 | Knock-to-join + approve/deny knocks                      | M    | Low   |
 | Room upgrade + follow tombstones                         | L    | Low   |
@@ -90,7 +95,7 @@ device management (list/rename/sign-out), encryption banner, recovery-key unlock
 | Cross-**user** verification (verify other people) | M    | High  |
 | Per-message authenticity shields                  | M    | High  |
 | Recovery/identity **reset** escape hatch          | M    | High  |
-| Security settings section + key-backup management | L    | High  |
+| ✅ Security settings section + key-backup status  | L    | High  |
 | Surface recovery-**passphrase** unlock            | S    | Low   |
 | Member-list trust badges + verify-user action     | M    | Med   |
 | New-/unverified-session security alert            | M    | Med   |
@@ -130,13 +135,13 @@ device management, GIF config, feature flags, presence **display**, **per-room n
 | Feature                                               | Size | Value |
 | ----------------------------------------------------- | ---- | ----- |
 | ✅ Per-room notification level (mute / mentions-only) | M    | High  |
-| Global Notifications settings screen (+ keywords)     | L    | High  |
-| Ignore / block users + management list                | M    | High  |
-| Change account password                               | S    | Med   |
+| ✅ Global Notifications settings screen               | L    | High  |
+| ✅ Ignore / block users + management list             | M    | High  |
+| ✅ Change account password                            | S    | Med   |
 | ✅ Set your own presence + status message             | S    | Med   |
 | Deactivate account (with erase)                       | M    | Med   |
 | Email & phone (3PID) management                       | L    | Med   |
-| Toggle to stop sending read receipts                  | S    | Low   |
+| ✅ Toggle to stop sending read receipts               | S    | Low   |
 
 **Notes on the key items**
 
@@ -157,10 +162,52 @@ screen (larger, keyword rules) → deactivate + 3PIDs (account-management cluste
 
 ---
 
-## Recommended entry point
+## Execution plan — next tracks
 
-The **safety + control quick wins** and the whole **moderation cluster** are done — Leave-a-room,
-Redact-others, Per-room mute, the **Room settings panel**, the **Member info panel**, and acting on
-members from it (**kick / ban** and **power-level editing**). What's left is the wider room-config surface
-(join-rules / history-visibility / aliases, report, unban + ban-list), the account-wide **Ignore/block**
-safety control, and — the biggest remaining security gap — **cross-user verification**.
+The moderation / room-admin cluster, account & privacy settings, and a Security section are all
+shipped. What remains, re-prioritized into execution tracks. Each item ships on its own commit with
+unit **and** e2e tests, passing `nx test` + `nx lint` + `pnpm build` (e2e specs `tsc`-checked).
+
+**Environment note.** The e2e harness is one browser + a disposable Synapse. Items needing real
+hardware (camera, push credentials), a second physical device, or irreversible account actions can't
+be reliably e2e-tested here — flagged ❌ / ⚠️ below.
+
+Effort: **S** ≤ half-day · **M** ~1 day · **L** multi-day.
+
+### Track 1 — Encryption UX (extends the Security section)
+
+| #   | Feature                     | Summary                                                                                                                                                 | Effort | e2e |
+| --- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | --- |
+| 1a  | Export / import room keys   | Passphrase-encrypted `.txt` of E2EE room keys (`exportRoomKeysAsJson` + `encryptMegolmKeyFile` / decrypt on import).                                    | M      | ✅  |
+| 1b  | Per-message trust shields   | Shield / warning from `getEncryptionInfoForEvent` (unverified device, unencrypted-in-E2EE); projected into `MessageView`, re-rendered on trust changes. | M      | ⚠️  |
+| 1c  | Cross-user verification     | Verify another user via SAS over `requestVerificationDM`; reuses the SAS UI + the 2-client `e2e:verify` harness.                                        | L      | ✅  |
+| 1d  | Recovery reset escape hatch | `resetEncryption()` re-bootstraps cross-signing + 4S + backup when the recovery key is lost.                                                            | M      | ⚠️  |
+
+### Track 2 — Timeline richness
+
+| #   | Feature                         | Summary                                                                                         | Effort | e2e |
+| --- | ------------------------------- | ----------------------------------------------------------------------------------------------- | ------ | --- |
+| 2a  | URL / link previews             | `getUrlPreview` → a preview card; suppressed in E2EE rooms by default, behind a privacy toggle. | M      | ✅  |
+| 2b  | Slash commands                  | `/me`, `/shrug`, `/spoiler`, `/plain`, `/join`, `/invite`; render `m.emote`.                    | M      | ✅  |
+| 2c  | Room-upgrade / tombstone banner | `m.room.tombstone` → a banner that joins/opens the successor.                                   | S–M    | ✅  |
+| 2d  | Message context actions         | Copy text, copy `matrix.to` permalink, view source (raw event JSON).                            | S      | ✅  |
+| 2e  | "Seen by" detail                | Expand the read-receipt cluster into a who-read list.                                           | S      | ✅  |
+| 2f  | Mark room as read               | `setRoomReadMarkers` on the latest event, from the room menu + a global mark-all-read.          | S      | ✅  |
+
+### Track 3 — Rich content
+
+| #   | Feature                 | Summary                                                                                        | Effort | e2e |
+| --- | ----------------------- | ---------------------------------------------------------------------------------------------- | ------ | --- |
+| 3a  | Location sharing        | `m.location` via geolocation; render coords + "open in maps" (no map tiles → CSP-safe).        | M      | ✅  |
+| 3b  | Public space directory  | Browse public _spaces_ — extends `PublicRoomsService` with a `room_type` filter.               | M      | ✅  |
+| 3c  | Stickers / custom emoji | Image packs (MSC2545) from account-data/room-state; a picker sending `m.sticker`.              | L      | ✅  |
+| 3d  | Voice messages          | `MediaRecorder` → `m.audio` + MSC3245 voice metadata + waveform; reuses the media upload path. | L      | ✅  |
+
+### Blocked here (Tier C)
+
+QR verification (camera), voice/video calls (TURN + signalling), deactivate account (irreversible),
+3PID email/phone (real delivery), multi-account push fan-out (Sygnal creds), native on-device
+verification (real devices). Revisit when the environment allows.
+
+**Recommended order:** Track 1 (1a → 1b → 1c → 1d) → Track 2 (2a → 2b → 2c → 2d → 2e → 2f) →
+Track 3 (3a → 3b → 3c → 3d).

@@ -93,4 +93,47 @@
       }
     </p>
   </section>
+
+  <!-- Encrypted key export / import file -->
+  <section
+    class="flex flex-col gap-2 px-4 py-3"
+    data-testid="security-key-export"
+  >
+    <span class="text-sm font-medium">Encrypted key export</span>
+    <p class="text-[13px] text-muted-foreground">
+      Save your message keys to a passphrase-protected file, or import keys from
+      one. Useful as a backup independent of the server.
+    </p>
+    <div class="flex flex-wrap gap-2">
+      <button
+        hlmBtn
+        size="sm"
+        variant="outline"
+        class="self-start"
+        [disabled]="busy()"
+        (click)="exportKeys()"
+        data-testid="security-export-keys"
+      >
+        Export room keys
+      </button>
+      <button
+        hlmBtn
+        size="sm"
+        variant="outline"
+        class="self-start"
+        [disabled]="busy()"
+        (click)="pickKeyFile()"
+        data-testid="security-import-keys"
+      >
+        Import room keys
+      </button>
+    </div>
+    <input
+      #keyFile
+      type="file"
+      accept=".txt,text/plain"
+      hidden
+      (change)="onKeyFile($event)"
+    />
+  </section>
 </div>

@@ -65,6 +65,18 @@ export interface TrinityDesktopBridge {
     set: (key: string, value: string) => Promise<boolean>;
     delete: (key: string) => Promise<void>;
   };
+
+  /**
+   * Ask the MAIN process to estimate the device's APPROXIMATE location from its
+   * public IP (city-level), resolving `null` when the lookup is unavailable or
+   * fails. Desktop-only: Chromium's own `navigator.geolocation` is backed by
+   * Google's network provider, which prebuilt Electron can't authenticate without
+   * an embedded API key, so it never resolves on a keyboard-and-mouse desktop.
+   * This is an explicit, opt-in convenience (the user taps it in the manual
+   * location dialog) — it is never called automatically, and it sends only the
+   * IP the request originates from, never GPS or Wi-Fi scan data.
+   */
+  resolveApproxLocation?: () => Promise<{ lat: number; lng: number } | null>;
 }
 
 /** Payload for {@link TrinityDesktopBridge.showNotification}. */

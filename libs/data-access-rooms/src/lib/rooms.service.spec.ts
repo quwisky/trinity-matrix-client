@@ -5,11 +5,17 @@ import {
   signal,
   type WritableSignal,
 } from '@angular/core';
-import { ClientEvent, MatrixEventEvent, RoomEvent } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  MatrixEventEvent,
+  ReceiptType,
+  RoomEvent,
+} from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { PrivacySettingsService } from '@trinity/platform-native';
 import { describe, expect, it, vi } from 'vitest';
 
 // A live-timeline event shaped like the bits messagePreview() reads.
@@ -90,7 +96,10 @@ function fakeRoom(opts: {
  * `instance` getter yields `client` and whose `isInitialized` is true, matching the
  * data-holder shape the service reads. Returns both so tests can re-point `instance`.
  */
-function provideRooms(client: unknown): {
+function provideRooms(
+  client: unknown,
+  sendReadReceipts = true,
+): {
   svc: RoomsService;
   matrix: MatrixClientService;
   activeUserId: WritableSignal<string | null>;
@@ -101,6 +110,9 @@ function provideRooms(client: unknown): {
       RoomsService,
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
+      }),
+      MockProvider(PrivacySettingsService, {
+        sendReadReceipts: signal(sendReadReceipts).asReadonly(),
       }),
     ],
   });
@@ -187,6 +199,149 @@ describe('RoomsService', () => {
     expect(mid.hasUnread).toBe(false);
     // totalUnread is the app-wide sum of every room's unread count.
     expect(svc.totalUnread()).toBe(3);
+  });
+
+  it('marks a room read by acking its latest confirmed event', async () => {
+    const latest = { getId: () => '$latest', status: null };
+    const room = {
+      getLiveTimeline: () => ({
+        getEvents: () => [{ getId: () => '$old', status: null }, latest],
+      }),
+    };
+    const sendReadReceipt = vi.fn().mockResolvedValue({});
+    const setRoomReadMarkers = vi.fn().mockResolvedValue({});
+    const client = {
+      baseUrl: 'https://hs',
+      getRooms: () => [],
+      getRoom: () => room,
+      sendReadReceipt,
+      setRoomReadMarkers,
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+
+    await firstValueFrom(svc.markRead('!r:hs'));
+
+    expect(setRoomReadMarkers).toHaveBeenCalledWith('!r:hs', '$latest');
+    expect(sendReadReceipt).toHaveBeenCalledWith(latest, ReceiptType.Read);
+  });
+
+  it('acks privately when read receipts are turned off', async () => {
+    const latest = { getId: () => '$latest', status: null };
+    const room = {
+      getLiveTimeline: () => ({ getEvents: () => [latest] }),
+    };
+    const sendReadReceipt = vi.fn().mockResolvedValue({});
+    const client = {
+      baseUrl: 'https://hs',
+      getRooms: () => [],
+      getRoom: () => room,
+      sendReadReceipt,
+      setRoomReadMarkers: vi.fn().mockResolvedValue({}),
+      on: () => {},
+    };
+    const { svc } = provideRooms(client, false); // sendReadReceipts off
+
+    await firstValueFrom(svc.markRead('!r:hs'));
+
+    // Private receipt clears the badge without disclosing the read to others.
+    expect(sendReadReceipt).toHaveBeenCalledWith(
+      latest,
+      ReceiptType.ReadPrivate,
+    );
+  });
+
+  it('skips a pending local-echo tail and acks the newest confirmed event', async () => {
+    const confirmed = { getId: () => '$confirmed', status: null };
+    const room = {
+      getLiveTimeline: () => ({
+        getEvents: () => [
+          confirmed,
+          { getId: () => '$echo', status: 'sending' },
+        ],
+      }),
+    };
+    const sendReadReceipt = vi.fn().mockResolvedValue({});
+    const client = {
+      baseUrl: 'https://hs',
+      getRooms: () => [],
+      getRoom: () => room,
+      sendReadReceipt,
+      setRoomReadMarkers: vi.fn().mockResolvedValue({}),
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+
+    await firstValueFrom(svc.markRead('!r:hs'));
+
+    expect(sendReadReceipt).toHaveBeenCalledWith(confirmed, ReceiptType.Read);
+  });
+
+  it('is a no-op for an unknown or empty room', async () => {
+    const sendReadReceipt = vi.fn().mockResolvedValue({});
+    const client = {
+      baseUrl: 'https://hs',
+      getRooms: () => [],
+      getRoom: () => undefined, // unknown room
+      sendReadReceipt,
+      setRoomReadMarkers: vi.fn().mockResolvedValue({}),
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+
+    await firstValueFrom(svc.markRead('!missing:hs'));
+
+    expect(sendReadReceipt).not.toHaveBeenCalled();
+  });
+
+  it('markAllRead acks only the rooms with unread', async () => {
+    const latest = { getId: () => '$l', status: null };
+    const room = { getLiveTimeline: () => ({ getEvents: () => [latest] }) };
+    const sendReadReceipt = vi.fn().mockResolvedValue({});
+    const setRoomReadMarkers = vi.fn().mockResolvedValue({});
+    const client = {
+      baseUrl: 'https://hs',
+      getRooms: () => [
+        fakeRoom({ roomId: '!a:hs', name: 'A', unread: 2 }),
+        fakeRoom({ roomId: '!b:hs', name: 'B', unread: 0 }),
+      ],
+      getRoom: () => room,
+      sendReadReceipt,
+      setRoomReadMarkers,
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+    svc.connect();
+
+    await firstValueFrom(svc.markAllRead());
+
+    expect(setRoomReadMarkers).toHaveBeenCalledTimes(1);
+    expect(setRoomReadMarkers).toHaveBeenCalledWith('!a:hs', '$l');
+  });
+
+  it('markAllRead restricts to the given scope of room ids', async () => {
+    const latest = { getId: () => '$l', status: null };
+    const room = { getLiveTimeline: () => ({ getEvents: () => [latest] }) };
+    const setRoomReadMarkers = vi.fn().mockResolvedValue({});
+    const client = {
+      baseUrl: 'https://hs',
+      getRooms: () => [
+        fakeRoom({ roomId: '!a:hs', name: 'A', unread: 2 }),
+        fakeRoom({ roomId: '!b:hs', name: 'B', unread: 5 }),
+      ],
+      getRoom: () => room,
+      sendReadReceipt: vi.fn().mockResolvedValue({}),
+      setRoomReadMarkers,
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+    svc.connect();
+
+    // Only !a:hs is in scope, so !b:hs stays unread even though it has unread messages.
+    await firstValueFrom(svc.markAllRead(['!a:hs']));
+
+    expect(setRoomReadMarkers).toHaveBeenCalledTimes(1);
+    expect(setRoomReadMarkers).toHaveBeenCalledWith('!a:hs', '$l');
   });
 
   it('re-projects onto the newly-active account when the active account switches', () => {

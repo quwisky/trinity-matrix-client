@@ -1,0 +1,16 @@
+<a
+  class="location"
+  [href]="mapUrl()"
+  target="_blank"
+  rel="noopener noreferrer"
+  data-testid="location-card"
+>
+  <span class="location__pin" aria-hidden="true">
+    <ng-icon name="lucideMapPin" />
+  </span>
+  <span class="location__body">
+    <span class="location__label">{{ location().label }}</span>
+    <span class="location__coords">{{ coords() }}</span>
+    <span class="location__open">Open in maps</span>
+  </span>
+</a>

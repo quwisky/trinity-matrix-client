@@ -14,10 +14,12 @@ import { TrnAlertService } from '@trinity/helm/overlay';
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
 import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
+import { MessageSourceService } from '../message-source/message-source.service';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
 import {
   formatTypingNotice,
   isEditableMessage,
+  messagePermalink,
   type MatrixLinkTarget,
   type MessageView,
   type Mention,
@@ -145,6 +147,7 @@ export abstract class MessageListBase {
   private readonly reactionPicker = inject(ReactionPickerService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
+  private readonly sourceSvc = inject(MessageSourceService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   // Grouping rows, cached per event id so an unchanged message (same view object AND
@@ -167,6 +170,9 @@ export abstract class MessageListBase {
       const prev = msgs[i - 1];
       const showHeader =
         !prev ||
+        // A system (state/membership) line breaks the group, so the next message
+        // re-shows its author even when it's from the same sender.
+        prev.kind === 'event' ||
         prev.senderId !== m.senderId ||
         m.timestamp - prev.timestamp > GAP_MS ||
         // A reply always shows its own header: the quoted preview breaks the visual
@@ -307,6 +313,13 @@ export abstract class MessageListBase {
     void navigator.clipboard?.writeText(row.body);
   }
 
+  /** Copy a matrix.to permalink to this message. */
+  onCopyLink(row: MessageRow): void {
+    void navigator.clipboard?.writeText(
+      messagePermalink(this.roomId() ?? '', row.id),
+    );
+  }
+
   /** Scroll a message into view (each scroll strategy implements it differently). */
   abstract jumpTo(messageId: string): void;
 
@@ -354,6 +367,12 @@ export abstract class MessageListBase {
         break;
       case 'copy':
         this.onCopy(row);
+        break;
+      case 'copy-link':
+        this.onCopyLink(row);
+        break;
+      case 'view-source':
+        this.sourceSvc.open(this.roomId() ?? '', row.id);
         break;
       case 'forward':
         void this.forwardSvc.forward(this.roomId() ?? '', row.id);

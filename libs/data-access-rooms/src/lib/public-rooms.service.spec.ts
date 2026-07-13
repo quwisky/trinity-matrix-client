@@ -60,6 +60,7 @@ describe('PublicRoomsService', () => {
           alias: '#general:hs',
           avatarMxc: 'mxc://hs/a',
           memberCount: 42,
+          isSpace: false,
         },
       ],
       nextBatch: 'tok',
@@ -100,6 +101,31 @@ describe('PublicRoomsService', () => {
     const opts = publicRooms.mock.calls[0][0];
     expect(opts.filter).toBeUndefined();
     expect(opts.since).toBe('page2');
+  });
+
+  it('restricts to Spaces and flags each summary as a space', async () => {
+    const { svc, publicRooms } = setup({
+      chunk: [{ ...CHUNK_ROOM, room_type: 'm.space' }],
+    });
+
+    const page = await firstValueFrom(svc.search({ spaces: true }));
+
+    expect(publicRooms).toHaveBeenCalledWith(
+      expect.objectContaining({ filter: { room_types: ['m.space'] } }),
+    );
+    expect(page.rooms[0].isSpace).toBe(true);
+  });
+
+  it('combines a search term with the Spaces filter', async () => {
+    const { svc, publicRooms } = setup();
+
+    await firstValueFrom(svc.search({ term: 'dev', spaces: true }));
+
+    expect(publicRooms).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filter: { generic_search_term: 'dev', room_types: ['m.space'] },
+      }),
+    );
   });
 
   it('join resolves the joined room id', async () => {

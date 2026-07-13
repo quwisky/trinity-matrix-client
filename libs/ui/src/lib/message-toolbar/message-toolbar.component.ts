@@ -14,10 +14,12 @@ import {
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
 import {
+  lucideCode,
   lucideCopy,
   lucideEllipsis,
   lucideFlag,
   lucideForward,
+  lucideLink,
   lucideMessagesSquare,
   lucidePencil,
   lucidePin,
@@ -48,6 +50,8 @@ export type MessageAction =
   | { type: 'edit' }
   | { type: 'delete' }
   | { type: 'copy' }
+  | { type: 'copy-link' }
+  | { type: 'view-source' }
   | { type: 'forward' }
   | { type: 'report' }
   | { type: 'pin' }
@@ -89,6 +93,8 @@ let nextPickerId = 0;
       lucidePin,
       lucidePlus,
       lucideCopy,
+      lucideLink,
+      lucideCode,
       lucideForward,
       lucideFlag,
       lucidePencil,

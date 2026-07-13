@@ -66,4 +66,52 @@ describe('PrivacySettingsService', () => {
     expect(svc.sendReadReceipts()).toBe(true);
     expect(set).toHaveBeenLastCalledWith({ key: KEY, value: 'true' });
   });
+
+  it('defaults link previews to on', () => {
+    expect(service().linkPreviews()).toBe(true);
+  });
+
+  it('restores a stored "false" link-previews preference on init', async () => {
+    get.mockResolvedValue({ value: 'false' });
+    const svc = service();
+    await svc.init();
+    expect(svc.linkPreviews()).toBe(false);
+    expect(get).toHaveBeenCalledWith({ key: 'trinity.privacy.link-previews' });
+  });
+
+  it('setLinkPreviews updates the signal and persists the choice', () => {
+    const svc = service();
+
+    svc.setLinkPreviews(false);
+    expect(svc.linkPreviews()).toBe(false);
+    expect(set).toHaveBeenCalledWith({
+      key: 'trinity.privacy.link-previews',
+      value: 'false',
+    });
+  });
+
+  it('defaults link previews in encrypted rooms to OFF', () => {
+    expect(service().linkPreviewsInEncrypted()).toBe(false);
+  });
+
+  it('restores a stored "true" encrypted-previews preference on init', async () => {
+    get.mockResolvedValue({ value: 'true' });
+    const svc = service();
+    await svc.init();
+    expect(svc.linkPreviewsInEncrypted()).toBe(true);
+    expect(get).toHaveBeenCalledWith({
+      key: 'trinity.privacy.link-previews-encrypted',
+    });
+  });
+
+  it('setLinkPreviewsInEncrypted updates the signal and persists the choice', () => {
+    const svc = service();
+
+    svc.setLinkPreviewsInEncrypted(true);
+    expect(svc.linkPreviewsInEncrypted()).toBe(true);
+    expect(set).toHaveBeenCalledWith({
+      key: 'trinity.privacy.link-previews-encrypted',
+      value: 'true',
+    });
+  });
 });

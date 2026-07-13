@@ -3,19 +3,124 @@ import type { DomSanitizer } from '@angular/platform-browser';
 import type { MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   editMessageContent,
+  locationMessageContent,
   mediaCaptionFields,
   messagePreview,
+  parseSlashCommand,
   renderMarkdown,
   replyMessageContent,
+  slashCommandContent,
   textMessageContent,
   type Mention,
+  type RenderedMarkdown,
 } from './message-content';
+
+describe('locationMessageContent', () => {
+  it('builds an m.location with a geo URI and MSC3488 fields', () => {
+    const content = locationMessageContent(52.51, 13.38, 'Berlin') as Record<
+      string,
+      unknown
+    >;
+    expect(content['msgtype']).toBe('m.location');
+    expect(content['geo_uri']).toBe('geo:52.51,13.38');
+    expect(content['body']).toBe('Berlin');
+    expect(content['org.matrix.msc3488.location']).toMatchObject({
+      uri: 'geo:52.51,13.38',
+    });
+  });
+});
 
 // mediaCaptionFields only uses the sanitizer via renderMarkdown (marked → sanitize);
 // a passthrough stub is enough to exercise the markdown branch without a DOM.
 const sanitizer = {
   sanitize: (_ctx: unknown, html: string | null) => html,
 } as unknown as DomSanitizer;
+
+describe('parseSlashCommand', () => {
+  it('parses a known command and its trimmed argument', () => {
+    expect(parseSlashCommand('/me waves hello')).toEqual({
+      command: 'me',
+      arg: 'waves hello',
+    });
+    expect(parseSlashCommand('/shrug')).toEqual({ command: 'shrug', arg: '' });
+  });
+
+  it('is case-insensitive on the command', () => {
+    expect(parseSlashCommand('/ME hi')?.command).toBe('me');
+  });
+
+  it('returns null for unknown commands and non-commands', () => {
+    expect(parseSlashCommand('/method chain')).toBeNull(); // not /me
+    expect(parseSlashCommand('/etc/passwd')).toBeNull();
+    expect(parseSlashCommand('hello /me')).toBeNull(); // not leading
+    expect(parseSlashCommand('/unknown x')).toBeNull();
+  });
+});
+
+describe('slashCommandContent', () => {
+  const plain: RenderedMarkdown = { formatted: false, html: '' };
+  const render = () => plain;
+
+  it('builds an m.emote for /me', () => {
+    expect(slashCommandContent('/me waves', render)).toMatchObject({
+      msgtype: 'm.emote',
+      body: 'waves',
+    });
+  });
+
+  it('carries @-mentions through /me (pill + m.mentions)', () => {
+    const html = '<p>waves at @Bob</p>';
+    const content = slashCommandContent(
+      '/me waves at @Bob',
+      () => ({ formatted: false, html }),
+      [{ userId: '@bob:hs', display: '@Bob' }],
+    ) as Record<string, unknown>;
+
+    expect(content['msgtype']).toBe('m.emote');
+    expect(content['formatted_body']).toContain(
+      '<a href="https://matrix.to/#/@bob:hs">@Bob</a>',
+    );
+    expect(content['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
+  });
+
+  it('appends the shrug for /shrug (with and without text)', () => {
+    expect(slashCommandContent('/shrug', render)).toMatchObject({
+      msgtype: 'm.text',
+      body: '¯\\_(ツ)_/¯',
+    });
+    expect(
+      (slashCommandContent('/shrug oh well', render) as { body: string }).body,
+    ).toBe('oh well ¯\\_(ツ)_/¯');
+  });
+
+  it('sends /plain as plain text (no formatting)', () => {
+    expect(slashCommandContent('/plain **not bold**', render)).toEqual({
+      msgtype: 'm.text',
+      body: '**not bold**',
+    });
+  });
+
+  it('wraps /spoiler text in a spoiler span', () => {
+    const content = slashCommandContent(
+      '/spoiler the butler did it',
+      render,
+    ) as {
+      formatted_body: string;
+    };
+    expect(content.formatted_body).toBe(
+      '<span data-mx-spoiler>the butler did it</span>',
+    );
+  });
+
+  it('returns null for a non-command (send it literally)', () => {
+    expect(slashCommandContent('just a message', render)).toBeNull();
+  });
+
+  it('returns null for an empty-argument command (nothing to send)', () => {
+    expect(slashCommandContent('/me', render)).toBeNull();
+    expect(slashCommandContent('/spoiler', render)).toBeNull();
+  });
+});
 
 describe('mediaCaptionFields', () => {
   it('uses the filename as the body when there is no caption', () => {
@@ -110,6 +215,41 @@ describe('mentions in content builders', () => {
     expect((newContent as Record<string, string>)['formatted_body']).toContain(
       'matrix.to/#/@alice:hs',
     );
+  });
+
+  it('escapes a hostile user id in a mention-pill href (no attribute breakout)', () => {
+    const evil: Mention = {
+      userId: '@a"><img src=x onerror=alert(1)>:hs',
+      display: '@X',
+    };
+    const text = 'hi @X';
+    const html = textMessageContent(text, renderMarkdown(sanitizer, text), [
+      evil,
+    ]).formatted_body as string;
+
+    expect(html).not.toContain('"><img'); // no raw attribute breakout
+    expect(html).toContain('&quot;'); // the quote was escaped in the href
+  });
+
+  it('escapes a hostile sender id in a reply href', () => {
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => ({
+        getSender: () => '@a"><img src=x>:hs',
+        getContent: () => ({ body: 'orig' }),
+      }),
+    } as unknown as Room;
+
+    const html = replyMessageContent(
+      room,
+      '$t',
+      'hello',
+      renderMarkdown(sanitizer, 'hello'),
+      [],
+    ).formatted_body as string;
+
+    expect(html).not.toContain('"><img');
+    expect(html).toContain('&quot;');
   });
 
   it('a reply pings the replied-to author plus any reply mentions', () => {

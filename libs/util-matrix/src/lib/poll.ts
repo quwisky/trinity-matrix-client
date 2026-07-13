@@ -9,6 +9,13 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 
+/**
+ * Cap on poll options we project/render. MSC3381 limits a poll to 20 answers; a
+ * malicious `m.poll.start` could otherwise carry an unbounded array (one rendered
+ * row each), so we bound it defensively on the receive side.
+ */
+const MAX_POLL_ANSWERS = 20;
+
 /** One answer of a poll, with its live tally and whether the local user chose it. */
 export interface PollOption {
   id: string;
@@ -152,10 +159,19 @@ export function buildPollView(
   const question = extensibleText(
     subtype?.['question'] as Record<string, unknown> | undefined,
   );
-  const answers = (subtype?.['answers'] ?? []) as Array<
-    Record<string, unknown>
-  >;
-  const optionIds = new Set(answers.map((a) => String(a['id'] ?? '')));
+  // `answers` is attacker-controlled event content: it must be an array (a scalar
+  // would throw on `.map` and, since the timeline projection isn't individually
+  // guarded, crash the whole room), and it's capped so a huge array can't drive
+  // unbounded rendering.
+  const rawAnswers = subtype?.['answers'];
+  const answers = (
+    Array.isArray(rawAnswers) ? rawAnswers.slice(0, MAX_POLL_ANSWERS) : []
+  ) as Array<Record<string, unknown>>;
+  const optionIds = new Set(
+    answers.map((a) =>
+      String((a && typeof a === 'object' ? a['id'] : undefined) ?? ''),
+    ),
+  );
 
   const endTs = referenceRelations(room, pollId, END_TYPES)
     .filter((e) => !e.isRedacted())

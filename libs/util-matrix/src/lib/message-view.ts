@@ -10,6 +10,7 @@ import {
 import DOMPurify from 'dompurify';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { buildPollView, isPollStart, type PollView } from './poll';
+import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
 
 /**
  * Shared, framework-free projection of a `matrix-js-sdk` {@link MatrixEvent} into a
@@ -19,7 +20,154 @@ import { buildPollView, isPollStart, type PollView } from './poll';
  */
 
 export type MessageKind =
-  'text' | 'emote' | 'notice' | 'redacted' | 'unsupported' | 'poll' | MediaKind;
+  | 'text'
+  | 'emote'
+  | 'notice'
+  | 'redacted'
+  | 'unsupported'
+  | 'poll'
+  | 'location'
+  /** A room state / membership change rendered as a compact system line (see `summary`). */
+  | 'event'
+  | MediaKind;
+
+/** A shared location (`m.location`), parsed from its `geo:` URI for the map card. */
+export interface LocationView {
+  lat: number;
+  lng: number;
+  /** The description text (e.g. the sender's label), falling back to a default. */
+  label: string;
+}
+
+/** Parse a `geo:lat,lng` URI (ignoring any `;u=` uncertainty / altitude) into coords. */
+export function parseGeoUri(
+  geoUri: unknown,
+): { lat: number; lng: number } | null {
+  if (typeof geoUri !== 'string') {
+    return null;
+  }
+  const match = /^geo:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(geoUri.trim());
+  if (!match) {
+    return null;
+  }
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+/** Whether a coordinate pair is a finite point inside WGS84 bounds. */
+function inGeoRange(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180
+  );
+}
+
+/** Parse a bare `lat,lng` (map-query style, e.g. a `?q=` value), else null. */
+function parseCoordPair(
+  value: string | null,
+): { lat: number; lng: number } | null {
+  if (!value) {
+    return null;
+  }
+  const match = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/.exec(value);
+  if (!match) {
+    return null;
+  }
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  return inGeoRange(lat, lng) ? { lat, lng } : null;
+}
+
+/** Pull the first recognised coordinate pair out of a map-service URL, else null. */
+function coordsFromMapUrl(text: string): { lat: number; lng: number } | null {
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+
+  // OpenStreetMap marker params (`?mlat=&mlon=`).
+  const mlat = url.searchParams.get('mlat');
+  const mlon = url.searchParams.get('mlon');
+  if (mlat !== null && mlon !== null) {
+    const lat = Number(mlat);
+    const lng = Number(mlon);
+    if (inGeoRange(lat, lng)) {
+      return { lat, lng };
+    }
+  }
+
+  // Google / Apple Maps query params carrying a `lat,lng` (`?q=`, `?query=`, `?ll=`).
+  for (const key of ['q', 'query', 'll']) {
+    const pair = parseCoordPair(url.searchParams.get(key));
+    if (pair) {
+      return pair;
+    }
+  }
+
+  // Google's `@lat,lng,zoom` path segment.
+  const at = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(url.pathname);
+  if (at) {
+    const lat = Number(at[1]);
+    const lng = Number(at[2]);
+    if (inGeoRange(lat, lng)) {
+      return { lat, lng };
+    }
+  }
+
+  // OpenStreetMap `#map=zoom/lat/lng` fragment.
+  const map = /map=\d+(?:\.\d+)?\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/.exec(
+    url.hash,
+  );
+  if (map) {
+    const lat = Number(map[1]);
+    const lng = Number(map[2]);
+    if (inGeoRange(lat, lng)) {
+      return { lat, lng };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Parse a human-entered location into coordinates, trying in order:
+ *  - a `geo:lat,lng` URI,
+ *  - a plain `lat, lng` (comma- or space-separated),
+ *  - an OpenStreetMap link (`?mlat=&mlon=` or the `#map=zoom/lat/lng` fragment),
+ *  - a Google / Apple Maps link (`?q=`/`?query=`/`?ll=` or an `@lat,lng` segment).
+ * Returns null when no in-range coordinate can be extracted. Backs the desktop
+ * manual-location dialog, where Chromium can't resolve a real device position.
+ */
+export function parseLocationInput(
+  input: unknown,
+): { lat: number; lng: number } | null {
+  if (typeof input !== 'string') {
+    return null;
+  }
+  const text = input.trim();
+  if (text === '') {
+    return null;
+  }
+
+  const geo = parseGeoUri(text);
+  if (geo) {
+    return inGeoRange(geo.lat, geo.lng) ? geo : null;
+  }
+
+  const plain = /^(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)$/.exec(text);
+  if (plain) {
+    const lat = Number(plain[1]);
+    const lng = Number(plain[2]);
+    return inGeoRange(lat, lng) ? { lat, lng } : null;
+  }
+
+  return coordsFromMapUrl(text);
+}
 
 /** An aggregated reaction (`m.annotation`) on a message. */
 export interface ReactionView {
@@ -73,6 +221,39 @@ export interface MessageView {
   readReceipts: ReceiptView[];
   /** The projected poll (question + live tallies) when `kind` is `'poll'`, else null. */
   poll: PollView | null;
+  /** The shared location when `kind` is `'location'`, else null/absent. */
+  location?: LocationView | null;
+  /**
+   * Authenticity shield for an encrypted message (grey = caution, red = warning), or
+   * null/absent when there's nothing to flag / the message isn't encrypted. Resolved
+   * asynchronously (the crypto trust API is async), so it's supplied by the caller.
+   */
+  shield?: MessageShield | null;
+  /**
+   * The first URL in a plain-text message to show a link preview for, or null/absent.
+   * Present regardless of room encryption; consumers combine it with
+   * {@link previewEncrypted} and the user's link-preview preferences to decide whether to
+   * actually fetch a preview (which discloses the URL to the homeserver's preview proxy).
+   */
+  previewUrl?: string | null;
+  /**
+   * Whether this message's room is end-to-end encrypted (fail-closed: true when the
+   * encryption state can't be determined). Gates {@link previewUrl}: previewing an
+   * encrypted message's link would disclose it to the homeserver, so it happens only when
+   * the user has explicitly opted into previews in encrypted rooms.
+   */
+  previewEncrypted?: boolean;
+  /**
+   * For a `kind: 'event'` row, the human-readable one-line summary of the state /
+   * membership change (e.g. `Alice changed the room name to "General"`). Absent otherwise.
+   */
+  summary?: string | null;
+}
+
+/** An authenticity shield on an encrypted message, with a human-readable reason. */
+export interface MessageShield {
+  level: 'grey' | 'red';
+  reason: string;
 }
 
 /** A member who has read up to a message, for the "seen by" receipt avatars. */
@@ -85,6 +266,13 @@ export interface ReceiptView {
 
 /** How many receipt avatars to show on a message before it gets noisy. */
 const MAX_RECEIPTS = 5;
+
+/**
+ * Cap on a received voice message's waveform bars. Renders one DOM node each, so an
+ * attacker-controlled `org.matrix.msc1767.audio.waveform` is bounded on receive; well
+ * above any sender's real bar count (send uses 60).
+ */
+const MAX_WAVEFORM_BARS = 512;
 
 /** User ids (excluding the local user) whose read receipt sits on this event, capped. */
 export function readReceiptUserIds(
@@ -124,6 +312,7 @@ export function buildMessageView(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
+  shield: MessageShield | null = null,
 ): MessageView {
   const senderId = event.getSender() ?? '';
   const member = room.getMember(senderId);
@@ -140,6 +329,7 @@ export function buildMessageView(
     media,
     caption = null,
     captionHtml = null,
+    location = null,
   } = poll
     ? {
         body: poll.question,
@@ -148,6 +338,7 @@ export function buildMessageView(
         media: null,
         caption: null,
         captionHtml: null,
+        location: null,
       }
     : renderBody(event, decryptionFailed);
   return {
@@ -171,10 +362,82 @@ export function buildMessageView(
     captionHtml,
     readReceipts: readReceiptsFor(client, room, event),
     poll,
+    location,
+    shield,
+    // The first URL in a plain-text message, for a link-preview card. Whether it's
+    // actually previewed is decided downstream from `previewEncrypted` + the user's
+    // preferences — a preview fetch discloses the URL to the homeserver, so in an
+    // encrypted room it happens only when the user has opted in.
+    previewUrl: kind === 'text' ? firstUrl(body) : null,
+    // Fail CLOSED: if the SDK can't report the room's encryption state, treat it as
+    // encrypted so a preview requires the explicit encrypted-rooms opt-in.
+    previewEncrypted: room.hasEncryptionStateEvent?.() ?? true,
   };
 }
 
-/** True when an event should render as a message row (a plain message, or a poll). */
+/**
+ * {@link buildMessageView} guarded against a hostile/malformed event: any projection
+ * error degrades that one event to an 'unsupported' row instead of throwing out of the
+ * timeline/thread projection loop (which would leave the whole room unrenderable and
+ * re-crash on every resync). Callers project untrusted, federated events, so they must
+ * use this rather than {@link buildMessageView} directly.
+ */
+export function safeBuildMessageView(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+  shield: MessageShield | null = null,
+): MessageView {
+  try {
+    return buildMessageView(client, room, event, shield);
+  } catch {
+    return unsupportedView(client, event);
+  }
+}
+
+/** A minimal, fully-defensive 'unsupported' fallback view for an un-projectable event. */
+function unsupportedView(
+  client: MatrixClient,
+  event: MatrixEvent,
+): MessageView {
+  const read = <T>(fn: () => T, fallback: T): T => {
+    try {
+      return fn();
+    } catch {
+      return fallback;
+    }
+  };
+  const senderId = read(() => event.getSender() ?? '', '');
+  const senderName = senderId || 'Unknown';
+  return {
+    id: read(() => event.getId() ?? '', ''),
+    senderId,
+    senderName,
+    senderInitial: initialOf(senderName),
+    senderAvatarMxc: null,
+    body: '[unsupported message]',
+    html: null,
+    timestamp: read(() => event.getTs(), 0),
+    isOwn: read(() => senderId === client.getUserId(), false),
+    decryptionFailed: false,
+    edited: false,
+    reactions: [],
+    replyTo: null,
+    status: null,
+    kind: 'unsupported',
+    media: null,
+    caption: null,
+    captionHtml: null,
+    readReceipts: [],
+    poll: null,
+    location: null,
+    shield: null,
+    previewUrl: null,
+    previewEncrypted: true,
+  };
+}
+
+/** True when an event should render as a message row (a plain message or poll). */
 export function isDisplayableMessage(event: MatrixEvent): boolean {
   if (isPollStart(event)) {
     return true;
@@ -187,16 +450,19 @@ export function isDisplayableMessage(event: MatrixEvent): boolean {
 
 /**
  * Whether the current user may edit this view: own, confirmed (no pending/failed
- * send), decrypted, not redacted, and text (media isn't editable). Shared by the
- * main timeline and the in-thread composer so the rule stays in one place.
+ * send), decrypted, and an editable *text* kind. Only `text`/`emote`/`notice` carry
+ * an editable body — media, polls, and locations are not free text and a
+ * text `m.replace` would corrupt them (a poll/location has no `media` to gate on).
+ * Shared by the main timeline and the in-thread composer so the rule stays in one place.
  */
 export function isEditableMessage(message: MessageView): boolean {
   return (
     message.isOwn &&
     !message.status &&
     !message.decryptionFailed &&
-    message.kind !== 'redacted' &&
-    !message.media
+    (message.kind === 'text' ||
+      message.kind === 'emote' ||
+      message.kind === 'notice')
   );
 }
 
@@ -444,6 +710,7 @@ interface RenderedBody {
   media: MediaPayload | null;
   caption?: string | null;
   captionHtml?: string | null;
+  location?: LocationView | null;
 }
 
 function renderBody(
@@ -489,6 +756,25 @@ function renderBody(
       return { body: text, html: textHtml, kind: 'emote', media: null };
     case MsgType.Notice:
       return { body: text, html: textHtml, kind: 'notice', media: null };
+    case MsgType.Location: {
+      const geo = parseGeoUri(content['geo_uri']);
+      if (!geo) {
+        return {
+          body: text || '[location]',
+          html: null,
+          kind: 'unsupported',
+          media: null,
+        };
+      }
+      const label = text || 'Shared location';
+      return {
+        body: label,
+        html: null,
+        kind: 'location',
+        media: null,
+        location: { ...geo, label },
+      };
+    }
     case MsgType.Image:
     case MsgType.File:
     case MsgType.Audio:
@@ -576,6 +862,20 @@ function buildMediaPayload(
     'attachment';
 
   const thumbInfo = (info['thumbnail_info'] ?? {}) as Record<string, unknown>;
+  // MSC3245: an audio message marked as a voice message, with an MSC1767 waveform.
+  const isVoice = kind === 'audio' && content[MSC3245_VOICE] !== undefined;
+  const audioExt = (
+    content[MSC1767_AUDIO] && typeof content[MSC1767_AUDIO] === 'object'
+      ? content[MSC1767_AUDIO]
+      : {}
+  ) as Record<string, unknown>;
+  // Cap the received waveform: it's attacker-controlled and rendered one DOM node
+  // per entry, so an unbounded array is a memory/CPU-exhaustion vector.
+  const waveform = Array.isArray(audioExt['waveform'])
+    ? (audioExt['waveform'] as unknown[])
+        .slice(0, MAX_WAVEFORM_BARS)
+        .filter((n): n is number => typeof n === 'number')
+    : [];
   return {
     kind,
     mxc,
@@ -589,7 +889,9 @@ function buildMediaPayload(
     durationMs:
       typeof info['duration'] === 'number'
         ? (info['duration'] as number)
-        : undefined,
+        : typeof audioExt['duration'] === 'number'
+          ? (audioExt['duration'] as number)
+          : undefined,
     thumbnailMxc:
       typeof info['thumbnail_url'] === 'string'
         ? (info['thumbnail_url'] as string)
@@ -599,6 +901,7 @@ function buildMediaPayload(
       typeof thumbInfo['mimetype'] === 'string'
         ? (thumbInfo['mimetype'] as string)
         : undefined,
+    ...(isVoice ? { isVoice: true, waveform } : {}),
   };
 }
 
@@ -668,6 +971,15 @@ export function linkifyText(text: string): string | null {
     return null;
   }
   return (html + escapeHtml(text.slice(lastIndex))).replace(/\n/g, '<br>');
+}
+
+/** The first http(s) URL in `text` (trailing sentence punctuation trimmed), or null. */
+export function firstUrl(text: string): string | null {
+  const match = /https?:\/\/[^\s<>"']+/.exec(text);
+  if (!match) {
+    return null;
+  }
+  return match[0].replace(/[.,;:!?)\]}>]+$/, '');
 }
 
 /** Escape text for safe interpolation into the `<mx-reply>` HTML fallback. */

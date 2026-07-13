@@ -16,13 +16,17 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideImagePlay,
+  lucideMapPin,
+  lucideMic,
   lucidePaperclip,
   lucidePlus,
   lucideSend,
   lucideSmile,
+  lucideTrash2,
   lucideVote,
 } from '@ng-icons/lucide';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { HlmTextarea } from '@trinity/helm/textarea';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { TrnToastService } from '@trinity/helm/overlay';
@@ -32,16 +36,22 @@ import {
   type EmojiData,
   type EmojiEvent,
 } from '@ctrl/ngx-emoji-mart/ngx-emoji';
-import { DraftStoreService, ThemeService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  ThemeService,
+  VoiceRecorderService,
+} from '@trinity/platform-native';
 import {
   GifService,
   GifSettingsService,
   type GifResult,
 } from '@trinity/data-access-gif';
+import { TimelineService } from '@trinity/data-access-timeline';
 import { type Mention } from '@trinity/util-matrix';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { CreatePollService } from '../poll/create-poll.service';
+import { LocationShareService } from '../location-share/location-share.service';
 
 /** A room member offered by the @-mention autocomplete. */
 export interface MentionMember {
@@ -92,14 +102,18 @@ const MENTION_SUGGESTION_LIMIT = 8;
     GifPickerComponent,
     HlmProgress,
     HlmProgressIndicator,
+    HlmSpinner,
   ],
   viewProviders: [
     provideIcons({
       lucideImagePlay,
+      lucideMapPin,
+      lucideMic,
       lucidePaperclip,
       lucidePlus,
       lucideSend,
       lucideSmile,
+      lucideTrash2,
       lucideVote,
     }),
   ],
@@ -126,6 +140,12 @@ export class MessageComposerComponent {
   readonly replyingTo = input('');
   /** Room members, for the @-mention autocomplete (empty disables mentions). */
   readonly members = input<MentionMember[]>([]);
+  /**
+   * Whether to offer the room-scoped rich actions (poll, location, voice).
+   * These act on the *active room* via their own services, so they can't be routed
+   * into a thread — the thread composer sets this false to hide them.
+   */
+  readonly richActions = input(true);
   /** Upload fraction in [0, 1] while an attachment uploads, else null (idle). */
   readonly uploadProgress = input<number | null>(null);
   readonly submitText = output<ComposerSubmit>();
@@ -151,6 +171,23 @@ export class MessageComposerComponent {
   readonly pickerOpen = signal(false);
   /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
   readonly gifPickerOpen = signal(false);
+  /** True while a voice message is being recorded. */
+  readonly recordingVoice = signal(false);
+  /** Elapsed recording time in seconds, for the live timer. */
+  private readonly voiceElapsed = signal(0);
+  /** Interval handle for the recording timer, cleared on stop/cancel/destroy. */
+  private voiceTimer: ReturnType<typeof setInterval> | null = null;
+  /** True between a start() call and its mic-acquisition resolving (re-entry guard). */
+  private voiceStarting = false;
+  /** Set on teardown so an in-flight mic acquisition can abort instead of orphaning. */
+  private destroyed = false;
+  /** `m:ss` label for the running recording timer. */
+  readonly voiceTimeLabel = computed(() => {
+    const total = this.voiceElapsed();
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  });
   /** True while a chosen GIF is being fetched, before its media upload starts. */
   readonly gifDownloading = signal(false);
   /** The GIF affordance is offered only once a provider + API key are configured. */
@@ -213,7 +250,15 @@ export class MessageComposerComponent {
   private readonly picker = inject(MediaPickerService);
   private readonly toast = inject(TrnToastService);
   private readonly createPollSvc = inject(CreatePollService);
+  private readonly locationShare = inject(LocationShareService);
+  private readonly timeline = inject(TimelineService);
+  private readonly voiceRecorder = inject(VoiceRecorderService);
   private readonly destroyRef = inject(DestroyRef);
+
+  /** Whether this device can record voice (mic + MediaRecorder present). */
+  get voiceSupported(): boolean {
+    return this.voiceRecorder.supported;
+  }
   private readonly emojiSearch = inject(EmojiSearch);
   private readonly emojiService = inject(EmojiService);
   private readonly theme = inject(ThemeService);
@@ -229,6 +274,14 @@ export class MessageComposerComponent {
   constructor() {
     // Revoke a staged image's preview object URL on teardown.
     this.destroyRef.onDestroy(() => this.setPreview(null));
+    // Stop a running recording timer (and release the mic) if torn down mid-record.
+    this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
+      this.clearVoiceTimer();
+      if (this.recordingVoice() || this.voiceStarting) {
+        this.voiceRecorder.cancel();
+      }
+    });
 
     // On a room/thread change: drop the staged (unsent) attachment — it was staged
     // to send here — and swap drafts. The composer instance is reused across rooms,
@@ -240,6 +293,12 @@ export class MessageComposerComponent {
         this.wasRoomId = id;
         untracked(() => {
           this.clearPending();
+          // A recording belongs to the room it was started in — cancel it on a
+          // room/thread switch so the mic doesn't stay open and a later Send can't
+          // post the clip to the wrong room.
+          if (this.recordingVoice()) {
+            this.cancelVoiceRecording();
+          }
           this.mentions.set([]); // tracked mentions belong to the old conversation
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!this.editing()) {
@@ -522,16 +581,105 @@ export class MessageComposerComponent {
     void this.createPollSvc.open();
   }
 
-  /** Toggle the emoji picker, closing the GIF grid (only one overlay at a time). */
+  /** True while a location is being resolved and sent (drives the button's busy state). */
+  readonly locationSharing = this.locationShare.sharing;
+
+  /** Share the device's current location to the active room. */
+  shareLocation(): void {
+    this.locationShare.share();
+  }
+
+  /** Toggle the emoji picker, closing the other overlays (only one at a time). */
   toggleEmojiPicker(): void {
     this.gifPickerOpen.set(false);
     this.pickerOpen.set(!this.pickerOpen());
   }
 
-  /** Toggle the GIF grid, closing the emoji picker (only one overlay at a time). */
+  /** Toggle the GIF grid, closing the other overlays (only one at a time). */
   toggleGifPicker(): void {
     this.pickerOpen.set(false);
     this.gifPickerOpen.set(!this.gifPickerOpen());
+  }
+
+  /** Begin recording a voice message; toasts and resets if the mic is unavailable. */
+  async startVoiceRecording(): Promise<void> {
+    // Guard re-entry: `recordingVoice` isn't set until the async mic acquisition
+    // resolves, so a second click before then would open a second mic stream and
+    // orphan the first. `voiceStarting` closes that window synchronously.
+    if (this.recordingVoice() || this.voiceStarting) {
+      return;
+    }
+    this.voiceStarting = true;
+    const roomAtStart = this.roomId();
+    try {
+      await this.voiceRecorder.start();
+    } catch {
+      this.voiceStarting = false;
+      this.toast.show('Could not access the microphone.', {
+        duration: 4000,
+        variant: 'destructive',
+      });
+      return;
+    }
+    this.voiceStarting = false;
+    // The view may have been torn down, or the room switched, during acquisition —
+    // don't leave a stream open / timer ticking (and never bind the clip to a room
+    // the user has since left).
+    if (this.destroyed || this.roomId() !== roomAtStart) {
+      this.voiceRecorder.cancel();
+      return;
+    }
+    this.recordingVoice.set(true);
+    this.voiceElapsed.set(0);
+    this.voiceTimer = setInterval(
+      () => this.voiceElapsed.update((s) => s + 1),
+      1000,
+    );
+  }
+
+  /** Stop recording and send the clip as a voice message. */
+  stopVoiceRecording(): void {
+    if (!this.recordingVoice()) {
+      return;
+    }
+    this.clearVoiceTimer();
+    this.recordingVoice.set(false);
+    void this.voiceRecorder.stop().then((recording) => {
+      if (!recording || recording.blob.size === 0) {
+        return;
+      }
+      // A voice message is standalone; drop any active reply (as media does).
+      if (this.replyingTo()) {
+        this.cancelReply.emit();
+      }
+      this.timeline
+        .sendVoiceMessage(recording)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          error: () =>
+            this.toast.show('Could not send that voice message.', {
+              duration: 4000,
+              variant: 'destructive',
+            }),
+        });
+    });
+  }
+
+  /** Abort the recording, discarding the clip. */
+  cancelVoiceRecording(): void {
+    if (!this.recordingVoice()) {
+      return;
+    }
+    this.clearVoiceTimer();
+    this.recordingVoice.set(false);
+    this.voiceRecorder.cancel();
+  }
+
+  private clearVoiceTimer(): void {
+    if (this.voiceTimer !== null) {
+      clearInterval(this.voiceTimer);
+      this.voiceTimer = null;
+    }
   }
 
   /** A GIF was chosen → download it and send it through the media path (works in

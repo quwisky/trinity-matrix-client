@@ -16,6 +16,7 @@ import {
   RoomSettingsService,
   RoomModerationService,
   RoomAliasesService,
+  PublicRoomsService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
@@ -67,6 +68,9 @@ describe('RoomsPage action error feedback', () => {
   let currentAccess: ReturnType<typeof vi.fn>;
   let canManageBans: ReturnType<typeof vi.fn>;
   let canManageAliases: ReturnType<typeof vi.fn>;
+  let joinPublicRoom: ReturnType<typeof vi.fn>;
+  let markReadFn: ReturnType<typeof vi.fn>;
+  let markAllReadFn: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
@@ -89,16 +93,23 @@ describe('RoomsPage action error feedback', () => {
     }));
     canManageBans = vi.fn(() => false);
     canManageAliases = vi.fn(() => false);
+    joinPublicRoom = vi.fn(() => of('!new:hs'));
+    markReadFn = vi.fn(() => of(undefined));
+    markAllReadFn = vi.fn(() => of(undefined));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         MockProvider(RoomsService, {
           leave: leaveRoom,
           rooms: roomsSignal,
+          directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
+          markRead: markReadFn,
+          markAllRead: markAllReadFn,
         }),
         MockProvider(RoomSettingsService, { editableFields, currentAccess }),
         MockProvider(RoomModerationService, { canManageBans }),
         MockProvider(RoomAliasesService, { canManageAliases }),
+        MockProvider(PublicRoomsService, { join: joinPublicRoom }),
         MockProvider(SpacesService),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService, { edit, sendMedia }),
@@ -295,12 +306,31 @@ describe('RoomsPage action error feedback', () => {
   it('opens the room directory and selects a room joined from it', async () => {
     const page = build();
     const dialog = TestBed.inject(TrnDialogService);
-    vi.mocked(dialog.openAndWait).mockResolvedValue('!joined:hs');
+    vi.mocked(dialog.openAndWait).mockResolvedValue({
+      roomId: '!joined:hs',
+      isSpace: false,
+    });
 
     await page.onExploreRooms();
 
     expect(dialog.openAndWait).toHaveBeenCalledWith(RoomDirectoryComponent);
+    expect(page.roomsView()).toBe(true); // listed in the Rooms view
+    expect(page.activeSpaceId()).toBeNull();
     expect(page.activeRoomId()).toBe('!joined:hs'); // onSelectRoom ran
+  });
+
+  it('selects a space joined from the directory in the rail', async () => {
+    const page = build();
+    const dialog = TestBed.inject(TrnDialogService);
+    vi.mocked(dialog.openAndWait).mockResolvedValue({
+      roomId: '!space:hs',
+      isSpace: true,
+    });
+
+    await page.onExploreRooms();
+
+    expect(page.activeSpaceId()).toBe('!space:hs'); // onSelectSpace ran
+    expect(page.activeRoomId()).toBeNull(); // no room opened
   });
 
   it('does not select a room when the directory is dismissed', async () => {
@@ -311,6 +341,28 @@ describe('RoomsPage action error feedback', () => {
     await page.onExploreRooms();
 
     expect(page.activeRoomId()).toBeNull();
+  });
+
+  it('joins and opens the successor room from the tombstone banner', () => {
+    const page = build();
+
+    page.onGoToUpgradedRoom('!old:hs');
+
+    expect(joinPublicRoom).toHaveBeenCalledWith('!old:hs');
+    expect(page.roomsView()).toBe(true); // surfaced in the Rooms view, not opened invisibly
+    expect(page.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
+  });
+
+  it('marks a room read via RoomsService', () => {
+    const page = build();
+    page.onMarkRead('!r:hs');
+    expect(markReadFn).toHaveBeenCalledWith('!r:hs');
+  });
+
+  it('marks all rooms read via RoomsService', () => {
+    const page = build();
+    page.onMarkAllRead();
+    expect(markAllReadFn).toHaveBeenCalled();
   });
 
   it('opens the threads-list panel for the active room', () => {

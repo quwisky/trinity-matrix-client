@@ -5,17 +5,28 @@ import {
   MatrixEventEvent,
   NotificationCountType,
   Preset,
+  ReceiptType,
   RoomEvent,
   RoomStateEvent,
   type MatrixClient,
   type Room,
   type RoomMember,
 } from 'matrix-js-sdk';
-import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
+import {
+  Observable,
+  defer,
+  forkJoin,
+  from,
+  map,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import {
   MatrixClientService,
   reprojectOnAccountSwitch,
 } from '@trinity/data-access-matrix-client';
+import { PrivacySettingsService } from '@trinity/platform-native';
 import { messagePreview } from '@trinity/util-matrix';
 import {
   isValidUserId,
@@ -93,6 +104,7 @@ export interface MemberSummary {
 @Injectable({ providedIn: 'root' })
 export class RoomsService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly privacy = inject(PrivacySettingsService);
   private readonly zone = inject(NgZone);
 
   /**
@@ -327,6 +339,65 @@ export class RoomsService {
         return throwError(() => new Error('Not signed in.'));
       }
       return from(this.matrix.instance.leave(roomId)).pipe(map(() => void 0));
+    });
+  }
+
+  /**
+   * Mark a room read: ack its latest confirmed event with a read receipt + fully-read
+   * marker, clearing its unread badge. Cold — runs on subscribe; a no-op for an empty
+   * or unknown room. The client emits the receipt so {@link rooms} re-derives the badge.
+   */
+  markRead(roomId: string): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      const client = this.matrix.instance;
+      const room = client.getRoom(roomId);
+      const events = room?.getLiveTimeline().getEvents() ?? [];
+      // Walk backward for the newest confirmed (non-local-echo) event — no array
+      // copy/reverse, since markAllRead runs this per unread room.
+      let latest: (typeof events)[number] | undefined;
+      for (let i = events.length - 1; i >= 0; i--) {
+        if (!events[i].status) {
+          latest = events[i];
+          break;
+        }
+      }
+      const latestId = latest?.getId();
+      if (!latest || !latestId) {
+        return of(void 0);
+      }
+      void client.setRoomReadMarkers(roomId, latestId)?.catch(() => undefined);
+      // Honor the read-receipt privacy setting: when off, ack privately
+      // (`m.read.private`) so the badge clears without telling other members —
+      // mirroring the auto-on-view path in TimelineService.markRead.
+      const receiptType = this.privacy.sendReadReceipts()
+        ? ReceiptType.Read
+        : ReceiptType.ReadPrivate;
+      return from(client.sendReadReceipt(latest, receiptType)).pipe(
+        map(() => void 0),
+      );
+    });
+  }
+
+  /**
+   * Mark unread rooms read, in parallel. Pass `roomIds` to restrict to a scope (e.g.
+   * the rooms currently shown in the sidebar) so the action matches the affordance
+   * that triggered it; omit to ack every unread room. Cold — runs on subscribe.
+   */
+  markAllRead(roomIds?: readonly string[]): Observable<void> {
+    return defer(() => {
+      const scope = roomIds ? new Set(roomIds) : null;
+      const unread = this.rooms().filter(
+        (room) => room.hasUnread && (!scope || scope.has(room.id)),
+      );
+      if (unread.length === 0) {
+        return of(void 0);
+      }
+      return forkJoin(unread.map((room) => this.markRead(room.id))).pipe(
+        map(() => void 0),
+      );
     });
   }
 

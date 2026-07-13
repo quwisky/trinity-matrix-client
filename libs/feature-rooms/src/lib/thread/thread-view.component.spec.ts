@@ -7,6 +7,7 @@ import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
+import { MessageSourceService } from '../message-source/message-source.service';
 import type { MessageRow } from '../message-row/message-row.component';
 
 function msg(id: string, senderId: string, body: string): MessageView {
@@ -57,6 +58,7 @@ async function build(
   const replyInThread = vi.fn().mockReturnValue(of(void 0));
   const toggleReactionInThread = vi.fn().mockReturnValue(of(void 0));
   const retryInThread = vi.fn();
+  const sourceOpen = vi.fn();
   const dismiss = vi.fn().mockResolvedValue(true);
   const { fixture, container } = await render(ThreadViewComponent, {
     inputs: { roomId: '!r:hs', rootEventId: '$root' },
@@ -77,6 +79,7 @@ async function build(
       MockProvider(TimelineService, {
         canRedactOthers: signal(state.canRedactOthers ?? false).asReadonly(),
       }),
+      MockProvider(MessageSourceService, { open: sourceOpen }),
       MockProvider(DialogRef, { close: dismiss }),
     ],
   });
@@ -93,6 +96,7 @@ async function build(
     replyInThread,
     toggleReactionInThread,
     retryInThread,
+    sourceOpen,
     dismiss,
   };
 }
@@ -215,6 +219,33 @@ describe('ThreadViewComponent', () => {
     fixture.componentInstance.onRetry('$echo');
 
     expect(retryInThread).toHaveBeenCalledWith('$echo');
+  });
+
+  it('copies a matrix.to permalink for a thread message', async () => {
+    const writeText = vi.fn();
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const { fixture } = await build([msg('$r1', '@b:hs', 'a reply')]);
+
+    fixture.componentInstance.onRowAction(row('$r1', '@b:hs', 'a reply'), {
+      type: 'copy-link',
+    });
+
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining('https://matrix.to/#/'),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('opens the raw source for a thread message', async () => {
+    const { fixture, sourceOpen } = await build([
+      msg('$r1', '@b:hs', 'a reply'),
+    ]);
+
+    fixture.componentInstance.onRowAction(row('$r1', '@b:hs', 'a reply'), {
+      type: 'view-source',
+    });
+
+    expect(sourceOpen).toHaveBeenCalledWith('!r:hs', '$r1');
   });
 
   it('lets a moderator delete another member’s thread message', async () => {

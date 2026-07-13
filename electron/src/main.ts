@@ -6,6 +6,7 @@ import {
   createWindow,
   focusMainWindow,
   hardenContents,
+  installPermissionPolicy,
   setQuitting,
 } from './window';
 import { createTray } from './tray';
@@ -14,6 +15,7 @@ import {
   registerNotificationIpc,
 } from './notifications';
 import { registerSecureStoreIpc } from './secure-store-ipc';
+import { registerGeolocationIpc } from './geolocation-ipc';
 import { registerDockBadge } from './dock-badge';
 import {
   deepLinkFromArgv,
@@ -94,11 +96,17 @@ if (!app.requestSingleInstanceLock()) {
     // registerAppProtocol() serves `trinity://app` from. Scoped to remote
     // http(s) only; see cors.ts (does not weaken webSecurity/sandbox/isolation).
     installMatrixCors(session.defaultSession);
+    // Restrict renderer permission requests (mic + geolocation only); Electron would
+    // otherwise auto-approve camera and other powerful permissions.
+    installPermissionPolicy(session.defaultSession);
     buildMenu();
     createWindow();
     createTray();
     registerNotificationIpc();
     registerSecureStoreIpc();
+    // Approximate (IP-based) location lookup for the desktop location-share dialog;
+    // Chromium's navigator.geolocation can't resolve without an embedded Google key.
+    registerGeolocationIpc();
     // Dock/launcher unread badge: the renderer pushes its unread total, which
     // main validates + clamps before app.setBadgeCount. Drives the macOS dock
     // (and Linux launcher); a no-op on Windows without an overlay icon.
