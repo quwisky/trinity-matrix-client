@@ -1,6 +1,6 @@
 {
   "name": "trinity-desktop",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Hand-rolled, hardened Electron desktop shell for Trinity. Serves the Angular www/ build over a custom privileged scheme (no Capacitor desktop bridge).",
   "author": "Trinity",

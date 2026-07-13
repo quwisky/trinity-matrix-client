@@ -1,6 +1,6 @@
 {
   "name": "trinity",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "author": "quwisky <quwisky@qwky.eu>",
   "scripts": {
     "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project — run: corepack enable && pnpm install'); process.exit(1); }\"",
