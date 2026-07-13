@@ -232,6 +232,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Mention notification toggles now work on every homeserver.** The "When someone mentions
+  my name" and "When someone posts @room" switches were bound to the legacy push-rule ids
+  (`.m.rule.contains_display_name` / `.m.rule.roomnotif`); on homeservers that use the newer
+  intentional-mention rules (`.m.rule.is_user_mention` / `.m.rule.is_room_mention`) the switch
+  couldn't be turned on. Each toggle now reads and writes whichever of those rules the server
+  actually defines (both, where a server ships both), so it always reflects and controls your
+  real setting.
 - **"Mark as read" now respects your read-receipt privacy.** Marking a room (or all rooms)
   read sent a public read receipt even when you'd turned read receipts off — leaking your
   read position to other members. It now acks privately when the setting is off, like the
