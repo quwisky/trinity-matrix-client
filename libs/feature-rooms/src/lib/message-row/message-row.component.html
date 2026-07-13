@@ -1,279 +1,289 @@
 @let r = row();
 
-<div
-  class="msg"
-  [class.msg--cont]="!r.showHeader"
-  [class.msg--failed]="r.decryptionFailed"
-  [class.msg--sending]="r.status === 'sending'"
-  [class.msg--sendfailed]="r.status === 'failed'"
-  [attr.data-mid]="r.id"
->
-  @if (r.replyTo) {
-    <button
-      type="button"
-      class="msg__reply"
-      [attr.aria-label]="'Replying to ' + r.replyTo.senderName"
-      (click)="action.emit({ type: 'jump', id: r.replyTo.id })"
-    >
+@if (r.kind === 'event') {
+  <div
+    class="msg msg--event"
+    [attr.data-mid]="r.id"
+    data-testid="timeline-event"
+  >
+    <span class="msg__event-text">{{ r.summary }}</span>
+  </div>
+} @else {
+  <div
+    class="msg"
+    [class.msg--cont]="!r.showHeader"
+    [class.msg--failed]="r.decryptionFailed"
+    [class.msg--sending]="r.status === 'sending'"
+    [class.msg--sendfailed]="r.status === 'failed'"
+    [attr.data-mid]="r.id"
+  >
+    @if (r.replyTo) {
+      <button
+        type="button"
+        class="msg__reply"
+        [attr.aria-label]="'Replying to ' + r.replyTo.senderName"
+        (click)="action.emit({ type: 'jump', id: r.replyTo.id })"
+      >
+        <trn-avatar
+          class="msg__reply-avatar"
+          [mxc]="r.replyTo.senderAvatarMxc"
+          [initial]="r.replyTo.senderInitial"
+          [name]="r.replyTo.senderName"
+          [size]="16"
+        />
+        <span class="msg__reply-author">{{ r.replyTo.senderName }}</span>
+        <span class="msg__reply-body">{{ r.replyTo.body }}</span>
+      </button>
+    }
+    @if (r.showHeader) {
       <trn-avatar
-        class="msg__reply-avatar"
-        [mxc]="r.replyTo.senderAvatarMxc"
-        [initial]="r.replyTo.senderInitial"
-        [name]="r.replyTo.senderName"
-        [size]="16"
+        class="msg__avatar"
+        [mxc]="r.senderAvatarMxc"
+        [initial]="r.senderInitial"
+        [name]="r.senderName"
+        [size]="40"
       />
-      <span class="msg__reply-author">{{ r.replyTo.senderName }}</span>
-      <span class="msg__reply-body">{{ r.replyTo.body }}</span>
-    </button>
-  }
-  @if (r.showHeader) {
-    <trn-avatar
-      class="msg__avatar"
-      [mxc]="r.senderAvatarMxc"
-      [initial]="r.senderInitial"
-      [name]="r.senderName"
-      [size]="40"
-    />
-    <div class="msg__body">
-      <div class="msg__head">
-        <span class="msg__author">{{ r.senderName }}</span>
-        <span class="msg__time">{{ r.timestamp | date: 'short' }}</span>
-        @if (r.edited) {
-          <span class="msg__edited">(edited)</span>
+      <div class="msg__body">
+        <div class="msg__head">
+          <span class="msg__author">{{ r.senderName }}</span>
+          <span class="msg__time">{{ r.timestamp | date: 'short' }}</span>
+          @if (r.edited) {
+            <span class="msg__edited">(edited)</span>
+          }
+          @if (r.shield; as shield) {
+            <ng-icon
+              name="lucideShieldAlert"
+              class="msg__shield"
+              [class.msg__shield--red]="shield.level === 'red'"
+              [attr.title]="shield.reason"
+              [attr.aria-label]="shield.reason"
+              [attr.data-testid]="'msg-shield-' + shield.level"
+            />
+          }
+        </div>
+        @if (r.poll; as poll) {
+          <trn-poll
+            [poll]="poll"
+            [canEnd]="r.isOwn"
+            (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
+            (end)="pollEnd.emit(poll.id)"
+          />
+        } @else if (r.kind === 'sticker') {
+          <trn-sticker
+            class="msg__sticker"
+            [mxc]="r.media?.mxc ?? null"
+            [label]="r.body"
+          />
+        } @else if (r.location; as location) {
+          <trn-location [location]="location" />
+        } @else if (r.media?.isVoice) {
+          <trn-voice-message [media]="r.media!" />
+        } @else if (r.media) {
+          <trn-media-attachment class="msg__media" [media]="r.media" />
+          @if (r.captionHtml) {
+            <div
+              class="msg__text msg__text--html"
+              trnSpoilerReveal
+              trnMatrixLink
+              (matrixLink)="matrixLink.emit($event)"
+              [innerHTML]="r.captionHtml"
+            ></div>
+          } @else if (r.caption) {
+            <p class="msg__text">{{ r.caption }}</p>
+          }
+        } @else if (r.html) {
+          <div
+            class="msg__text msg__text--html"
+            trnSpoilerReveal
+            trnMatrixLink
+            (matrixLink)="matrixLink.emit($event)"
+            [innerHTML]="r.html"
+          ></div>
+        } @else {
+          <p class="msg__text">{{ r.body }}</p>
+        }
+        @if (r.previewUrl) {
+          <trn-link-preview
+            [url]="r.previewUrl"
+            [encrypted]="r.previewEncrypted ?? true"
+          />
+        }
+        @if (r.reactions.length) {
+          <trn-message-reactions
+            [reactions]="r.reactions"
+            (toggleReaction)="action.emit({ type: 'react', key: $event })"
+          />
+        }
+        @if (r.readReceipts.length) {
+          <button
+            type="button"
+            class="msg__receipts"
+            data-testid="read-receipts"
+            [attr.aria-label]="seenByLabel(r.readReceipts)"
+            [title]="seenByLabel(r.readReceipts)"
+            (click)="seenByOpen.set(!seenByOpen())"
+          >
+            @for (receipt of r.readReceipts; track receipt.userId) {
+              <trn-avatar
+                class="msg__receipt"
+                aria-hidden="true"
+                [mxc]="receipt.avatarMxc"
+                [initial]="receipt.initial"
+                [name]="receipt.name"
+                [size]="16"
+              />
+            }
+          </button>
+          @if (seenByOpen()) {
+            <span class="msg__seen-by" data-testid="seen-by-list">
+              {{ seenByLabel(r.readReceipts) }}
+            </span>
+          }
+        }
+      </div>
+    } @else {
+      <span class="msg__gutter">{{ r.timestamp | date: 'shortTime' }}</span>
+      <div class="msg__body">
+        @if (r.poll; as poll) {
+          <trn-poll
+            [poll]="poll"
+            [canEnd]="r.isOwn"
+            (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
+            (end)="pollEnd.emit(poll.id)"
+          />
+        } @else if (r.kind === 'sticker') {
+          <trn-sticker
+            class="msg__sticker"
+            [mxc]="r.media?.mxc ?? null"
+            [label]="r.body"
+          />
+        } @else if (r.location; as location) {
+          <trn-location [location]="location" />
+        } @else if (r.media?.isVoice) {
+          <trn-voice-message [media]="r.media!" />
+        } @else if (r.media) {
+          <trn-media-attachment class="msg__media" [media]="r.media" />
+          @if (r.captionHtml) {
+            <div
+              class="msg__text msg__text--cont msg__text--html"
+              trnSpoilerReveal
+              trnMatrixLink
+              (matrixLink)="matrixLink.emit($event)"
+              [innerHTML]="r.captionHtml"
+            ></div>
+          } @else if (r.caption) {
+            <p class="msg__text msg__text--cont">{{ r.caption }}</p>
+          }
+        } @else if (r.html) {
+          <div
+            class="msg__text msg__text--cont msg__text--html"
+            trnSpoilerReveal
+            trnMatrixLink
+            (matrixLink)="matrixLink.emit($event)"
+            [innerHTML]="r.html"
+          ></div>
+        } @else {
+          <p class="msg__text msg__text--cont">{{ r.body }}</p>
         }
         @if (r.shield; as shield) {
           <ng-icon
             name="lucideShieldAlert"
-            class="msg__shield"
+            class="msg__shield msg__shield--cont"
             [class.msg__shield--red]="shield.level === 'red'"
             [attr.title]="shield.reason"
             [attr.aria-label]="shield.reason"
             [attr.data-testid]="'msg-shield-' + shield.level"
           />
         }
+        @if (r.previewUrl) {
+          <trn-link-preview
+            [url]="r.previewUrl"
+            [encrypted]="r.previewEncrypted ?? true"
+          />
+        }
+        @if (r.edited) {
+          <span class="msg__edited">(edited)</span>
+        }
+        @if (r.reactions.length) {
+          <trn-message-reactions
+            [reactions]="r.reactions"
+            (toggleReaction)="action.emit({ type: 'react', key: $event })"
+          />
+        }
+        @if (r.readReceipts.length) {
+          <button
+            type="button"
+            class="msg__receipts"
+            data-testid="read-receipts"
+            [attr.aria-label]="seenByLabel(r.readReceipts)"
+            [title]="seenByLabel(r.readReceipts)"
+            (click)="seenByOpen.set(!seenByOpen())"
+          >
+            @for (receipt of r.readReceipts; track receipt.userId) {
+              <trn-avatar
+                class="msg__receipt"
+                aria-hidden="true"
+                [mxc]="receipt.avatarMxc"
+                [initial]="receipt.initial"
+                [name]="receipt.name"
+                [size]="16"
+              />
+            }
+          </button>
+          @if (seenByOpen()) {
+            <span class="msg__seen-by" data-testid="seen-by-list">
+              {{ seenByLabel(r.readReceipts) }}
+            </span>
+          }
+        }
       </div>
-      @if (r.poll; as poll) {
-        <trn-poll
-          [poll]="poll"
-          [canEnd]="r.isOwn"
-          (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
-          (end)="pollEnd.emit(poll.id)"
-        />
-      } @else if (r.kind === 'sticker') {
-        <trn-sticker
-          class="msg__sticker"
-          [mxc]="r.media?.mxc ?? null"
-          [label]="r.body"
-        />
-      } @else if (r.location; as location) {
-        <trn-location [location]="location" />
-      } @else if (r.media?.isVoice) {
-        <trn-voice-message [media]="r.media!" />
-      } @else if (r.media) {
-        <trn-media-attachment class="msg__media" [media]="r.media" />
-        @if (r.captionHtml) {
-          <div
-            class="msg__text msg__text--html"
-            trnSpoilerReveal
-            trnMatrixLink
-            (matrixLink)="matrixLink.emit($event)"
-            [innerHTML]="r.captionHtml"
-          ></div>
-        } @else if (r.caption) {
-          <p class="msg__text">{{ r.caption }}</p>
-        }
-      } @else if (r.html) {
-        <div
-          class="msg__text msg__text--html"
-          trnSpoilerReveal
-          trnMatrixLink
-          (matrixLink)="matrixLink.emit($event)"
-          [innerHTML]="r.html"
-        ></div>
-      } @else {
-        <p class="msg__text">{{ r.body }}</p>
-      }
-      @if (r.previewUrl) {
-        <trn-link-preview
-          [url]="r.previewUrl"
-          [encrypted]="r.previewEncrypted ?? true"
-        />
-      }
-      @if (r.reactions.length) {
-        <trn-message-reactions
-          [reactions]="r.reactions"
-          (toggleReaction)="action.emit({ type: 'react', key: $event })"
-        />
-      }
-      @if (r.readReceipts.length) {
-        <button
-          type="button"
-          class="msg__receipts"
-          data-testid="read-receipts"
-          [attr.aria-label]="seenByLabel(r.readReceipts)"
-          [title]="seenByLabel(r.readReceipts)"
-          (click)="seenByOpen.set(!seenByOpen())"
-        >
-          @for (receipt of r.readReceipts; track receipt.userId) {
-            <trn-avatar
-              class="msg__receipt"
-              aria-hidden="true"
-              [mxc]="receipt.avatarMxc"
-              [initial]="receipt.initial"
-              [name]="receipt.name"
-              [size]="16"
-            />
-          }
-        </button>
-        @if (seenByOpen()) {
-          <span class="msg__seen-by" data-testid="seen-by-list">
-            {{ seenByLabel(r.readReceipts) }}
-          </span>
-        }
-      }
-    </div>
-  } @else {
-    <span class="msg__gutter">{{ r.timestamp | date: 'shortTime' }}</span>
-    <div class="msg__body">
-      @if (r.poll; as poll) {
-        <trn-poll
-          [poll]="poll"
-          [canEnd]="r.isOwn"
-          (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
-          (end)="pollEnd.emit(poll.id)"
-        />
-      } @else if (r.kind === 'sticker') {
-        <trn-sticker
-          class="msg__sticker"
-          [mxc]="r.media?.mxc ?? null"
-          [label]="r.body"
-        />
-      } @else if (r.location; as location) {
-        <trn-location [location]="location" />
-      } @else if (r.media?.isVoice) {
-        <trn-voice-message [media]="r.media!" />
-      } @else if (r.media) {
-        <trn-media-attachment class="msg__media" [media]="r.media" />
-        @if (r.captionHtml) {
-          <div
-            class="msg__text msg__text--cont msg__text--html"
-            trnSpoilerReveal
-            trnMatrixLink
-            (matrixLink)="matrixLink.emit($event)"
-            [innerHTML]="r.captionHtml"
-          ></div>
-        } @else if (r.caption) {
-          <p class="msg__text msg__text--cont">{{ r.caption }}</p>
-        }
-      } @else if (r.html) {
-        <div
-          class="msg__text msg__text--cont msg__text--html"
-          trnSpoilerReveal
-          trnMatrixLink
-          (matrixLink)="matrixLink.emit($event)"
-          [innerHTML]="r.html"
-        ></div>
-      } @else {
-        <p class="msg__text msg__text--cont">{{ r.body }}</p>
-      }
-      @if (r.shield; as shield) {
-        <ng-icon
-          name="lucideShieldAlert"
-          class="msg__shield msg__shield--cont"
-          [class.msg__shield--red]="shield.level === 'red'"
-          [attr.title]="shield.reason"
-          [attr.aria-label]="shield.reason"
-          [attr.data-testid]="'msg-shield-' + shield.level"
-        />
-      }
-      @if (r.previewUrl) {
-        <trn-link-preview
-          [url]="r.previewUrl"
-          [encrypted]="r.previewEncrypted ?? true"
-        />
-      }
-      @if (r.edited) {
-        <span class="msg__edited">(edited)</span>
-      }
-      @if (r.reactions.length) {
-        <trn-message-reactions
-          [reactions]="r.reactions"
-          (toggleReaction)="action.emit({ type: 'react', key: $event })"
-        />
-      }
-      @if (r.readReceipts.length) {
-        <button
-          type="button"
-          class="msg__receipts"
-          data-testid="read-receipts"
-          [attr.aria-label]="seenByLabel(r.readReceipts)"
-          [title]="seenByLabel(r.readReceipts)"
-          (click)="seenByOpen.set(!seenByOpen())"
-        >
-          @for (receipt of r.readReceipts; track receipt.userId) {
-            <trn-avatar
-              class="msg__receipt"
-              aria-hidden="true"
-              [mxc]="receipt.avatarMxc"
-              [initial]="receipt.initial"
-              [name]="receipt.name"
-              [size]="16"
-            />
-          }
-        </button>
-        @if (seenByOpen()) {
-          <span class="msg__seen-by" data-testid="seen-by-list">
-            {{ seenByLabel(r.readReceipts) }}
-          </span>
-        }
-      }
-    </div>
-  }
+    }
 
-  @if (threadSummary(); as thread) {
-    <button
-      type="button"
-      class="msg__thread"
-      [attr.aria-label]="threadLabel(thread)"
-      (click)="action.emit({ type: 'thread' })"
-    >
-      <ng-icon
-        class="msg__thread-icon"
-        name="lucideMessagesSquare"
-        aria-hidden="true"
-      />
-      <span class="msg__thread-count"
-        >{{ thread.replyCount }}
-        {{ thread.replyCount === 1 ? 'reply' : 'replies' }}</span
+    @if (threadSummary(); as thread) {
+      <button
+        type="button"
+        class="msg__thread"
+        [attr.aria-label]="threadLabel(thread)"
+        (click)="action.emit({ type: 'thread' })"
       >
-      @if (thread.latestReplyTs) {
-        <span class="msg__thread-sep" aria-hidden="true">·</span>
-        <span class="msg__thread-time"
-          >last reply {{ thread.latestReplyTs | date: 'short' }}</span
-        >
-      }
-      @if (thread.unreadCount > 0) {
-        <span
-          class="msg__thread-badge"
-          [class.msg__thread-badge--highlight]="thread.highlight"
+        <ng-icon
+          class="msg__thread-icon"
+          name="lucideMessagesSquare"
           aria-hidden="true"
-          >{{ thread.unreadCount }}</span
+        />
+        <span class="msg__thread-count"
+          >{{ thread.replyCount }}
+          {{ thread.replyCount === 1 ? 'reply' : 'replies' }}</span
         >
-      }
-    </button>
-  }
+        @if (thread.latestReplyTs) {
+          <span class="msg__thread-sep" aria-hidden="true">·</span>
+          <span class="msg__thread-time"
+            >last reply {{ thread.latestReplyTs | date: 'short' }}</span
+          >
+        }
+        @if (thread.unreadCount > 0) {
+          <span
+            class="msg__thread-badge"
+            [class.msg__thread-badge--highlight]="thread.highlight"
+            aria-hidden="true"
+            >{{ thread.unreadCount }}</span
+          >
+        }
+      </button>
+    }
 
-  @if (!caps().readOnly && r.status === 'failed') {
-    <button class="msg__retry" (click)="action.emit({ type: 'retry' })">
-      Failed to send — retry
-    </button>
-  }
+    @if (!caps().readOnly && r.status === 'failed') {
+      <button class="msg__retry" (click)="action.emit({ type: 'retry' })">
+        Failed to send — retry
+      </button>
+    }
 
-  @if (!caps().readOnly && !r.decryptionFailed && r.kind !== 'redacted') {
-    <trn-message-toolbar
-      class="msg__toolbar"
-      [caps]="toolbarCaps()"
-      (action)="action.emit($event)"
-    />
-  }
-</div>
+    @if (!caps().readOnly && !r.decryptionFailed && r.kind !== 'redacted') {
+      <trn-message-toolbar
+        class="msg__toolbar"
+        [caps]="toolbarCaps()"
+        (action)="action.emit($event)"
+      />
+    }
+  </div>
+}

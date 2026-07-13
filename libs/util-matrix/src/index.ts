@@ -1,4 +1,5 @@
 export * from './lib/message-view';
+export * from './lib/timeline-event';
 export * from './lib/media.model';
 export * from './lib/session.model';
 export * from './lib/rust-crypto-store';

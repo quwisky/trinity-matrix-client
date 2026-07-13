@@ -201,7 +201,8 @@ export class VirtualMessageListComponent extends MessageListBase {
           latest &&
           !latest.isOwn &&
           !latest.decryptionFailed &&
-          latest.kind !== 'redacted'
+          latest.kind !== 'redacted' &&
+          latest.kind !== 'event'
         ) {
           this.announcement.set(`${latest.senderName}: ${latest.body}`);
         }

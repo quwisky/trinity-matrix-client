@@ -38,6 +38,15 @@ function msg(
   };
 }
 
+function eventRow(id: string, summary: string, ts: number): MessageView {
+  return {
+    ...msg(id, '@a:hs', 'Alice', ts),
+    kind: 'event',
+    summary,
+    body: summary,
+  };
+}
+
 describe('SimpleMessageListComponent', () => {
   it('renders a row per message and groups consecutive senders', async () => {
     const { container } = await render(SimpleMessageListComponent, {
@@ -54,6 +63,29 @@ describe('SimpleMessageListComponent', () => {
     expect(container.querySelectorAll('.msg__avatar').length).toBe(2); // Alice + Bob headers
     expect(container.querySelectorAll('.msg--cont').length).toBe(1); // Alice's second line
     expect(container.textContent).toContain('body $2');
+  });
+
+  it('renders state events as system lines that break sender grouping', async () => {
+    const { container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$1', '@a:hs', 'Alice', 1000),
+          eventRow('$e', 'Alice changed the room name to "General"', 2000),
+          // Same sender as $1, but the event line between them breaks the group.
+          msg('$2', '@a:hs', 'Alice', 3000),
+        ],
+      },
+    });
+
+    const line = container.querySelector('[data-testid=timeline-event]');
+    expect(line).not.toBeNull();
+    expect(line?.textContent).toContain(
+      'Alice changed the room name to "General"',
+    );
+    expect(container.querySelectorAll('.msg--event').length).toBe(1);
+    // The message after the event shows its own header, not a continuation.
+    expect(container.querySelectorAll('.msg--cont').length).toBe(0);
+    expect(container.querySelectorAll('.msg__avatar').length).toBe(2);
   });
 
   it('marks others’ messages deletable only when canRedactOthers (moderator)', async () => {

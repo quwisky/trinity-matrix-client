@@ -41,6 +41,19 @@
   padding-top: 0;
 }
 
+// A room state / membership change: a compact, centered, muted system line.
+.msg--event {
+  justify-content: center;
+}
+
+.msg__event-text {
+  min-width: 0;
+  color: var(--trinity-text-muted);
+  font-size: 12px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .msg__edited {
   margin-left: 4px;
   color: var(--trinity-text-muted);

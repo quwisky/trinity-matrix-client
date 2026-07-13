@@ -35,9 +35,12 @@ import {
 import {
   annotationContent,
   safeBuildMessageView,
+  buildTimelineEventView,
+  describeTimelineEvent,
   collectMessageSenders,
   editMessageContent,
   isDisplayableMessage,
+  isDisplayableStateEvent,
   isPollStart,
   pollSignature,
   pollStartContent,
@@ -181,7 +184,9 @@ export class TimelineService {
       return null; // the marker isn't among the loaded messages — no divider
     }
     for (let i = markerIdx + 1; i < msgs.length; i++) {
-      if (!msgs[i].isOwn) {
+      // A system line (join/leave/room change) isn't an unread *message*, so it must
+      // not anchor the "New messages" divider or the jump-to-unread pill.
+      if (!msgs[i].isOwn && msgs[i].kind !== 'event') {
         return msgs[i].id; // first message after the marker that someone else sent
       }
     }
@@ -764,9 +769,39 @@ export class TimelineService {
       // Threaded replies (`threadRootId` set on a non-root) are projected by
       // ThreadsService instead — the SDK already keeps them out of the live
       // timeline when thread support is on, but guard here too in case any leak.
-      .filter((e) => isDisplayableMessage(e) && !isThreadReply(e))
-      .map((e) => {
+      // Membership / room-state changes ride alongside messages as system lines.
+      .filter(
+        (e) =>
+          !isThreadReply(e) &&
+          (isDisplayableMessage(e) || isDisplayableStateEvent(e)),
+      )
+      .map((e): MessageView | null => {
         const id = e.getId() ?? '';
+        // A state / membership change → a compact "system" line. The summary fully
+        // determines the row, so it doubles as the cache rev (and re-derives on a late
+        // display-name resolution); a no-op change (null) is dropped entirely.
+        if (!isDisplayableMessage(e)) {
+          const summary = describeTimelineEvent(e, room);
+          if (!summary) {
+            return null;
+          }
+          seen.add(id);
+          collectMessageSenders(room, e, relevant);
+          // A membership line names the TARGET (state_key), whose display name can
+          // load late — register them too so a RoomStateEvent.Members for that member
+          // re-projects the line (same late-member fix as reply previews).
+          const target = e.getStateKey();
+          if (e.getType() === EventType.RoomMember && target) {
+            relevant.add(target);
+          }
+          const cached = this.viewCache.get(id);
+          if (cached && cached.rev === summary) {
+            return cached.view;
+          }
+          const view = buildTimelineEventView(client, room, e, summary);
+          this.viewCache.set(id, { rev: summary, view });
+          return view;
+        }
         seen.add(id);
         collectMessageSenders(room, e, relevant);
         // Reuse the existing view (preserving its object identity for OnPush)
@@ -781,7 +816,8 @@ export class TimelineService {
         const view = safeBuildMessageView(client, room, e, shield);
         this.viewCache.set(id, { rev, view });
         return view;
-      });
+      })
+      .filter((view): view is MessageView => view !== null);
     this.relevantSenders = relevant;
     // Drop cache entries for events no longer in the timeline (redacted-away,
     // replaced by their remote id, or scrolled out under a window cap). Prune the

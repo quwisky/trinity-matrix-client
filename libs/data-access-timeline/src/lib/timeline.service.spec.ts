@@ -100,6 +100,10 @@ function fakeEvent(o: {
   voice?: boolean;
   waveform?: number[];
   durationMs?: number;
+  state?: boolean;
+  stateKey?: string;
+  content?: Record<string, unknown>;
+  prevContent?: Record<string, unknown>;
 }) {
   return {
     getId: () => o.id,
@@ -108,28 +112,34 @@ function fakeEvent(o: {
     getRoomId: () => '!r:hs',
     getType: () => o.type ?? 'm.room.message',
     getTs: () => o.ts ?? 0,
-    getContent: () => ({
-      body: o.body ?? '',
-      msgtype: o.msgtype ?? 'm.text',
-      format: o.format,
-      formatted_body: o.formattedBody,
-      // Media fields are only included when supplied, so non-media events keep
-      // their previous content shape exactly.
-      ...(o.url !== undefined ? { url: o.url } : {}),
-      ...(o.filename !== undefined ? { filename: o.filename } : {}),
-      ...(o.file !== undefined ? { file: o.file } : {}),
-      ...(o.info !== undefined ? { info: o.info } : {}),
-      ...(o.relatesTo !== undefined ? { 'm.relates_to': o.relatesTo } : {}),
-      ...(o.voice ? { 'org.matrix.msc3245.voice': {} } : {}),
-      ...(o.voice || o.waveform || o.durationMs !== undefined
-        ? {
-            'org.matrix.msc1767.audio': {
-              ...(o.durationMs !== undefined ? { duration: o.durationMs } : {}),
-              ...(o.waveform !== undefined ? { waveform: o.waveform } : {}),
-            },
-          }
-        : {}),
-    }),
+    isState: () => o.state ?? o.stateKey !== undefined,
+    getStateKey: () => o.stateKey,
+    getPrevContent: () => o.prevContent ?? {},
+    getContent: () =>
+      o.content ?? {
+        body: o.body ?? '',
+        msgtype: o.msgtype ?? 'm.text',
+        format: o.format,
+        formatted_body: o.formattedBody,
+        // Media fields are only included when supplied, so non-media events keep
+        // their previous content shape exactly.
+        ...(o.url !== undefined ? { url: o.url } : {}),
+        ...(o.filename !== undefined ? { filename: o.filename } : {}),
+        ...(o.file !== undefined ? { file: o.file } : {}),
+        ...(o.info !== undefined ? { info: o.info } : {}),
+        ...(o.relatesTo !== undefined ? { 'm.relates_to': o.relatesTo } : {}),
+        ...(o.voice ? { 'org.matrix.msc3245.voice': {} } : {}),
+        ...(o.voice || o.waveform || o.durationMs !== undefined
+          ? {
+              'org.matrix.msc1767.audio': {
+                ...(o.durationMs !== undefined
+                  ? { duration: o.durationMs }
+                  : {}),
+                ...(o.waveform !== undefined ? { waveform: o.waveform } : {}),
+              },
+            }
+          : {}),
+      },
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
     isEncrypted: () => o.encrypted ?? false,
@@ -283,7 +293,15 @@ describe('TimelineService', () => {
   it('maps message events to views and drops non-messages', () => {
     const svc = setup([
       fakeEvent({ id: '$1', sender: '@alice:hs', body: 'hi' }),
-      fakeEvent({ id: '$m', sender: '@alice:hs', type: 'm.room.member' }),
+      // A no-op membership repeat (unchanged name + avatar) has nothing to show → dropped.
+      fakeEvent({
+        id: '$m',
+        sender: '@alice:hs',
+        type: 'm.room.member',
+        stateKey: '@alice:hs',
+        content: { membership: 'join', displayname: 'Alice' },
+        prevContent: { membership: 'join', displayname: 'Alice' },
+      }),
       fakeEvent({ id: '$2', sender: '@me:hs', body: 'yo' }),
     ]);
 
@@ -296,6 +314,38 @@ describe('TimelineService', () => {
       kind: 'text',
     });
     expect(msgs[1].isOwn).toBe(true);
+  });
+
+  it('renders room state and membership changes as system rows', () => {
+    const svc = setup([
+      fakeEvent({ id: '$1', sender: '@alice:hs', body: 'hi' }),
+      fakeEvent({
+        id: '$n',
+        sender: '@alice:hs',
+        type: 'm.room.name',
+        stateKey: '',
+        content: { name: 'General' },
+      }),
+      fakeEvent({
+        id: '$j',
+        sender: '@alice:hs',
+        type: 'm.room.member',
+        stateKey: '@alice:hs',
+        content: { membership: 'join' },
+      }),
+      fakeEvent({ id: '$2', sender: '@me:hs', body: 'yo' }),
+    ]);
+
+    const msgs = svc.messages();
+    expect(msgs.map((m) => m.id)).toEqual(['$1', '$n', '$j', '$2']);
+    expect(msgs[1]).toMatchObject({
+      kind: 'event',
+      summary: 'Alice set the room name to "General"',
+    });
+    expect(msgs[2]).toMatchObject({
+      kind: 'event',
+      summary: 'Alice joined the room',
+    });
   });
 
   it('exposes formatted_body HTML for markdown messages', () => {
@@ -741,6 +791,69 @@ describe('TimelineService', () => {
     const after = svc.messages().find((m) => m.id === '$reply');
     expect(after?.replyTo?.senderName).toBe('Alice');
     expect(after?.replyTo?.senderAvatarMxc).toBe('mxc://hs/av');
+  });
+
+  it('refreshes a membership system line when the target member loads late', () => {
+    const events = [
+      fakeEvent({
+        id: '$inv',
+        sender: '@me:hs',
+        type: 'm.room.member',
+        stateKey: '@bob:hs',
+        content: { membership: 'invite' }, // no displayname → resolved via room state
+      }),
+    ];
+    let bobLoaded = false;
+    let memberHandler: ((...a: unknown[]) => void) | undefined;
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+      }),
+      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      getMember: (id: string) => {
+        if (id === '@me:hs') {
+          return { name: 'Me', getMxcAvatarUrl: () => null };
+        }
+        return bobLoaded ? { name: 'Bob', getMxcAvatarUrl: () => null } : null;
+      },
+      relations: { getChildEventsForEvent: () => undefined },
+      hasEncryptionStateEvent: () => false,
+      on: (ev: string, cb: (...a: unknown[]) => void) => {
+        if (ev === RoomStateEvent.Members) {
+          memberHandler = cb;
+        }
+      },
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: () => Promise.resolve({}),
+      scrollback: () => Promise.resolve(room),
+    };
+    TestBed.configureTestingModule({
+      providers: [TimelineService, matrixProvider(client)],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    // Target member absent → the line names the raw mxid.
+    expect(svc.messages().find((m) => m.id === '$inv')?.summary).toBe(
+      'Me invited @bob:hs',
+    );
+
+    // Bob's profile arrives; the room re-emits its state Members event for him.
+    bobLoaded = true;
+    memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@bob:hs' });
+
+    expect(svc.messages().find((m) => m.id === '$inv')?.summary).toBe(
+      'Me invited Bob',
+    );
   });
 
   it('does not re-project when an unreferenced member changes', () => {
@@ -1720,6 +1833,35 @@ describe('TimelineService', () => {
         '$1',
       );
       expect(svc.firstUnreadId()).toBe('$3');
+    });
+
+    const joinEvent = () =>
+      fakeEvent({
+        id: '$e',
+        sender: '@alice:hs',
+        type: 'm.room.member',
+        stateKey: '@bob:hs',
+        content: { membership: 'join' },
+      });
+
+    it('anchors on the next message, skipping a system line after the marker', () => {
+      const { svc } = setupUnread(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          joinEvent(),
+          fakeEvent({ id: '$3', sender: '@alice:hs', body: 'theirs' }),
+        ],
+        '$1',
+      );
+      expect(svc.firstUnreadId()).toBe('$3');
+    });
+
+    it('is null when only system (membership) churn followed the marker', () => {
+      const { svc } = setupUnread(
+        [fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }), joinEvent()],
+        '$1',
+      );
+      expect(svc.firstUnreadId()).toBeNull();
     });
 
     it('stays put as the room is read (marker captured on open)', () => {

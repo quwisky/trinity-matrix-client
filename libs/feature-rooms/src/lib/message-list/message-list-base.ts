@@ -170,6 +170,9 @@ export abstract class MessageListBase {
       const prev = msgs[i - 1];
       const showHeader =
         !prev ||
+        // A system (state/membership) line breaks the group, so the next message
+        // re-shows its author even when it's from the same sender.
+        prev.kind === 'event' ||
         prev.senderId !== m.senderId ||
         m.timestamp - prev.timestamp > GAP_MS ||
         // A reply always shows its own header: the quoted preview breaks the visual

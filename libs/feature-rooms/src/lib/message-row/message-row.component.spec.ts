@@ -222,6 +222,24 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('trn-link-preview')).toBeNull();
   });
 
+  it('renders a state/membership event as a compact system line (no avatar or toolbar)', async () => {
+    const { container } = await renderRow({
+      row: row({
+        kind: 'event',
+        summary: 'Alice changed the room name to "General"',
+      }),
+    });
+
+    const line = container.querySelector('[data-testid=timeline-event]');
+    expect(line).not.toBeNull();
+    expect(line?.textContent).toContain(
+      'Alice changed the room name to "General"',
+    );
+    // A system line carries no author header, avatar, or hover toolbar.
+    expect(container.querySelector('trn-avatar')).toBeNull();
+    expect(container.querySelector('trn-message-toolbar')).toBeNull();
+  });
+
   it('expands the "seen by" reader list when the receipt cluster is clicked', async () => {
     const { container, fixture } = await renderRow({
       row: row({

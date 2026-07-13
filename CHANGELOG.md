@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Room activity in the timeline.** Membership and room changes now appear inline as compact
+  system lines — who joined, left, was invited, removed, banned or unbanned; and when someone
+  sets or changes the room name, topic, avatar, main address, join rules, history visibility,
+  guest access, or turns on end-to-end encryption. No-op changes are omitted to keep it quiet.
 - **Voice messages.** A microphone button in the composer records a voice message and sends
   it (MSC3245 `m.audio` with a waveform); recordings are encrypted in E2EE rooms like any
   other attachment. Received voice messages render as a compact player with a play control,

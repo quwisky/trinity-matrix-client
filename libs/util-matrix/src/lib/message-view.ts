@@ -28,6 +28,8 @@ export type MessageKind =
   | 'poll'
   | 'location'
   | 'sticker'
+  /** A room state / membership change rendered as a compact system line (see `summary`). */
+  | 'event'
   | MediaKind;
 
 /** A shared location (`m.location`), parsed from its `geo:` URI for the map card. */
@@ -242,6 +244,11 @@ export interface MessageView {
    * the user has explicitly opted into previews in encrypted rooms.
    */
   previewEncrypted?: boolean;
+  /**
+   * For a `kind: 'event'` row, the human-readable one-line summary of the state /
+   * membership change (e.g. `Alice changed the room name to "General"`). Absent otherwise.
+   */
+  summary?: string | null;
 }
 
 /** An authenticity shield on an encrypted message, with a human-readable reason. */
