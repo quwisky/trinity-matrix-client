@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { PrivacySettingsService } from '@trinity/platform-native';
+import { UrlPreviewService } from '@trinity/data-access-timeline';
 
 /** Privacy settings sub-page: device-scoped toggles for what others can see. */
 @Component({
@@ -11,4 +12,10 @@ import { PrivacySettingsService } from '@trinity/platform-native';
 })
 export class PrivacySettingsComponent {
   readonly privacy = inject(PrivacySettingsService);
+
+  /**
+   * Whether the homeserver provides link previews (`false` once it's known not to), so the
+   * page can explain that the previews toggle has no effect on this server.
+   */
+  readonly previewsSupported = inject(UrlPreviewService).supported;
 }

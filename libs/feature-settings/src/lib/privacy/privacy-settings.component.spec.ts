@@ -6,17 +6,20 @@ import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { PrivacySettingsService } from '@trinity/platform-native';
+import { UrlPreviewService } from '@trinity/data-access-timeline';
 import { PrivacySettingsComponent } from './privacy-settings.component';
 
 describe('PrivacySettingsComponent', () => {
   let sendReadReceipts: ReturnType<typeof signal<boolean>>;
   let linkPreviews: ReturnType<typeof signal<boolean>>;
   let linkPreviewsInEncrypted: ReturnType<typeof signal<boolean>>;
+  let previewsSupported: ReturnType<typeof signal<boolean | null>>;
 
   beforeEach(() => {
     sendReadReceipts = signal(true);
     linkPreviews = signal(true);
     linkPreviewsInEncrypted = signal(false);
+    previewsSupported = signal<boolean | null>(null);
   });
 
   function renderPage() {
@@ -27,6 +30,7 @@ describe('PrivacySettingsComponent', () => {
           linkPreviews,
           linkPreviewsInEncrypted,
         }),
+        MockProvider(UrlPreviewService, { supported: previewsSupported }),
       ],
     });
   }
@@ -111,5 +115,35 @@ describe('PrivacySettingsComponent', () => {
     expect(
       TestBed.inject(PrivacySettingsService).setLinkPreviewsInEncrypted,
     ).toHaveBeenCalledWith(true);
+  });
+
+  it('hints when the homeserver does not provide link previews', async () => {
+    const { fixture, container } = await renderPage();
+    const hint = '[data-testid=privacy-link-previews-unsupported]';
+
+    // Unknown support → no hint (don't cry wolf before we know).
+    expect(container.querySelector(hint)).toBeNull();
+
+    previewsSupported.set(false);
+    fixture.detectChanges();
+    expect(container.querySelector(hint)).not.toBeNull();
+
+    // Supported again → hint gone.
+    previewsSupported.set(true);
+    fixture.detectChanges();
+    expect(container.querySelector(hint)).toBeNull();
+  });
+
+  it('does not hint about server support while link previews are off', async () => {
+    const { fixture, container } = await renderPage();
+    previewsSupported.set(false);
+    linkPreviews.set(false);
+    fixture.detectChanges();
+
+    expect(
+      container.querySelector(
+        '[data-testid=privacy-link-previews-unsupported]',
+      ),
+    ).toBeNull();
   });
 });

@@ -42,7 +42,8 @@ All notable changes to this project are documented here. The format is based on
   encrypted rooms by default — so a link in an E2EE message is never disclosed to the
   server — but you can opt in per device via **Settings → Privacy → Show link previews in
   encrypted rooms** (with a clear warning), and turn previews off entirely from the same
-  section.
+  section. If your homeserver doesn't provide previews (Synapse ships them off), that same
+  section now says so instead of leaving you guessing.
 - **Verify another user.** A member's info panel now has a **Verify** action that starts
   emoji-SAS verification with them over a direct message — establishing cross-user trust
   (previously you could only verify your own other sessions).

@@ -97,4 +97,34 @@ describe('UrlPreviewService', () => {
     });
     expect(getUrlPreview).toHaveBeenCalledTimes(2);
   });
+
+  describe('supported', () => {
+    it('starts unknown (null) before any request', () => {
+      expect(setup().svc.supported()).toBeNull();
+    });
+
+    it('becomes true once the endpoint answers (even with empty OG)', async () => {
+      const { svc } = setup(
+        vi.fn().mockResolvedValue({ 'og:type': 'website' }),
+      );
+      await firstValueFrom(svc.preview('https://x.test'));
+      expect(svc.supported()).toBe(true);
+    });
+
+    it('becomes false when the endpoint is unrecognised (previews disabled)', async () => {
+      const { svc } = setup(
+        vi
+          .fn()
+          .mockRejectedValue({ errcode: 'M_UNRECOGNIZED', httpStatus: 404 }),
+      );
+      await firstValueFrom(svc.preview('https://x.test'));
+      expect(svc.supported()).toBe(false);
+    });
+
+    it('stays unknown on a transient error (does not falsely report unsupported)', async () => {
+      const { svc } = setup(vi.fn().mockRejectedValue(new Error('temporary')));
+      await firstValueFrom(svc.preview('https://x.test'));
+      expect(svc.supported()).toBeNull();
+    });
+  });
 });
