@@ -8,7 +8,7 @@ import {
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
 // Covers the thread composer (data-testid="thread-view"): the room-scoped actions
-// (poll/location/sticker/voice) are hidden there because they post to the main room,
+// (poll/location/voice) are hidden there because they post to the main room,
 // not the thread; and a slash command typed in a thread is parsed (`/me waves` sends an
 // emote "waves", not the literal text). Needs a Synapse homeserver (Docker); self-skips.
 const session = synapseSession();
@@ -94,12 +94,7 @@ test.describe('Thread composer', () => {
     await expect(thread).toBeVisible({ timeout: 15_000 });
 
     // The room-only actions post to the main room, so the thread composer omits them.
-    for (const id of [
-      'composer-poll',
-      'composer-location',
-      'composer-sticker',
-      'composer-voice',
-    ]) {
+    for (const id of ['composer-poll', 'composer-location', 'composer-voice']) {
       await expect(thread.getByTestId(id)).toHaveCount(0);
     }
 

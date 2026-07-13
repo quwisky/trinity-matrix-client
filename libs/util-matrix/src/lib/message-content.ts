@@ -10,7 +10,6 @@ import {
 } from 'matrix-js-sdk';
 import { marked } from 'marked';
 import { escapeHtml, stripReplyFallbackText } from './message-view';
-import type { PackImage } from './image-pack';
 
 /**
  * Send-side content builders shared by the main timeline ({@link TimelineService})
@@ -183,27 +182,6 @@ export function locationMessageContent(
     'org.matrix.msc3488.asset': { type: 'm.self' },
     'org.matrix.msc1767.text': label,
   };
-}
-
-/**
- * `m.sticker` content for a pack image (MSC2545). Carries only the dimensions/MIME the
- * pack declared — an empty `info` is valid, and renderers fall back to sensible defaults.
- */
-export function stickerContent(image: PackImage) {
-  const info: Record<string, number | string> = {};
-  if (image.width !== undefined) {
-    info['w'] = image.width;
-  }
-  if (image.height !== undefined) {
-    info['h'] = image.height;
-  }
-  if (image.mimeType !== undefined) {
-    info['mimetype'] = image.mimeType;
-  }
-  if (image.size !== undefined) {
-    info['size'] = image.size;
-  }
-  return { body: image.body, url: image.url, info };
 }
 
 /** `m.text` spoiler content (`/spoiler`) — an `<span data-mx-spoiler>` formatted body. */

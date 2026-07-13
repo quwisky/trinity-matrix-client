@@ -27,7 +27,6 @@ export type MessageKind =
   | 'unsupported'
   | 'poll'
   | 'location'
-  | 'sticker'
   /** A room state / membership change rendered as a compact system line (see `summary`). */
   | 'event'
   | MediaKind;
@@ -438,12 +437,9 @@ function unsupportedView(
   };
 }
 
-/** True when an event should render as a message row (a plain message, sticker, or poll). */
+/** True when an event should render as a message row (a plain message or poll). */
 export function isDisplayableMessage(event: MatrixEvent): boolean {
   if (isPollStart(event)) {
-    return true;
-  }
-  if (event.getType() === EventType.Sticker) {
     return true;
   }
   return (
@@ -455,7 +451,7 @@ export function isDisplayableMessage(event: MatrixEvent): boolean {
 /**
  * Whether the current user may edit this view: own, confirmed (no pending/failed
  * send), decrypted, and an editable *text* kind. Only `text`/`emote`/`notice` carry
- * an editable body — media, stickers, polls, and locations are not free text and a
+ * an editable body — media, polls, and locations are not free text and a
  * text `m.replace` would corrupt them (a poll/location has no `media` to gate on).
  * Shared by the main timeline and the in-thread composer so the rule stays in one place.
  */
@@ -737,9 +733,6 @@ function renderBody(
       media: null,
     };
   }
-  if (event.getType() === EventType.Sticker) {
-    return renderSticker(event.getContent());
-  }
   const content = event.getContent();
   const isReply = !!event.replyEventId;
   const raw = (content['body'] as string) ?? '';
@@ -819,45 +812,6 @@ function renderBody(
         media: null,
       };
   }
-}
-
-/**
- * Project an `m.sticker` event into a small inline image. Unlike `m.image`, a sticker
- * is always an image (pack images are public `mxc://`), so it bypasses the media
- * pipeline's MIME gating and renders directly; a malformed one (no `url`) degrades to
- * a plain label.
- */
-function renderSticker(content: Record<string, unknown>): RenderedBody {
-  const url = typeof content['url'] === 'string' ? content['url'] : null;
-  const body =
-    typeof content['body'] === 'string' && content['body']
-      ? (content['body'] as string)
-      : 'Sticker';
-  if (!url || !url.startsWith('mxc://')) {
-    return { body, html: null, kind: 'unsupported', media: null };
-  }
-  const info = (
-    content['info'] && typeof content['info'] === 'object'
-      ? content['info']
-      : {}
-  ) as Record<string, unknown>;
-  const media: MediaPayload = {
-    kind: 'image',
-    mxc: url,
-    file: null,
-    filename: body,
-    mimeType:
-      typeof info['mimetype'] === 'string'
-        ? (info['mimetype'] as string)
-        : 'image/png',
-    size:
-      typeof info['size'] === 'number' ? (info['size'] as number) : undefined,
-    width: typeof info['w'] === 'number' ? (info['w'] as number) : undefined,
-    height: typeof info['h'] === 'number' ? (info['h'] as number) : undefined,
-    thumbnailMxc: null,
-    thumbnailFile: null,
-  };
-  return { body, html: null, kind: 'sticker', media };
 }
 
 /** MIME types we never render inline (script-bearing), forced to download-only. */

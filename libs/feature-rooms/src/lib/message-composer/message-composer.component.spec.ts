@@ -18,7 +18,6 @@ import {
 } from '@trinity/data-access-gif';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { TimelineService } from '@trinity/data-access-timeline';
-import { type PackImage } from '@trinity/util-matrix';
 import {
   MessageComposerComponent,
   type ComposerSubmit,
@@ -915,24 +914,13 @@ describe('MessageComposerComponent', () => {
     expect(cmp.gifDownloading()).toBe(false);
   });
 
-  const sticker: PackImage = {
-    shortcode: 'party',
-    url: 'mxc://hs/party',
-    body: 'Party Blob',
-  };
-
-  it('hides the room-scoped actions (poll/location/sticker/voice) when richActions is off', async () => {
+  it('hides the room-scoped actions (poll/location/voice) when richActions is off', async () => {
     // The thread composer sets richActions=false: those actions post to the active
     // room, not the thread, so they must not be offered there.
     const { container } = await renderComposer({ richActions: false }, [
       MockProvider(VoiceRecorderService, { supported: true }),
     ]);
-    for (const id of [
-      'composer-poll',
-      'composer-location',
-      'composer-sticker',
-      'composer-voice',
-    ]) {
+    for (const id of ['composer-poll', 'composer-location', 'composer-voice']) {
       expect(container.querySelector(`[data-testid=${id}]`)).toBeNull();
     }
     // Text-routable affordances stay available in a thread.
@@ -955,67 +943,6 @@ describe('MessageComposerComponent', () => {
     expect(button?.disabled).toBe(true);
     // The spinner only renders in the busy branch, so its presence proves the swap.
     expect(button?.querySelector('hlm-spinner')).not.toBeNull();
-  });
-
-  it('toggling the sticker picker closes the emoji and GIF overlays', async () => {
-    const { fixture } = await renderComposer({}, gifProviders());
-    const cmp = fixture.componentInstance;
-
-    cmp.pickerOpen.set(true);
-    cmp.gifPickerOpen.set(true);
-    cmp.toggleStickerPicker();
-
-    expect(cmp.stickerPickerOpen()).toBe(true);
-    expect(cmp.pickerOpen()).toBe(false);
-    expect(cmp.gifPickerOpen()).toBe(false);
-
-    cmp.toggleEmojiPicker();
-    expect(cmp.stickerPickerOpen()).toBe(false);
-  });
-
-  it('sends a chosen sticker to the active room and closes the picker', async () => {
-    const sendSticker = vi.fn(() => of(void 0));
-    const { fixture } = await renderComposer({}, [
-      MockProvider(TimelineService, { sendSticker }),
-    ]);
-    const cmp = fixture.componentInstance;
-    cmp.stickerPickerOpen.set(true);
-
-    cmp.onStickerSelect(sticker);
-
-    expect(sendSticker).toHaveBeenCalledWith(sticker);
-    expect(cmp.stickerPickerOpen()).toBe(false);
-  });
-
-  it('ends an active reply when a sticker is sent', async () => {
-    const { fixture } = await renderComposer({ replyingTo: 'Alice' }, [
-      MockProvider(TimelineService, { sendSticker: () => of(void 0) }),
-    ]);
-    const cmp = fixture.componentInstance;
-
-    let cancelled = false;
-    cmp.cancelReply.subscribe(() => (cancelled = true));
-    cmp.onStickerSelect(sticker);
-
-    expect(cancelled).toBe(true);
-  });
-
-  it('toasts when sending a sticker fails', async () => {
-    const { fixture } = await renderComposer({}, [
-      MockProvider(TimelineService, {
-        sendSticker: () => throwError(() => new Error('nope')),
-      }),
-    ]);
-    const cmp = fixture.componentInstance;
-
-    cmp.onStickerSelect(sticker);
-    await Promise.resolve();
-
-    const toast = TestBed.inject(TrnToastService);
-    expect(toast.show).toHaveBeenCalledWith(
-      expect.stringContaining('Could not send'),
-      expect.objectContaining({ variant: 'destructive' }),
-    );
   });
 
   describe('voice messages', () => {

@@ -474,30 +474,6 @@ describe('TimelineService', () => {
     });
   });
 
-  it('sends a pack image as an m.sticker event', async () => {
-    const sent: unknown[][] = [];
-    const svc = setup([], sent);
-
-    await firstValueFrom(
-      svc.sendSticker({
-        shortcode: 'party',
-        url: 'mxc://hs/party',
-        body: 'Party Blob',
-        width: 128,
-        height: 120,
-        mimeType: 'image/png',
-      }),
-    );
-
-    expect(sent[0][0]).toBe('event');
-    expect(sent[0][1]).toBe('m.sticker');
-    expect(sent[0][2]).toEqual({
-      body: 'Party Blob',
-      url: 'mxc://hs/party',
-      info: { w: 128, h: 120, mimetype: 'image/png' },
-    });
-  });
-
   it('interprets a /me slash command as an emote', async () => {
     const sent: unknown[][] = [];
     const svc = setup([], sent);
@@ -1313,42 +1289,6 @@ describe('TimelineService', () => {
         filename: 'pic.png',
       });
       expect(m.caption).toBeNull(); // no MSC2530 filename → no caption
-    });
-
-    it('projects an m.sticker event to a sticker image', () => {
-      const svc = setup([
-        fakeEvent({
-          id: '$stk',
-          sender: '@a:hs',
-          type: 'm.sticker',
-          body: 'Party Blob',
-          url: 'mxc://hs/party',
-          info: { mimetype: 'image/png', w: 128, h: 120 },
-        }),
-      ]);
-
-      const m = svc.messages()[0];
-      expect(m.kind).toBe('sticker');
-      expect(m.body).toBe('Party Blob');
-      expect(m.media).toMatchObject({
-        kind: 'image',
-        mxc: 'mxc://hs/party',
-        mimeType: 'image/png',
-        width: 128,
-        height: 120,
-        filename: 'Party Blob',
-      });
-    });
-
-    it('falls back to a sticker label when the sticker has no mxc url', () => {
-      const svc = setup([
-        fakeEvent({ id: '$bad', sender: '@a:hs', type: 'm.sticker', body: '' }),
-      ]);
-
-      const m = svc.messages()[0];
-      expect(m.kind).toBe('unsupported');
-      expect(m.body).toBe('Sticker');
-      expect(m.media).toBeNull();
     });
 
     it('projects an MSC2530 caption alongside a media message', () => {

@@ -22,7 +22,6 @@ import {
   lucidePlus,
   lucideSend,
   lucideSmile,
-  lucideSticker,
   lucideTrash2,
   lucideVote,
 } from '@ng-icons/lucide';
@@ -48,10 +47,9 @@ import {
   type GifResult,
 } from '@trinity/data-access-gif';
 import { TimelineService } from '@trinity/data-access-timeline';
-import { type Mention, type PackImage } from '@trinity/util-matrix';
+import { type Mention } from '@trinity/util-matrix';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
-import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { CreatePollService } from '../poll/create-poll.service';
 import { LocationShareService } from '../location-share/location-share.service';
 
@@ -102,7 +100,6 @@ const MENTION_SUGGESTION_LIMIT = 8;
     HlmTextarea,
     PickerComponent,
     GifPickerComponent,
-    StickerPickerComponent,
     HlmProgress,
     HlmProgressIndicator,
     HlmSpinner,
@@ -116,7 +113,6 @@ const MENTION_SUGGESTION_LIMIT = 8;
       lucidePlus,
       lucideSend,
       lucideSmile,
-      lucideSticker,
       lucideTrash2,
       lucideVote,
     }),
@@ -145,7 +141,7 @@ export class MessageComposerComponent {
   /** Room members, for the @-mention autocomplete (empty disables mentions). */
   readonly members = input<MentionMember[]>([]);
   /**
-   * Whether to offer the room-scoped rich actions (poll, location, sticker, voice).
+   * Whether to offer the room-scoped rich actions (poll, location, voice).
    * These act on the *active room* via their own services, so they can't be routed
    * into a thread — the thread composer sets this false to hide them.
    */
@@ -175,8 +171,6 @@ export class MessageComposerComponent {
   readonly pickerOpen = signal(false);
   /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
   readonly gifPickerOpen = signal(false);
-  /** Whether the sticker grid is open (mutually exclusive with the other overlays). */
-  readonly stickerPickerOpen = signal(false);
   /** True while a voice message is being recorded. */
   readonly recordingVoice = signal(false);
   /** Elapsed recording time in seconds, for the live timer. */
@@ -598,43 +592,13 @@ export class MessageComposerComponent {
   /** Toggle the emoji picker, closing the other overlays (only one at a time). */
   toggleEmojiPicker(): void {
     this.gifPickerOpen.set(false);
-    this.stickerPickerOpen.set(false);
     this.pickerOpen.set(!this.pickerOpen());
   }
 
   /** Toggle the GIF grid, closing the other overlays (only one at a time). */
   toggleGifPicker(): void {
     this.pickerOpen.set(false);
-    this.stickerPickerOpen.set(false);
     this.gifPickerOpen.set(!this.gifPickerOpen());
-  }
-
-  /** Toggle the sticker grid, closing the other overlays (only one at a time). */
-  toggleStickerPicker(): void {
-    this.pickerOpen.set(false);
-    this.gifPickerOpen.set(false);
-    this.stickerPickerOpen.set(!this.stickerPickerOpen());
-  }
-
-  /** A sticker was chosen → send it to the active room as an `m.sticker`. Sends
-   * immediately (like the GIF picker) and closes the grid. */
-  onStickerSelect(image: PackImage): void {
-    this.stickerPickerOpen.set(false);
-    // A sticker is a standalone message; drop any active reply so its banner
-    // doesn't linger (mirrors the media/GIF path).
-    if (this.replyingTo()) {
-      this.cancelReply.emit();
-    }
-    this.timeline
-      .sendSticker(image)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        error: () =>
-          this.toast.show('Could not send that sticker.', {
-            duration: 4000,
-            variant: 'destructive',
-          }),
-      });
   }
 
   /** Begin recording a voice message; toasts and resets if the mic is unavailable. */
@@ -910,10 +874,6 @@ export class MessageComposerComponent {
     }
     if (this.gifPickerOpen()) {
       this.gifPickerOpen.set(false);
-      return;
-    }
-    if (this.stickerPickerOpen()) {
-      this.stickerPickerOpen.set(false);
       return;
     }
     if (this.pendingFile()) {

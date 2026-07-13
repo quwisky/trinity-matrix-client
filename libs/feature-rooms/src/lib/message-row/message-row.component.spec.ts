@@ -148,43 +148,6 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('trn-link-preview')).not.toBeNull();
   });
 
-  it('renders a sticker as a resolved image, not a media attachment', async () => {
-    const { container } = await render(MessageRowComponent, {
-      inputs: {
-        row: row({
-          kind: 'sticker',
-          body: 'Party Blob',
-          media: {
-            kind: 'image',
-            mxc: 'mxc://hs/party',
-            file: null,
-            filename: 'Party Blob',
-            mimeType: 'image/png',
-            thumbnailMxc: null,
-            thumbnailFile: null,
-          },
-        }),
-      },
-      providers: [
-        { provide: AVATAR_RESOLVER, useValue: () => of('blob:sticker') },
-        MockProvider(MediaService, { resolveMedia: () => of(null) }),
-        MockProvider(FileSaveService, { save: () => of(undefined) }),
-        MockProvider(UrlPreviewService, { preview: () => of(null) }),
-        MockProvider(PrivacySettingsService, {
-          linkPreviews: signal(true).asReadonly(),
-          linkPreviewsInEncrypted: signal(false).asReadonly(),
-        }),
-      ],
-    });
-
-    const img = container.querySelector<HTMLImageElement>(
-      '[data-testid=sticker-image]',
-    );
-    expect(img?.getAttribute('src')).toBe('blob:sticker');
-    expect(img?.getAttribute('alt')).toBe('Party Blob');
-    expect(container.querySelector('trn-media-attachment')).toBeNull();
-  });
-
   it('renders a voice message player instead of a media attachment', async () => {
     const { container } = await renderRow({
       row: row({

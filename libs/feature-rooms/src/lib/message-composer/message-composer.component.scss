@@ -114,8 +114,7 @@
 }
 
 .composer__picker,
-.composer__gif-picker,
-.composer__sticker-picker {
+.composer__gif-picker {
   position: absolute;
   right: 0;
   bottom: calc(100% + 4px);
@@ -244,7 +243,6 @@
 // textarea grows. They carry no background, so the box is just the hit target.
 .composer__attach,
 .composer__gif,
-.composer__sticker,
 .composer__voice,
 .composer__emoji,
 .composer__send {

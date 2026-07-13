@@ -10,12 +10,10 @@ import {
   renderMarkdown,
   replyMessageContent,
   slashCommandContent,
-  stickerContent,
   textMessageContent,
   type Mention,
   type RenderedMarkdown,
 } from './message-content';
-import type { PackImage } from './image-pack';
 
 describe('locationMessageContent', () => {
   it('builds an m.location with a geo URI and MSC3488 fields', () => {
@@ -28,39 +26,6 @@ describe('locationMessageContent', () => {
     expect(content['body']).toBe('Berlin');
     expect(content['org.matrix.msc3488.location']).toMatchObject({
       uri: 'geo:52.51,13.38',
-    });
-  });
-});
-
-describe('stickerContent', () => {
-  it('builds m.sticker content with the declared info fields', () => {
-    const image: PackImage = {
-      shortcode: 'party',
-      url: 'mxc://hs/party',
-      body: 'Party Blob',
-      width: 128,
-      height: 120,
-      mimeType: 'image/png',
-      size: 4096,
-    };
-
-    expect(stickerContent(image)).toEqual({
-      body: 'Party Blob',
-      url: 'mxc://hs/party',
-      info: { w: 128, h: 120, mimetype: 'image/png', size: 4096 },
-    });
-  });
-
-  it('omits absent info fields, leaving an empty info object', () => {
-    const content = stickerContent({
-      shortcode: 'wave',
-      url: 'mxc://hs/wave',
-      body: 'wave',
-    });
-    expect(content).toEqual({
-      body: 'wave',
-      url: 'mxc://hs/wave',
-      info: {},
     });
   });
 });

@@ -71,12 +71,6 @@
       (gifSelect)="onGifSelect($event)"
     />
   }
-  @if (stickerPickerOpen()) {
-    <trn-sticker-picker
-      class="composer__sticker-picker"
-      (stickerSelect)="onStickerSelect($event)"
-    />
-  }
   @if (recordingVoice()) {
     <div class="composer__recording" data-testid="composer-voice-recording">
       <button
@@ -268,18 +262,6 @@
     </button>
   }
   @if (richActions()) {
-    <button
-      type="button"
-      class="composer__sticker"
-      hlmTooltip="Sticker"
-      aria-label="Send a sticker"
-      data-testid="composer-sticker"
-      [disabled]="uploadProgress() !== null || editing()"
-      [attr.aria-expanded]="stickerPickerOpen()"
-      (click)="toggleStickerPicker()"
-    >
-      <ng-icon name="lucideSticker" aria-hidden="true" />
-    </button>
     @if (voiceSupported && !recordingVoice()) {
       <button
         type="button"

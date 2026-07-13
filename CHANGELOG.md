@@ -16,10 +16,6 @@ All notable changes to this project are documented here. The format is based on
   it (MSC3245 `m.audio` with a waveform); recordings are encrypted in E2EE rooms like any
   other attachment. Received voice messages render as a compact player with a play control,
   the waveform, and a running time.
-- **Send stickers.** A sticker button in the composer opens a picker of your image packs
-  (the interoperable MSC2545 format — your personal pack plus any joined room's packs) and
-  sends the chosen image as an `m.sticker`, rendered inline in the timeline. Set up a pack
-  from another Matrix client and it shows up here.
 - **Browse public spaces.** The Explore directory now has a **Rooms / Spaces** toggle, so
   you can discover and join public Spaces (not just rooms) from your homeserver's directory;
   a joined space appears in the rail and is selected, a joined room opens in the Rooms view.
@@ -265,7 +261,7 @@ All notable changes to this project are documented here. The format is based on
 - **Copied message links are resolvable.** A copied `matrix.to` permalink to a room-by-ID now
   includes a `?via=` server hint, so recipients not already in the room can open it.
 - **Thread replies understand slash commands** (`/me`, `/shrug`, `/plain`, `/spoiler`), and
-  the thread composer no longer shows poll/location/sticker/voice buttons that would have
+  the thread composer no longer shows poll/location/voice buttons that would have
   posted to the main room instead of the thread. `/me` now also carries @-mentions.
 - **Searching the public directory no longer reloads the app.** The Explore directory's
   search form performed a native browser submit (it had no Angular form binding), which
