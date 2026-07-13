@@ -418,8 +418,12 @@
 .msg__receipts {
   display: flex;
   gap: 2px;
-  justify-content: flex-end;
+
+  // A <button> shrink-wraps to its content, so `justify-content: flex-end` had no
+  // free space to push against — right-align the whole control with an auto margin.
+  width: fit-content;
   margin-top: 3px;
+  margin-left: auto;
   padding: 0;
   border: none;
   background: none;
