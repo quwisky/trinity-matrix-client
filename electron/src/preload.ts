@@ -151,4 +151,13 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
     delete: (key: string): Promise<void> =>
       ipcRenderer.invoke('trinity:secure-store:delete', key) as Promise<void>,
   },
+
+  // Ask the main process to estimate the device's approximate (IP-based) location.
+  // Only used by the desktop location-share dialog's opt-in button; the main process
+  // does the keyless HTTPS lookup and returns null on any failure.
+  resolveApproxLocation: (): Promise<{ lat: number; lng: number } | null> =>
+    ipcRenderer.invoke('trinity:geolocation:approximate') as Promise<{
+      lat: number;
+      lng: number;
+    } | null>,
 });

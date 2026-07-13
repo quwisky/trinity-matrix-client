@@ -1,0 +1,73 @@
+<div
+  class="flex w-[92vw] max-w-[440px] flex-col gap-3 rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
+>
+  <h2 class="text-base font-semibold">Share location</h2>
+
+  <p id="manual-location-hint" class="text-sm text-muted-foreground">
+    Paste an OpenStreetMap or Google Maps link, or type coordinates as
+    <code class="rounded bg-muted px-1 py-0.5 text-xs">lat, lng</code>.
+  </p>
+
+  <div>
+    <label hlmLabel for="manual-location">Location</label>
+    <input
+      id="manual-location"
+      hlmInput
+      class="mt-1 w-full"
+      placeholder="48.8584, 2.2945 or a map link"
+      aria-describedby="manual-location-hint"
+      [value]="value()"
+      (input)="onInput($event)"
+      data-testid="manual-location-input"
+    />
+  </div>
+
+  @if (coords(); as point) {
+    <p
+      class="flex items-center gap-1.5 text-sm text-muted-foreground"
+      data-testid="manual-location-preview"
+    >
+      <ng-icon name="lucideMapPin" aria-hidden="true" />
+      <span>{{ point.lat.toFixed(5) }}, {{ point.lng.toFixed(5) }}</span>
+    </p>
+  }
+
+  @if (canLocate) {
+    <button
+      hlmBtn
+      variant="outline"
+      size="sm"
+      class="self-start"
+      [disabled]="locating()"
+      (click)="useApproximate()"
+      data-testid="manual-location-approx"
+    >
+      @if (locating()) {
+        <hlm-spinner class="mr-2" />
+      } @else {
+        <ng-icon name="lucideLocateFixed" class="mr-2" aria-hidden="true" />
+      }
+      Use my approximate location
+    </button>
+    <p class="text-xs text-muted-foreground">
+      Estimates your city from your IP address via a third-party service
+      (ipapi.co).
+    </p>
+  }
+
+  <span class="sr-only" aria-live="polite" data-testid="manual-location-status">
+    {{ status() }}
+  </span>
+
+  <div class="flex justify-end gap-2">
+    <button hlmBtn variant="ghost" (click)="cancel()">Cancel</button>
+    <button
+      hlmBtn
+      [disabled]="!coords()"
+      (click)="share()"
+      data-testid="manual-location-share"
+    >
+      Share
+    </button>
+  </div>
+</div>

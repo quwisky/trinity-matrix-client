@@ -24,6 +24,7 @@ import {
   type ComposerSubmit,
 } from './message-composer.component';
 import { MediaPickerService } from '../media-picker/media-picker.service';
+import { LocationShareService } from '../location-share/location-share.service';
 
 // The draft store persists to Capacitor Preferences (debounced); stub it so the
 // composer's real DraftStoreService is a no-op on the storage side.
@@ -938,6 +939,22 @@ describe('MessageComposerComponent', () => {
     expect(
       container.querySelector('[data-testid=composer-attach]'),
     ).not.toBeNull();
+  });
+
+  it('disables the location button and shows a spinner while a share is in flight', async () => {
+    const { container } = await renderComposer({}, [
+      MockProvider(LocationShareService, {
+        sharing: signal(true).asReadonly(),
+        share: vi.fn(),
+      }),
+    ]);
+
+    const button = container.querySelector<HTMLButtonElement>(
+      '[data-testid=composer-location]',
+    );
+    expect(button?.disabled).toBe(true);
+    // The spinner only renders in the busy branch, so its presence proves the swap.
+    expect(button?.querySelector('hlm-spinner')).not.toBeNull();
   });
 
   it('toggling the sticker picker closes the emoji and GIF overlays', async () => {

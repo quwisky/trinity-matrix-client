@@ -19,9 +19,12 @@ All notable changes to this project are documented here. The format is based on
 - **Browse public spaces.** The Explore directory now has a **Rooms / Spaces** toggle, so
   you can discover and join public Spaces (not just rooms) from your homeserver's directory;
   a joined space appears in the rail and is selected, a joined room opens in the Rooms view.
-- **Share your location.** A location button in the composer sends your current position
-  as an `m.location` message, rendered as a card with the coordinates and an "Open in maps"
-  link (no embedded map tiles, so the strict content-security policy stays intact).
+- **Share your location.** A location button in the composer sends your position as an
+  `m.location` message, rendered as a card with the coordinates and an "Open in maps" link
+  (no embedded map tiles, so the strict content-security policy stays intact). On the
+  desktop app — where the browser can't read a device position without a bundled Google API
+  key — you pick the point in a small dialog by pasting an OpenStreetMap/Google Maps link or
+  typing `lat, lng`, with an optional one-tap approximate (IP-based) estimate.
 - **Mark rooms as read.** A room's ⋮ menu now has **Mark as read** (when it has unread),
   and the channel-list header gains a **Mark all as read** action — both clear unread badges
   without opening the rooms.

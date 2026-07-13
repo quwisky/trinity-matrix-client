@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, defer, from, map, throwError } from 'rxjs';
+import { getTrinityDesktopBridge } from './trinity-desktop-bridge';
 
 /** A geographic point resolved from the device. */
 export interface GeoPoint {
@@ -37,6 +38,42 @@ export class GeolocationService {
             new Error(error.message || 'Could not get your location.'),
           ),
         { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
+      );
+    });
+  }
+
+  /**
+   * Whether the desktop shell can estimate an approximate location (its IP-based
+   * lookup is exposed). False on web/mobile and on older desktop builds — callers
+   * use it to gate the opt-in "use my approximate location" affordance.
+   */
+  supportsApproximate(): boolean {
+    return (
+      typeof getTrinityDesktopBridge()?.resolveApproxLocation === 'function'
+    );
+  }
+
+  /**
+   * The device's APPROXIMATE location via the desktop shell's IP lookup (city-level).
+   * Cold — resolves through the main process on subscribe; errors if the bridge is
+   * absent (non-desktop) or the estimate fails. Backs the manual dialog's opt-in
+   * button on desktop, where {@link current} can't resolve without a Google API key.
+   */
+  approximateFromDesktop(): Observable<GeoPoint> {
+    return defer(() => {
+      const resolve = getTrinityDesktopBridge()?.resolveApproxLocation;
+      if (!resolve) {
+        return throwError(
+          () => new Error('Approximate location isn’t available here.'),
+        );
+      }
+      return from(resolve()).pipe(
+        map((point) => {
+          if (!point) {
+            throw new Error('Couldn’t estimate your location.');
+          }
+          return point;
+        }),
       );
     });
   }

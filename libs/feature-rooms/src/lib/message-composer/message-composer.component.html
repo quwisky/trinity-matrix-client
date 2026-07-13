@@ -205,10 +205,14 @@
       hlmTooltip="Share location"
       aria-label="Share location"
       data-testid="composer-location"
-      [disabled]="editing()"
+      [disabled]="editing() || locationSharing()"
       (click)="shareLocation()"
     >
-      <ng-icon name="lucideMapPin" aria-hidden="true" />
+      @if (locationSharing()) {
+        <hlm-spinner class="text-base" />
+      } @else {
+        <ng-icon name="lucideMapPin" aria-hidden="true" />
+      }
     </button>
   }
   <textarea

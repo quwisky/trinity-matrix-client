@@ -27,6 +27,7 @@ import {
   lucideVote,
 } from '@ng-icons/lucide';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { HlmTextarea } from '@trinity/helm/textarea';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { TrnToastService } from '@trinity/helm/overlay';
@@ -104,6 +105,7 @@ const MENTION_SUGGESTION_LIMIT = 8;
     StickerPickerComponent,
     HlmProgress,
     HlmProgressIndicator,
+    HlmSpinner,
   ],
   viewProviders: [
     provideIcons({
@@ -584,6 +586,9 @@ export class MessageComposerComponent {
   openPollDialog(): void {
     void this.createPollSvc.open();
   }
+
+  /** True while a location is being resolved and sent (drives the button's busy state). */
+  readonly locationSharing = this.locationShare.sharing;
 
   /** Share the device's current location to the active room. */
   shareLocation(): void {
