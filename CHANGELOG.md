@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Desktop tray icon now matches the app icon.** The system tray / menu-bar icon uses the
+  Trinity mark (three connected nodes) instead of the old "T" glyph, so it matches the app
+  icon everywhere. On macOS it stays a monochrome template image that follows the light/dark
+  menu bar.
+
 ## [0.1.0] - 2026-07-13
 
 ### Added
