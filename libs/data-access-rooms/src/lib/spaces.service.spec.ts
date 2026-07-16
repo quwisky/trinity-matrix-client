@@ -175,7 +175,7 @@ describe('SpacesService', () => {
     expect(svc.childRoomIds('!nope:hs')).toEqual([]);
   });
 
-  it('refreshes live when a child link arrives (RoomState.events)', () => {
+  it('refreshes live when a child link arrives (RoomState.events)', async () => {
     const space = fakeRoom({
       roomId: '!s:hs',
       name: 'Space',
@@ -194,17 +194,21 @@ describe('SpacesService', () => {
     space._children.push({ childId: '!b:hs', order: '20' });
     const onState = handlerFor(client, 'RoomState.events');
     onState?.({ getType: () => 'm.space.child' });
+    await Promise.resolve(); // the refresh is coalesced into a microtask
 
     expect(svc.childRoomIds('!s:hs')).toEqual(['!a:hs', '!b:hs']);
   });
 
-  it('ignores unrelated state events', () => {
+  it('ignores unrelated state events', async () => {
     const { svc, client } = setup([
       fakeRoom({ roomId: '!s:hs', name: 'Space', space: true }),
     ]);
     const onState = handlerFor(client, 'RoomState.events');
 
     onState?.({ getType: () => 'm.room.topic' });
+    // Flush first: refreshes are coalesced, so asserting synchronously would pass even
+    // if this unrelated event HAD wrongly scheduled one.
+    await Promise.resolve();
 
     // Still the single space, no churn from an unrelated state change.
     expect(svc.spaces().map((s) => s.id)).toEqual(['!s:hs']);

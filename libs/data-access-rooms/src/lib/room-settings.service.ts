@@ -1,5 +1,11 @@
 import { Injectable, inject } from '@angular/core';
 import { EventType, HistoryVisibility, JoinRule } from 'matrix-js-sdk';
+
+// Re-exported because both appear in this service's public surface ({@link RoomAccess},
+// {@link RoomSettingsService.setJoinRule}). Callers need the enum *values* to build a
+// choice list, and components must never import matrix-js-sdk themselves — so the lib
+// that owns the domain hands them out.
+export { HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { Observable, defer, from, map, switchMap, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { liveRoomState } from '@trinity/util-matrix';
