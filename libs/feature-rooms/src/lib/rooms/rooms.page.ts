@@ -392,12 +392,8 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.timeline.close();
-    this.threads.close();
-    this.threads.closeThread();
-    this.pinned.close();
+    this.closeOpenRoom();
     this.invites.disconnect();
-    this.media.releaseAll();
   }
 
   /**
@@ -641,12 +637,7 @@ export class RoomsPage implements OnInit, OnDestroy {
         // threads, and pinned projections stop listening on a room we just left.
         next: () => {
           if (this.activeRoomId() === roomId) {
-            this.activeRoomId.set(null);
-            this.timeline.close();
-            this.threads.close();
-            this.threads.closeThread();
-            this.pinned.close();
-            this.media.releaseAll();
+            this.closeOpenRoom();
           }
         },
         error: () => void this.showError('Could not leave the room.'),
@@ -1124,10 +1115,31 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (userId === this.matrix.activeUserId()) {
       return;
     }
+    // Close the open room FIRST. Its panes are bound to this account's client and Room
+    // objects, and timeline/threads/pinned all early-return on `open(sameRoomId)` — so
+    // leaving it open would keep projecting the outgoing account's data (including its
+    // decryption) with no way to re-bind short of a reload. The user re-picks a room on
+    // the new account, which opens it cleanly.
+    this.closeOpenRoom();
     this.auth
       .switchAccount(userId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+
+  /**
+   * Tear down the open room's panes and forget it. The single definition of "close the
+   * open room" — leaving a room, switching account, and destroying the page all need
+   * exactly this, and when it was inlined at each site they drifted (one forgot
+   * `closeThread()`, leaving an open thread projecting a room the user had left).
+   */
+  private closeOpenRoom(): void {
+    this.activeRoomId.set(null);
+    this.timeline.close();
+    this.threads.close();
+    this.threads.closeThread();
+    this.pinned.close();
+    this.media.releaseAll();
   }
 
   /** Start adding another account: route to the login screen in add mode. */

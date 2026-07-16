@@ -1058,6 +1058,27 @@ describe('RoomsPage space actions', () => {
     expect(auth.switchAccount).toHaveBeenCalledWith('@other:hs');
   });
 
+  it('tears the open room down when switching accounts', () => {
+    // The room panes are bound to the PREVIOUS account's client and Room objects, and
+    // timeline/threads/pinned each early-return on open(sameRoomId) — so leaving the
+    // room open across a switch would keep projecting the old account's data (including
+    // its decryption) with no way to re-bind short of a reload.
+    const page = build();
+    const timeline = TestBed.inject(TimelineService);
+    const threads = TestBed.inject(ThreadsService);
+    const pinned = TestBed.inject(PinnedMessagesService);
+    page.onSelectRoom('!r:hs');
+    expect(page.activeRoomId()).toBe('!r:hs');
+
+    page.switchAccount('@other:hs');
+
+    expect(page.activeRoomId()).toBeNull();
+    expect(timeline.close).toHaveBeenCalled();
+    expect(threads.close).toHaveBeenCalled();
+    expect(threads.closeThread).toHaveBeenCalled();
+    expect(pinned.close).toHaveBeenCalled();
+  });
+
   it('routes to /login in add mode from "Add account"', () => {
     const page = build();
     const router = TestBed.inject(Router);
