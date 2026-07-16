@@ -138,6 +138,14 @@ export class TimelineService {
 
   private roomId: string | null = null;
 
+  /**
+   * The client {@link open} attached its client-level listeners to. `matrix.instance`
+   * follows the ACTIVE account, so re-reading it in {@link close} after an account
+   * switch would detach from the *new* client and leak every listener on the old one —
+   * which is still signed in and syncing. Detach from what we attached to.
+   */
+  private connectedClient: MatrixClient | null = null;
+
   /** Whether a coalesced re-projection is already queued for this microtask turn. */
   private refreshScheduled = false;
 
@@ -301,6 +309,7 @@ export class TimelineService {
 
     this.roomId = roomId;
     this.room = room;
+    this.connectedClient = client;
     room.on(RoomEvent.Timeline, this.onTimeline);
     room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     room.on(RoomEvent.Receipt, this.onReceipt);
@@ -335,16 +344,18 @@ export class TimelineService {
     this.room?.off(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     this.room?.off(RoomEvent.Receipt, this.onReceipt);
     this.room?.off(RoomStateEvent.Members, this.onMember);
-    if (this.matrix.isInitialized) {
-      this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);
-      this.matrix.instance.off(RoomMemberEvent.Typing, this.onTyping);
-      this.matrix.instance.off(
-        CryptoEvent.UserTrustStatusChanged,
-        this.onTrust,
-      );
-      this.matrix.instance.off(CryptoEvent.DevicesUpdated, this.onTrust);
-      this.matrix.instance.off(CryptoEvent.KeysChanged, this.onTrust);
+    // Detach from the client open() attached to — NOT `matrix.instance`, which follows
+    // the active account and would leave the old client's listeners attached forever
+    // after an account switch.
+    const client = this.connectedClient;
+    if (client) {
+      client.off(MatrixEventEvent.Decrypted, this.onDecrypted);
+      client.off(RoomMemberEvent.Typing, this.onTyping);
+      client.off(CryptoEvent.UserTrustStatusChanged, this.onTrust);
+      client.off(CryptoEvent.DevicesUpdated, this.onTrust);
+      client.off(CryptoEvent.KeysChanged, this.onTrust);
     }
+    this.connectedClient = null;
     this.room = null;
     this.roomId = null;
     this.lastReadEventId = null;

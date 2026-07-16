@@ -162,6 +162,12 @@ export class ThreadsService {
   private lastReadEventId: string | null = null;
 
   // --- Summaries (active room) ---------------------------------------------
+  /**
+   * The client {@link openSummaries} attached to. `matrix.instance` follows the ACTIVE
+   * account, so re-reading it on close after an account switch would detach from the
+   * new client and leak this listener on the old one.
+   */
+  private summariesClient: MatrixClient | null = null;
   private summariesRoom: Room | null = null;
   private summariesRoomId: string | null = null;
 
@@ -212,6 +218,8 @@ export class ThreadsService {
 
   // --- Opened thread --------------------------------------------------------
   private thread: Thread | null = null;
+  /** The client {@link openThread} attached to — see {@link summariesClient}. */
+  private threadClient: MatrixClient | null = null;
   private threadRoom: Room | null = null;
   private threadRoomId: string | null = null;
 
@@ -277,6 +285,7 @@ export class ThreadsService {
 
     this.summariesRoomId = roomId;
     this.summariesRoom = room;
+    this.summariesClient = client;
     // The room re-emits its threads' Update/NewReply + Timeline, so listening at
     // the room level covers new threads, new replies, and reply-count changes.
     room.on(ThreadEvent.New, this.onSummariesChanged);
@@ -305,12 +314,12 @@ export class ThreadsService {
       room.off(RoomEvent.Receipt, this.onSummariesChanged);
       room.off(RoomStateEvent.Members, this.onSummariesMember);
     }
-    if (this.matrix.isInitialized) {
-      this.matrix.instance.off(
-        MatrixEventEvent.Decrypted,
-        this.onSummariesDecrypted,
-      );
-    }
+    // Detach from the client openSummaries() attached to, not `matrix.instance`.
+    this.summariesClient?.off(
+      MatrixEventEvent.Decrypted,
+      this.onSummariesDecrypted,
+    );
+    this.summariesClient = null;
     this.summariesRoom = null;
     this.summariesRoomId = null;
     this.summaryCache.clear();
@@ -373,13 +382,15 @@ export class ThreadsService {
       room.off(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
       room.off(RoomStateEvent.Members, this.onThreadMember);
     }
-    if (this.matrix.isInitialized) {
-      const client = this.matrix.instance;
+    // Detach from the client openThread() attached to, not `matrix.instance`.
+    const client = this.threadClient;
+    if (client) {
       client.off(MatrixEventEvent.Decrypted, this.onThreadDecrypted);
       client.off(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
       client.off(CryptoEvent.DevicesUpdated, this.onThreadTrust);
       client.off(CryptoEvent.KeysChanged, this.onThreadTrust);
     }
+    this.threadClient = null;
     this.thread = null;
     this.threadRoom = null;
     this.threadRoomId = null;

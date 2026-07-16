@@ -1231,6 +1231,47 @@ describe('TimelineService', () => {
     expect(received.map((e) => e.getId())).toEqual(['$b']); // targets the newer event
   });
 
+  it('detaches client listeners from the account it opened on, not the active one', async () => {
+    // `MatrixClientService.instance` follows the ACTIVE account. open() attaches its
+    // client-level listeners (Decrypted/Typing/Crypto) to whichever client was active
+    // then; if close() re-reads `instance` after an account switch it detaches from the
+    // NEW client and leaks every listener on the old one — which is still syncing.
+    const makeClient = () => {
+      const handlers: Record<string, unknown[]> = {};
+      return {
+        baseUrl: 'https://hs',
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: (ev: string, h: unknown) => void (handlers[ev] ??= []).push(h),
+        off: (ev: string, h: unknown) => {
+          handlers[ev] = (handlers[ev] ?? []).filter((x) => x !== h);
+        },
+        sendReadReceipt: () => Promise.resolve({}),
+        listenerCount: () =>
+          Object.values(handlers).reduce((n, hs) => n + hs.length, 0),
+      };
+    };
+    const room = fakeRoom([
+      fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' }),
+    ]);
+    const clientA = makeClient();
+    const clientB = makeClient();
+    const active = { client: clientA as unknown };
+
+    TestBed.configureTestingModule({
+      providers: [TimelineService, switchableMatrixProvider(active)],
+    });
+    const svc = TestBed.inject(TimelineService);
+
+    svc.open('!r:hs');
+    expect(clientA.listenerCount()).toBeGreaterThan(0); // attached to A
+
+    active.client = clientB; // the user switches accounts
+    svc.close();
+
+    expect(clientA.listenerCount()).toBe(0); // A's listeners must be gone
+  });
+
   it('coalesces a burst of timeline events into a single re-projection', async () => {
     // matrix-js-sdk emits RoomEvent.Timeline once PER event, so paginating 30 messages
     // fires the handler 30 times. refresh() walks every loaded event (fingerprinting
