@@ -13,7 +13,10 @@ import { focusMainWindow, getMainWindow } from './window';
 // protocol client (app.setAsDefaultProtocolClient) for the browser redirect to
 // route back into the app.
 export const DEEP_LINK_SCHEME = 'eu.qwky.trinity';
-export const DEEP_LINK_PREFIX = `${DEEP_LINK_SCHEME}://`;
+// Scheme-only, so both callback shapes route: legacy SSO redirects to the `//` form,
+// while OIDC uses the RFC 8252 §7.1 form (`eu.qwky.trinity:/sso-callback`) which has
+// no authority. Matching on `://` would silently drop every OIDC callback.
+export const DEEP_LINK_PREFIX = `${DEEP_LINK_SCHEME}:`;
 export const DEEP_LINK_CHANNEL = 'deep-link';
 
 // Deep-link URLs that arrived before the renderer was ready to receive them
@@ -21,7 +24,7 @@ export const DEEP_LINK_CHANNEL = 'deep-link';
 // renderer on `did-finish-load` / once the app is ready. See deliverDeepLink().
 const pendingDeepLinks: string[] = [];
 
-/** First `eu.qwky.trinity://…` entry in a process argv array, if any. */
+/** First `eu.qwky.trinity:…` entry in a process argv array, if any. */
 export function deepLinkFromArgv(argv: readonly string[]): string | undefined {
   return argv.find((arg) => arg.startsWith(DEEP_LINK_PREFIX));
 }
@@ -51,7 +54,7 @@ export function processDeepLinkQueue(): void {
 
 /**
  * Validate, buffer, and attempt to deliver an inbound OS deep link. Anything
- * that isn't our `eu.qwky.trinity://` scheme is ignored. This is the single
+ * that isn't our `eu.qwky.trinity:` scheme is ignored. This is the single
  * funnel for all OS sources (macOS `open-url`, Windows/Linux argv on cold start
  * and via `second-instance`).
  */

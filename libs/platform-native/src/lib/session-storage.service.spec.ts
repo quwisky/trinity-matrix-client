@@ -46,6 +46,29 @@ const BOB_STORED: MatrixSession = {
   cryptoPrefix: 'trinity-crypto:@bob:other:DEV2',
 };
 
+// An OIDC-native ("next-gen auth") session: a refresh token + expiry + provider binding.
+const OIDC_BINDING = {
+  issuer: 'https://op.hs',
+  clientId: 'client-abc',
+  redirectUri: 'https://app/sso-callback',
+  idTokenClaims: {
+    iss: 'https://op.hs',
+    sub: 'subject-123',
+    aud: 'client-abc',
+    exp: 2000000000,
+    iat: 1000000000,
+  },
+};
+const CAROL: MatrixSession = {
+  baseUrl: 'https://hs',
+  userId: '@carol:hs',
+  deviceId: 'DEVC',
+  accessToken: 'carol-access',
+  refreshToken: 'carol-refresh',
+  accessTokenExpiresAt: 1234567890,
+  oidc: OIDC_BINDING,
+};
+
 /**
  * Provide the real {@link SessionStorageService} with a mocked
  * {@link SecureStorageService}. ng-mocks' auto-spies are backed by an in-memory map
@@ -169,6 +192,203 @@ describe('SessionStorageService', () => {
     expect(record).toMatchObject({
       userId: '@alice:hs',
       cryptoPrefix: 'trinity-crypto:@alice:hs:DEV1',
+    });
+  });
+
+  describe('OIDC token persistence', () => {
+    it('stores the refresh token securely (never Preferences) and keeps expiry + oidc in the registry', async () => {
+      const { svc, secure } = setup();
+      await firstValueFrom(svc.save(CAROL));
+
+      // The refresh token is a credential → secure storage, under its own per-account key.
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBe(
+        'carol-refresh',
+      );
+      const registry = prefs.get('matrix.accounts') ?? '';
+      expect(registry).not.toContain('carol-refresh');
+      // The non-secret expiry + provider binding DO live in the registry record.
+      const record = JSON.parse(registry).accounts[0];
+      expect(record.refreshToken).toBeUndefined();
+      expect(record.accessTokenExpiresAt).toBe(1234567890);
+      expect(record.oidc).toEqual(OIDC_BINDING);
+    });
+
+    it('round-trips the refresh token, expiry and oidc binding on load', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(CAROL));
+
+      expect(await firstValueFrom(svc.load('@carol:hs'))).toMatchObject({
+        accessToken: 'carol-access',
+        refreshToken: 'carol-refresh',
+        accessTokenExpiresAt: 1234567890,
+        oidc: OIDC_BINDING,
+      });
+    });
+
+    it('updateTokens rotates access + refresh tokens and refreshes the expiry', async () => {
+      const { svc, secure } = setup();
+      await firstValueFrom(svc.save(CAROL));
+
+      await firstValueFrom(
+        svc.updateTokens('@carol:hs', 'new-access', 'new-refresh', 9999999999),
+      );
+
+      expect(secure.store.get('matrix.accessToken:@carol:hs')).toBe(
+        'new-access',
+      );
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBe(
+        'new-refresh',
+      );
+      expect(await firstValueFrom(svc.load('@carol:hs'))).toMatchObject({
+        accessToken: 'new-access',
+        refreshToken: 'new-refresh',
+        accessTokenExpiresAt: 9999999999,
+      });
+    });
+
+    it('updateTokens keeps the existing refresh token when the provider rotated none', async () => {
+      const { svc, secure } = setup();
+      await firstValueFrom(svc.save(CAROL));
+
+      await firstValueFrom(
+        svc.updateTokens('@carol:hs', 'new-access', undefined, 8888),
+      );
+
+      expect(secure.store.get('matrix.accessToken:@carol:hs')).toBe(
+        'new-access',
+      );
+      // Untouched — the OP didn't rotate it, so the stored one stays valid.
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBe(
+        'carol-refresh',
+      );
+    });
+
+    it('updateTokens is a no-op for an account no longer registered (signed out mid-refresh)', async () => {
+      const { svc, secure } = setup();
+
+      await firstValueFrom(svc.updateTokens('@ghost:hs', 'x', 'y', 1));
+
+      expect(secure.store.get('matrix.accessToken:@ghost:hs')).toBeUndefined();
+      expect(secure.store.get('matrix.refreshToken:@ghost:hs')).toBeUndefined();
+    });
+
+    it('a same-device re-login carries the rotated expiry + oidc (no silent staleness)', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(CAROL));
+      // Re-login on the same device with a fresh access-token window.
+      await firstValueFrom(
+        svc.save({
+          ...CAROL,
+          accessToken: 'reissued',
+          accessTokenExpiresAt: 5555555555,
+        }),
+      );
+
+      const [record] = await firstValueFrom(svc.list());
+      expect(record.cryptoPrefix).toBe('trinity-crypto:@carol:hs:DEVC'); // store reused
+      // The record must carry the NEW expiry, not the stale 1234567890.
+      expect(record.accessTokenExpiresAt).toBe(5555555555);
+      expect(record.oidc).toEqual(OIDC_BINDING);
+    });
+
+    it('clears a stale refresh token + oidc when the account re-logs in without one', async () => {
+      const { svc, secure } = setup();
+      await firstValueFrom(svc.save(CAROL));
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBe(
+        'carol-refresh',
+      );
+
+      // Same account + device, but a plain (non-OIDC) login: no refresh token / binding.
+      await firstValueFrom(
+        svc.save({
+          baseUrl: CAROL.baseUrl,
+          userId: CAROL.userId,
+          deviceId: CAROL.deviceId,
+          accessToken: 'pw-token',
+        }),
+      );
+
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBeUndefined();
+      const [record] = await firstValueFrom(svc.list());
+      expect(record.oidc).toBeUndefined();
+      expect(record.accessTokenExpiresAt).toBeUndefined();
+    });
+
+    it('updateTokens for one account leaves a co-resident account untouched (no cross-account bleed)', async () => {
+      const { svc, secure } = setup();
+      const DAVE: MatrixSession = {
+        baseUrl: 'https://hs',
+        userId: '@dave:hs',
+        deviceId: 'DEVD',
+        accessToken: 'dave-access',
+        refreshToken: 'dave-refresh',
+        accessTokenExpiresAt: 111,
+        oidc: OIDC_BINDING,
+      };
+      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(svc.save(DAVE)); // DAVE saved last → active
+
+      // Refresh CAROL (the non-active account, as a background refresh would).
+      await firstValueFrom(
+        svc.updateTokens('@carol:hs', 'carol-new', 'carol-new-refresh', 222),
+      );
+
+      // CAROL rotated…
+      expect(secure.store.get('matrix.accessToken:@carol:hs')).toBe(
+        'carol-new',
+      );
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBe(
+        'carol-new-refresh',
+      );
+      // …DAVE's three values are byte-identical (the refresher must never write under
+      // another account's key).
+      expect(secure.store.get('matrix.accessToken:@dave:hs')).toBe(
+        'dave-access',
+      );
+      expect(secure.store.get('matrix.refreshToken:@dave:hs')).toBe(
+        'dave-refresh',
+      );
+      const dave = (await firstValueFrom(svc.list())).find(
+        (a) => a.userId === '@dave:hs',
+      );
+      expect(dave?.accessTokenExpiresAt).toBe(111);
+    });
+
+    it('serializes a concurrent remove + token refresh so a signed-out account is not resurrected', async () => {
+      const { svc, secure } = setup();
+      await firstValueFrom(svc.save(CAROL));
+
+      // A sign-out and a background token refresh for the SAME account race. Subscriptions
+      // are created in array order, so remove is queued before the refresh.
+      await Promise.all([
+        firstValueFrom(svc.remove('@carol:hs')),
+        firstValueFrom(
+          svc.updateTokens('@carol:hs', 'late-access', 'late-refresh', 999),
+        ),
+      ]);
+
+      // The refresh runs AFTER the remove committed, finds no account, and no-ops — CAROL
+      // stays gone rather than being resurrected with rotated tokens (the lost-update race).
+      expect(await firstValueFrom(svc.load('@carol:hs'))).toBeNull();
+      expect(secure.store.get('matrix.accessToken:@carol:hs')).toBeUndefined();
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBeUndefined();
+      expect(await firstValueFrom(svc.list())).toEqual([]);
+    });
+
+    it('invalidateToken, remove and clear each wipe the refresh token', async () => {
+      const { svc, secure } = setup();
+
+      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(svc.invalidateToken('@carol:hs'));
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBeUndefined();
+
+      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(svc.remove('@carol:hs'));
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBeUndefined();
+
+      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(svc.clear());
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBeUndefined();
     });
   });
 

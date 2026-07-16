@@ -1,18 +1,30 @@
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
-import { render } from '@testing-library/angular';
+import { render, screen } from '@testing-library/angular';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthService } from '@trinity/data-access-auth';
+import { AuthService, type AccountManagement } from '@trinity/data-access-auth';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { AccountSectionComponent } from './account-section.component';
+
+vi.mock('@capacitor/browser', () => ({
+  Browser: { open: vi.fn().mockResolvedValue(undefined) },
+}));
+import { Browser } from '@capacitor/browser';
 
 describe('AccountSectionComponent', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  async function renderSection() {
+  async function renderSection(management: AccountManagement | null = null) {
     const result = await render(AccountSectionComponent, {
-      providers: [MockProvider(AuthService), MockProvider(TrnToastService)],
+      providers: [
+        // getAccountManagement is read in the constructor, so it must be stubbed
+        // before construction (not after render).
+        MockProvider(AuthService, {
+          getAccountManagement: () => of(management),
+        }),
+        MockProvider(TrnToastService),
+      ],
     });
     const auth = TestBed.inject(AuthService);
     const toast = TestBed.inject(TrnToastService);
@@ -20,6 +32,23 @@ describe('AccountSectionComponent', () => {
     vi.mocked(auth.changePassword).mockReturnValue(of(undefined));
     return { ...result, cmp: result.fixture.componentInstance, auth, toast };
   }
+
+  it('shows a provider link (no password form) for an OIDC account', async () => {
+    const { cmp } = await renderSection({
+      url: 'https://op.example/account',
+      actionsSupported: [],
+    });
+
+    expect(cmp.accountManagement()?.url).toBe('https://op.example/account');
+    // The in-app password form is replaced by the "Manage account" link.
+    expect(screen.queryByTestId('change-password')).toBeNull();
+    expect(screen.getByTestId('manage-account')).toBeTruthy();
+
+    cmp.openAccountManagement();
+    expect(Browser.open).toHaveBeenCalledWith({
+      url: 'https://op.example/account',
+    });
+  });
 
   it('changes the password, clears the form, and toasts on success', async () => {
     const { cmp, auth, toast } = await renderSection();

@@ -5,63 +5,81 @@
     Account
   </h2>
 
-  <form
-    [formGroup]="form"
-    class="flex flex-col gap-4 px-4 py-3"
-    (ngSubmit)="submit()"
-  >
-    <p class="text-sm text-muted-foreground">Change your account password.</p>
-
-    <div class="flex flex-col gap-1.5">
-      <label hlmLabel for="current-password">Current password</label>
-      <input
-        hlmInput
-        id="current-password"
-        type="password"
-        autocomplete="current-password"
-        formControlName="currentPassword"
-        data-testid="current-password"
-      />
-    </div>
-
-    <div class="flex flex-col gap-1.5">
-      <label hlmLabel for="new-password">New password</label>
-      <input
-        hlmInput
-        id="new-password"
-        type="password"
-        autocomplete="new-password"
-        formControlName="newPassword"
-        data-testid="new-password"
-      />
-    </div>
-
-    <div class="flex flex-col gap-1.5">
-      <label hlmLabel for="confirm-password">Confirm new password</label>
-      <input
-        hlmInput
-        id="confirm-password"
-        type="password"
-        autocomplete="new-password"
-        formControlName="confirmPassword"
-        data-testid="confirm-password"
-      />
-    </div>
-
-    @if (error(); as message) {
-      <p class="text-sm text-destructive" data-testid="account-error">
-        {{ message }}
+  @if (accountManagement(); as management) {
+    <!-- OIDC account: credentials + device management live at the provider. -->
+    <div class="flex flex-col gap-3 px-4 py-3">
+      <p class="text-sm text-muted-foreground">
+        Your password and sessions are managed by your identity provider.
       </p>
-    }
-
-    <button
-      hlmBtn
-      type="submit"
-      class="self-start"
-      [disabled]="saving()"
-      data-testid="change-password"
+      <button
+        hlmBtn
+        type="button"
+        class="self-start"
+        (click)="openAccountManagement()"
+        data-testid="manage-account"
+      >
+        Manage account
+      </button>
+    </div>
+  } @else {
+    <form
+      [formGroup]="form"
+      class="flex flex-col gap-4 px-4 py-3"
+      (ngSubmit)="submit()"
     >
-      {{ saving() ? 'Changing…' : 'Change password' }}
-    </button>
-  </form>
+      <p class="text-sm text-muted-foreground">Change your account password.</p>
+
+      <div class="flex flex-col gap-1.5">
+        <label hlmLabel for="current-password">Current password</label>
+        <input
+          hlmInput
+          id="current-password"
+          type="password"
+          autocomplete="current-password"
+          formControlName="currentPassword"
+          data-testid="current-password"
+        />
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        <label hlmLabel for="new-password">New password</label>
+        <input
+          hlmInput
+          id="new-password"
+          type="password"
+          autocomplete="new-password"
+          formControlName="newPassword"
+          data-testid="new-password"
+        />
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        <label hlmLabel for="confirm-password">Confirm new password</label>
+        <input
+          hlmInput
+          id="confirm-password"
+          type="password"
+          autocomplete="new-password"
+          formControlName="confirmPassword"
+          data-testid="confirm-password"
+        />
+      </div>
+
+      @if (error(); as message) {
+        <p class="text-sm text-destructive" data-testid="account-error">
+          {{ message }}
+        </p>
+      }
+
+      <button
+        hlmBtn
+        type="submit"
+        class="self-start"
+        [disabled]="saving()"
+        data-testid="change-password"
+      >
+        {{ saving() ? 'Changing…' : 'Change password' }}
+      </button>
+    </form>
+  }
 </div>

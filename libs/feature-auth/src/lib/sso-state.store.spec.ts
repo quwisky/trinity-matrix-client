@@ -51,7 +51,7 @@ describe('SsoStateStore', () => {
     expect(byKey['sso.mode']).toBe('replace');
   });
 
-  it('consumes a fresh stash and clears every key (single-use)', async () => {
+  it('peek reads a fresh stash WITHOUT clearing (verify-before-clear)', async () => {
     getFrom({
       'sso.state': 'NONCE',
       'sso.baseUrl': 'https://hs.example',
@@ -60,7 +60,7 @@ describe('SsoStateStore', () => {
       'sso.deviceId': 'OLDDEV',
     });
 
-    const stash = await store().consume();
+    const stash = await store().peek();
 
     expect(stash).toEqual({
       state: 'NONCE',
@@ -68,6 +68,13 @@ describe('SsoStateStore', () => {
       mode: 'add',
       deviceId: 'OLDDEV',
     });
+    // A forged callback mustn't be able to wipe an in-flight login → peek never removes.
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('clear removes every key (single-use consume = peek then clear)', async () => {
+    await store().clear();
+
     const removed = remove.mock.calls.map((c) => c[0].key);
     expect(removed).toEqual(
       expect.arrayContaining([
@@ -80,26 +87,25 @@ describe('SsoStateStore', () => {
     );
   });
 
-  it('discards a stash older than the TTL (replay guard)', async () => {
+  it('peek discards a stash older than the TTL (replay guard)', async () => {
     getFrom({
       'sso.state': 'NONCE',
       'sso.baseUrl': 'https://hs.example',
       'sso.startedAt': String(Date.now() - 11 * 60 * 1000), // 11 min > 10 min TTL
     });
 
-    expect(await store().consume()).toEqual({
+    expect(await store().peek()).toEqual({
       state: null,
       baseUrl: null,
       mode: 'replace',
       deviceId: null,
     });
-    expect(remove).toHaveBeenCalled(); // still cleared
   });
 
-  it('returns an empty stash when nothing was stored', async () => {
+  it('peek returns an empty stash when nothing was stored', async () => {
     getFrom({});
 
-    expect(await store().consume()).toEqual({
+    expect(await store().peek()).toEqual({
       state: null,
       baseUrl: null,
       mode: 'replace',

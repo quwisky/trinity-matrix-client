@@ -77,8 +77,11 @@ export class AppComponent implements OnInit {
   }
 
   /**
-   * Route an `eu.qwky.trinity://sso-callback?loginToken=…&sso_state=…` deep link
-   * into the SSO callback page (the homeserver redirects here after native SSO).
+   * Route a `eu.qwky.trinity://sso-callback?…` deep link into the callback page. Both
+   * login flows land here (the provider/homeserver redirects back after native auth):
+   * legacy SSO carries `loginToken` (+ `sso_state`), OIDC carries `code` + `state` (or
+   * an `error`). Only the params that are present are forwarded, so the callback page
+   * branches on which flow arrived.
    */
   handleDeepLink(url: string): void {
     let parsed: URL;
@@ -88,17 +91,32 @@ export class AppComponent implements OnInit {
       return;
     }
     const path = parsed.host || parsed.pathname.replace(/^\/+/, '');
-    const loginToken = parsed.searchParams.get('loginToken');
-    if (path !== 'sso-callback' || !loginToken) {
+    const params = parsed.searchParams;
+    const isCallback =
+      path === 'sso-callback' &&
+      (params.has('loginToken') || params.has('code') || params.has('error'));
+    if (!isCallback) {
       return;
     }
-    // Dismiss the system browser opened for SSO, then hand off to the callback.
+    // Dismiss the system browser opened for auth, then hand off to the callback.
     void Browser.close().catch(() => undefined);
-    void this.router.navigate(['/sso-callback'], {
-      queryParams: {
-        loginToken,
-        sso_state: parsed.searchParams.get('sso_state'),
-      },
-    });
+    const queryParams: Record<string, string> = {};
+    for (const key of CALLBACK_PARAMS) {
+      const value = params.get(key);
+      if (value !== null) {
+        queryParams[key] = value;
+      }
+    }
+    void this.router.navigate(['/sso-callback'], { queryParams });
   }
 }
+
+/** Callback params forwarded from a deep link (SSO + OIDC); absent ones are omitted. */
+const CALLBACK_PARAMS = [
+  'loginToken',
+  'sso_state',
+  'code',
+  'state',
+  'error',
+  'error_description',
+] as const;

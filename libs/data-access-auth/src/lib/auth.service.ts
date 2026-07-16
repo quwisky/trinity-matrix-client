@@ -1,5 +1,10 @@
 import { Injectable, inject } from '@angular/core';
-import { AutoDiscovery, createClient, type AuthDict } from 'matrix-js-sdk';
+import {
+  AutoDiscovery,
+  createClient,
+  type AuthDict,
+  type OidcClientConfig,
+} from 'matrix-js-sdk';
 import {
   Observable,
   catchError,
@@ -20,13 +25,27 @@ import {
   MatrixSession,
   UiaCancelledError,
   runPasswordUia,
+  type OidcSessionBinding,
   type PasswordPrompt,
 } from '@trinity/util-matrix';
+import {
+  OidcClientService,
+  type OidcAuthorizationParams,
+  type OidcAuthorizationRequest,
+} from './oidc-client.service';
 
 const DEVICE_DISPLAY_NAME = 'Trinity';
 
 /** Whether a successful login replaces the current account or adds alongside it. */
 export type LoginMode = 'replace' | 'add';
+
+/** The active OIDC account's provider-hosted account-management surface. */
+export interface AccountManagement {
+  /** The provider's account-management URL (validated https). */
+  url: string;
+  /** MSC2965 actions the provider supports deep-linking to (e.g. session management). */
+  actionsSupported: string[];
+}
 
 /**
  * Handles authentication: homeserver discovery (.well-known), password login,
@@ -43,6 +62,7 @@ export class AuthService {
   private readonly avatars = inject(AvatarService);
   private readonly media = inject(MediaService);
   private readonly push = inject(PushService);
+  private readonly oidc = inject(OidcClientService);
 
   /**
    * Resolve a homeserver base URL from a user-entered domain (e.g. "matrix.org"
@@ -73,6 +93,19 @@ export class AuthService {
   getSupportedFlows(baseUrl: string): Observable<string[]> {
     return defer(() => from(createClient({ baseUrl }).loginFlows())).pipe(
       map((res) => res.flows.map((f) => f.type)),
+    );
+  }
+
+  /**
+   * Discover a homeserver's delegated OIDC ("next-gen auth", MSC2965) provider config,
+   * or `null` when the homeserver doesn't delegate authentication. `getAuthMetadata()`
+   * throws on a non-OIDC homeserver, so we map that to `null` — letting the login page
+   * probe for OIDC in parallel with {@link getSupportedFlows} without a legacy
+   * homeserver ever being slowed or broken by the extra round-trip.
+   */
+  getDelegatedAuthConfig(baseUrl: string): Observable<OidcClientConfig | null> {
+    return defer(() => from(createClient({ baseUrl }).getAuthMetadata())).pipe(
+      catchError(() => of(null)),
     );
   }
 
@@ -130,6 +163,57 @@ export class AuthService {
   }
 
   /**
+   * Build the OIDC ("next-gen auth") authorization URL to redirect to, plus the PKCE
+   * sign-in state the caller must durably stash so a cold-start / off-origin callback
+   * can complete the grant. Thin facade over {@link OidcClientService}.
+   */
+  buildOidcAuthorizationRequest(
+    params: OidcAuthorizationParams,
+  ): Observable<OidcAuthorizationRequest> {
+    return this.oidc.buildAuthorizationRequest(params);
+  }
+
+  /**
+   * Forget the cached dynamic-registration client id for an issuer so the next login
+   * re-registers — called when the provider rejects the id (`invalid_client`), which
+   * would otherwise wedge login until app storage is wiped.
+   */
+  forgetOidcClientId(issuer: string): Observable<void> {
+    return this.oidc.forgetClientId(issuer);
+  }
+
+  /**
+   * Complete an OIDC login: exchange the returned `code` for tokens, resolve the
+   * account identity, and establish the session. Called from the callback route after
+   * the provider redirects back (and after the stashed sign-in state was re-seeded).
+   * `redirectUri` is the one used to build the request — needed to rebuild the token
+   * refresher on restore.
+   */
+  completeOidcLogin(
+    code: string,
+    state: string,
+    redirectUri: string,
+    mode: LoginMode = 'replace',
+  ): Observable<void> {
+    return this.oidc.completeGrant(code, state, redirectUri).pipe(
+      switchMap((grant) =>
+        this.establish(
+          grant.homeserverUrl,
+          {
+            user_id: grant.userId,
+            device_id: grant.deviceId,
+            access_token: grant.accessToken,
+            refresh_token: grant.refreshToken,
+            accessTokenExpiresAt: grant.accessTokenExpiresAt,
+            oidc: grant.oidc,
+          },
+          mode,
+        ),
+      ),
+    );
+  }
+
+  /**
    * Switch the active account. Cheap when it's already live (flips the active client
    * + persisted pointer); starts it first if it isn't running yet.
    */
@@ -164,13 +248,27 @@ export class AuthService {
     const serverLogout = client
       ? from(client.logout(true)).pipe(catchError(() => of(void 0)))
       : of(void 0);
+    // For an OIDC account, also revoke its tokens at the provider (best-effort, while
+    // they're still valid) — belt-and-suspenders alongside the CSAPI logout above.
+    const revoke = this.storage.load(target).pipe(
+      switchMap((session) =>
+        session?.oidc
+          ? this.oidc.revokeTokens(session.baseUrl, session.oidc, {
+              accessToken: session.accessToken,
+              refreshToken: session.refreshToken,
+            })
+          : of(void 0),
+      ),
+      catchError(() => of(void 0)),
+    );
     const isLast = this.matrix.accountIds().every((id) => id === target);
 
     if (isLast) {
-      // Delete the pusher first (token still valid), log out server-side, then
-      // reset() (not stop()) so the account's keys/cache don't linger on a shared
-      // device, drop the shared blob caches, and clear storage.
+      // Delete the pusher first (token still valid), revoke at the provider + log out
+      // server-side, then reset() (not stop()) so the account's keys/cache don't linger
+      // on a shared device, drop the shared blob caches, and clear storage.
       return this.push.unregister().pipe(
+        switchMap(() => revoke),
         switchMap(() => serverLogout),
         switchMap(() => this.matrix.reset()),
         tap(() => {
@@ -181,15 +279,46 @@ export class AuthService {
       );
     }
     // Sign out just this account; the others keep syncing. Delete its pusher first
-    // (token still valid), then matrix.remove stops + wipes it and repoints the active
-    // account to a survivor — mirror that in storage.
+    // (token still valid), revoke at the provider + log out server-side, then
+    // matrix.remove stops + wipes it and repoints the active account to a survivor.
     return this.push.unregister(target).pipe(
+      switchMap(() => revoke),
       switchMap(() => serverLogout),
       switchMap(() => this.matrix.remove(target)),
       switchMap(() => this.storage.remove(target)),
       switchMap(() => {
         const active = this.matrix.activeUserId();
         return active ? this.storage.setActive(active) : of(void 0);
+      }),
+    );
+  }
+
+  /**
+   * The active account's provider-hosted account management, or `null` when it isn't an
+   * OIDC account (or the provider exposes none). OIDC-native servers own credentials +
+   * device management at the provider, so the in-app password form is replaced by a link
+   * to this URL. The URL is validated as https before it is surfaced (it comes from
+   * homeserver-controlled metadata, so a non-https value is rejected, not opened).
+   */
+  getAccountManagement(): Observable<AccountManagement | null> {
+    return this.storage.load().pipe(
+      switchMap((session) => {
+        if (!session?.oidc) {
+          return of(null);
+        }
+        return this.getDelegatedAuthConfig(session.baseUrl).pipe(
+          map((config) => {
+            const url = config?.account_management_uri;
+            if (!url || !/^https:\/\//i.test(url)) {
+              return null;
+            }
+            return {
+              url,
+              actionsSupported:
+                config?.account_management_actions_supported ?? [],
+            };
+          }),
+        );
       }),
     );
   }
@@ -246,7 +375,14 @@ export class AuthService {
    */
   private establish(
     baseUrl: string,
-    res: { user_id: string; device_id: string; access_token: string },
+    res: {
+      user_id: string;
+      device_id: string;
+      access_token: string;
+      refresh_token?: string;
+      accessTokenExpiresAt?: number;
+      oidc?: OidcSessionBinding;
+    },
     mode: LoginMode,
   ): Observable<void> {
     const session: MatrixSession = {
@@ -254,6 +390,13 @@ export class AuthService {
       userId: res.user_id,
       deviceId: res.device_id,
       accessToken: res.access_token,
+      ...(res.refresh_token !== undefined
+        ? { refreshToken: res.refresh_token }
+        : {}),
+      ...(res.accessTokenExpiresAt !== undefined
+        ? { accessTokenExpiresAt: res.accessTokenExpiresAt }
+        : {}),
+      ...(res.oidc ? { oidc: res.oidc } : {}),
     };
     if (mode === 'add') {
       // Additive: leave the other accounts' media/avatar caches + pusher untouched.

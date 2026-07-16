@@ -17,6 +17,7 @@ vi.mock('matrix-js-sdk', async (importActual) => {
 
 import { AutoDiscovery, MatrixError, createClient } from 'matrix-js-sdk';
 import { AuthService } from './auth.service';
+import { OidcClientService } from './oidc-client.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
 import { AvatarService } from '@trinity/data-access-media';
@@ -57,12 +58,17 @@ describe('AuthService', () => {
           activeUserId: activeUserId.asReadonly(),
         }),
         MockProvider(SessionStorageService),
+        MockProvider(OidcClientService),
         MockProvider(AvatarService),
         MockProvider(MediaService),
         MockProvider(PushService),
       ],
     });
     auth = TestBed.inject(AuthService);
+    // logout() loads the target session to check for OIDC revocation; default to none.
+    vi.mocked(TestBed.inject(SessionStorageService).load).mockReturnValue(
+      of(null),
+    );
   });
 
   describe('discoverHomeserver', () => {
@@ -108,6 +114,90 @@ describe('AuthService', () => {
       'https://hs/_matrix/sso?redirect=cb',
     );
     expect(getSsoLoginUrl).toHaveBeenCalledWith('cb', 'sso');
+  });
+
+  describe('getDelegatedAuthConfig', () => {
+    it('returns the validated OIDC config when the homeserver delegates auth', async () => {
+      const config = {
+        issuer: 'https://op.hs',
+        token_endpoint: 'https://op.hs/t',
+      };
+      const getAuthMetadata = vi.fn().mockResolvedValue(config);
+      createClientMock.mockReturnValue({ getAuthMetadata } as never);
+
+      expect(
+        await firstValueFrom(auth.getDelegatedAuthConfig('https://hs')),
+      ).toBe(config);
+    });
+
+    it('resolves null when the homeserver is not OIDC-native (getAuthMetadata throws)', async () => {
+      const getAuthMetadata = vi
+        .fn()
+        .mockRejectedValue(new Error('no auth metadata'));
+      createClientMock.mockReturnValue({ getAuthMetadata } as never);
+
+      expect(
+        await firstValueFrom(auth.getDelegatedAuthConfig('https://hs')),
+      ).toBeNull();
+    });
+  });
+
+  describe('getAccountManagement', () => {
+    const oidcSession = {
+      baseUrl: 'https://hs',
+      userId: '@me:hs',
+      deviceId: 'DEV',
+      accessToken: 'tok',
+      oidc: {
+        issuer: 'https://op',
+        clientId: 'c1',
+        redirectUri: 'https://app/cb',
+        idTokenClaims: {
+          iss: 'https://op',
+          sub: 'u',
+          aud: 'c1',
+          exp: 1,
+          iat: 0,
+        },
+      },
+    };
+
+    it('returns the provider account-management surface for an OIDC account', async () => {
+      const storage = TestBed.inject(SessionStorageService);
+      vi.mocked(storage.load).mockReturnValue(of(oidcSession) as never);
+      createClientMock.mockReturnValue({
+        getAuthMetadata: vi.fn().mockResolvedValue({
+          account_management_uri: 'https://op/account',
+          account_management_actions_supported: ['org.matrix.session_end'],
+        }),
+      } as never);
+
+      expect(await firstValueFrom(auth.getAccountManagement())).toEqual({
+        url: 'https://op/account',
+        actionsSupported: ['org.matrix.session_end'],
+      });
+    });
+
+    it('returns null for a non-OIDC (password/SSO) account', async () => {
+      const storage = TestBed.inject(SessionStorageService);
+      vi.mocked(storage.load).mockReturnValue(
+        of({ ...oidcSession, oidc: undefined }) as never,
+      );
+
+      expect(await firstValueFrom(auth.getAccountManagement())).toBeNull();
+    });
+
+    it('rejects a non-https account-management URL (homeserver-controlled metadata)', async () => {
+      const storage = TestBed.inject(SessionStorageService);
+      vi.mocked(storage.load).mockReturnValue(of(oidcSession) as never);
+      createClientMock.mockReturnValue({
+        getAuthMetadata: vi.fn().mockResolvedValue({
+          account_management_uri: 'http://insecure/account',
+        }),
+      } as never);
+
+      expect(await firstValueFrom(auth.getAccountManagement())).toBeNull();
+    });
   });
 
   describe('login modes', () => {
@@ -215,6 +305,92 @@ describe('AuthService', () => {
     });
   });
 
+  describe('completeOidcLogin', () => {
+    const grant = {
+      homeserverUrl: 'https://hs',
+      userId: '@me:hs',
+      deviceId: 'DEV',
+      accessToken: 'atok',
+      refreshToken: 'rtok',
+      accessTokenExpiresAt: 1234,
+      oidc: {
+        issuer: 'https://op',
+        clientId: 'c1',
+        redirectUri: 'https://app/cb',
+        idTokenClaims: {
+          iss: 'https://op',
+          sub: 'u',
+          aud: 'c1',
+          exp: 1,
+          iat: 0,
+        },
+      },
+    };
+
+    it('exchanges the grant and establishes the OIDC session (refresh token + binding persisted)', async () => {
+      const oidc = TestBed.inject(OidcClientService);
+      const matrix = TestBed.inject(MatrixClientService);
+      const storage = TestBed.inject(SessionStorageService);
+      const push = TestBed.inject(PushService);
+      vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
+      vi.mocked(push.unregister).mockReturnValue(of(undefined));
+      vi.mocked(storage.save).mockImplementation((s) => of(s));
+      vi.mocked(matrix.init).mockReturnValue(of(undefined));
+
+      await firstValueFrom(
+        auth.completeOidcLogin('CODE', 'STATE', 'https://app/cb'),
+      );
+
+      expect(oidc.completeGrant).toHaveBeenCalledWith(
+        'CODE',
+        'STATE',
+        'https://app/cb',
+      );
+      // establish() persisted the full OIDC session, then brought the client up (replace).
+      expect(storage.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseUrl: 'https://hs',
+          userId: '@me:hs',
+          deviceId: 'DEV',
+          accessToken: 'atok',
+          refreshToken: 'rtok',
+          accessTokenExpiresAt: 1234,
+          oidc: grant.oidc,
+        }),
+      );
+      expect(matrix.init).toHaveBeenCalled();
+      expect(matrix.add).not.toHaveBeenCalled();
+    });
+
+    it('adds the OIDC account alongside others in add mode', async () => {
+      const oidc = TestBed.inject(OidcClientService);
+      const matrix = TestBed.inject(MatrixClientService);
+      const storage = TestBed.inject(SessionStorageService);
+      const push = TestBed.inject(PushService);
+      vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
+      vi.mocked(storage.save).mockImplementation((s) => of(s));
+      vi.mocked(matrix.add).mockReturnValue(of(undefined));
+      vi.mocked(push.register).mockReturnValue(of(undefined));
+
+      await firstValueFrom(
+        auth.completeOidcLogin('CODE', 'STATE', 'https://app/cb', 'add'),
+      );
+
+      expect(matrix.add).toHaveBeenCalled();
+      expect(push.register).toHaveBeenCalled();
+      expect(matrix.init).not.toHaveBeenCalled();
+    });
+  });
+
+  it('forgets an OIDC client id via the client service', async () => {
+    const oidc = TestBed.inject(OidcClientService);
+    vi.mocked(oidc.forgetClientId).mockReturnValue(of(undefined));
+
+    await firstValueFrom(auth.forgetOidcClientId('https://op'));
+
+    expect(oidc.forgetClientId).toHaveBeenCalledWith('https://op');
+  });
+
   describe('completeSsoLogin', () => {
     it('exchanges the SSO loginToken and establishes the account additively', async () => {
       const loginRequest = vi.fn().mockResolvedValue({
@@ -309,6 +485,116 @@ describe('AuthService', () => {
       expect(client.logout).toHaveBeenCalledWith(true);
       expect(matrix.remove).toHaveBeenCalledWith('@you:hs');
       expect(storage.remove).toHaveBeenCalledWith('@you:hs');
+      expect(matrix.reset).not.toHaveBeenCalled();
+    });
+
+    it('revokes an OIDC account at the provider before signing out', async () => {
+      const matrix = TestBed.inject(MatrixClientService);
+      const storage = TestBed.inject(SessionStorageService);
+      const push = TestBed.inject(PushService);
+      const oidc = TestBed.inject(OidcClientService);
+      const client = { logout: vi.fn().mockResolvedValue(undefined) };
+      vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+      accountIds.set(['@me:hs']);
+      activeUserId.set('@me:hs');
+      vi.mocked(storage.load).mockReturnValue(
+        of({
+          baseUrl: 'https://hs',
+          userId: '@me:hs',
+          deviceId: 'DEV',
+          accessToken: 'atok',
+          refreshToken: 'rtok',
+          oidc: {
+            issuer: 'https://op',
+            clientId: 'c1',
+            redirectUri: 'https://app/cb',
+            idTokenClaims: {
+              iss: 'https://op',
+              sub: 'u',
+              aud: 'c1',
+              exp: 1,
+              iat: 0,
+            },
+          },
+        }) as never,
+      );
+      // Record the execution order of the switchMap'd steps: revocation must run while
+      // the tokens are still in storage — i.e. BEFORE the local teardown drops them.
+      const order: string[] = [];
+      vi.mocked(oidc.revokeTokens).mockImplementation(() => {
+        order.push('revoke');
+        return of(undefined);
+      });
+      vi.mocked(push.unregister).mockReturnValue(of(undefined));
+      vi.mocked(matrix.reset).mockImplementation(() => {
+        order.push('reset');
+        return of(undefined);
+      });
+      vi.mocked(storage.clear).mockImplementation(() => {
+        order.push('clear');
+        return of(undefined);
+      });
+
+      await firstValueFrom(auth.logout());
+
+      // The provider revocation runs (with both tokens) AND the CSAPI device logout.
+      expect(oidc.revokeTokens).toHaveBeenCalledWith(
+        'https://hs',
+        expect.objectContaining({ issuer: 'https://op', clientId: 'c1' }),
+        { accessToken: 'atok', refreshToken: 'rtok' },
+      );
+      expect(client.logout).toHaveBeenCalledWith(true);
+      // Revoke strictly precedes the local teardown that would otherwise drop the tokens.
+      expect(order).toEqual(['revoke', 'reset', 'clear']);
+    });
+
+    it('revokes then removes a non-last OIDC account (multi-account path)', async () => {
+      const matrix = TestBed.inject(MatrixClientService);
+      const storage = TestBed.inject(SessionStorageService);
+      const push = TestBed.inject(PushService);
+      const oidc = TestBed.inject(OidcClientService);
+      const client = { logout: vi.fn().mockResolvedValue(undefined) };
+      vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+      accountIds.set(['@me:hs', '@you:hs']);
+      activeUserId.set('@me:hs');
+      vi.mocked(storage.load).mockReturnValue(
+        of({
+          baseUrl: 'https://hs',
+          userId: '@you:hs',
+          deviceId: 'DEV',
+          accessToken: 'atok',
+          refreshToken: 'rtok',
+          oidc: {
+            issuer: 'https://op',
+            clientId: 'c1',
+            redirectUri: 'https://app/cb',
+            idTokenClaims: {
+              iss: 'https://op',
+              sub: 'u',
+              aud: 'c1',
+              exp: 1,
+              iat: 0,
+            },
+          },
+        }) as never,
+      );
+      const order: string[] = [];
+      vi.mocked(oidc.revokeTokens).mockImplementation(() => {
+        order.push('revoke');
+        return of(undefined);
+      });
+      vi.mocked(push.unregister).mockReturnValue(of(undefined));
+      vi.mocked(matrix.remove).mockImplementation(() => {
+        order.push('remove');
+        return of(undefined);
+      });
+      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+
+      await firstValueFrom(auth.logout('@you:hs'));
+
+      expect(oidc.revokeTokens).toHaveBeenCalled();
+      expect(order).toEqual(['revoke', 'remove']); // revoked before the account is torn down
       expect(matrix.reset).not.toHaveBeenCalled();
     });
 

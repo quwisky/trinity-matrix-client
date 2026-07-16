@@ -93,7 +93,47 @@ describe('AppComponent', () => {
       });
     });
 
-    it('ignores a deep link without a login token', async () => {
+    it('routes an OIDC callback deep link with code + state', async () => {
+      const { cmp, navigate } = await create();
+
+      cmp.handleDeepLink(
+        'eu.qwky.trinity://sso-callback?code=CODE&state=STATE1',
+      );
+
+      // Only the OIDC params are forwarded (no loginToken/sso_state), so the callback
+      // page takes its OIDC branch.
+      expect(navigate).toHaveBeenCalledWith(['/sso-callback'], {
+        queryParams: { code: 'CODE', state: 'STATE1' },
+      });
+    });
+
+    // RFC 8252 §7.1 shape: no authority, so the callback lands in the path, not the
+    // host. This is what the OIDC provider actually redirects back to.
+    it('routes an OIDC callback deep link with no authority (single slash)', async () => {
+      const { cmp, navigate } = await create();
+
+      cmp.handleDeepLink(
+        'eu.qwky.trinity:/sso-callback?code=CODE&state=STATE1',
+      );
+
+      expect(navigate).toHaveBeenCalledWith(['/sso-callback'], {
+        queryParams: { code: 'CODE', state: 'STATE1' },
+      });
+    });
+
+    it('forwards an OIDC error param so the callback can surface it', async () => {
+      const { cmp, navigate } = await create();
+
+      cmp.handleDeepLink(
+        'eu.qwky.trinity://sso-callback?error=access_denied&error_description=nope',
+      );
+
+      expect(navigate).toHaveBeenCalledWith(['/sso-callback'], {
+        queryParams: { error: 'access_denied', error_description: 'nope' },
+      });
+    });
+
+    it('ignores a deep link without a login token, code or error', async () => {
       const { cmp, navigate } = await create();
       cmp.handleDeepLink('eu.qwky.trinity://sso-callback');
       expect(navigate).not.toHaveBeenCalled();
