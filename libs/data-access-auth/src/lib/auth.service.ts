@@ -261,34 +261,44 @@ export class AuthService {
       ),
       catchError(() => of(void 0)),
     );
-    const isLast = this.matrix.accountIds().every((id) => id === target);
-
-    if (isLast) {
-      // Delete the pusher first (token still valid), revoke at the provider + log out
-      // server-side, then reset() (not stop()) so the account's keys/cache don't linger
-      // on a shared device, drop the shared blob caches, and clear storage.
-      return this.push.unregister().pipe(
-        switchMap(() => revoke),
-        switchMap(() => serverLogout),
-        switchMap(() => this.matrix.reset()),
-        tap(() => {
-          this.avatars.releaseAll();
-          this.media.releaseAll();
-        }),
-        switchMap(() => this.storage.clear()),
-      );
-    }
-    // Sign out just this account; the others keep syncing. Delete its pusher first
-    // (token still valid), revoke at the provider + log out server-side, then
-    // matrix.remove stops + wipes it and repoints the active account to a survivor.
-    return this.push.unregister(target).pipe(
-      switchMap(() => revoke),
-      switchMap(() => serverLogout),
-      switchMap(() => this.matrix.remove(target)),
-      switchMap(() => this.storage.remove(target)),
-      switchMap(() => {
-        const active = this.matrix.activeUserId();
-        return active ? this.storage.setActive(active) : of(void 0);
+    // Whether this is the last account must be judged against the PERSISTED registry,
+    // not the live client map (`accountIds()`). The two diverge: an account that is
+    // soft-logged-out, or whose background warm-up failed, drops out of the map but
+    // deliberately KEEPS its registry record so re-auth can reuse its crypto store.
+    // Judging by the map would take the full-clear branch and wipe that record — and,
+    // once the startup sweep sees an unowned store, that account's E2EE keys with it.
+    // The registry is what clear() erases, so the registry decides.
+    return this.storage.list().pipe(
+      switchMap((accounts) => {
+        const isLast = accounts.every((account) => account.userId === target);
+        if (isLast) {
+          // Delete the pusher first (token still valid), revoke at the provider + log out
+          // server-side, then reset() (not stop()) so the account's keys/cache don't linger
+          // on a shared device, drop the shared blob caches, and clear storage.
+          return this.push.unregister().pipe(
+            switchMap(() => revoke),
+            switchMap(() => serverLogout),
+            switchMap(() => this.matrix.reset()),
+            tap(() => {
+              this.avatars.releaseAll();
+              this.media.releaseAll();
+            }),
+            switchMap(() => this.storage.clear()),
+          );
+        }
+        // Sign out just this account; the others keep syncing. Delete its pusher first
+        // (token still valid), revoke at the provider + log out server-side, then
+        // matrix.remove stops + wipes it and repoints the active account to a survivor.
+        return this.push.unregister(target).pipe(
+          switchMap(() => revoke),
+          switchMap(() => serverLogout),
+          switchMap(() => this.matrix.remove(target)),
+          switchMap(() => this.storage.remove(target)),
+          switchMap(() => {
+            const active = this.matrix.activeUserId();
+            return active ? this.storage.setActive(active) : of(void 0);
+          }),
+        );
       }),
     );
   }
