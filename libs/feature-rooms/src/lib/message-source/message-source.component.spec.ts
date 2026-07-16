@@ -26,11 +26,12 @@ describe('MessageSourceComponent', () => {
   });
 
   it('copies the source and toasts', async () => {
-    const writeText = vi.fn();
+    const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     const { cmp, toastShow } = await build('{"a":1}');
 
     cmp.copy();
+    await Promise.resolve();
 
     expect(writeText).toHaveBeenCalledWith('{"a":1}');
     expect(toastShow).toHaveBeenCalled();

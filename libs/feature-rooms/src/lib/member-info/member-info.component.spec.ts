@@ -180,15 +180,41 @@ describe('MemberInfoComponent', () => {
     expect(close).toHaveBeenCalledWith('@bob:hs');
   });
 
-  it('copies the user id and toasts', async () => {
-    const writeText = vi.fn();
+  it('copies the user id and toasts once the write resolves', async () => {
+    // The real writeText returns a Promise; the toast must follow it, not fire blind.
+    const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     const { cmp, toastShow } = await build();
 
     cmp.copyId();
+    await Promise.resolve();
 
     expect(writeText).toHaveBeenCalledWith('@bob:hs');
-    expect(toastShow).toHaveBeenCalled();
+    expect(toastShow).toHaveBeenCalledWith(
+      'User ID copied.',
+      expect.anything(),
+    );
+  });
+
+  it('does not claim success when the clipboard write is rejected', async () => {
+    // Denied permission / non-secure context. Telling the user "copied" here leaves
+    // them believing they have the id when the clipboard is untouched.
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const { cmp, toastShow } = await build();
+
+    cmp.copyId();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(toastShow).not.toHaveBeenCalledWith(
+      'User ID copied.',
+      expect.anything(),
+    );
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not copy the user ID.',
+      expect.anything(),
+    );
   });
 
   it('closes resolving null when dismissed', async () => {
