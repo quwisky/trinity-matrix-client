@@ -39,13 +39,12 @@ export interface PinnedMessageView {
  * {@link MatrixClient.sendStateEvent}. Permission is gated on
  * `maySendStateEvent(EventType.RoomPinnedEvents, …)`.
  *
- * Live updates: a single {@link RoomStateEvent.Events} listener on the room's
- * `currentState` fires for every state event, so filtering to
- * `m.room.pinned_events` (remote pins) and `m.room.power_levels` (permission
- * changes) keeps both {@link pinnedEventIds} and {@link canPin} reactive. That event
- * type-checks on `RoomState` (it is in the `RoomStateEventHandlerMap`), unlike some
- * Room-level events (e.g. `RoomEvent.UnreadNotifications`) that are not in the
- * client's `EmittedEvents`. All signal writes are re-entered via `zone.run` because
+ * Live updates: a single {@link RoomStateEvent.Events} listener on the *room* fires
+ * for every state event, so filtering to `m.room.pinned_events` (remote pins) and
+ * `m.room.power_levels` (permission changes) keeps both {@link pinnedEventIds} and
+ * {@link canPin} reactive. The room re-emits the RoomState events, which is what makes
+ * it safe to bind here rather than to `room.currentState` — that reference is replaced
+ * on a live-timeline reset. All signal writes are re-entered via `zone.run` because
  * these events fire outside Angular's zone.
  *
  * Preview resolution is best-effort and synchronous: each pinned id is resolved
@@ -143,8 +142,11 @@ export class PinnedMessagesService {
     this.roomId = roomId;
     this.room = room;
     // A single state listener covers both remote pin changes and power-level
-    // (permission) changes; it type-checks on RoomState (RoomStateEventHandlerMap).
-    room.currentState.on(RoomStateEvent.Events, this.onStateEvent);
+    // (permission) changes. Bind it to the ROOM, not to `room.currentState`: that is a
+    // cached reference the SDK swaps out whenever the live timeline is reset, re-pointing
+    // its re-emission at the replacement — so a listener held on the old object would go
+    // deaf and outlive close(). The room re-emits RoomStateEvent.* for exactly this reason.
+    room.on(RoomStateEvent.Events, this.onStateEvent);
     room.on(RoomEvent.Timeline, this.onTimeline);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     this.readRoomState();
@@ -152,7 +154,7 @@ export class PinnedMessagesService {
 
   /** Detach listeners and clear the pinned state. */
   close(): void {
-    this.room?.currentState.off(RoomStateEvent.Events, this.onStateEvent);
+    this.room?.off(RoomStateEvent.Events, this.onStateEvent);
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
     if (this.matrix.isInitialized) {
       this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);

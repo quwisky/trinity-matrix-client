@@ -13,6 +13,14 @@ All notable changes to this project are documented here. The format is based on
   icon everywhere. On macOS it stays a monochrome template image that follows the light/dark
   menu bar.
 
+### Fixed
+
+- **Pinned messages keep updating after the app catches up on a room.** Pins added or
+  removed by someone else — and gaining or losing permission to pin — could silently stop
+  appearing in a room you had open, leaving the pinned panel frozen until you switched
+  rooms and back. This happened once the app resynced a room's history, such as after a
+  spell offline.
+
 ## [0.1.0] - 2026-07-13
 
 ### Added
