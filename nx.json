@@ -23,7 +23,8 @@
     },
     "lint": {
       "cache": true,
-      "inputs": ["default", "{workspaceRoot}/eslint.config.mjs"]
+      "//": "`^production` is load-bearing: @typescript-eslint/no-deprecated is type-aware, so a project's lint result depends on its DEPENDENCIES' source (the @deprecated tag lives there). Without dependency inputs, deprecating an export in util-matrix leaves every consumer reporting a cached pass — the ban silently stops working across exactly the lib boundaries it exists to police.",
+      "inputs": ["default", "^production", "{workspaceRoot}/eslint.config.mjs"]
     },
     "@nx/angular:ng-packagr-lite": {
       "cache": true,
