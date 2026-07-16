@@ -91,7 +91,8 @@ export class AuthService {
   ): Observable<void> {
     return defer(() =>
       from(
-        createClient({ baseUrl }).login('m.login.password', {
+        createClient({ baseUrl }).loginRequest({
+          type: 'm.login.password',
           identifier: { type: 'm.id.user', user: this.localpart(user) },
           password,
           initial_device_display_name: DEVICE_DISPLAY_NAME,
@@ -118,7 +119,8 @@ export class AuthService {
   ): Observable<void> {
     return defer(() =>
       from(
-        createClient({ baseUrl }).login('m.login.token', {
+        createClient({ baseUrl }).loginRequest({
+          type: 'm.login.token',
           token: loginToken,
           initial_device_display_name: DEVICE_DISPLAY_NAME,
           ...(deviceId ? { device_id: deviceId } : {}),
