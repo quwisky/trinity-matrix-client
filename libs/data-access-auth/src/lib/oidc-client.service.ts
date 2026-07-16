@@ -3,7 +3,6 @@ import { Preferences } from '@capacitor/preferences';
 import {
   completeAuthorizationCodeGrant,
   createClient,
-  discoverAndValidateOIDCIssuerWellKnown,
   generateOidcAuthorizationUrl,
   registerOidcClient,
   type OidcClientConfig,
@@ -152,12 +151,17 @@ export class OidcClientService {
    * sign-out invalidates the OAuth session at the source — not just locally. Best-effort:
    * discovery or a revocation POST failing must never block logout, so errors resolve to
    * void. Complements the CSAPI logout the caller also performs.
+   *
+   * `homeserverUrl` is the account's own `baseUrl`: discovery goes through the
+   * homeserver's auth metadata, which is the provider config the session was actually
+   * established against.
    */
   revokeTokens(
+    homeserverUrl: string,
     binding: OidcSessionBinding,
     tokens: { accessToken?: string; refreshToken?: string },
   ): Observable<void> {
-    return defer(() => from(this.revoke(binding, tokens))).pipe(
+    return defer(() => from(this.revoke(homeserverUrl, binding, tokens))).pipe(
       catchError(() => of(undefined)),
     );
   }
@@ -174,10 +178,13 @@ export class OidcClientService {
   }
 
   private async revoke(
+    homeserverUrl: string,
     binding: OidcSessionBinding,
     tokens: { accessToken?: string; refreshToken?: string },
   ): Promise<void> {
-    const config = await discoverAndValidateOIDCIssuerWellKnown(binding.issuer);
+    const config = await createClient({
+      baseUrl: homeserverUrl,
+    }).getAuthMetadata();
     const endpoint = config.revocation_endpoint;
     if (!endpoint) {
       return;

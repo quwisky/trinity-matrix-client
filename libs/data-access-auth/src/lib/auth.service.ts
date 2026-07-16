@@ -253,7 +253,7 @@ export class AuthService {
     const revoke = this.storage.load(target).pipe(
       switchMap((session) =>
         session?.oidc
-          ? this.oidc.revokeTokens(session.oidc, {
+          ? this.oidc.revokeTokens(session.baseUrl, session.oidc, {
               accessToken: session.accessToken,
               refreshToken: session.refreshToken,
             })

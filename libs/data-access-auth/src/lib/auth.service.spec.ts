@@ -539,6 +539,7 @@ describe('AuthService', () => {
 
       // The provider revocation runs (with both tokens) AND the CSAPI device logout.
       expect(oidc.revokeTokens).toHaveBeenCalledWith(
+        'https://hs',
         expect.objectContaining({ issuer: 'https://op', clientId: 'c1' }),
         { accessToken: 'atok', refreshToken: 'rtok' },
       );

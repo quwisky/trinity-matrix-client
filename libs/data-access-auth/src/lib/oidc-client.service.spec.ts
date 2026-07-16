@@ -27,14 +27,12 @@ vi.mock('matrix-js-sdk', async (importActual) => {
     registerOidcClient: vi.fn(),
     generateOidcAuthorizationUrl: vi.fn(),
     completeAuthorizationCodeGrant: vi.fn(),
-    discoverAndValidateOIDCIssuerWellKnown: vi.fn(),
   };
 });
 
 import {
   completeAuthorizationCodeGrant,
   createClient,
-  discoverAndValidateOIDCIssuerWellKnown,
   generateOidcAuthorizationUrl,
   registerOidcClient,
   type OidcClientConfig,
@@ -45,9 +43,22 @@ const registerOidcClientMock = vi.mocked(registerOidcClient);
 const generateUrlMock = vi.mocked(generateOidcAuthorizationUrl);
 const completeGrantMock = vi.mocked(completeAuthorizationCodeGrant);
 const createClientMock = vi.mocked(createClient);
-const discoverMock = vi.mocked(discoverAndValidateOIDCIssuerWellKnown);
+
+/**
+ * Stub the homeserver auth-metadata lookup `revoke()` discovers through. `metadata` is
+ * the resolved provider config; pass an Error to make discovery reject.
+ */
+const stubAuthMetadata = (metadata: unknown) =>
+  createClientMock.mockReturnValue({
+    getAuthMetadata:
+      metadata instanceof Error
+        ? vi.fn().mockRejectedValue(metadata)
+        : vi.fn().mockResolvedValue(metadata),
+  } as never);
 
 const CONFIG = { issuer: 'https://op.example' } as unknown as OidcClientConfig;
+/** The account's own homeserver — revocation discovery goes through its auth metadata. */
+const HOMESERVER = 'https://hs.example';
 const BINDING = {
   issuer: 'https://op.example',
   clientId: 'client-123',
@@ -266,16 +277,19 @@ describe('OidcClientService', () => {
 
   describe('revokeTokens', () => {
     it('POSTs a revocation for each token to the discovered endpoint', async () => {
-      discoverMock.mockResolvedValue({
-        revocation_endpoint: 'https://op.example/revoke',
-      } as never);
+      stubAuthMetadata({ revocation_endpoint: 'https://op.example/revoke' });
       const fetchMock = vi.fn().mockResolvedValue({ ok: true });
       vi.stubGlobal('fetch', fetchMock);
       try {
         await firstValueFrom(
-          svc.revokeTokens(BINDING, { accessToken: 'a', refreshToken: 'r' }),
+          svc.revokeTokens(HOMESERVER, BINDING, {
+            accessToken: 'a',
+            refreshToken: 'r',
+          }),
         );
 
+        // Discovery goes through the account's OWN homeserver auth metadata.
+        expect(createClientMock).toHaveBeenCalledWith({ baseUrl: HOMESERVER });
         expect(fetchMock).toHaveBeenCalledTimes(2);
         const bodies = fetchMock.mock.calls.map((c) => String(c[1].body));
         expect(fetchMock.mock.calls[0][0]).toBe('https://op.example/revoke');
@@ -298,20 +312,24 @@ describe('OidcClientService', () => {
     });
 
     it('resolves void when discovery fails (never blocks logout)', async () => {
-      discoverMock.mockRejectedValue(new Error('metadata unavailable'));
+      stubAuthMetadata(new Error('metadata unavailable'));
 
       await expect(
-        firstValueFrom(svc.revokeTokens(BINDING, { refreshToken: 'r' })),
+        firstValueFrom(
+          svc.revokeTokens(HOMESERVER, BINDING, { refreshToken: 'r' }),
+        ),
       ).resolves.toBeUndefined();
     });
 
     it('does not POST when the provider metadata has no revocation_endpoint', async () => {
-      discoverMock.mockResolvedValue({} as never); // no revocation_endpoint
+      stubAuthMetadata({}); // no revocation_endpoint
       const fetchMock = vi.fn();
       vi.stubGlobal('fetch', fetchMock);
       try {
         await expect(
-          firstValueFrom(svc.revokeTokens(BINDING, { refreshToken: 'r' })),
+          firstValueFrom(
+            svc.revokeTokens(HOMESERVER, BINDING, { refreshToken: 'r' }),
+          ),
         ).resolves.toBeUndefined();
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
@@ -320,14 +338,14 @@ describe('OidcClientService', () => {
     });
 
     it('revokes only the token provided (single-token) with its type hint', async () => {
-      discoverMock.mockResolvedValue({
-        revocation_endpoint: 'https://op.example/revoke',
-      } as never);
+      stubAuthMetadata({ revocation_endpoint: 'https://op.example/revoke' });
       const fetchMock = vi.fn().mockResolvedValue({ ok: true });
       vi.stubGlobal('fetch', fetchMock);
       try {
         await firstValueFrom(
-          svc.revokeTokens(BINDING, { refreshToken: 'only-refresh' }),
+          svc.revokeTokens(HOMESERVER, BINDING, {
+            refreshToken: 'only-refresh',
+          }),
         );
         expect(fetchMock).toHaveBeenCalledTimes(1);
         const body = String(fetchMock.mock.calls[0][1].body);
@@ -339,14 +357,15 @@ describe('OidcClientService', () => {
     });
 
     it('resolves void when a revocation POST rejects (best-effort)', async () => {
-      discoverMock.mockResolvedValue({
-        revocation_endpoint: 'https://op.example/revoke',
-      } as never);
+      stubAuthMetadata({ revocation_endpoint: 'https://op.example/revoke' });
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')));
       try {
         await expect(
           firstValueFrom(
-            svc.revokeTokens(BINDING, { accessToken: 'a', refreshToken: 'r' }),
+            svc.revokeTokens(HOMESERVER, BINDING, {
+              accessToken: 'a',
+              refreshToken: 'r',
+            }),
           ),
         ).resolves.toBeUndefined();
       } finally {
