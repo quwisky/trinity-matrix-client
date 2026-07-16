@@ -106,6 +106,34 @@ describe('SimpleMessageListComponent', () => {
     expect(cmp.rowCaps(row).deletable).toBe(true);
   });
 
+  it('keeps each row’s caps object identical when nothing about them changed', async () => {
+    // `caps` is an input<MessageRowCaps> on the OnPush MessageRowComponent, so it is
+    // compared by Object.is. TimelineService mints a NEW messages array on every
+    // timeline event, so minting fresh caps objects per rebuild would re-render EVERY
+    // rendered row (each pulling ~12 child components) on every incoming message —
+    // defeating the rowCache right next to this, which exists to preserve row identity.
+    const first = msg('$1', '@a:hs', 'Alice', 1000);
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [first], canRedactOthers: false },
+    });
+    const cmp = fixture.componentInstance;
+    const row = { ...first, showHeader: true };
+    const before = cmp.rowCaps(row);
+
+    // A new message arrives: a new array (new identity), same caps for the old row.
+    fixture.componentRef.setInput('messages', [
+      first,
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+
+    expect(cmp.rowCaps(row)).toBe(before); // same object, not merely equal
+
+    // But a real capability change must still produce a new object.
+    fixture.componentRef.setInput('canRedactOthers', true);
+    expect(cmp.rowCaps(row)).not.toBe(before);
+    expect(cmp.rowCaps(row).deletable).toBe(true);
+  });
+
   it('resets the edit/reply target and suppresses announcements on room change', async () => {
     const { fixture } = await render(SimpleMessageListComponent, {
       inputs: {
