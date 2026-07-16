@@ -29,6 +29,10 @@ function emitter() {
     emit(ev: string, ...args: unknown[]) {
       (handlers[ev] ?? []).slice().forEach((h) => h(...args));
     },
+    /** How many handlers are attached — lets a test prove nothing was left behind. */
+    listenerCount(ev: string) {
+      return (handlers[ev] ?? []).length;
+    },
   };
 }
 
@@ -77,22 +81,45 @@ function setup(
   let canPin = opts.canPin ?? true;
   const events = opts.events ?? [];
   const maySendStateEvent = vi.fn(() => canPin);
-  const currentState = {
-    getStateEvents: (type: string, stateKey?: string) =>
-      type === EventType.RoomPinnedEvents && stateKey === ''
-        ? pinnedContent
-          ? { getContent: () => pinnedContent }
-          : null
-        : null,
-    maySendStateEvent,
-    ...emitter(),
-  };
+  const roomEmitter = emitter();
+
+  /**
+   * A RoomState, modelled after the SDK: emitting on the *current* state also fires the
+   * Room's handlers (matrix-js-sdk re-emits RoomStateEvent.* off the Room via reEmitter).
+   * A state that has been replaced stops re-emitting, mirroring `stopReEmitting`.
+   */
+  function makeState() {
+    const own = emitter();
+    return {
+      getStateEvents: (type: string, stateKey?: string) =>
+        type === EventType.RoomPinnedEvents && stateKey === ''
+          ? pinnedContent
+            ? { getContent: () => pinnedContent }
+            : null
+          : null,
+      maySendStateEvent,
+      ...own,
+      emit(ev: string, ...args: unknown[]) {
+        own.emit(ev, ...args);
+        if (live === this) {
+          roomEmitter.emit(ev, ...args);
+        }
+      },
+    };
+  }
+  let live = makeState();
+  const currentState = live;
+
   const room = {
     roomId,
-    currentState,
+    // `Room.currentState` is a cached property the SDK reassigns from the live timeline
+    // whenever that timeline is reset, so it has to be readable through the variable.
+    get currentState() {
+      return live;
+    },
     findEventById: (id: string) => events.find((e) => e.getId() === id),
     getMember: (id: string) => ({ name: MEMBERS[id] ?? id }),
-    ...emitter(),
+    ...roomEmitter,
   };
   const sendStateEvent = vi.fn(
     (_rid: string, _type: string, content: { pinned: string[] }) => {
@@ -120,7 +147,17 @@ function setup(
     svc,
     room,
     client,
+    /** The state object present at setup — stale once {@link replaceLiveState} runs. */
     currentState,
+    /** The room state the service would read right now (changes after a replacement). */
+    liveState: () => live,
+    /**
+     * Replace the room's live RoomState, as the SDK does whenever the live timeline is
+     * reset (fixUpLegacyTimelineFields swaps the object and rewires re-emission).
+     */
+    replaceLiveState: () => {
+      live = makeState();
+    },
     sendStateEvent,
     maySendStateEvent,
     setPinned: (p: string[] | null) => {
@@ -275,6 +312,32 @@ describe('PinnedMessagesService', () => {
 
     // No re-read for an irrelevant state type.
     expect(svc.pinnedEventIds()).toEqual(['$a']);
+  });
+
+  // The SDK replaces a room's RoomState object whenever the live timeline is reset
+  // (e.g. a limited sync), re-pointing its re-emission at the new one. A listener bound
+  // to the old object would both stop hearing updates and survive close().
+  it('keeps tracking pins after the live room state is replaced', () => {
+    const { svc, liveState, replaceLiveState, setPinned } = setup({
+      pinned: ['$a'],
+    });
+    svc.open('!r:hs');
+
+    replaceLiveState();
+    setPinned(['$a', '$b']);
+    liveState().emit(RoomStateEvent.Events, stateEvent('m.room.pinned_events'));
+
+    expect(svc.pinnedEventIds()).toEqual(['$a', '$b']);
+  });
+
+  it('leaves no state listener behind on close after the state was replaced', () => {
+    const { svc, currentState, replaceLiveState } = setup({ pinned: ['$a'] });
+    svc.open('!r:hs');
+
+    replaceLiveState(); // the object open() saw is now stale
+    svc.close();
+
+    expect(currentState.listenerCount(RoomStateEvent.Events)).toBe(0);
   });
 
   it('resolves a pinned message that loads later via RoomEvent.Timeline', () => {
