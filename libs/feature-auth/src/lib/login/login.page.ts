@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -9,16 +10,31 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
-import { Observable, map, switchMap, throwError } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  forkJoin,
+  map,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmCardImports } from '@trinity/helm/card';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { AuthService, type LoginMode } from '@trinity/data-access-auth';
+import {
+  AuthService,
+  type LoginMode,
+  type OidcApplicationType,
+  type OidcAuthorizationRequest,
+  type OidcClientConfig,
+} from '@trinity/data-access-auth';
 import { SessionStorageService } from '@trinity/platform-native';
 import { runWithBusy } from '@trinity/ui';
 import { SsoStateStore } from '../sso-state.store';
+import { OidcStateStore } from '../oidc-state.store';
 
 @Component({
   selector: 'trn-login',
@@ -39,6 +55,7 @@ export class LoginPage {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly ssoState = inject(SsoStateStore);
+  private readonly oidcState = inject(OidcStateStore);
   private readonly storage = inject(SessionStorageService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -67,13 +84,10 @@ export class LoginPage {
             }
             this.reauthDeviceId = record.deviceId;
             this.baseUrl.set(record.baseUrl);
-            return this.auth.getSupportedFlows(record.baseUrl);
+            return this.discoverCapabilities(record.baseUrl);
           }),
         ),
-      ).subscribe((flows) => {
-        this.passwordSupported.set(flows.includes('m.login.password'));
-        this.ssoSupported.set(flows.includes('m.login.sso'));
-      });
+      ).subscribe(({ flows, oidc }) => this.applyFlows(flows, oidc));
     }
   }
 
@@ -91,27 +105,62 @@ export class LoginPage {
   readonly baseUrl = signal<string | null>(null);
   readonly ssoSupported = signal(false);
   readonly passwordSupported = signal(false);
+  /** The delegated OIDC provider config, when the homeserver uses next-gen auth. */
+  readonly oidcMetadata = signal<OidcClientConfig | null>(null);
+  readonly oidcSupported = computed(() => this.oidcMetadata() !== null);
+  /** Whether the OIDC provider supports account creation (MSC2965 `prompt=create`). */
+  readonly oidcRegistrationSupported = computed(
+    () =>
+      this.oidcMetadata()?.prompt_values_supported?.includes('create') ?? false,
+  );
 
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
 
-  /** Step 1: resolve the homeserver and discover its login flows. */
+  /** Step 1: resolve the homeserver and discover its login flows (+ OIDC, in parallel). */
   discover(): void {
     this.withBusy(
       this.auth
         .discoverHomeserver(this.homeserverInput())
         .pipe(
           switchMap((baseUrl) =>
-            this.auth
-              .getSupportedFlows(baseUrl)
-              .pipe(map((flows) => ({ baseUrl, flows }))),
+            this.discoverCapabilities(baseUrl).pipe(
+              map((res) => ({ baseUrl, ...res })),
+            ),
           ),
         ),
-    ).subscribe(({ baseUrl, flows }) => {
+    ).subscribe(({ baseUrl, flows, oidc }) => {
       this.baseUrl.set(baseUrl);
-      this.passwordSupported.set(flows.includes('m.login.password'));
-      this.ssoSupported.set(flows.includes('m.login.sso'));
+      this.applyFlows(flows, oidc);
     });
+  }
+
+  /**
+   * Discover the login flows and delegated OIDC config in parallel. A failing
+   * `loginFlows()` must NOT hide an available OIDC provider (an OIDC-native homeserver
+   * may not serve the legacy `/login` flows at all), so its error degrades to "no
+   * flows" rather than aborting the whole discovery.
+   */
+  private discoverCapabilities(
+    baseUrl: string,
+  ): Observable<{ flows: string[]; oidc: OidcClientConfig | null }> {
+    return forkJoin({
+      flows: this.auth
+        .getSupportedFlows(baseUrl)
+        .pipe(catchError(() => of<string[]>([]))),
+      oidc: this.auth.getDelegatedAuthConfig(baseUrl),
+    });
+  }
+
+  /**
+   * Apply the discovered capabilities. An OIDC-native homeserver owns credentials at the
+   * provider, so prefer its "Continue" button and suppress the legacy password/SSO ones
+   * (a homeserver mid-migration may still advertise m.login.sso for compatibility).
+   */
+  private applyFlows(flows: string[], oidc: OidcClientConfig | null): void {
+    this.oidcMetadata.set(oidc);
+    this.passwordSupported.set(!oidc && flows.includes('m.login.password'));
+    this.ssoSupported.set(!oidc && flows.includes('m.login.sso'));
   }
 
   /** Step 2a: password login. */
@@ -153,10 +202,7 @@ export class LoginPage {
       this.reauthDeviceId ?? undefined,
     );
 
-    const native = Capacitor.isNativePlatform();
-    const electron =
-      (globalThis as { trinityDesktop?: { isElectron?: boolean } })
-        .trinityDesktop?.isElectron === true;
+    const { native, electron } = this.platform();
     // Native and the Electron desktop shell deep-link back via the OS-registered
     // `eu.qwky.trinity://` scheme. The bare web origin is wrong on Electron — there
     // it's `trinity://app` (an internal, non-OS scheme that can't be launched).
@@ -166,22 +212,115 @@ export class LoginPage {
         : `${window.location.origin}/sso-callback`;
     const redirect = `${base}?sso_state=${encodeURIComponent(state)}`;
     const ssoUrl = this.auth.getSsoUrl(baseUrl, redirect);
+    this.dispatchRedirect(ssoUrl, native, electron);
+  }
 
+  /**
+   * Step 2c: OIDC ("next-gen auth") — hand off to the provider's authorization page.
+   * Builds the PKCE authorization request (registering this client with the provider
+   * if needed), durably stashes the sign-in state, then redirects. Pass `prompt`
+   * (`'create'`) to send the user to the provider's registration flow instead of login.
+   */
+  startOidc(prompt?: string): void {
+    const baseUrl = this.baseUrl();
+    const config = this.oidcMetadata();
+    if (!baseUrl || !config?.issuer) {
+      return;
+    }
+    const { native, electron } = this.platform();
+    // The redirect_uri must byte-match a value registered with the provider — a clean
+    // callback with no extra query params (the CSRF `state` rides OAuth's own param).
+    // Private-use scheme redirects take the RFC 8252 §7.1 form: no authority, so a
+    // SINGLE slash after the scheme. `//sso-callback` parses the callback as the
+    // authority with an empty path, which providers that enforce the rule reject at
+    // dynamic registration ("must not have an authority") before login can start.
+    const redirectUri =
+      native || electron
+        ? 'eu.qwky.trinity:/sso-callback'
+        : `${window.location.origin}/sso-callback`;
+    const applicationType: OidcApplicationType =
+      native || electron ? 'native' : 'web';
+
+    this.withBusy(
+      this.auth.buildOidcAuthorizationRequest({
+        baseUrl,
+        config,
+        redirectUri,
+        applicationType,
+        nonce: this.generateState(),
+        ...(prompt ? { prompt } : {}),
+      }),
+    ).subscribe((request) => {
+      void this.stashAndRedirect(
+        request,
+        baseUrl,
+        config.issuer,
+        redirectUri,
+        native,
+        electron,
+      );
+    });
+  }
+
+  /**
+   * Persist the PKCE sign-in state (awaited, so it survives a native cold-start before
+   * the provider can redirect back), then redirect to the authorization URL.
+   */
+  private async stashAndRedirect(
+    request: OidcAuthorizationRequest,
+    baseUrl: string,
+    issuer: string,
+    redirectUri: string,
+    native: boolean,
+    electron: boolean,
+  ): Promise<void> {
+    await this.oidcState.save({
+      state: request.state,
+      baseUrl,
+      mode: this.loginMode(),
+      redirectUri,
+      issuer,
+      sessionStateKey: request.sessionStateKey,
+      // The blob holds the PKCE code_verifier (a secret). Only native/Electron need it
+      // durably persisted (their callback WebView / cold-start has empty sessionStorage);
+      // on web the SDK's own sessionStorage copy survives the same-tab redirect, so don't
+      // copy the secret into localStorage there.
+      sessionStateBlob: native || electron ? request.sessionStateBlob : null,
+    });
+    this.dispatchRedirect(request.url, native, electron);
+  }
+
+  /** Whether this build runs as a native app and/or the Electron desktop shell. */
+  private platform(): { native: boolean; electron: boolean } {
+    return {
+      native: Capacitor.isNativePlatform(),
+      electron:
+        (globalThis as { trinityDesktop?: { isElectron?: boolean } })
+          .trinityDesktop?.isElectron === true,
+    };
+  }
+
+  /** Redirect the user to an external auth URL, per platform. */
+  private dispatchRedirect(
+    url: string,
+    native: boolean,
+    electron: boolean,
+  ): void {
     if (native) {
-      // Open the system browser so the app's webview — and the appUrlOpen
-      // listener in AppComponent — stay alive; the homeserver redirects back via
-      // the eu.qwky.trinity:// scheme, which the OS hands to the running app.
-      void Browser.open({ url: ssoUrl });
+      // Open the system browser so the app's webview — and the appUrlOpen listener in
+      // AppComponent — stay alive; the provider redirects back via the OS-registered
+      // eu.qwky.trinity:// scheme, which the OS hands to the running app.
+      void Browser.open({ url });
     } else if (electron) {
       // Electron's main process opens https externally (setWindowOpenHandler) and
       // routes the eu.qwky.trinity:// callback back to the renderer (onDeepLink).
-      window.open(ssoUrl, '_blank');
+      window.open(url, '_blank');
     } else {
-      window.location.href = ssoUrl;
+      window.location.href = url;
     }
   }
 
-  /** A random, single-use SSO state token (hex). */
+  /** A random, single-use state/nonce token (hex). */
   private generateState(): string {
     const bytes = new Uint8Array(16);
     crypto.getRandomValues(bytes);

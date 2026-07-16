@@ -50,6 +50,24 @@ const SESSION_B = {
   deviceId: 'DEV2',
   accessToken: 'tok2',
 };
+// An OIDC ("next-gen auth") session: refresh token + expiry + provider binding.
+const OIDC_SESSION = {
+  ...SESSION,
+  refreshToken: 'refresh-tok',
+  accessTokenExpiresAt: 1234,
+  oidc: {
+    issuer: 'https://op',
+    clientId: 'client-1',
+    redirectUri: 'https://app/sso-callback',
+    idTokenClaims: {
+      iss: 'https://op',
+      sub: 'u',
+      aud: 'client-1',
+      exp: 1,
+      iat: 0,
+    },
+  },
+};
 
 function fakeClient() {
   return {
@@ -130,6 +148,30 @@ describe('MatrixClientService', () => {
     expect(client.initRustCrypto).toHaveBeenCalledWith({
       cryptoDatabasePrefix: 'trinity-crypto:@me:hs',
     });
+  });
+
+  it('wires refresh-token auto-renewal for an OIDC session', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+
+    await firstValueFrom(svc.init(OIDC_SESSION));
+
+    const opts = vi.mocked(createClient).mock.calls[0][0];
+    expect(opts.refreshToken).toBe('refresh-tok');
+    expect(typeof opts.tokenRefreshFunction).toBe('function');
+  });
+
+  it('passes no refresh wiring for a non-OIDC (password/SSO) session', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+
+    await firstValueFrom(svc.init(SESSION));
+
+    const opts = vi.mocked(createClient).mock.calls[0][0];
+    expect(opts.refreshToken).toBeUndefined();
+    expect(opts.tokenRefreshFunction).toBeUndefined();
   });
 
   it('does not publish the client until startClient resolves', async () => {

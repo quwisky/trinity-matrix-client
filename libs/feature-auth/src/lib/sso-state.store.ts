@@ -52,11 +52,12 @@ export class SsoStateStore {
   }
 
   /**
-   * Read and consume (single-use) the stash: always clears storage, and returns an
-   * empty stash when nothing was saved or it is older than the TTL — so a stale or
-   * already-used nonce can't be replayed.
+   * Read the stash WITHOUT clearing it, returning an empty stash when nothing was saved
+   * or it is older than the TTL. The callback verifies the returned state against this
+   * before {@link clear}ing, so a forged/mismatched deep-link callback can't wipe an
+   * in-flight login's stash.
    */
-  async consume(): Promise<SsoStateStash> {
+  async peek(): Promise<SsoStateStash> {
     const [state, baseUrl, startedAt, mode, deviceId] = await Promise.all([
       Preferences.get({ key: STATE_KEY }),
       Preferences.get({ key: BASE_URL_KEY }),
@@ -64,7 +65,6 @@ export class SsoStateStore {
       Preferences.get({ key: MODE_KEY }),
       Preferences.get({ key: DEVICE_ID_KEY }),
     ]);
-    await this.clear();
 
     const started = Number(startedAt.value);
     const fresh = Number.isFinite(started) && Date.now() - started <= TTL_MS;

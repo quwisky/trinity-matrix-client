@@ -31,6 +31,7 @@ import { SessionStorageService } from '@trinity/platform-native';
 import { MatrixSession } from '@trinity/util-matrix';
 import { preloadCryptoWasm } from '@trinity/util-matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
+import { TrinityOidcTokenRefresher } from './oidc-token-refresher';
 
 /** One signed-in account's live client + the per-account state bound to it. */
 interface AccountClient {
@@ -329,11 +330,32 @@ export class MatrixClientService {
       return from(this.wipes.get(session.userId) ?? Promise.resolve()).pipe(
         switchMap(() => {
           store = this.createSyncStore(session.userId);
+          // OIDC ("next-gen auth") sessions carry a refresh token: give the SDK the
+          // token plus a per-account refresher so it silently rotates the short-lived
+          // access token and persists the result (see TrinityOidcTokenRefresher).
+          const refresher =
+            session.refreshToken && session.oidc
+              ? new TrinityOidcTokenRefresher(
+                  this.storage,
+                  session.userId,
+                  session.oidc,
+                  session.deviceId,
+                )
+              : null;
           created = createClient({
             baseUrl: session.baseUrl,
             accessToken: session.accessToken,
             userId: session.userId,
             deviceId: session.deviceId,
+            ...(session.refreshToken
+              ? { refreshToken: session.refreshToken }
+              : {}),
+            ...(refresher
+              ? {
+                  tokenRefreshFunction: (token: string) =>
+                    refresher.doRefreshAccessToken(token),
+                }
+              : {}),
             ...(store ? { store } : {}),
             // Lets the crypto stack read/write 4S using the recovery key the user
             // unlocks during the setup/recovery flows (held only in memory).

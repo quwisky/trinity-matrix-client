@@ -8,6 +8,7 @@ import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { LoginPage } from './login.page';
 import { SsoStateStore } from '../sso-state.store';
+import { OidcStateStore } from '../oidc-state.store';
 
 async function renderLogin(
   auth: Partial<AuthService>,
@@ -16,6 +17,7 @@ async function renderLogin(
   cmp: LoginPage;
   router: Router;
   ssoStore: SsoStateStore;
+  oidcStore: OidcStateStore;
 }> {
   const queryParamMap = {
     has: (key: string) => key === 'add' && !!opts.add,
@@ -26,6 +28,9 @@ async function renderLogin(
       MockProvider(AuthService, auth),
       MockProvider(Router),
       MockProvider(SsoStateStore),
+      MockProvider(OidcStateStore, {
+        save: vi.fn().mockResolvedValue(undefined),
+      }),
       MockProvider(SessionStorageService, {
         record: vi.fn(() => of(opts.record ?? null) as never),
       }),
@@ -36,6 +41,7 @@ async function renderLogin(
     cmp: fixture.componentInstance,
     router: TestBed.inject(Router),
     ssoStore: TestBed.inject(SsoStateStore),
+    oidcStore: TestBed.inject(OidcStateStore),
   };
 }
 
@@ -44,6 +50,7 @@ describe('LoginPage', () => {
     const { cmp } = await renderLogin({
       discoverHomeserver: vi.fn(() => of('https://hs.example')),
       getSupportedFlows: vi.fn(() => of(['m.login.password', 'm.login.sso'])),
+      getDelegatedAuthConfig: vi.fn(() => of(null)),
     } as unknown as Partial<AuthService>);
 
     cmp.discover();
@@ -51,16 +58,50 @@ describe('LoginPage', () => {
     expect(cmp.baseUrl()).toBe('https://hs.example');
     expect(cmp.passwordSupported()).toBe(true);
     expect(cmp.ssoSupported()).toBe(true);
+    expect(cmp.oidcSupported()).toBe(false);
   });
 
   it('hides password/SSO when the homeserver does not offer them', async () => {
     const { cmp } = await renderLogin({
       discoverHomeserver: vi.fn(() => of('https://hs.example')),
       getSupportedFlows: vi.fn(() => of([])),
+      getDelegatedAuthConfig: vi.fn(() => of(null)),
     } as unknown as Partial<AuthService>);
 
     cmp.discover();
 
+    expect(cmp.passwordSupported()).toBe(false);
+    expect(cmp.ssoSupported()).toBe(false);
+  });
+
+  it('still surfaces OIDC when the legacy loginFlows() probe fails', async () => {
+    // An OIDC-native homeserver may not serve /login at all; a rejected getSupportedFlows
+    // must not abort discovery and hide the working OIDC provider.
+    const { cmp } = await renderLogin({
+      discoverHomeserver: vi.fn(() => of('https://hs.example')),
+      getSupportedFlows: vi.fn(() => throwError(() => new Error('404'))),
+      getDelegatedAuthConfig: vi.fn(() => of({ issuer: 'https://op' })),
+    } as unknown as Partial<AuthService>);
+
+    cmp.discover();
+
+    expect(cmp.baseUrl()).toBe('https://hs.example');
+    expect(cmp.oidcSupported()).toBe(true);
+    expect(cmp.error()).toBeNull();
+  });
+
+  it('prefers OIDC and suppresses password/SSO when the homeserver delegates auth', async () => {
+    const { cmp } = await renderLogin({
+      discoverHomeserver: vi.fn(() => of('https://hs.example')),
+      // A migrating homeserver may still advertise password + SSO…
+      getSupportedFlows: vi.fn(() => of(['m.login.password', 'm.login.sso'])),
+      // …but OIDC metadata being present means the provider owns credentials.
+      getDelegatedAuthConfig: vi.fn(() => of({ issuer: 'https://op' })),
+    } as unknown as Partial<AuthService>);
+
+    cmp.discover();
+
+    expect(cmp.oidcSupported()).toBe(true);
     expect(cmp.passwordSupported()).toBe(false);
     expect(cmp.ssoSupported()).toBe(false);
   });
@@ -131,6 +172,7 @@ describe('LoginPage', () => {
       {
         loginWithPassword,
         getSupportedFlows,
+        getDelegatedAuthConfig: vi.fn(() => of(null)),
       } as unknown as Partial<AuthService>,
       {
         reauth: '@bob:hs',
@@ -206,6 +248,7 @@ describe('LoginPage', () => {
       {
         getSsoUrl,
         getSupportedFlows,
+        getDelegatedAuthConfig: vi.fn(() => of(null)),
       } as unknown as Partial<AuthService>,
       {
         reauth: '@bob:hs',
@@ -254,5 +297,125 @@ describe('LoginPage', () => {
       open.mockRestore();
       delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
     }
+  });
+
+  describe('OIDC (next-gen auth)', () => {
+    /** An OIDC-native login page: discovered homeserver + provider metadata. */
+    async function renderOidcReady(
+      buildOidcAuthorizationRequest: ReturnType<typeof vi.fn>,
+    ) {
+      const rendered = await renderLogin({
+        buildOidcAuthorizationRequest,
+      } as unknown as Partial<AuthService>);
+      rendered.cmp.baseUrl.set('https://hs.example');
+      rendered.cmp.oidcMetadata.set({ issuer: 'https://op' } as never);
+      return rendered;
+    }
+
+    it('builds the authorization request, stashes the sign-in state, then redirects (web)', async () => {
+      const request = {
+        url: 'https://op/authorize?client_id=abc&state=STATE1',
+        state: 'STATE1',
+        sessionStateKey: 'mx_oidc_STATE1',
+        sessionStateBlob: 'BLOB',
+      };
+      const buildOidcAuthorizationRequest = vi.fn(() => of(request));
+      const { cmp, oidcStore } = await renderOidcReady(
+        buildOidcAuthorizationRequest,
+      );
+
+      cmp.startOidc();
+      // Let the awaited stash write settle before asserting the redirect ordering.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // The client registers as `web` with the origin callback (no extra query params).
+      const params = buildOidcAuthorizationRequest.mock.calls[0][0] as {
+        applicationType: string;
+        redirectUri: string;
+      };
+      expect(params.applicationType).toBe('web');
+      expect(params.redirectUri).toContain('/sso-callback');
+      // State is stashed before redirect, but the PKCE code_verifier blob is NOT copied
+      // into web localStorage (the SDK's own sessionStorage copy survives the same-tab
+      // redirect) — only the non-secret key rides along, for post-exchange cleanup.
+      expect(oidcStore.save).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
+        state: 'STATE1',
+        baseUrl: 'https://hs.example',
+        redirectUri: params.redirectUri,
+        sessionStateKey: 'mx_oidc_STATE1',
+        sessionStateBlob: null,
+      });
+    });
+
+    it('sends prompt=create for registration when the provider supports it', async () => {
+      const request = {
+        url: 'https://op/authorize?state=STATE1',
+        state: 'STATE1',
+        sessionStateKey: 'mx_oidc_STATE1',
+        sessionStateBlob: 'BLOB',
+      };
+      const buildOidcAuthorizationRequest = vi.fn(() => of(request));
+      const { cmp } = await renderLogin({
+        buildOidcAuthorizationRequest,
+      } as unknown as Partial<AuthService>);
+      cmp.baseUrl.set('https://hs.example');
+      cmp.oidcMetadata.set({
+        issuer: 'https://op',
+        prompt_values_supported: ['create'],
+      } as never);
+
+      expect(cmp.oidcRegistrationSupported()).toBe(true);
+      cmp.startOidc('create');
+      await Promise.resolve();
+
+      const params = buildOidcAuthorizationRequest.mock.calls[0][0] as {
+        prompt?: string;
+      };
+      expect(params.prompt).toBe('create');
+    });
+
+    it('registers as native + opens externally on Electron', async () => {
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+        isElectron: true,
+      };
+      const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+      try {
+        const request = {
+          url: 'https://op/authorize?state=STATE1',
+          state: 'STATE1',
+          sessionStateKey: 'mx_oidc_STATE1',
+          sessionStateBlob: 'BLOB',
+        };
+        const buildOidcAuthorizationRequest = vi.fn(() => of(request));
+        const { cmp, oidcStore } = await renderOidcReady(
+          buildOidcAuthorizationRequest,
+        );
+
+        cmp.startOidc();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const params = buildOidcAuthorizationRequest.mock.calls[0][0] as {
+          applicationType: string;
+          redirectUri: string;
+        };
+        expect(params.applicationType).toBe('native');
+        // RFC 8252 §7.1: a private-use scheme redirect has NO authority, so only a
+        // single slash follows the scheme. `//sso-callback` would put the path in the
+        // authority position, which strict providers reject at dynamic registration.
+        expect(params.redirectUri).toBe('eu.qwky.trinity:/sso-callback');
+        expect(open).toHaveBeenCalledWith(request.url, '_blank');
+        // Native/Electron DO durably stash the code_verifier blob (their callback
+        // context has empty sessionStorage and must re-seed it).
+        expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
+          sessionStateBlob: 'BLOB',
+        });
+      } finally {
+        open.mockRestore();
+        delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+      }
+    });
   });
 });

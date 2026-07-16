@@ -114,6 +114,32 @@
               Continue with SSO
             </button>
           }
+
+          <!-- ── Step 2c: OIDC (next-gen auth) ──────────────── -->
+          @if (oidcSupported()) {
+            <button
+              hlmBtn
+              class="login-card__submit w-full"
+              [disabled]="busy()"
+              (click)="startOidc()"
+              data-testid="oidc-continue"
+            >
+              Continue
+            </button>
+
+            @if (oidcRegistrationSupported() && !reauthUserId()) {
+              <button
+                hlmBtn
+                variant="outline"
+                class="w-full"
+                [disabled]="busy()"
+                (click)="startOidc('create')"
+                data-testid="oidc-register"
+              >
+                Create account
+              </button>
+            }
+          }
         }
 
         <!-- ── Loading state ──────────────────────────────────── -->

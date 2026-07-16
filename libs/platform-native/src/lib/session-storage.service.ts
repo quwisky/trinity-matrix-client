@@ -8,8 +8,12 @@ import {
 } from '@trinity/util-matrix';
 import { SecureStorageService } from './secure-storage.service';
 
-/** Non-secret per-account record (the token lives in {@link SecureStorageService}). */
-export type AccountRecord = Omit<MatrixSession, 'accessToken'>;
+/**
+ * Non-secret per-account record. Both credentials — the access token and the OIDC
+ * refresh token — live in {@link SecureStorageService}; everything else (including
+ * the non-secret `accessTokenExpiresAt` + `oidc` binding) is kept here.
+ */
+export type AccountRecord = Omit<MatrixSession, 'accessToken' | 'refreshToken'>;
 
 /** The persisted multi-account registry: the account list + which one is active. */
 interface AccountRegistry {
@@ -21,6 +25,8 @@ interface AccountRegistry {
 const ACCOUNTS_KEY = 'matrix.accounts';
 /** Per-account access-token key in secure storage: `${TOKEN_KEY_PREFIX}${userId}`. */
 const TOKEN_KEY_PREFIX = 'matrix.accessToken:';
+/** Per-account OIDC refresh-token key in secure storage (OIDC accounts only). */
+const REFRESH_TOKEN_KEY_PREFIX = 'matrix.refreshToken:';
 /** Legacy single-slot keys (migration source), retired on first read. */
 const LEGACY_SESSION_KEY = 'matrix.session';
 const LEGACY_TOKEN_KEY = 'matrix.accessToken';
@@ -45,6 +51,28 @@ export class SessionStorageService {
   private readonly secure = inject(SecureStorageService);
 
   /**
+   * Serializes registry read-modify-write cycles. The OIDC token refresher calls
+   * {@link updateTokens} on its own schedule (near-expiry / 401), fully concurrently
+   * with user-driven `save`/`remove`/`clear`. Without a lock, two overlapping
+   * read → mutate → write cycles on the shared `matrix.accounts` blob lose an update
+   * (e.g. a refresh landing after a logout resurrects the signed-out account). Every
+   * mutation runs through this promise chain so each sees the prior one's committed
+   * result. Reads stay off the chain — a single `Preferences.get` + parse is already a
+   * consistent snapshot.
+   */
+  private writeQueue: Promise<unknown> = Promise.resolve();
+
+  private serialize<T>(op: () => Promise<T>): Promise<T> {
+    const result = this.writeQueue.then(op, op);
+    // Keep the chain alive regardless of this op's outcome; callers still get `result`.
+    this.writeQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  /**
    * Persist a session and make it the active account (add or replace). Resolves the
    * **stored** session — carrying the crypto-store prefix this account resolved to
    * (a fresh account gets its own; an existing/migrated one keeps its prior one) — so
@@ -52,7 +80,7 @@ export class SessionStorageService {
    * the SDK default (which would collide with another account's crypto store).
    */
   save(session: MatrixSession): Observable<MatrixSession> {
-    return defer(() => from(this.upsert(session)));
+    return defer(() => from(this.serialize(() => this.upsert(session))));
   }
 
   /** Load a session — the active account by default, or a specific `userId`. */
@@ -82,12 +110,14 @@ export class SessionStorageService {
 
   /** Make `userId` the active account (no-op if it isn't stored). */
   setActive(userId: string): Observable<void> {
-    return defer(() => from(this.setActiveInternal(userId)));
+    return defer(() =>
+      from(this.serialize(() => this.setActiveInternal(userId))),
+    );
   }
 
   /** Remove one account (its record + token); repoint active if it was active. */
   remove(userId: string): Observable<void> {
-    return defer(() => from(this.removeInternal(userId)));
+    return defer(() => from(this.serialize(() => this.removeInternal(userId))));
   }
 
   /**
@@ -97,12 +127,48 @@ export class SessionStorageService {
    * restore skips it instead of resurrecting an account whose token no longer works.
    */
   invalidateToken(userId: string): Observable<void> {
-    return defer(() => from(this.secure.remove(this.tokenKey(userId))));
+    return defer(() =>
+      from(
+        this.serialize(async () => {
+          await Promise.all([
+            this.secure.remove(this.tokenKey(userId)),
+            this.secure.remove(this.refreshTokenKey(userId)),
+          ]);
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Persist tokens rotated by the OIDC token refresher for an already-stored account:
+   * write the new access token (and, when the provider rotated it, the new refresh
+   * token) to secure storage and update the record's `accessTokenExpiresAt`. Leaves the
+   * existing refresh token in place when the provider returned none (no rotation). A
+   * no-op if the account is no longer registered (it was signed out mid-refresh).
+   */
+  updateTokens(
+    userId: string,
+    accessToken: string,
+    refreshToken?: string,
+    accessTokenExpiresAt?: number,
+  ): Observable<void> {
+    return defer(() =>
+      from(
+        this.serialize(() =>
+          this.updateTokensInternal(
+            userId,
+            accessToken,
+            refreshToken,
+            accessTokenExpiresAt,
+          ),
+        ),
+      ),
+    );
   }
 
   /** Remove every account and token (full sign-out / reset). */
   clear(): Observable<void> {
-    return defer(() => from(this.clearInternal()));
+    return defer(() => from(this.serialize(() => this.clearInternal())));
   }
 
   /**
@@ -122,8 +188,12 @@ export class SessionStorageService {
     return TOKEN_KEY_PREFIX + userId;
   }
 
+  private refreshTokenKey(userId: string): string {
+    return REFRESH_TOKEN_KEY_PREFIX + userId;
+  }
+
   private async upsert(session: MatrixSession): Promise<MatrixSession> {
-    const { accessToken, ...incoming } = session;
+    const { accessToken, refreshToken, ...incoming } = session;
     const registry = await this.readRegistry();
     const existing = registry.accounts.find(
       (a) => a.userId === incoming.userId,
@@ -134,7 +204,15 @@ export class SessionStorageService {
         ? // Same-device re-login (soft-logout re-auth, token rotation): reuse the exact
           // crypto store this account already has — including a migrated legacy
           // account's absent (SDK-default) prefix — so no re-verification is forced.
-          { ...existing, baseUrl: incoming.baseUrl }
+          // The incoming session is authoritative for the rotated token metadata, so
+          // refresh the expiry + OIDC binding (dropping them when the new login isn't
+          // OIDC) rather than keeping the stale ones.
+          {
+            ...existing,
+            baseUrl: incoming.baseUrl,
+            accessTokenExpiresAt: incoming.accessTokenExpiresAt,
+            oidc: incoming.oidc,
+          }
         : // A brand-new account, OR an existing one whose device changed (a fresh login
           // minted a new device), binds a crypto store scoped to THIS device. Scoping
           // by device id — not user id alone — is what stops a later fresh login from
@@ -145,6 +223,8 @@ export class SessionStorageService {
             baseUrl: incoming.baseUrl,
             userId: incoming.userId,
             deviceId: incoming.deviceId,
+            accessTokenExpiresAt: incoming.accessTokenExpiresAt,
+            oidc: incoming.oidc,
             cryptoPrefix:
               incoming.cryptoPrefix ??
               `trinity-crypto:${incoming.userId}:${incoming.deviceId}`,
@@ -155,6 +235,17 @@ export class SessionStorageService {
     ];
     registry.activeUserId = incoming.userId;
     await this.secure.set(this.tokenKey(incoming.userId), accessToken);
+    // Persist (or clear) the OIDC refresh token alongside the access token: set it for
+    // an OIDC login, remove any stale one when re-logging in without one (e.g. an
+    // account that switched from OIDC to password), so no dead credential lingers.
+    if (refreshToken !== undefined) {
+      await this.secure.set(
+        this.refreshTokenKey(incoming.userId),
+        refreshToken,
+      );
+    } else {
+      await this.secure.remove(this.refreshTokenKey(incoming.userId));
+    }
     await this.writeRegistry(registry);
     if (existing && deviceChanged) {
       // The device changed, so `record` above moved this account to a fresh
@@ -162,7 +253,30 @@ export class SessionStorageService {
       // re-login, not a sign-out), so reclaim it here — otherwise it leaks on disk.
       this.reclaimCryptoStore(existing.cryptoPrefix);
     }
-    return { ...record, accessToken };
+    return {
+      ...record,
+      accessToken,
+      ...(refreshToken !== undefined ? { refreshToken } : {}),
+    };
+  }
+
+  private async updateTokensInternal(
+    userId: string,
+    accessToken: string,
+    refreshToken?: string,
+    accessTokenExpiresAt?: number,
+  ): Promise<void> {
+    const registry = await this.readRegistry();
+    const record = registry.accounts.find((a) => a.userId === userId);
+    if (!record) {
+      return; // signed out mid-refresh — drop the rotated tokens on the floor
+    }
+    await this.secure.set(this.tokenKey(userId), accessToken);
+    if (refreshToken !== undefined) {
+      await this.secure.set(this.refreshTokenKey(userId), refreshToken);
+    }
+    record.accessTokenExpiresAt = accessTokenExpiresAt;
+    await this.writeRegistry(registry);
   }
 
   /**
@@ -225,8 +339,13 @@ export class SessionStorageService {
     if (!record) {
       return null;
     }
-    const accessToken = await this.secure.get(this.tokenKey(targetId));
-    return accessToken ? { ...record, accessToken } : null;
+    const [accessToken, refreshToken] = await Promise.all([
+      this.secure.get(this.tokenKey(targetId)),
+      this.secure.get(this.refreshTokenKey(targetId)),
+    ]);
+    return accessToken
+      ? { ...record, accessToken, ...(refreshToken ? { refreshToken } : {}) }
+      : null;
   }
 
   private async setActiveInternal(userId: string): Promise<void> {
@@ -244,14 +363,18 @@ export class SessionStorageService {
       registry.activeUserId = registry.accounts[0]?.userId ?? null;
     }
     await this.secure.remove(this.tokenKey(userId));
+    await this.secure.remove(this.refreshTokenKey(userId));
     await this.writeRegistry(registry);
   }
 
   private async clearInternal(): Promise<void> {
     const registry = await this.readRegistry();
-    await Promise.all(
-      registry.accounts.map((a) => this.secure.remove(this.tokenKey(a.userId))),
-    );
+    const removals: Promise<void>[] = [];
+    for (const account of registry.accounts) {
+      removals.push(this.secure.remove(this.tokenKey(account.userId)));
+      removals.push(this.secure.remove(this.refreshTokenKey(account.userId)));
+    }
+    await Promise.all(removals);
     await Preferences.remove({ key: ACCOUNTS_KEY });
     // Defensively retire any legacy single-slot residue too.
     await Preferences.remove({ key: LEGACY_SESSION_KEY });

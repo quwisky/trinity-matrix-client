@@ -22,12 +22,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- SSO deep link: eu.qwky.trinity://sso-callback?loginToken=… -->
+            <!-- Auth callback deep links. Two shapes must match:
+                   legacy SSO: eu.qwky.trinity://sso-callback?loginToken=…
+                   OIDC:       eu.qwky.trinity:/sso-callback?code=…
+                 The OIDC form follows RFC 8252 §7.1 (private-use scheme, no
+                 authority), so it has no host for android:host to match against —
+                 hence a scheme-only filter. AppComponent.handleDeepLink() checks the
+                 callback path and params before acting on anything that arrives. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="eu.qwky.trinity" android:host="sso-callback" />
+                <data android:scheme="eu.qwky.trinity" />
             </intent-filter>
 
         </activity>

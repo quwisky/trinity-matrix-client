@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Sign in with next-generation Matrix auth (OIDC).** On homeservers that delegate
+  authentication to an OpenID provider (MSC3861 / Matrix Authentication Service — as
+  matrix.org now does), the login screen offers a **Continue** button that signs you in
+  through your provider using OAuth 2.0 + PKCE, plus a **Create account** button where the
+  provider supports it. Sessions refresh silently in the background, so the short-lived
+  tokens these providers issue don't sign you out, and the flow works on web, iOS, Android,
+  and desktop (the provider opens in your system browser and returns to the app, even after
+  a cold start). For these accounts, password and session management live at the provider —
+  the account settings page links out to it instead of showing an in-app password form —
+  and signing out revokes the session there.
+
 ### Changed
 
 - **Desktop tray icon now matches the app icon.** The system tray / menu-bar icon uses the
