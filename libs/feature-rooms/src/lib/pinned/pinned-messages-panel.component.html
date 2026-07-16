@@ -1,4 +1,5 @@
 <div
+  data-testid="pinned-panel"
   class="flex h-screen w-screen flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg md:w-[480px]"
 >
   <div class="flex items-center gap-2 border-b border-solid border-border p-3">
@@ -8,6 +9,7 @@
       variant="ghost"
       size="icon"
       (click)="close()"
+      data-testid="pinned-close"
       hlmTooltip="Close pinned messages"
       aria-label="Close pinned messages"
     >
@@ -21,6 +23,7 @@
         <button
           type="button"
           class="pin-item__main"
+          data-testid="pinned-item"
           (click)="jumpTo(p.id)"
           [attr.aria-label]="'Jump to pinned message from ' + p.senderName"
         >
@@ -37,6 +40,7 @@
             variant="ghost"
             size="icon"
             class="pin-item__unpin"
+            data-testid="pinned-unpin"
             (click)="unpin(p.id)"
             hlmTooltip="Unpin message"
             [attr.aria-label]="'Unpin message from ' + p.senderName"
@@ -46,7 +50,9 @@
         }
       </div>
     } @empty {
-      <div class="pinned__empty">No pinned messages in this channel yet.</div>
+      <div class="pinned__empty" data-testid="pinned-empty">
+        No pinned messages in this channel yet.
+      </div>
     }
   </div>
 </div>
