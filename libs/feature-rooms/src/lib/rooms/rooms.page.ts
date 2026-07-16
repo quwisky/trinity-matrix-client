@@ -303,6 +303,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly userId = computed(() => this.matrix.activeUserId() ?? '');
 
   readonly userName = computed(() => {
+    this.rooms.revision(); // re-read once the user's profile hydrates on sync
     const uid = this.userId();
     if (!uid || !this.matrix.isInitialized) {
       return uid;
