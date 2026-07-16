@@ -1,7 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   commitLabel,
@@ -10,8 +9,8 @@ import {
   stripTimestamp,
 } from './gen-build-info.mjs';
 
-// The generator reads version from the repo's package.json (0.0.1); git is injected.
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+/** The version the stub root reports — arbitrary, and deliberately not the repo's. */
+const VERSION = '0.0.1';
 
 /** A git stub answering rev-parse with `hash` and status with `porcelain`. */
 const fakeGit =
@@ -27,6 +26,19 @@ function tmpOut() {
   const dir = mkdtempSync(join(tmpdir(), 'buildinfo-'));
   tmpDirs.push(dir);
   return join(dir, 'build-info.ts');
+}
+
+/**
+ * A stub repo root: a temp dir holding just the `package.json` the generator reads.
+ * Pointing `root` at the real repo would couple these assertions to the *actual*
+ * version, so every release bump broke the suite (it did — 0.0.1 → 0.1.0). `git` is
+ * injected separately, so this is the last thing tying the tests to the real tree.
+ */
+function fakeRoot(version = VERSION) {
+  const dir = mkdtempSync(join(tmpdir(), 'buildinfo-root-'));
+  tmpDirs.push(dir);
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ version }));
+  return dir;
 }
 afterEach(() => {
   for (const dir of tmpDirs.splice(0)) {
@@ -72,33 +84,42 @@ describe('generate', () => {
   it('writes build-info from package.json + git when the file is absent', () => {
     const out = tmpOut();
     const result = generate({
-      root: REPO_ROOT,
+      root: fakeRoot(),
       outFile: out,
       git: fakeGit('abc1234'),
       now: () => 'T',
     });
 
     expect(result).toEqual({
-      version: '0.0.1',
+      version: VERSION,
       commit: 'abc1234',
       wrote: true,
     });
     const written = readFileSync(out, 'utf8');
-    expect(written).toContain("version: '0.0.1'");
+    expect(written).toContain(`version: '${VERSION}'`);
     expect(written).toContain("commit: 'abc1234'");
     expect(written).toContain("builtAt: 'T'");
   });
 
-  it('is idempotent: an unchanged version/commit is not rewritten (timestamp aside)', () => {
+  it('takes the version from the root package.json', () => {
     const out = tmpOut();
-    generate({
-      root: REPO_ROOT,
+    const result = generate({
+      root: fakeRoot('9.8.7'),
       outFile: out,
       git: fakeGit('abc1234'),
-      now: () => 'T1',
+      now: () => 'T',
     });
+
+    expect(result.version).toBe('9.8.7');
+    expect(readFileSync(out, 'utf8')).toContain("version: '9.8.7'");
+  });
+
+  it('is idempotent: an unchanged version/commit is not rewritten (timestamp aside)', () => {
+    const out = tmpOut();
+    const root = fakeRoot(); // the same root both times: only the timestamp differs
+    generate({ root, outFile: out, git: fakeGit('abc1234'), now: () => 'T1' });
     const again = generate({
-      root: REPO_ROOT,
+      root,
       outFile: out,
       git: fakeGit('abc1234'),
       now: () => 'T2', // a new timestamp alone must not trigger a write
@@ -108,14 +129,10 @@ describe('generate', () => {
 
   it('rewrites when the commit changes', () => {
     const out = tmpOut();
-    generate({
-      root: REPO_ROOT,
-      outFile: out,
-      git: fakeGit('abc1234'),
-      now: () => 'T',
-    });
+    const root = fakeRoot();
+    generate({ root, outFile: out, git: fakeGit('abc1234'), now: () => 'T' });
     const changed = generate({
-      root: REPO_ROOT,
+      root,
       outFile: out,
       git: fakeGit('def5678'),
       now: () => 'T',
@@ -127,7 +144,7 @@ describe('generate', () => {
   it('marks a dirty working tree in the commit', () => {
     const out = tmpOut();
     const result = generate({
-      root: REPO_ROOT,
+      root: fakeRoot(),
       outFile: out,
       git: fakeGit('abc1234', ' M file'),
       now: () => 'T',
