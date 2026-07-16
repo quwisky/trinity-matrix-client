@@ -47,9 +47,17 @@ import { registerDockBadge, SET_BADGE_COUNT_CHANNEL } from './dock-badge';
 registerDockBadge();
 const handler = handlers.get(SET_BADGE_COUNT_CHANNEL);
 
-/** Deliver a payload to the captured IPC handler with a dummy event. */
+/** The main window's webContents — the only sender the handler accepts. */
+const webContents = { id: 1 };
+
+/** Deliver a payload to the captured IPC handler as our own renderer would. */
 function send(count: unknown): void {
-  handler?.({}, count);
+  handler?.({ sender: webContents }, count);
+}
+
+/** Deliver a payload as some OTHER webContents would (must be ignored). */
+function sendFromForeignSender(count: unknown): void {
+  handler?.({ sender: { id: 99 } }, count);
 }
 
 const realPlatform = process.platform;
@@ -66,12 +74,18 @@ describe('dock badge IPC', () => {
     setBadgeCount.mockClear();
     setOverlayIcon.mockClear();
     createFromPath.mockClear();
-    mainWindowRef.current = null;
+    mainWindowRef.current = { webContents };
   });
   afterEach(() => setPlatform(realPlatform));
 
   it('registers a handler on the badge channel', () => {
     expect(handler).toBeTypeOf('function');
+  });
+
+  it('ignores a payload from any sender other than the main window', () => {
+    setPlatform('darwin');
+    sendFromForeignSender(7);
+    expect(setBadgeCount).not.toHaveBeenCalled();
   });
 
   describe('non-Windows (macOS / Linux Unity) — app.setBadgeCount', () => {
@@ -122,7 +136,7 @@ describe('dock badge IPC', () => {
   describe('Windows — taskbar overlay icon', () => {
     beforeEach(() => {
       setPlatform('win32');
-      mainWindowRef.current = { setOverlayIcon };
+      mainWindowRef.current = { setOverlayIcon, webContents };
     });
 
     it('sets a non-null overlay with the count in the description', () => {
