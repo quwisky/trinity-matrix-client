@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { EventType, HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { Observable, defer, from, map, switchMap, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { liveRoomState } from '@trinity/util-matrix';
 
 /** Which room-settings fields the current user may edit (from the room's power levels). */
 export interface EditableRoomFields {
@@ -144,11 +145,12 @@ export class RoomSettingsService {
     if (!room) {
       return fallback;
     }
-    const joinRule = room.currentState
-      .getStateEvents(EventType.RoomJoinRules, '')
+    const state = liveRoomState(room);
+    const joinRule = state
+      ?.getStateEvents(EventType.RoomJoinRules, '')
       ?.getContent()?.['join_rule'];
-    const historyVisibility = room.currentState
-      .getStateEvents(EventType.RoomHistoryVisibility, '')
+    const historyVisibility = state
+      ?.getStateEvents(EventType.RoomHistoryVisibility, '')
       ?.getContent()?.['history_visibility'];
     return {
       joinRule: (joinRule as JoinRule) ?? DEFAULT_JOIN_RULE,
@@ -175,18 +177,15 @@ export class RoomSettingsService {
     if (!room || !userId) {
       return none;
     }
+    const state = liveRoomState(room);
+    const mayEdit = (type: EventType): boolean =>
+      !!state?.maySendStateEvent(type, userId);
     return {
-      name: room.currentState.maySendStateEvent(EventType.RoomName, userId),
-      topic: room.currentState.maySendStateEvent(EventType.RoomTopic, userId),
-      avatar: room.currentState.maySendStateEvent(EventType.RoomAvatar, userId),
-      joinRule: room.currentState.maySendStateEvent(
-        EventType.RoomJoinRules,
-        userId,
-      ),
-      history: room.currentState.maySendStateEvent(
-        EventType.RoomHistoryVisibility,
-        userId,
-      ),
+      name: mayEdit(EventType.RoomName),
+      topic: mayEdit(EventType.RoomTopic),
+      avatar: mayEdit(EventType.RoomAvatar),
+      joinRule: mayEdit(EventType.RoomJoinRules),
+      history: mayEdit(EventType.RoomHistoryVisibility),
     };
   }
 }

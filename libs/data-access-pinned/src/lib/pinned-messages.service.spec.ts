@@ -112,11 +112,10 @@ function setup(
 
   const room = {
     roomId,
-    // `Room.currentState` is a cached property the SDK reassigns from the live timeline
-    // whenever that timeline is reset, so it has to be readable through the variable.
-    get currentState() {
-      return live;
-    },
+    // State hangs off the live timeline — what liveRoomState() reads, and what the SDK's
+    // deprecated `currentState` was a cached alias for. Read through the variable, since
+    // the SDK reassigns it whenever that timeline is reset.
+    getLiveTimeline: () => ({ getState: () => live }),
     findEventById: (id: string) => events.find((e) => e.getId() === id),
     getMember: (id: string) => ({ name: MEMBERS[id] ?? id }),
     ...roomEmitter,
@@ -274,13 +273,13 @@ describe('PinnedMessagesService', () => {
   });
 
   it('a RoomStateEvent.Events emission for pinned_events re-reads pinnedEventIds live', () => {
-    const { svc, currentState, setPinned } = setup({ pinned: ['$a'] });
+    const { svc, liveState, setPinned } = setup({ pinned: ['$a'] });
     svc.open('!r:hs');
     expect(svc.pinnedEventIds()).toEqual(['$a']);
 
     // A remote client pinned another message; the room re-emits its state event.
     setPinned(['$a', '$b']);
-    currentState.emit(
+    liveState().emit(
       RoomStateEvent.Events,
       stateEvent(EventType.RoomPinnedEvents),
     );
@@ -289,13 +288,13 @@ describe('PinnedMessagesService', () => {
   });
 
   it('a RoomStateEvent.Events emission for power_levels re-reads canPin live', () => {
-    const { svc, currentState, setCanPin } = setup({ canPin: false });
+    const { svc, liveState, setCanPin } = setup({ canPin: false });
     svc.open('!r:hs');
     expect(svc.canPin()).toBe(false);
 
     // A moderator promotion changes the user's ability to pin.
     setCanPin(true);
-    currentState.emit(
+    liveState().emit(
       RoomStateEvent.Events,
       stateEvent(EventType.RoomPowerLevels),
     );
@@ -304,11 +303,11 @@ describe('PinnedMessagesService', () => {
   });
 
   it('ignores unrelated state event types', () => {
-    const { svc, currentState, setPinned } = setup({ pinned: ['$a'] });
+    const { svc, liveState, setPinned } = setup({ pinned: ['$a'] });
     svc.open('!r:hs');
 
     setPinned(['$a', '$b']);
-    currentState.emit(RoomStateEvent.Events, stateEvent('m.room.topic'));
+    liveState().emit(RoomStateEvent.Events, stateEvent('m.room.topic'));
 
     // No re-read for an irrelevant state type.
     expect(svc.pinnedEventIds()).toEqual(['$a']);
@@ -397,7 +396,7 @@ describe('PinnedMessagesService', () => {
   });
 
   it('close() detaches listeners and clears state; a later emission does not mutate', () => {
-    const { svc, room, currentState, client, setPinned } = setup({
+    const { svc, room, liveState, client, setPinned } = setup({
       pinned: ['$a'],
       canPin: true,
     });
@@ -412,7 +411,7 @@ describe('PinnedMessagesService', () => {
 
     // Late emissions on the now-detached room/state/client must not resurrect state.
     setPinned(['$a', '$b']);
-    currentState.emit(
+    liveState().emit(
       RoomStateEvent.Events,
       stateEvent(EventType.RoomPinnedEvents),
     );

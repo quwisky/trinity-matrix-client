@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { EventType } from 'matrix-js-sdk';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { liveRoomState } from '@trinity/util-matrix';
 
 /**
  * Manages a room's published addresses: its local aliases in the homeserver's room
@@ -43,8 +44,8 @@ export class RoomAliasesService {
       return null;
     }
     const room = this.matrix.instance.getRoom(roomId);
-    const alias = room?.currentState
-      .getStateEvents(EventType.RoomCanonicalAlias, '')
+    const alias = (room ? liveRoomState(room) : undefined)
+      ?.getStateEvents(EventType.RoomCanonicalAlias, '')
       ?.getContent()?.['alias'];
     return typeof alias === 'string' && alias ? alias : null;
   }
@@ -101,7 +102,7 @@ export class RoomAliasesService {
     if (!room || !me) {
       return false;
     }
-    return room.currentState.maySendStateEvent(
+    return !!liveRoomState(room)?.maySendStateEvent(
       EventType.RoomCanonicalAlias,
       me,
     );

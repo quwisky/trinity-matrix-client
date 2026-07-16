@@ -114,7 +114,7 @@ describe('AuthService', () => {
     const loginRes = { user_id: '@me:hs', device_id: 'D', access_token: 'tok' };
     const stubLogin = () =>
       createClientMock.mockReturnValue({
-        login: vi.fn().mockResolvedValue(loginRes),
+        loginRequest: vi.fn().mockResolvedValue(loginRes),
       } as never);
 
     it('replace login drops prior caches + pusher, then inits', async () => {
@@ -175,8 +175,8 @@ describe('AuthService', () => {
     it('threads an existing device_id into the login payload only when provided', async () => {
       // A soft-logged-out account is re-authed on its own device so its crypto
       // store is reused; a fresh login must NOT pin a device_id (server issues one).
-      const login = vi.fn().mockResolvedValue(loginRes);
-      createClientMock.mockReturnValue({ login } as never);
+      const loginRequest = vi.fn().mockResolvedValue(loginRes);
+      createClientMock.mockReturnValue({ loginRequest } as never);
       const matrix = TestBed.inject(MatrixClientService);
       const storage = TestBed.inject(SessionStorageService);
       const push = TestBed.inject(PushService);
@@ -204,23 +204,25 @@ describe('AuthService', () => {
         auth.loginWithPassword('https://hs', '@me:hs', 'pw', 'add'),
       );
 
-      expect(login).toHaveBeenCalledTimes(2);
-      expect(login.mock.calls[0]).toEqual([
-        'm.login.password',
-        expect.objectContaining({ device_id: 'EXISTING_DEV' }),
+      expect(loginRequest).toHaveBeenCalledTimes(2);
+      expect(loginRequest.mock.calls[0]).toEqual([
+        expect.objectContaining({
+          type: 'm.login.password',
+          device_id: 'EXISTING_DEV',
+        }),
       ]);
-      expect(login.mock.calls[1][1]).not.toHaveProperty('device_id');
+      expect(loginRequest.mock.calls[1][0]).not.toHaveProperty('device_id');
     });
   });
 
   describe('completeSsoLogin', () => {
     it('exchanges the SSO loginToken and establishes the account additively', async () => {
-      const login = vi.fn().mockResolvedValue({
+      const loginRequest = vi.fn().mockResolvedValue({
         user_id: '@me:hs',
         device_id: 'DEV',
         access_token: 'tok',
       });
-      createClientMock.mockReturnValue({ login } as never);
+      createClientMock.mockReturnValue({ loginRequest } as never);
       const matrix = TestBed.inject(MatrixClientService);
       const storage = TestBed.inject(SessionStorageService);
       const push = TestBed.inject(PushService);
@@ -240,9 +242,12 @@ describe('AuthService', () => {
         auth.completeSsoLogin('https://hs', 'login-token', 'add', 'DEV'),
       );
 
-      expect(login).toHaveBeenCalledWith(
-        'm.login.token',
-        expect.objectContaining({ token: 'login-token', device_id: 'DEV' }),
+      expect(loginRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'm.login.token',
+          token: 'login-token',
+          device_id: 'DEV',
+        }),
       );
       // Additive path: save → add → register, leaving other accounts intact.
       expect(storage.save).toHaveBeenCalled();

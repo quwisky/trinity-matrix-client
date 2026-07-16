@@ -44,11 +44,15 @@ function setup(
               member: { getContent: () => ({ reason: b.reason }) },
             },
           })),
-        currentState: {
-          hasSufficientPowerLevelFor: (action: string, level: number) =>
-            opts.may ? opts.may(action) : level >= 50,
-          maySendStateEvent: () => opts.maySetPower ?? true,
-        },
+        // The service reads room state via the live timeline (liveRoomState()),
+        // which is what the SDK's deprecated `currentState` aliased.
+        getLiveTimeline: () => ({
+          getState: () => ({
+            hasSufficientPowerLevelFor: (action: string, level: number) =>
+              opts.may ? opts.may(action) : level >= 50,
+            maySendStateEvent: () => opts.maySetPower ?? true,
+          }),
+        }),
       };
   const instance = {
     kick,

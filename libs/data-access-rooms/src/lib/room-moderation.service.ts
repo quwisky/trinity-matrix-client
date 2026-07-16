@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { EventType } from 'matrix-js-sdk';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { liveRoomState } from '@trinity/util-matrix';
 
 /** Which moderation actions the current user may take against a specific member. */
 export interface ModerationCaps {
@@ -129,11 +130,11 @@ export class RoomModerationService {
     if (myLevel <= targetLevel) {
       return { ...deny, myPower: myLevel };
     }
-    const state = room.currentState;
+    const state = liveRoomState(room);
     return {
-      kick: state.hasSufficientPowerLevelFor('kick', myLevel),
-      ban: state.hasSufficientPowerLevelFor('ban', myLevel),
-      setPower: state.maySendStateEvent(EventType.RoomPowerLevels, me),
+      kick: !!state?.hasSufficientPowerLevelFor('kick', myLevel),
+      ban: !!state?.hasSufficientPowerLevelFor('ban', myLevel),
+      setPower: !!state?.maySendStateEvent(EventType.RoomPowerLevels, me),
       myPower: myLevel,
     };
   }
@@ -150,7 +151,7 @@ export class RoomModerationService {
       return false;
     }
     const myLevel = room.getMember(me)?.powerLevel ?? 0;
-    return room.currentState.hasSufficientPowerLevelFor('ban', myLevel);
+    return !!liveRoomState(room)?.hasSufficientPowerLevelFor('ban', myLevel);
   }
 
   /** The room's currently-banned members, sorted by name — for the ban list. */

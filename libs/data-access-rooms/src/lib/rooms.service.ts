@@ -27,9 +27,10 @@ import {
   reprojectOnAccountSwitch,
 } from '@trinity/data-access-matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { messagePreview } from '@trinity/util-matrix';
 import {
   isValidUserId,
+  liveRoomState,
+  messagePreview,
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util-matrix';
@@ -618,7 +619,7 @@ export class RoomsService {
 
   private toRoom(room: Room, directUserId?: string): RoomSummary {
     const name = room.name || room.roomId;
-    const topicEvent = room.currentState.getStateEvents('m.room.topic', '');
+    const topicEvent = liveRoomState(room)?.getStateEvents('m.room.topic', '');
     const unreadCount = room.getUnreadNotificationCount(
       NotificationCountType.Total,
     );

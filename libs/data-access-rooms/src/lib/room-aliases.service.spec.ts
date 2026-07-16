@@ -23,13 +23,17 @@ function setup(
   const room = opts.noRoom
     ? null
     : {
-        currentState: {
-          maySendStateEvent: () => opts.maySend ?? true,
-          getStateEvents: (_type: string, _key: string) =>
-            opts.canonical !== undefined
-              ? { getContent: () => ({ alias: opts.canonical }) }
-              : null,
-        },
+        // The service reads room state via the live timeline (liveRoomState()),
+        // which is what the SDK's deprecated `currentState` aliased.
+        getLiveTimeline: () => ({
+          getState: () => ({
+            maySendStateEvent: () => opts.maySend ?? true,
+            getStateEvents: (_type: string, _key: string) =>
+              opts.canonical !== undefined
+                ? { getContent: () => ({ alias: opts.canonical }) }
+                : null,
+          }),
+        }),
       };
   const instance = {
     createAlias,

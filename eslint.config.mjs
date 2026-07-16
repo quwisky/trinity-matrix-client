@@ -4,6 +4,7 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 import angular from 'angular-eslint';
 import nx from '@nx/eslint-plugin';
 import tailwind from 'eslint-plugin-tailwindcss';
+import tseslint from 'typescript-eslint';
 
 // The tailwind plugin resolves a relative `cssConfigPath` against each linted
 // file's directory, which breaks in a monorepo — so pass an absolute path
@@ -113,6 +114,38 @@ export default defineConfig([
         'error',
         { type: 'attribute', prefix: 'trn', style: 'camelCase' },
       ],
+    },
+  },
+  {
+    // Ban deprecated APIs (project rule: replace them with the recommended
+    // alternative). This is the workspace's only TYPE-AWARE rule — seeing a symbol's
+    // `@deprecated` tag needs the type checker, hence `projectService`.
+    //
+    // Scope is limited to what each project's own tsconfig.json owns:
+    //   - `*.spec.ts` is *excluded* from every tsconfig.json (specs live in
+    //     tsconfig.spec.json), so the project service finds no program for them.
+    //     Pointing `project` at every tsconfig instead makes each of the ~40 lint runs
+    //     load every program and OOMs the 2GB heap, so specs stay uncovered here.
+    //   - Standalone tooling files (vite/vitest config, test setup) are in no project.
+    // Both would otherwise fail as "not found by the project service".
+    files: ['{apps,libs,electron}/**/*.ts'],
+    ignores: [
+      '**/*.spec.ts',
+      '**/vite.config.ts',
+      '**/vitest.config.ts',
+      '**/test-setup.ts',
+      '**/*.config.ts',
+    ],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    plugins: { '@typescript-eslint': tseslint.plugin },
+    rules: {
+      '@typescript-eslint/no-deprecated': 'error',
     },
   },
   {

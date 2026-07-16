@@ -35,11 +35,15 @@ function setup(
   const room = opts.noRoom
     ? null
     : {
-        currentState: {
-          maySendStateEvent: (type: string) =>
-            opts.may ? opts.may(type) : true,
-          getStateEvents: (type: string, _stateKey: string) => stateFor(type),
-        },
+        // The service reads room state via the live timeline (liveRoomState()),
+        // which is what the SDK's deprecated `currentState` aliased.
+        getLiveTimeline: () => ({
+          getState: () => ({
+            maySendStateEvent: (type: string) =>
+              opts.may ? opts.may(type) : true,
+            getStateEvents: (type: string, _stateKey: string) => stateFor(type),
+          }),
+        }),
       };
   const instance = {
     setRoomName,

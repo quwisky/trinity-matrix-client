@@ -16,6 +16,7 @@ import {
   reprojectOnAccountSwitch,
 } from '@trinity/data-access-matrix-client';
 import {
+  liveRoomState,
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util-matrix';
@@ -612,8 +613,9 @@ export class SpacesService {
    * children are a deferred follow-up).
    */
   private orderedChildIds(client: MatrixClient, space: Room): string[] {
-    const children = space.currentState
-      .getStateEvents(SPACE_CHILD_EVENT)
+    const children = (
+      liveRoomState(space)?.getStateEvents(SPACE_CHILD_EVENT) ?? []
+    )
       .map((event): ChildEntry | null => {
         const childId = event.getStateKey();
         const content = event.getContent();
