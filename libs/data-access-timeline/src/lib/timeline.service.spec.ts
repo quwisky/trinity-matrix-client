@@ -183,9 +183,15 @@ function fakeRoom(
   const redactLevel = power.redact ?? 50;
   return {
     roomId: '!r:hs',
+    // Room state hangs off the live timeline (what liveRoomState() reads, and what
+    // the SDK's deprecated `currentState` aliased).
     getLiveTimeline: () => ({
       getEvents: () => events,
       getPaginationToken: () => null,
+      getState: () => ({
+        hasSufficientPowerLevelFor: (_action: string, level: number) =>
+          level >= redactLevel,
+      }),
     }),
     findEventById: (id: string) => events.find((e) => e.getId() === id),
     getMember: (id: string) => ({
@@ -193,10 +199,6 @@ function fakeRoom(
       getMxcAvatarUrl: () => null,
       powerLevel: id === '@me:hs' ? myPower : 0,
     }),
-    currentState: {
-      hasSufficientPowerLevelFor: (_action: string, level: number) =>
-        level >= redactLevel,
-    },
     getMembers: () => members,
     getUsersReadUpTo: (event: { getId: () => string }) =>
       receiptsByEvent[event.getId()] ?? [],
@@ -721,6 +723,7 @@ describe('TimelineService', () => {
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
+        getState: () => undefined,
       }),
       findEventById: (id: string) => events.find((e) => e.getId() === id),
       getMember: (id: string) => {
@@ -786,6 +789,7 @@ describe('TimelineService', () => {
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
+        getState: () => undefined,
       }),
       findEventById: (id: string) => events.find((e) => e.getId() === id),
       getMember: (id: string) => {
@@ -841,6 +845,7 @@ describe('TimelineService', () => {
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
+        getState: () => undefined,
       }),
       findEventById: (id: string) => events.find((e) => e.getId() === id),
       getMember: (id: string) => {
@@ -932,6 +937,7 @@ describe('TimelineService', () => {
       getLiveTimeline: () => ({
         getEvents: () => [],
         getPaginationToken: () => 'tok',
+        getState: () => undefined,
       }),
       getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
       relations: { getChildEventsForEvent: () => undefined },
@@ -973,6 +979,7 @@ describe('TimelineService', () => {
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
+        getState: () => undefined,
       }),
       getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
       relations: { getChildEventsForEvent: () => undefined },
@@ -1019,6 +1026,7 @@ describe('TimelineService', () => {
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
+          getState: () => undefined,
         }),
         getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
         relations: { getChildEventsForEvent: () => undefined },
@@ -1061,6 +1069,7 @@ describe('TimelineService', () => {
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
+        getState: () => undefined,
       }),
       getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
       relations: { getChildEventsForEvent: () => undefined },
@@ -1097,6 +1106,7 @@ describe('TimelineService', () => {
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
+        getState: () => undefined,
       }),
       getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
       relations: { getChildEventsForEvent: () => undefined },
@@ -1137,6 +1147,7 @@ describe('TimelineService', () => {
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
+        getState: () => undefined,
       }),
       getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
       relations: { getChildEventsForEvent: () => undefined },
@@ -1178,6 +1189,7 @@ describe('TimelineService', () => {
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
+        getState: () => undefined,
       }),
       getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
       relations: { getChildEventsForEvent: () => undefined },
@@ -1222,6 +1234,7 @@ describe('TimelineService', () => {
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
+        getState: () => undefined,
       }),
       getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
       relations: { getChildEventsForEvent: () => undefined },
@@ -1890,6 +1903,7 @@ describe('TimelineService', () => {
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
+          getState: () => undefined,
         }),
         getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
         relations: { getChildEventsForEvent: () => undefined },
@@ -1939,23 +1953,25 @@ describe('TimelineService', () => {
       const events = [fakeEvent({ id: '$1', sender: '@a:hs', body: 'hi' })];
       const room = {
         roomId: '!r:hs',
+        // Room state hangs off the live timeline (what liveRoomState() reads, and what
+        // the SDK's deprecated `currentState` aliased).
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
+          getState: () => ({
+            getStateEvents: (type: string) =>
+              type === 'm.room.tombstone' && replacement
+                ? {
+                    getContent: () => ({
+                      replacement_room: replacement,
+                      body: 'upgraded',
+                    }),
+                  }
+                : null,
+          }),
         }),
         getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
         relations: { getChildEventsForEvent: () => undefined },
-        currentState: {
-          getStateEvents: (type: string) =>
-            type === 'm.room.tombstone' && replacement
-              ? {
-                  getContent: () => ({
-                    replacement_room: replacement,
-                    body: 'upgraded',
-                  }),
-                }
-              : null,
-        },
         on: () => {},
         off: () => {},
       };
@@ -2007,6 +2023,7 @@ describe('TimelineService', () => {
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
+          getState: () => undefined,
         }),
         getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
         relations: { getChildEventsForEvent: () => undefined },

@@ -58,6 +58,7 @@ import {
   voiceMessageContent,
   TYPING_REFRESH_MS,
   TYPING_TIMEOUT_MS,
+  liveRoomState,
   type MessageView,
   type MessageShield,
   type Mention,
@@ -341,7 +342,8 @@ export class TimelineService {
     }
     const level = room.getMember(userId)?.powerLevel ?? 0;
     this._canRedactOthers.set(
-      room.currentState?.hasSufficientPowerLevelFor?.('redact', level) ?? false,
+      liveRoomState(room)?.hasSufficientPowerLevelFor?.('redact', level) ??
+        false,
     );
   }
 
@@ -833,7 +835,7 @@ export class TimelineService {
    * unchanged tombstone doesn't churn the signal (and re-render the banner) each refresh.
    */
   private updateTombstone(room: Room): void {
-    const content = room.currentState
+    const content = liveRoomState(room)
       ?.getStateEvents?.(EventType.RoomTombstone, '')
       ?.getContent();
     const replacement =

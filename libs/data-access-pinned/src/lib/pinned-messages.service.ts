@@ -8,7 +8,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { messagePreview } from '@trinity/util-matrix';
+import { liveRoomState, messagePreview } from '@trinity/util-matrix';
 
 /**
  * A compact, render-ready projection of one pinned message — the pinned panel's row
@@ -209,15 +209,16 @@ export class PinnedMessagesService {
     if (!room || !this.matrix.isInitialized) {
       return;
     }
+    const state = liveRoomState(room);
     const pinned =
-      room.currentState
-        .getStateEvents(EventType.RoomPinnedEvents, '')
+      state
+        ?.getStateEvents(EventType.RoomPinnedEvents, '')
         ?.getContent<{ pinned?: string[] }>().pinned ?? [];
     this._pinnedEventIds.set([...pinned]);
     const userId = this.matrix.instance.getUserId();
     this._canPin.set(
       !!userId &&
-        room.currentState.maySendStateEvent(EventType.RoomPinnedEvents, userId),
+        !!state?.maySendStateEvent(EventType.RoomPinnedEvents, userId),
     );
   }
 }

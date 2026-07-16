@@ -15,4 +15,5 @@ export * from './lib/attachment-crypto';
 export * from './lib/key-file-crypto';
 export * from './lib/authed-media';
 export * from './lib/room-create';
+export * from './lib/room-state';
 export * from './lib/crypto-wasm-loader';

@@ -50,18 +50,22 @@ function fakeRoom(opts: RoomOpts) {
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,
-    currentState: {
-      getStateEvents: (type: string) =>
-        type === 'm.space.child'
-          ? children.map((c) => ({
-              getStateKey: () => c.childId,
-              getContent: () => ({
-                via: c.via ?? ['hs.example'],
-                ...(c.order !== undefined ? { order: c.order } : {}),
-              }),
-            }))
-          : [],
-    },
+    // The service reads room state via the live timeline (liveRoomState()),
+    // which is what the SDK's deprecated `currentState` aliased.
+    getLiveTimeline: () => ({
+      getState: () => ({
+        getStateEvents: (type: string) =>
+          type === 'm.space.child'
+            ? children.map((c) => ({
+                getStateKey: () => c.childId,
+                getContent: () => ({
+                  via: c.via ?? ['hs.example'],
+                  ...(c.order !== undefined ? { order: c.order } : {}),
+                }),
+              }))
+            : [],
+      }),
+    }),
     _children: children, // test-only handle for mutation
   };
 }

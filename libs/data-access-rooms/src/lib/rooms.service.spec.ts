@@ -79,15 +79,21 @@ function fakeRoom(opts: {
     getUnreadNotificationCount: (type?: string) =>
       type === 'highlight' ? (opts.highlight ?? 0) : (opts.unread ?? 0),
     getLastActiveTimestamp: () => opts.activity ?? 0,
-    getLiveTimeline: () => ({ getEvents: () => opts.events ?? [] }),
-    currentState: {
-      getStateEvents: (type: string, stateKey?: string) => {
-        if (type === 'm.space.child' && stateKey === undefined) {
-          return (opts.children ?? []).map((id) => ({ getStateKey: () => id }));
-        }
-        return stateKey === undefined ? [] : null;
-      },
-    },
+    // Room state hangs off the live timeline (what liveRoomState() reads, and what
+    // the SDK's deprecated `currentState` aliased).
+    getLiveTimeline: () => ({
+      getEvents: () => opts.events ?? [],
+      getState: () => ({
+        getStateEvents: (type: string, stateKey?: string) => {
+          if (type === 'm.space.child' && stateKey === undefined) {
+            return (opts.children ?? []).map((id) => ({
+              getStateKey: () => id,
+            }));
+          }
+          return stateKey === undefined ? [] : null;
+        },
+      }),
+    }),
   };
 }
 
@@ -206,6 +212,7 @@ describe('RoomsService', () => {
     const room = {
       getLiveTimeline: () => ({
         getEvents: () => [{ getId: () => '$old', status: null }, latest],
+        getState: () => undefined,
       }),
     };
     const sendReadReceipt = vi.fn().mockResolvedValue({});
@@ -229,7 +236,10 @@ describe('RoomsService', () => {
   it('acks privately when read receipts are turned off', async () => {
     const latest = { getId: () => '$latest', status: null };
     const room = {
-      getLiveTimeline: () => ({ getEvents: () => [latest] }),
+      getLiveTimeline: () => ({
+        getEvents: () => [latest],
+        getState: () => undefined,
+      }),
     };
     const sendReadReceipt = vi.fn().mockResolvedValue({});
     const client = {
@@ -259,6 +269,7 @@ describe('RoomsService', () => {
           confirmed,
           { getId: () => '$echo', status: 'sending' },
         ],
+        getState: () => undefined,
       }),
     };
     const sendReadReceipt = vi.fn().mockResolvedValue({});
@@ -296,7 +307,12 @@ describe('RoomsService', () => {
 
   it('markAllRead acks only the rooms with unread', async () => {
     const latest = { getId: () => '$l', status: null };
-    const room = { getLiveTimeline: () => ({ getEvents: () => [latest] }) };
+    const room = {
+      getLiveTimeline: () => ({
+        getEvents: () => [latest],
+        getState: () => undefined,
+      }),
+    };
     const sendReadReceipt = vi.fn().mockResolvedValue({});
     const setRoomReadMarkers = vi.fn().mockResolvedValue({});
     const client = {
@@ -321,7 +337,12 @@ describe('RoomsService', () => {
 
   it('markAllRead restricts to the given scope of room ids', async () => {
     const latest = { getId: () => '$l', status: null };
-    const room = { getLiveTimeline: () => ({ getEvents: () => [latest] }) };
+    const room = {
+      getLiveTimeline: () => ({
+        getEvents: () => [latest],
+        getState: () => undefined,
+      }),
+    };
     const setRoomReadMarkers = vi.fn().mockResolvedValue({});
     const client = {
       baseUrl: 'https://hs',
