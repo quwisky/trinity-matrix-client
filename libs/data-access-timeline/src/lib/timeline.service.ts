@@ -1001,7 +1001,7 @@ function isThreadReply(event: MatrixEvent): boolean {
  * changes, so an unchanged message keeps its existing object and its OnPush row
  * is never touched.
  */
-function eventRevision(
+export function eventRevision(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,

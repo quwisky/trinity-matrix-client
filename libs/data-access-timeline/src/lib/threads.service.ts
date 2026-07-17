@@ -38,7 +38,8 @@ import {
   type MessageShield,
   type MessageView,
 } from '@trinity/util-matrix';
-import { resolveShieldsInto } from './shields';
+import { resolveShieldsInto, shieldKey } from './shields';
+import { eventRevision } from './timeline.service';
 import {
   annotationContent,
   editMessageContent,
@@ -231,6 +232,18 @@ export class ThreadsService {
 
   /** Resolved authenticity shields for the opened thread's events, by event id. */
   private readonly threadShields = new Map<string, MessageShield | null>();
+  /**
+   * Per-reply projection cache keyed by event id, mirroring TimelineService.viewCache:
+   * `rev` fingerprints everything buildMessageView reads that can change while the
+   * thread is open (the shield folded in, since it resolves asynchronously). Without it
+   * every refresh re-ran a markdown render + DOMPurify sanitize for EVERY reply — and
+   * refreshThread is driven by Timeline/LocalEcho/Decrypted/Members, so a keystroke
+   * echo rebuilt the whole thread and handed every OnPush row a new identity.
+   */
+  private threadViewCache = new Map<
+    string,
+    { rev: string; view: MessageView }
+  >();
 
   // Cross-signing / device trust changed: a thread message's shield may flip, so
   // force a full re-resolve of the opened thread's shields (mirrors TimelineService).
@@ -397,6 +410,7 @@ export class ThreadsService {
     this.lastReadEventId = null;
     this.threadRelevantSenders.clear();
     this.threadShields.clear();
+    this.threadViewCache.clear();
     this._openThreadRootId.set(null);
     this._threadMessages.set([]);
     this._canPaginateThread.set(false);
@@ -764,15 +778,25 @@ export class ThreadsService {
     }
 
     this._threadMessages.set(
-      ordered.map((e) =>
-        safeBuildMessageView(
-          client,
-          room,
-          e,
-          this.threadShields.get(e.getId() ?? '') ?? null,
-        ),
-      ),
+      ordered.map((e) => {
+        const id = e.getId() ?? '';
+        const shield = this.threadShields.get(id) ?? null;
+        const rev = eventRevision(client, room, e) + '\x1f' + shieldKey(shield);
+        const cached = this.threadViewCache.get(id);
+        if (cached && cached.rev === rev) {
+          return cached.view; // unchanged — keep the object so its OnPush row is untouched
+        }
+        const view = safeBuildMessageView(client, room, e, shield);
+        this.threadViewCache.set(id, { rev, view });
+        return view;
+      }),
     );
+    // Prune replies no longer in the thread so the cache can't grow unbounded.
+    for (const id of [...this.threadViewCache.keys()]) {
+      if (!seenIds.has(id)) {
+        this.threadViewCache.delete(id);
+      }
+    }
     // Resolve encrypted-message shields off the async crypto API; a change re-refreshes.
     void this.resolveThreadShields(room, false, ordered);
 
