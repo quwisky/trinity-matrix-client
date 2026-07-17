@@ -109,6 +109,41 @@ describe('AuthService', () => {
         firstValueFrom(auth.discoverHomeserver('nope.invalid')),
       ).rejects.toThrow();
     });
+
+    it('declares the probe domain AND the resolved base_url to the desktop CORS shim', async () => {
+      // Desktop only: discovery and the login that follows reach a homeserver BEFORE
+      // any account exists to declare it, so main's CORS shim would otherwise refuse to
+      // serve those origins. The resolved base_url may differ from the typed domain, and
+      // login POSTs to base_url — so both must be allowed.
+      const allowOrigin = vi.fn();
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+        cors: { allowOrigin, setAllowedOrigins: vi.fn() },
+      };
+      try {
+        findClientConfig.mockResolvedValue(
+          homeserver(AutoDiscovery.SUCCESS, 'https://matrix.example/'),
+        );
+
+        await firstValueFrom(auth.discoverHomeserver('example.org'));
+
+        expect(allowOrigin).toHaveBeenCalledWith('https://example.org');
+        expect(allowOrigin).toHaveBeenCalledWith('https://matrix.example');
+      } finally {
+        delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+      }
+    });
+
+    it('does not touch the bridge off desktop (no trinityDesktop global)', async () => {
+      // The bridge is absent on web/native; discovery must not assume it exists.
+      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+      findClientConfig.mockResolvedValue(
+        homeserver(AutoDiscovery.SUCCESS, 'https://hs.example'),
+      );
+
+      await expect(
+        firstValueFrom(auth.discoverHomeserver('example.org')),
+      ).resolves.toBe('https://hs.example');
+    });
   });
 
   it('builds the SSO login URL via the SDK', () => {

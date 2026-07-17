@@ -69,8 +69,9 @@ const OIDC_SESSION = {
   },
 };
 
-function fakeClient() {
+function fakeClient(baseUrl = 'https://hs.example') {
   return {
+    baseUrl,
     on: vi.fn(),
     off: vi.fn(),
     initRustCrypto: vi.fn().mockResolvedValue(undefined),
@@ -754,5 +755,52 @@ describe('MatrixClientService', () => {
     expect(storage.remove).not.toHaveBeenCalled(); // registry untouched
     expect(storage.invalidateToken).not.toHaveBeenCalled();
     expect(svc.activeUserId()).toBeNull();
+  });
+
+  describe('CORS origin publishing (desktop)', () => {
+    // On desktop the renderer must publish the live homeserver origin set so main's CORS
+    // shim can be scoped to it (electron/src/cors.ts). Published on every account-set
+    // change; the whole set is REPLACED each time so a signed-out account is revoked.
+    it('publishes the live homeserver origins whenever the account set changes', async () => {
+      const setAllowedOrigins = vi.fn();
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+        cors: { setAllowedOrigins, allowOrigin: vi.fn() },
+      };
+      try {
+        vi.mocked(createClient).mockReturnValueOnce(
+          fakeClient('https://hs.example') as never,
+        );
+        const { svc, storage } = setup();
+        vi.mocked(storage.save).mockReturnValue(of(SESSION as never));
+        vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+
+        await firstValueFrom(svc.init(SESSION));
+        expect(setAllowedOrigins).toHaveBeenLastCalledWith([
+          'https://hs.example',
+        ]);
+
+        // A second account joins → the set now carries both origins.
+        vi.mocked(createClient).mockReturnValueOnce(
+          fakeClient('https://other.example') as never,
+        );
+        vi.mocked(storage.save).mockReturnValue(of(SESSION_B as never));
+        await firstValueFrom(svc.add(SESSION_B));
+        expect(setAllowedOrigins).toHaveBeenLastCalledWith([
+          'https://hs.example',
+          'https://other.example',
+        ]);
+      } finally {
+        delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+      }
+    });
+
+    it('does not throw off desktop (no bridge)', async () => {
+      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+      vi.mocked(createClient).mockReturnValueOnce(fakeClient() as never);
+      const { svc } = setup();
+
+      await expect(firstValueFrom(svc.init(SESSION))).resolves.not.toThrow();
+      expect(svc.isInitialized).toBe(true);
+    });
   });
 });
