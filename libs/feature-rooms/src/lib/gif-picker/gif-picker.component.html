@@ -21,16 +21,19 @@
     } @else {
       <div class="gif-picker__grid" role="list">
         @for (gif of results(); track gif.id) {
-          <button
-            type="button"
-            class="gif-picker__item"
-            role="listitem"
-            [attr.aria-label]="gif.description || 'GIF'"
-            data-testid="gif-result"
-            (click)="gifSelect.emit(gif)"
-          >
-            <trn-gif-thumb [url]="gif.previewUrl" [alt]="gif.description" />
-          </button>
+          <!-- The listitem role lives on the WRAPPER: putting it on the button would
+               replace the button role, so the GIF would not be announced as actionable. -->
+          <div role="listitem" class="contents">
+            <button
+              type="button"
+              class="gif-picker__item"
+              [attr.aria-label]="gif.description || 'GIF'"
+              data-testid="gif-result"
+              (click)="gifSelect.emit(gif)"
+            >
+              <trn-gif-thumb [url]="gif.previewUrl" [alt]="gif.description" />
+            </button>
+          </div>
         }
       </div>
     }

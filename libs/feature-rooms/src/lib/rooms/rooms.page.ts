@@ -2,7 +2,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  HostListener,
   OnDestroy,
   OnInit,
   computed,
@@ -117,6 +116,11 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
     ConnectivityBannerComponent,
     TombstoneBannerComponent,
   ],
+  host: {
+    // Both accelerators, per the style guide's `host`-over-@HostListener rule.
+    '(document:keydown.meta.k)': 'onQuickSwitch($event)',
+    '(document:keydown.control.k)': 'onQuickSwitch($event)',
+  },
   viewProviders: [
     provideIcons({
       lucideLock,
@@ -405,8 +409,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    */
   // Angular 21 type-checks host listeners; `document:keydown` is typed as the base
   // `Event`, so accept that and just call the shared `preventDefault`.
-  @HostListener('document:keydown.meta.k', ['$event'])
-  @HostListener('document:keydown.control.k', ['$event'])
+  /** Opens the quick switcher. Bound for BOTH Cmd+K (macOS) and Ctrl+K in `host`. */
   onQuickSwitch(event: Event): void {
     event.preventDefault();
     void this.openSwitcher();
