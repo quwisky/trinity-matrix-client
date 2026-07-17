@@ -46,7 +46,7 @@ Pinned versions and integration notes live in [STACK.md](STACK.md).
 
 | Concern         | Choice (version @ 2026-06-26)                                                                 | Rationale                                         |
 | --------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| UI framework    | spartan-ng `@spartan-ng/brain` 1.0.4 on Tailwind v4 + Angular 21 (standalone, signals)        | Cross-platform UI, native feel                    |
+| UI framework    | spartan-ng `@spartan-ng/brain` 1.0.4 on Tailwind v4 + Angular 22 (standalone, signals)        | Cross-platform UI, native feel                    |
 | Native bridge   | Capacitor 8.4.1                                                                               | iOS/Android/Web; SPM on iOS, edge-to-edge Android |
 | Desktop         | Electron (hand-rolled shell in `electron/`, packaged with electron-builder)                   | Reuses web build                                  |
 | Matrix protocol | `matrix-js-sdk` 41.8.0 (needs Node 22+)                                                       | Official; handles sync/E2EE/crypto                |

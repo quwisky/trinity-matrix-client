@@ -114,6 +114,13 @@ the architecture changes — find out before building UI on top.
 - **Hand-rolled** (`electron/`), NOT `@capacitor-community/electron` (abandoned, stuck
   on Cap-5). The desktop app is the existing `www/` build in a hardened Electron shell;
   on desktop the app runs its web fallbacks (no Capacitor desktop bridge).
+- **Own toolchain, outside the Nx graph**: `electron/` has its own `package.json` +
+  `node_modules` and pins its own **TypeScript** (`~5.9`, via `pnpm -C electron compile`),
+  independent of the root TS. Gotcha: `nx migrate`'s TypeScript-version tsconfig codemods
+  glob every `tsconfig*.json` and so wrongly edit `electron/tsconfig.json` — the TS 6 bump
+  added `ignoreDeprecations: "6.0"`, which electron's TS 5.9 rejects (`TS5103`). Run
+  `git checkout -- electron/tsconfig.json` after any root TS bump and verify with
+  `cd electron && ./node_modules/.bin/tsc -p tsconfig.json --noEmit`.
 - The build is served over a custom **privileged** scheme (`trinity://app/`, registered
   standard + secure + fetch + stream) so the renderer is a secure context and the crypto
   WASM stream-instantiates. `contextIsolation`/`sandbox` on, `nodeIntegration` off.
