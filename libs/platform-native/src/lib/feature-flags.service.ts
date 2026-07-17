@@ -14,11 +14,16 @@ const VIRTUAL_TIMELINE_KEY = 'trinity.flags.virtual-timeline';
  */
 @Injectable({ providedIn: 'root' })
 export class FeatureFlagsService {
-  private readonly _virtualTimeline = signal(false);
+  private readonly _virtualTimeline = signal(true);
   /**
    * Windowed (virtualized) message timeline: render only the on-screen rows plus
-   * spacers so the DOM stays bounded in long rooms. Off by default while it's
-   * being proven out; opt in from Settings → Experimental.
+   * spacers so the DOM stays bounded in long rooms.
+   *
+   * ON by default. The non-windowed list renders every loaded row and nothing caps
+   * retention — the auto-backfill alone pulls up to 600 rows to fill the viewport, and
+   * every scroll-to-top adds 30 more for the life of the session, each a heavy subtree
+   * (avatar, toolbar, reactions, receipts, previews). An explicit stored preference
+   * still wins, so anyone who opted out keeps that; Settings → Experimental toggles it.
    */
   readonly virtualTimeline = this._virtualTimeline.asReadonly();
 
@@ -30,7 +35,7 @@ export class FeatureFlagsService {
         this._virtualTimeline.set(value === 'true');
       }
     } catch {
-      // No stored value (or storage unavailable) → keep the default (off).
+      // No stored value (or storage unavailable) → keep the default (on).
     }
   }
 

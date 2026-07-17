@@ -23,14 +23,16 @@ describe('FeatureFlagsService', () => {
     return TestBed.inject(FeatureFlagsService);
   }
 
-  it('defaults the virtualized-timeline flag to off', () => {
-    expect(service().virtualTimeline()).toBe(false);
+  it('defaults the virtualized-timeline flag to on', () => {
+    // The non-windowed list retains every loaded row unbounded; windowing is the
+    // safe default. An explicit stored preference still overrides it (below).
+    expect(service().virtualTimeline()).toBe(true);
   });
 
   it('keeps the default when nothing is stored', async () => {
     const svc = service();
     await svc.init();
-    expect(svc.virtualTimeline()).toBe(false);
+    expect(svc.virtualTimeline()).toBe(true);
   });
 
   it('restores a stored "true" flag on init', async () => {
@@ -48,11 +50,11 @@ describe('FeatureFlagsService', () => {
     expect(svc.virtualTimeline()).toBe(false);
   });
 
-  it('keeps the default (off) when storage throws', async () => {
+  it('keeps the default (on) when storage throws', async () => {
     get.mockRejectedValue(new Error('unavailable'));
     const svc = service();
     await svc.init();
-    expect(svc.virtualTimeline()).toBe(false);
+    expect(svc.virtualTimeline()).toBe(true);
   });
 
   it('setVirtualTimeline updates the signal and persists the choice', () => {
