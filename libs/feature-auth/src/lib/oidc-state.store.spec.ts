@@ -83,6 +83,20 @@ describe('OidcStateStore', () => {
     });
   });
 
+  it('bins an expired stash instead of leaving the code_verifier on disk', async () => {
+    // The blob holds the PKCE code_verifier — a secret — and on native/Electron it sits
+    // in app-private PLAINTEXT. The TTL was only enforced at read time, so an abandoned
+    // login left it there until some later save() happened to overwrite it.
+    await store.save(SAVE);
+    expect(prefs.get('oidc.ssBlob')).toBeDefined(); // stashed…
+    prefs.set('oidc.startedAt', '0'); // …then abandoned past the TTL
+
+    await store.peek();
+
+    expect(prefs.get('oidc.ssBlob')).toBeUndefined(); // gone, not just refused
+    expect(prefs.get('oidc.state')).toBeUndefined();
+  });
+
   it('persists no blob when there is none to stash', async () => {
     await store.save({ ...SAVE, sessionStateBlob: null });
 

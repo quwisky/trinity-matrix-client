@@ -121,6 +121,16 @@ export class OidcStateStore {
     const started = Number(startedAt.value);
     const fresh = Number.isFinite(started) && Date.now() - started <= TTL_MS;
     if (!fresh) {
+      // Bin it rather than just refusing to serve it. On native/Electron the blob holds
+      // the PKCE code_verifier — a secret — in app-private PLAINTEXT, and the TTL was
+      // only ever enforced here at READ time, so an abandoned login left it on disk
+      // until some later save() happened to overwrite it. It is spent either way; a
+      // secret should not outlive its purpose. Best-effort: a failed cleanup must not
+      // turn a "nothing stashed" answer into a rejection.
+      //
+      // This does NOT weaken the verify-before-clear contract: that exists so a forged
+      // callback cannot wipe a LIVE stash, and this one is already dead.
+      await this.clear().catch(() => undefined);
       return EMPTY_STASH;
     }
     return {
