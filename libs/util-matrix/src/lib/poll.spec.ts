@@ -5,6 +5,7 @@ import {
   isPollStart,
   pollEndContent,
   pollResponseContent,
+  pollSignature,
   pollStartContent,
 } from './poll';
 
@@ -40,11 +41,11 @@ function response(
   } as unknown as MatrixEvent;
 }
 
-function endEvent(ts: number): MatrixEvent {
+function endEvent(ts: number, redacted = false): MatrixEvent {
   return {
     getSender: () => '@me:hs',
     getTs: () => ts,
-    isRedacted: () => false,
+    isRedacted: () => redacted,
     getContent: () => ({ 'm.poll.end': {} }),
   } as unknown as MatrixEvent;
 }
@@ -208,6 +209,40 @@ describe('poll content builders', () => {
     expect(content['m.relates_to']).toEqual({
       rel_type: 'm.reference',
       event_id: '$p',
+    });
+  });
+
+  // pollSignature is the re-projection cache key (timeline.service keys a poll row on
+  // it). If it disagrees with buildPollView about what "ended" means, the view stops
+  // re-projecting while the underlying data has actually changed — the poll renders
+  // closed, with tallies that buildPollView would now count differently.
+  describe('pollSignature agrees with buildPollView', () => {
+    const start = startEvent('Lunch?', ['Pizza', 'Sushi']);
+
+    it('changes when the end event is redacted (poll reopens)', () => {
+      const responses = [response('@a:hs', 'a0', 10)];
+      const closed = room(responses, [endEvent(5)]);
+      const reopened = room(responses, [endEvent(5, true)]); // moderator redacted it
+
+      // buildPollView already disagrees across these two rooms…
+      expect(buildPollView(client, closed, start).ended).toBe(true);
+      expect(buildPollView(client, reopened, start).ended).toBe(false);
+
+      // …so the cache key must too, or the row never re-projects.
+      expect(pollSignature(reopened, start)).not.toBe(
+        pollSignature(closed, start),
+      );
+    });
+
+    it('changes when an earlier end event shifts which votes count', () => {
+      const responses = [response('@a:hs', 'a0', 10)];
+      const late = room(responses, [endEvent(20)]); // vote at 10 counts
+      const early = room(responses, [endEvent(5)]); // vote at 10 is post-close
+
+      expect(buildPollView(client, late, start).totalVotes).not.toBe(
+        buildPollView(client, early, start).totalVotes,
+      );
+      expect(pollSignature(early, start)).not.toBe(pollSignature(late, start));
     });
   });
 });

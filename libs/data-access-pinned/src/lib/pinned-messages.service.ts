@@ -4,6 +4,7 @@ import {
   MatrixEventEvent,
   RoomEvent,
   RoomStateEvent,
+  type MatrixClient,
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
@@ -103,6 +104,13 @@ export class PinnedMessagesService {
   private roomId: string | null = null;
   private room: Room | null = null;
 
+  /**
+   * The client {@link open} attached its Decrypted listener to. `matrix.instance`
+   * follows the ACTIVE account, so re-reading it in {@link close} after an account
+   * switch would detach from the *new* client and leak the listener on the old one.
+   */
+  private connectedClient: MatrixClient | null = null;
+
   // A state event of any type; filter to pinned-events + power-levels. Fires outside
   // the zone, so re-read (which writes signals) inside zone.run.
   private readonly onStateEvent = (event: MatrixEvent): void => {
@@ -141,6 +149,7 @@ export class PinnedMessagesService {
 
     this.roomId = roomId;
     this.room = room;
+    this.connectedClient = client;
     // A single state listener covers both remote pin changes and power-level
     // (permission) changes. Bind it to the ROOM, not to `room.currentState`: that is a
     // cached reference the SDK swaps out whenever the live timeline is reset, re-pointing
@@ -156,9 +165,10 @@ export class PinnedMessagesService {
   close(): void {
     this.room?.off(RoomStateEvent.Events, this.onStateEvent);
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
-    if (this.matrix.isInitialized) {
-      this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);
-    }
+    // Detach from the client open() attached to, not `matrix.instance` — that follows
+    // the active account and would leak this listener on the old client after a switch.
+    this.connectedClient?.off(MatrixEventEvent.Decrypted, this.onDecrypted);
+    this.connectedClient = null;
     this.room = null;
     this.roomId = null;
     this._pinnedEventIds.set([]);

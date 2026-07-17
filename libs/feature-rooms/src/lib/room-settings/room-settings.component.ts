@@ -12,12 +12,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { type Observable, catchError, forkJoin, map, of } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
-import { RoomSettingsService } from '@trinity/data-access-rooms';
+import {
+  HistoryVisibility,
+  JoinRule,
+  RoomSettingsService,
+} from '@trinity/data-access-rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util-matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';

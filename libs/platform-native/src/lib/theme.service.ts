@@ -10,18 +10,17 @@ export type ResolvedTheme = 'light' | 'dark';
 
 const THEME_KEY = 'trinity.theme';
 /**
- * Class toggled on <html>; its presence is dark (light is the :root default). This
- * is Ionic's own dark-palette class (global.scss imports dark.class.css), so toggling
- * it switches both the Trinity vars and Ionic's surface tokens together.
+ * Class toggled on <html>; its PRESENCE means dark. Light is the `:root` default and
+ * dark is layered under `.dark` (see apps/trinity/src/theme/variables.scss), so a
+ * resolved dark theme ADDS this class and light removes it.
  */
 const DARK_CLASS = 'dark';
 
 /**
  * Owns the app's light/dark appearance: persists the user's preference, resolves
- * `system` against `prefers-color-scheme`, and applies the result by toggling a
- * class on the document root. The dark palette is the `:root` default, so a
- * resolved dark theme just removes the light class. Exposed as signals so the
- * settings UI can bind the current choice.
+ * `system` against `prefers-color-scheme`, and applies the result by toggling
+ * {@link DARK_CLASS} on the document root — added for dark, removed for light.
+ * Exposed as signals so the settings UI can bind the current choice.
  */
 @Injectable({ providedIn: 'root' })
 export class ThemeService {

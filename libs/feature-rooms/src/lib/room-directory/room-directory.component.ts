@@ -162,6 +162,15 @@ export class RoomDirectoryComponent implements OnInit {
         error: () => {
           this.loading.set(false);
           this.error.set('Could not load the room directory.');
+          // On a failed RESET (a new term, or a rooms/spaces mode switch) the previous
+          // query's results and pagination token no longer belong to what the UI now
+          // claims to be showing: stale room hits would render under "Explore spaces",
+          // and "Load more" would page the spaces directory with the rooms token. Drop
+          // both. A failed load-MORE keeps them — the existing page is still valid.
+          if (reset) {
+            this.rooms.set([]);
+            this.nextBatch.set(null);
+          }
         },
       });
   }

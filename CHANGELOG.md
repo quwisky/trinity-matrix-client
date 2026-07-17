@@ -28,6 +28,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Signing out no longer risks another account's encrypted history.** With more than one
+  account signed in, signing out could delete a second account's saved session — and the
+  encryption keys that went with it — if that account had been signed out by its server or
+  had failed to start up. Its message history could then be permanently unreadable. Signing
+  out now only clears everything when it really is the last account.
+- **Switching accounts no longer shows the previous account's messages.** With a room open,
+  switching accounts left that room on screen still showing the previous account's view of
+  it, and reopening the room didn't help — only restarting the app did. The room now closes
+  cleanly on a switch.
+- **A verification request from another person now says so.** Requests from other users were
+  labelled as coming from one of your own sessions, and never named who was asking — while
+  the emoji comparison only protects you if you know who you're comparing with. Both screens
+  now name the other user and distinguish them from your own devices.
+- **Busy rooms are faster to open and scroll.** Loading older messages and opening an
+  encrypted room re-processed the whole loaded timeline once per message; a burst of
+  activity is now handled in a single pass.
+- **A reopened poll updates again.** If a moderator removed a poll's closing event, the poll
+  kept showing as closed with stale results until something else in the room changed.
 - **Pinned messages keep updating after the app catches up on a room.** Pins added or
   removed by someone else — and gaining or losing permission to pin — could silently stop
   appearing in a room you had open, leaving the pinned panel frozen until you switched

@@ -135,10 +135,17 @@ export class MemberInfoComponent {
       });
   }
 
-  /** Copy the member's user id to the clipboard, confirming with a toast. */
+  /**
+   * Copy the member's user id, confirming with a toast — but only once the write has
+   * actually resolved. A rejected write (denied permission, non-secure context) must
+   * not be reported as success: the user walks away believing they have the id.
+   */
   copyId(): void {
-    void navigator.clipboard?.writeText(this.member().userId);
-    this.toast.show('User ID copied.', { duration: 2000 });
+    const value = this.member().userId;
+    void (navigator.clipboard?.writeText(value) ?? Promise.reject()).then(
+      () => this.toast.show('User ID copied.', { duration: 2000 }),
+      () => this.toast.show('Could not copy the user ID.', { duration: 2000 }),
+    );
   }
 
   /** Block or unblock the member (account-wide ignore); flips the button on success. */

@@ -19,11 +19,19 @@
     },
     "test": {
       "cache": true,
-      "inputs": ["default", "^production"]
+      "inputs": ["default", "^production"],
+      "//": "Cap each vitest's worker pool. Nx runs `parallel` projects at once and EVERY vitest independently scales its pool to the CPU count, unaware of the others — so the pools multiply (3 projects x 6 CPUs = 18 concurrent jsdom environments). That exhausts memory: tests crawl past the 5s timeout and the OS kills the worker, which surfaces as a passing-but-non-zero-exit task that Nx then labels FLAKY. Keep (nx parallel x maxThreads) at or under the core count.",
+      "options": {
+        "env": {
+          "VITEST_MAX_THREADS": "2",
+          "VITEST_MIN_THREADS": "1"
+        }
+      }
     },
     "lint": {
       "cache": true,
-      "inputs": ["default", "{workspaceRoot}/eslint.config.mjs"]
+      "//": "`^production` is load-bearing: @typescript-eslint/no-deprecated is type-aware, so a project's lint result depends on its DEPENDENCIES' source (the @deprecated tag lives there). Without dependency inputs, deprecating an export in util-matrix leaves every consumer reporting a cached pass — the ban silently stops working across exactly the lib boundaries it exists to police.",
+      "inputs": ["default", "^production", "{workspaceRoot}/eslint.config.mjs"]
     },
     "@nx/angular:ng-packagr-lite": {
       "cache": true,

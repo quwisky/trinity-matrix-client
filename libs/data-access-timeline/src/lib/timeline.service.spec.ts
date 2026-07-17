@@ -705,7 +705,7 @@ describe('TimelineService', () => {
     });
   });
 
-  it('refreshes a reply preview when the quoted sender’s member loads late', () => {
+  it('refreshes a reply preview when the quoted sender’s member loads late', async () => {
     const events = [
       fakeEvent({ id: '$orig', sender: '@a:hs', body: 'original text' }),
       fakeEvent({
@@ -766,13 +766,14 @@ describe('TimelineService', () => {
     // The member's profile arrives; the room re-emits its state Members event.
     aliceLoaded = true;
     memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@a:hs' });
+    await Promise.resolve(); // re-projection is coalesced into a microtask
 
     const after = svc.messages().find((m) => m.id === '$reply');
     expect(after?.replyTo?.senderName).toBe('Alice');
     expect(after?.replyTo?.senderAvatarMxc).toBe('mxc://hs/av');
   });
 
-  it('refreshes a membership system line when the target member loads late', () => {
+  it('refreshes a membership system line when the target member loads late', async () => {
     const events = [
       fakeEvent({
         id: '$inv',
@@ -830,13 +831,14 @@ describe('TimelineService', () => {
     // Bob's profile arrives; the room re-emits its state Members event for him.
     bobLoaded = true;
     memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@bob:hs' });
+    await Promise.resolve(); // re-projection is coalesced into a microtask
 
     expect(svc.messages().find((m) => m.id === '$inv')?.summary).toBe(
       'Me invited Bob',
     );
   });
 
-  it('does not re-project when an unreferenced member changes', () => {
+  it('does not re-project when an unreferenced member changes', async () => {
     const events = [fakeEvent({ id: '$1', sender: '@a:hs', body: 'hi' })];
     let memberCalls = 0;
     let memberHandler: ((...a: unknown[]) => void) | undefined;
@@ -882,10 +884,14 @@ describe('TimelineService', () => {
 
     // A member the timeline doesn't render → gated out, no re-projection.
     memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@stranger:hs' });
+    // Flush before asserting: re-projection is coalesced into a microtask, so asserting
+    // synchronously here would pass even if a refresh HAD been wrongly scheduled.
+    await Promise.resolve();
     expect(memberCalls).toBe(baseline);
 
     // A rendered sender → re-projects (reads members again).
     memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@a:hs' });
+    await Promise.resolve();
     expect(memberCalls).toBeGreaterThan(baseline);
   });
 
@@ -1225,7 +1231,107 @@ describe('TimelineService', () => {
     expect(received.map((e) => e.getId())).toEqual(['$b']); // targets the newer event
   });
 
-  it('re-acks a live message in the open room, deduped across refreshes', () => {
+  it('detaches client listeners from the account it opened on, not the active one', async () => {
+    // `MatrixClientService.instance` follows the ACTIVE account. open() attaches its
+    // client-level listeners (Decrypted/Typing/Crypto) to whichever client was active
+    // then; if close() re-reads `instance` after an account switch it detaches from the
+    // NEW client and leaks every listener on the old one — which is still syncing.
+    const makeClient = () => {
+      const handlers: Record<string, unknown[]> = {};
+      return {
+        baseUrl: 'https://hs',
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: (ev: string, h: unknown) => void (handlers[ev] ??= []).push(h),
+        off: (ev: string, h: unknown) => {
+          handlers[ev] = (handlers[ev] ?? []).filter((x) => x !== h);
+        },
+        sendReadReceipt: () => Promise.resolve({}),
+        listenerCount: () =>
+          Object.values(handlers).reduce((n, hs) => n + hs.length, 0),
+      };
+    };
+    const room = fakeRoom([
+      fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' }),
+    ]);
+    const clientA = makeClient();
+    const clientB = makeClient();
+    const active = { client: clientA as unknown };
+
+    TestBed.configureTestingModule({
+      providers: [TimelineService, switchableMatrixProvider(active)],
+    });
+    const svc = TestBed.inject(TimelineService);
+
+    svc.open('!r:hs');
+    expect(clientA.listenerCount()).toBeGreaterThan(0); // attached to A
+
+    active.client = clientB; // the user switches accounts
+    svc.close();
+
+    expect(clientA.listenerCount()).toBe(0); // A's listeners must be gone
+  });
+
+  it('coalesces a burst of timeline events into a single re-projection', async () => {
+    // matrix-js-sdk emits RoomEvent.Timeline once PER event, so paginating 30 messages
+    // fires the handler 30 times. refresh() walks every loaded event (fingerprinting
+    // each), so refreshing per event makes a burst quadratic. A burst must therefore
+    // cost the same as one event — mirroring RoomsService.scheduleRefresh.
+    let timelineHandler: (() => void) | undefined;
+    let scans = 0;
+    const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => {
+          scans++;
+          return events;
+        },
+        getPaginationToken: () => null,
+        getState: () => undefined,
+      }),
+      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+      relations: { getChildEventsForEvent: () => undefined },
+      on: (ev: string, cb: () => void) => {
+        if (ev === RoomEvent.Timeline) {
+          timelineHandler = cb;
+        }
+      },
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: () => Promise.resolve({}),
+    };
+    TestBed.configureTestingModule({
+      providers: [TimelineService, matrixProvider(client)],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    // Baseline: what one event costs, once the microtask has flushed.
+    const before = scans;
+    timelineHandler?.();
+    await Promise.resolve();
+    const costOfOne = scans - before;
+    expect(costOfOne).toBeGreaterThan(0); // the handler really does re-project
+
+    // A burst of five must cost exactly the same as one.
+    const beforeBurst = scans;
+    for (let i = 0; i < 5; i++) {
+      timelineHandler?.();
+    }
+    await Promise.resolve();
+
+    expect(scans - beforeBurst).toBe(costOfOne);
+  });
+
+  it('re-acks a live message in the open room, deduped across refreshes', async () => {
     const received: { getId: () => string }[] = [];
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
     let timelineHandler: (() => void) | undefined;
@@ -1268,10 +1374,13 @@ describe('TimelineService', () => {
     // A live message arrives while the room is open → re-ack the new latest.
     events.push(fakeEvent({ id: '$b', sender: '@a:hs', body: 'yo' }));
     timelineHandler?.();
+    await Promise.resolve(); // re-projection is coalesced into a microtask
     expect(received.map((e) => e.getId())).toEqual(['$a', '$b']);
 
     // A refresh that doesn't change the latest (e.g. backfill) must not re-send.
+    // Flush before asserting, or this would pass without the refresh even running.
     timelineHandler?.();
+    await Promise.resolve();
     expect(received.map((e) => e.getId())).toEqual(['$a', '$b']);
   });
 

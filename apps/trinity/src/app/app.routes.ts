@@ -43,15 +43,19 @@ export const routes: Routes = [
     loadComponent: () =>
       import('@trinity/feature-crypto').then((m) => m.DeviceVerificationPage),
   },
-  // Dev-only E2EE crypto spike (Milestone 1 harness) — excluded from prod builds,
-  // so the harness page and CryptoSpikeService tree-shake out of the production bundle.
+  // Dev-only E2EE crypto spike (Milestone 1 harness; driven by `pnpm spike:chromium`).
+  // Deep-imported rather than taken from the @trinity/feature-shell barrel ON PURPOSE:
+  // main.ts imports that barrel eagerly for AppComponent, so a barrel import here would
+  // merge the harness into the eager chunk. esbuild does not constant-fold
+  // `environment.production`, so the ternary alone does NOT strip the import — the route
+  // is absent at runtime in prod, but the code would still ship and be SW-precached.
   ...(environment.production
     ? []
     : [
         {
           path: 'spike',
           loadComponent: () =>
-            import('@trinity/feature-shell').then((m) => m.HomePage),
+            import('@trinity/feature-shell/home-page').then((m) => m.HomePage),
         },
       ]),
   {

@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import {
   Direction,
@@ -102,6 +102,7 @@ export class TimelineService {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly mediaSvc = inject(MediaService);
   private readonly privacy = inject(PrivacySettingsService);
+  private readonly zone = inject(NgZone);
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();
@@ -136,6 +137,45 @@ export class TimelineService {
   private typingSentAt = 0;
 
   private roomId: string | null = null;
+
+  /**
+   * The client {@link open} attached its client-level listeners to. `matrix.instance`
+   * follows the ACTIVE account, so re-reading it in {@link close} after an account
+   * switch would detach from the *new* client and leak every listener on the old one —
+   * which is still signed in and syncing. Detach from what we attached to.
+   */
+  private connectedClient: MatrixClient | null = null;
+
+  /** Whether a coalesced re-projection is already queued for this microtask turn. */
+  private refreshScheduled = false;
+
+  /**
+   * Coalesce listener-driven re-projections into one per microtask.
+   *
+   * The SDK emits Timeline/Decrypted once **per event**, so a burst — paginating 30
+   * messages, or decrypting a backfilled room — fires the handler once per event, and
+   * {@link refresh} walks and fingerprints *every* loaded event each time. Refreshing
+   * per event is therefore quadratic in the burst. Collapse the burst into a single
+   * pass, exactly as `RoomsService.scheduleRefresh` does.
+   *
+   * Also re-enters Angular's zone: these events fire outside it, so the signal writes
+   * in refresh() would otherwise not schedule change detection — leaving typing
+   * indicators and shield changes to wait for the next incidental tick. (Direct,
+   * non-listener refreshes — open() and the actions — stay synchronous, so a caller
+   * still observes its own write immediately.)
+   */
+  private scheduleRefresh(): void {
+    if (this.refreshScheduled) {
+      return;
+    }
+    this.refreshScheduled = true;
+    queueMicrotask(() => {
+      this.refreshScheduled = false;
+      if (this.room) {
+        this.zone.run(() => this.refresh());
+      }
+    });
+  }
 
   /** The room currently open in the timeline, or null when none is. Lets other
    * services (e.g. NotificationService) tell whether the user is viewing a room. */
@@ -198,13 +238,13 @@ export class TimelineService {
   // loads/changes, so a full lazy member-load doesn't re-map once per member.
   private relevantSenders = new Set<string>();
 
-  private readonly onTimeline = (): void => this.refresh();
-  private readonly onLocalEcho = (): void => this.refresh();
+  private readonly onTimeline = (): void => this.scheduleRefresh();
+  private readonly onLocalEcho = (): void => this.scheduleRefresh();
   // Others' read receipts moved — re-project so the "seen by" avatars follow them.
-  private readonly onReceipt = (): void => this.refresh();
+  private readonly onReceipt = (): void => this.scheduleRefresh();
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.roomId) {
-      this.refresh();
+      this.scheduleRefresh();
     }
   };
   // A member's display name/avatar can arrive (lazy loading) or change *after* the
@@ -221,7 +261,7 @@ export class TimelineService {
       member.roomId === this.roomId &&
       this.relevantSenders.has(member.userId)
     ) {
-      this.refresh();
+      this.scheduleRefresh();
     }
   };
 
@@ -269,6 +309,7 @@ export class TimelineService {
 
     this.roomId = roomId;
     this.room = room;
+    this.connectedClient = client;
     room.on(RoomEvent.Timeline, this.onTimeline);
     room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     room.on(RoomEvent.Receipt, this.onReceipt);
@@ -303,16 +344,18 @@ export class TimelineService {
     this.room?.off(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     this.room?.off(RoomEvent.Receipt, this.onReceipt);
     this.room?.off(RoomStateEvent.Members, this.onMember);
-    if (this.matrix.isInitialized) {
-      this.matrix.instance.off(MatrixEventEvent.Decrypted, this.onDecrypted);
-      this.matrix.instance.off(RoomMemberEvent.Typing, this.onTyping);
-      this.matrix.instance.off(
-        CryptoEvent.UserTrustStatusChanged,
-        this.onTrust,
-      );
-      this.matrix.instance.off(CryptoEvent.DevicesUpdated, this.onTrust);
-      this.matrix.instance.off(CryptoEvent.KeysChanged, this.onTrust);
+    // Detach from the client open() attached to — NOT `matrix.instance`, which follows
+    // the active account and would leave the old client's listeners attached forever
+    // after an account switch.
+    const client = this.connectedClient;
+    if (client) {
+      client.off(MatrixEventEvent.Decrypted, this.onDecrypted);
+      client.off(RoomMemberEvent.Typing, this.onTyping);
+      client.off(CryptoEvent.UserTrustStatusChanged, this.onTrust);
+      client.off(CryptoEvent.DevicesUpdated, this.onTrust);
+      client.off(CryptoEvent.KeysChanged, this.onTrust);
     }
+    this.connectedClient = null;
     this.room = null;
     this.roomId = null;
     this.lastReadEventId = null;
@@ -958,7 +1001,7 @@ function isThreadReply(event: MatrixEvent): boolean {
  * changes, so an unchanged message keeps its existing object and its OnPush row
  * is never touched.
  */
-function eventRevision(
+export function eventRevision(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,

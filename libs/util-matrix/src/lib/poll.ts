@@ -221,6 +221,18 @@ export function pollSignature(room: Room, startEvent: MatrixEvent): string {
     .filter((e) => !e.isRedacted())
     .map((e) => `${e.getSender()}:${responseAnswer(e)}:${e.getTs()}`)
     .sort();
-  const ended = referenceRelations(room, pollId, END_TYPES).length > 0;
-  return [...responses, ended ? 'ended' : ''].join('|');
+  // Mirror buildPollView's end handling EXACTLY: it ignores redacted end events and
+  // counts only votes cast before the earliest surviving one. A signature that merely
+  // asked "does any end event exist" would not move when a bogus end is redacted (the
+  // poll reopens and post-close votes start counting again) or when an earlier end
+  // arrives out of order (which changes the tally) — so the row would keep rendering
+  // closed with stale counts until some unrelated change happened to bump the revision.
+  const endTs = referenceRelations(room, pollId, END_TYPES)
+    .filter((event) => !event.isRedacted())
+    .reduce(
+      (min, event) => Math.min(min, event.getTs()),
+      Number.POSITIVE_INFINITY,
+    );
+  const ended = endTs === Number.POSITIVE_INFINITY ? '' : `ended:${endTs}`;
+  return [...responses, ended].join('|');
 }

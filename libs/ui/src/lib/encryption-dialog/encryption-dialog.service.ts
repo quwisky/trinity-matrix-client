@@ -16,14 +16,15 @@ export interface EncryptionDialogOptions {
   returnTo?: string;
 }
 
-/** Matches `<ion-split-pane when="md">` in the rooms shell (Ionic `md` = 768px). */
+/** The rooms shell's md breakpoint: at/above this the sidebar is a static column
+ * rather than an overlay drawer, so the encryption flows present as a dialog. */
 const DESKTOP_QUERY = '(min-width: 768px)';
 
 /**
  * Presents the self-initiated encryption flows — recovery-key unlock
- * (`/encryption/unlock`) and device verification (`/encryption/verify`) — as an
- * Ionic modal on the wide split-pane layout (desktop/Electron) and as a routed
- * page on narrow/mobile layouts. The desktop-vs-mobile decision lives here in one
+ * (`/encryption/unlock`) and device verification (`/encryption/verify`) — as a
+ * CDK dialog on wide layouts (desktop/Electron) and as a routed page on
+ * narrow/mobile layouts. The desktop-vs-mobile decision lives here in one
  * place ({@link isDesktopLayout}) so it can be retargeted (e.g. Electron-only)
  * without touching callers.
  *

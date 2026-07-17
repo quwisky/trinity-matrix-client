@@ -116,7 +116,14 @@ export function applyBadgeCount(count: number): void {
  * badge; a malformed payload is silently ignored.
  */
 export function registerDockBadge(): void {
-  ipcMain.on(SET_BADGE_COUNT_CHANNEL, (_event, raw: unknown) => {
+  ipcMain.on(SET_BADGE_COUNT_CHANNEL, (event, raw: unknown) => {
+    // Every other IPC handler verifies the sender is our own window; this one didn't.
+    // The value of that invariant is that it holds WITHOUT exception — a reader should
+    // never have to work out why one channel is different.
+    const win = getMainWindow();
+    if (!win || event.sender !== win.webContents) {
+      return;
+    }
     const count = coerceBadgeCount(raw);
     if (count === null) {
       return; // malformed — leave the current badge as-is

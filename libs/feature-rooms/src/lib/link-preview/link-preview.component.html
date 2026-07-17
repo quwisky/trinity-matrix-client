@@ -7,7 +7,7 @@
     data-testid="link-preview"
   >
     @if (imageUrl(); as image) {
-      <img class="link-preview__image" [src]="image" alt="" />
+      <img decoding="async" class="link-preview__image" [src]="image" alt="" />
     }
     <span class="link-preview__body">
       @if (host(); as h) {

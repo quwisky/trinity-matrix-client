@@ -13,13 +13,9 @@ export const TYPING_TIMEOUT_MS = 8000;
  */
 export const TYPING_REFRESH_MS = 5000;
 
-/** Above this many concurrent typists we stop naming them and summarise instead. */
-const MAX_NAMED_TYPISTS = 3;
-
 /**
  * Human-readable "X is typing…" notice for the members currently typing (the caller
- * excludes the local user). Names up to {@link MAX_NAMED_TYPISTS} people; beyond that
- * it summarises. Returns `''` when nobody is typing, so a caller can treat the empty
+ * excludes the local user). Names up to three people; beyond that it summarises. Returns `''` when nobody is typing, so a caller can treat the empty
  * string as "hide the row".
  */
 export function formatTypingNotice(names: readonly string[]): string {

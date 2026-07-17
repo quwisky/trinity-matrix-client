@@ -47,9 +47,14 @@ export class MessageSourceComponent {
     inject<DialogRef<void, MessageSourceComponent>>(DialogRef);
   private readonly toast = inject(TrnToastService);
 
+  /** Copy the source, toasting only once the write resolves — never on a rejection. */
   copy(): void {
-    void navigator.clipboard?.writeText(this.source());
-    this.toast.show('Source copied.', { duration: 2000 });
+    void (
+      navigator.clipboard?.writeText(this.source()) ?? Promise.reject()
+    ).then(
+      () => this.toast.show('Source copied.', { duration: 2000 }),
+      () => this.toast.show('Could not copy the source.', { duration: 2000 }),
+    );
   }
 
   close(): void {

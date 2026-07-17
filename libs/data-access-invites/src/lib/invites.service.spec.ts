@@ -150,7 +150,7 @@ describe('InvitesService', () => {
     expect(client.leave).toHaveBeenCalledWith('!r:hs');
   });
 
-  it('refreshes live when membership changes (RoomEvent.MyMembership)', () => {
+  it('refreshes live when membership changes (RoomEvent.MyMembership)', async () => {
     const rooms = [fakeRoom({ roomId: '!a:hs', name: 'Alpha' }, '@me:hs')];
     const { svc, client } = setup(rooms);
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!a:hs']);
@@ -161,6 +161,7 @@ describe('InvitesService', () => {
       '@me:hs',
     );
     handlerFor(client, RoomEvent.MyMembership)?.();
+    await Promise.resolve(); // the refresh is coalesced into a microtask
 
     expect(svc.pendingInvites()).toEqual([]);
   });

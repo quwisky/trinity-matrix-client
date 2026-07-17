@@ -45,9 +45,14 @@ export class SsoStateStore {
       Preferences.set({ key: BASE_URL_KEY, value: baseUrl }),
       Preferences.set({ key: STARTED_KEY, value: String(Date.now()) }),
       Preferences.set({ key: MODE_KEY, value: mode }),
-      ...(deviceId
-        ? [Preferences.set({ key: DEVICE_ID_KEY, value: deviceId })]
-        : []),
+      // Set the device id, or REMOVE any residue from a prior un-consumed attempt.
+      // Every other key here is overwritten unconditionally; leaving this one behind
+      // let an abandoned re-auth (which stashes a device id) hand its DEVICE_ID to the
+      // next, ordinary login within the TTL — silently re-authenticating a stale device
+      // instead of minting a fresh one. Mirrors OidcStateStore's blob handling.
+      deviceId
+        ? Preferences.set({ key: DEVICE_ID_KEY, value: deviceId })
+        : Preferences.remove({ key: DEVICE_ID_KEY }),
     ]);
   }
 

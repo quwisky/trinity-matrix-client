@@ -17,6 +17,22 @@ import { APP_ORIGIN } from './scheme';
  * `contextIsolation`, `sandbox`, and `nodeIntegration: false` are all untouched,
  * and the shim is scoped to remote http(s) URLs so it never touches the
  * `trinity://app` scheme itself.
+ *
+ * KNOWN LIMITATION — this is scoped to *remote* origins, NOT to the homeserver.
+ * The renderer can therefore read cross-origin response bodies from any https origin.
+ * That is not reachable by web content (nothing but our own code runs on this origin),
+ * so it is not directly exploitable — but it is an XSS amplifier: the app renders
+ * untrusted federated message HTML, so any future sanitizer bypass would gain a
+ * read-anywhere primitive. `connect-src 'self' https: wss:` in the CSP already blocks
+ * the `http://` half (no intranet/localhost reads).
+ *
+ * Narrowing it to a homeserver allowlist is NOT a simple edit, which is why it hasn't
+ * been done here: the main process doesn't know the homeserver (the renderer picks it at
+ * login), multi-account means several at once, each may use a separate media/identity
+ * host, and `.well-known` discovery deliberately probes an arbitrary origin the user has
+ * typed *before* any login exists to allowlist. A naive allowlist would break sign-in.
+ * Doing it properly needs the renderer to publish its live origin set over IPC —
+ * tracked as follow-up, deliberately not attempted as a drive-by.
  */
 
 // Only remote http(s) responses are rewritten — never the `trinity://app`
@@ -29,11 +45,16 @@ const ACAO = 'access-control-allow-origin';
 const ACAM = 'access-control-allow-methods';
 const ACAH = 'access-control-allow-headers';
 const ACMA = 'access-control-max-age';
+const ACAC = 'access-control-allow-credentials';
 
 // The CORS keys we own: any of these the server already sent are stripped
 // before we set ours, so a duplicate Access-Control-Allow-Origin can never be
 // emitted (Chromium rejects a response that carries two ACAO values).
-const MANAGED = [ACAO, ACAM, ACAH, ACMA];
+// ACAC is managed (and never re-set) so a third-party origin cannot opt ITSELF into
+// credentialed cross-origin reads by returning `access-control-allow-credentials: true`
+// alongside the ACAO we inject. matrix-js-sdk authenticates with a bearer header, not
+// cookies, so nothing here needs credentialed CORS.
+const MANAGED = [ACAO, ACAM, ACAH, ACMA, ACAC];
 
 /** Delete every entry whose (lowercased) key is in `names`, mutating `headers`. */
 function deleteHeaders(

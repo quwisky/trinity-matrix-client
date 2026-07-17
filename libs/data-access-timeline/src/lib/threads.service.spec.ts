@@ -397,6 +397,32 @@ describe('ThreadsService', () => {
     expect(svc.openThreadRootId()).toBe('$root');
   });
 
+  it('reuses reply views whose inputs are unchanged across a refresh', () => {
+    // Each rebuild is a markdown render + DOMPurify sanitize, and refreshThread runs on
+    // Timeline/LocalEcho/Decrypted/Members — so without a cache an unrelated event
+    // rebuilt every reply and handed every OnPush row a new identity.
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
+    const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'a reply' });
+    const { svc, room } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
+    ]);
+    svc.openThread('!r:hs', '$root');
+    const before = svc.threadMessages();
+
+    // A member event for someone the thread renders re-projects it — but nothing these
+    // replies read has actually changed, so the view objects must survive.
+    room.emit(
+      RoomStateEvent.Members,
+      {},
+      {},
+      { roomId: '!r:hs', userId: '@b:hs' },
+    );
+
+    const after = svc.threadMessages();
+    expect(after[0]).toBe(before[0]); // same object, not merely equal
+    expect(after[1]).toBe(before[1]);
+  });
+
   it('refreshes an in-thread reply preview when the quoted sender loads late', () => {
     const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
     const reply = fakeEvent({

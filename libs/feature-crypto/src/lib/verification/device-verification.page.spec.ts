@@ -88,6 +88,49 @@ describe('DeviceVerificationPage', () => {
     expect(svc.accept).toHaveBeenCalledOnce();
   });
 
+  // A cross-user request comes from ANY user who can DM you — not from your own
+  // session. Labelling it as self-verification would invite the user to click through a
+  // stranger's request, cross-signing that stranger's identity for good.
+  it('names the other user on an incoming cross-user request', async () => {
+    const { container } = await renderPage(
+      signal(
+        view({
+          stage: 'requested',
+          incoming: true,
+          isSelfVerification: false,
+          otherUserId: '@mallory:evil.example',
+        }),
+      ),
+    );
+
+    expect(container.textContent).toContain('@mallory:evil.example');
+    expect(container.textContent).not.toContain('Another of your sessions');
+  });
+
+  it('names the other user when comparing emoji cross-user', async () => {
+    const { container } = await renderPage(
+      signal(
+        view({
+          stage: 'sas-shown',
+          isSelfVerification: false,
+          otherUserId: '@mallory:evil.example',
+          emoji: [{ emoji: '🐶', name: 'Dog' }],
+        }),
+      ),
+    );
+
+    // The trust decision happens here, so this is where the identity must appear.
+    expect(container.textContent).toContain('@mallory:evil.example');
+  });
+
+  it('still labels a self-verification as your own session', async () => {
+    const { container } = await renderPage(
+      signal(view({ stage: 'requested', incoming: true })),
+    );
+
+    expect(container.textContent).toContain('Another of your sessions');
+  });
+
   it('shows the emoji and confirms on match', async () => {
     const { svc, container } = await renderPage(
       signal(

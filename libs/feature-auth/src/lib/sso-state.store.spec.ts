@@ -51,6 +51,32 @@ describe('SsoStateStore', () => {
     expect(byKey['sso.mode']).toBe('replace');
   });
 
+  it('stashes a device id for a re-auth, and clears it for an ordinary login', async () => {
+    const svc = store(); // one instance: store() reconfigures the TestBed
+    // Re-auth pins the EXISTING device so its crypto store is reused.
+    await svc.save('NONCE', 'https://hs.example', 'replace', 'DEVICE_A');
+    const reauth = Object.fromEntries(
+      set.mock.calls.map((c) => [c[0].key, c[0].value]),
+    );
+    expect(reauth['sso.deviceId']).toBe('DEVICE_A');
+
+    set.mockClear();
+    remove.mockClear();
+
+    // An ordinary login stashes NO device id. Every other key is overwritten, so
+    // leaving this one behind would let the abandoned re-auth above hand DEVICE_A to
+    // this login — silently re-authenticating a stale device instead of minting one.
+    await svc.save('NONCE2', 'https://hs.example', 'replace');
+
+    const fresh = Object.fromEntries(
+      set.mock.calls.map((c) => [c[0].key, c[0].value]),
+    );
+    expect(fresh['sso.deviceId']).toBeUndefined(); // not re-set…
+    expect(remove.mock.calls.some((c) => c[0].key === 'sso.deviceId')).toBe(
+      true,
+    ); // …and actively removed
+  });
+
   it('peek reads a fresh stash WITHOUT clearing (verify-before-clear)', async () => {
     getFrom({
       'sso.state': 'NONCE',

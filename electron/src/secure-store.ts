@@ -14,6 +14,31 @@
 import * as fs from 'node:fs';
 import type { SafeStorage } from 'electron';
 
+/**
+ * Whether safeStorage will give us REAL encryption — not merely whether it will accept
+ * a string.
+ *
+ * On Linux, when no OS password manager can be determined, Electron selects the
+ * `basic_text` backend, which "encrypts" with a hardcoded key. That is obfuscation, not
+ * encryption: anything running as the user recovers the Matrix access token and the
+ * cross-signing keys. `isEncryptionAvailable()` does NOT distinguish it, so a token
+ * would be stored under a false promise while `isSecure()` reported true.
+ *
+ * Refusing it means the renderer takes its documented plaintext fallback and surfaces
+ * the anomaly, rather than us silently pretending the secret is protected.
+ */
+export function secureStorageUsable(safeStorage: SafeStorage): boolean {
+  if (!safeStorage.isEncryptionAvailable()) {
+    return false;
+  }
+  if (process.platform !== 'linux') {
+    return true;
+  }
+  // Guarded: getSelectedStorageBackend is Linux-only and absent on older Electron.
+  const backend = safeStorage.getSelectedStorageBackend?.();
+  return backend !== 'basic_text' && backend !== 'unknown';
+}
+
 /** 0600: readable/writable only by the owning user (the on-disk ciphertext map). */
 const STORE_FILE_MODE = 0o600;
 
@@ -72,7 +97,7 @@ export function secureStoreGet(
   io: SecureStoreIo = defaultIo,
 ): string | null {
   const entry = readSecureStore(filePath, io)[key];
-  if (!entry || !safeStorage.isEncryptionAvailable()) {
+  if (!entry || !secureStorageUsable(safeStorage)) {
     return null;
   }
   try {
@@ -94,7 +119,7 @@ export function secureStoreSet(
   value: string,
   io: SecureStoreIo = defaultIo,
 ): boolean {
-  if (!safeStorage.isEncryptionAvailable()) {
+  if (!secureStorageUsable(safeStorage)) {
     return false;
   }
   const data = readSecureStore(filePath, io);

@@ -1,6 +1,7 @@
 import { app, ipcMain, safeStorage } from 'electron';
 import * as path from 'node:path';
 import {
+  secureStorageUsable,
   secureStoreDelete,
   secureStoreGet,
   secureStoreSet,
@@ -24,7 +25,7 @@ export function registerSecureStoreIpc(): void {
   ipcMain.handle('trinity:secure-store:available', (event) => {
     const win = getMainWindow();
     return !!win && event.sender === win.webContents
-      ? safeStorage.isEncryptionAvailable()
+      ? secureStorageUsable(safeStorage)
       : false;
   });
 

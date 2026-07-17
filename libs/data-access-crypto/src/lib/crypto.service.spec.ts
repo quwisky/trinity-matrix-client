@@ -16,6 +16,7 @@ import { MatrixError } from 'matrix-js-sdk';
 import {
   deriveRecoveryKeyFromPassphrase,
   encodeRecoveryKey,
+  type BootstrapCrossSigningOpts,
 } from 'matrix-js-sdk/lib/crypto-api';
 import { CryptoService } from './crypto.service';
 import {
@@ -482,9 +483,11 @@ describe('CryptoService', () => {
     async function captureUia(promptPassword: () => Promise<string | null>) {
       const { svc, crypto } = setup({ defaultKeyId: 'k' });
       let uia!: (mr: (a: unknown) => Promise<unknown>) => Promise<unknown>;
-      crypto.bootstrapCrossSigning.mockImplementation(async (opts: any) => {
-        uia = opts.authUploadDeviceSigningKeys;
-      });
+      crypto.bootstrapCrossSigning.mockImplementation(
+        async (opts: BootstrapCrossSigningOpts) => {
+          uia = opts.authUploadDeviceSigningKeys as typeof uia;
+        },
+      );
       await firstValueFrom(svc.setUp(promptPassword));
       return uia;
     }

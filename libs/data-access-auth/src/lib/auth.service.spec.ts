@@ -69,6 +69,11 @@ describe('AuthService', () => {
     vi.mocked(TestBed.inject(SessionStorageService).load).mockReturnValue(
       of(null),
     );
+    // logout() asks the registry whether this is the last account. By default let it
+    // mirror the live client ids — the two only diverge in the specific test below.
+    vi.mocked(TestBed.inject(SessionStorageService).list).mockImplementation(
+      () => of(accountIds().map((userId) => ({ userId }))) as never,
+    );
   });
 
   describe('discoverHomeserver', () => {
@@ -615,6 +620,39 @@ describe('AuthService', () => {
       expect(matrix.reset).toHaveBeenCalled();
       expect(storage.clear).toHaveBeenCalled();
       expect(matrix.remove).not.toHaveBeenCalled();
+    });
+
+    it('keeps a still-persisted account when signing out the only LIVE one', async () => {
+      // A soft-logged-out account (or one whose warm-up failed) leaves the live client
+      // map but deliberately KEEPS its registry record so re-auth reuses its crypto
+      // store. Deriving "is this the last account" from the live map would take the
+      // full-clear branch and wipe that record — destroying the other account's E2EE
+      // keys. The registry is what clear() actually erases, so it must be the source.
+      const matrix = TestBed.inject(MatrixClientService);
+      const storage = TestBed.inject(SessionStorageService);
+      const push = TestBed.inject(PushService);
+      const client = { logout: vi.fn().mockResolvedValue(undefined) };
+      vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+      accountIds.set(['@me:hs']); // only @me has a live client
+      activeUserId.set('@me:hs');
+      // …but @soft:hs is still in the registry, tokenless, awaiting re-auth.
+      vi.mocked(storage.list).mockReturnValue(
+        of([{ userId: '@me:hs' }, { userId: '@soft:hs' }]) as never,
+      );
+      vi.mocked(push.unregister).mockReturnValue(of(undefined));
+      vi.mocked(matrix.remove).mockReturnValue(of(undefined));
+      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      // Stubbed so the wrong (full-clear) branch completes and the assertion below
+      // reports the real defect rather than an unmocked-stream error.
+      vi.mocked(matrix.reset).mockReturnValue(of(undefined));
+      vi.mocked(storage.clear).mockReturnValue(of(undefined));
+
+      await firstValueFrom(auth.logout('@me:hs'));
+
+      expect(storage.clear).not.toHaveBeenCalled(); // @soft:hs keeps its record + keys
+      expect(matrix.reset).not.toHaveBeenCalled();
+      expect(storage.remove).toHaveBeenCalledWith('@me:hs');
     });
 
     it('completes local teardown even when the server logout rejects (last account)', async () => {

@@ -44,6 +44,18 @@ const DEFAULT_ROW_CAPS: MessageRowCaps = {
   readOnly: false,
 };
 
+/** Whether two caps carry the same capabilities — all six fields are flat booleans. */
+function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
+  return (
+    a.editable === b.editable &&
+    a.deletable === b.deletable &&
+    a.canPin === b.canPin &&
+    a.pinned === b.pinned &&
+    a.canThread === b.canThread &&
+    a.readOnly === b.readOnly
+  );
+}
+
 /**
  * Shared domain logic for the room timeline, independent of scroll strategy: the
  * inputs/outputs, the edit/reply state + action handlers, and the Discord-style row
@@ -335,7 +347,7 @@ export abstract class MessageListBase {
     const pinnedIds = this.pinnedIds();
     const caps = new Map<string, MessageRowCaps>();
     for (const message of this.messages()) {
-      caps.set(message.id, {
+      const next: MessageRowCaps = {
         editable: this.isEditable(message),
         // Own messages are always deletable; a moderator can also redact others'.
         deletable: (message.isOwn || canRedactOthers) && !message.status,
@@ -343,10 +355,20 @@ export abstract class MessageListBase {
         pinned: pinnedIds.includes(message.id),
         canThread: true,
         readOnly: false,
-      });
+      };
+      // Reuse the previous object when nothing about this row's caps changed, exactly
+      // as rowCache does for the row itself. `messages()` gets a NEW array identity on
+      // every timeline event, so without this every incoming message would hand every
+      // rendered row a fresh `caps` input and re-render it.
+      const prev = this.prevRowCaps.get(message.id);
+      caps.set(message.id, prev && sameRowCaps(prev, next) ? prev : next);
     }
+    this.prevRowCaps = caps;
     return caps;
   });
+
+  /** Last computed caps, for identity reuse (mirrors {@link rowCache}). */
+  private prevRowCaps = new Map<string, MessageRowCaps>();
 
   /** Per-row capabilities/state for {@link MessageRowComponent} in the main timeline. */
   rowCaps(row: MessageRow): MessageRowCaps {

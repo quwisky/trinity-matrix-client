@@ -38,15 +38,32 @@
       @switch (v.stage) {
         @case ('requested') {
           @if (v.incoming) {
-            <h2 class="heading">Verify this device?</h2>
-            <p class="text-muted-foreground">
-              Another of your sessions wants to verify this one
-              @if (v.otherDeviceId) {
-                (<code>{{ v.otherDeviceId }}</code
-                >)
-              }
-              . Accept to compare a set of emoji.
-            </p>
+            @if (v.isSelfVerification) {
+              <h2 class="heading">Verify this device?</h2>
+              <p class="text-muted-foreground">
+                Another of your sessions wants to verify this one
+                @if (v.otherDeviceId) {
+                  (<code>{{ v.otherDeviceId }}</code
+                  >)
+                }
+                . Accept to compare a set of emoji.
+              </p>
+            } @else {
+              <!--
+                A cross-user request comes from SOMEONE ELSE — any user who can DM you can
+                send one. Naming them is the whole security control: the emoji only mean
+                anything if the user knows who they are comparing with, and out-of-band.
+              -->
+              <h2 class="heading">Verify another user?</h2>
+              <p class="text-muted-foreground">
+                <strong data-testid="verify-other-user">{{
+                  v.otherUserId
+                }}</strong>
+                — someone else, not one of your sessions — wants to verify with
+                you. Only accept if you can compare the emoji with them in
+                person or on a call you already trust.
+              </p>
+            }
             <button
               hlmBtn
               class="mt-4 w-full"
@@ -99,6 +116,17 @@
         }
         @case ('sas-shown') {
           <h2 class="heading">Compare the emoji</h2>
+          @if (!v.isSelfVerification) {
+            <!-- This is the moment trust is granted, so it is the moment that must
+                 name the counterparty — "They match" here cross-signs THIS user. -->
+            <p class="text-muted-foreground">
+              With
+              <strong data-testid="verify-sas-other-user">{{
+                v.otherUserId
+              }}</strong>
+              . Only confirm if you are comparing these with them directly.
+            </p>
+          }
           <trn-sas-compare
             [emoji]="v.emoji ?? []"
             [busy]="busy()"

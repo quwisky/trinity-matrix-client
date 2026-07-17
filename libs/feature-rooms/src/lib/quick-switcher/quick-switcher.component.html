@@ -16,6 +16,13 @@
       autocapitalize="off"
       autocorrect="off"
       inputmode="text"
+      role="combobox"
+      aria-autocomplete="list"
+      aria-controls="qs-results"
+      [attr.aria-expanded]="results().length > 0"
+      [attr.aria-activedescendant]="
+        results().length ? 'qs-result-' + highlight() : null
+      "
       [value]="query()"
       (input)="onInput($event)"
       (keydown.arrowDown)="move(1, $event)"
@@ -25,10 +32,20 @@
     />
   </div>
 
-  <div class="flex-1 overflow-y-auto p-2">
+  <!-- Focus stays in the input while the arrows move `highlight()`, so the active row
+       is only announced via aria-activedescendant pointing at its id. -->
+  <div
+    id="qs-results"
+    role="listbox"
+    aria-label="Search results"
+    class="flex-1 overflow-y-auto p-2"
+  >
     @for (result of results(); track result.kind + result.id; let i = $index) {
       <button
         type="button"
+        role="option"
+        [id]="'qs-result-' + i"
+        [attr.aria-selected]="i === highlight()"
         class="qs-row flex w-full items-center gap-3 rounded-md p-2 text-left hover:bg-accent"
         [class.bg-accent]="i === highlight()"
         (click)="select(result)"
