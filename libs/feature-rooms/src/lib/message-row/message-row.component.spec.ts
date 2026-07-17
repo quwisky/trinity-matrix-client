@@ -10,7 +10,6 @@ import {
 } from '@trinity/data-access-timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { type MediaPayload } from '@trinity/util-matrix';
-import { AVATAR_RESOLVER } from '@trinity/ui';
 import { FileSaveService } from '../media-save/file-save.service';
 import {
   MessageRowComponent,

@@ -99,9 +99,29 @@ export default defineConfig([
   },
   {
     files: ['**/*.ts'],
-    extends: [...angular.configs.tsRecommended],
+    // `angular.configs.tsRecommended` enables the @angular-eslint rules but NO
+    // @typescript-eslint ones, so until this was added the workspace enforced none of
+    // them — no-unused-vars, no-explicit-any and friends were all off, despite
+    // .claude/CLAUDE.md mandating "drop unused variables" and "avoid the `any` type".
+    // This is the UNTYPED preset, so it costs no type-checking time (unlike the
+    // type-aware no-deprecated block further down).
+    extends: [
+      ...tseslint.configs.recommended,
+      ...angular.configs.tsRecommended,
+    ],
     processor: angular.processInlineTemplates,
     rules: {
+      // A leading underscore is the conventional "deliberately unused" marker — it is
+      // how a mock or an interface implementation says "this arg exists for the
+      // signature, not for me". Everything without one is still an error.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
       '@angular-eslint/component-class-suffix': [
         'error',
         { suffixes: ['Page', 'Component'] },

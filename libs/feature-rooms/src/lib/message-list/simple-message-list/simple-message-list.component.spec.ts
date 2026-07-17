@@ -277,6 +277,10 @@ describe('SimpleMessageListComponent', () => {
     // jsdom doesn't implement scrollIntoView; stub it on the prototype and
     // capture the element it was invoked on (a regular fn binds `this`).
     Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      // Capturing `this` IS the assertion: a regular (non-arrow) fn binds the element
+      // scrollIntoView was invoked on, which is the only way to learn WHICH row was
+      // scrolled to. The directive must sit immediately above the reported line.
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
       jumped = this;
     });
 
