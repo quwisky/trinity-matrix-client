@@ -143,3 +143,36 @@ test('dark palette wins the cascade when ion-palette-dark is set (regression)', 
   expect(result.light).toBe('#e3e5e8'); // :root light default
   expect(result.dark).toBe('#1e1f22'); // :root.ion-palette-dark wins
 });
+
+test('exposes the CORS-allowlist bridge (a plain send, not an invoke)', async () => {
+  // Renderer-side of the CORS scoping: the app publishes its live homeserver origins
+  // so main can scope the shim (electron/src/cors.ts). Assert the bridge surface is
+  // present and one-way — setAllowedOrigins/allowOrigin are fire-and-forget `send`s, so
+  // they return undefined rather than a Promise. Behaviour (that main actually narrows
+  // the shim to these origins) is covered by the cors/cors-ipc unit tests; here we prove
+  // the preload actually exposes the channel in the real, sandboxed renderer.
+  const shape = await page.evaluate(() => {
+    const cors = (
+      globalThis as {
+        trinityDesktop?: {
+          cors?: {
+            setAllowedOrigins?: (o: readonly string[]) => unknown;
+            allowOrigin?: (o: string) => unknown;
+          };
+        };
+      }
+    ).trinityDesktop?.cors;
+    return {
+      present: typeof cors,
+      setAllowedOrigins: typeof cors?.setAllowedOrigins,
+      allowOrigin: typeof cors?.allowOrigin,
+      // A fire-and-forget send returns undefined; an invoke would return a Promise.
+      returnsUndefined: cors?.setAllowedOrigins?.(['https://hs.example']),
+    };
+  });
+
+  expect(shape.present).toBe('object');
+  expect(shape.setAllowedOrigins).toBe('function');
+  expect(shape.allowOrigin).toBe('function');
+  expect(shape.returnsUndefined).toBeUndefined();
+});

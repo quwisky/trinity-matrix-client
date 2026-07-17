@@ -67,6 +67,28 @@ export interface TrinityDesktopBridge {
   };
 
   /**
+   * Publish the origins the app legitimately talks to — every signed-in homeserver,
+   * plus any origin `.well-known` discovery is probing right now.
+   *
+   * Desktop-only. The renderer is served from `trinity://app`, so homeserver traffic is
+   * cross-origin; main injects CORS headers to unblock it (see electron/src/cors.ts)
+   * because non-compliant reverse proxies strip the ones the Matrix spec requires. Main
+   * cannot know WHICH origins those are — the user picks them at login — so it scopes
+   * the shim to whatever the renderer declares here. Anything undeclared is left alone,
+   * which keeps a future sanitizer bypass from borrowing the shim to read arbitrary
+   * https origins. Call it whenever the set changes; main replaces the whole set.
+   */
+  cors?: {
+    setAllowedOrigins: (origins: readonly string[]) => void;
+    /**
+     * Additively allow ONE origin. Discovery and login reach a homeserver before any
+     * account exists to declare it; the next `setAllowedOrigins` replaces the set, so a
+     * probe of a server never signed into does not linger.
+     */
+    allowOrigin: (origin: string) => void;
+  };
+
+  /**
    * Ask the MAIN process to estimate the device's APPROXIMATE location from its
    * public IP (city-level), resolving `null` when the lookup is unavailable or
    * fails. Desktop-only: Chromium's own `navigator.geolocation` is backed by

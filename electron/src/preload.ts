@@ -133,6 +133,18 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
   },
 
   // OS-keychain-backed secret storage in the MAIN process (safeStorage). These only
+  // Publish the origins the app legitimately talks to (signed-in homeservers, plus a
+  // `.well-known` probe target), so main can scope its CORS shim to them instead of
+  // rewriting every remote https response. Main is the authority: it validates the
+  // payload and ignores anything not sent by our own window.
+  cors: {
+    setAllowedOrigins: (origins: readonly string[]): void => {
+      ipcRenderer.send('trinity:cors:set-allowed-origins', [...origins]);
+    },
+    allowOrigin: (origin: string): void => {
+      ipcRenderer.send('trinity:cors:allow-origin', origin);
+    },
+  },
   // proxy to validated main-process handlers — the renderer never sees the keyring or
   // the on-disk ciphertext. Backs core's Electron SecureStorage backend.
   secureStore: {

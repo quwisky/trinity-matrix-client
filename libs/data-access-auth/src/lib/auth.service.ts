@@ -20,7 +20,10 @@ import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { AvatarService } from '@trinity/data-access-media';
 import { MediaService } from '@trinity/data-access-media';
 import { PushService } from '@trinity/data-access-notifications';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  SessionStorageService,
+  getTrinityDesktopBridge,
+} from '@trinity/platform-native';
 import {
   MatrixSession,
   UiaCancelledError,
@@ -71,7 +74,15 @@ export class AuthService {
    */
   discoverHomeserver(input: string): Observable<string> {
     const domain = this.extractDomain(input);
-    return defer(() => from(AutoDiscovery.findClientConfig(domain))).pipe(
+    return defer(() => {
+      // Desktop: let main's CORS shim serve this origin. Discovery reaches a server
+      // BEFORE any account exists to declare it — `.well-known` on the typed domain,
+      // then the SDK validates the resolved base_url. Both are allowed here; the next
+      // account change replaces the whole set, so a probe of a server the user never
+      // signs into is dropped rather than lingering.
+      this.allowCorsOrigin(`https://${domain}`);
+      return from(AutoDiscovery.findClientConfig(domain));
+    }).pipe(
       map((config) => {
         const hs = config['m.homeserver'];
         if (
@@ -83,8 +94,11 @@ export class AuthService {
             reason ?? `Could not discover a homeserver for "${domain}".`,
           );
         }
-        const baseUrl = hs.base_url ?? `https://${domain}`;
-        return baseUrl.replace(/\/$/, '');
+        const baseUrl = (hs.base_url ?? `https://${domain}`).replace(/\/$/, '');
+        // The resolved homeserver may be a different origin than the typed domain, and
+        // login POSTs to it before the account exists.
+        this.allowCorsOrigin(baseUrl);
+        return baseUrl;
       }),
     );
   }
@@ -133,6 +147,14 @@ export class AuthService {
         }),
       ),
     ).pipe(switchMap((res) => this.establish(baseUrl, res, mode)));
+  }
+
+  /**
+   * Ask the Electron main process to serve `origin` through its CORS shim (see
+   * electron/src/cors.ts). A no-op off desktop, where the bridge is absent.
+   */
+  private allowCorsOrigin(origin: string): void {
+    getTrinityDesktopBridge()?.cors?.allowOrigin(origin);
   }
 
   /** Build the SSO redirect URL the browser/WebView should navigate to. */

@@ -7,11 +7,21 @@ vi.mock('electron', () => ({
   protocol: { handle: vi.fn(), registerSchemesAsPrivileged: vi.fn() },
 }));
 
-import { installMatrixCors } from './cors';
+import {
+  allowedCorsOrigins,
+  installMatrixCors,
+  setAllowedCorsOrigins,
+} from './cors';
 
 const APP_ORIGIN = 'trinity://app';
+/** A homeserver the renderer has declared (the only kind the shim rewrites for). */
+const HS = 'https://hs.example';
 
-type Details = { method: string; responseHeaders?: Record<string, string[]> };
+type Details = {
+  method: string;
+  url?: string;
+  responseHeaders?: Record<string, string[]>;
+};
 type Handler = (
   details: Details,
   callback: (response: { responseHeaders?: Record<string, string[]> }) => void,
@@ -36,7 +46,12 @@ function fakeSession() {
     getFilter: () => filter,
     run: (details: Details): Record<string, string[]> => {
       let out: { responseHeaders?: Record<string, string[]> } | undefined;
-      handler?.(details, (r) => (out = r));
+      // Default to the declared homeserver so the existing cases keep testing the
+      // rewrite itself; the scoping cases pass an explicit url.
+      handler?.(
+        { url: `${HS}/_matrix/client/v3/sync`, ...details },
+        (r) => (out = r),
+      );
       return out?.responseHeaders ?? {};
     },
   };
@@ -63,6 +78,8 @@ describe('installMatrixCors', () => {
   beforeEach(() => {
     s = fakeSession();
     installMatrixCors(s.session);
+    // The renderer declares its live origin set; without it nothing is rewritten.
+    setAllowedCorsOrigins([HS]);
   });
 
   it('scopes the interceptor to remote http(s) URLs only (never trinity://app)', () => {
@@ -130,5 +147,81 @@ describe('installMatrixCors', () => {
     expect(pick(headers, 'Access-Control-Allow-Methods')).toEqual([]);
     // Non-CORS headers are untouched.
     expect(pick(headers, 'X-Keep')).toEqual(['1']);
+  });
+});
+
+describe('CORS scoping (the shim only serves declared origins)', () => {
+  let s: ReturnType<typeof fakeSession>;
+
+  beforeEach(() => {
+    s = fakeSession();
+    installMatrixCors(s.session);
+    setAllowedCorsOrigins([HS]);
+  });
+
+  // The point of the allowlist. The app renders untrusted federated message HTML, so a
+  // future sanitizer bypass must NOT inherit a read-anywhere primitive: without this,
+  // the shim told the renderer it could read cross-origin bodies from ANY https origin.
+  it('does not rewrite a third-party origin', () => {
+    const headers = s.run({
+      method: 'GET',
+      url: 'https://evil.example/secrets',
+      responseHeaders: { 'content-type': ['application/json'] },
+    });
+
+    // `callback({})` with no responseHeaders is Electron's "leave this response
+    // alone" — the server's own headers stand, and we inject no ACAO.
+    expect(headers).toEqual({});
+    expect(pick(headers, 'access-control-allow-origin')).toEqual([]);
+  });
+
+  it('rewrites the declared homeserver', () => {
+    const headers = s.run({
+      method: 'GET',
+      url: `${HS}/_matrix/client/v3/sync`,
+      responseHeaders: {},
+    });
+
+    expect(pick(headers, 'access-control-allow-origin')).toEqual([APP_ORIGIN]);
+  });
+
+  it('follows the renderer as its origin set changes (account switch / sign-out)', () => {
+    const other = 'https://other.example';
+    expect(
+      s.run({ method: 'GET', url: `${other}/x`, responseHeaders: {} }),
+    ).toEqual({});
+
+    setAllowedCorsOrigins([HS, other]); // a second account signs in
+    expect(
+      pick(
+        s.run({ method: 'GET', url: `${other}/x`, responseHeaders: {} }),
+        'access-control-allow-origin',
+      ),
+    ).toEqual([APP_ORIGIN]);
+
+    setAllowedCorsOrigins([]); // …and everyone signs out
+    expect(
+      s.run({ method: 'GET', url: `${HS}/x`, responseHeaders: {} }),
+    ).toEqual({});
+  });
+
+  it('normalises what the renderer publishes to bare origins', () => {
+    setAllowedCorsOrigins([`${HS}/_matrix/client/`, 'https://two.example:443']);
+
+    expect(allowedCorsOrigins()).toEqual([HS, 'https://two.example']);
+  });
+
+  it('ignores junk rather than throwing or wiping the list open', () => {
+    setAllowedCorsOrigins(['not a url', '', HS]);
+
+    expect(allowedCorsOrigins()).toEqual([HS]);
+  });
+
+  it('rewrites nothing at all before the renderer has declared anything', () => {
+    setAllowedCorsOrigins([]);
+
+    expect(
+      s.run({ method: 'GET', url: `${HS}/x`, responseHeaders: {} }),
+    ).toEqual({});
   });
 });
