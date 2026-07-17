@@ -56,6 +56,66 @@ const ACAC = 'access-control-allow-credentials';
 // cookies, so nothing here needs credentialed CORS.
 const MANAGED = [ACAO, ACAM, ACAH, ACMA, ACAC];
 
+/**
+ * Origins the renderer has declared it legitimately talks to — the signed-in
+ * homeservers, plus any origin currently being probed by `.well-known` discovery.
+ * Populated over IPC ({@link setAllowedCorsOrigins}); empty until the renderer says
+ * otherwise, which is the safe direction (see below).
+ *
+ * Anything NOT in here is passed through untouched rather than rewritten. That is a
+ * safe default, not a lax one: the Matrix spec REQUIRES CS API and `.well-known`
+ * responses to carry `Access-Control-Allow-Origin: *`, so a compliant server needs no
+ * help from us. This shim exists only for deployments whose reverse proxy strips it —
+ * and for those, the renderer names the origin.
+ */
+const allowedOrigins = new Set<string>();
+
+/**
+ * Replace the set of origins the shim will rewrite for. Called by the renderer (over
+ * IPC) whenever its live origin set changes: sign-in, sign-out, account switch, and
+ * around a `.well-known` probe of a server it has not yet joined.
+ *
+ * Invalid entries are dropped rather than throwing — this is a trust boundary, and a
+ * malformed payload must not take the shim (or the main process) down.
+ */
+export function setAllowedCorsOrigins(origins: readonly string[]): void {
+  allowedOrigins.clear();
+  for (const raw of origins) {
+    if (typeof raw !== 'string') {
+      continue;
+    }
+    try {
+      // Normalise via URL so 'https://hs.example/' and 'https://hs.example:443/foo'
+      // both reduce to the same origin the interceptor will compare against.
+      allowedOrigins.add(new URL(raw).origin);
+    } catch {
+      // Not a URL — ignore it.
+    }
+  }
+}
+
+/**
+ * Additively allow one origin, without disturbing the rest.
+ *
+ * Discovery and login both talk to a homeserver BEFORE any account exists to declare
+ * it: `.well-known` probes the domain the user typed, then login POSTs to the resolved
+ * base URL. Those origins are allowed as they come into play, and the next
+ * {@link setAllowedCorsOrigins} (fired whenever the account set changes) replaces the
+ * whole set — so a probe of a server never signed into is dropped rather than lingering.
+ */
+export function allowCorsOrigin(origin: string): void {
+  try {
+    allowedOrigins.add(new URL(origin).origin);
+  } catch {
+    // Not a URL — ignore it.
+  }
+}
+
+/** The current allowlist (test seam / diagnostics). */
+export function allowedCorsOrigins(): readonly string[] {
+  return [...allowedOrigins];
+}
+
 /** Delete every entry whose (lowercased) key is in `names`, mutating `headers`. */
 function deleteHeaders(
   headers: Record<string, string[]>,
@@ -68,6 +128,15 @@ function deleteHeaders(
   }
 }
 
+/** Whether `url`'s origin is one the renderer declared. Unparseable URLs are not. */
+function isAllowed(url: string): boolean {
+  try {
+    return allowedOrigins.has(new URL(url).origin);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Register an `onHeadersReceived` interceptor that makes any Matrix homeserver
  * respond CORS-clean to the `trinity://app` renderer. Call ONCE, on the session
@@ -77,6 +146,14 @@ export function installMatrixCors(session: Electron.Session): void {
   session.webRequest.onHeadersReceived(
     { urls: [...REMOTE_URLS] },
     (details, callback) => {
+      // Only rewrite for origins the renderer has declared. Everything else passes
+      // through with the server's own headers intact — so a sanitizer bypass in the
+      // renderer cannot borrow this shim as a read-anywhere primitive against
+      // arbitrary https origins.
+      if (!isAllowed(details.url)) {
+        callback({});
+        return;
+      }
       const responseHeaders: Record<string, string[]> = {
         ...(details.responseHeaders ?? {}),
       };

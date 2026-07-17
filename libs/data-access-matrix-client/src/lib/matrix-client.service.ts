@@ -27,7 +27,10 @@ import {
   tap,
   throwError,
 } from 'rxjs';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  SessionStorageService,
+  getTrinityDesktopBridge,
+} from '@trinity/platform-native';
 import { MatrixSession } from '@trinity/util-matrix';
 import { preloadCryptoWasm } from '@trinity/util-matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
@@ -75,6 +78,22 @@ export class MatrixClientService {
   private readonly zone = inject(NgZone);
 
   private readonly clients = new Map<string, AccountClient>();
+
+  /**
+   * Tell the Electron main process which origins we legitimately talk to, so its CORS
+   * shim can be scoped to them instead of rewriting every remote https response (see
+   * electron/src/cors.ts). Main cannot know this: the user picks homeservers at login,
+   * and there may be several. Called wherever the live account set changes; a no-op off
+   * desktop, where the bridge is absent.
+   */
+  private publishCorsOrigins(): void {
+    const bridge = getTrinityDesktopBridge();
+    if (!bridge?.cors) {
+      return;
+    }
+    const origins = [...this.clients.values()].map((a) => a.client.baseUrl);
+    bridge.cors.setAllowedOrigins(origins);
+  }
   private readonly _activeUserId = signal<string | null>(null);
   /** The account currently in view (whose client {@link instance} returns). */
   readonly activeUserId = this._activeUserId.asReadonly();
@@ -401,6 +420,7 @@ export class MatrixClientService {
           };
           this.clients.set(session.userId, account);
           this._accountIds.set([...this.clients.keys()]);
+          this.publishCorsOrigins();
           // A successful (re-)start clears any prior soft-logout — re-auth restored it.
           this.clearSoftLoggedOut(session.userId);
           return account;
@@ -428,6 +448,7 @@ export class MatrixClientService {
     }
     this.clients.clear();
     this._accountIds.set([]);
+    this.publishCorsOrigins();
     this._activeUserId.set(null);
     this._softLoggedOut.set([]);
   }
@@ -448,6 +469,7 @@ export class MatrixClientService {
     account.holder.clear(); // forget this account's 4S key
     this.clients.delete(userId);
     this._accountIds.set([...this.clients.keys()]);
+    this.publishCorsOrigins();
     if (this._activeUserId() === userId) {
       this._activeUserId.set(this.clients.keys().next().value ?? null);
     }
