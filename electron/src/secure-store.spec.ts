@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { SafeStorage } from 'electron';
 import {
+  secureStorageUsable,
   secureStoreDelete,
   secureStoreGet,
   secureStoreSet,
@@ -14,10 +15,14 @@ const FILE = '/virtual/trinity-secure-store.json';
  * `encryptString` prefixes the plaintext, `decryptString` strips it (and throws
  * on anything that wasn't produced by `encryptString`, mirroring a decrypt failure).
  */
-function makeSafeStorage(available = true): SafeStorage {
+function makeSafeStorage(
+  available = true,
+  backend = 'gnome_libsecret',
+): SafeStorage {
   const PREFIX = 'enc:';
   return {
     isEncryptionAvailable: () => available,
+    getSelectedStorageBackend: () => backend,
     encryptString: (plain: string) => Buffer.from(PREFIX + plain, 'utf8'),
     decryptString: (buf: Buffer) => {
       const text = buf.toString('utf8');
@@ -121,5 +126,51 @@ describe('secure store', () => {
 
     expect(() => secureStoreDelete(FILE, 'missing', io)).not.toThrow();
     expect(secureStoreGet(safeStorage, FILE, 'a', io)).toBe('AAA');
+  });
+});
+
+/**
+ * On Linux with no OS password manager, Electron selects the `basic_text` backend,
+ * which "encrypts" with a hardcoded key — obfuscation, not encryption — while
+ * isEncryptionAvailable() still returns true. Storing a Matrix access token (and the
+ * cross-signing keys) under that is a false promise, so refuse it and let the caller
+ * take its documented plaintext fallback, which at least surfaces the anomaly.
+ */
+describe('secureStorageUsable (Linux backend gate)', () => {
+  const realPlatform = process.platform;
+  const setPlatform = (platform: NodeJS.Platform): void =>
+    Object.defineProperty(process, 'platform', {
+      value: platform,
+      configurable: true,
+    });
+  afterEach(() => setPlatform(realPlatform));
+
+  it('refuses the obfuscation-only basic_text backend on Linux', () => {
+    setPlatform('linux');
+    expect(secureStorageUsable(makeSafeStorage(true, 'basic_text'))).toBe(
+      false,
+    );
+  });
+
+  it('refuses an unknown Linux backend', () => {
+    setPlatform('linux');
+    expect(secureStorageUsable(makeSafeStorage(true, 'unknown'))).toBe(false);
+  });
+
+  it('accepts a real Linux keyring', () => {
+    setPlatform('linux');
+    expect(secureStorageUsable(makeSafeStorage(true, 'gnome_libsecret'))).toBe(
+      true,
+    );
+  });
+
+  it('does not consult the backend off Linux, where the keychain is real', () => {
+    setPlatform('darwin');
+    expect(secureStorageUsable(makeSafeStorage(true, 'basic_text'))).toBe(true);
+  });
+
+  it('still refuses when encryption is unavailable at all', () => {
+    setPlatform('linux');
+    expect(secureStorageUsable(makeSafeStorage(false))).toBe(false);
   });
 });
