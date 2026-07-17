@@ -25,6 +25,9 @@ All notable changes to this project are documented here. The format is based on
   Trinity mark (three connected nodes) instead of the old "T" glyph, so it matches the app
   icon everywhere. On macOS it stays a monochrome template image that follows the light/dark
   menu bar.
+- **Upgraded the build toolchain to Angular 22, Nx 23.1, and TypeScript 6.** A maintenance
+  upgrade with no change to how the app behaves; it keeps the project on supported framework
+  versions and current security patches.
 
 ### Fixed
 

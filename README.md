@@ -32,7 +32,7 @@ End-to-end encryption is a first-class, in-MVP feature.
 ## Tech stack
 
 - **Monorepo:** Nx 23 (apps/libs, task graph + caching, enforced module boundaries)
-- **UI:** Angular 21 (standalone components, signals) + **spartan-ng** — Brain
+- **UI:** Angular 22 (standalone components, signals) + **spartan-ng** — Brain
   (headless `@spartan-ng/brain`) + Helm (styled, copied into `libs/spartan/*`,
   aliased `@trinity/helm/*`) on **Tailwind CSS v4**
 - **Native:** Capacitor 8 (iOS via SPM, Android) + a hand-rolled Electron desktop

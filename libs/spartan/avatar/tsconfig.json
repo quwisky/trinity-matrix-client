@@ -1,6 +1,10 @@
 {
   "extends": "../../../tsconfig.base.json",
-  "compilerOptions": { "isolatedModules": true, "module": "preserve" },
+  "compilerOptions": {
+    "isolatedModules": true,
+    "module": "preserve",
+    "ignoreDeprecations": "6.0"
+  },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,
     "strictInjectionParameters": true,
