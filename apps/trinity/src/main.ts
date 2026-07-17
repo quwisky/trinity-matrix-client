@@ -3,7 +3,7 @@ import {
   ErrorHandler,
   inject,
   provideAppInitializer,
-  provideZoneChangeDetection,
+  provideZonelessChangeDetection,
 } from '@angular/core';
 import {
   provideRouter,
@@ -51,7 +51,11 @@ const isElectron =
 
 bootstrapApplication(AppComponent, {
   providers: [
-    provideZoneChangeDetection(),
+    // SPIKE (zoneless Phase 0): zoneless change detection replaces zone.js.
+    // The NgZone.run()/runOutsideAngular() wrappers in the data-access services
+    // become NoopNgZone pass-throughs; CD is scheduled by the signal writes they
+    // wrap. See docs/ZONELESS.md.
+    provideZonelessChangeDetection(),
     // Quiet transient homeserver noise (503s / dropped connections during the
     // initial-sync request burst) so SDK-internal rejections don't spam the
     // console as ERROR; genuine errors still reach the default handler.
