@@ -98,6 +98,33 @@ describe('QuickSwitcherComponent', () => {
     expect(c.highlight()).toBe(LOCAL.length - 1);
   });
 
+  // Focus never leaves the input while arrowing, so a screen reader learns which row is
+  // active ONLY from aria-activedescendant pointing at that row's id. A purely visual
+  // highlight leaves the list unusable without sight.
+  it('announces the active row to assistive tech as the highlight moves', async () => {
+    const { fixture, container } = await renderSwitcher();
+    const c = fixture.componentInstance;
+    const input = container.querySelector('input')!;
+
+    expect(input.getAttribute('role')).toBe('combobox');
+    expect(input.getAttribute('aria-controls')).toBe('qs-results');
+    expect(input.getAttribute('aria-activedescendant')).toBe('qs-result-0');
+
+    const rows = container.querySelectorAll('[role="option"]');
+    expect(rows).toHaveLength(LOCAL.length);
+    expect(rows[0].getAttribute('aria-selected')).toBe('true');
+    expect(rows[1].getAttribute('aria-selected')).toBe('false');
+
+    // Arrow down: the pointer must follow the highlight, or the announcement is stale.
+    c.move(1, keyEvent().event);
+    fixture.detectChanges();
+
+    expect(input.getAttribute('aria-activedescendant')).toBe('qs-result-1');
+    expect(
+      container.querySelector('#qs-result-1')?.getAttribute('aria-selected'),
+    ).toBe('true');
+  });
+
   it('Enter selects the highlighted row and dismisses with its {kind,id}', async () => {
     const { fixture } = await renderSwitcher();
     const c = fixture.componentInstance;
