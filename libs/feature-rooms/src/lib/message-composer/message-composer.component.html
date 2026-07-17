@@ -31,7 +31,12 @@
 @if (pendingFile(); as file) {
   <div class="composer__pending" data-testid="composer-pending">
     @if (pendingPreview(); as src) {
-      <img class="composer__pending-thumb" [src]="src" alt="" />
+      <img
+        decoding="async"
+        class="composer__pending-thumb"
+        [src]="src"
+        alt=""
+      />
     } @else {
       <span class="composer__pending-icon" aria-hidden="true">
         <ng-icon name="lucidePaperclip" />

@@ -18,6 +18,11 @@
     (click)="closeLightbox()"
     (keydown.escape)="closeLightbox()"
   >
-    <img class="lightbox__img" [src]="full" [alt]="media().filename" />
+    <img
+      decoding="async"
+      class="lightbox__img"
+      [src]="full"
+      [alt]="media().filename"
+    />
   </div>
 }
