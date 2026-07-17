@@ -77,7 +77,12 @@ export async function resolveShieldsInto(
     try {
       shield = toShield(await crypto.getEncryptionInfoForEvent(event));
     } catch {
-      shield = null; // never let a shield probe break the timeline
+      // Fail CLOSED. `events` is already filtered to encrypted events, and null renders
+      // as NO shield — visually identical to a fully authenticated message. A transient
+      // crypto/store error must not silently upgrade an unverified message's appearance;
+      // show the cautious indicator instead. (Still caught, so a probe failure can never
+      // break the timeline — that part of the original intent stands.)
+      shield = { level: 'grey', reason: shieldReasonText(null) };
     }
     if (opts.isStale()) {
       return changed; // switched rooms/threads mid-resolve
