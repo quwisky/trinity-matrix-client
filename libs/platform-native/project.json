@@ -6,17 +6,6 @@
   "prefix": "trn",
   "tags": ["type:platform", "scope:shared"],
   "targets": {
-    "test": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "vitest run",
-        "cwd": "libs/platform-native"
-      },
-      "configurations": {
-        "watch": {
-          "command": "vitest"
-        }
-      }
-    }
+    "test": {}
   }
 }

@@ -5,17 +5,6 @@
   "sourceRoot": "scripts",
   "tags": ["type:tool", "scope:shared"],
   "targets": {
-    "test": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "vitest run",
-        "cwd": "scripts"
-      },
-      "configurations": {
-        "watch": {
-          "command": "vitest"
-        }
-      }
-    }
+    "test": {}
   }
 }
