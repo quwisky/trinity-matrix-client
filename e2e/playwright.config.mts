@@ -30,6 +30,12 @@ export default defineConfig({
   // are what make the sync-dependent specs flaky. Cap at 2 to keep the homeserver
   // responsive — trades some wall-clock for a materially steadier run.
   workers: 2,
+  // Per-test budget. Playwright's 30s default is too tight for these login-heavy Matrix
+  // flows: a cold UI login (Rust-crypto init + first /sync ≈ 15-40s under load) plus a
+  // state-event sync echo can exceed it mid-wait, which surfaced as flakes across the
+  // event-propagation specs (rename, reactions, polls, threads). 120s (well under the
+  // 240s webServer budget) gives realistic headroom; retries still catch the rare tail.
+  timeout: 120_000,
   // Bring up / tear down the disposable Synapse homeserver (Docker). Gracefully
   // skips when Docker is unavailable; auth-only specs skip themselves then.
   globalSetup: './playwright/support/global-setup.mts',
