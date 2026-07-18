@@ -1,5 +1,6 @@
+import { createHmac } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
-import { login, synapseSession } from './support/app.mts';
+import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
 // Node's fetch (the CS-API room seeding below) must accept the disposable
 // Synapse + Caddy harness's self-signed cert — same bypass global-setup applies
@@ -20,10 +21,44 @@ const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 const ROOM_NAME = `Mobile drawer ${Date.now()}`;
 
-// The shared Synapse session user accumulates rooms across the whole suite, so its
-// initial /sync (which must reflect ROOM_NAME) can run well past 30s under full-suite
-// parallel load. Give the room-row wait real headroom; the per-test budget is 240s.
-const ROOM_ATTACH_TIMEOUT = 90_000;
+// A dedicated user (registered in beforeAll) instead of the shared session account.
+// The shared account is bloated by other specs (gif, multi-account,
+// timeline-virtualization) that seed rooms into it, so under full-suite load its
+// initial /sync was slow enough that ROOM_NAME took >30s (sometimes >90s) to appear —
+// the root cause of this file's flakiness. A fresh user syncs a single room, fast.
+const SYNAPSE_HTTP = 'http://localhost:8008';
+const REG_SECRET = 'trinity-e2e-shared-secret';
+const runId = `${Date.now().toString(36)}mn`;
+const MOBILE_USER = `mobile-user-${runId}`;
+const MOBILE_PASS = `${MOBILE_USER}-pass`;
+const mobileSession: SynapseSession = {
+  available: session.available,
+  hs: session.hs,
+  user: MOBILE_USER,
+  pass: MOBILE_PASS,
+};
+const ROOM_ATTACH_TIMEOUT = 30_000;
+
+/** Register a fresh user via Synapse's shared-secret admin API (idempotent). */
+async function registerUser(username: string, password: string): Promise<void> {
+  const { nonce } = await fetch(
+    `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
+  ).then((r) => r.json());
+  const mac = createHmac('sha1', REG_SECRET)
+    .update(`${nonce}\0${username}\0${password}\0notadmin`)
+    .digest('hex');
+  const res = await fetch(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nonce, username, password, admin: false, mac }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    if (!/already.*exists|user.*taken/i.test(text)) {
+      throw new Error(`register ${username} → ${res.status} ${text}`);
+    }
+  }
+}
 
 /** CS-API password login (bypasses the UI) — returns the access token + user id. */
 async function apiLogin(
@@ -117,27 +152,25 @@ test.describe('Mobile navigation drawer', () => {
 
   test.use({ viewport: MOBILE_VIEWPORT });
 
-  // Every test here does a full UI login in beforeEach (~10-20s), then waits for the
-  // seeded room to arrive via initial sync (ROOM_ATTACH_TIMEOUT, 90s). Under the suite's
-  // parallel load a cold login + Rust-crypto init + first sync + m.direct processing is
-  // slow, so give these login-heavy tests a per-test budget that comfortably contains
-  // that wait (the old 60s capped it below 90s). Retries inherit the project default.
-  // Scoped to this describe — no effect on other specs.
-  test.describe.configure({ timeout: 150_000 });
+  // Each test does a full UI login in beforeEach (~10-20s cold: Rust-crypto init +
+  // first sync). The dedicated user's sync is small, so 60s per test is ample headroom
+  // under load; retries inherit the project default. Scoped to this describe.
+  test.describe.configure({ timeout: 60_000 });
 
-  // Seed once for the whole file (shared account, same as navigation/settings
-  // specs) — every test below just needs *a* room to tap.
+  // Register a dedicated user and seed its single room once for the whole file, so
+  // every test logs into an account whose initial sync is tiny (and therefore fast).
   test.beforeAll(async () => {
+    await registerUser(MOBILE_USER, MOBILE_PASS);
     const { token, userId } = await apiLogin(
-      session.hs as string,
-      session.user as string,
-      session.pass as string,
+      mobileSession.hs as string,
+      MOBILE_USER,
+      MOBILE_PASS,
     );
-    await seedRoom(session.hs as string, token, userId, ROOM_NAME);
+    await seedRoom(mobileSession.hs as string, token, userId, ROOM_NAME);
   });
 
   test.beforeEach(async ({ page }) => {
-    await login(page, session);
+    await login(page, mobileSession);
   });
 
   test('the hamburger is the mobile affordance and opens the closed drawer', async ({
