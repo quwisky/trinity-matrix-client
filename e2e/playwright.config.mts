@@ -18,6 +18,13 @@ export default defineConfig({
   // plugin infers the `e2e` target here and the web specs sit within the project
   // root at e2e/playwright/.
   ...nxE2EPreset(import.meta.dirname, { testDir: './playwright' }),
+  // Retry transient failures. Every spec drives one shared disposable Synapse, so
+  // under full-suite parallelism the initial /sync and server round-trips (a room
+  // appearing in the list, a rename/receipt propagating) can briefly exceed their
+  // per-step timeouts. A retry re-runs when contention has eased; a genuine bug
+  // still fails all attempts, and Playwright reports the retried ones as "flaky".
+  // Pairs with `trace: 'on-first-retry'` below.
+  retries: 2,
   // Bring up / tear down the disposable Synapse homeserver (Docker). Gracefully
   // skips when Docker is unavailable; auth-only specs skip themselves then.
   globalSetup: './playwright/support/global-setup.mts',

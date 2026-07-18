@@ -20,6 +20,11 @@ const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 const ROOM_NAME = `Mobile drawer ${Date.now()}`;
 
+// The shared Synapse session user accumulates rooms across the whole suite, so its
+// initial /sync (which must reflect ROOM_NAME) can run well past 30s under full-suite
+// parallel load. Give the room-row wait real headroom; the per-test budget is 240s.
+const ROOM_ATTACH_TIMEOUT = 90_000;
+
 /** CS-API password login (bypasses the UI) — returns the access token + user id. */
 async function apiLogin(
   hs: string,
@@ -113,11 +118,12 @@ test.describe('Mobile navigation drawer', () => {
   test.use({ viewport: MOBILE_VIEWPORT });
 
   // Every test here does a full UI login in beforeEach (~10-20s), then waits for the
-  // seeded room to arrive via initial sync. Under the suite's parallel load a cold
-  // login + Rust-crypto init + first sync + m.direct processing can exceed the
-  // default 30s per-test budget, so give these login-heavy tests headroom plus one
-  // retry for the rare tail. Scoped to this describe — no effect on other specs.
-  test.describe.configure({ timeout: 60_000, retries: 1 });
+  // seeded room to arrive via initial sync (ROOM_ATTACH_TIMEOUT, 90s). Under the suite's
+  // parallel load a cold login + Rust-crypto init + first sync + m.direct processing is
+  // slow, so give these login-heavy tests a per-test budget that comfortably contains
+  // that wait (the old 60s capped it below 90s). Retries inherit the project default.
+  // Scoped to this describe — no effect on other specs.
+  test.describe.configure({ timeout: 150_000 });
 
   // Seed once for the whole file (shared account, same as navigation/settings
   // specs) — every test below just needs *a* room to tap.
@@ -138,7 +144,9 @@ test.describe('Mobile navigation drawer', () => {
     page,
   }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
-    await channel.first().waitFor({ state: 'attached', timeout: 30_000 });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
 
     // `data-testid="open-menu"` carries `md:hidden` on the button — only visible
     // below the `md` breakpoint.
@@ -171,7 +179,9 @@ test.describe('Mobile navigation drawer', () => {
     page,
   }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
-    await channel.first().waitFor({ state: 'attached', timeout: 30_000 });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
 
     await page.getByTestId('open-menu').click();
     await expect(shellSide(page)).toBeInViewport();
@@ -190,7 +200,9 @@ test.describe('Mobile navigation drawer', () => {
     page,
   }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
-    await channel.first().waitFor({ state: 'attached', timeout: 30_000 });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
 
     await page.getByTestId('open-menu').click();
     await expect(shellSide(page)).toBeInViewport();
