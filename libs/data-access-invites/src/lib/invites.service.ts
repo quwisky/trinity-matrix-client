@@ -1,4 +1,4 @@
-import { Injectable, NgZone, inject, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   RoomEvent,
@@ -45,7 +45,6 @@ export interface PendingInvite {
 @Injectable({ providedIn: 'root' })
 export class InvitesService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly zone = inject(NgZone);
 
   /**
    * The client we currently have listeners on. The client is recreated on every
@@ -66,13 +65,13 @@ export class InvitesService {
   private refreshScheduled = false;
 
   /**
-   * Coalesce listener-driven refreshes into one per microtask, and re-enter the zone.
+   * Coalesce listener-driven refreshes into one per microtask.
    *
    * `ClientEvent.Room` fires once PER ROOM during initial sync, and refresh() walks
    * every joined room (filter + map + a localeCompare sort) — so refreshing per event
-   * was O(rooms²) on startup. The signal writes also need the zone: these events fire
-   * outside it, so they would otherwise not schedule change detection. Mirrors
-   * RoomsService.scheduleRefresh, which listens to the very same events.
+   * was O(rooms²) on startup. refresh() writes the `_pendingInvites` signal, which
+   * schedules change detection on its own. Mirrors RoomsService.scheduleRefresh,
+   * which listens to the very same events.
    */
   private scheduleRefresh(): void {
     if (this.refreshScheduled) {
@@ -82,7 +81,7 @@ export class InvitesService {
     queueMicrotask(() => {
       this.refreshScheduled = false;
       if (this.connectedClient) {
-        this.zone.run(() => this.refresh());
+        this.refresh();
       }
     });
   }

@@ -1,4 +1,4 @@
-import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   EventType,
   MatrixEventEvent,
@@ -45,8 +45,8 @@ export interface PinnedMessageView {
  * `m.room.power_levels` (permission changes) keeps both {@link pinnedEventIds} and
  * {@link canPin} reactive. The room re-emits the RoomState events, which is what makes
  * it safe to bind here rather than to `room.currentState` — that reference is replaced
- * on a live-timeline reset. All signal writes are re-entered via `zone.run` because
- * these events fire outside Angular's zone.
+ * on a live-timeline reset. The SDK event handlers write signals, which schedule change
+ * detection on their own.
  *
  * Preview resolution is best-effort and synchronous: each pinned id is resolved
  * against the room's locally-loaded events (`room.findEventById`). A pin that isn't
@@ -57,7 +57,6 @@ export interface PinnedMessageView {
 @Injectable({ providedIn: 'root' })
 export class PinnedMessagesService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly zone = inject(NgZone);
 
   private readonly _pinnedEventIds = signal<string[]>([]);
   /** The active room's pinned event ids, in pin order. */
@@ -111,28 +110,27 @@ export class PinnedMessagesService {
    */
   private connectedClient: MatrixClient | null = null;
 
-  // A state event of any type; filter to pinned-events + power-levels. Fires outside
-  // the zone, so re-read (which writes signals) inside zone.run.
+  // A state event of any type; filter to pinned-events + power-levels. The re-read
+  // writes signals, which schedule change detection.
   private readonly onStateEvent = (event: MatrixEvent): void => {
     const type = event.getType();
     if (
       type === EventType.RoomPinnedEvents ||
       type === EventType.RoomPowerLevels
     ) {
-      this.zone.run(() => this.readRoomState());
+      this.readRoomState();
     }
   };
   // A pinned event may decrypt after its id is pinned; bump the revision so its
   // preview resolves once the plaintext is available.
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.roomId) {
-      this.zone.run(() => this._revision.update((n) => n + 1));
+      this._revision.update((n) => n + 1);
     }
   };
   // A pinned event may load via pagination/backfill after it was pinned; bump so its
   // preview resolves once the event is in the timeline.
-  private readonly onTimeline = (): void =>
-    this.zone.run(() => this._revision.update((n) => n + 1));
+  private readonly onTimeline = (): void => this._revision.update((n) => n + 1);
 
   /** Start projecting a room's pinned messages; attaches live listeners. */
   open(roomId: string): void {
@@ -197,7 +195,7 @@ export class PinnedMessagesService {
 
   /**
    * Rewrite the room's `m.room.pinned_events` state with `pinned`. On resolve the
-   * state listener already refreshes, but re-read in-zone too so the local change
+   * state listener already refreshes, but re-read here too so the local change
    * lands immediately; failures are logged, not thrown.
    */
   private write(pinned: string[]): void {
@@ -207,7 +205,7 @@ export class PinnedMessagesService {
     }
     this.matrix.instance
       .sendStateEvent(room.roomId, EventType.RoomPinnedEvents, { pinned }, '')
-      .then(() => this.zone.run(() => this.readRoomState()))
+      .then(() => this.readRoomState())
       .catch((err: unknown) =>
         console.error('Failed to update pinned messages', err),
       );

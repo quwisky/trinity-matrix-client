@@ -4,7 +4,6 @@ import {
   DestroyRef,
   ElementRef,
   Injector,
-  NgZone,
   afterNextRender,
   computed,
   effect,
@@ -94,7 +93,6 @@ export class VirtualMessageListComponent extends MessageListBase {
   private prependAnchorId = '';
   private prependAnchorOffset = 0;
 
-  private readonly ngZone = inject(NgZone);
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
   /** Rendered row hosts, to observe their `.msg` boxes for height measurement. */
@@ -269,18 +267,14 @@ export class VirtualMessageListComponent extends MessageListBase {
       if (typeof ResizeObserver === 'undefined') {
         return; // jsdom / SSR — degrades to render-all via estimate heights.
       }
-      this.ngZone.runOutsideAngular(() => {
-        this.ro = new ResizeObserver((entries) => this.onRowsResized(entries));
-        this.containerRo = new ResizeObserver(() =>
-          this.ngZone.run(() => {
-            const e = this.scrollEl()?.nativeElement;
-            if (e) {
-              this.viewportH.set(e.clientHeight);
-            }
-          }),
-        );
-        this.containerRo.observe(el);
+      this.ro = new ResizeObserver((entries) => this.onRowsResized(entries));
+      this.containerRo = new ResizeObserver(() => {
+        const e = this.scrollEl()?.nativeElement;
+        if (e) {
+          this.viewportH.set(e.clientHeight);
+        }
       });
+      this.containerRo.observe(el);
       this.reconcileObserved(this.rowHosts());
     });
 
@@ -396,9 +390,8 @@ export class VirtualMessageListComponent extends MessageListBase {
   }
 
   /**
-   * Record measured row heights and keep the read position stable. Runs outside the
-   * Angular zone (RO isn't zone-patched), so signal + scroll writes are wrapped in
-   * `ngZone.run`.
+   * Record measured row heights and keep the read position stable. The signal writes
+   * below schedule change detection on their own under zoneless.
    */
   private onRowsResized(entries: ResizeObserverEntry[]): void {
     const el = this.scrollEl()?.nativeElement;
@@ -437,30 +430,28 @@ export class VirtualMessageListComponent extends MessageListBase {
     if (!changed) {
       return;
     }
-    this.ngZone.run(() => {
-      if (atBottom) {
-        // Stay pinned to the newest message as measured heights settle.
-        el.scrollTop = el.scrollHeight;
+    if (atBottom) {
+      // Stay pinned to the newest message as measured heights settle.
+      el.scrollTop = el.scrollHeight;
+      this.scrollTop.set(el.scrollTop);
+    } else {
+      // While scrolled up, a change to a row ABOVE the fold shoves the read
+      // position (native anchoring is off) — a genuine reflow OR a first
+      // estimate→real measurement of an overscan row entering from the top.
+      // Compensate in the same coordinate space as scrollTop (past the padding +
+      // load-older banner).
+      const delta = scrollCompensation(
+        changes,
+        prefixSnapshot,
+        st,
+        this.rowsRegionTop(el),
+      );
+      if (delta !== 0) {
+        el.scrollTop = Math.max(0, st + delta);
         this.scrollTop.set(el.scrollTop);
-      } else {
-        // While scrolled up, a change to a row ABOVE the fold shoves the read
-        // position (native anchoring is off) — a genuine reflow OR a first
-        // estimate→real measurement of an overscan row entering from the top.
-        // Compensate in the same coordinate space as scrollTop (past the padding +
-        // load-older banner).
-        const delta = scrollCompensation(
-          changes,
-          prefixSnapshot,
-          st,
-          this.rowsRegionTop(el),
-        );
-        if (delta !== 0) {
-          el.scrollTop = Math.max(0, st + delta);
-          this.scrollTop.set(el.scrollTop);
-        }
       }
-      this.heightVersion.update((v) => v + 1);
-    });
+    }
+    this.heightVersion.update((v) => v + 1);
   }
 
   /**

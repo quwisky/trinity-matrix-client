@@ -1,4 +1,4 @@
-import { Injectable, NgZone, effect, inject } from '@angular/core';
+import { Injectable, effect, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import {
@@ -67,7 +67,6 @@ interface AccountNotifier {
 export class NotificationService {
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
-  private readonly zone = inject(NgZone);
   private readonly timeline = inject(TimelineService);
   private readonly storage = inject(SessionStorageService);
 
@@ -392,7 +391,6 @@ export class NotificationService {
       return; // unsupported (e.g. mobile browser) — nothing more to do
     }
     notification.onclick = (): void => {
-      // The OS-notification click fires outside Angular's zone.
       this.openFromNotification(roomId, userId);
       notification.close();
     };
@@ -400,29 +398,28 @@ export class NotificationService {
 
   /**
    * Handle a notification click: switch to the account it belongs to (if any),
-   * bring the window forward, and route into the room. Runs inside Angular's zone —
-   * both the Web `onclick` and the desktop IPC callback fire outside it. On desktop
-   * the main process has already focused the OS window.
+   * bring the window forward, and route into the room. Invoked from the Web
+   * `onclick` and the desktop IPC callback; the Router self-schedules change
+   * detection on navigate. On desktop the main process has already focused the OS
+   * window.
    */
   private openFromNotification(roomId: string, userId?: string): void {
-    this.zone.run(() => {
-      try {
-        window.focus();
-      } catch {
-        /* focus may be blocked — ignore */
-      }
-      if (
-        userId &&
-        userId !== this.matrix.activeUserId() &&
-        this.matrix.accountIds().includes(userId)
-      ) {
-        this.matrix.setActive(userId);
-        this.storage.setActive(userId).subscribe({ error: () => undefined });
-      }
-      void this.router
-        .navigate(['/rooms'], { queryParams: { room: roomId } })
-        .catch(() => undefined);
-    });
+    try {
+      window.focus();
+    } catch {
+      /* focus may be blocked — ignore */
+    }
+    if (
+      userId &&
+      userId !== this.matrix.activeUserId() &&
+      this.matrix.accountIds().includes(userId)
+    ) {
+      this.matrix.setActive(userId);
+      this.storage.setActive(userId).subscribe({ error: () => undefined });
+    }
+    void this.router
+      .navigate(['/rooms'], { queryParams: { room: roomId } })
+      .catch(() => undefined);
   }
 
   /** Namespace a dedupe key by account so two accounts don't share event ids. */

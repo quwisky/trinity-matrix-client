@@ -1,4 +1,4 @@
-import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   EventType,
@@ -106,7 +106,6 @@ export interface MemberSummary {
 export class RoomsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);
-  private readonly zone = inject(NgZone);
 
   /**
    * The client we currently have listeners on. The client is recreated on every
@@ -137,9 +136,9 @@ export class RoomsService {
   private readonly _memberRevision = signal(0);
   readonly memberRevision = this._memberRevision.asReadonly();
   private readonly onMembershipEvent = (): void =>
-    // Matrix events fire outside Angular's zone; re-enter so the signal write
-    // triggers change detection (mirrors scheduleRefresh below).
-    this.zone.run(() => this._memberRevision.update((n) => n + 1));
+    // The SDK membership event writes this signal, which schedules change
+    // detection (mirrors scheduleRefresh below).
+    this._memberRevision.update((n) => n + 1);
 
   // Memoized member projection: a cached, sorted list per room keyed by a cheap
   // fingerprint of its joined members, plus one shared collator (avoids spinning up
@@ -257,12 +256,9 @@ export class RoomsService {
     queueMicrotask(() => {
       this.refreshScheduled = false;
       if (this.connectedClient) {
-        // Matrix client events (and thus this microtask) run OUTSIDE Angular's
-        // zone, so the signal writes in refresh() wouldn't schedule change
-        // detection — the room list and unread badges would then only update on
-        // the next incidental zone tick, up to a full ~30s /sync poll later.
-        // Re-enter the zone so unread changes surface immediately.
-        this.zone.run(() => this.refresh());
+        // refresh() writes signals, which schedule change detection, so the room
+        // list and unread badges surface immediately.
+        this.refresh();
       }
     });
   }
@@ -306,9 +302,9 @@ export class RoomsService {
   /**
    * Favourite (or unfavourite) a room by writing/clearing the standard Matrix `m.favourite`
    * room tag — persisted in account data and synced across devices (interops with
-   * Element). Fire-and-forget: the write is async and its promise resolves OUTSIDE
-   * Angular's zone, so the post-write {@link refresh} is re-entered via `zone.run`
-   * (the `RoomEvent.Tags` listener also rebuilds, but the explicit refresh makes the
+   * Element). Fire-and-forget: the write is async; on resolve the post-write
+   * {@link refresh} writes signals that schedule change detection (the
+   * `RoomEvent.Tags` listener also rebuilds, but the explicit refresh makes the
    * local change land immediately). Failures are logged, not thrown.
    */
   setFavourite(roomId: string, favourite: boolean): void {
@@ -320,7 +316,7 @@ export class RoomsService {
       ? client.setRoomTag(roomId, 'm.favourite', {})
       : client.deleteRoomTag(roomId, 'm.favourite');
     write
-      .then(() => this.zone.run(() => this.refresh()))
+      .then(() => this.refresh())
       .catch((err: unknown) =>
         console.error(
           `Failed to ${favourite ? 'favourite' : 'unfavourite'} room ${roomId}`,

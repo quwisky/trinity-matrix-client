@@ -51,10 +51,9 @@ const isElectron =
 
 bootstrapApplication(AppComponent, {
   providers: [
-    // SPIKE (zoneless Phase 0): zoneless change detection replaces zone.js.
-    // The NgZone.run()/runOutsideAngular() wrappers in the data-access services
-    // become NoopNgZone pass-throughs; CD is scheduled by the signal writes they
-    // wrap. See docs/ZONELESS.md.
+    // Zoneless change detection (no zone.js). The data-access services' matrix-js-sdk
+    // event handlers write signals, which schedule change detection directly. See
+    // docs/ZONELESS.md.
     provideZonelessChangeDetection(),
     // Quiet transient homeserver noise (503s / dropped connections during the
     // initial-sync request burst) so SDK-internal rejections don't spam the

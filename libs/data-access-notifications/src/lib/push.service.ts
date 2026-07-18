@@ -1,4 +1,4 @@
-import { Injectable, InjectionToken, NgZone, inject } from '@angular/core';
+import { Injectable, InjectionToken, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -42,7 +42,6 @@ const ACCOUNT_DATA_KEY = 'trinity_user_id';
 export class PushService {
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
-  private readonly zone = inject(NgZone);
   private readonly storage = inject(SessionStorageService);
   private readonly config = inject(PUSH_CONFIG, { optional: true });
 
@@ -157,10 +156,9 @@ export class PushService {
     await PushNotifications.addListener(
       'pushNotificationActionPerformed',
       (action) => {
-        // Plugin callbacks fire outside Angular's zone — run navigation inside it.
         const data = action?.notification?.data as
           Record<string, unknown> | undefined;
-        this.zone.run(() => this.openFromPush(data));
+        this.openFromPush(data);
       },
     );
   }
