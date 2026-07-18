@@ -7,45 +7,45 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
 | Package                              | Version   | Notes                                                                                                          |
 | ------------------------------------ | --------- | -------------------------------------------------------------------------------------------------------------- |
-| `@angular/core`                      | 21.2.9    | Standalone + signals; typed reactive forms                                                                     |
-| `@spartan-ng/brain` + `/cli`         | 1.0.4     | Headless UI primitives (Brain); styled Helm layer copied into `libs/spartan/*` (`@trinity/helm/*`) via the CLI |
-| `@angular/cdk`                       | 21.2.14   | Overlay/Dialog behind the helm overlays (dialog/tooltip/dropdown/sonner) + encryption modals                   |
+| `@angular/core`                      | 22.0.7    | Standalone + signals; typed reactive forms                                                                     |
+| `@spartan-ng/brain` + `/cli`         | 1.1.0     | Headless UI primitives (Brain); styled Helm layer copied into `libs/spartan/*` (`@trinity/helm/*`) via the CLI |
+| `@angular/cdk`                       | 22.0.5    | Overlay/Dialog behind the helm overlays (dialog/tooltip/dropdown/sonner) + encryption modals                   |
 | `tailwindcss` + `tw-animate-css`     | 4.3 / 1.4 | Styling + theming (`theme/spartan.css` + `theme/variables.scss`); base reset is Tailwind preflight             |
-| `@ng-icons/{core,lucide}`            | 32.2.0    | Icon components (`<ng-icon name="lucide…">`) used across the UI                                                |
-| `@capacitor/core`                    | 8.4.1     | Capacitor 8: SPM default on iOS, edge-to-edge Android                                                          |
+| `@ng-icons/{core,lucide}`            | 32.5.0    | Icon components (`<ng-icon name="lucide…">`) used across the UI                                                |
+| `@capacitor/core`                    | 8.4.2     | Capacitor 8: SPM default on iOS, edge-to-edge Android                                                          |
 | `electron` + `electron-builder`      | 42 / 26   | Hand-rolled desktop shell in `electron/` (own package.json); see Electron desktop below                        |
-| `matrix-js-sdk`                      | 41.8.0    | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                                              |
+| `matrix-js-sdk`                      | 41.9.0    | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                                              |
 | `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1    | Rust crypto WASM bindings; E2EE backend                                                                        |
-| `@capacitor/app`                     | 8.1.0     | App URL-open events — native SSO deep-link callback                                                            |
-| `@capacitor/browser`                 | 8.0.3     | System browser for native SSO (keeps the app webview alive)                                                    |
-| `@capacitor/camera`                  | 8.2.0     | Native photo/gallery picker for sending media (web `<input>` fallback)                                         |
+| `@capacitor/app`                     | 8.1.1     | App URL-open events — native SSO deep-link callback                                                            |
+| `@capacitor/browser`                 | 8.0.4     | System browser for native SSO (keeps the app webview alive)                                                    |
+| `@capacitor/camera`                  | 8.2.1     | Native photo/gallery picker for sending media (web `<input>` fallback)                                         |
 | `@capacitor/filesystem`              | 8.1.2     | Write a downloaded attachment to cache before sharing it (native save)                                         |
 | `@capacitor/share`                   | 8.0.1     | Native OS save/share sheet for downloads (web `<a download>` fallback)                                         |
-| `@capacitor/status-bar`              | 8.0.2     | Sets the native status-bar style to match the light/dark theme                                                 |
-| `@angular/service-worker`            | 21.2.9    | PWA service worker (production web): precaches the app shell + crypto WASM for offline                         |
-| `@capacitor/push-notifications`      | 8.1.1     | FCM/APNs device token for the Matrix pusher (see [PUSH.md](PUSH.md))                                           |
+| `@capacitor/status-bar`              | 8.0.3     | Sets the native status-bar style to match the light/dark theme                                                 |
+| `@angular/service-worker`            | 22.0.7    | PWA service worker (production web): precaches the app shell + crypto WASM for offline                         |
+| `@capacitor/push-notifications`      | 8.1.2     | FCM/APNs device token for the Matrix pusher (see [PUSH.md](PUSH.md))                                           |
 | `matrix-encrypt-attachment`          | —         | Removed (unmaintained since 2022); ported into `@trinity/util-matrix` `attachment-crypto.ts`                   |
-| `marked`                             | 18.0.5    | Markdown → HTML for the composer/timeline                                                                      |
-| `dompurify`                          | 3.4.11    | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                                                     |
+| `marked`                             | 18.0.6    | Markdown → HTML for the composer/timeline                                                                      |
+| `dompurify`                          | 3.4.12    | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                                                     |
 
 > Versions moved since the original plan draft: Capacitor is on **8** (not 6); the
 > UI layer moved **off Ionic to spartan-ng** (Brain + Helm) on **Tailwind v4**; and
-> Angular is on **21.2**.
+> Angular is on **22.0**.
 
 ## Dev tooling & quality gates
 
 | Package                                           | Version       | Notes                                                                |
 | ------------------------------------------------- | ------------- | -------------------------------------------------------------------- |
-| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.0.1        | Monorepo task graph, caching, module boundaries                      |
-| `@nx/playwright` + `@playwright/test`             | 23.0.1 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium)        |
+| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.1.0        | Monorepo task graph, caching, module boundaries                      |
+| `@nx/playwright` + `@playwright/test`             | 23.1.0 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium)        |
 | `vitest` + `@analogjs/*`                          | 3 / 2.6.2     | Unit tests; the Analog plugin compiles Angular for Vite              |
 | `vite`, `vite-tsconfig-paths`, `jsdom`            | 6 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env             |
-| `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 20.7 / 8  | Flat config (`eslint.config.mjs`) + module boundaries                |
+| `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 22.1 / 8  | Flat config (`eslint.config.mjs`) + module boundaries                |
 | `prettier` (+ `prettier-plugin-tailwindcss`)      | 3.9 / 0.8     | `singleQuote`; Angular parser for `*.page.html`; Tailwind class sort |
 | `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                            |
 | `@commitlint/{cli,config-conventional}`           | 21            | `commit-msg` hook; Conventional Commits convention                   |
 | `husky` + `lint-staged`                           | 9 / 17        | `pre-commit` (lint/format staged) + `commit-msg` hooks               |
-| `typescript`                                      | 5.9           | `moduleResolution: bundler`; aliases in `tsconfig.base.json`         |
+| `typescript`                                      | 6.0           | `moduleResolution: bundler`; aliases in `tsconfig.base.json`         |
 | `@types/node`                                     | 22            | Node globals for `vite.config.ts` + the spec tsconfigs               |
 
 ## spartan-ng (Brain + Helm) + Angular (standalone)
@@ -114,6 +114,13 @@ the architecture changes — find out before building UI on top.
 - **Hand-rolled** (`electron/`), NOT `@capacitor-community/electron` (abandoned, stuck
   on Cap-5). The desktop app is the existing `www/` build in a hardened Electron shell;
   on desktop the app runs its web fallbacks (no Capacitor desktop bridge).
+- **Own toolchain, outside the Nx graph**: `electron/` has its own `package.json` +
+  `node_modules` and pins its own **TypeScript** (`~5.9`, via `pnpm -C electron compile`),
+  independent of the root TS. Gotcha: `nx migrate`'s TypeScript-version tsconfig codemods
+  glob every `tsconfig*.json` and so wrongly edit `electron/tsconfig.json` — the TS 6 bump
+  added `ignoreDeprecations: "6.0"`, which electron's TS 5.9 rejects (`TS5103`). Run
+  `git checkout -- electron/tsconfig.json` after any root TS bump and verify with
+  `cd electron && ./node_modules/.bin/tsc -p tsconfig.json --noEmit`.
 - The build is served over a custom **privileged** scheme (`trinity://app/`, registered
   standard + secure + fetch + stream) so the renderer is a secure context and the crypto
   WASM stream-instantiates. `contextIsolation`/`sandbox` on, `nodeIntegration` off.

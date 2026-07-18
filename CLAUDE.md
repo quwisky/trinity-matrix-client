@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Trinity is a cross-platform [Matrix](https://matrix.org) client with first-class end-to-end
 encryption, built from one codebase for **Web (PWA), iOS, Android, and Desktop (Electron)**.
-Stack: Angular 21 (standalone + signals) + spartan-ng on Tailwind v4, `matrix-js-sdk` +
+Stack: Angular 22 (standalone + signals) + spartan-ng on Tailwind v4, `matrix-js-sdk` +
 Rust crypto WASM, Capacitor 8, and a hand-rolled Electron shell, in an Nx monorepo.
 
 **Companion docs** (read these for depth — do not duplicate them here):
