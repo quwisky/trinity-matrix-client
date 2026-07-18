@@ -243,4 +243,18 @@ export default defineConfig([
       '@angular-eslint/no-input-rename': 'off',
     },
   },
+  {
+    // Vite/Vitest config files legitimately import the shared root vite.base.config
+    // via a relative path (vite's config loader can't resolve `@trinity/*` aliases).
+    // @nx/enforce-module-boundaries polices the app/lib runtime graph, not build
+    // tooling, so it doesn't apply here.
+    files: [
+      '**/vite.config.ts',
+      'vite.base.config.ts',
+      '**/vitest.config.{ts,mts,mjs}',
+    ],
+    rules: {
+      '@nx/enforce-module-boundaries': 'off',
+    },
+  },
 ]);
