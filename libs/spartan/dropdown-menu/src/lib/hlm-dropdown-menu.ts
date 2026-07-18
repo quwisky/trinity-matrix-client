@@ -316,6 +316,17 @@ export class HlmDropdownMenuSubTrigger {
     // shadowing it here reliably supersedes CDK's toggle() without touching event ordering.
     (this._cdkTrigger as { _handleClick?: () => void })._handleClick = () => {
       this._cdkTrigger.open();
+      // Preserve the focus move CDK's own _handleClick did after toggling: on a
+      // <button> sub-trigger, keyboard Enter/Space dispatches a native click that is
+      // the sole activation path through this override, so without this the submenu
+      // opens but focus stays on the trigger. focusFirstItem no-ops if already open.
+      (
+        this._cdkTrigger as {
+          getMenu?: () => { focusFirstItem?: (origin: 'mouse') => void } | null;
+        }
+      )
+        .getMenu?.()
+        ?.focusFirstItem?.('mouse');
     };
 
     classes(() => 'aria-expanded:bg-accent aria-expanded:text-accent-foreground');
