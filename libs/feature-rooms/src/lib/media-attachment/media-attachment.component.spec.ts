@@ -1,4 +1,4 @@
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';

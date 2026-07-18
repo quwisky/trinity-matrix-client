@@ -1,4 +1,4 @@
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { AvatarComponent } from './avatar.component';

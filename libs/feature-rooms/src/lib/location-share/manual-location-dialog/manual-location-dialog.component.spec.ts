@@ -1,5 +1,5 @@
 import { DialogRef } from '@angular/cdk/dialog';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';

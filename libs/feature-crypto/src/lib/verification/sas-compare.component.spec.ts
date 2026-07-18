@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/angular';
+import { fireEvent, render } from '@trinity/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { SasCompareComponent } from './sas-compare.component';
 

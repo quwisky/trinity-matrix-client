@@ -304,6 +304,31 @@ export class HlmDropdownMenuSubTrigger {
       this._cdkTrigger.menuPosition = this._menuPosition();
     });
 
+    // A submenu trigger opens its submenu on hover. CDK's own click handler calls toggle(),
+    // which *closes* an already-open submenu — so a mouse user who hovers (opening it) and
+    // then clicks the trigger closes it again. Under zone.js the overlay attach was deferred
+    // enough that the click usually landed while the submenu still read as closed and so
+    // opened it; under provideZonelessChangeDetection() the attach is synchronous, isOpen()
+    // is already true at click time, and the click deterministically closes it. Match
+    // radix/shadcn submenu semantics instead: a sub-trigger click opens (or keeps open) the
+    // submenu, never toggles it closed. open() is guarded on !isOpen(), so this is idempotent.
+    // The compiled host listener resolves _handleClick on the instance at event time, so
+    // shadowing it here reliably supersedes CDK's toggle() without touching event ordering.
+    (this._cdkTrigger as { _handleClick?: () => void })._handleClick = () => {
+      this._cdkTrigger.open();
+      // Preserve the focus move CDK's own _handleClick did after toggling: on a
+      // <button> sub-trigger, keyboard Enter/Space dispatches a native click that is
+      // the sole activation path through this override, so without this the submenu
+      // opens but focus stays on the trigger. focusFirstItem no-ops if already open.
+      (
+        this._cdkTrigger as {
+          getMenu?: () => { focusFirstItem?: (origin: 'mouse') => void } | null;
+        }
+      )
+        .getMenu?.()
+        ?.focusFirstItem?.('mouse');
+    };
+
     classes(() => 'aria-expanded:bg-accent aria-expanded:text-accent-foreground');
   }
 }

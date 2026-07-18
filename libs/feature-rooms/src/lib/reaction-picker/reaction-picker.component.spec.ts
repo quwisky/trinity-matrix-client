@@ -1,5 +1,5 @@
 import { DialogRef } from '@angular/cdk/dialog';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';
 import { type EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';

@@ -1,6 +1,5 @@
 import {
   Injectable,
-  NgZone,
   Signal,
   WritableSignal,
   computed,
@@ -75,7 +74,6 @@ interface AccountClient {
 @Injectable({ providedIn: 'root' })
 export class MatrixClientService {
   private readonly storage = inject(SessionStorageService);
-  private readonly zone = inject(NgZone);
 
   private readonly clients = new Map<string, AccountClient>();
 
@@ -276,14 +274,12 @@ export class MatrixClientService {
     }
   }
 
-  /** Flag a user id as soft-logged-out (needs re-auth), re-entering the zone since
-   * callers can fire from outside it. Deduped; cleared by a successful (re-)start. */
+  /** Flag a user id as soft-logged-out (needs re-auth). The signal write schedules
+   * change detection on its own. Deduped; cleared by a successful (re-)start. */
   private markSoftLoggedOut(userId: string): void {
-    this.zone.run(() => {
-      if (!this._softLoggedOut().includes(userId)) {
-        this._softLoggedOut.set([...this._softLoggedOut(), userId]);
-      }
-    });
+    if (!this._softLoggedOut().includes(userId)) {
+      this._softLoggedOut.set([...this._softLoggedOut(), userId]);
+    }
   }
 
   /** Stop syncing and tear down every client (without clearing any stores). */
@@ -514,32 +510,29 @@ export class MatrixClientService {
     }
     const soft =
       (err.data as { soft_logout?: boolean } | undefined)?.soft_logout === true;
-    // The SDK emits this from a network callback OUTSIDE Angular's zone; re-enter so
-    // the signal writes below flush the reproject + redirect effects promptly rather
-    // than on the next incidental change detection.
-    this.zone.run(() => {
-      if (soft) {
-        // Keep the stores + registry entry for re-auth, but drop the now-dead token so
-        // a restart's restore skips it instead of resurrecting a failing ghost account.
-        this.removeInternal(userId, false);
-        this.storage
-          .invalidateToken(userId)
-          .subscribe({ error: () => undefined });
-        this.markSoftLoggedOut(userId);
-      } else {
-        // Hard logout: the device is gone server-side — wipe locally (which also clears
-        // any soft-logout flag) and forget the account.
-        this.removeInternal(userId, true);
-        this.storage.remove(userId).subscribe({ error: () => undefined });
-      }
-      // Reconcile the persisted active pointer with the surviving in-memory active:
-      // removeInternal repoints in memory by Map order, storage.remove by array order,
-      // so without this a restart could restore a different account than the UI shows.
-      const active = this._activeUserId();
-      if (active) {
-        this.storage.setActive(active).subscribe({ error: () => undefined });
-      }
-    });
+    // This runs from an SDK network callback; the signal writes below schedule change
+    // detection on their own, driving the reproject + redirect effects.
+    if (soft) {
+      // Keep the stores + registry entry for re-auth, but drop the now-dead token so
+      // a restart's restore skips it instead of resurrecting a failing ghost account.
+      this.removeInternal(userId, false);
+      this.storage
+        .invalidateToken(userId)
+        .subscribe({ error: () => undefined });
+      this.markSoftLoggedOut(userId);
+    } else {
+      // Hard logout: the device is gone server-side — wipe locally (which also clears
+      // any soft-logout flag) and forget the account.
+      this.removeInternal(userId, true);
+      this.storage.remove(userId).subscribe({ error: () => undefined });
+    }
+    // Reconcile the persisted active pointer with the surviving in-memory active:
+    // removeInternal repoints in memory by Map order, storage.remove by array order,
+    // so without this a restart could restore a different account than the UI shows.
+    const active = this._activeUserId();
+    if (active) {
+      this.storage.setActive(active).subscribe({ error: () => undefined });
+    }
   }
 
   /** Drop a user id from the soft-logged-out set (on re-auth or full removal). */

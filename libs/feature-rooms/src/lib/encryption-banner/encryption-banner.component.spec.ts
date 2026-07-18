@@ -8,7 +8,7 @@ import {
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
 import { TrnDialogService } from '@trinity/helm/overlay';
-import { fireEvent, render } from '@testing-library/angular';
+import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionBannerComponent } from './encryption-banner.component';

@@ -1,5 +1,5 @@
 import { ComponentFixture } from '@angular/core/testing';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
 import {
   MessageToolbarComponent,

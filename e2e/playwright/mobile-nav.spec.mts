@@ -1,5 +1,6 @@
+import { createHmac } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
-import { login, synapseSession } from './support/app.mts';
+import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
 // Node's fetch (the CS-API room seeding below) must accept the disposable
 // Synapse + Caddy harness's self-signed cert — same bypass global-setup applies
@@ -19,6 +20,45 @@ const session = synapseSession();
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 const ROOM_NAME = `Mobile drawer ${Date.now()}`;
+
+// A dedicated user (registered in beforeAll) instead of the shared session account.
+// The shared account is bloated by other specs (gif, multi-account,
+// timeline-virtualization) that seed rooms into it, so under full-suite load its
+// initial /sync was slow enough that ROOM_NAME took >30s (sometimes >90s) to appear —
+// the root cause of this file's flakiness. A fresh user syncs a single room, fast.
+const SYNAPSE_HTTP = 'http://localhost:8008';
+const REG_SECRET = 'trinity-e2e-shared-secret';
+const runId = `${Date.now().toString(36)}mn`;
+const MOBILE_USER = `mobile-user-${runId}`;
+const MOBILE_PASS = `${MOBILE_USER}-pass`;
+const mobileSession: SynapseSession = {
+  available: session.available,
+  hs: session.hs,
+  user: MOBILE_USER,
+  pass: MOBILE_PASS,
+};
+const ROOM_ATTACH_TIMEOUT = 30_000;
+
+/** Register a fresh user via Synapse's shared-secret admin API (idempotent). */
+async function registerUser(username: string, password: string): Promise<void> {
+  const { nonce } = await fetch(
+    `${SYNAPSE_HTTP}/_synapse/admin/v1/register`,
+  ).then((r) => r.json());
+  const mac = createHmac('sha1', REG_SECRET)
+    .update(`${nonce}\0${username}\0${password}\0notadmin`)
+    .digest('hex');
+  const res = await fetch(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nonce, username, password, admin: false, mac }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    if (!/already.*exists|user.*taken/i.test(text)) {
+      throw new Error(`register ${username} → ${res.status} ${text}`);
+    }
+  }
+}
 
 /** CS-API password login (bypasses the UI) — returns the access token + user id. */
 async function apiLogin(
@@ -112,33 +152,34 @@ test.describe('Mobile navigation drawer', () => {
 
   test.use({ viewport: MOBILE_VIEWPORT });
 
-  // Every test here does a full UI login in beforeEach (~10-20s), then waits for the
-  // seeded room to arrive via initial sync. Under the suite's parallel load a cold
-  // login + Rust-crypto init + first sync + m.direct processing can exceed the
-  // default 30s per-test budget, so give these login-heavy tests headroom plus one
-  // retry for the rare tail. Scoped to this describe — no effect on other specs.
-  test.describe.configure({ timeout: 60_000, retries: 1 });
+  // Each test does a full UI login in beforeEach (~10-20s cold: Rust-crypto init +
+  // first sync). The dedicated user's sync is small, so 60s per test is ample headroom
+  // under load; retries inherit the project default. Scoped to this describe.
+  test.describe.configure({ timeout: 60_000 });
 
-  // Seed once for the whole file (shared account, same as navigation/settings
-  // specs) — every test below just needs *a* room to tap.
+  // Register a dedicated user and seed its single room once for the whole file, so
+  // every test logs into an account whose initial sync is tiny (and therefore fast).
   test.beforeAll(async () => {
+    await registerUser(MOBILE_USER, MOBILE_PASS);
     const { token, userId } = await apiLogin(
-      session.hs as string,
-      session.user as string,
-      session.pass as string,
+      mobileSession.hs as string,
+      MOBILE_USER,
+      MOBILE_PASS,
     );
-    await seedRoom(session.hs as string, token, userId, ROOM_NAME);
+    await seedRoom(mobileSession.hs as string, token, userId, ROOM_NAME);
   });
 
   test.beforeEach(async ({ page }) => {
-    await login(page, session);
+    await login(page, mobileSession);
   });
 
   test('the hamburger is the mobile affordance and opens the closed drawer', async ({
     page,
   }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
-    await channel.first().waitFor({ state: 'attached', timeout: 30_000 });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
 
     // `data-testid="open-menu"` carries `md:hidden` on the button — only visible
     // below the `md` breakpoint.
@@ -171,7 +212,9 @@ test.describe('Mobile navigation drawer', () => {
     page,
   }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
-    await channel.first().waitFor({ state: 'attached', timeout: 30_000 });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
 
     await page.getByTestId('open-menu').click();
     await expect(shellSide(page)).toBeInViewport();
@@ -190,7 +233,9 @@ test.describe('Mobile navigation drawer', () => {
     page,
   }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
-    await channel.first().waitFor({ state: 'attached', timeout: 30_000 });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
 
     await page.getByTestId('open-menu').click();
     await expect(shellSide(page)).toBeInViewport();

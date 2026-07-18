@@ -1,5 +1,5 @@
 import { Component } from '@angular/core';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { PageHeaderComponent } from './page-header.component';
 
 @Component({

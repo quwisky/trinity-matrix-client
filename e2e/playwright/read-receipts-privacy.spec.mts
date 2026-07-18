@@ -164,10 +164,14 @@ test.describe('Read-receipt privacy', () => {
     await expect(toggle).toBeVisible({ timeout: 15_000 });
     await toggle.click();
 
-    // Now open the room — reading it acks the message (privately).
+    // Now open the room — reading it acks the message (privately). Scope to the
+    // timeline message row: the same text also appears in the channel-list preview
+    // (`.channel__preview`), so a bare getByText matches two elements.
     await page.goto('/rooms');
     await openRoom(page, roomName);
-    await expect(page.getByText('Did you read this?')).toBeVisible({
+    await expect(
+      page.locator('trn-message-row').filter({ hasText: 'Did you read this?' }),
+    ).toBeVisible({
       timeout: 20_000,
     });
 

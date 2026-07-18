@@ -1,4 +1,4 @@
-import { Injectable, NgZone, Signal, inject, signal } from '@angular/core';
+import { Injectable, Signal, inject, signal } from '@angular/core';
 import { MatrixClient, UserEvent, type User } from 'matrix-js-sdk';
 import { Observable, defer, from, tap, throwError } from 'rxjs';
 import { type PresenceState, toPresenceState } from '@trinity/util-matrix';
@@ -20,7 +20,6 @@ import {
 @Injectable({ providedIn: 'root' })
 export class PresenceService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly zone = inject(NgZone);
 
   /** The client we currently have the presence listener on (null when detached). */
   private connectedClient: MatrixClient | null = null;
@@ -38,7 +37,7 @@ export class PresenceService {
   private readonly _myStatusMessage = signal('');
   readonly myStatusMessage = this._myStatusMessage.asReadonly();
 
-  /** Matrix events fire outside Angular's zone; re-enter so the signal write renders. */
+  /** Handles a client `User.presence` event by writing the per-user signal, which schedules change detection. */
   private readonly onPresence = (_event: unknown, user: User): void => {
     const state = this.states.get(user.userId);
     if (!state) {
@@ -50,11 +49,11 @@ export class PresenceService {
       user.userId === this.connectedClient?.getUserId()
         ? 'online'
         : toPresenceState(user.presence);
-    // Only re-enter the zone (→ a change-detection pass) on an actual coarse-state
-    // change: the client re-emits presence for every co-member on each sync, and most
-    // are no-op transitions (e.g. still-offline) that would otherwise tick CD for nothing.
+    // Only write (→ a change-detection pass) on an actual coarse-state change: the client
+    // re-emits presence for every co-member on each sync, and most are no-op transitions
+    // (e.g. still-offline) that would otherwise tick CD for nothing.
     if (next !== state()) {
-      this.zone.run(() => state.set(next));
+      state.set(next);
     }
   };
 

@@ -1,7 +1,7 @@
 // @trinity/helm/overlay — Trinity's imperative overlay adapters.
 //
 // Service-driven dialog/alert/action-sheet/toast APIs built on Angular CDK's
-// Dialog/Overlay + ngx-sonner, styled with the owned helm components. These are
+// Dialog/Overlay + brain sonner, styled with the owned helm components. These are
 // the spartan replacements for Ionic's ModalController/AlertController/
 // ActionSheetController/ToastController.
 export * from './lib/dialog/trn-dialog.service';

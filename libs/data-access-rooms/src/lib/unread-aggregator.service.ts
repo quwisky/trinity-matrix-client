@@ -1,11 +1,4 @@
-import {
-  Injectable,
-  NgZone,
-  computed,
-  effect,
-  inject,
-  signal,
-} from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   NotificationCountType,
@@ -31,13 +24,12 @@ interface AccountListener {
  * It attaches a lightweight listener to each account's client (reading notification
  * counts directly, with no full room projection) and reconciles that listener set as
  * accounts are added or removed. Recomputes are coalesced onto a microtask so a sync
- * burst across several accounts rebuilds the totals once, and re-entered into Angular's
- * zone so the badge updates promptly rather than on the next incidental tick.
+ * burst across several accounts rebuilds the totals once; the rebuild writes a signal,
+ * which schedules change detection so the badge updates promptly.
  */
 @Injectable({ providedIn: 'root' })
 export class UnreadAggregatorService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly zone = inject(NgZone);
 
   private readonly _unreadByAccount = signal<ReadonlyMap<string, number>>(
     new Map(),
@@ -97,9 +89,8 @@ export class UnreadAggregatorService {
     this.flushScheduled = true;
     queueMicrotask(() => {
       this.flushScheduled = false;
-      // Client events fire OUTSIDE Angular's zone, so re-enter it before the signal
-      // write, or the badge would only update on the next incidental change detection.
-      this.zone.run(() => this.flush());
+      // flush() writes the per-account signal, which schedules change detection.
+      this.flush();
     });
   }
 

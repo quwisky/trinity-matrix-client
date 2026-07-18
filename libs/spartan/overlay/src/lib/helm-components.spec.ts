@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
 // Imported straight from the owning helm libs (libs/spartan/*). These focused
 // smoke tests live in the overlay lib because it's the one spartan lib with a

@@ -2,7 +2,7 @@ import { signal, type Provider } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, type ComponentInput } from '@testing-library/angular';
+import { render, type ComponentInput } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import {

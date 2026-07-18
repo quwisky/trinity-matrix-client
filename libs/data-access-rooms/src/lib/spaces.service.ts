@@ -1,4 +1,4 @@
-import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   EventType,
@@ -134,7 +134,6 @@ type SpaceChildBase = Omit<SpaceChildRoom, 'joined'>;
 @Injectable({ providedIn: 'root' })
 export class SpacesService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly zone = inject(NgZone);
 
   /**
    * The client we currently have listeners on. The client is recreated on every
@@ -222,8 +221,8 @@ export class SpacesService {
    */
   private readonly onStateEvent = (event: MatrixEvent): void => {
     if (event.getType() === SPACE_CHILD_EVENT) {
-      // Via scheduleRefresh so this re-enters the zone (it fires outside it) and
-      // coalesces with the sync burst that typically accompanies it.
+      // Via scheduleRefresh so it coalesces with the sync burst that typically
+      // accompanies it.
       this.scheduleRefresh();
     }
   };
@@ -294,11 +293,9 @@ export class SpacesService {
     queueMicrotask(() => {
       this.refreshScheduled = false;
       if (this.connectedClient) {
-        // Matrix client events (and thus this microtask) run OUTSIDE Angular's zone, so
-        // the signal writes in refresh() wouldn't schedule change detection — a joined/
-        // left/renamed space would surface only on the next incidental tick. Mirrors
-        // RoomsService.scheduleRefresh, which listens to the very same events.
-        this.zone.run(() => this.refresh());
+        // refresh() writes signals, which schedule change detection on their own.
+        // Mirrors RoomsService.scheduleRefresh, which listens to the very same events.
+        this.refresh();
       }
     });
   }

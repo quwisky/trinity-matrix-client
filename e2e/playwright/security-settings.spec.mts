@@ -70,6 +70,8 @@ test.describe('Security settings', () => {
     const setUp = page.getByTestId('security-setup');
     await expect(setUp).toBeVisible({ timeout: 20_000 });
     await setUp.click();
-    await page.waitForURL(/\/encryption\/setup$/, { timeout: 20_000 });
+    // setUp() navigates with a `returnTo` query param, so the URL is
+    // `/encryption/setup?returnTo=…` — don't anchor the match to the path end.
+    await page.waitForURL(/\/encryption\/setup(\?|$)/, { timeout: 20_000 });
   });
 });

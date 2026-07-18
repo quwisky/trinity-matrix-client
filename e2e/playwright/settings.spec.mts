@@ -192,24 +192,26 @@ test.describe('Settings', () => {
       .getByTestId('flag-virtual-timeline')
       .locator('hlm-checkbox');
     await expect(checkbox).toBeVisible();
-    expect(await read()).not.toBe('true'); // off by default
+    // The virtualized timeline is on by default (163fcc4) and nothing is persisted
+    // until the flag is toggled, so the first click turns it OFF and writes 'false'.
+    expect(await read()).toBeNull();
 
     await checkbox.click();
-    await expect.poll(read).toBe('true'); // persisted to Preferences
+    await expect.poll(read).toBe('false'); // persisted to Preferences
 
     // Survives a reload — the deep-linked sub-page restores and the flag reads back.
     await page.reload();
     await expect(
       page.getByTestId('flag-virtual-timeline').locator('hlm-checkbox'),
     ).toBeVisible({ timeout: 20_000 });
-    expect(await read()).toBe('true');
+    expect(await read()).toBe('false');
 
-    // Toggling back off persists too.
+    // Toggling back on persists too.
     await page
       .getByTestId('flag-virtual-timeline')
       .locator('hlm-checkbox')
       .click();
-    await expect.poll(read).toBe('false');
+    await expect.poll(read).toBe('true');
   });
 
   test('mobile: shows the category list, drills into a section, and backs out', async ({

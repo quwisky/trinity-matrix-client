@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { ComponentFixture } from '@angular/core/testing';
 import { DialogRef } from '@angular/cdk/dialog';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import {
   SearchService,
   type LoadedMessageSearch,

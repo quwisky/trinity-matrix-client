@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { render, fireEvent } from '@testing-library/angular';
+import { render, fireEvent } from '@trinity/testing';
 import { DialogRef } from '@angular/cdk/dialog';
 import {
   PinnedMessagesService,

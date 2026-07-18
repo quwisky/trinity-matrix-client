@@ -1,4 +1,4 @@
-import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import {
   Direction,
@@ -102,7 +102,6 @@ export class TimelineService {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly mediaSvc = inject(MediaService);
   private readonly privacy = inject(PrivacySettingsService);
-  private readonly zone = inject(NgZone);
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();
@@ -158,11 +157,9 @@ export class TimelineService {
    * per event is therefore quadratic in the burst. Collapse the burst into a single
    * pass, exactly as `RoomsService.scheduleRefresh` does.
    *
-   * Also re-enters Angular's zone: these events fire outside it, so the signal writes
-   * in refresh() would otherwise not schedule change detection — leaving typing
-   * indicators and shield changes to wait for the next incidental tick. (Direct,
-   * non-listener refreshes — open() and the actions — stay synchronous, so a caller
-   * still observes its own write immediately.)
+   * refresh() writes the projection signals, and under zoneless a signal write
+   * schedules change detection on its own — so typing indicators and shield changes
+   * flush without waiting for an incidental tick.
    */
   private scheduleRefresh(): void {
     if (this.refreshScheduled) {
@@ -172,7 +169,7 @@ export class TimelineService {
     queueMicrotask(() => {
       this.refreshScheduled = false;
       if (this.room) {
-        this.zone.run(() => this.refresh());
+        this.refresh();
       }
     });
   }

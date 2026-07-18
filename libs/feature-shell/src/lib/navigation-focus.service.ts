@@ -1,5 +1,5 @@
 import { DOCUMENT } from '@angular/common';
-import { DestroyRef, Injectable, NgZone, inject } from '@angular/core';
+import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { filter } from 'rxjs';
@@ -20,7 +20,6 @@ import { filter } from 'rxjs';
 export class NavigationFocusService {
   private readonly router = inject(Router);
   private readonly document = inject(DOCUMENT);
-  private readonly zone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
 
   /** Wire the router subscription. Call once at bootstrap. */
@@ -34,10 +33,8 @@ export class NavigationFocusService {
       )
       .subscribe(() => {
         // Defer to the next frame so the entering view is attached + painted before
-        // we look for its heading. Outside Angular — it's a DOM focus, not state.
-        this.zone.runOutsideAngular(() =>
-          requestAnimationFrame(() => this.focusEnteringPage()),
-        );
+        // we look for its heading. Pure DOM focus, no Angular state written.
+        requestAnimationFrame(() => this.focusEnteringPage());
       });
   }
 

@@ -3,7 +3,7 @@ import {
   ErrorHandler,
   inject,
   provideAppInitializer,
-  provideZoneChangeDetection,
+  provideZonelessChangeDetection,
 } from '@angular/core';
 import {
   provideRouter,
@@ -51,7 +51,10 @@ const isElectron =
 
 bootstrapApplication(AppComponent, {
   providers: [
-    provideZoneChangeDetection(),
+    // Zoneless change detection (no zone.js). The data-access services' matrix-js-sdk
+    // event handlers write signals, which schedule change detection directly. See
+    // docs/ZONELESS.md.
+    provideZonelessChangeDetection(),
     // Quiet transient homeserver noise (503s / dropped connections during the
     // initial-sync request burst) so SDK-internal rejections don't spam the
     // console as ERROR; genuine errors still reach the default handler.

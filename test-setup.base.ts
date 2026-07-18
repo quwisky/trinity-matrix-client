@@ -1,13 +1,7 @@
-import '@analogjs/vitest-angular/setup-zone';
+import { setupTestBed } from '@analogjs/vitest-angular/setup-testbed';
 import '@testing-library/jest-dom/vitest';
 import { ngMocks } from 'ng-mocks';
 import { vi } from 'vitest';
-
-import { getTestBed } from '@angular/core/testing';
-import {
-  BrowserDynamicTestingModule,
-  platformBrowserDynamicTesting,
-} from '@angular/platform-browser-dynamic/testing';
 
 // Shared Vitest setup for the Angular libs + app. Each project's
 // src/test-setup.ts (the vite `setupFiles` entry) imports this; lib-specific
@@ -49,10 +43,23 @@ if (virtualConsole) {
   };
 }
 
-getTestBed().initTestEnvironment(
-  BrowserDynamicTestingModule,
-  platformBrowserDynamicTesting(),
-);
+// jsdom has no matchMedia. brain-sonner's toaster reads it in an afterRender hook
+// (theme / reduced-motion), so rendering <hlm-toaster> throws a TypeError there;
+// stub it so the toaster initializes fully instead of surviving on render ordering.
+vi.stubGlobal('matchMedia', (query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addEventListener: () => undefined,
+  removeEventListener: () => undefined,
+  addListener: () => undefined,
+  removeListener: () => undefined,
+  dispatchEvent: () => false,
+}));
+
+// Zoneless TestBed (provideZonelessChangeDetection); the app runs zoneless in
+// production, so specs exercise the same change-detection mode.
+setupTestBed({ zoneless: true });
 
 // ng-mocks: back every auto-mocked method with a vitest spy so migrated specs
 // can use `.mockReturnValue(...)` / `.toHaveBeenCalledWith(...)` on MockProvider stubs.

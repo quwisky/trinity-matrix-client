@@ -76,6 +76,11 @@ test.describe('Room settings', () => {
     page,
     request,
   }) => {
+    // Unlike reactions/polls (timeline events with instant local echo), a rename is an
+    // m.room.name STATE event with no local echo — the channel list only reflects it
+    // after the change round-trips via /sync, whose latency balloons under a loaded
+    // homeserver. Give this one echo-gated test extra budget for the wait below.
+    test.setTimeout(150_000);
     const hs = session.hs as string;
     const runId = `${Date.now().toString(36)}s`;
     const user = `settings-user-${runId}`;
@@ -109,11 +114,13 @@ test.describe('Room settings', () => {
     await page.getByTestId('room-settings-name').fill(newName);
     await page.getByTestId('room-settings-save').click();
 
-    // The rename round-trips: the room now shows under its new name (and not the
-    // old one) in the channel list.
+    // The rename is an m.room.name state event, and matrix-js-sdk has no local echo for
+    // state — the channel list only updates once the change round-trips back via /sync,
+    // which is slow under full-suite load. Give that sync-driven update headroom (the
+    // per-test budget is raised in playwright.config for exactly these login+sync flows).
     await expect(
       page.locator('.channel', { hasText: newName }).first(),
-    ).toBeVisible({ timeout: 30_000 });
+    ).toBeVisible({ timeout: 90_000 });
     await expect(
       page.locator('.channel', { hasText: originalName }),
     ).toHaveCount(0);

@@ -1,5 +1,5 @@
 import { By } from '@angular/platform-browser';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';

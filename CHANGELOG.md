@@ -28,9 +28,16 @@ All notable changes to this project are documented here. The format is based on
 - **Upgraded the build toolchain to Angular 22, Nx 23.1, and TypeScript 6.** A maintenance
   upgrade with no change to how the app behaves; it keeps the project on supported framework
   versions and current security patches.
+- **Adopted Angular's zoneless change detection.** Trinity no longer ships `zone.js` (~30 kB),
+  so it loads a little leaner and drives UI updates straight from signals. Behaviour is
+  unchanged.
 
 ### Fixed
 
+- **Confirmation messages (toasts) appear again.** Actions that report success or failure
+  with a small pop-up notification — changing your password, exporting/importing encryption
+  keys, reporting a message, renaming a room, updating a room photo, unbanning a member, and
+  more — silently showed nothing. The pop-ups now appear as intended.
 - **Signing out no longer risks another account's encrypted history.** With more than one
   account signed in, signing out could delete a second account's saved session — and the
   encryption keys that went with it — if that account had been signed out by its server or
