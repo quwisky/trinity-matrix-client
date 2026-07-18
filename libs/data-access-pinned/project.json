@@ -6,17 +6,6 @@
   "prefix": "trn",
   "tags": ["type:data-access", "scope:matrix"],
   "targets": {
-    "test": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "vitest run",
-        "cwd": "libs/data-access-pinned"
-      },
-      "configurations": {
-        "watch": {
-          "command": "vitest"
-        }
-      }
-    }
+    "test": {}
   }
 }

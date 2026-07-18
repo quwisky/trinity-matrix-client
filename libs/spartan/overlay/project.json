@@ -6,17 +6,6 @@
   "prefix": "trn",
   "tags": ["type:ui", "scope:shared"],
   "targets": {
-    "test": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "vitest run",
-        "cwd": "libs/spartan/overlay"
-      },
-      "configurations": {
-        "watch": {
-          "command": "vitest"
-        }
-      }
-    }
+    "test": {}
   }
 }
