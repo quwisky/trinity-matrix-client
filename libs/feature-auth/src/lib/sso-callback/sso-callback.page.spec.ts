@@ -1,6 +1,6 @@
 import { Location } from '@angular/common';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { AuthService } from '@trinity/data-access-auth';
 import { MockProvider } from 'ng-mocks';
 import { from, of, throwError } from 'rxjs';

@@ -7,7 +7,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { App } from '@capacitor/app';
 import { VerificationService } from '@trinity/data-access-crypto';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppComponent } from './app.component';

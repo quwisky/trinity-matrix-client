@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileService, type UserProfile } from '@trinity/data-access-profile';

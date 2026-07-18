@@ -1,4 +1,4 @@
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { SidebarUserPanelComponent } from './sidebar-user-panel.component';
 
 // The account-switcher dropdown (switch / add / sign out / re-auth rows) is

@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';

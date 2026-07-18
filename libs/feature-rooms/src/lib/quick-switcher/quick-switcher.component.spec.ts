@@ -3,7 +3,7 @@ import {
   SearchService,
   type SwitcherResult,
 } from '@trinity/data-access-search';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

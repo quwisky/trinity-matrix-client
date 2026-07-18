@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/angular';
+import { render, screen } from '@trinity/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RecoveryKeyDisplayComponent } from './recovery-key-display.component';
 

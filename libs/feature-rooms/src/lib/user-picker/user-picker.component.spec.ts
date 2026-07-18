@@ -4,7 +4,7 @@ import {
   type UserSearchResult,
 } from '@trinity/data-access-rooms';
 import { AvatarComponent } from '@trinity/ui';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

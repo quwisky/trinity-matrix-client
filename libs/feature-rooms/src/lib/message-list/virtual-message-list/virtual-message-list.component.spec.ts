@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type MessageView } from '@trinity/util-matrix';
@@ -473,11 +473,21 @@ describe('VirtualMessageListComponent', () => {
       expect(emits).toBe(2);
     });
 
-    it('restores scroll to the anchor row after older history prepends', async () => {
-      const { fixture, container } = await renderList({
-        canLoadOlder: true,
-        messages: many(30), // short → all rendered
+    it('restores scroll to the anchor row after older history prepends', () => {
+      // Detached fixture (not renderList/render()), like the backfill test above:
+      // render() attaches the component to ApplicationRef, so the synchronous-rAF
+      // anchor restore re-enters the zoneless scheduler ("cannot synchronously
+      // execute watches while scheduling"). A detached fixture only ticks on our
+      // explicit fixture.detectChanges().
+      TestBed.overrideComponent(VirtualMessageListComponent, {
+        remove: { imports: [MessageComposerComponent] },
+        add: { imports: [MockComponent(MessageComposerComponent)] },
       });
+      const fixture = TestBed.createComponent(VirtualMessageListComponent);
+      fixture.componentRef.setInput('canLoadOlder', true);
+      fixture.componentRef.setInput('messages', many(30)); // short → all rendered
+      fixture.detectChanges();
+      const container = fixture.nativeElement as HTMLElement;
       const cmp = fixture.componentInstance;
 
       const scroll = container.querySelector('.scroll') as HTMLElement;

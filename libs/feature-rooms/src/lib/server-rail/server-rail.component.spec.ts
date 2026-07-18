@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/angular';
+import { render, screen } from '@trinity/testing';
 import { type SpaceSummary } from '@trinity/data-access-rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { MockComponent } from 'ng-mocks';

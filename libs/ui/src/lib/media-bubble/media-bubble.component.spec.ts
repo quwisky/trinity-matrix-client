@@ -1,4 +1,4 @@
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import {
   MediaBubbleComponent,
   type MediaBubbleItem,

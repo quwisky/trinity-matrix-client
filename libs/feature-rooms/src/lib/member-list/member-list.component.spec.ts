@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { AvatarComponent } from '@trinity/ui';
 import { PresenceService } from '@trinity/data-access-profile';
 import { type PresenceState } from '@trinity/util-matrix';

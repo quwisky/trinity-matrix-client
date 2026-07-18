@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
 import { type MessageView } from '@trinity/util-matrix';

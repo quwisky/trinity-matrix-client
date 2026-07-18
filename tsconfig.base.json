@@ -22,6 +22,7 @@
     "useDefineForClassFields": false,
     "paths": {
       "@trinity/util-matrix": ["./libs/util-matrix/src/index.ts"],
+      "@trinity/testing": ["./test-render.ts"],
       "@trinity/platform-native": ["./libs/platform-native/src/index.ts"],
       "@trinity/data-access-matrix-client": [
         "./libs/data-access-matrix-client/src/index.ts"

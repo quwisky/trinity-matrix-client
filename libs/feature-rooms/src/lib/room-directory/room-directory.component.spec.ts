@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { render } from '@testing-library/angular';
+import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of, throwError, Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
