@@ -25,6 +25,11 @@ export default defineConfig({
   // still fails all attempts, and Playwright reports the retried ones as "flaky".
   // Pairs with `trace: 'on-first-retry'` below.
   retries: 2,
+  // Every spec drives the same single disposable Synapse; the default worker count
+  // (≈half the cores) oversubscribes it, and the resulting slow /sync + round-trips
+  // are what make the sync-dependent specs flaky. Cap at 2 to keep the homeserver
+  // responsive — trades some wall-clock for a materially steadier run.
+  workers: 2,
   // Bring up / tear down the disposable Synapse homeserver (Docker). Gracefully
   // skips when Docker is unavailable; auth-only specs skip themselves then.
   globalSetup: './playwright/support/global-setup.mts',
