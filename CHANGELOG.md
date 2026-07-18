@@ -34,6 +34,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Confirmation messages (toasts) appear again.** Actions that report success or failure
+  with a small pop-up notification — changing your password, exporting/importing encryption
+  keys, reporting a message, renaming a room, updating a room photo, unbanning a member, and
+  more — silently showed nothing. The pop-ups now appear as intended.
 - **Signing out no longer risks another account's encrypted history.** With more than one
   account signed in, signing out could delete a second account's saved session — and the
   encryption keys that went with it — if that account had been signed out by its server or

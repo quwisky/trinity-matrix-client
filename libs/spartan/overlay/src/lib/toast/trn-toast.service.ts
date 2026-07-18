@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { toast } from 'ngx-sonner';
+import { toast } from '@spartan-ng/brain/sonner';
 
 export type ToastVariant = 'default' | 'destructive' | 'success';
 
@@ -10,11 +10,17 @@ export interface ToastOptions {
 }
 
 /**
- * Transient toast notifications over spartan's helm **sonner** (`ngx-sonner`) — the
- * replacement for Ionic's `ToastController`. A single `<hlm-toaster/>` mounted at the
- * app root renders them; this thin service maps our `{ variant, duration }` options
- * onto sonner's imperative `toast()` API so call sites (and their test mocks) stay
- * unchanged. Call `show(message, { variant, duration })`.
+ * Transient toast notifications over spartan's helm **sonner** — the replacement for
+ * Ionic's `ToastController`. A single `<hlm-toaster/>` mounted at the app root renders
+ * them; this thin service maps our `{ variant, duration }` options onto sonner's
+ * imperative `toast()` API so call sites (and their test mocks) stay unchanged. Call
+ * `show(message, { variant, duration })`.
+ *
+ * IMPORTANT: `toast` must come from `@spartan-ng/brain/sonner`, NOT `ngx-sonner`.
+ * `<hlm-toaster/>` wraps brain's `<brn-sonner-toaster/>`, which reads brain's own
+ * `toastState`. Since spartan 1.1 brain ships its own sonner port (it does not depend
+ * on ngx-sonner), so calling ngx-sonner's `toast()` pushes into a *different* store the
+ * mounted toaster never observes — the toast is dropped silently, with no error.
  */
 @Injectable({ providedIn: 'root' })
 export class TrnToastService {

@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
-import { toast } from 'ngx-sonner';
+import { toast } from '@spartan-ng/brain/sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrnToastService } from './trn-toast.service';
 
-// TrnToastService is a thin adapter over ngx-sonner's imperative toast().
-vi.mock('ngx-sonner', () => ({
+// TrnToastService is a thin adapter over brain sonner's imperative toast(). Mock the
+// same module the service imports from (@spartan-ng/brain/sonner, NOT ngx-sonner — see
+// the service header); trn-toast-render.spec.ts covers the real producer→toaster wiring.
+vi.mock('@spartan-ng/brain/sonner', () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
 
