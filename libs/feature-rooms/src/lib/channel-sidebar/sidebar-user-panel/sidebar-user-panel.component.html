@@ -1,0 +1,100 @@
+<footer class="userbar">
+  <button
+    class="userbar__trigger"
+    [hlmDropdownMenuTrigger]="accountMenu"
+    side="top"
+    align="start"
+    aria-label="Account menu"
+    data-testid="user-menu-trigger"
+  >
+    <trn-avatar
+      [mxc]="user().avatarMxc"
+      [initial]="userInitial()"
+      [name]="user().displayName"
+      [size]="32"
+    />
+    <div class="userbar__id">
+      <span class="userbar__name">{{ user().displayName }}</span>
+      <span class="userbar__handle">{{ user().userId }}</span>
+    </div>
+  </button>
+  <button
+    class="userbar__settings"
+    (click)="openSettings.emit()"
+    aria-label="Settings"
+    title="Settings"
+    data-testid="open-settings"
+  >
+    <ng-icon name="lucideSettings" />
+  </button>
+</footer>
+
+<ng-template #accountMenu>
+  <div hlmDropdownMenu>
+    <div hlmDropdownMenuLabel>Accounts</div>
+    <div hlmDropdownMenuSeparator></div>
+    @for (account of accounts(); track account.userId) {
+      <button
+        class="account-row"
+        hlmDropdownMenuItem
+        (triggered)="switchAccount.emit(account.userId)"
+        data-testid="account-row"
+        [attr.aria-current]="account.userId === activeUserId()"
+      >
+        <trn-avatar
+          [mxc]="account.avatarMxc"
+          [name]="account.displayName"
+          [size]="28"
+        />
+        <div class="account-row__id">
+          <span class="account-row__name">{{ account.displayName }}</span>
+          <span class="account-row__handle">{{ account.userId }}</span>
+        </div>
+        @if (account.unread > 0) {
+          <span
+            class="account-row__badge"
+            [attr.aria-label]="account.unread + ' unread'"
+            >{{ badgeLabel(account.unread) }}</span
+          >
+        }
+        @if (account.userId === activeUserId()) {
+          <ng-icon name="lucideCheck" class="account-row__check" />
+        }
+      </button>
+    }
+    @for (userId of reauthAccounts(); track userId) {
+      <button
+        class="account-row"
+        hlmDropdownMenuItem
+        (triggered)="reauthAccount.emit(userId)"
+        data-testid="reauth-row"
+      >
+        <trn-avatar [name]="userId" [size]="28" />
+        <div class="account-row__id">
+          <span class="account-row__name">Signed out</span>
+          <span class="account-row__handle">{{ userId }}</span>
+        </div>
+        <span class="account-row__reauth">Sign in</span>
+      </button>
+    }
+    <div hlmDropdownMenuSeparator></div>
+    <button
+      hlmDropdownMenuItem
+      (triggered)="addAccount.emit()"
+      data-testid="add-account"
+    >
+      <ng-icon name="lucideUserPlus" />
+      Add account
+    </button>
+    <div hlmDropdownMenuSeparator></div>
+    <button
+      hlmDropdownMenuItem
+      variant="destructive"
+      (triggered)="logout.emit(activeUserId() ?? '')"
+      data-testid="logout"
+    >
+      <ng-icon name="lucideLogOut" />
+      Sign out
+    </button>
+  </div>
+</ng-template>

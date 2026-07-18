@@ -11,7 +11,6 @@ import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
   HlmDropdownMenuItemSubIndicator,
-  HlmDropdownMenuLabel,
   HlmDropdownMenuRadio,
   HlmDropdownMenuRadioIndicator,
   HlmDropdownMenuSeparator,
@@ -29,7 +28,6 @@ import {
   lucideEllipsisVertical,
   lucideLogOut,
   lucidePlus,
-  lucideSettings,
   lucideStar,
   lucideUserPlus,
   lucideX,
@@ -50,20 +48,21 @@ import {
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access-notifications';
-import { initialOf, type PresenceState } from '@trinity/util-matrix';
+import { type PresenceState } from '@trinity/util-matrix';
 import { unreadBadgeLabel } from '../shared/unread-badge';
+import {
+  SidebarUserPanelComponent,
+  type AccountSummary,
+} from './sidebar-user-panel/sidebar-user-panel.component';
 
-/** One signed-in account in the user-panel switcher: the profile plus its unread total. */
-export interface AccountSummary extends UserProfile {
-  /** Unread notification total for this account (drives the switcher badge). */
-  unread: number;
-}
+export type { AccountSummary };
 
 /** Discord channel sidebar: space header, invites, room list, and the user panel. */
 @Component({
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SidebarUserPanelComponent,
     AvatarComponent,
     NgIcon,
     NgTemplateOutlet,
@@ -71,7 +70,6 @@ export interface AccountSummary extends UserProfile {
     HlmDropdownMenu,
     HlmDropdownMenuItem,
     HlmDropdownMenuItemSubIndicator,
-    HlmDropdownMenuLabel,
     HlmDropdownMenuRadio,
     HlmDropdownMenuRadioIndicator,
     HlmDropdownMenuSeparator,
@@ -88,7 +86,6 @@ export interface AccountSummary extends UserProfile {
       lucideEllipsisVertical,
       lucideLogOut,
       lucidePlus,
-      lucideSettings,
       lucideStar,
       lucideUserPlus,
       lucideX,
@@ -139,8 +136,6 @@ export class ChannelSidebarComponent {
     displayName: '',
     avatarMxc: null,
   });
-  /** First letter of the display name, for the user-panel avatar fallback. */
-  readonly userInitial = computed(() => initialOf(this.user().displayName));
   /** Every signed-in account, for the switcher list in the user panel. */
   readonly accounts = input<AccountSummary[]>([]);
   /** The user id of the account currently in view (marked with a check). */
