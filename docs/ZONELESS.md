@@ -23,7 +23,8 @@ The app already satisfies the hard preconditions. A six-dimension codebase audit
   CSS/Tailwind) — droppable, and no synchronous `provideAnimations()` to fix.
 - Third-party libs are ready (CDK 22 self-schedules; spartan/brain 1.1, ng-icons, ngx-sonner
   are signal/imperative). The one library to runtime-verify is **emoji-mart** (legacy, self-
-  manages OnPush CD).
+  manages OnPush CD). Caveat found later by e2e: one CDK **submenu** interaction was not
+  zoneless-clean — see "Post-migration hardening" below.
 
 **Central insight:** every `NgZone.run()` in this app wraps a **signal write** and exists only
 to force prompt CD after a `matrix-js-sdk` callback fires outside the zone. One comment says so:
@@ -90,6 +91,30 @@ fix the now-inaccurate "re-enter the zone" comments.
 | **0 — De-risk spike** (done)                                   | Flip provider + drop zone.js, no NgZone edits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Build green, zone.js gone ✅                                      |
 | **1 — Production switch + NgZone cleanup** ✅ done (`86693c6`) | Provider flipped in phase 0. Removed 20 NgZone wrappers/injects across 12 files · fixed the stale comments · retired the 1 zone-semantic test. `@angular/animations` was already dropped (config audit). `zone.js` is kept — the Vitest harness is still zoned (prod zoneless / tests zoned, a valid interim).                                                                                                                                                                                                                                                                                                                                                                                                                        | `nx build` (whole graph) · `lint` (39) · `test` (23) all green ✅ |
 | **2 — Test harness zoneless** ✅ done                          | Flipped the single shared `test-setup.base.ts` to `setupTestBed({ zoneless: true })`. ATL blocker resolved: ATL 19.4.1 `/zoneless` render ignores the `inputs`/`on` options (it binds only via the native `bindings` API), leaving required signal inputs unset → NG0950. A small `@trinity/testing` render wrapper (`test-render.ts`) applies `inputs` via `componentRef.setInput` before the first change detection, which also sidesteps the NG0317 that static `inputBinding` would trigger when a spec later updates an input. Swapped all 59 specs to import `render` from `@trinity/testing`; converted the one virtual-message-list sync-rAF anchor test to a detached fixture; dropped `zone.js` (an optional Angular peer). | `nx build/lint/test` green under zoneless ✅                      |
+
+## Post-migration hardening — an e2e-caught CDK submenu regression (fixed)
+
+Running the Playwright suite against the zoneless build surfaced one real regression the
+jsdom unit tests could not (no live overlay): the channel-list room ⋮ menu's **Notifications
+submenu** (All / Mentions / Mute) would not open when its trigger was clicked.
+
+Root cause: a CDK submenu trigger opens its submenu on **hover**, and CDK's own click handler
+then `toggle()`s it. Under zone.js the overlay attach was deferred enough that a mouse click
+usually still landed while the submenu read as closed and so opened it; under
+`provideZonelessChangeDetection()` the attach is **synchronous**, so `isOpen()` is already
+`true` at click time and the click deterministically closes it again. (Touch/tap and hover
+both still worked — only mouse-click-on-trigger broke, because hover-open only fires for the
+mouse modality.)
+
+Fix — `libs/spartan/dropdown-menu`, `HlmDropdownMenuSubTrigger`: shadow CDK's instance
+`_handleClick` so a sub-trigger click `open()`s (idempotent — `open()` is guarded on
+`!isOpen()`) instead of toggling, matching radix/shadcn submenu semantics. The compiled host
+listener resolves `_handleClick` on the instance at event time, so shadowing it supersedes
+CDK's `toggle()` without depending on listener ordering. Guarded by two tests:
+`e2e/playwright/room-notifications.spec.mts` (live overlay) and a Docker-free unit regression,
+`libs/spartan/overlay/src/lib/dropdown-menu-submenu.spec.ts` (a second sub-trigger click must
+keep the submenu open). **NB:** `hlm-dropdown-menu.ts` is `@spartan-ng/cli`-generated — if it
+is ever regenerated, re-apply this override (the unit regression will flag its loss).
 
 ## Risk register — needs runtime/device verification (no signal write; Router/CDK self-schedules)
 

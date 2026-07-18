@@ -28,6 +28,9 @@ All notable changes to this project are documented here. The format is based on
 - **Upgraded the build toolchain to Angular 22, Nx 23.1, and TypeScript 6.** A maintenance
   upgrade with no change to how the app behaves; it keeps the project on supported framework
   versions and current security patches.
+- **Adopted Angular's zoneless change detection.** Trinity no longer ships `zone.js` (~30 kB),
+  so it loads a little leaner and drives UI updates straight from signals. Behaviour is
+  unchanged.
 
 ### Fixed
 
