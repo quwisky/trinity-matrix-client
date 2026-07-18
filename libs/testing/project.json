@@ -1,0 +1,9 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "testing",
+  "projectType": "library",
+  "sourceRoot": "libs/testing/src",
+  "prefix": "trn",
+  "tags": ["type:util", "scope:shared"],
+  "targets": {}
+}

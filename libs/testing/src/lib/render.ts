@@ -1,7 +1,12 @@
 import { type Type } from '@angular/core';
+// The public option type comes from the NON-zoneless entry: its `inputs` / `on` are
+// typed against the component, so call sites keep input/output type-checking. The
+// `/zoneless` `RenderComponentOptions` is parameterised by the DOM query set (not the
+// component) and declares no `inputs`/`on`, so it cannot type the public signature.
+import { type RenderComponentOptions } from '@testing-library/angular';
 import {
   render as zonelessRender,
-  type RenderComponentOptions,
+  type RenderComponentOptions as ZonelessRenderComponentOptions,
   type RenderResult,
 } from '@testing-library/angular/zoneless';
 
@@ -27,8 +32,11 @@ export async function render<ComponentType>(
   options: RenderComponentOptions<ComponentType> = {},
 ): Promise<RenderResult<ComponentType>> {
   const { inputs, on, ...rest } = options;
+  // `rest` is the render configuration shared by both entries (providers, imports,
+  // declarations, …); the two libraries model it as distinct option types, so bridge
+  // it explicitly before handing it to the zoneless render().
   const result = await zonelessRender(component, {
-    ...rest,
+    ...(rest as ZonelessRenderComponentOptions),
     skipDetectChanges: true,
   });
   for (const [name, value] of Object.entries(inputs ?? {})) {

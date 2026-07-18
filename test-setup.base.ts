@@ -43,6 +43,20 @@ if (virtualConsole) {
   };
 }
 
+// jsdom has no matchMedia. brain-sonner's toaster reads it in an afterRender hook
+// (theme / reduced-motion), so rendering <hlm-toaster> throws a TypeError there;
+// stub it so the toaster initializes fully instead of surviving on render ordering.
+vi.stubGlobal('matchMedia', (query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addEventListener: () => undefined,
+  removeEventListener: () => undefined,
+  addListener: () => undefined,
+  removeListener: () => undefined,
+  dispatchEvent: () => false,
+}));
+
 // Zoneless TestBed (provideZonelessChangeDetection); the app runs zoneless in
 // production, so specs exercise the same change-detection mode.
 setupTestBed({ zoneless: true });
