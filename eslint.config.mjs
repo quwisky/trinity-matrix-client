@@ -244,14 +244,17 @@ export default defineConfig([
     },
   },
   {
-    // Vite/Vitest config files legitimately import the shared root vite.base.config
-    // via a relative path (vite's config loader can't resolve `@trinity/*` aliases).
-    // @nx/enforce-module-boundaries polices the app/lib runtime graph, not build
-    // tooling, so it doesn't apply here.
+    // Build/test tooling files legitimately import a shared root helper
+    // (vite.base.config / test-setup.base) via a relative path — vite's config
+    // loader and the vitest setupFiles can't resolve `@trinity/*` aliases.
+    // @nx/enforce-module-boundaries polices the app/lib runtime graph, not tooling,
+    // so it doesn't apply here.
     files: [
       '**/vite.config.ts',
       'vite.base.config.ts',
       '**/vitest.config.{ts,mts,mjs}',
+      '**/test-setup.ts',
+      'test-setup.base.ts',
     ],
     rules: {
       '@nx/enforce-module-boundaries': 'off',
