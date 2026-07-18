@@ -64,14 +64,12 @@
     ]
   },
   "dependencies": {
-    "@angular/animations": "22.0.7",
     "@angular/cdk": "22.0.5",
     "@angular/common": "22.0.7",
     "@angular/compiler": "22.0.7",
     "@angular/core": "22.0.7",
     "@angular/forms": "22.0.7",
     "@angular/platform-browser": "22.0.7",
-    "@angular/platform-browser-dynamic": "22.0.7",
     "@angular/router": "22.0.7",
     "@angular/service-worker": "22.0.7",
     "@aparajita/capacitor-secure-storage": "^8.0.0",
@@ -116,6 +114,7 @@
     "@angular/cli": "22.0.7",
     "@angular/compiler-cli": "22.0.7",
     "@angular/language-service": "22.0.7",
+    "@angular/platform-browser-dynamic": "22.0.7",
     "@capacitor/cli": "8.4.2",
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
