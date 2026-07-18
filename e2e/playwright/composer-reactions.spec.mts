@@ -110,18 +110,33 @@ test.describe('Full emoji reaction picker', () => {
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
 
     // Reveal the hover toolbar, open the quick reactions, then escalate to "+".
-    await row.first().hover();
-    await row.first().getByRole('button', { name: 'Add reaction' }).click();
+    // The hover → "Add reaction" → quick-reactions popover chain is a fragile pointer
+    // interaction: under full-suite load the popover occasionally doesn't open on the
+    // first click (a hover/render race), which a bigger timeout can't fix. Retry the
+    // open until react-more actually appears (only ever re-clicks a *closed* popover,
+    // since react-more is visible iff the popover is open).
     const reactMore = page.getByTestId('react-more');
-    await expect(reactMore).toBeVisible({ timeout: 10_000 });
+    await expect(async () => {
+      await row.first().hover();
+      await row.first().getByRole('button', { name: 'Add reaction' }).click();
+      await expect(reactMore).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 30_000 });
     await reactMore.click();
 
     // The full picker opens in a dialog; drive it through its search box (emoji-mart
     // lazy-renders, so search first) and pick the first result.
     const picker = page.getByTestId('reaction-picker');
-    await expect(picker).toBeVisible({ timeout: 15_000 });
+    // emoji-mart is a heavy legacy library that lazy-renders — give the dialog the
+    // same 20s headroom under load.
+    await expect(picker).toBeVisible({ timeout: 20_000 });
     await picker.locator('.emoji-mart-search input').fill('rocket');
-    await picker.locator('.emoji-mart-emoji:visible').first().click();
+    // Wait for the search to actually filter before clicking. emoji-mart re-renders its
+    // results asynchronously, so ".emoji-mart-emoji:visible first" can still be a stale
+    // pre-search emoji — clicking it sends the wrong reaction and 🚀 never lands. Target
+    // the rocket by its label and wait for it, which also confirms the filter applied.
+    const rocket = picker.locator('.emoji-mart-emoji[aria-label*="rocket" i]');
+    await expect(rocket.first()).toBeVisible({ timeout: 15_000 });
+    await rocket.first().click();
 
     // The chosen reaction lands on the message.
     await expect(
