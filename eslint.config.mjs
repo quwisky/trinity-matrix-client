@@ -111,6 +111,9 @@ export default defineConfig([
     ],
     processor: angular.processInlineTemplates,
     rules: {
+      // The style guide bans console.log; permit only the console methods the codebase
+      // legitimately uses (error/warn/debug) so genuine logging still passes.
+      'no-console': ['error', { allow: ['warn', 'error', 'debug'] }],
       // A leading underscore is the conventional "deliberately unused" marker — it is
       // how a mock or an interface implementation says "this arg exists for the
       // signature, not for me". Everything without one is still an error.
@@ -221,6 +224,9 @@ export default defineConfig([
     files: ['electron/**/*.ts', 'electron/**/*.mts'],
     rules: {
       '@nx/enforce-module-boundaries': 'off',
+      // The Electron main process is a Node process; console is its legitimate
+      // logging channel (no browser devtools), so the app's no-console ban doesn't apply.
+      'no-console': 'off',
     },
   },
   {

@@ -2,7 +2,20 @@
   "singleQuote": true,
   "plugins": ["prettier-plugin-tailwindcss"],
   "tailwindStylesheet": "apps/trinity/src/theme/spartan.css",
-  "tailwindFunctions": ["hlm", "cva", "classes", "cn", "clsx", "twMerge"],
+  "tailwindFunctions": [
+    "classnames",
+    "classNames",
+    "clsx",
+    "cn",
+    "ctl",
+    "cva",
+    "tv",
+    "tw",
+    "twJoin",
+    "twMerge",
+    "hlm",
+    "classes"
+  ],
   "overrides": [
     {
       "files": "*.page.html",
