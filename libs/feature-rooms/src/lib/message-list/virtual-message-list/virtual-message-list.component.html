@@ -13,33 +13,47 @@
   </button>
 }
 
-<div class="scroll" #scroll (scroll)="onScroll()">
-  @if (loadingOlder()) {
-    <div class="load-older">Loading older messages…</div>
-  }
-
-  <div class="vpad" [style.height.px]="topPad()"></div>
-
-  @for (row of windowedRows(); track row.id) {
-    @if (row.id === firstUnreadId()) {
-      <div class="new-divider" data-testid="new-messages-divider">
-        <span class="new-divider__label">New messages</span>
-      </div>
+<div class="list">
+  <div class="scroll" #scroll (scroll)="onScroll()">
+    @if (loadingOlder()) {
+      <div class="load-older">Loading older messages…</div>
     }
-    <trn-message-row
-      [row]="row"
-      [threadSummary]="threadSummaries()[row.id] ?? null"
-      [caps]="rowCaps(row)"
-      (action)="onRowAction(row, $event)"
-      (matrixLink)="matrixLink.emit($event)"
-      (pollVote)="pollVote.emit($event)"
-      (pollEnd)="pollEnd.emit($event)"
-    />
-  } @empty {
-    <div class="empty">No messages yet.</div>
-  }
 
-  <div class="vpad" [style.height.px]="bottomPad()"></div>
+    <div class="vpad" [style.height.px]="topPad()"></div>
+
+    @for (row of windowedRows(); track row.id) {
+      @if (row.id === firstUnreadId()) {
+        <div class="new-divider" data-testid="new-messages-divider">
+          <span class="new-divider__label">New messages</span>
+        </div>
+      }
+      <trn-message-row
+        [row]="row"
+        [threadSummary]="threadSummaries()[row.id] ?? null"
+        [caps]="rowCaps(row)"
+        (action)="onRowAction(row, $event)"
+        (matrixLink)="matrixLink.emit($event)"
+        (pollVote)="pollVote.emit($event)"
+        (pollEnd)="pollEnd.emit($event)"
+      />
+    } @empty {
+      <div class="empty">No messages yet.</div>
+    }
+
+    <div class="vpad" [style.height.px]="bottomPad()"></div>
+  </div>
+
+  @if (notAtBottom() && !showJumpToUnread()) {
+    <button
+      type="button"
+      class="jump-latest"
+      data-testid="jump-to-latest"
+      aria-label="Jump to latest messages"
+      (click)="scrollToLatest()"
+    >
+      ↓
+    </button>
+  }
 </div>
 
 @if (typingLabel(); as label) {

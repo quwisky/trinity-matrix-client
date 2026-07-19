@@ -171,6 +171,42 @@ describe('VirtualMessageListComponent', () => {
     expect(cmp.topPad() + visible + cmp.bottomPad()).toBe(200 * EST);
   });
 
+  it('shows the jump-to-latest pill when scrolled up and returns to the bottom', async () => {
+    const { fixture, container } = await renderList({ messages: many(200) });
+    const cmp = fixture.componentInstance;
+
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    let st = 5000;
+    Object.defineProperty(scroll, 'scrollTop', {
+      get: () => st,
+      set: (v: number) => (st = v),
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'clientHeight', {
+      value: 600,
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'scrollHeight', {
+      value: 200 * EST,
+      configurable: true,
+    });
+
+    // Scrolled far from the bottom: the list offers the jump pill.
+    cmp.onScroll();
+    fixture.detectChanges();
+    expect(cmp.notAtBottom()).toBe(true);
+    const pill = container.querySelector<HTMLButtonElement>(
+      '[data-testid=jump-to-latest]',
+    );
+    expect(pill).not.toBeNull();
+
+    // Jumping re-pins to the bottom and hides the pill.
+    pill!.click();
+    fixture.detectChanges();
+    expect(cmp.notAtBottom()).toBe(false);
+    expect(container.querySelector('[data-testid=jump-to-latest]')).toBeNull();
+  });
+
   it('brings a windowed-out row into the DOM when jumped to', async () => {
     Element.prototype.scrollIntoView = vi.fn();
     const { fixture, container } = await renderList({ messages: many(200) });
