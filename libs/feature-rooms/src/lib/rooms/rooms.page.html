@@ -163,7 +163,7 @@
             hlmBtn
             variant="ghost"
             size="icon"
-            class="max-[1100px]:hidden"
+            class="max-md:hidden"
             (click)="toggleMembers()"
             [attr.aria-pressed]="membersOpen()"
             hlmTooltip="Members"
@@ -222,6 +222,14 @@
                     pinned.pinnedMessages().length
                   }}</span>
                 }
+              </button>
+              <button
+                hlmDropdownMenuItem
+                (triggered)="toggleMembers()"
+                data-testid="overflow-toggle-members"
+              >
+                <ng-icon name="lucideUsers" />
+                Members
               </button>
             </div>
           </ng-template>
@@ -301,6 +309,15 @@
           />
         }
         @if (membersOpen()) {
+          <!-- Below 1100px the member list is an overlay drawer; a backdrop (shown
+               only at that width) dismisses it. At ≥1100px it stays a static column
+               and the backdrop is display:none. -->
+          <div
+            class="fixed inset-0 z-30 hidden bg-black/50 max-[1100px]:block"
+            (click)="closeMembers()"
+            aria-hidden="true"
+            data-testid="members-backdrop"
+          ></div>
           <trn-member-list
             class="chat-members"
             [members]="members()"

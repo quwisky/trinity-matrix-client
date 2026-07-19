@@ -1881,15 +1881,27 @@ describe('RoomsPage mobile nav drawer', () => {
     expect(page.drawerOpen()).toBe(false);
   });
 
-  it('shows the member list by default and toggleMembers flips it', () => {
+  it('seeds the member list closed on a narrow layout and toggleMembers flips it', () => {
+    // matchMedia is stubbed to matches:false (a narrow viewport), so the members
+    // drawer starts closed; on the wide (≥1100px) layout it defaults open as the
+    // static column instead.
     const page = build();
-    expect(page.membersOpen()).toBe(true);
-
-    page.toggleMembers();
     expect(page.membersOpen()).toBe(false);
 
     page.toggleMembers();
     expect(page.membersOpen()).toBe(true);
+
+    page.toggleMembers();
+    expect(page.membersOpen()).toBe(false);
+  });
+
+  it('closeMembers closes the member list (the mobile drawer backdrop)', () => {
+    const page = build();
+    page.toggleMembers();
+    expect(page.membersOpen()).toBe(true);
+
+    page.closeMembers();
+    expect(page.membersOpen()).toBe(false);
   });
 
   it('onSelectRoom collapses an open drawer after picking a room', () => {

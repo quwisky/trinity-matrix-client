@@ -97,6 +97,18 @@ import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.c
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 
+/** The member list is a static column at ≥1100px (shown by default) and an overlay
+ * drawer below that (starts closed). Feature-detects matchMedia so non-DOM contexts
+ * fall back to closed. */
+function membersColumnDefaultsOpen(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    // Above the drawer's `max-width: 1100px` cutoff, so the two never both apply.
+    window.matchMedia('(min-width: 1101px)').matches
+  );
+}
+
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
  * responsive Tailwind drawer — static column at md+, slide-in below), the read
@@ -186,8 +198,13 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly activeRoomId = signal<string | null>(null);
   /** Whether the side pane is shown as an overlay drawer (below the md breakpoint). */
   readonly drawerOpen = signal(false);
-  /** Whether the right-hand member list is shown (toggled from the toolbar). */
-  readonly membersOpen = signal(true);
+  /**
+   * Whether the member list is shown. At the wide (≥1100px) layout it's the static
+   * right column, shown by default; below that it's an overlay drawer that must start
+   * closed. Seeded from the viewport so the drawer doesn't render open on a mobile
+   * load, while the wide layout keeps the column visible by default.
+   */
+  readonly membersOpen = signal(membersColumnDefaultsOpen());
   /**
    * Event id the message list should scroll to, set by in-room search, a reply
    * preview, or the pinned panel. Bound to the list's `jumpToId`, paired with
@@ -911,9 +928,14 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.drawerOpen.set(false);
   }
 
-  /** Show/hide the right-hand member list from the toolbar. */
+  /** Show/hide the member list from the toolbar / overflow menu. */
   toggleMembers(): void {
     this.membersOpen.update((open) => !open);
+  }
+
+  /** Close the member list — used by the mobile drawer's backdrop. */
+  closeMembers(): void {
+    this.membersOpen.set(false);
   }
 
   /** Open the thread rooted at `rootEventId` (raised by a message's indicator). */

@@ -121,9 +121,32 @@
   flex: 0 0 240px;
 }
 
-// Hide the member list on narrower viewports (Discord collapses it too).
+// Below 1100px the static column would crowd the chat, so present the member list as
+// a slide-in drawer over the content instead (dismissed by the template's backdrop).
+// The inner .members is a fixed 240px column, so the drawer host matches that width.
 @media (max-width: 1100px) {
   .chat-members {
-    display: none;
+    position: fixed;
+    inset-block: 0;
+    right: 0;
+    z-index: 40;
+    width: 240px;
+    flex: none;
+    box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
+
+    // Clear the status bar / home indicator on notched devices (inert elsewhere).
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: members-drawer-in 0.2s ease;
+  }
+}
+
+@keyframes members-drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
   }
 }
