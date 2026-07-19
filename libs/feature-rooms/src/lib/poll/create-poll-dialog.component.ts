@@ -9,6 +9,8 @@ import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { DialogRef } from '@trinity/helm/overlay';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideX } from '@ng-icons/lucide';
 
 /** The poll a {@link CreatePollDialogComponent} resolves with. */
 export interface NewPoll {
@@ -28,13 +30,15 @@ const MAX_OPTIONS = 8;
 @Component({
   selector: 'trn-create-poll-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, HlmInput, HlmLabel],
+  imports: [HlmButton, HlmInput, HlmLabel, NgIcon],
+  providers: [provideIcons({ lucideX })],
   templateUrl: './create-poll-dialog.component.html',
 })
 export class CreatePollDialogComponent {
   private readonly dialogRef = inject<DialogRef<NewPoll | null>>(DialogRef);
 
   readonly maxOptions = MAX_OPTIONS;
+  readonly minOptions = MIN_OPTIONS;
   readonly question = signal('');
   readonly options = signal<string[]>(['', '']);
 
@@ -59,6 +63,12 @@ export class CreatePollDialogComponent {
   addOption(): void {
     if (this.options().length < MAX_OPTIONS) {
       this.options.update((list) => [...list, '']);
+    }
+  }
+
+  removeOption(index: number): void {
+    if (this.options().length > MIN_OPTIONS) {
+      this.options.update((list) => list.filter((_, i) => i !== index));
     }
   }
 
