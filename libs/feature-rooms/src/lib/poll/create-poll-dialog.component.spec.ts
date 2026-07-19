@@ -43,6 +43,18 @@ describe('CreatePollDialogComponent', () => {
     expect(cmp.options().length).toBe(3);
   });
 
+  it('removes an option field but never below the two-option minimum', async () => {
+    const { cmp } = await setup();
+    cmp.options.set(['Apple', 'Pear', 'Cherry']);
+
+    cmp.removeOption(1);
+    expect(cmp.options()).toEqual(['Apple', 'Cherry']);
+
+    // At the minimum, removing is a no-op.
+    cmp.removeOption(0);
+    expect(cmp.options()).toEqual(['Apple', 'Cherry']);
+  });
+
   it('cancels with null', async () => {
     const { cmp, close } = await setup();
     cmp.cancel();

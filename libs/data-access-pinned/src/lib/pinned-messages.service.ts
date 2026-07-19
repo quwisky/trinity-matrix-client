@@ -8,6 +8,7 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
+import { Observable, defer, from, map, of, tap } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { liveRoomState, messagePreview } from '@trinity/util-matrix';
 
@@ -179,36 +180,51 @@ export class PinnedMessagesService {
     return this._pinnedEventIds().includes(eventId);
   }
 
-  /** Pin a message: append its id to the pinned array and persist. No-op if already pinned. */
-  pin(eventId: string): void {
+  /**
+   * Pin a message: append its id to the pinned array and persist. The returned
+   * action is cold — subscribe to run it (a no-op success if already pinned), so
+   * the caller can surface success/failure. Errors propagate to the subscriber.
+   */
+  pin(eventId: string): Observable<void> {
     const current = this._pinnedEventIds();
     if (current.includes(eventId)) {
-      return;
+      return of(void 0);
     }
-    this.write([...current, eventId]);
-  }
-
-  /** Unpin a message: filter its id out of the pinned array and persist. */
-  unpin(eventId: string): void {
-    this.write(this._pinnedEventIds().filter((id) => id !== eventId));
+    return this.write([...current, eventId]);
   }
 
   /**
-   * Rewrite the room's `m.room.pinned_events` state with `pinned`. On resolve the
-   * state listener already refreshes, but re-read here too so the local change
-   * lands immediately; failures are logged, not thrown.
+   * Unpin a message: filter its id out of the pinned array and persist. Cold —
+   * subscribe to run it; errors propagate to the subscriber.
    */
-  private write(pinned: string[]): void {
-    const room = this.room;
-    if (!room || !this.matrix.isInitialized) {
-      return;
-    }
-    this.matrix.instance
-      .sendStateEvent(room.roomId, EventType.RoomPinnedEvents, { pinned }, '')
-      .then(() => this.readRoomState())
-      .catch((err: unknown) =>
-        console.error('Failed to update pinned messages', err),
+  unpin(eventId: string): Observable<void> {
+    return this.write(this._pinnedEventIds().filter((id) => id !== eventId));
+  }
+
+  /**
+   * Rewrite the room's `m.room.pinned_events` state with `pinned` as a cold action.
+   * The state listener refreshes on the sync echo, but re-read on success too so the
+   * local change lands immediately; a send failure surfaces to the subscriber.
+   */
+  private write(pinned: string[]): Observable<void> {
+    return defer(() => {
+      const room = this.room;
+      if (!room || !this.matrix.isInitialized) {
+        return of(void 0);
+      }
+      return from(
+        // Resolved on subscribe: `instance` follows the active account.
+        this.matrix.instance.sendStateEvent(
+          room.roomId,
+          EventType.RoomPinnedEvents,
+          { pinned },
+          '',
+        ),
+      ).pipe(
+        tap(() => this.readRoomState()),
+        map(() => void 0),
       );
+    });
   }
 
   /** Re-read the pinned ids and pin permission from the room's current state. */

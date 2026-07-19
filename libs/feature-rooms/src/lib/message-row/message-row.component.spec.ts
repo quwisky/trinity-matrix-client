@@ -127,6 +127,16 @@ describe('MessageRowComponent', () => {
     );
   });
 
+  it('maps shield severity to a distinct icon shape (colour-independent)', async () => {
+    const { fixture } = await renderRow({ row: row() });
+    const cmp = fixture.componentInstance;
+
+    // Red = warning (alert), grey = caution (question) — different shapes so the two
+    // are distinguishable without colour. The template binds both shields to this.
+    expect(cmp.shieldIcon('red')).toBe('lucideShieldAlert');
+    expect(cmp.shieldIcon('grey')).toBe('lucideShieldQuestion');
+  });
+
   it('renders no shield when the message has none', async () => {
     const { container } = await renderRow({ row: row() });
     expect(container.querySelector('[data-testid^=msg-shield-]')).toBeNull();

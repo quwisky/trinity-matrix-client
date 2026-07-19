@@ -149,6 +149,9 @@ export class VirtualMessageListComponent extends MessageListBase {
   /** Height of the bottom spacer standing in for off-screen rows below the window. */
   readonly bottomPad = computed(() => this.windowResult().bottomPadPx);
 
+  /** Reactive mirror of `!atBottom` for the template's jump-to-latest pill. */
+  protected readonly notAtBottom = computed(() => !this.atBottomSig());
+
   constructor() {
     super();
 
@@ -319,6 +322,21 @@ export class VirtualMessageListComponent extends MessageListBase {
       this.pendingPrepend = true;
       this.loadOlder.emit();
     }
+  }
+
+  /** Jump back to the newest message (the jump-to-latest pill). */
+  scrollToLatest(): void {
+    const el = this.scrollEl()?.nativeElement;
+    if (!el) {
+      return;
+    }
+    // Pin the window to the bottom, then scroll to the end once it has re-rendered
+    // the newest rows (the spacer heights shift when the window moves).
+    this.atBottomSig.set(true);
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      this.scrollTop.set(el.scrollTop);
+    });
   }
 
   /**

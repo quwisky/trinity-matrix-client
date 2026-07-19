@@ -24,7 +24,9 @@ describe('QuickSwitcherService', () => {
 
     const result = await svc.pick();
 
-    expect(dialog.openAndWait).toHaveBeenCalledWith(QuickSwitcherComponent);
+    expect(dialog.openAndWait).toHaveBeenCalledWith(QuickSwitcherComponent, {
+      ariaLabel: 'Jump to a room',
+    });
     expect(result).toEqual(selection);
   });
 

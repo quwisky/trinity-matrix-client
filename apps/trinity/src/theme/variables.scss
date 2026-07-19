@@ -8,7 +8,14 @@
   --trinity-accent: #5865f2; // blurple
   --trinity-accent-hover: #4752c4;
   --trinity-green: #23a55a;
-  --trinity-radius: 8px;
+
+  // Radius scale — one source of truth shared with the spartan/Tailwind tokens
+  // (--radius = 8px). `--trinity-radius` was a standalone 8px literal duplicating it.
+  --trinity-radius: var(--radius); // 8px (default / lg)
+  --trinity-radius-sm: calc(var(--radius) - 4px); // 4px
+  --trinity-radius-md: calc(var(--radius) - 2px); // 6px
+  --trinity-radius-xl: 0.75rem; // 12px — cards / dialogs / menus
+  --trinity-radius-pill: 9999px; // badges, chips, capsules
 
   // Light surface ramp (lightest → darkest accents).
   --trinity-rail: #e3e5e8; // server rail
@@ -19,6 +26,10 @@
   --trinity-hover: #e9eaec; // row hover
   --trinity-active: #d4d7dc; // selected row
   --trinity-divider: #e0e1e4;
+
+  // Elevated surface for floating controls (e.g. the jump-to-latest pill). Follows
+  // the sidebar tone in both themes, so it is defined once via a var() reference.
+  --trinity-surface: var(--trinity-sidebar);
 
   // Light text.
   --trinity-text: #313338;

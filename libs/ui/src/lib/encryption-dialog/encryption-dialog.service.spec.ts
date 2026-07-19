@@ -59,6 +59,7 @@ describe('EncryptionDialogService', () => {
       expect(open).toHaveBeenCalledWith(StubUnlockPage, {
         inputs: { asModal: true },
         disableClose: true,
+        ariaLabel: 'Encryption',
       });
       expect(navigate).not.toHaveBeenCalled();
     });

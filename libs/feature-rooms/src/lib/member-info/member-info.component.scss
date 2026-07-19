@@ -8,12 +8,12 @@
   padding: 20px 16px 16px;
   border: 1px solid var(--trinity-divider);
   border-radius: 12px;
-  background: var(--trinity-sidebar);
+  background: var(--card);
   text-align: center;
 
   // The panel mounts in the CDK overlay (outside .members), so tell the avatar's
   // presence dot what surface it rings against — else the ring halos (see member-list).
-  --trn-presence-ring: var(--trinity-sidebar);
+  --trn-presence-ring: var(--card);
 }
 
 .member-info__avatar {
@@ -36,7 +36,7 @@
 }
 
 .member-info__handle {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--trinity-text-muted);
   overflow-wrap: anywhere;
 }

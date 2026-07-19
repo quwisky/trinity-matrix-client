@@ -1,8 +1,10 @@
 <div class="banner" [attr.data-tone]="tone()">
   <span class="banner__icon"><ng-content select="[trnBannerIcon]" /></span>
-  <!-- Live region scoped to the message so trailing actions aren't read as
-           part of the polite announcement. -->
-  <span class="banner__text" role="status"><ng-content /></span>
+  <!-- Presentational only. Announcement is the consumer's job via a persistent
+       sr-only live region: a role="status" inserted together with its text (as an
+       @if banner is) isn't reliably announced, and making this visible text a second
+       live region would double-announce. -->
+  <span class="banner__text"><ng-content /></span>
   <span class="banner__actions"
     ><ng-content select="[trnBannerActions]"
   /></span>

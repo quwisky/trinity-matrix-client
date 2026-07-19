@@ -54,6 +54,23 @@ function invitesProvider(over: Partial<InvitesService> = {}) {
   });
 }
 
+/** Stub matchMedia so every query matches — the narrow layout where the member list is
+ * the overlay drawer. Returns a restore function to reinstate the previous stub. */
+function stubNarrowLayout(): () => void {
+  const previous = window.matchMedia;
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: true,
+    media: query,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+  return () => vi.stubGlobal('matchMedia', previous);
+}
+
 // Instantiate the page through DI without rendering (the shell template pulls in
 // many child components); we only exercise the action handlers' error feedback.
 describe('RoomsPage action error feedback', () => {
@@ -284,6 +301,7 @@ describe('RoomsPage action error feedback', () => {
     expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
       RoomSettingsComponent,
       {
+        ariaLabel: 'Room settings',
         inputs: expect.objectContaining({
           roomId: '!r:hs',
           name: 'General',
@@ -389,22 +407,46 @@ describe('RoomsPage action error feedback', () => {
     const page = build();
     const pinned = TestBed.inject(PinnedMessagesService);
     vi.mocked(pinned.isPinned).mockReturnValue(false);
+    vi.mocked(pinned.pin).mockReturnValue(of(undefined));
 
     page.onTogglePin('$1');
 
     expect(pinned.pin).toHaveBeenCalledWith('$1');
     expect(pinned.unpin).not.toHaveBeenCalled();
+    expect(toastShow).toHaveBeenCalledWith(
+      'Message pinned.',
+      expect.objectContaining({ variant: 'success' }),
+    );
   });
 
   it('onTogglePin unpins an already-pinned message', () => {
     const page = build();
     const pinned = TestBed.inject(PinnedMessagesService);
     vi.mocked(pinned.isPinned).mockReturnValue(true);
+    vi.mocked(pinned.unpin).mockReturnValue(of(undefined));
 
     page.onTogglePin('$1');
 
     expect(pinned.unpin).toHaveBeenCalledWith('$1');
     expect(pinned.pin).not.toHaveBeenCalled();
+    expect(toastShow).toHaveBeenCalledWith(
+      'Message unpinned.',
+      expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
+  it('onTogglePin shows a destructive toast when the pin fails', () => {
+    const page = build();
+    const pinned = TestBed.inject(PinnedMessagesService);
+    vi.mocked(pinned.isPinned).mockReturnValue(false);
+    vi.mocked(pinned.pin).mockReturnValue(throwError(() => new Error('nope')));
+
+    page.onTogglePin('$1');
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not pin the message.',
+      expect.objectContaining({ variant: 'destructive' }),
+    );
   });
 
   it('openPinnedPanel jumps the timeline to the chosen pinned message', async () => {
@@ -1317,6 +1359,50 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(memberInfoOpen).not.toHaveBeenCalled();
   });
 
+  it('closes the members drawer when a member is selected on the narrow layout', () => {
+    // On the narrow (drawer) layout the list seeds closed, so open it first; selecting a
+    // member must then slide it shut.
+    const restore = stubNarrowLayout();
+    try {
+      const page = build();
+      page.activeRoomId.set('!r:hs');
+      page.membersOpen.set(true);
+      expect(page.membersOpen()).toBe(true);
+
+      page.onSelectMember({
+        userId: '@bob:hs',
+        name: 'Bob',
+        initial: 'B',
+        avatarMxc: null,
+        powerLevel: 0,
+      });
+
+      expect(page.membersOpen()).toBe(false);
+      expect(memberInfoOpen).toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it('keeps the members column open when a member is selected on the wide layout', () => {
+    // The base matchMedia stub reports non-drawer (matches:false) — i.e. the wide
+    // static column, the desktop-protected path. onSelectMember must NOT collapse it.
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+    page.membersOpen.set(true);
+
+    page.onSelectMember({
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+    });
+
+    expect(page.membersOpen()).toBe(true);
+    expect(memberInfoOpen).toHaveBeenCalled();
+  });
+
   it('opens no conversation when the member panel is dismissed', async () => {
     const page = build();
     page.activeRoomId.set('!r:hs');
@@ -1794,10 +1880,10 @@ describe('RoomsPage quick switcher', () => {
   });
 });
 
-// The channel sidebar renders as a static column at md+ and an overlay drawer
-// below that breakpoint. `drawerOpen` tracks the overlay's visibility; picking a
-// room (mobile's primary path to the sidebar) should collapse it again.
-describe('RoomsPage mobile nav drawer', () => {
+// Below md the rail + sidebar (room list) and the chat are separate full-screen
+// pages keyed off `activeRoomId`: picking a room opens the chat page, and the back
+// button (`backToList`) returns to the list. At md+ both columns are static columns.
+describe('RoomsPage mobile navigation', () => {
   let timelineOpen: ReturnType<typeof vi.fn>;
   let threadsOpen: ReturnType<typeof vi.fn>;
   let releaseAll: ReturnType<typeof vi.fn>;
@@ -1844,41 +1930,40 @@ describe('RoomsPage mobile nav drawer', () => {
     return TestBed.inject(RoomsPage);
   }
 
-  it('starts closed', () => {
+  it('backToList closes the open room, returning to the list page', () => {
     const page = build();
+    page.onSelectRoom('!r:hs');
+    expect(page.activeRoomId()).toBe('!r:hs');
 
-    expect(page.drawerOpen()).toBe(false);
+    page.backToList();
+
+    expect(page.activeRoomId()).toBeNull();
+    expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
+    expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
+    expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
   });
 
-  it('toggleDrawer flips the open state', () => {
-    const page = build();
+  it('closing a room resets an open members drawer so it does not carry to the next room', () => {
+    // Force the narrow (drawer) layout so the member list reads as an overlay.
+    const restore = stubNarrowLayout();
+    try {
+      const page = build();
+      page.onSelectRoom('!a:hs');
+      page.membersOpen.set(true); // the drawer is open in room A
+      expect(page.membersOpen()).toBe(true);
 
-    page.toggleDrawer();
-    expect(page.drawerOpen()).toBe(true);
+      page.backToList();
 
-    page.toggleDrawer();
-    expect(page.drawerOpen()).toBe(false);
+      // The drawer state is dropped, so it won't slide in over the next room.
+      expect(page.membersOpen()).toBe(false);
+    } finally {
+      restore();
+    }
   });
 
-  it('closeDrawer forces the drawer closed regardless of its current state', () => {
-    const page = build();
-    page.toggleDrawer();
-    expect(page.drawerOpen()).toBe(true);
-
-    page.closeDrawer();
-
-    expect(page.drawerOpen()).toBe(false);
-  });
-
-  it('closeDrawer is a no-op when already closed', () => {
-    const page = build();
-
-    page.closeDrawer();
-
-    expect(page.drawerOpen()).toBe(false);
-  });
-
-  it('shows the member list by default and toggleMembers flips it', () => {
+  it('seeds the members list open as the wide static column and toggleMembers flips it', () => {
+    // The base stub reports non-drawer (matches:false) — the wide layout — so the static
+    // members column shows by default; toggleMembers hides and re-shows it.
     const page = build();
     expect(page.membersOpen()).toBe(true);
 
@@ -1889,15 +1974,31 @@ describe('RoomsPage mobile nav drawer', () => {
     expect(page.membersOpen()).toBe(true);
   });
 
-  it('onSelectRoom collapses an open drawer after picking a room', () => {
+  it('seeds the members drawer closed on the narrow layout', () => {
+    // At/below the drawer cutoff the list is the overlay drawer, which starts closed
+    // rather than defaulting open like the wide static column.
+    const restore = stubNarrowLayout();
+    try {
+      expect(build().membersOpen()).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it('closeMembers closes the member list (the mobile drawer backdrop)', () => {
     const page = build();
-    page.toggleDrawer();
-    expect(page.drawerOpen()).toBe(true);
+    page.membersOpen.set(true);
+    expect(page.membersOpen()).toBe(true);
+
+    page.closeMembers();
+    expect(page.membersOpen()).toBe(false);
+  });
+
+  it('onSelectRoom opens the room (switching to the mobile chat page)', () => {
+    const page = build();
 
     page.onSelectRoom('!r:hs');
 
-    expect(page.drawerOpen()).toBe(false);
-    // The existing room-switch behavior keeps working alongside the new collapse.
     expect(page.activeRoomId()).toBe('!r:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
     expect(threadsOpen).toHaveBeenCalledWith('!r:hs');

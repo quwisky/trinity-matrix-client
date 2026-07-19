@@ -27,7 +27,7 @@ export class QuickSwitcherService {
       return await this.dialog.openAndWait<
         SwitcherSelection,
         QuickSwitcherComponent
-      >(QuickSwitcherComponent);
+      >(QuickSwitcherComponent, { ariaLabel: 'Jump to a room' });
     } finally {
       this.open = false;
     }

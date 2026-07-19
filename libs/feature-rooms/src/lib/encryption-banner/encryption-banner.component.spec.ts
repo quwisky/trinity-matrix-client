@@ -68,6 +68,22 @@ describe('EncryptionBannerComponent', () => {
     expect(container.querySelector('.banner')).toBeNull();
   });
 
+  it('mirrors the prompt in an always-mounted live region', async () => {
+    const { container, fixture } = await renderBanner();
+    const liveRegion = () => container.querySelector('.sr-only[role="status"]');
+
+    // Persistent and empty while there's nothing to prompt: a role="status" region
+    // must exist before its text changes to be reliably announced, so the message is
+    // mirrored here rather than only inside the @if banner.
+    expect(liveRegion()).not.toBeNull();
+    expect(liveRegion()?.textContent?.trim()).toBe('');
+
+    status.set('needs-setup');
+    fixture.detectChanges();
+
+    expect(liveRegion()?.textContent).toContain('Set up encryption');
+  });
+
   it('offers a single setup action that always routes to the setup page', async () => {
     stubViewport(true); // even on desktop, setup stays a full page
     status.set('needs-setup');
@@ -107,6 +123,7 @@ describe('EncryptionBannerComponent', () => {
       expect(dialog.open).toHaveBeenCalledWith(StubUnlockPage, {
         inputs: { asModal: true },
         disableClose: true,
+        ariaLabel: 'Encryption',
       }),
     );
 

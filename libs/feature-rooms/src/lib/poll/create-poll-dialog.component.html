@@ -18,14 +18,30 @@
 
   <div class="flex flex-col gap-2">
     @for (option of options(); track $index) {
-      <input
-        hlmInput
-        class="w-full"
-        [placeholder]="'Option ' + ($index + 1)"
-        [value]="option"
-        (input)="onOption($index, $event)"
-        [attr.data-testid]="'poll-option-' + $index"
-      />
+      <div class="flex items-center gap-2">
+        <input
+          hlmInput
+          class="w-full"
+          [placeholder]="'Option ' + ($index + 1)"
+          [value]="option"
+          (input)="onOption($index, $event)"
+          [attr.data-testid]="'poll-option-' + $index"
+        />
+        @if (options().length > minOptions) {
+          <button
+            type="button"
+            hlmBtn
+            variant="ghost"
+            size="icon"
+            class="shrink-0"
+            aria-label="Remove option"
+            (click)="removeOption($index)"
+            [attr.data-testid]="'poll-remove-option-' + $index"
+          >
+            <ng-icon name="lucideX" aria-hidden="true" />
+          </button>
+        }
+      </div>
     }
     @if (options().length < maxOptions) {
       <button

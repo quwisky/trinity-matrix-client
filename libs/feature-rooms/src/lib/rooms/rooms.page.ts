@@ -2,20 +2,25 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  Injector,
   OnDestroy,
   OnInit,
+  afterNextRender,
   computed,
   effect,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  lucideArrowLeft,
+  lucideEllipsisVertical,
   lucideLock,
-  lucideMenu,
   lucideMessagesSquare,
   lucidePin,
   lucideSearch,
@@ -24,6 +29,11 @@ import {
   lucideUsers,
 } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
+import {
+  HlmDropdownMenu,
+  HlmDropdownMenuItem,
+  HlmDropdownMenuTrigger,
+} from '@trinity/helm/dropdown-menu';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import {
   TrnActionSheetService,
@@ -91,6 +101,34 @@ import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.c
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 
+/** True when the member list is currently the overlay drawer rather than the static
+ * column — mirrors the `max-width: 1100px` query the drawer styling uses. Feature-detects
+ * matchMedia so non-DOM contexts fall back to the static column. */
+function membersShownAsDrawer(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 1100px)').matches
+  );
+}
+
+/** The member list is a static column above the drawer cutoff (shown by default) and an
+ * overlay drawer at/below it (starts closed). Derived as the exact complement of
+ * membersShownAsDrawer so the two share one boundary with no sub-pixel gap between them. */
+function membersColumnDefaultsOpen(): boolean {
+  return !membersShownAsDrawer();
+}
+
+/** True on the mobile master-detail layout (below md), where the room list and the
+ * chat are separate full-screen pages — mirrors the `max-width: 767.98px` scss query. */
+function isMobileMasterDetail(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 767.98px)').matches
+  );
+}
+
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
  * responsive Tailwind drawer — static column at md+, slide-in below), the read
@@ -105,6 +143,9 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
   imports: [
     PageHeaderComponent,
     HlmButton,
+    HlmDropdownMenu,
+    HlmDropdownMenuItem,
+    HlmDropdownMenuTrigger,
     HlmTooltip,
     NgIcon,
     ServerRailComponent,
@@ -120,11 +161,13 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
     // Both accelerators, per the style guide's `host`-over-@HostListener rule.
     '(document:keydown.meta.k)': 'onQuickSwitch($event)',
     '(document:keydown.control.k)': 'onQuickSwitch($event)',
+    '(document:keydown.escape)': 'onEscapeKey()',
   },
   viewProviders: [
     provideIcons({
+      lucideArrowLeft,
+      lucideEllipsisVertical,
       lucideLock,
-      lucideMenu,
       lucideMessagesSquare,
       lucidePin,
       lucideSearch,
@@ -168,16 +211,25 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly alert = inject(TrnAlertService);
   private readonly actionSheet = inject(TrnActionSheetService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
 
   readonly activeSpaceId = signal<string | null>(null);
   /** Whether the Rooms view is active — filters the sidebar to non-DM rooms. Home (the
    * default, no space) shows direct messages only; a space or this view clears the other. */
   readonly roomsView = signal(false);
   readonly activeRoomId = signal<string | null>(null);
-  /** Whether the side pane is shown as an overlay drawer (below the md breakpoint). */
-  readonly drawerOpen = signal(false);
-  /** Whether the right-hand member list is shown (toggled from the toolbar). */
-  readonly membersOpen = signal(true);
+
+  // The two mobile pages (the rail/room-list and the chat), focused on a view switch
+  // so keyboard/screen-reader focus follows to the newly-shown page (see focusActiveView).
+  private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
+  private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
+  /**
+   * Whether the member list is shown. At the wide (≥1100px) layout it's the static
+   * right column, shown by default; below that it's an overlay drawer that must start
+   * closed. Seeded from the viewport so the drawer doesn't render open on a mobile
+   * load, while the wide layout keeps the column visible by default.
+   */
+  readonly membersOpen = signal(membersColumnDefaultsOpen());
   /**
    * Event id the message list should scroll to, set by in-room search, a reply
    * preview, or the pinned panel. Bound to the list's `jumpToId`, paired with
@@ -814,7 +866,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.timeline.open(id);
     this.threads.open(id); // project this room's thread summaries for indicators
     this.pinned.open(id); // project this room's pinned messages
-    this.closeDrawer(); // collapse the drawer on mobile after picking a room
+    // On mobile, setting activeRoomId switches from the room-list page to the chat.
+    this.focusActiveView();
   }
 
   /**
@@ -849,6 +902,11 @@ export class RoomsPage implements OnInit, OnDestroy {
   onSelectMember(member: MemberSummary): void {
     const roomId = this.activeRoomId();
     if (roomId) {
+      // On the narrow layout the list is an overlay drawer — close it so the info
+      // panel isn't stacked behind it. The wide static column stays put.
+      if (membersShownAsDrawer()) {
+        this.closeMembers();
+      }
       void this.openMemberInfo(member, roomId);
     }
   }
@@ -891,19 +949,54 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
   }
 
-  /** Toggle the mobile navigation drawer (no-op visual at md+, where it's static). */
-  toggleDrawer(): void {
-    this.drawerOpen.update((open) => !open);
+  /**
+   * Mobile: leave the open conversation and return to the room-list page. Below the
+   * md breakpoint the rail + sidebar and the chat are separate full-screen pages
+   * (keyed off `activeRoomId`); at md+ both columns are static and this is unused.
+   */
+  backToList(): void {
+    this.closeOpenRoom();
+    this.focusActiveView();
   }
 
-  /** Close the mobile navigation drawer. */
-  closeDrawer(): void {
-    this.drawerOpen.set(false);
+  /**
+   * On the mobile master-detail layout, move focus to the page that just became
+   * visible (the chat when a room is open, else the room list) once it renders — the
+   * other page is display:none'd, so otherwise focus falls to `<body>`. At md+ both
+   * pages are always visible, so focus is left where it is.
+   */
+  private focusActiveView(): void {
+    if (!isMobileMasterDetail()) {
+      return;
+    }
+    afterNextRender(
+      () => {
+        const view = this.activeRoomId() ? this.mainView() : this.listView();
+        view?.nativeElement.focus();
+      },
+      { injector: this.injector },
+    );
   }
 
-  /** Show/hide the right-hand member list from the toolbar. */
+  /** Show/hide the member list from the toolbar / overflow menu. */
   toggleMembers(): void {
     this.membersOpen.update((open) => !open);
+  }
+
+  /** Close the member list — used by the mobile drawer's backdrop. */
+  closeMembers(): void {
+    this.membersOpen.set(false);
+  }
+
+  /**
+   * Escape dismisses the mobile members drawer (its backdrop is mouse-only). Scoped to
+   * when the drawer is actually open so it never swallows Escape elsewhere; a member's
+   * info panel is a CDK dialog that closes the drawer as it opens, so there's no clash.
+   */
+  onEscapeKey(): void {
+    if (this.membersOpen() && membersShownAsDrawer()) {
+      this.closeMembers();
+    }
   }
 
   /** Open the thread rooted at `rootEventId` (raised by a message's indicator). */
@@ -966,6 +1059,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     // The dialog writes on save; the name/topic/access update live via the rooms
     // sync listeners, so nothing to do with the resolved result here.
     void this.dialog.openAndWait(RoomSettingsComponent, {
+      ariaLabel: 'Room settings',
       inputs: {
         roomId: room.id,
         name: room.name,
@@ -994,11 +1088,20 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Pin or unpin a message from its overflow menu, resolving which by current state. */
   onTogglePin(eventId: string): void {
-    if (this.pinned.isPinned(eventId)) {
-      this.pinned.unpin(eventId);
-    } else {
-      this.pinned.pin(eventId);
-    }
+    const pinning = !this.pinned.isPinned(eventId);
+    const action = pinning
+      ? this.pinned.pin(eventId)
+      : this.pinned.unpin(eventId);
+    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () =>
+        this.showSuccess(pinning ? 'Message pinned.' : 'Message unpinned.'),
+      error: () =>
+        void this.showError(
+          pinning
+            ? 'Could not pin the message.'
+            : 'Could not unpin the message.',
+        ),
+    });
   }
 
   /**
@@ -1138,6 +1241,12 @@ export class RoomsPage implements OnInit, OnDestroy {
    * `closeThread()`, leaving an open thread projecting a room the user had left).
    */
   private closeOpenRoom(): void {
+    // On mobile the member list is an overlay drawer; don't carry an open one over
+    // to the next room (it would slide in unrequested). The wide static column keeps
+    // its persisted open/closed state.
+    if (membersShownAsDrawer()) {
+      this.membersOpen.set(false);
+    }
     this.activeRoomId.set(null);
     this.timeline.close();
     this.threads.close();

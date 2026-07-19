@@ -9,7 +9,7 @@
   min-width: 220px;
   max-width: 320px;
   padding: 8px 12px;
-  border-radius: 18px;
+  border-radius: var(--trinity-radius-xl);
   background: var(--trinity-rail);
 }
 
@@ -68,4 +68,12 @@
 
 .voice__audio {
   display: none;
+}
+
+// Touch targets: the voice-message play button on touch only (desktop keeps 34px).
+@media (pointer: coarse) {
+  .voice__play {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

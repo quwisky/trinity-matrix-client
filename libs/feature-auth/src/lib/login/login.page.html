@@ -43,12 +43,14 @@
             <input
               hlmInput
               id="homeserver"
+              autofocus
               autocapitalize="off"
               autocorrect="off"
               placeholder="matrix.org"
               [disabled]="busy()"
               [ngModel]="homeserverInput()"
               (ngModelChange)="homeserverInput.set($event)"
+              (keyup.enter)="discover()"
             />
           </div>
 
@@ -68,13 +70,16 @@
                 >Username</label
               >
               <input
+                #usernameInput
                 hlmInput
                 id="username"
+                autofocus
                 autocapitalize="off"
                 autocorrect="off"
                 [disabled]="busy() || !!reauthUserId()"
                 [ngModel]="username()"
                 (ngModelChange)="username.set($event)"
+                (keyup.enter)="loginPassword()"
               />
             </div>
 
@@ -82,14 +87,33 @@
               <label hlmLabel for="password" class="login-card__label"
                 >Password</label
               >
-              <input
-                hlmInput
-                id="password"
-                type="password"
-                [disabled]="busy()"
-                [ngModel]="password()"
-                (ngModelChange)="password.set($event)"
-              />
+              <div class="relative">
+                <input
+                  hlmInput
+                  id="password"
+                  [type]="passwordVisible() ? 'text' : 'password'"
+                  class="pr-10"
+                  [disabled]="busy()"
+                  [ngModel]="password()"
+                  (ngModelChange)="password.set($event)"
+                  (keyup.enter)="loginPassword()"
+                />
+                <button
+                  type="button"
+                  class="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+                  [attr.aria-label]="
+                    passwordVisible() ? 'Hide password' : 'Show password'
+                  "
+                  [attr.aria-pressed]="passwordVisible()"
+                  [disabled]="busy()"
+                  (click)="passwordVisible.set(!passwordVisible())"
+                >
+                  <ng-icon
+                    [name]="passwordVisible() ? 'lucideEyeOff' : 'lucideEye'"
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
             </div>
 
             <button

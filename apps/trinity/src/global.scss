@@ -83,3 +83,16 @@ router-outlet + * {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Touch targets. On coarse-pointer (touch) devices only, lift every Helm button to
+ * the ~44px minimum tap size. Keyed on the directive's host [data-slot="button"],
+ * so it covers all size="icon" call sites with no markup changes. `(pointer: coarse)`
+ * is false for a mouse — including a narrow Electron window — so the desktop layout
+ * is untouched (icon buttons stay 32×32 there). */
+@media (pointer: coarse) {
+  button[hlmBtn][data-slot='button'],
+  a[hlmBtn][data-slot='button'] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

@@ -52,11 +52,12 @@
           }
           @if (r.shield; as shield) {
             <ng-icon
-              name="lucideShieldAlert"
+              [name]="shieldIcon(shield.level)"
               class="msg__shield"
               [class.msg__shield--red]="shield.level === 'red'"
               [attr.title]="shield.reason"
               [attr.aria-label]="shield.reason"
+              aria-hidden="false"
               [attr.data-testid]="'msg-shield-' + shield.level"
             />
           }
@@ -175,11 +176,12 @@
         }
         @if (r.shield; as shield) {
           <ng-icon
-            name="lucideShieldAlert"
+            [name]="shieldIcon(shield.level)"
             class="msg__shield msg__shield--cont"
             [class.msg__shield--red]="shield.level === 'red'"
             [attr.title]="shield.reason"
             [attr.aria-label]="shield.reason"
+            aria-hidden="false"
             [attr.data-testid]="'msg-shield-' + shield.level"
           />
         }

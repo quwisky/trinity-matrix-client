@@ -8,7 +8,11 @@ import {
   signal,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideMessagesSquare, lucideShieldAlert } from '@ng-icons/lucide';
+import {
+  lucideMessagesSquare,
+  lucideShieldAlert,
+  lucideShieldQuestion,
+} from '@ng-icons/lucide';
 import {
   AvatarComponent,
   MessageToolbarComponent,
@@ -84,7 +88,13 @@ export type MessageRowAction =
     LocationComponent,
     VoiceMessageComponent,
   ],
-  viewProviders: [provideIcons({ lucideMessagesSquare, lucideShieldAlert })],
+  viewProviders: [
+    provideIcons({
+      lucideMessagesSquare,
+      lucideShieldAlert,
+      lucideShieldQuestion,
+    }),
+  ],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',
 })
@@ -135,6 +145,12 @@ export class MessageRowComponent {
     return summary.unreadCount > 0
       ? `${base}, ${summary.unreadCount} unread`
       : base;
+  }
+
+  /** Icon shape for an authenticity shield's severity: a distinct glyph per level so the
+   * warning (red) and caution (grey) are distinguishable by shape, not colour alone. */
+  shieldIcon(level: 'grey' | 'red'): string {
+    return level === 'red' ? 'lucideShieldAlert' : 'lucideShieldQuestion';
   }
 
   /** Whether the "seen by" reader list is expanded (toggled from the receipt cluster). */

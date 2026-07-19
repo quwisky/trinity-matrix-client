@@ -231,7 +231,7 @@ describe('PinnedMessagesService', () => {
     const { svc, sendStateEvent } = setup({ pinned: ['$a'] });
     svc.open('!r:hs');
 
-    svc.pin('$b');
+    svc.pin('$b').subscribe();
 
     expect(sendStateEvent).toHaveBeenCalledWith(
       '!r:hs',
@@ -245,7 +245,7 @@ describe('PinnedMessagesService', () => {
     const { svc, sendStateEvent } = setup({ pinned: ['$a', '$b', '$c'] });
     svc.open('!r:hs');
 
-    svc.unpin('$b');
+    svc.unpin('$b').subscribe();
 
     expect(sendStateEvent).toHaveBeenCalledWith(
       '!r:hs',
@@ -267,9 +267,21 @@ describe('PinnedMessagesService', () => {
     const { svc, sendStateEvent } = setup({ pinned: ['$a'] });
     svc.open('!r:hs');
 
-    svc.pin('$a');
+    svc.pin('$a').subscribe();
 
     expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a sendStateEvent failure to the subscriber', async () => {
+    const { svc, sendStateEvent } = setup({ pinned: ['$a'] });
+    svc.open('!r:hs');
+    sendStateEvent.mockReturnValueOnce(Promise.reject(new Error('forbidden')));
+
+    await expect(
+      new Promise<void>((resolve, reject) =>
+        svc.pin('$b').subscribe({ error: reject, complete: resolve }),
+      ),
+    ).rejects.toThrow('forbidden');
   });
 
   it('a RoomStateEvent.Events emission for pinned_events re-reads pinnedEventIds live', () => {

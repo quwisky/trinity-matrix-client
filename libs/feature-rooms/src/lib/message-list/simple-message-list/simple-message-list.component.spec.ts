@@ -394,6 +394,55 @@ describe('SimpleMessageListComponent', () => {
     expect(fired).toBe(false);
   });
 
+  it('shows the jump-to-latest pill when scrolled up and returns to the bottom', async () => {
+    const scrollToSpy = vi.fn();
+    Element.prototype.scrollTo =
+      scrollToSpy as unknown as typeof Element.prototype.scrollTo;
+
+    const { fixture, container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$1', '@a:hs', 'Alice', 1000),
+          msg('$2', '@b:hs', 'Bob', 2000),
+        ],
+      },
+    });
+    const cmp = fixture.componentInstance;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+
+    // jsdom has no layout, so fake a scrolled-up viewport: not near the bottom
+    // (>120px away) and past the auto-load threshold (>150px from the top).
+    Object.defineProperty(scroll, 'scrollHeight', {
+      value: 1000,
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'clientHeight', {
+      value: 400,
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'scrollTop', {
+      value: 200,
+      writable: true,
+      configurable: true,
+    });
+    scroll.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+
+    expect(cmp.notAtBottom()).toBe(true);
+    const pill = container.querySelector<HTMLButtonElement>(
+      '[data-testid=jump-to-latest]',
+    );
+    expect(pill).not.toBeNull();
+
+    // Jumping scrolls to the newest message and hides the pill.
+    pill!.click();
+    fixture.detectChanges();
+
+    expect(scrollToSpy).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' });
+    expect(cmp.notAtBottom()).toBe(false);
+    expect(container.querySelector('[data-testid=jump-to-latest]')).toBeNull();
+  });
+
   it('announces a new incoming message, but not the first load or own messages', async () => {
     const { fixture } = await render(SimpleMessageListComponent); // render resolves the scroll viewchild
     const cmp = fixture.componentInstance;

@@ -13,9 +13,19 @@
     @if (loading()) {
       <p class="gif-picker__status" aria-live="polite">Loading…</p>
     } @else if (failed()) {
-      <p class="gif-picker__status" aria-live="polite">
-        Couldn't load GIFs. Try again.
-      </p>
+      <div class="gif-picker__status" aria-live="polite">
+        <p>Couldn't load GIFs.</p>
+        <button
+          hlmBtn
+          type="button"
+          variant="outline"
+          size="sm"
+          (click)="retry()"
+          data-testid="gif-retry"
+        >
+          Try again
+        </button>
+      </div>
     } @else if (results().length === 0) {
       <p class="gif-picker__status" aria-live="polite">No GIFs found.</p>
     } @else {

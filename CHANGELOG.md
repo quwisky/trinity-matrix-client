@@ -18,6 +18,27 @@ All notable changes to this project are documented here. The format is based on
   a cold start). For these accounts, password and session management live at the provider —
   the account settings page links out to it instead of showing an in-app password form —
   and signing out revokes the session there.
+- **Jump back to the latest message.** When you scroll up through a conversation, a button
+  now appears at the bottom to jump straight back to the newest message, instead of having
+  to scroll all the way down by hand.
+- **Show or hide what you type in password fields.** The sign-in password field and all
+  three change-password fields now have an eye toggle to reveal the characters, so you can
+  catch a typo before submitting.
+- **Retry a failed GIF search.** When the GIF picker can't reach its provider, a **Try
+  again** button now re-runs the search instead of leaving you stuck on the error.
+- **Pinning a message now confirms.** Pinning or unpinning from a message's menu shows a
+  brief confirmation — and tells you if it didn't go through (for example when you no longer
+  have permission) instead of failing silently.
+- **The room header adapts to small screens.** On a phone, the room's Invite, Room settings
+  and Pinned actions collapse into a single **⋮** overflow menu so the room name is no
+  longer squeezed out — Search and Threads stay one tap away, and the pinned count still
+  shows on the menu button. The desktop layout is unchanged.
+- **Bigger touch targets.** On phones and tablets, buttons, reaction chips and list rows now
+  meet the ~44px minimum tap size, so they're easier to hit accurately. Desktop (mouse)
+  sizing is unchanged.
+- **The room list is its own page on phones.** Instead of sliding the channel list over your
+  conversation, phones now show the room list as a full screen; tapping a room opens the
+  chat, and a back button returns to the list. The desktop two-column layout is unchanged.
 
 ### Changed
 
@@ -31,9 +52,20 @@ All notable changes to this project are documented here. The format is based on
 - **Adopted Angular's zoneless change detection.** Trinity no longer ships `zone.js` (~30 kB),
   so it loads a little leaner and drives UI updates straight from signals. Behaviour is
   unchanged.
+- **Dark mode looks more cohesive.** Dialogs, menus and pop-ups were rendering near-black —
+  darker than the app itself — so overlays stood out as a different, blacker surface. They
+  now use the app's grey palette, matching the window behind them.
+- **A more consistent, tidier UI.** Corner radii were consolidated into one scale (dropdown
+  menus and reaction/badge chips in particular look more consistent), and muted secondary
+  text — timestamps, captions, descriptions, empty states — now follows one size scale
+  instead of a mix of five, so the same kind of text is the same size everywhere.
 
 ### Fixed
 
+- **The member list is reachable on phones and tablets.** Below 1100px the room's member
+  list was hidden with no way to open it. It now slides in as a drawer — from the **Members**
+  button on tablets, or the room's **⋮** overflow menu on a phone — and closes by tapping
+  outside it. The wide-screen layout, where it stays a side column, is unchanged.
 - **Confirmation messages (toasts) appear again.** Actions that report success or failure
   with a small pop-up notification — changing your password, exporting/importing encryption
   keys, reporting a message, renaming a room, updating a room photo, unbanning a member, and
@@ -61,6 +93,12 @@ All notable changes to this project are documented here. The format is based on
   appearing in a room you had open, leaving the pinned panel frozen until you switched
   rooms and back. This happened once the app resynced a room's history, such as after a
   spell offline.
+- **Message authenticity shields are readable without colour.** The caution and warning
+  shields on encrypted messages used the same icon and differed only by colour; they now
+  have distinct shapes, so colourblind users can tell a caution from a warning.
+- **Screen readers now announce the offline and encryption banners.** The "You're offline"
+  and encryption-setup banners are now read out when they appear, instead of being added to
+  the page silently.
 
 ## [0.1.0] - 2026-07-13
 

@@ -51,19 +51,26 @@
 }
 
 .dark {
+  /*
+   * Elevated surfaces (dialogs, popovers/menus, cards) are retinted from the stock
+   * shadcn near-black to the Trinity Discord palette: the surface is the sidebar tone
+   * (#2b2d31) and the hover/muted/secondary layer is one step lighter (#35373c =
+   * --trinity-hover), so `hover:bg-accent` reads as a lighter highlight on the surface
+   * rather than inverting darker. The base canvas (--background) stays the deep tone.
+   */
   --background: hsl(240deg 10% 3.9%);
   --foreground: hsl(0deg 0% 98%);
-  --card: hsl(240deg 10% 3.9%);
+  --card: #2b2d31;
   --card-foreground: hsl(0deg 0% 98%);
-  --popover: hsl(240deg 10% 3.9%);
+  --popover: #2b2d31;
   --popover-foreground: hsl(0deg 0% 98%);
   --primary: hsl(235deg 86% 65%);
   --primary-foreground: hsl(0deg 0% 100%);
-  --secondary: hsl(240deg 3.7% 15.9%);
+  --secondary: #35373c;
   --secondary-foreground: hsl(0deg 0% 98%);
-  --muted: hsl(240deg 3.7% 15.9%);
+  --muted: #35373c;
   --muted-foreground: hsl(240deg 5% 64.9%);
-  --accent: hsl(240deg 3.7% 15.9%);
+  --accent: #35373c;
   --accent-foreground: hsl(0deg 0% 98%);
   --destructive: hsl(0deg 62.8% 30.6%);
   --destructive-foreground: hsl(0deg 0% 98%);

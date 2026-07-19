@@ -35,4 +35,20 @@ describe('ConnectivityBannerComponent', () => {
     expect(el).not.toBeNull();
     expect(el?.textContent).toContain('offline');
   });
+
+  it('mirrors the offline state in an always-mounted live region', async () => {
+    const { container, fixture } = await renderBanner();
+    const liveRegion = () => container.querySelector('.sr-only[role="status"]');
+
+    // Persistent and empty while online: a role="status" region must already exist
+    // when its text changes to be reliably announced (inserting it with its text via
+    // @if is not), so the announcement lives here rather than inside the banner.
+    expect(liveRegion()).not.toBeNull();
+    expect(liveRegion()?.textContent?.trim()).toBe('');
+
+    connectivity.set('offline');
+    fixture.detectChanges();
+
+    expect(liveRegion()?.textContent).toContain('offline');
+  });
 });

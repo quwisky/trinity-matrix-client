@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockProvider } from 'ng-mocks';
 import {
@@ -111,6 +111,39 @@ describe('GifPickerComponent', () => {
     cmp.failed.set(true);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain("Couldn't load");
+  });
+
+  it('retries the current query after a load failure', async () => {
+    const search = vi
+      .fn()
+      .mockReturnValueOnce(throwError(() => new Error('boom')))
+      .mockReturnValue(of(results));
+    const fixture = setup(search);
+    const cmp = fixture.componentInstance;
+
+    // The initial trending load fails.
+    await vi.waitFor(
+      () => {
+        fixture.detectChanges();
+        expect(cmp.failed()).toBe(true);
+      },
+      { timeout: 1500, interval: 40 },
+    );
+
+    // Retry re-runs the same (empty) query — bypassing distinctUntilChanged — and
+    // this time it succeeds.
+    cmp.retry();
+    await vi.waitFor(
+      () => {
+        fixture.detectChanges();
+        expect(cmp.results()).toEqual(results);
+      },
+      { timeout: 1500, interval: 40 },
+    );
+
+    expect(cmp.failed()).toBe(false);
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(search).toHaveBeenNthCalledWith(2, '');
   });
 
   it('updates the query signal as the user types', () => {

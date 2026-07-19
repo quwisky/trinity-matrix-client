@@ -17,6 +17,7 @@ export class MessageSourceService {
     }
     this.dialog.open(MessageSourceComponent, {
       inputs: { source: JSON.stringify(raw, null, 2) },
+      ariaLabel: 'Message source',
     });
   }
 }

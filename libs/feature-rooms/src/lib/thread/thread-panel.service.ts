@@ -22,6 +22,7 @@ export class ThreadPanelService {
   async open(roomId: string, rootEventId: string): Promise<void> {
     // Signal inputs are populated from `inputs` (app sets useSetInputAPI).
     this.dialog.open<void, ThreadViewComponent>(ThreadViewComponent, {
+      ariaLabel: 'Thread',
       side: 'end',
       inputs: { roomId, rootEventId },
     });

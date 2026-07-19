@@ -12,11 +12,11 @@ process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 const session = synapseSession();
 
 // Below Tailwind's `md` breakpoint (768px) the shell's server-rail + channel
-// sidebar — `<aside class="shell-side">` in rooms.page.html — stops being a
-// static column and becomes a fixed, slide-in drawer toggled by the header
-// hamburger (`data-testid="open-menu"`, itself `md:hidden`). That's the only
-// viewport band where the drawer exists at all, so every test below runs at a
-// phone-sized viewport instead of the suite's default 1280×720.
+// sidebar — `<aside class="shell-side">` in rooms.page.html — and the chat become
+// separate full-screen pages: the room list is the home page, picking a room opens
+// the chat page, and the header's back button (`data-testid="back-to-rooms"`,
+// itself `md:hidden`) returns to the list. That master-detail split only exists
+// below md, so every test below runs at a phone-sized viewport rather than 1280×720.
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 const ROOM_NAME = `Mobile drawer ${Date.now()}`;
@@ -141,10 +141,10 @@ async function seedRoom(
   }
 }
 
-/** The responsive drawer `<aside>` — a static column at md+, a slide-in panel below. */
+/** The rail + sidebar `<aside>` — a static column at md+, the list page below md. */
 const shellSide = (page: Page) => page.locator('.shell-side');
 
-test.describe('Mobile navigation drawer', () => {
+test.describe('Mobile navigation (separate list/chat pages)', () => {
   test.skip(
     !session.available,
     'requires the disposable Synapse homeserver (Docker)',
@@ -173,84 +173,51 @@ test.describe('Mobile navigation drawer', () => {
     await login(page, mobileSession);
   });
 
-  test('the hamburger is the mobile affordance and opens the closed drawer', async ({
-    page,
-  }) => {
+  test('the room list is the mobile home page', async ({ page }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
     await channel
       .first()
       .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
 
-    // `data-testid="open-menu"` carries `md:hidden` on the button — only visible
-    // below the `md` breakpoint.
-    await expect(page.getByTestId('open-menu')).toBeVisible();
-
-    // Closed by default: `<aside class="shell-side">` renders `-translate-x-full`
-    // (drawerOpen() starts false, so no `translate-x-0` override), which
-    // translates it fully off the left edge of the 390px viewport.
-    //
-    // `toBeVisible()` would NOT catch this: a transformed-off-screen element
-    // still has a non-zero bounding box and no `visibility:hidden`/
-    // `display:none`, so Playwright's actionability visibility check reports it
-    // as "visible" either way. `toBeInViewport()` instead uses the browser's real
-    // IntersectionObserver, which *does* reflect the rendered (post-transform)
-    // position — the correct tool for a CSS-transform drawer. Checked on both the
-    // aside itself and the channel row inside it, so this also stands in for
-    // "the row isn't a clickable target while the drawer is closed".
-    await expect(shellSide(page)).not.toBeInViewport();
-    await expect(channel.first()).not.toBeInViewport();
-
-    await page.getByTestId('open-menu').click();
-
-    // Open: the drawer slides to translate-x-0 and its channel row is now a
-    // real, on-screen (and therefore actionable) target.
-    await expect(shellSide(page)).toBeInViewport();
-    await expect(channel.first()).toBeInViewport();
+    // No room open: the rail + sidebar (room list) fills the screen and its
+    // channel rows are real on-screen targets; the chat page — and its back
+    // button — are not shown (the list and chat use display:none, so a plain
+    // toBeVisible/toBeHidden reflects which page is up).
+    await expect(shellSide(page)).toBeVisible();
+    await expect(channel.first()).toBeVisible();
+    await expect(page.getByTestId('back-to-rooms')).toBeHidden();
   });
 
-  test('picking a room selects it and closes the drawer again', async ({
-    page,
-  }) => {
+  test('picking a room opens the chat page', async ({ page }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
     await channel
       .first()
       .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
-
-    await page.getByTestId('open-menu').click();
-    await expect(shellSide(page)).toBeInViewport();
 
     await channel.first().click();
 
-    // onSelectRoom() calls closeDrawer() — the aside slides back off-screen —
-    // and the picked room becomes the active room in the toolbar heading.
-    await expect(shellSide(page)).not.toBeInViewport();
+    // The list page gives way to the chat page: the sidebar is hidden, the picked
+    // room is the active room in the toolbar heading, and the back button appears.
+    await expect(shellSide(page)).toBeHidden();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(
       ROOM_NAME,
     );
+    await expect(page.getByTestId('back-to-rooms')).toBeVisible();
   });
 
-  test('tapping the backdrop closes the drawer without selecting a room', async ({
-    page,
-  }) => {
+  test('the back button returns to the room list', async ({ page }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
     await channel
       .first()
       .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
 
-    await page.getByTestId('open-menu').click();
-    await expect(shellSide(page)).toBeInViewport();
+    await channel.first().click();
+    await expect(shellSide(page)).toBeHidden();
 
-    // The backdrop (`data-testid="drawer-backdrop"`) covers the *whole* viewport
-    // (`inset-0`) while the drawer is open, but the 352px-wide aside sits above it
-    // (z-40 vs z-30) over the left portion. Click well to the right of the
-    // aside's width (x=371 of the 390px viewport) so the hit-test actually lands
-    // on the backdrop, not the drawer itself — tapping it (not a room) must close
-    // the drawer and leave Home (no active room) untouched.
-    await page
-      .getByTestId('drawer-backdrop')
-      .click({ position: { x: 371, y: 400 } });
+    await page.getByTestId('back-to-rooms').click();
 
-    await expect(shellSide(page)).not.toBeInViewport();
-    await expect(page.getByText('Trinity', { exact: true })).toBeVisible();
+    // Back on the list page: the sidebar is shown again and no room is open.
+    await expect(shellSide(page)).toBeVisible();
+    await expect(page.getByTestId('back-to-rooms')).toBeHidden();
   });
 });

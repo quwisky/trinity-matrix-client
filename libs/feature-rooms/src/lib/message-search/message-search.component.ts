@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideLock, lucideServer } from '@ng-icons/lucide';
+import { lucideLock, lucideServer, lucideX } from '@ng-icons/lucide';
 import {
   SearchService,
   type LoadedMessageSearch,
@@ -54,7 +54,7 @@ interface HighlightPart {
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
-  viewProviders: [provideIcons({ lucideLock, lucideServer })],
+  viewProviders: [provideIcons({ lucideLock, lucideServer, lucideX })],
   templateUrl: './message-search.component.html',
   styleUrl: './message-search.component.scss',
 })

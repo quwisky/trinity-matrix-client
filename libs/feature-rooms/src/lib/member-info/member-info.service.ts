@@ -33,6 +33,7 @@ export class MemberInfoService {
     return this.dialog.openAndWait<string, MemberInfoComponent>(
       MemberInfoComponent,
       {
+        ariaLabel: 'Member info',
         inputs: {
           member,
           roomId,

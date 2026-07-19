@@ -1,3 +1,9 @@
+<!-- Always-mounted live region: a role="status" node inserted at the same moment
+     its text appears (as the @if banner below is) is not reliably announced, so
+     mirror the message here where the region already exists when the text changes. -->
+<span class="sr-only" role="status" aria-live="polite">
+  {{ visible() ? message() : '' }}
+</span>
 @if (visible()) {
   <trn-banner tone="accent">
     <ng-icon trnBannerIcon name="lucideLock" aria-hidden="true" />

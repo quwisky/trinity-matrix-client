@@ -54,7 +54,7 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 9px;
+  border-radius: var(--trinity-radius-pill);
   background: #ed4245;
   color: #fff;
   font-size: 11px;
@@ -76,7 +76,7 @@
   cursor: pointer;
   background: var(--trinity-sidebar);
   color: var(--trinity-text);
-  border-radius: 16px;
+  border-radius: var(--trinity-radius-xl);
   display: flex;
   align-items: center;
   justify-content: center;

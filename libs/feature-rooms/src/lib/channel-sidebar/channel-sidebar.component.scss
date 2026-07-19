@@ -103,7 +103,7 @@
 .invite__meta {
   @include ellipsis;
 
-  font-size: 11px;
+  font-size: 12px;
   color: var(--trinity-text-muted);
 }
 
@@ -211,7 +211,7 @@
   min-width: 16px;
   height: 16px;
   padding: 0 5px;
-  border-radius: 8px;
+  border-radius: var(--trinity-radius-pill);
   background: #ed4245;
   color: #fff;
   font-size: 11px;
@@ -311,4 +311,16 @@
 
 .empty--error {
   color: var(--destructive);
+}
+
+// Touch targets: the small sidebar action / invite / room-kebab buttons are below
+// the touch minimum — lift them to 44px on touch only (desktop keeps 26–30px). The
+// kebab is already revealed on touch by the @media (hover: none) rule above.
+@media (pointer: coarse) {
+  .sidebar__action,
+  .invite__btn,
+  .channel__menu {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
