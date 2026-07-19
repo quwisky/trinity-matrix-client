@@ -329,8 +329,12 @@ test.describe('Multiple accounts', () => {
 
     // 3b. Per-account encryption status reaches the UI: account B is brand new with
     // no encryption set up, so its setup banner shows — proof the crypto status
-    // (its own per-account store) projected onto the newly-active account.
-    await expect(page.getByText('Set up encryption')).toBeVisible({
+    // (its own per-account store) projected onto the newly-active account. Scope to
+    // the visible <trn-banner>: the banner also mirrors its message in an off-screen
+    // sr-only live region, so a bare getByText would match two elements.
+    await expect(
+      page.locator('trn-banner').getByText('Set up encryption'),
+    ).toBeVisible({
       timeout: 20_000,
     });
 
