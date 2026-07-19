@@ -20,6 +20,10 @@
   --trinity-active: #d4d7dc; // selected row
   --trinity-divider: #e0e1e4;
 
+  // Elevated surface for floating controls (e.g. the jump-to-latest pill). Follows
+  // the sidebar tone in both themes, so it is defined once via a var() reference.
+  --trinity-surface: var(--trinity-sidebar);
+
   // Light text.
   --trinity-text: #313338;
   --trinity-text-muted: #5c5e66;
