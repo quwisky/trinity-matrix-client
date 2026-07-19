@@ -63,7 +63,7 @@
   height: 40px;
   flex-shrink: 0;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: var(--trinity-radius-sm);
 }
 
 .composer__pending-icon {
@@ -129,7 +129,7 @@
   gap: 10px;
   width: 100%;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--trinity-radius);
   background: var(--trinity-rail);
 }
 
@@ -162,7 +162,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #e53935;
+  background: var(--trinity-danger);
   animation: composer-recording-pulse 1s ease-in-out infinite;
 }
 
@@ -198,7 +198,7 @@
   overflow-y: auto;
   list-style: none;
   border: 1px solid var(--trinity-divider);
-  border-radius: 8px;
+  border-radius: var(--trinity-radius);
   background: var(--trinity-sidebar);
   box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
 }
@@ -210,7 +210,7 @@
   width: 100%;
   padding: 6px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--trinity-radius-md);
   background: none;
   color: var(--trinity-text);
   font: inherit;
@@ -307,7 +307,7 @@
   // only needs its own comfortable padding.
   padding: 11px 14px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--trinity-radius);
   background: var(--trinity-sidebar);
   color: var(--trinity-text);
   font: inherit;

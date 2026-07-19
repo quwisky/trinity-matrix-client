@@ -1,18 +1,20 @@
+@use '../styles/mixins' as *;
+
 .link-preview {
   display: flex;
   gap: 10px;
   margin-top: 6px;
   max-width: 420px;
   padding: 8px;
-  border: 1px solid var(--trinity-border, rgb(255 255 255 / 12%));
+  border: 1px solid var(--trinity-divider);
   border-left-width: 3px;
-  border-radius: 6px;
-  background: var(--trinity-surface-2, rgb(255 255 255 / 3%));
+  border-radius: var(--trinity-radius-md);
+  background: var(--trinity-surface);
   color: inherit;
   text-decoration: none;
 
   &:hover {
-    background: var(--trinity-surface-3, rgb(255 255 255 / 6%));
+    background: var(--trinity-hover);
   }
 }
 
@@ -20,7 +22,7 @@
   width: 56px;
   height: 56px;
   flex-shrink: 0;
-  border-radius: 4px;
+  border-radius: var(--trinity-radius-sm);
   object-fit: cover;
 }
 
@@ -41,9 +43,8 @@
 .link-preview__title {
   font-size: 13px;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
+  @include ellipsis;
 }
 
 .link-preview__desc {

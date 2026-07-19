@@ -69,7 +69,7 @@
 }
 
 .msg__shield--red {
-  color: var(--trinity-danger, #ef4444);
+  color: var(--trinity-danger);
 }
 
 // On a grouped continuation row there's no header to sit in, so show the shield
@@ -217,7 +217,7 @@
   display: inline-block;
   padding: 8px 12px;
   border-left: 3px solid var(--trinity-accent);
-  border-radius: 4px;
+  border-radius: var(--trinity-radius-sm);
   background: var(--trinity-sidebar);
   color: var(--trinity-text);
   font-style: italic;
@@ -321,7 +321,7 @@
   pre {
     margin: 4px 0;
     padding: 8px 10px;
-    border-radius: 4px;
+    border-radius: var(--trinity-radius-sm);
     background: var(--trinity-rail);
     overflow-x: auto;
 
@@ -376,7 +376,7 @@
 
   img {
     max-width: 100%;
-    border-radius: 4px;
+    border-radius: var(--trinity-radius-sm);
   }
 
   // Spoilers render as a black bar until clicked/activated. The sanitizer tags them
@@ -417,7 +417,7 @@
   padding: 0;
   border: none;
   background: none;
-  color: #ed4245;
+  color: var(--trinity-danger);
   font-size: 13px;
   text-align: left;
   cursor: pointer;

@@ -72,6 +72,10 @@
   --trinity-accent-hover: #4752c4;
   --trinity-green: #23a55a;
 
+  // Semantic danger/alert red for component SCSS — tracks the Helm destructive token
+  // so it re-themes with mode and palette (one token for every "danger red").
+  --trinity-danger: var(--destructive);
+
   // --- Trinity surfaces (lightest → most-recessed) ------------------------------
   --trinity-rail: #e3e5e8; // server rail
   --trinity-sidebar: #f2f3f5; // channel + member columns

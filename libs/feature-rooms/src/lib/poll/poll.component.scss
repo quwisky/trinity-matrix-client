@@ -7,7 +7,7 @@
   max-width: 440px;
   padding: 10px 12px;
   border: 1px solid var(--trinity-divider);
-  border-radius: 8px;
+  border-radius: var(--trinity-radius);
   background: var(--trinity-sidebar);
 }
 
@@ -34,7 +34,7 @@
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--trinity-divider);
-  border-radius: 6px;
+  border-radius: var(--trinity-radius-md);
   background: var(--trinity-chat);
   color: var(--trinity-text);
   text-align: left;
@@ -88,7 +88,7 @@
 .poll__end {
   padding: 2px 8px;
   border: 1px solid var(--trinity-divider);
-  border-radius: 6px;
+  border-radius: var(--trinity-radius-md);
   background: none;
   color: var(--trinity-text);
   cursor: pointer;

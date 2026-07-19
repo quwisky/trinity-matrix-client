@@ -31,5 +31,8 @@
 }
 
 .result--bad {
-  background: var(--trinity-sidebar);
+  // Caution-toned so the glyph keeps contrast even when ⚠️ falls back to text
+  // presentation (no colour-emoji font) rather than inheriting the base white.
+  background: var(--warning);
+  color: var(--warning-foreground);
 }

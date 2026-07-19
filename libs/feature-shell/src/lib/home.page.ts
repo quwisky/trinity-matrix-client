@@ -18,7 +18,6 @@ import {
   selector: 'trn-home',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'home.page.html',
-  styleUrls: ['home.page.scss'],
   imports: [HlmButton, PageHeaderComponent],
 })
 export class HomePage {

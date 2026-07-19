@@ -68,6 +68,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Components follow the colour palette consistently.** Several hand-authored components
+  used fixed colours or undefined tokens: the link-preview and location cards rendered a
+  near-invisible border and background in light mode, and the mention badge and various
+  "danger" reds didn't change with light/dark or the palette. They now use themed tokens, so
+  everything re-colours together. The jump-to-latest pill and accent banner also use the
+  on-accent text colour, keeping their labels legible on light-accent palettes.
 - **The member list is reachable on phones and tablets.** Below 1100px the room's member
   list was hidden with no way to open it. It now slides in as a drawer — from the **Members**
   button on tablets, or the room's **⋮** overflow menu on a phone — and closes by tapping
