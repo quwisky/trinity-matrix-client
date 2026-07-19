@@ -5,6 +5,8 @@ import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   ThemeService,
+  TRINITY_PALETTES,
+  type Palette,
   type ResolvedTheme,
   type ThemePreference,
 } from '@trinity/platform-native';
@@ -13,15 +15,24 @@ import { AppearanceSettingsComponent } from './appearance-settings.component';
 describe('AppearanceSettingsComponent', () => {
   let preference: ReturnType<typeof signal<ThemePreference>>;
   let resolved: ReturnType<typeof signal<ResolvedTheme>>;
+  let palette: ReturnType<typeof signal<Palette>>;
 
   beforeEach(() => {
     preference = signal<ThemePreference>('system');
     resolved = signal<ResolvedTheme>('dark');
+    palette = signal<Palette>('trinity');
   });
 
   function renderPage() {
     return render(AppearanceSettingsComponent, {
-      providers: [MockProvider(ThemeService, { preference, resolved })],
+      providers: [
+        MockProvider(ThemeService, {
+          preference,
+          resolved,
+          palette,
+          palettes: TRINITY_PALETTES,
+        }),
+      ],
     });
   }
 
@@ -44,6 +55,29 @@ describe('AppearanceSettingsComponent', () => {
 
     expect(TestBed.inject(ThemeService).setPreference).toHaveBeenCalledWith(
       'light',
+    );
+  });
+
+  it('renders one option per registered palette, bound to the current palette', async () => {
+    const { container } = await renderPage();
+
+    const options = container.querySelectorAll('[data-testid^=palette-]');
+    expect(options.length).toBe(TRINITY_PALETTES.length);
+    // The bound palette ('trinity') is reflected on its native radio input.
+    const trinityInput = container.querySelector<HTMLInputElement>(
+      '[data-testid=palette-trinity] input',
+    );
+    expect(trinityInput?.checked).toBe(true);
+    expect(container.textContent).toContain('Amethyst');
+  });
+
+  it('applies the chosen palette on change', async () => {
+    const { fixture } = await renderPage();
+
+    fixture.componentInstance.onPaletteChange('amethyst');
+
+    expect(TestBed.inject(ThemeService).setPalette).toHaveBeenCalledWith(
+      'amethyst',
     );
   });
 });

@@ -39,6 +39,9 @@ All notable changes to this project are documented here. The format is based on
 - **The room list is its own page on phones.** Instead of sliding the channel list over your
   conversation, phones now show the room list as a full screen; tapping a room opens the
   chat, and a back button returns to the list. The desktop two-column layout is unchanged.
+- **Choose a colour palette.** Appearance settings now has a **Palette** picker alongside the
+  light/dark control, with an **Amethyst** violet theme in addition to the default. The two
+  are independent — any palette works in light or dark — and your choice is remembered.
 
 ### Changed
 
@@ -59,6 +62,9 @@ All notable changes to this project are documented here. The format is based on
   menus and reaction/badge chips in particular look more consistent), and muted secondary
   text — timestamps, captions, descriptions, empty states — now follows one size scale
   instead of a mix of five, so the same kind of text is the same size everywhere.
+- **Reworked the design tokens so themes are easy to add.** All colours and radii now live in
+  one place, split into a colour palette and an independent light/dark mode, so a new theme is
+  a single self-contained block. No visible change to the default look. See docs/THEMING.md.
 
 ### Fixed
 

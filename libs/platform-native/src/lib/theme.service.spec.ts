@@ -71,6 +71,7 @@ describe('ThemeService', () => {
   afterEach(() => {
     window.matchMedia = origMatchMedia;
     document.documentElement.classList.remove('dark');
+    document.documentElement.removeAttribute('data-theme');
   });
 
   function service(): ThemeService {
@@ -80,6 +81,8 @@ describe('ThemeService', () => {
 
   // The dark palette is the `.dark` class on <html> (light is default).
   const isDark = () => document.documentElement.classList.contains('dark');
+  // The active palette is the `data-theme` attribute (absent for the default).
+  const paletteAttr = () => document.documentElement.getAttribute('data-theme');
 
   it('defaults to following the system, resolving light when the OS is light', async () => {
     const svc = service();
@@ -159,5 +162,63 @@ describe('ThemeService', () => {
     svc.setPreference('dark');
 
     expect(setStyle).not.toHaveBeenCalled();
+  });
+
+  it('defaults to the trinity palette, applying no data-theme attribute', async () => {
+    const svc = service();
+    await svc.init();
+
+    expect(svc.palette()).toBe('trinity');
+    expect(paletteAttr()).toBeNull();
+  });
+
+  it('restores a saved palette and reflects it as the data-theme attribute', async () => {
+    get.mockImplementation(({ key }: { key: string }) =>
+      Promise.resolve({ value: key === 'trinity.palette' ? 'amethyst' : null }),
+    );
+    const svc = service();
+    await svc.init();
+
+    expect(svc.palette()).toBe('amethyst');
+    expect(paletteAttr()).toBe('amethyst');
+  });
+
+  it('setPalette applies + persists, and switching back clears the attribute', async () => {
+    const svc = service();
+    await svc.init();
+
+    svc.setPalette('amethyst');
+    expect(svc.palette()).toBe('amethyst');
+    expect(paletteAttr()).toBe('amethyst');
+    expect(set).toHaveBeenCalledWith({
+      key: 'trinity.palette',
+      value: 'amethyst',
+    });
+
+    svc.setPalette('trinity');
+    expect(paletteAttr()).toBeNull();
+  });
+
+  it('ignores an unknown saved palette, keeping the default', async () => {
+    get.mockImplementation(({ key }: { key: string }) =>
+      Promise.resolve({ value: key === 'trinity.palette' ? 'bogus' : null }),
+    );
+    const svc = service();
+    await svc.init();
+
+    expect(svc.palette()).toBe('trinity');
+    expect(paletteAttr()).toBeNull();
+  });
+
+  it('keeps palette and mode independent', async () => {
+    const svc = service();
+    await svc.init();
+
+    svc.setPalette('amethyst');
+    svc.setPreference('dark');
+
+    // Both axes apply at once: dark class AND the palette attribute.
+    expect(isDark()).toBe(true);
+    expect(paletteAttr()).toBe('amethyst');
   });
 });

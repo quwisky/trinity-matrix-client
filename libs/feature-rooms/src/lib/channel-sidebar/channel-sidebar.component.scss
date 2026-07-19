@@ -222,7 +222,7 @@
   // Ordinary unread (no mention) reads as a neutral count, not the red alert.
   &--muted {
     background: var(--trinity-text-muted);
-    color: var(--trinity-bg);
+    color: var(--trinity-sidebar);
   }
 }
 

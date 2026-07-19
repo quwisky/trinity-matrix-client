@@ -33,3 +33,24 @@
 <p class="block px-4 py-2 text-[13px] text-muted-foreground">
   Showing the {{ theme.resolved() }} theme.
 </p>
+
+<h2
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Palette
+</h2>
+<hlm-radio-group
+  class="px-4 py-2"
+  [value]="theme.palette()"
+  (valueChange)="onPaletteChange($event)"
+>
+  @for (palette of theme.palettes; track palette.id) {
+    <label
+      class="flex cursor-pointer items-center gap-3 text-sm font-medium"
+      [attr.data-testid]="'palette-' + palette.id"
+    >
+      <hlm-radio [value]="palette.id"><hlm-radio-indicator /></hlm-radio>
+      {{ palette.label }}
+    </label>
+  }
+</hlm-radio-group>
