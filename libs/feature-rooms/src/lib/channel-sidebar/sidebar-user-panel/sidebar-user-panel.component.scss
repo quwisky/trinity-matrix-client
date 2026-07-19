@@ -46,7 +46,7 @@
 .userbar__handle {
   @include ellipsis;
 
-  font-size: 11px;
+  font-size: 12px;
   color: var(--trinity-text-muted);
 }
 
@@ -87,7 +87,7 @@
 .account-row__handle {
   @include ellipsis;
 
-  font-size: 11px;
+  font-size: 12px;
   color: var(--trinity-text-muted);
 }
 
