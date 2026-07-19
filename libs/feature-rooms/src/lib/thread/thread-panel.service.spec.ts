@@ -22,6 +22,7 @@ describe('ThreadPanelService', () => {
     await svc.open('!r:hs', '$root');
 
     expect(dialog.open).toHaveBeenCalledWith(ThreadViewComponent, {
+      ariaLabel: 'Thread',
       side: 'end',
       inputs: { roomId: '!r:hs', rootEventId: '$root' },
     });
@@ -38,6 +39,7 @@ describe('ThreadPanelService', () => {
     });
     // The resolved root id re-opens as a thread view (the two never stack).
     expect(dialog.open).toHaveBeenCalledWith(ThreadViewComponent, {
+      ariaLabel: 'Thread',
       side: 'end',
       inputs: { roomId: '!r:hs', rootEventId: '$picked' },
     });

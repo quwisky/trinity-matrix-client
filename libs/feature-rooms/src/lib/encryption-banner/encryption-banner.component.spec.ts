@@ -107,6 +107,7 @@ describe('EncryptionBannerComponent', () => {
       expect(dialog.open).toHaveBeenCalledWith(StubUnlockPage, {
         inputs: { asModal: true },
         disableClose: true,
+        ariaLabel: 'Encryption',
       }),
     );
 

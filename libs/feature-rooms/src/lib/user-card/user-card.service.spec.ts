@@ -21,6 +21,7 @@ describe('UserCardService', () => {
     const { svc, openAndWait } = setup('@bob:hs');
     const chosen = await svc.open('@bob:hs');
     expect(openAndWait).toHaveBeenCalledWith(UserCardComponent, {
+      ariaLabel: 'User',
       inputs: { userId: '@bob:hs' },
     });
     expect(chosen).toBe('@bob:hs');

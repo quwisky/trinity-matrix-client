@@ -284,6 +284,7 @@ describe('RoomsPage action error feedback', () => {
     expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
       RoomSettingsComponent,
       {
+        ariaLabel: 'Room settings',
         inputs: expect.objectContaining({
           roomId: '!r:hs',
           name: 'General',
@@ -389,6 +390,7 @@ describe('RoomsPage action error feedback', () => {
     const page = build();
     const pinned = TestBed.inject(PinnedMessagesService);
     vi.mocked(pinned.isPinned).mockReturnValue(false);
+    vi.mocked(pinned.pin).mockReturnValue(of(undefined));
 
     page.onTogglePin('$1');
 
@@ -400,6 +402,7 @@ describe('RoomsPage action error feedback', () => {
     const page = build();
     const pinned = TestBed.inject(PinnedMessagesService);
     vi.mocked(pinned.isPinned).mockReturnValue(true);
+    vi.mocked(pinned.unpin).mockReturnValue(of(undefined));
 
     page.onTogglePin('$1');
 

@@ -23,6 +23,7 @@ describe('MessageSearchService', () => {
     const result = await svc.search('!r:hs');
 
     expect(dialog.openAndWait).toHaveBeenCalledWith(MessageSearchComponent, {
+      ariaLabel: 'Search messages',
       side: 'end',
       inputs: { roomId: '!r:hs' },
     });
