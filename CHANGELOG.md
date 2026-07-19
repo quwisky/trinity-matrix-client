@@ -18,6 +18,17 @@ All notable changes to this project are documented here. The format is based on
   a cold start). For these accounts, password and session management live at the provider —
   the account settings page links out to it instead of showing an in-app password form —
   and signing out revokes the session there.
+- **Jump back to the latest message.** When you scroll up through a conversation, a button
+  now appears at the bottom to jump straight back to the newest message, instead of having
+  to scroll all the way down by hand.
+- **Show or hide what you type in password fields.** The sign-in password field and all
+  three change-password fields now have an eye toggle to reveal the characters, so you can
+  catch a typo before submitting.
+- **Retry a failed GIF search.** When the GIF picker can't reach its provider, a **Try
+  again** button now re-runs the search instead of leaving you stuck on the error.
+- **Pinning a message now confirms.** Pinning or unpinning from a message's menu shows a
+  brief confirmation — and tells you if it didn't go through (for example when you no longer
+  have permission) instead of failing silently.
 
 ### Changed
 
@@ -61,6 +72,12 @@ All notable changes to this project are documented here. The format is based on
   appearing in a room you had open, leaving the pinned panel frozen until you switched
   rooms and back. This happened once the app resynced a room's history, such as after a
   spell offline.
+- **Message authenticity shields are readable without colour.** The caution and warning
+  shields on encrypted messages used the same icon and differed only by colour; they now
+  have distinct shapes, so colourblind users can tell a caution from a warning.
+- **Screen readers now announce the offline and encryption banners.** The "You're offline"
+  and encryption-setup banners are now read out when they appear, instead of being added to
+  the page silently.
 
 ## [0.1.0] - 2026-07-13
 
