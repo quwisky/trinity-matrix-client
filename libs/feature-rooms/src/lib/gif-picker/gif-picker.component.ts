@@ -8,13 +8,17 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
+  Subject,
   catchError,
   debounceTime,
   distinctUntilChanged,
+  map,
+  merge,
   of,
   switchMap,
   tap,
 } from 'rxjs';
+import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import {
   GIF_PROVIDERS,
@@ -36,7 +40,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 @Component({
   selector: 'trn-gif-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmInput, GifThumbComponent],
+  imports: [HlmButton, HlmInput, GifThumbComponent],
   templateUrl: './gif-picker.component.html',
   styleUrl: './gif-picker.component.scss',
 })
@@ -52,6 +56,9 @@ export class GifPickerComponent {
   private readonly gifs = inject(GifService);
   private readonly settings = inject(GifSettingsService);
 
+  /** Fires when the user asks to retry after a load failure. */
+  private readonly retry$ = new Subject<void>();
+
   /** Attribution line the active provider's terms require us to display. */
   readonly attribution = computed(
     () =>
@@ -61,10 +68,15 @@ export class GifPickerComponent {
 
   constructor() {
     // The initial '' emission loads trending; each edit debounces into a search.
-    toObservable(this.query)
+    const typed$ = toObservable(this.query).pipe(
+      debounceTime(SEARCH_DEBOUNCE_MS),
+      distinctUntilChanged(),
+    );
+    // Retry re-runs the current query at once, bypassing distinctUntilChanged so a
+    // failed search for the same text can be tried again.
+    const retried$ = this.retry$.pipe(map(() => this.query()));
+    merge(typed$, retried$)
       .pipe(
-        debounceTime(SEARCH_DEBOUNCE_MS),
-        distinctUntilChanged(),
         tap(() => {
           this.loading.set(true);
           this.failed.set(false);
@@ -87,5 +99,10 @@ export class GifPickerComponent {
 
   onInput(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
+  }
+
+  /** Re-run the current query after a load failure (the "Try again" button). */
+  retry(): void {
+    this.retry$.next();
   }
 }

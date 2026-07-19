@@ -48,6 +48,10 @@
 }
 
 .gif-picker__status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   padding: 16px;
   color: var(--trinity-text-muted);
   font-size: 13px;
