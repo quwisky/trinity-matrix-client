@@ -1,4 +1,9 @@
-import { ChangeDetectionStrategy, Component, effect } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  signal,
+} from '@angular/core';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { MessageRowComponent } from '../../message-row/message-row.component';
 import { MessageListBase } from '../message-list-base';
@@ -38,6 +43,8 @@ export class SimpleMessageListComponent extends MessageListBase {
   /** Whether the user is scrolled to (or near) the bottom — gates auto-scroll on
    * incoming messages. Starts true so the first load and each new room stick. */
   private atBottom = true;
+  /** Reactive mirror of `!atBottom` for the template's jump-to-latest pill. */
+  protected readonly notAtBottom = signal(false);
 
   // Scroll-anchoring state while older history is being prepended.
   private pendingPrepend = false;
@@ -155,6 +162,7 @@ export class SimpleMessageListComponent extends MessageListBase {
     this.backfillRounds = 0;
     this.pendingPrepend = false;
     this.atBottom = true;
+    this.notAtBottom.set(false);
   }
 
   /** Auto-load older history once the user scrolls near the top. */
@@ -167,6 +175,7 @@ export class SimpleMessageListComponent extends MessageListBase {
     // effect only auto-scrolls incoming messages when they're already there.
     this.atBottom =
       el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    this.notAtBottom.set(!this.atBottom);
     this.updateJumpToUnread(); // divider may have scrolled in/out of view
     if (this.pendingPrepend || this.loadingOlder() || !this.canLoadOlder()) {
       return;
@@ -177,6 +186,17 @@ export class SimpleMessageListComponent extends MessageListBase {
       this.pendingPrepend = true;
       this.loadOlder.emit();
     }
+  }
+
+  /** Jump straight back to the newest message (the jump-to-latest pill). */
+  scrollToLatest(): void {
+    const el = this.scrollEl()?.nativeElement;
+    if (!el) {
+      return;
+    }
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    this.atBottom = true;
+    this.notAtBottom.set(false);
   }
 
   /** Scroll a message into view (reply preview, in-room search, or pinned panel) and
