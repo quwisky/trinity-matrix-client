@@ -14,6 +14,7 @@ import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  lucideEllipsisVertical,
   lucideLock,
   lucideMenu,
   lucideMessagesSquare,
@@ -24,6 +25,11 @@ import {
   lucideUsers,
 } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
+import {
+  HlmDropdownMenu,
+  HlmDropdownMenuItem,
+  HlmDropdownMenuTrigger,
+} from '@trinity/helm/dropdown-menu';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import {
   TrnActionSheetService,
@@ -105,6 +111,9 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
   imports: [
     PageHeaderComponent,
     HlmButton,
+    HlmDropdownMenu,
+    HlmDropdownMenuItem,
+    HlmDropdownMenuTrigger,
     HlmTooltip,
     NgIcon,
     ServerRailComponent,
@@ -123,6 +132,7 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
   },
   viewProviders: [
     provideIcons({
+      lucideEllipsisVertical,
       lucideLock,
       lucideMenu,
       lucideMessagesSquare,

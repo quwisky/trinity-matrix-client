@@ -111,6 +111,7 @@
             hlmBtn
             variant="ghost"
             size="icon"
+            class="max-md:hidden"
             (click)="onInviteToRoom()"
             hlmTooltip="Invite people"
             aria-label="Invite people"
@@ -122,6 +123,7 @@
             hlmBtn
             variant="ghost"
             size="icon"
+            class="max-md:hidden"
             (click)="onOpenRoomSettings()"
             hlmTooltip="Room settings"
             aria-label="Room settings"
@@ -144,7 +146,7 @@
             hlmBtn
             variant="ghost"
             size="icon"
-            class="header-pin"
+            class="header-pin max-md:hidden"
             (click)="openPinnedPanel()"
             hlmTooltip="Pinned messages"
             aria-label="Pinned messages"
@@ -170,6 +172,59 @@
           >
             <ng-icon class="text-xl" name="lucideUsers" />
           </button>
+
+          <!-- Below md the demoted actions collapse into this overflow menu; at md+
+               it is removed (md:hidden) and the buttons above are shown instead. -->
+          <button
+            hlmBtn
+            variant="ghost"
+            size="icon"
+            class="header-pin md:hidden"
+            [hlmDropdownMenuTrigger]="roomActionsMenu"
+            align="end"
+            aria-label="More actions"
+            data-testid="room-actions-overflow"
+          >
+            <ng-icon class="text-xl" name="lucideEllipsisVertical" />
+            @if (pinned.pinnedMessages().length > 0) {
+              <span class="header-pin__badge" aria-hidden="true">{{
+                pinned.pinnedMessages().length
+              }}</span>
+            }
+          </button>
+          <ng-template #roomActionsMenu>
+            <div hlmDropdownMenu>
+              <button
+                hlmDropdownMenuItem
+                (triggered)="onInviteToRoom()"
+                data-testid="overflow-invite-people"
+              >
+                <ng-icon name="lucideUserPlus" />
+                Invite people
+              </button>
+              <button
+                hlmDropdownMenuItem
+                (triggered)="onOpenRoomSettings()"
+                data-testid="overflow-open-room-settings"
+              >
+                <ng-icon name="lucideSettings" />
+                Room settings
+              </button>
+              <button
+                hlmDropdownMenuItem
+                (triggered)="openPinnedPanel()"
+                data-testid="overflow-open-pinned"
+              >
+                <ng-icon name="lucidePin" />
+                Pinned messages
+                @if (pinned.pinnedMessages().length > 0) {
+                  <span class="ml-auto tabular-nums">{{
+                    pinned.pinnedMessages().length
+                  }}</span>
+                }
+              </button>
+            </div>
+          </ng-template>
         }
       </ng-container>
     </trn-page-header>
