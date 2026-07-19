@@ -90,3 +90,10 @@
   font-size: 14px;
   color: var(--trinity-text);
 }
+
+// Touch targets: member rows on touch only (desktop keeps its compact height).
+@media (pointer: coarse) {
+  .member {
+    min-height: 44px;
+  }
+}

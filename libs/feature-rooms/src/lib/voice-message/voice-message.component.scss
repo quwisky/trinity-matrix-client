@@ -69,3 +69,11 @@
 .voice__audio {
   display: none;
 }
+
+// Touch targets: the voice-message play button on touch only (desktop keeps 34px).
+@media (pointer: coarse) {
+  .voice__play {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

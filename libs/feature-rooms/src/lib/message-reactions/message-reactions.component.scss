@@ -36,3 +36,11 @@
 .reaction--mine .reaction__count {
   color: var(--trinity-text-bright);
 }
+
+// Touch targets: reaction chips are dense and frequently tapped — give them a taller
+// minimum hit area on touch only (kept to 40px so a row of chips stays compact).
+@media (pointer: coarse) {
+  .reaction {
+    min-height: 40px;
+  }
+}

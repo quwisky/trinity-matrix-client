@@ -71,3 +71,15 @@
 .toolbar__btn--danger:hover {
   color: #ed4245;
 }
+
+// Touch targets: the message hover toolbar is the highest-frequency chat action
+// surface — lift its buttons to 44px on touch only (desktop keeps 32px).
+@media (pointer: coarse) {
+  .toolbar__btn,
+  .toolbar__emoji,
+  .toolbar__emoji--more,
+  .toolbar__picker {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

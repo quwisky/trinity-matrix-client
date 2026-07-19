@@ -321,3 +321,19 @@
   // Focus ring comes from hlmTextarea (spartan focus-visible:ring), consistent
   // with the app's other inputs — no bespoke outline here.
 }
+
+// Touch targets: enlarge the composer action buttons to the 44px minimum on touch
+// devices only (inert on a mouse, so desktop keeps its 36/40px buttons).
+@media (pointer: coarse) {
+  .composer__attach,
+  .composer__gif,
+  .composer__voice,
+  .composer__emoji,
+  .composer__send,
+  .composer__recording-cancel,
+  .composer__recording-send,
+  .composer__pending-remove {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

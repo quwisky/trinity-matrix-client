@@ -97,3 +97,11 @@
     background: var(--trinity-hover);
   }
 }
+
+// Touch targets: poll options are tapped to vote — give them a 44px minimum on
+// touch only (desktop keeps its current height).
+@media (pointer: coarse) {
+  .poll__option {
+    min-height: 44px;
+  }
+}

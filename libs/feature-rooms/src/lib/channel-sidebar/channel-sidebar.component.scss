@@ -312,3 +312,15 @@
 .empty--error {
   color: var(--destructive);
 }
+
+// Touch targets: the small sidebar action / invite / room-kebab buttons are below
+// the touch minimum — lift them to 44px on touch only (desktop keeps 26–30px). The
+// kebab is already revealed on touch by the @media (hover: none) rule above.
+@media (pointer: coarse) {
+  .sidebar__action,
+  .invite__btn,
+  .channel__menu {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
