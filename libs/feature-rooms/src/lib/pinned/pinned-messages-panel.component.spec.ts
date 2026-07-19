@@ -7,6 +7,7 @@ import {
   type PinnedMessageView,
 } from '@trinity/data-access-pinned';
 import { MockProvider } from 'ng-mocks';
+import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { PinnedMessagesPanelComponent } from './pinned-messages-panel.component';
 
@@ -35,6 +36,7 @@ async function renderPanel(
       MockProvider(PinnedMessagesService, {
         pinnedMessages: signal(options.pinned ?? []).asReadonly(),
         canPin: signal(options.canPin ?? true).asReadonly(),
+        unpin: vi.fn(() => of(void 0)),
       }),
       { provide: DialogRef, useValue: { close } },
     ],
