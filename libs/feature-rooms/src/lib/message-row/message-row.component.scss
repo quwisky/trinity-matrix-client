@@ -238,7 +238,7 @@
   margin: 4px 0 0 52px;
   padding: 4px 10px;
   border: 1px solid var(--trinity-divider);
-  border-radius: 14px;
+  border-radius: var(--trinity-radius-pill);
   background: var(--trinity-sidebar);
   color: var(--trinity-accent);
   font-size: 13px;
@@ -276,7 +276,7 @@
   height: 16px;
   margin-left: 2px;
   padding: 0 5px;
-  border-radius: 8px;
+  border-radius: var(--trinity-radius-pill);
   background: var(--trinity-accent);
   color: var(--primary-foreground);
   font-size: 11px;
@@ -312,7 +312,7 @@
 
   code {
     padding: 1px 5px;
-    border-radius: 3px;
+    border-radius: var(--trinity-radius-sm);
     background: var(--trinity-rail);
     font-family: ui-monospace, monospace;
     font-size: 85%;
@@ -383,7 +383,7 @@
   // `mx-spoiler` (data-mx-spoiler doesn't survive Angular's [innerHTML] sanitizer);
   // the renderer's SpoilerRevealDirective adds `is-revealed` on activation.
   .mx-spoiler {
-    border-radius: 3px;
+    border-radius: var(--trinity-radius-sm);
     transition:
       background-color 0.12s ease,
       color 0.12s ease;

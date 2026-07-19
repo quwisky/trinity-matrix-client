@@ -38,7 +38,7 @@
   overflow: hidden;
   aspect-ratio: 1 / 1;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--trinity-radius-sm);
   background: var(--trinity-rail);
   cursor: pointer;
 

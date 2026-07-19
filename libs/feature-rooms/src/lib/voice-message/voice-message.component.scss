@@ -9,7 +9,7 @@
   min-width: 220px;
   max-width: 320px;
   padding: 8px 12px;
-  border-radius: 18px;
+  border-radius: var(--trinity-radius-xl);
   background: var(--trinity-rail);
 }
 

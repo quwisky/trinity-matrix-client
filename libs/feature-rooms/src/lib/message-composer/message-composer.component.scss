@@ -142,7 +142,7 @@
   width: 36px;
   height: 36px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--trinity-radius);
   background: none;
   color: var(--trinity-text-muted);
   font-size: 18px;
@@ -253,7 +253,7 @@
   width: 40px;
   height: 40px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--trinity-radius);
   background: none;
   color: var(--trinity-text-muted);
   font-size: 20px;

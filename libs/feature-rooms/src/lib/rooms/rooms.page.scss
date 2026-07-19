@@ -55,7 +55,7 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: 8px;
+  border-radius: var(--trinity-radius-pill);
   background: var(--trinity-accent);
   color: var(--primary-foreground);
   font-size: 10px;
