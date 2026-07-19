@@ -24,8 +24,8 @@ truth. There are two families:
 1. **Trinity tokens** (`--trinity-*`) — the app's own vocabulary, consumed directly by
    hand-authored component SCSS: surfaces (`--trinity-sidebar`, `--trinity-chat`,
    `--trinity-hover`, …), text (`--trinity-text`, `--trinity-text-muted`,
-   `--trinity-text-bright`), brand (`--trinity-accent`, `--trinity-green`), and radii
-   (`--trinity-radius*`).
+   `--trinity-text-bright`), brand + status (`--trinity-accent`, `--trinity-green`,
+   `--trinity-danger` — tracks the Helm `--destructive`), and radii (`--trinity-radius*`).
 2. **Helm/shadcn tokens** (`--background`, `--card`, `--primary`, `--muted-foreground`,
    `--border`, …) — consumed by the generated Helm components through Tailwind colour
    utilities (`bg-card`, `text-muted-foreground`, `border-border`, …).
@@ -48,6 +48,24 @@ Mode- and palette-invariant bindings (e.g. `--primary`, `--ring`, `--input`,
 follow their source token automatically. (A couple — `--secondary-foreground`,
 `--accent-foreground` — are a touch lighter than `--foreground` in light, so the default
 palette sets them per mode; a new palette can just bind them to `var(--foreground)`.)
+
+## Consuming tokens in components
+
+Hand-authored component SCSS should reference tokens, never hardcode a colour — a literal
+won't follow the mode or palette. In particular:
+
+- **Danger / alert red** → `var(--trinity-danger)` (mention badges, error text, destructive
+  actions), not a hex red.
+- **Text on the accent** (a filled primary button/pill) → `var(--primary-foreground)`, not
+  `#fff` — white fails WCAG AA on light-accent palettes (e.g. Amethyst dark).
+- **Radii** → the `--trinity-radius*` scale, not pixel literals.
+- Legitimately fixed values (scrim/shadow blacks like `rgb(0 0 0 / 30%)`, `#fff` text baked
+  onto a fixed-colour chip) are fine.
+
+Content injected via `[innerHTML]` (rendered Matrix markdown) carries no Angular
+encapsulation attributes, so it's styled globally in
+`apps/trinity/src/rendered-markdown.scss` (scoped to `.msg__text--html`) rather than with
+the deprecated `::ng-deep`.
 
 ## Cascade & specificity
 

@@ -150,6 +150,10 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
 - **Cross-lib imports use `@trinity/*` aliases**; imports within a lib stay relative.
 - **Keep `data-testid` hooks** on interactive elements — the headless Playwright harnesses drive them.
 - Shared SCSS mixins live in `libs/feature-rooms/src/lib/styles/_mixins.scss`.
+- **Component SCSS references design tokens** (`--trinity-*`; danger red = `--trinity-danger`,
+  on-accent text = `--primary-foreground`) — never hardcode colours, or they won't re-theme
+  with light/dark or the palette. Rendered `[innerHTML]` markdown is styled globally in
+  `apps/trinity/src/rendered-markdown.scss` (not `::ng-deep`). See [docs/THEMING.md](docs/THEMING.md).
 - **Desktop detection**: Capacitor's `isNativePlatform()` is `false` in the Electron shell — branch on
   the `trinityDesktop` preload marker to treat desktop like web (service worker off, push off).
 
