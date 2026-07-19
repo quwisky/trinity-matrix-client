@@ -147,6 +147,12 @@ export class MessageRowComponent {
       : base;
   }
 
+  /** Icon shape for an authenticity shield's severity: a distinct glyph per level so the
+   * warning (red) and caution (grey) are distinguishable by shape, not colour alone. */
+  shieldIcon(level: 'grey' | 'red'): string {
+    return level === 'red' ? 'lucideShieldAlert' : 'lucideShieldQuestion';
+  }
+
   /** Whether the "seen by" reader list is expanded (toggled from the receipt cluster). */
   readonly seenByOpen = signal(false);
 

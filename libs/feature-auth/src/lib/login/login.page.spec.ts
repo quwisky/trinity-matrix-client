@@ -72,6 +72,11 @@ describe('LoginPage', () => {
 
     expect(cmp.passwordSupported()).toBe(false);
     expect(cmp.ssoSupported()).toBe(false);
+    // A homeserver offering no supported method must surface an explanation rather
+    // than leaving the user on a blank card.
+    expect(cmp.error()).toBe(
+      "This homeserver doesn't offer a sign-in method Trinity supports.",
+    );
   });
 
   it('still surfaces OIDC when the legacy loginFlows() probe fails', async () => {

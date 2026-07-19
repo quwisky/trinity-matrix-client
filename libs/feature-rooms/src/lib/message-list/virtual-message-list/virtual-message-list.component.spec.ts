@@ -207,6 +207,37 @@ describe('VirtualMessageListComponent', () => {
     expect(container.querySelector('[data-testid=jump-to-latest]')).toBeNull();
   });
 
+  it('scrollToLatest re-pins the physical scroll to the newest message', async () => {
+    const { fixture, container } = await renderList({ messages: many(200) });
+    const cmp = fixture.componentInstance;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+
+    let st = 5000;
+    Object.defineProperty(scroll, 'scrollTop', {
+      get: () => st,
+      set: (v: number) => (st = v),
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'scrollHeight', {
+      value: 200 * EST,
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'clientHeight', {
+      value: 600,
+      configurable: true,
+    });
+
+    // scrollToLatest defers its scroll write to rAF (a no-op stub in beforeEach); run
+    // it synchronously so the write executes, and assert it landed on the bottom.
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+    cmp.scrollToLatest();
+
+    expect(scroll.scrollTop).toBe(200 * EST);
+  });
+
   it('brings a windowed-out row into the DOM when jumped to', async () => {
     Element.prototype.scrollIntoView = vi.fn();
     const { fixture, container } = await renderList({ messages: many(200) });

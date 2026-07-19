@@ -396,6 +396,10 @@ describe('RoomsPage action error feedback', () => {
 
     expect(pinned.pin).toHaveBeenCalledWith('$1');
     expect(pinned.unpin).not.toHaveBeenCalled();
+    expect(toastShow).toHaveBeenCalledWith(
+      'Message pinned.',
+      expect.objectContaining({ variant: 'success' }),
+    );
   });
 
   it('onTogglePin unpins an already-pinned message', () => {
@@ -408,6 +412,24 @@ describe('RoomsPage action error feedback', () => {
 
     expect(pinned.unpin).toHaveBeenCalledWith('$1');
     expect(pinned.pin).not.toHaveBeenCalled();
+    expect(toastShow).toHaveBeenCalledWith(
+      'Message unpinned.',
+      expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
+  it('onTogglePin shows a destructive toast when the pin fails', () => {
+    const page = build();
+    const pinned = TestBed.inject(PinnedMessagesService);
+    vi.mocked(pinned.isPinned).mockReturnValue(false);
+    vi.mocked(pinned.pin).mockReturnValue(throwError(() => new Error('nope')));
+
+    page.onTogglePin('$1');
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not pin the message.',
+      expect.objectContaining({ variant: 'destructive' }),
+    );
   });
 
   it('openPinnedPanel jumps the timeline to the chosen pinned message', async () => {
@@ -1352,6 +1374,25 @@ describe('RoomsPage room / DM / invite actions', () => {
     } finally {
       vi.stubGlobal('matchMedia', narrowStub);
     }
+  });
+
+  it('keeps the members column open when a member is selected on the wide layout', () => {
+    // The base matchMedia stub reports non-drawer (matches:false) — i.e. the wide
+    // static column, the desktop-protected path. onSelectMember must NOT collapse it.
+    const page = build();
+    page.activeRoomId.set('!r:hs');
+    page.membersOpen.set(true);
+
+    page.onSelectMember({
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+    });
+
+    expect(page.membersOpen()).toBe(true);
+    expect(memberInfoOpen).toHaveBeenCalled();
   });
 
   it('opens no conversation when the member panel is dismissed', async () => {
