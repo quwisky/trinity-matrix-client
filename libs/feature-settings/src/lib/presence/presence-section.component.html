@@ -52,18 +52,18 @@
   </div>
 
   @if (error(); as message) {
-    <p class="block px-4 py-2 text-[13px] text-destructive" role="alert">
+    <p class="block px-4 py-2 text-13 text-destructive" role="alert">
       {{ message }}
     </p>
   } @else if (justSaved()) {
     <p
-      class="block px-4 py-2 text-[13px] text-muted-foreground"
+      class="block px-4 py-2 text-13 text-muted-foreground"
       data-testid="presence-saved"
     >
       Your presence has been updated.
     </p>
   } @else {
-    <p class="block px-4 py-2 text-[13px] text-muted-foreground">
+    <p class="block px-4 py-2 text-13 text-muted-foreground">
       Others see this state and message. Some homeservers disable or rate-limit
       presence, so it may not always take effect.
     </p>

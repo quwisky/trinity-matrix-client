@@ -74,6 +74,11 @@ All notable changes to this project are documented here. The format is based on
   "danger" reds didn't change with light/dark or the palette. They now use themed tokens, so
   everything re-colours together. The jump-to-latest pill and accent banner also use the
   on-accent text colour, keeping their labels legible on light-accent palettes.
+- **More readable icons and initials.** The server rail's Home/Rooms buttons, the voice-note
+  play button and unread badges now use the on-accent text colour so their glyphs stay legible
+  on light-accent palettes; and default avatars pick a dark or light initial to fit their
+  colour (the amber avatars were previously low-contrast). The Explore rooms/spaces toggle and
+  the mention picker's search field also announce their state/label correctly to screen readers.
 - **The member list is reachable on phones and tablets.** Below 1100px the room's member
   list was hidden with no way to open it. It now slides in as a drawer — from the **Members**
   button on tablets, or the room's **⋮** overflow menu on a phone — and closes by tapping

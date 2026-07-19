@@ -70,11 +70,16 @@
   // --- Trinity brand (constant across modes in this palette) --------------------
   --trinity-accent: #5865f2; // blurple
   --trinity-accent-hover: #4752c4;
+
+  // Readable text/icon colour on an accent fill — tracks the Helm on-primary token, so a
+  // light-accent palette (e.g. Amethyst dark) gets dark on-accent text, not unreadable white.
+  --trinity-accent-foreground: var(--primary-foreground);
   --trinity-green: #23a55a;
 
-  // Semantic danger/alert red for component SCSS — tracks the Helm destructive token
-  // so it re-themes with mode and palette (one token for every "danger red").
+  // Semantic danger/alert red (+ its on-colour) for component SCSS — tracks the Helm
+  // destructive tokens so they re-theme with mode and palette (one token per role).
   --trinity-danger: var(--destructive);
+  --trinity-danger-foreground: var(--destructive-foreground);
 
   // --- Trinity surfaces (lightest → most-recessed) ------------------------------
   --trinity-rail: #e3e5e8; // server rail

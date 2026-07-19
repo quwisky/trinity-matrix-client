@@ -53,6 +53,9 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
+  /* Compact body text (Discord-style), between Tailwind's text-xs (12px) and -sm (14px). */
+  --text-13: 0.8125rem;
+
   /*
    * Indeterminate progress sweep. HlmProgressIndicator toggles
    * `.animate-indeterminate` when BrnProgress has no value; this animation drives

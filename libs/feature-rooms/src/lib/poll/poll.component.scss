@@ -85,19 +85,6 @@
   font-size: 12px;
 }
 
-.poll__end {
-  padding: 2px 8px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius-md);
-  background: none;
-  color: var(--trinity-text);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--trinity-hover);
-  }
-}
-
 // Touch targets: poll options are tapped to vote — give them a 44px minimum on
 // touch only (desktop keeps its current height).
 @media (pointer: coarse) {

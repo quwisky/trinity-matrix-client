@@ -6,12 +6,13 @@
     {{ mode() === 'spaces' ? 'Explore spaces' : 'Explore rooms' }}
   </h2>
 
-  <div class="flex gap-1" role="tablist">
+  <div class="flex gap-1">
     <button
       hlmBtn
       type="button"
       size="sm"
       [variant]="mode() === 'rooms' ? 'default' : 'ghost'"
+      [attr.aria-pressed]="mode() === 'rooms'"
       (click)="setMode('rooms')"
       data-testid="directory-mode-rooms"
     >
@@ -22,6 +23,7 @@
       type="button"
       size="sm"
       [variant]="mode() === 'spaces' ? 'default' : 'ghost'"
+      [attr.aria-pressed]="mode() === 'spaces'"
       (click)="setMode('spaces')"
       data-testid="directory-mode-spaces"
     >
@@ -58,17 +60,14 @@
   <div class="min-h-0 flex-1 overflow-y-auto">
     @if (loading() && rooms().length === 0) {
       <p
-        class="text-[13px] text-muted-foreground"
+        class="text-13 text-muted-foreground"
         aria-live="polite"
         data-testid="directory-loading"
       >
         Loading…
       </p>
     } @else if (isEmpty()) {
-      <p
-        class="text-[13px] text-muted-foreground"
-        data-testid="directory-empty"
-      >
+      <p class="text-13 text-muted-foreground" data-testid="directory-empty">
         No public rooms found.
       </p>
     } @else {

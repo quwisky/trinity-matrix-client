@@ -13,12 +13,12 @@
     <span class="text-sm font-medium">End-to-end encryption</span>
     @switch (status()) {
       @case ('ready') {
-        <p class="text-[13px] text-muted-foreground">
+        <p class="text-13 text-muted-foreground">
           Your messages are secured with end-to-end encryption on this device.
         </p>
       }
       @case ('needs-setup') {
-        <p class="text-[13px] text-muted-foreground">
+        <p class="text-13 text-muted-foreground">
           Set up secure backup so you never lose access to your encrypted
           messages.
         </p>
@@ -33,7 +33,7 @@
         </button>
       }
       @case ('needs-recovery') {
-        <p class="text-[13px] text-muted-foreground">
+        <p class="text-13 text-muted-foreground">
           This device isn’t verified yet. Restore access with your recovery key,
           or verify with another signed-in session below.
         </p>
@@ -48,9 +48,7 @@
         </button>
       }
       @default {
-        <p class="text-[13px] text-muted-foreground">
-          Checking encryption status…
-        </p>
+        <p class="text-13 text-muted-foreground">Checking encryption status…</p>
       }
     }
   </section>
@@ -60,13 +58,13 @@
     <span class="text-sm font-medium">This session</span>
     @if (sessionVerified()) {
       <p
-        class="text-[13px] text-muted-foreground"
+        class="text-13 text-muted-foreground"
         data-testid="security-session-verified"
       >
         This session is verified.
       </p>
     } @else {
-      <p class="text-[13px] text-muted-foreground">
+      <p class="text-13 text-muted-foreground">
         This session isn’t verified yet.
       </p>
       <button
@@ -85,7 +83,7 @@
   <!-- Key backup -->
   <section class="flex flex-col gap-1 px-4 py-3" data-testid="security-backup">
     <span class="text-sm font-medium">Key backup</span>
-    <p class="text-[13px] text-muted-foreground">
+    <p class="text-13 text-muted-foreground">
       @if (keyBackupActive()) {
         Your message keys are backed up to the server.
       } @else {
@@ -100,7 +98,7 @@
     data-testid="security-key-export"
   >
     <span class="text-sm font-medium">Encrypted key export</span>
-    <p class="text-[13px] text-muted-foreground">
+    <p class="text-13 text-muted-foreground">
       Save your message keys to a passphrase-protected file, or import keys from
       one. Useful as a backup independent of the server.
     </p>

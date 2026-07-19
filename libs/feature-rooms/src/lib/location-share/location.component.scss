@@ -20,7 +20,7 @@
   display: flex;
   flex-shrink: 0;
   font-size: 22px;
-  color: var(--trinity-accent, #5865f2);
+  color: var(--trinity-accent);
 }
 
 .location__body {
@@ -41,6 +41,6 @@
 }
 
 .location__open {
-  color: var(--trinity-accent, #5865f2);
+  color: var(--trinity-accent);
   font-size: 12px;
 }
