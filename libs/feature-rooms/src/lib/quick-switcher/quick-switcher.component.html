@@ -68,7 +68,12 @@
           }
         </span>
         @if (result.encrypted) {
-          <ng-icon class="qs-lock" name="lucideLock" aria-label="Encrypted" />
+          <ng-icon
+            class="qs-lock"
+            name="lucideLock"
+            aria-label="Encrypted"
+            aria-hidden="false"
+          />
         }
         <ng-icon
           class="qs-kind"

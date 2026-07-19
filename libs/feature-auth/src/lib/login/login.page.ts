@@ -24,6 +24,8 @@ import { HlmCardImports } from '@trinity/helm/card';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { HlmSpinner } from '@trinity/helm/spinner';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideEye, lucideEyeOff } from '@ng-icons/lucide';
 import {
   AuthService,
   type LoginMode,
@@ -48,7 +50,9 @@ import { OidcStateStore } from '../oidc-state.store';
     HlmInput,
     HlmLabel,
     HlmSpinner,
+    NgIcon,
   ],
+  providers: [provideIcons({ lucideEye, lucideEyeOff })],
 })
 export class LoginPage {
   private readonly auth = inject(AuthService);
@@ -100,6 +104,7 @@ export class LoginPage {
   readonly homeserverInput = signal('matrix.org');
   readonly username = signal('');
   readonly password = signal('');
+  readonly passwordVisible = signal(false);
 
   // Resolved homeserver + capabilities after discovery.
   readonly baseUrl = signal<string | null>(null);
@@ -161,6 +166,13 @@ export class LoginPage {
     this.oidcMetadata.set(oidc);
     this.passwordSupported.set(!oidc && flows.includes('m.login.password'));
     this.ssoSupported.set(!oidc && flows.includes('m.login.sso'));
+    // No OIDC, password, or SSO flow — surface a clear message instead of leaving the
+    // user on a blank card with no sign-in control and no explanation.
+    if (!oidc && !this.passwordSupported() && !this.ssoSupported()) {
+      this.error.set(
+        "This homeserver doesn't offer a sign-in method Trinity supports.",
+      );
+    }
   }
 
   /** Step 2a: password login. */
