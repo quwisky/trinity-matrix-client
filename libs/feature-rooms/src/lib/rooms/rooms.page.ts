@@ -109,6 +109,16 @@ function membersColumnDefaultsOpen(): boolean {
   );
 }
 
+/** True when the member list is currently the overlay drawer rather than the static
+ * column — mirrors the `max-width: 1100px` query the drawer styling uses. */
+function membersShownAsDrawer(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 1100px)').matches
+  );
+}
+
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
  * responsive Tailwind drawer — static column at md+, slide-in below), the read
@@ -876,6 +886,11 @@ export class RoomsPage implements OnInit, OnDestroy {
   onSelectMember(member: MemberSummary): void {
     const roomId = this.activeRoomId();
     if (roomId) {
+      // On the narrow layout the list is an overlay drawer — close it so the info
+      // panel isn't stacked behind it. The wide static column stays put.
+      if (membersShownAsDrawer()) {
+        this.closeMembers();
+      }
       void this.openMemberInfo(member, roomId);
     }
   }

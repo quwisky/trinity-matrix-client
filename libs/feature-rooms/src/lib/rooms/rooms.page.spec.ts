@@ -1320,6 +1320,40 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(memberInfoOpen).not.toHaveBeenCalled();
   });
 
+  it('closes the members drawer when a member is selected on the narrow layout', () => {
+    // Force the narrow (drawer) layout: every media query matches, so the list is
+    // seeded open and reads as a drawer. Restore the base stub afterwards.
+    const narrowStub = window.matchMedia;
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    }));
+    try {
+      const page = build();
+      page.activeRoomId.set('!r:hs');
+      expect(page.membersOpen()).toBe(true);
+
+      page.onSelectMember({
+        userId: '@bob:hs',
+        name: 'Bob',
+        initial: 'B',
+        avatarMxc: null,
+        powerLevel: 0,
+      });
+
+      expect(page.membersOpen()).toBe(false);
+      expect(memberInfoOpen).toHaveBeenCalled();
+    } finally {
+      vi.stubGlobal('matchMedia', narrowStub);
+    }
+  });
+
   it('opens no conversation when the member panel is dismissed', async () => {
     const page = build();
     page.activeRoomId.set('!r:hs');
