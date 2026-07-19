@@ -31,7 +31,7 @@ const MAX_OPTIONS = 8;
   selector: 'trn-create-poll-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [HlmButton, HlmInput, HlmLabel, NgIcon],
-  providers: [provideIcons({ lucideX })],
+  viewProviders: [provideIcons({ lucideX })],
   templateUrl: './create-poll-dialog.component.html',
 })
 export class CreatePollDialogComponent {

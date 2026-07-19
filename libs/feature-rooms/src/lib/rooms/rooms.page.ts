@@ -1192,6 +1192,12 @@ export class RoomsPage implements OnInit, OnDestroy {
    * `closeThread()`, leaving an open thread projecting a room the user had left).
    */
   private closeOpenRoom(): void {
+    // On mobile the member list is an overlay drawer; don't carry an open one over
+    // to the next room (it would slide in unrequested). The wide static column keeps
+    // its persisted open/closed state.
+    if (membersShownAsDrawer()) {
+      this.membersOpen.set(false);
+    }
     this.activeRoomId.set(null);
     this.timeline.close();
     this.threads.close();

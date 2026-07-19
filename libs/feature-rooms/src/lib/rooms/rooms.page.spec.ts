@@ -1894,6 +1894,34 @@ describe('RoomsPage mobile navigation', () => {
     expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
   });
 
+  it('closing a room resets an open members drawer so it does not carry to the next room', () => {
+    // Force the narrow (drawer) layout so the member list reads as an overlay.
+    const narrowStub = window.matchMedia;
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    }));
+    try {
+      const page = build();
+      page.onSelectRoom('!a:hs');
+      page.membersOpen.set(true); // the drawer is open in room A
+      expect(page.membersOpen()).toBe(true);
+
+      page.backToList();
+
+      // The drawer state is dropped, so it won't slide in over the next room.
+      expect(page.membersOpen()).toBe(false);
+    } finally {
+      vi.stubGlobal('matchMedia', narrowStub);
+    }
+  });
+
   it('seeds the member list closed on a narrow layout and toggleMembers flips it', () => {
     // matchMedia is stubbed to matches:false (a narrow viewport), so the members
     // drawer starts closed; on the wide (≥1100px) layout it defaults open as the

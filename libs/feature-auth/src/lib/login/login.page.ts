@@ -52,7 +52,7 @@ import { OidcStateStore } from '../oidc-state.store';
     HlmSpinner,
     NgIcon,
   ],
-  providers: [provideIcons({ lucideEye, lucideEyeOff })],
+  viewProviders: [provideIcons({ lucideEye, lucideEyeOff })],
 })
 export class LoginPage {
   private readonly auth = inject(AuthService);
