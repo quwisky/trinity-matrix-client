@@ -29,6 +29,13 @@ All notable changes to this project are documented here. The format is based on
 - **Pinning a message now confirms.** Pinning or unpinning from a message's menu shows a
   brief confirmation — and tells you if it didn't go through (for example when you no longer
   have permission) instead of failing silently.
+- **The room header adapts to small screens.** On a phone, the room's Invite, Room settings
+  and Pinned actions collapse into a single **⋮** overflow menu so the room name is no
+  longer squeezed out — Search and Threads stay one tap away, and the pinned count still
+  shows on the menu button. The desktop layout is unchanged.
+- **Bigger touch targets.** On phones and tablets, buttons, reaction chips and list rows now
+  meet the ~44px minimum tap size, so they're easier to hit accurately. Desktop (mouse)
+  sizing is unchanged.
 
 ### Changed
 
@@ -42,6 +49,13 @@ All notable changes to this project are documented here. The format is based on
 - **Adopted Angular's zoneless change detection.** Trinity no longer ships `zone.js` (~30 kB),
   so it loads a little leaner and drives UI updates straight from signals. Behaviour is
   unchanged.
+- **Dark mode looks more cohesive.** Dialogs, menus and pop-ups were rendering near-black —
+  darker than the app itself — so overlays stood out as a different, blacker surface. They
+  now use the app's grey palette, matching the window behind them.
+- **A more consistent, tidier UI.** Corner radii were consolidated into one scale (dropdown
+  menus and reaction/badge chips in particular look more consistent), and muted secondary
+  text — timestamps, captions, descriptions, empty states — now follows one size scale
+  instead of a mix of five, so the same kind of text is the same size everywhere.
 
 ### Fixed
 
