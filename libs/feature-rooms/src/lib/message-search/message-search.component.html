@@ -5,7 +5,15 @@
     class="safe-top safe-left safe-right flex items-center gap-2 border-b border-solid border-border p-3"
   >
     <h2 class="flex-1 text-base font-semibold">Search messages</h2>
-    <button hlmBtn variant="ghost" size="sm" (click)="dismiss()">Cancel</button>
+    <button
+      hlmBtn
+      variant="ghost"
+      size="icon"
+      aria-label="Close search"
+      (click)="dismiss()"
+    >
+      <ng-icon name="lucideX" class="text-xl" />
+    </button>
   </div>
 
   <div class="border-b border-solid border-border p-3">
