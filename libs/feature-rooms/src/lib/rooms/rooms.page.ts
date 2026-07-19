@@ -101,26 +101,22 @@ import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.c
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 
-/** The member list is a static column at ≥1100px (shown by default) and an overlay
- * drawer below that (starts closed). Feature-detects matchMedia so non-DOM contexts
- * fall back to closed. */
-function membersColumnDefaultsOpen(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    // Above the drawer's `max-width: 1100px` cutoff, so the two never both apply.
-    window.matchMedia('(min-width: 1101px)').matches
-  );
-}
-
 /** True when the member list is currently the overlay drawer rather than the static
- * column — mirrors the `max-width: 1100px` query the drawer styling uses. */
+ * column — mirrors the `max-width: 1100px` query the drawer styling uses. Feature-detects
+ * matchMedia so non-DOM contexts fall back to the static column. */
 function membersShownAsDrawer(): boolean {
   return (
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(max-width: 1100px)').matches
   );
+}
+
+/** The member list is a static column above the drawer cutoff (shown by default) and an
+ * overlay drawer at/below it (starts closed). Derived as the exact complement of
+ * membersShownAsDrawer so the two share one boundary with no sub-pixel gap between them. */
+function membersColumnDefaultsOpen(): boolean {
+  return !membersShownAsDrawer();
 }
 
 /** True on the mobile master-detail layout (below md), where the room list and the

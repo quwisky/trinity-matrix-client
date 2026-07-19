@@ -54,6 +54,23 @@ function invitesProvider(over: Partial<InvitesService> = {}) {
   });
 }
 
+/** Stub matchMedia so every query matches — the narrow layout where the member list is
+ * the overlay drawer. Returns a restore function to reinstate the previous stub. */
+function stubNarrowLayout(): () => void {
+  const previous = window.matchMedia;
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: true,
+    media: query,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+  return () => vi.stubGlobal('matchMedia', previous);
+}
+
 // Instantiate the page through DI without rendering (the shell template pulls in
 // many child components); we only exercise the action handlers' error feedback.
 describe('RoomsPage action error feedback', () => {
@@ -1343,22 +1360,13 @@ describe('RoomsPage room / DM / invite actions', () => {
   });
 
   it('closes the members drawer when a member is selected on the narrow layout', () => {
-    // Force the narrow (drawer) layout: every media query matches, so the list is
-    // seeded open and reads as a drawer. Restore the base stub afterwards.
-    const narrowStub = window.matchMedia;
-    vi.stubGlobal('matchMedia', (query: string) => ({
-      matches: true,
-      media: query,
-      onchange: null,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      addListener: () => undefined,
-      removeListener: () => undefined,
-      dispatchEvent: () => false,
-    }));
+    // On the narrow (drawer) layout the list seeds closed, so open it first; selecting a
+    // member must then slide it shut.
+    const restore = stubNarrowLayout();
     try {
       const page = build();
       page.activeRoomId.set('!r:hs');
+      page.membersOpen.set(true);
       expect(page.membersOpen()).toBe(true);
 
       page.onSelectMember({
@@ -1372,7 +1380,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       expect(page.membersOpen()).toBe(false);
       expect(memberInfoOpen).toHaveBeenCalled();
     } finally {
-      vi.stubGlobal('matchMedia', narrowStub);
+      restore();
     }
   });
 
@@ -1937,17 +1945,7 @@ describe('RoomsPage mobile navigation', () => {
 
   it('closing a room resets an open members drawer so it does not carry to the next room', () => {
     // Force the narrow (drawer) layout so the member list reads as an overlay.
-    const narrowStub = window.matchMedia;
-    vi.stubGlobal('matchMedia', (query: string) => ({
-      matches: true,
-      media: query,
-      onchange: null,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      addListener: () => undefined,
-      removeListener: () => undefined,
-      dispatchEvent: () => false,
-    }));
+    const restore = stubNarrowLayout();
     try {
       const page = build();
       page.onSelectRoom('!a:hs');
@@ -1959,27 +1957,37 @@ describe('RoomsPage mobile navigation', () => {
       // The drawer state is dropped, so it won't slide in over the next room.
       expect(page.membersOpen()).toBe(false);
     } finally {
-      vi.stubGlobal('matchMedia', narrowStub);
+      restore();
     }
   });
 
-  it('seeds the member list closed on a narrow layout and toggleMembers flips it', () => {
-    // matchMedia is stubbed to matches:false (a narrow viewport), so the members
-    // drawer starts closed; on the wide (≥1100px) layout it defaults open as the
-    // static column instead.
+  it('seeds the members list open as the wide static column and toggleMembers flips it', () => {
+    // The base stub reports non-drawer (matches:false) — the wide layout — so the static
+    // members column shows by default; toggleMembers hides and re-shows it.
     const page = build();
-    expect(page.membersOpen()).toBe(false);
-
-    page.toggleMembers();
     expect(page.membersOpen()).toBe(true);
 
     page.toggleMembers();
     expect(page.membersOpen()).toBe(false);
+
+    page.toggleMembers();
+    expect(page.membersOpen()).toBe(true);
+  });
+
+  it('seeds the members drawer closed on the narrow layout', () => {
+    // At/below the drawer cutoff the list is the overlay drawer, which starts closed
+    // rather than defaulting open like the wide static column.
+    const restore = stubNarrowLayout();
+    try {
+      expect(build().membersOpen()).toBe(false);
+    } finally {
+      restore();
+    }
   });
 
   it('closeMembers closes the member list (the mobile drawer backdrop)', () => {
     const page = build();
-    page.toggleMembers();
+    page.membersOpen.set(true);
     expect(page.membersOpen()).toBe(true);
 
     page.closeMembers();
