@@ -36,6 +36,9 @@ All notable changes to this project are documented here. The format is based on
 - **Bigger touch targets.** On phones and tablets, buttons, reaction chips and list rows now
   meet the ~44px minimum tap size, so they're easier to hit accurately. Desktop (mouse)
   sizing is unchanged.
+- **The room list is its own page on phones.** Instead of sliding the channel list over your
+  conversation, phones now show the room list as a full screen; tapping a room opens the
+  chat, and a back button returns to the list. The desktop two-column layout is unchanged.
 
 ### Changed
 
