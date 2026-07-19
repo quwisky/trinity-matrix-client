@@ -76,11 +76,11 @@ roadmap see [PLAN.md](PLAN.md); for dependency specifics see [STACK.md](STACK.md
 - [auth.guard.ts](../libs/data-access-auth/src/lib/auth.guard.ts) — a `CanActivateFn` that lets
   routes through only when a client is live, attempting a one-time session **restore**
   first, otherwise redirecting to `/login`.
-- [theme/theme.service.ts](../libs/platform-native/src/lib/theme.service.ts) — light/dark/system
-  theme preference (persisted), toggling the retained `.ion-palette-dark` marker class on
-  `<html>` (a leftover name — no Ionic behind it; the dark palette is defined by the
-  trinity/spartan Tailwind tokens) and the native status-bar style. Drives the Settings
-  _Appearance_ section.
+- [theme/theme.service.ts](../libs/platform-native/src/lib/theme.service.ts) — appearance across
+  two orthogonal axes, both persisted: the light/dark/system **mode** (toggles the `.dark` class
+  on `<html>`) and the named colour **palette** (sets the `data-theme` attribute; absent for the
+  default), plus the native status-bar style. Drives the Settings _Appearance_ section. Tokens and
+  palettes live in `apps/trinity/src/theme/variables.scss` — see [docs/THEMING.md](THEMING.md).
 
 ## State management
 
