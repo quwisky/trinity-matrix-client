@@ -13,6 +13,8 @@ import {
   Validators,
 } from '@angular/forms';
 import { Browser } from '@capacitor/browser';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideEye, lucideEyeOff } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
@@ -23,6 +25,9 @@ import { AuthService, type AccountManagement } from '@trinity/data-access-auth';
 /** Minimum length we require for a new password (a light client-side guard). */
 const MIN_PASSWORD = 8;
 
+/** The password fields, each with its own show/hide reveal toggle. */
+type PasswordField = 'currentPassword' | 'newPassword' | 'confirmPassword';
+
 /**
  * Account settings sub-page. For a password account it changes the account's password;
  * for an OIDC-native account (whose provider owns credentials + device management) it
@@ -32,7 +37,8 @@ const MIN_PASSWORD = 8;
   selector: 'trn-account-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './account-section.component.html',
-  imports: [ReactiveFormsModule, HlmButton, HlmInput, HlmLabel],
+  imports: [ReactiveFormsModule, NgIcon, HlmButton, HlmInput, HlmLabel],
+  viewProviders: [provideIcons({ lucideEye, lucideEyeOff })],
 })
 export class AccountSectionComponent {
   private readonly auth = inject(AuthService);
@@ -61,6 +67,18 @@ export class AccountSectionComponent {
   readonly saving = signal(false);
   /** Last failure (bad password, mismatch, server error), or null. */
   readonly error = signal<string | null>(null);
+
+  /** Which password fields are currently shown as plain text. */
+  readonly revealed = signal<Record<PasswordField, boolean>>({
+    currentPassword: false,
+    newPassword: false,
+    confirmPassword: false,
+  });
+
+  /** Flip a single password field between masked and revealed. */
+  toggleReveal(field: PasswordField): void {
+    this.revealed.update((state) => ({ ...state, [field]: !state[field] }));
+  }
 
   readonly form = new FormGroup({
     currentPassword: new FormControl('', {
