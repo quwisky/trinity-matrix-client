@@ -1,10 +1,12 @@
 <h2
+  id="appearance-mode-heading"
   class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 >
   Appearance
 </h2>
 <hlm-radio-group
   class="px-4 py-2"
+  aria-labelledby="appearance-mode-heading"
   [value]="theme.preference()"
   (valueChange)="onThemeChange($event)"
 >
@@ -35,12 +37,14 @@
 </p>
 
 <h2
+  id="appearance-palette-heading"
   class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 >
   Palette
 </h2>
 <hlm-radio-group
   class="px-4 py-2"
+  aria-labelledby="appearance-palette-heading"
   [value]="theme.palette()"
   (valueChange)="onPaletteChange($event)"
 >

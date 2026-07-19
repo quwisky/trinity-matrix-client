@@ -58,6 +58,19 @@ describe('AppearanceSettingsComponent', () => {
     );
   });
 
+  it('gives both radio groups an accessible name via aria-labelledby', async () => {
+    const { container } = await renderPage();
+
+    const groups = container.querySelectorAll('hlm-radio-group');
+    expect(groups.length).toBe(2);
+    for (const group of groups) {
+      const id = group.getAttribute('aria-labelledby');
+      expect(id).toBeTruthy();
+      const label = container.querySelector(`#${id}`);
+      expect(label?.textContent?.trim()).toBeTruthy();
+    }
+  });
+
   it('renders one option per registered palette, bound to the current palette', async () => {
     const { container } = await renderPage();
 

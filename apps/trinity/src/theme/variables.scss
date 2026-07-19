@@ -52,7 +52,7 @@
   // Card/popover text tracks the base foreground; the brand tokens track the Trinity
   // accent; the input outline tracks the border. Palettes reset the *source* token
   // (--foreground / --trinity-accent / --border) and these follow for free. (The
-  // secondary/accent surface text is a touch darker than --foreground in light, so it
+  // secondary/accent surface text is a touch lighter than --foreground in light, so it
   // is set per mode below rather than bound here.)
   --card-foreground: var(--foreground);
   --popover-foreground: var(--foreground);
@@ -167,8 +167,12 @@
   --trinity-text-muted: #635a74;
   --trinity-text-bright: #120a1e;
 
-  // Helm tokens that hold a literal value in light (so are not auto-aliased).
+  // Helm tokens that hold a literal value in light (so are not auto-aliased). New
+  // palettes can simply track the palette foreground; only the default keeps a
+  // hand-tuned pair for exact back-compat.
   --foreground: hsl(260deg 22% 14%);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
   --secondary: #ece5f6;
   --muted: #ece5f6;
   --muted-foreground: hsl(260deg 10% 44%);
@@ -179,6 +183,10 @@
 :root[data-theme='amethyst'].dark {
   --trinity-accent: #a78bfa; // lighter violet reads better on the dark canvas
   --trinity-accent-hover: #8b5cf6;
+
+  // The light accent needs dark on-accent text: white would be 2.7:1 (fails WCAG AA);
+  // this dark violet is 6.3:1. --primary-foreground defaults to white in :root.
+  --primary-foreground: #1e1633;
   --trinity-rail: #1c1826;
   --trinity-sidebar: #262232;
   --trinity-sidebar-header: #201c2b;

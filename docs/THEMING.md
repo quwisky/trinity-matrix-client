@@ -46,8 +46,8 @@ than a duplicated literal, so a palette only sets the value once:
 Mode- and palette-invariant bindings (e.g. `--primary`, `--ring`, `--input`,
 `--card-foreground`/`--popover-foreground`) are declared **once** in the base `:root` and
 follow their source token automatically. (A couple — `--secondary-foreground`,
-`--accent-foreground` — are a touch darker than `--foreground` in light, so they are set
-per mode rather than bound.)
+`--accent-foreground` — are a touch lighter than `--foreground` in light, so the default
+palette sets them per mode; a new palette can just bind them to `var(--foreground)`.)
 
 ## Cascade & specificity
 
@@ -86,8 +86,11 @@ Two steps.
   --trinity-text: #0f2733;
   /* …only what differs from the default light palette… */
   --foreground: hsl(200deg 40% 12%); /* Helm tokens that hold a literal in light */
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
   --secondary: #e2eef5;
   --muted: #e2eef5;
+  --muted-foreground: hsl(200deg 25% 40%);
   --accent: #e2eef5;
   --border: #d4e4ee;
 }
@@ -100,6 +103,7 @@ Two steps.
   /* …dark overrides… (aliased Helm surfaces like --card follow --trinity-sidebar) */
   --background: hsl(200deg 40% 6%);
   --foreground: hsl(200deg 30% 95%);
+  --muted-foreground: hsl(200deg 15% 62%);
   --border: #1d3a4a;
 }
 ```
@@ -111,6 +115,11 @@ tokens re-theme for free: `--primary`/`--ring` (→ `--trinity-accent`), and in 
 explicit override: `--foreground`, `--muted-foreground`, and `--border` (both modes); the
 **light** `--secondary`/`--muted`/`--accent`; and `--background` (a literal in dark — set
 it in the `.dark` block for a tinted canvas).
+
+> **Contrast check the accent.** `--primary-foreground` defaults to white. If your palette
+> picks a _light_ accent (as Amethyst does in dark: `#a78bfa`), white button labels fail
+> WCAG AA — override `--primary-foreground` to a dark colour in that block (Amethyst dark
+> uses `#1e1633`, 6.3:1). Verify every text-on-surface pair reaches 4.5:1.
 
 **2. Register it** in `TRINITY_PALETTES` (`theme.service.ts`) so it appears in the
 Appearance settings picker:
