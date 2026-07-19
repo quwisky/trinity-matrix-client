@@ -966,6 +966,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     // The dialog writes on save; the name/topic/access update live via the rooms
     // sync listeners, so nothing to do with the resolved result here.
     void this.dialog.openAndWait(RoomSettingsComponent, {
+      ariaLabel: 'Room settings',
       inputs: {
         roomId: room.id,
         name: room.name,

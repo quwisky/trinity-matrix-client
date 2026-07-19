@@ -20,6 +20,12 @@ export interface DialogOptions {
   disableClose?: boolean;
   /** Injected as DIALOG_DATA, for components that read data instead of inputs. */
   data?: unknown;
+  /**
+   * Accessible name announced when the dialog opens — CDK renders role="dialog"
+   * with no name otherwise, so screen readers just say "dialog". Pass the dialog's
+   * visible title (e.g. its `<h2>` text).
+   */
+  ariaLabel?: string;
 }
 
 /**
@@ -44,6 +50,7 @@ export class TrnDialogService {
       backdropClass: ['cdk-overlay-dark-backdrop'],
       disableClose: opts.disableClose ?? false,
       data: opts.data,
+      ariaLabel: opts.ariaLabel,
       // Default (undefined) lets CDK center the card; `'end'` pins it top-right
       // and full-height (the panel's own h-screen fills the axis).
       positionStrategy:

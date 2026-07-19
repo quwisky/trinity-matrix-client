@@ -65,6 +65,7 @@ export class EncryptionDialogService {
       this.dialog.open(component, {
         inputs: { asModal: true },
         disableClose: true,
+        ariaLabel: 'Encryption',
       });
       return;
     }
