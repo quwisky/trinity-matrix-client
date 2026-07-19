@@ -43,6 +43,7 @@
           "apps/trinity/src/global.scss",
           "apps/trinity/src/theme/variables.scss",
           "apps/trinity/src/theme/spartan.css",
+          "apps/trinity/src/rendered-markdown.scss",
           "node_modules/@angular/cdk/overlay-prebuilt.css",
           "node_modules/@ctrl/ngx-emoji-mart/picker.css"
         ],
