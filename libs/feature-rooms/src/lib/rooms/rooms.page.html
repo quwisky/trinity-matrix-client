@@ -1,19 +1,11 @@
-<div class="flex min-h-0 flex-1">
-  <!-- Mobile drawer backdrop (below md the side pane slides over the content). -->
-  @if (drawerOpen()) {
-    <div
-      class="fixed inset-0 z-30 bg-black/50 md:hidden"
-      (click)="closeDrawer()"
-      aria-hidden="true"
-      data-testid="drawer-backdrop"
-    ></div>
-  }
-
-  <!-- Server rail + channel sidebar: a static column at md+, a slide-in drawer below. -->
-  <aside
-    class="shell-side fixed inset-y-0 left-0 z-40 w-88 shrink-0 -translate-x-full transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-none"
-    [class.translate-x-0]="drawerOpen()"
-  >
+<div
+  class="flex min-h-0 flex-1"
+  [attr.data-mobile-view]="activeRoomId() ? 'chat' : 'list'"
+>
+  <!-- Below md the rail + sidebar (room list) and the chat are separate full-screen
+       pages, shown one at a time based on whether a room is open (rooms.page.scss).
+       At md+ both are static columns side by side. -->
+  <aside class="shell-side w-full shrink-0 md:w-88">
     <trn-server-rail
       [spaces]="spaces.spaces()"
       [activeSpaceId]="activeSpaceId()"
@@ -66,12 +58,12 @@
         variant="ghost"
         size="icon"
         class="md:hidden"
-        (click)="toggleDrawer()"
-        hlmTooltip="Open navigation"
-        aria-label="Open navigation"
-        data-testid="open-menu"
+        (click)="backToList()"
+        hlmTooltip="Back to rooms"
+        aria-label="Back to rooms"
+        data-testid="back-to-rooms"
       >
-        <ng-icon class="text-xl" name="lucideMenu" />
+        <ng-icon class="text-xl" name="lucideArrowLeft" />
       </button>
 
       <!-- Projected into the shell's single <h1>: inline spans + icon only, no

@@ -131,14 +131,13 @@ async function seedRoom(
   };
 }
 
-/** Open the seeded room on the narrow layout: the channel sidebar is a drawer here,
- * so reveal it via the header hamburger, pick the Rooms rail, then the room. */
+/** Open the seeded room on the narrow layout: the room list is the mobile home page,
+ * so pick the Rooms rail then the room — selecting it switches to the chat page. */
 async function openRoomMobile(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('open-menu').click();
   await page.getByTestId('rail-rooms').click();
   const channel = page.locator('.channel', { hasText: roomName });
   await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click(); // selecting a room collapses the drawer
+  await channel.first().click(); // switches from the list page to the chat page
   await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
 }
 

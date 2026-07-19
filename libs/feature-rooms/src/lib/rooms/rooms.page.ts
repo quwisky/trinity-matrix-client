@@ -14,9 +14,9 @@ import { Router } from '@angular/router';
 import { Observable, finalize } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  lucideArrowLeft,
   lucideEllipsisVertical,
   lucideLock,
-  lucideMenu,
   lucideMessagesSquare,
   lucidePin,
   lucideSearch,
@@ -154,9 +154,9 @@ function membersShownAsDrawer(): boolean {
   },
   viewProviders: [
     provideIcons({
+      lucideArrowLeft,
       lucideEllipsisVertical,
       lucideLock,
-      lucideMenu,
       lucideMessagesSquare,
       lucidePin,
       lucideSearch,
@@ -206,8 +206,6 @@ export class RoomsPage implements OnInit, OnDestroy {
    * default, no space) shows direct messages only; a space or this view clears the other. */
   readonly roomsView = signal(false);
   readonly activeRoomId = signal<string | null>(null);
-  /** Whether the side pane is shown as an overlay drawer (below the md breakpoint). */
-  readonly drawerOpen = signal(false);
   /**
    * Whether the member list is shown. At the wide (≥1100px) layout it's the static
    * right column, shown by default; below that it's an overlay drawer that must start
@@ -851,7 +849,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.timeline.open(id);
     this.threads.open(id); // project this room's thread summaries for indicators
     this.pinned.open(id); // project this room's pinned messages
-    this.closeDrawer(); // collapse the drawer on mobile after picking a room
+    // On mobile, setting activeRoomId switches from the room-list page to the chat.
   }
 
   /**
@@ -933,14 +931,13 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
   }
 
-  /** Toggle the mobile navigation drawer (no-op visual at md+, where it's static). */
-  toggleDrawer(): void {
-    this.drawerOpen.update((open) => !open);
-  }
-
-  /** Close the mobile navigation drawer. */
-  closeDrawer(): void {
-    this.drawerOpen.set(false);
+  /**
+   * Mobile: leave the open conversation and return to the room-list page. Below the
+   * md breakpoint the rail + sidebar and the chat are separate full-screen pages
+   * (keyed off `activeRoomId`); at md+ both columns are static and this is unused.
+   */
+  backToList(): void {
+    this.closeOpenRoom();
   }
 
   /** Show/hide the member list from the toolbar / overflow menu. */

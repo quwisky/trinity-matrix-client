@@ -1831,10 +1831,10 @@ describe('RoomsPage quick switcher', () => {
   });
 });
 
-// The channel sidebar renders as a static column at md+ and an overlay drawer
-// below that breakpoint. `drawerOpen` tracks the overlay's visibility; picking a
-// room (mobile's primary path to the sidebar) should collapse it again.
-describe('RoomsPage mobile nav drawer', () => {
+// Below md the rail + sidebar (room list) and the chat are separate full-screen
+// pages keyed off `activeRoomId`: picking a room opens the chat page, and the back
+// button (`backToList`) returns to the list. At md+ both columns are static columns.
+describe('RoomsPage mobile navigation', () => {
   let timelineOpen: ReturnType<typeof vi.fn>;
   let threadsOpen: ReturnType<typeof vi.fn>;
   let releaseAll: ReturnType<typeof vi.fn>;
@@ -1881,38 +1881,17 @@ describe('RoomsPage mobile nav drawer', () => {
     return TestBed.inject(RoomsPage);
   }
 
-  it('starts closed', () => {
+  it('backToList closes the open room, returning to the list page', () => {
     const page = build();
+    page.onSelectRoom('!r:hs');
+    expect(page.activeRoomId()).toBe('!r:hs');
 
-    expect(page.drawerOpen()).toBe(false);
-  });
+    page.backToList();
 
-  it('toggleDrawer flips the open state', () => {
-    const page = build();
-
-    page.toggleDrawer();
-    expect(page.drawerOpen()).toBe(true);
-
-    page.toggleDrawer();
-    expect(page.drawerOpen()).toBe(false);
-  });
-
-  it('closeDrawer forces the drawer closed regardless of its current state', () => {
-    const page = build();
-    page.toggleDrawer();
-    expect(page.drawerOpen()).toBe(true);
-
-    page.closeDrawer();
-
-    expect(page.drawerOpen()).toBe(false);
-  });
-
-  it('closeDrawer is a no-op when already closed', () => {
-    const page = build();
-
-    page.closeDrawer();
-
-    expect(page.drawerOpen()).toBe(false);
+    expect(page.activeRoomId()).toBeNull();
+    expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
+    expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
+    expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
   });
 
   it('seeds the member list closed on a narrow layout and toggleMembers flips it', () => {
@@ -1938,15 +1917,11 @@ describe('RoomsPage mobile nav drawer', () => {
     expect(page.membersOpen()).toBe(false);
   });
 
-  it('onSelectRoom collapses an open drawer after picking a room', () => {
+  it('onSelectRoom opens the room (switching to the mobile chat page)', () => {
     const page = build();
-    page.toggleDrawer();
-    expect(page.drawerOpen()).toBe(true);
 
     page.onSelectRoom('!r:hs');
 
-    expect(page.drawerOpen()).toBe(false);
-    // The existing room-switch behavior keeps working alongside the new collapse.
     expect(page.activeRoomId()).toBe('!r:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
     expect(threadsOpen).toHaveBeenCalledWith('!r:hs');
