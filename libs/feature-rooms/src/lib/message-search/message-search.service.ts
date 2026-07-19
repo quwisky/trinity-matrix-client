@@ -28,7 +28,7 @@ export class MessageSearchService {
       // Signal inputs are populated from `inputs` (app sets useSetInputAPI).
       return await this.dialog.openAndWait<string, MessageSearchComponent>(
         MessageSearchComponent,
-        { side: 'end', inputs: { roomId } },
+        { ariaLabel: 'Search messages', side: 'end', inputs: { roomId } },
       );
     } finally {
       this.open = false;

@@ -25,6 +25,7 @@ export class UserPickerService {
     return this.dialog.openAndWait<string, UserPickerComponent>(
       UserPickerComponent,
       {
+        ariaLabel: options.title,
         inputs: {
           title: options.title,
           confirmLabel: options.confirmLabel,

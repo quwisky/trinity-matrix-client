@@ -15,7 +15,7 @@ export class UserCardService {
   open(userId: string): Promise<string | null> {
     return this.dialog.openAndWait<string, UserCardComponent>(
       UserCardComponent,
-      { inputs: { userId } },
+      { ariaLabel: 'User', inputs: { userId } },
     );
   }
 }
