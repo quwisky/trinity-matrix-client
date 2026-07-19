@@ -59,6 +59,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The member list is reachable on phones and tablets.** Below 1100px the room's member
+  list was hidden with no way to open it. It now slides in as a drawer — from the **Members**
+  button on tablets, or the room's **⋮** overflow menu on a phone — and closes by tapping
+  outside it. The wide-screen layout, where it stays a side column, is unchanged.
 - **Confirmation messages (toasts) appear again.** Actions that report success or failure
   with a small pop-up notification — changing your password, exporting/importing encryption
   keys, reporting a message, renaming a room, updating a room photo, unbanning a member, and
