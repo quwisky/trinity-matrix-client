@@ -1,10 +1,17 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  inject,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DialogRef } from '@angular/cdk/dialog';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucidePinOff, lucideX } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { PinnedMessagesService } from '@trinity/data-access-pinned';
 
 /**
@@ -30,6 +37,8 @@ import { PinnedMessagesService } from '@trinity/data-access-pinned';
 })
 export class PinnedMessagesPanelComponent {
   private readonly pinnedSvc = inject(PinnedMessagesService);
+  private readonly toast = inject(TrnToastService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly dialogRef =
     inject<DialogRef<string | undefined, PinnedMessagesPanelComponent>>(
       DialogRef,
@@ -45,9 +54,18 @@ export class PinnedMessagesPanelComponent {
     this.dialogRef.close(eventId);
   }
 
-  /** Unpin a message in place; the live projection drops the row. */
+  /** Unpin a message in place; the live projection drops the row on success. */
   unpin(eventId: string): void {
-    this.pinnedSvc.unpin(eventId);
+    this.pinnedSvc
+      .unpin(eventId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () =>
+          this.toast.show('Could not unpin the message.', {
+            duration: 4000,
+            variant: 'destructive',
+          }),
+      });
   }
 
   /** Close the panel without jumping. */

@@ -995,11 +995,20 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Pin or unpin a message from its overflow menu, resolving which by current state. */
   onTogglePin(eventId: string): void {
-    if (this.pinned.isPinned(eventId)) {
-      this.pinned.unpin(eventId);
-    } else {
-      this.pinned.pin(eventId);
-    }
+    const pinning = !this.pinned.isPinned(eventId);
+    const action = pinning
+      ? this.pinned.pin(eventId)
+      : this.pinned.unpin(eventId);
+    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () =>
+        this.showSuccess(pinning ? 'Message pinned.' : 'Message unpinned.'),
+      error: () =>
+        void this.showError(
+          pinning
+            ? 'Could not pin the message.'
+            : 'Could not unpin the message.',
+        ),
+    });
   }
 
   /**
