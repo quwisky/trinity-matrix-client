@@ -9,7 +9,7 @@
       aria-label="Cancel reply"
       (click)="cancelReply.emit()"
     >
-      ✕
+      <ng-icon name="lucideX" aria-hidden="true" />
     </button>
   </div>
 }
@@ -52,7 +52,7 @@
       data-testid="composer-pending-remove"
       (click)="clearPending()"
     >
-      ✕
+      <ng-icon name="lucideX" aria-hidden="true" />
     </button>
   </div>
 }

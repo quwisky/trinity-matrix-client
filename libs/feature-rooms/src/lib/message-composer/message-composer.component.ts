@@ -24,6 +24,7 @@ import {
   lucideSmile,
   lucideTrash2,
   lucideVote,
+  lucideX,
 } from '@ng-icons/lucide';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
 import { HlmSpinner } from '@trinity/helm/spinner';
@@ -115,6 +116,7 @@ const MENTION_SUGGESTION_LIMIT = 8;
       lucideSmile,
       lucideTrash2,
       lucideVote,
+      lucideX,
     }),
   ],
   templateUrl: './message-composer.component.html',

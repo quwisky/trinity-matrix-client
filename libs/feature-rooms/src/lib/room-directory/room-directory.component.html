@@ -45,7 +45,7 @@
       [disabled]="loading()"
       data-testid="directory-search-btn"
     >
-      Search
+      {{ loading() ? 'Searching…' : 'Search' }}
     </button>
   </form>
 
@@ -56,7 +56,15 @@
   }
 
   <div class="min-h-0 flex-1 overflow-y-auto">
-    @if (isEmpty()) {
+    @if (loading() && rooms().length === 0) {
+      <p
+        class="text-sm text-muted-foreground"
+        aria-live="polite"
+        data-testid="directory-loading"
+      >
+        Loading…
+      </p>
+    } @else if (isEmpty()) {
       <p class="text-sm text-muted-foreground" data-testid="directory-empty">
         No public rooms found.
       </p>
