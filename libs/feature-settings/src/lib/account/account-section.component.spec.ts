@@ -50,6 +50,32 @@ describe('AccountSectionComponent', () => {
     });
   });
 
+  it('reveals each password field independently', async () => {
+    const { cmp, fixture } = await renderSection();
+    const field = (id: string) => screen.getByTestId(id) as HTMLInputElement;
+
+    // All three start masked.
+    expect(field('current-password').type).toBe('password');
+    expect(field('new-password').type).toBe('password');
+    expect(field('confirm-password').type).toBe('password');
+
+    // Toggling one reveals only that field.
+    cmp.toggleReveal('currentPassword');
+    fixture.detectChanges();
+    expect(field('current-password').type).toBe('text');
+    expect(field('new-password').type).toBe('password');
+    expect(cmp.revealed()).toEqual({
+      currentPassword: true,
+      newPassword: false,
+      confirmPassword: false,
+    });
+
+    // Toggling again re-masks it.
+    cmp.toggleReveal('currentPassword');
+    fixture.detectChanges();
+    expect(field('current-password').type).toBe('password');
+  });
+
   it('changes the password, clears the form, and toasts on success', async () => {
     const { cmp, auth, toast } = await renderSection();
     cmp.form.setValue({
