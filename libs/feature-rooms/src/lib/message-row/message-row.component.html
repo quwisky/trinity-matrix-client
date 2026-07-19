@@ -52,7 +52,11 @@
           }
           @if (r.shield; as shield) {
             <ng-icon
-              name="lucideShieldAlert"
+              [name]="
+                shield.level === 'red'
+                  ? 'lucideShieldAlert'
+                  : 'lucideShieldQuestion'
+              "
               class="msg__shield"
               [class.msg__shield--red]="shield.level === 'red'"
               [attr.title]="shield.reason"
@@ -176,7 +180,11 @@
         }
         @if (r.shield; as shield) {
           <ng-icon
-            name="lucideShieldAlert"
+            [name]="
+              shield.level === 'red'
+                ? 'lucideShieldAlert'
+                : 'lucideShieldQuestion'
+            "
             class="msg__shield msg__shield--cont"
             [class.msg__shield--red]="shield.level === 'red'"
             [attr.title]="shield.reason"
