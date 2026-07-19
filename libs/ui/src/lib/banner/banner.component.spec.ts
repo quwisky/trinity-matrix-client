@@ -24,10 +24,9 @@ describe('BannerComponent', () => {
     expect(container.querySelector('.banner__text')?.textContent?.trim()).toBe(
       'Hello there',
     );
-    // The polite live region wraps the message, not the actions.
-    expect(
-      container.querySelector('[role="status"]')?.textContent?.trim(),
-    ).toBe('Hello there');
+    // The banner is presentational only — announcement is the consumer's job (a
+    // persistent sr-only live region), so the banner itself has no role="status".
+    expect(container.querySelector('[role="status"]')).toBeNull();
     expect(
       container.querySelector('.banner__actions button')?.textContent?.trim(),
     ).toBe('Do it');

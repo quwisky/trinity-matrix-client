@@ -2,12 +2,16 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  Injector,
   OnDestroy,
   OnInit,
+  afterNextRender,
   computed,
   effect,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
@@ -119,6 +123,16 @@ function membersShownAsDrawer(): boolean {
   );
 }
 
+/** True on the mobile master-detail layout (below md), where the room list and the
+ * chat are separate full-screen pages — mirrors the `max-width: 767.98px` scss query. */
+function isMobileMasterDetail(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 767.98px)').matches
+  );
+}
+
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
  * responsive Tailwind drawer — static column at md+, slide-in below), the read
@@ -151,6 +165,7 @@ function membersShownAsDrawer(): boolean {
     // Both accelerators, per the style guide's `host`-over-@HostListener rule.
     '(document:keydown.meta.k)': 'onQuickSwitch($event)',
     '(document:keydown.control.k)': 'onQuickSwitch($event)',
+    '(document:keydown.escape)': 'onEscapeKey()',
   },
   viewProviders: [
     provideIcons({
@@ -200,12 +215,18 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly alert = inject(TrnAlertService);
   private readonly actionSheet = inject(TrnActionSheetService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
 
   readonly activeSpaceId = signal<string | null>(null);
   /** Whether the Rooms view is active — filters the sidebar to non-DM rooms. Home (the
    * default, no space) shows direct messages only; a space or this view clears the other. */
   readonly roomsView = signal(false);
   readonly activeRoomId = signal<string | null>(null);
+
+  // The two mobile pages (the rail/room-list and the chat), focused on a view switch
+  // so keyboard/screen-reader focus follows to the newly-shown page (see focusActiveView).
+  private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
+  private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
   /**
    * Whether the member list is shown. At the wide (≥1100px) layout it's the static
    * right column, shown by default; below that it's an overlay drawer that must start
@@ -850,6 +871,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.threads.open(id); // project this room's thread summaries for indicators
     this.pinned.open(id); // project this room's pinned messages
     // On mobile, setting activeRoomId switches from the room-list page to the chat.
+    this.focusActiveView();
   }
 
   /**
@@ -938,6 +960,26 @@ export class RoomsPage implements OnInit, OnDestroy {
    */
   backToList(): void {
     this.closeOpenRoom();
+    this.focusActiveView();
+  }
+
+  /**
+   * On the mobile master-detail layout, move focus to the page that just became
+   * visible (the chat when a room is open, else the room list) once it renders — the
+   * other page is display:none'd, so otherwise focus falls to `<body>`. At md+ both
+   * pages are always visible, so focus is left where it is.
+   */
+  private focusActiveView(): void {
+    if (!isMobileMasterDetail()) {
+      return;
+    }
+    afterNextRender(
+      () => {
+        const view = this.activeRoomId() ? this.mainView() : this.listView();
+        view?.nativeElement.focus();
+      },
+      { injector: this.injector },
+    );
   }
 
   /** Show/hide the member list from the toolbar / overflow menu. */
@@ -948,6 +990,17 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Close the member list — used by the mobile drawer's backdrop. */
   closeMembers(): void {
     this.membersOpen.set(false);
+  }
+
+  /**
+   * Escape dismisses the mobile members drawer (its backdrop is mouse-only). Scoped to
+   * when the drawer is actually open so it never swallows Escape elsewhere; a member's
+   * info panel is a CDK dialog that closes the drawer as it opens, so there's no clash.
+   */
+  onEscapeKey(): void {
+    if (this.membersOpen() && membersShownAsDrawer()) {
+      this.closeMembers();
+    }
   }
 
   /** Open the thread rooted at `rootEventId` (raised by a message's indicator). */

@@ -1,334 +1,339 @@
-<div
-  class="flex min-h-0 flex-1"
-  [attr.data-mobile-view]="activeRoomId() ? 'chat' : 'list'"
->
-  <!-- Below md the rail + sidebar (room list) and the chat are separate full-screen
-       pages, shown one at a time based on whether a room is open (rooms.page.scss).
-       At md+ both are static columns side by side. -->
-  <aside class="shell-side w-full shrink-0 md:w-88">
-    <trn-server-rail
-      [spaces]="spaces.spaces()"
-      [activeSpaceId]="activeSpaceId()"
-      [roomsActive]="roomsView()"
-      [unread]="railUnread()"
-      (selectSpace)="onSelectSpace($event)"
-      (createSpace)="onCreateSpace()"
-      (showRooms)="onShowRooms()"
-    />
-    <trn-channel-sidebar
-      [spaceName]="sidebarTitle()"
-      [spaceActive]="!roomsView() && activeSpaceId() !== null"
-      [rooms]="visibleRooms()"
-      [activeRoomId]="activeRoomId()"
-      [user]="userProfile()"
-      [accounts]="accounts()"
-      [activeUserId]="activeAccountId()"
-      [reauthAccounts]="reauthAccounts()"
-      (selectRoom)="onSelectRoom($event)"
-      (switchAccount)="switchAccount($event)"
-      (reauthAccount)="reauthAccount($event)"
-      (addAccount)="addAccount()"
-      (openSwitcher)="openSwitcher()"
-      (newChat)="onNewChat()"
-      (createRoom)="onCreateChannel()"
-      (inviteToSpace)="onInviteToSpace()"
-      (leaveSpace)="onLeaveSpace()"
-      (joinRoom)="onJoinChild($event)"
-      (removeRoom)="onRemoveFromSpace($event)"
-      (leaveRoom)="onLeaveRoom($event)"
-      (openChildSpace)="onSelectSpace($event)"
-      (acceptInvite)="onAcceptInvite($event)"
-      (declineInvite)="onDeclineInvite($event)"
-      (openSettings)="goToSettings()"
-      (logout)="logout($event)"
-      (setNotifyMode)="onSetNotifyMode($event)"
-      (markRead)="onMarkRead($event)"
-      (markAllRead)="onMarkAllRead()"
-    />
-  </aside>
+<div class="rooms-shell flex min-h-0 flex-1 flex-col">
+  <!-- App-global status banners sit above the columns, so they show (and their
+       live regions announce) on both the mobile room-list page and the chat page —
+       not just inside .main, which the master-detail layout hides on the list page. -->
+  <trn-connectivity-banner />
+  <trn-encryption-banner />
 
-  <div class="main">
-    <trn-connectivity-banner />
-    <trn-encryption-banner />
+  <div
+    class="flex min-h-0 flex-1"
+    [attr.data-mobile-view]="activeRoomId() ? 'chat' : 'list'"
+  >
+    <!-- Below md the rail + sidebar (room list) and the chat are separate full-screen
+         pages, shown one at a time based on whether a room is open (rooms.page.scss).
+         At md+ both are static columns side by side. -->
+    <aside #listView tabindex="-1" class="shell-side w-full shrink-0 md:w-88">
+      <trn-server-rail
+        [spaces]="spaces.spaces()"
+        [activeSpaceId]="activeSpaceId()"
+        [roomsActive]="roomsView()"
+        [unread]="railUnread()"
+        (selectSpace)="onSelectSpace($event)"
+        (createSpace)="onCreateSpace()"
+        (showRooms)="onShowRooms()"
+      />
+      <trn-channel-sidebar
+        [spaceName]="sidebarTitle()"
+        [spaceActive]="!roomsView() && activeSpaceId() !== null"
+        [rooms]="visibleRooms()"
+        [activeRoomId]="activeRoomId()"
+        [user]="userProfile()"
+        [accounts]="accounts()"
+        [activeUserId]="activeAccountId()"
+        [reauthAccounts]="reauthAccounts()"
+        (selectRoom)="onSelectRoom($event)"
+        (switchAccount)="switchAccount($event)"
+        (reauthAccount)="reauthAccount($event)"
+        (addAccount)="addAccount()"
+        (openSwitcher)="openSwitcher()"
+        (newChat)="onNewChat()"
+        (createRoom)="onCreateChannel()"
+        (inviteToSpace)="onInviteToSpace()"
+        (leaveSpace)="onLeaveSpace()"
+        (joinRoom)="onJoinChild($event)"
+        (removeRoom)="onRemoveFromSpace($event)"
+        (leaveRoom)="onLeaveRoom($event)"
+        (openChildSpace)="onSelectSpace($event)"
+        (acceptInvite)="onAcceptInvite($event)"
+        (declineInvite)="onDeclineInvite($event)"
+        (openSettings)="goToSettings()"
+        (logout)="logout($event)"
+        (setNotifyMode)="onSetNotifyMode($event)"
+        (markRead)="onMarkRead($event)"
+        (markAllRead)="onMarkAllRead()"
+      />
+    </aside>
 
-    <trn-page-header variant="chat">
-      <button
-        trnHeaderLeading
-        hlmBtn
-        variant="ghost"
-        size="icon"
-        class="md:hidden"
-        (click)="backToList()"
-        hlmTooltip="Back to rooms"
-        aria-label="Back to rooms"
-        data-testid="back-to-rooms"
-      >
-        <ng-icon class="text-xl" name="lucideArrowLeft" />
-      </button>
+    <div #mainView tabindex="-1" class="main">
+      <trn-page-header variant="chat">
+        <button
+          trnHeaderLeading
+          hlmBtn
+          variant="ghost"
+          size="icon"
+          class="md:hidden"
+          (click)="backToList()"
+          hlmTooltip="Back to rooms"
+          aria-label="Back to rooms"
+          data-testid="back-to-rooms"
+        >
+          <ng-icon class="text-xl" name="lucideArrowLeft" />
+        </button>
 
-      <!-- Projected into the shell's single <h1>: inline spans + icon only, no
+        <!-- Projected into the shell's single <h1>: inline spans + icon only, no
            nested heading. rooms' scoped .title-hash/.title-lock still apply. -->
-      <ng-container trnHeaderTitle>
+        <ng-container trnHeaderTitle>
+          @if (activeRoom(); as room) {
+            <span class="truncate">
+              <span class="title-hash">#</span>{{ room.name }}
+            </span>
+            @if (room.encrypted) {
+              <ng-icon
+                class="title-lock"
+                name="lucideLock"
+                aria-label="Encrypted room"
+                aria-hidden="false"
+              />
+            }
+          } @else {
+            Trinity
+          }
+        </ng-container>
+
+        <ng-container trnHeaderActions>
+          @if (activeRoom()) {
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon"
+              (click)="openMessageSearch()"
+              hlmTooltip="Search messages in this room"
+              aria-label="Search messages in this room"
+              data-testid="search-messages"
+            >
+              <ng-icon class="text-xl" name="lucideSearch" />
+            </button>
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon"
+              class="max-md:hidden"
+              (click)="onInviteToRoom()"
+              hlmTooltip="Invite people"
+              aria-label="Invite people"
+              data-testid="invite-people"
+            >
+              <ng-icon class="text-xl" name="lucideUserPlus" />
+            </button>
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon"
+              class="max-md:hidden"
+              (click)="onOpenRoomSettings()"
+              hlmTooltip="Room settings"
+              aria-label="Room settings"
+              data-testid="open-room-settings"
+            >
+              <ng-icon class="text-xl" name="lucideSettings" />
+            </button>
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon"
+              (click)="openThreadsList()"
+              hlmTooltip="Threads"
+              aria-label="Threads"
+              data-testid="open-threads"
+            >
+              <ng-icon class="text-xl" name="lucideMessagesSquare" />
+            </button>
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon"
+              class="header-pin max-md:hidden"
+              (click)="openPinnedPanel()"
+              hlmTooltip="Pinned messages"
+              aria-label="Pinned messages"
+              data-testid="open-pinned"
+            >
+              <ng-icon class="text-xl" name="lucidePin" />
+              @if (pinned.pinnedMessages().length > 0) {
+                <span class="header-pin__badge" aria-hidden="true">{{
+                  pinned.pinnedMessages().length
+                }}</span>
+              }
+            </button>
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon"
+              class="max-md:hidden"
+              (click)="toggleMembers()"
+              [attr.aria-pressed]="membersOpen()"
+              hlmTooltip="Members"
+              aria-label="Members"
+              data-testid="toggle-members"
+            >
+              <ng-icon class="text-xl" name="lucideUsers" />
+            </button>
+
+            <!-- Below md the demoted actions collapse into this overflow menu; at md+
+               it is removed (md:hidden) and the buttons above are shown instead. -->
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon"
+              class="header-pin md:hidden"
+              [hlmDropdownMenuTrigger]="roomActionsMenu"
+              align="end"
+              aria-label="More actions"
+              data-testid="room-actions-overflow"
+            >
+              <ng-icon class="text-xl" name="lucideEllipsisVertical" />
+              @if (pinned.pinnedMessages().length > 0) {
+                <span class="header-pin__badge" aria-hidden="true">{{
+                  pinned.pinnedMessages().length
+                }}</span>
+              }
+            </button>
+            <ng-template #roomActionsMenu>
+              <div hlmDropdownMenu>
+                <button
+                  hlmDropdownMenuItem
+                  (triggered)="onInviteToRoom()"
+                  data-testid="overflow-invite-people"
+                >
+                  <ng-icon name="lucideUserPlus" />
+                  Invite people
+                </button>
+                <button
+                  hlmDropdownMenuItem
+                  (triggered)="onOpenRoomSettings()"
+                  data-testid="overflow-open-room-settings"
+                >
+                  <ng-icon name="lucideSettings" />
+                  Room settings
+                </button>
+                <button
+                  hlmDropdownMenuItem
+                  (triggered)="openPinnedPanel()"
+                  data-testid="overflow-open-pinned"
+                >
+                  <ng-icon name="lucidePin" />
+                  Pinned messages
+                  @if (pinned.pinnedMessages().length > 0) {
+                    <span class="ml-auto tabular-nums">{{
+                      pinned.pinnedMessages().length
+                    }}</span>
+                  }
+                </button>
+                <button
+                  hlmDropdownMenuItem
+                  (triggered)="toggleMembers()"
+                  data-testid="overflow-toggle-members"
+                >
+                  <ng-icon name="lucideUsers" />
+                  Members
+                </button>
+              </div>
+            </ng-template>
+          }
+        </ng-container>
+      </trn-page-header>
+
+      <div class="chat-body">
         @if (activeRoom(); as room) {
-          <span class="truncate">
-            <span class="title-hash">#</span>{{ room.name }}
-          </span>
-          @if (room.encrypted) {
-            <ng-icon
-              class="title-lock"
-              name="lucideLock"
-              aria-label="Encrypted room"
-              aria-hidden="false"
+          <trn-tombstone-banner (goToRoom)="onGoToUpgradedRoom($event)" />
+          <!-- The experimental flag swaps in the windowed timeline. Both take the
+             same inputs/outputs (MessageListBase); flipping the flag re-creates the
+             chosen component fresh. -->
+          @if (flags.virtualTimeline()) {
+            <trn-virtual-message-list
+              [messages]="timeline.messages()"
+              [threadSummaries]="threads.summaries()"
+              [canPin]="pinned.canPin()"
+              [canRedactOthers]="timeline.canRedactOthers()"
+              [pinnedIds]="pinned.pinnedEventIds()"
+              [loadingOlder]="timeline.loadingOlder()"
+              [canLoadOlder]="timeline.canLoadOlder()"
+              [roomId]="activeRoomId()"
+              [members]="members()"
+              [typingNames]="timeline.typingNames()"
+              [firstUnreadId]="timeline.firstUnreadId()"
+              [roomName]="room.name"
+              [uploadProgress]="uploadProgress()"
+              [jumpToId]="messageSearchTarget()"
+              [jumpToNonce]="jumpRequest()"
+              (loadOlder)="loadOlder()"
+              (openThread)="onOpenThread($event)"
+              (togglePin)="onTogglePin($event)"
+              (send)="onSend($event)"
+              (sendMedia)="onSendMedia($event)"
+              (retry)="timeline.retry($event)"
+              (editMessage)="onEdit($event)"
+              (deleteMessage)="onDelete($event)"
+              (react)="onReact($event)"
+              (reply)="onReply($event)"
+              (typing)="onTyping($event)"
+              (matrixLink)="onMatrixLink($event)"
+              (pollVote)="onPollVote($event)"
+              (pollEnd)="onPollEnd($event)"
+            />
+          } @else {
+            <trn-simple-message-list
+              [messages]="timeline.messages()"
+              [threadSummaries]="threads.summaries()"
+              [canPin]="pinned.canPin()"
+              [canRedactOthers]="timeline.canRedactOthers()"
+              [pinnedIds]="pinned.pinnedEventIds()"
+              [loadingOlder]="timeline.loadingOlder()"
+              [canLoadOlder]="timeline.canLoadOlder()"
+              [roomId]="activeRoomId()"
+              [members]="members()"
+              [typingNames]="timeline.typingNames()"
+              [firstUnreadId]="timeline.firstUnreadId()"
+              [roomName]="room.name"
+              [uploadProgress]="uploadProgress()"
+              [jumpToId]="messageSearchTarget()"
+              [jumpToNonce]="jumpRequest()"
+              (loadOlder)="loadOlder()"
+              (openThread)="onOpenThread($event)"
+              (togglePin)="onTogglePin($event)"
+              (send)="onSend($event)"
+              (sendMedia)="onSendMedia($event)"
+              (retry)="timeline.retry($event)"
+              (editMessage)="onEdit($event)"
+              (deleteMessage)="onDelete($event)"
+              (react)="onReact($event)"
+              (reply)="onReply($event)"
+              (typing)="onTyping($event)"
+              (matrixLink)="onMatrixLink($event)"
+              (pollVote)="onPollVote($event)"
+              (pollEnd)="onPollEnd($event)"
+            />
+          }
+          @if (membersOpen()) {
+            <!-- Below 1100px the member list is an overlay drawer; a backdrop (shown
+               only at that width) dismisses it. At ≥1100px it stays a static column
+               and the backdrop is display:none. -->
+            <div
+              class="fixed inset-0 z-30 hidden bg-black/50 max-[1100px]:block"
+              (click)="closeMembers()"
+              aria-hidden="true"
+              data-testid="members-backdrop"
+            ></div>
+            <trn-member-list
+              class="chat-members"
+              [members]="members()"
+              (selectMember)="onSelectMember($event)"
             />
           }
         } @else {
-          Trinity
-        }
-      </ng-container>
-
-      <ng-container trnHeaderActions>
-        @if (activeRoom()) {
-          <button
-            hlmBtn
-            variant="ghost"
-            size="icon"
-            (click)="openMessageSearch()"
-            hlmTooltip="Search messages in this room"
-            aria-label="Search messages in this room"
-            data-testid="search-messages"
-          >
-            <ng-icon class="text-xl" name="lucideSearch" />
-          </button>
-          <button
-            hlmBtn
-            variant="ghost"
-            size="icon"
-            class="max-md:hidden"
-            (click)="onInviteToRoom()"
-            hlmTooltip="Invite people"
-            aria-label="Invite people"
-            data-testid="invite-people"
-          >
-            <ng-icon class="text-xl" name="lucideUserPlus" />
-          </button>
-          <button
-            hlmBtn
-            variant="ghost"
-            size="icon"
-            class="max-md:hidden"
-            (click)="onOpenRoomSettings()"
-            hlmTooltip="Room settings"
-            aria-label="Room settings"
-            data-testid="open-room-settings"
-          >
-            <ng-icon class="text-xl" name="lucideSettings" />
-          </button>
-          <button
-            hlmBtn
-            variant="ghost"
-            size="icon"
-            (click)="openThreadsList()"
-            hlmTooltip="Threads"
-            aria-label="Threads"
-            data-testid="open-threads"
-          >
-            <ng-icon class="text-xl" name="lucideMessagesSquare" />
-          </button>
-          <button
-            hlmBtn
-            variant="ghost"
-            size="icon"
-            class="header-pin max-md:hidden"
-            (click)="openPinnedPanel()"
-            hlmTooltip="Pinned messages"
-            aria-label="Pinned messages"
-            data-testid="open-pinned"
-          >
-            <ng-icon class="text-xl" name="lucidePin" />
-            @if (pinned.pinnedMessages().length > 0) {
-              <span class="header-pin__badge" aria-hidden="true">{{
-                pinned.pinnedMessages().length
-              }}</span>
-            }
-          </button>
-          <button
-            hlmBtn
-            variant="ghost"
-            size="icon"
-            class="max-md:hidden"
-            (click)="toggleMembers()"
-            [attr.aria-pressed]="membersOpen()"
-            hlmTooltip="Members"
-            aria-label="Members"
-            data-testid="toggle-members"
-          >
-            <ng-icon class="text-xl" name="lucideUsers" />
-          </button>
-
-          <!-- Below md the demoted actions collapse into this overflow menu; at md+
-               it is removed (md:hidden) and the buttons above are shown instead. -->
-          <button
-            hlmBtn
-            variant="ghost"
-            size="icon"
-            class="header-pin md:hidden"
-            [hlmDropdownMenuTrigger]="roomActionsMenu"
-            align="end"
-            aria-label="More actions"
-            data-testid="room-actions-overflow"
-          >
-            <ng-icon class="text-xl" name="lucideEllipsisVertical" />
-            @if (pinned.pinnedMessages().length > 0) {
-              <span class="header-pin__badge" aria-hidden="true">{{
-                pinned.pinnedMessages().length
-              }}</span>
-            }
-          </button>
-          <ng-template #roomActionsMenu>
-            <div hlmDropdownMenu>
-              <button
-                hlmDropdownMenuItem
-                (triggered)="onInviteToRoom()"
-                data-testid="overflow-invite-people"
-              >
-                <ng-icon name="lucideUserPlus" />
-                Invite people
-              </button>
-              <button
-                hlmDropdownMenuItem
-                (triggered)="onOpenRoomSettings()"
-                data-testid="overflow-open-room-settings"
-              >
-                <ng-icon name="lucideSettings" />
-                Room settings
-              </button>
-              <button
-                hlmDropdownMenuItem
-                (triggered)="openPinnedPanel()"
-                data-testid="overflow-open-pinned"
-              >
-                <ng-icon name="lucidePin" />
-                Pinned messages
-                @if (pinned.pinnedMessages().length > 0) {
-                  <span class="ml-auto tabular-nums">{{
-                    pinned.pinnedMessages().length
-                  }}</span>
-                }
-              </button>
-              <button
-                hlmDropdownMenuItem
-                (triggered)="toggleMembers()"
-                data-testid="overflow-toggle-members"
-              >
-                <ng-icon name="lucideUsers" />
-                Members
-              </button>
-            </div>
-          </ng-template>
-        }
-      </ng-container>
-    </trn-page-header>
-
-    <div class="chat-body">
-      @if (activeRoom(); as room) {
-        <trn-tombstone-banner (goToRoom)="onGoToUpgradedRoom($event)" />
-        <!-- The experimental flag swaps in the windowed timeline. Both take the
-             same inputs/outputs (MessageListBase); flipping the flag re-creates the
-             chosen component fresh. -->
-        @if (flags.virtualTimeline()) {
-          <trn-virtual-message-list
-            [messages]="timeline.messages()"
-            [threadSummaries]="threads.summaries()"
-            [canPin]="pinned.canPin()"
-            [canRedactOthers]="timeline.canRedactOthers()"
-            [pinnedIds]="pinned.pinnedEventIds()"
-            [loadingOlder]="timeline.loadingOlder()"
-            [canLoadOlder]="timeline.canLoadOlder()"
-            [roomId]="activeRoomId()"
-            [members]="members()"
-            [typingNames]="timeline.typingNames()"
-            [firstUnreadId]="timeline.firstUnreadId()"
-            [roomName]="room.name"
-            [uploadProgress]="uploadProgress()"
-            [jumpToId]="messageSearchTarget()"
-            [jumpToNonce]="jumpRequest()"
-            (loadOlder)="loadOlder()"
-            (openThread)="onOpenThread($event)"
-            (togglePin)="onTogglePin($event)"
-            (send)="onSend($event)"
-            (sendMedia)="onSendMedia($event)"
-            (retry)="timeline.retry($event)"
-            (editMessage)="onEdit($event)"
-            (deleteMessage)="onDelete($event)"
-            (react)="onReact($event)"
-            (reply)="onReply($event)"
-            (typing)="onTyping($event)"
-            (matrixLink)="onMatrixLink($event)"
-            (pollVote)="onPollVote($event)"
-            (pollEnd)="onPollEnd($event)"
-          />
-        } @else {
-          <trn-simple-message-list
-            [messages]="timeline.messages()"
-            [threadSummaries]="threads.summaries()"
-            [canPin]="pinned.canPin()"
-            [canRedactOthers]="timeline.canRedactOthers()"
-            [pinnedIds]="pinned.pinnedEventIds()"
-            [loadingOlder]="timeline.loadingOlder()"
-            [canLoadOlder]="timeline.canLoadOlder()"
-            [roomId]="activeRoomId()"
-            [members]="members()"
-            [typingNames]="timeline.typingNames()"
-            [firstUnreadId]="timeline.firstUnreadId()"
-            [roomName]="room.name"
-            [uploadProgress]="uploadProgress()"
-            [jumpToId]="messageSearchTarget()"
-            [jumpToNonce]="jumpRequest()"
-            (loadOlder)="loadOlder()"
-            (openThread)="onOpenThread($event)"
-            (togglePin)="onTogglePin($event)"
-            (send)="onSend($event)"
-            (sendMedia)="onSendMedia($event)"
-            (retry)="timeline.retry($event)"
-            (editMessage)="onEdit($event)"
-            (deleteMessage)="onDelete($event)"
-            (react)="onReact($event)"
-            (reply)="onReply($event)"
-            (typing)="onTyping($event)"
-            (matrixLink)="onMatrixLink($event)"
-            (pollVote)="onPollVote($event)"
-            (pollEnd)="onPollEnd($event)"
-          />
-        }
-        @if (membersOpen()) {
-          <!-- Below 1100px the member list is an overlay drawer; a backdrop (shown
-               only at that width) dismisses it. At ≥1100px it stays a static column
-               and the backdrop is display:none. -->
-          <div
-            class="fixed inset-0 z-30 hidden bg-black/50 max-[1100px]:block"
-            (click)="closeMembers()"
-            aria-hidden="true"
-            data-testid="members-backdrop"
-          ></div>
-          <trn-member-list
-            class="chat-members"
-            [members]="members()"
-            (selectMember)="onSelectMember($event)"
-          />
-        }
-      } @else {
-        <div class="chat-empty">
-          <div class="hero">
-            <div class="hero__badge">#</div>
-            <!-- h2, not h1: the toolbar (trn-page-header) already owns the page's
+          <div class="chat-empty">
+            <div class="hero">
+              <div class="hero__badge">#</div>
+              <!-- h2, not h1: the toolbar (trn-page-header) already owns the page's
                  single <h1> ("Trinity" here when no room is active). -->
-            <h2 class="hero__title">{{ syncLabel() }}</h2>
-            <p class="hero__meta">
-              Select a channel on the left to get started.
-            </p>
+              <h2 class="hero__title">{{ syncLabel() }}</h2>
+              <p class="hero__meta">
+                Select a channel on the left to get started.
+              </p>
+            </div>
           </div>
-        </div>
-      }
+        }
+      </div>
     </div>
   </div>
 </div>

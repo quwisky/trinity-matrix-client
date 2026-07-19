@@ -1,3 +1,11 @@
+<!-- Always-mounted live region: a role="status" node inserted with the banner (via
+     @if) isn't reliably announced, so mirror the state here where the region already
+     exists when the text appears. -->
+<span class="sr-only" role="status" aria-live="polite">
+  {{
+    tombstone() ? 'This room has been upgraded and is no longer active.' : ''
+  }}
+</span>
 @if (tombstone(); as tombstone) {
   <trn-banner tone="accent" data-testid="tombstone-banner">
     <ng-icon trnBannerIcon name="lucideArchive" aria-hidden="true" />

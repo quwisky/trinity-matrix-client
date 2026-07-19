@@ -2,9 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  Injector,
+  afterNextRender,
   computed,
+  effect,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -62,6 +67,9 @@ export class LoginPage {
   private readonly oidcState = inject(OidcStateStore);
   private readonly storage = inject(SessionStorageService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private readonly usernameInput =
+    viewChild<ElementRef<HTMLInputElement>>('usernameInput');
 
   /** `/login?add` — add a second account instead of replacing the current one. */
   readonly addMode = this.route.snapshot.queryParamMap.has('add');
@@ -93,6 +101,17 @@ export class LoginPage {
         ),
       ).subscribe(({ flows, oidc }) => this.applyFlows(flows, oidc));
     }
+
+    // The username/password step is inserted after homeserver discovery, so the
+    // field's static `autofocus` is ignored (a document flushes autofocus once — on
+    // the homeserver step). Move focus there programmatically when it appears.
+    effect(() => {
+      if (this.passwordSupported()) {
+        afterNextRender(() => this.usernameInput()?.nativeElement.focus(), {
+          injector: this.injector,
+        });
+      }
+    });
   }
 
   /** Re-auth and add both keep the other accounts; a plain login replaces them. */

@@ -1,16 +1,29 @@
-// Server rail (72) + channel sidebar (280) = 352px. A static column at md+ and a
-// slide-in drawer below (the fixed/translate classes live on the template's <aside>).
+// The room shell holds the app-global banners above the rail + chat columns. The top
+// safe-area inset lives here so the banners (not just the columns) clear the notch /
+// status bar. env() is 0 off notched devices, so this is inert on web/desktop.
+.rooms-shell {
+  padding-top: env(safe-area-inset-top);
+}
+
+// Server rail (72) + channel sidebar (280) = 352px. A static column at md+ and the
+// full-screen room-list page below md.
 .shell-side {
   display: flex;
   height: 100%;
   background: var(--trinity-rail);
 
-  // Outer-left column: clear the notch/status bar (top), the left cutout on a
-  // landscape notch (left), and the home indicator (bottom, where the user footer
-  // sits). env() is 0 off notched devices, so this is inert on web/desktop.
-  padding-top: env(safe-area-inset-top);
+  // Outer-left column: clear the left cutout on a landscape notch (left) and the home
+  // indicator (bottom, where the user footer sits). The top inset is on .rooms-shell.
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
+}
+
+// The two mobile pages take programmatic focus on a view switch (tabindex="-1", so
+// they're not in the tab order) — suppress the outline focus would draw around the
+// whole page.
+.shell-side:focus,
+.main:focus {
+  outline: none;
 }
 
 .main {
@@ -21,9 +34,8 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden; // contain the header + body so the timeline scrolls internally
-  // Outer-right column: fill the top cutout with the chat surface so the toolbar's
-  // content sits below the notch, and keep content clear of a right-side cutout.
-  padding-top: env(safe-area-inset-top);
+  // Outer-right column: keep content clear of a right-side landscape cutout. The top
+  // inset lives on .rooms-shell (above the banners).
   padding-right: env(safe-area-inset-right);
   background: var(--trinity-chat);
 }
