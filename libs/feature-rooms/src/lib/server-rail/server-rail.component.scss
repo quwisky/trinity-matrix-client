@@ -55,8 +55,11 @@
   height: 18px;
   padding: 0 5px;
   border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-danger);
-  color: var(--trinity-danger-foreground);
+
+  // Filled badge, so this takes the solid pair — `--trinity-danger` is the
+  // text/icon role and is too light to carry white on it.
+  background: var(--trinity-danger-solid);
+  color: var(--trinity-danger-solid-foreground);
   font-size: 11px;
   font-weight: 700;
   line-height: 18px;

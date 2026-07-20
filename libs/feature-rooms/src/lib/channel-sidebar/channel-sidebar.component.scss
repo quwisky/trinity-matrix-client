@@ -129,7 +129,7 @@
   }
 
   &.decline:hover {
-    color: var(--destructive);
+    color: var(--trinity-danger);
   }
 }
 
@@ -212,14 +212,19 @@
   height: 16px;
   padding: 0 5px;
   border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-danger);
-  color: var(--trinity-danger-foreground);
+
+  // Filled badge, so this takes the solid pair — `--trinity-danger` is the
+  // text/icon role and is too light to carry white on it.
+  background: var(--trinity-danger-solid);
+  color: var(--trinity-danger-solid-foreground);
   font-size: 11px;
   font-weight: 700;
   line-height: 16px;
   text-align: center;
 
   // Ordinary unread (no mention) reads as a neutral count, not the red alert.
+  // Both fills clear AA against the sidebar, so hue — not contrast — is what
+  // separates them; don't rely on the mention badge being the "louder" one.
   &--muted {
     background: var(--trinity-text-muted);
     color: var(--trinity-sidebar);
@@ -310,7 +315,7 @@
 }
 
 .empty--error {
-  color: var(--destructive);
+  color: var(--trinity-danger);
 }
 
 // Touch targets: the small sidebar action / invite / room-kebab buttons are below

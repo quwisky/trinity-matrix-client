@@ -76,10 +76,30 @@
   --trinity-accent-foreground: var(--primary-foreground);
   --trinity-green: #23a55a;
 
-  // Semantic danger/alert red (+ its on-colour) for component SCSS — tracks the Helm
-  // destructive tokens so they re-theme with mode and palette (one token per role).
-  --trinity-danger: var(--destructive);
-  --trinity-danger-foreground: var(--destructive-foreground);
+  // On-green text/icon — mirrors the accent pairing so a palette that lightens
+  // --trinity-green can darken this too. White on #23a55a is 3.18:1: it passes AA only
+  // as large text, which is what the sole consumer is (a 32px aria-hidden checkmark).
+  --trinity-green-foreground: var(--primary-foreground);
+
+  // Danger splits into two roles because one colour cannot serve both in dark mode.
+  //   --trinity-danger              — alert TEXT/ICONS drawn straight on a surface.
+  //   --trinity-danger-solid (+ -foreground) — a FILLED badge and the text on it.
+  // Deliberately NOT aliased to --destructive: shadcn treats that as a fill-only token
+  // (paired with near-white --destructive-foreground for Helm's destructive buttons) and
+  // in dark it is a near-black maroon, #7f1d1d — 1.26:1 as text on --trinity-chat, i.e.
+  // invisible. The values below are measured instead, against the WORST backdrop the role
+  // lands on. Two of those are easy to miss: --trinity-hover (a row that recolours on
+  // :hover is where a danger label is usually read), and the translucent
+  // `bg-destructive/10..30` tint Helm paints under its own destructive text. #bf1e24
+  // clears 4.5:1 on --trinity-chat/-sidebar/-rail/-hover and on every tint, in both
+  // palettes (worst case 4.61:1). NOT swept: --trinity-active, the selected-row tone,
+  // where it is only 4.11–4.25:1 — no danger text lands on a selected row today, so do
+  // not put one there without re-measuring.
+  // The fill only owes 3:1 as a graphic, so it keeps the brighter #d92b31 — 4.02:1
+  // against hover, 4.36:1 against the sidebar — with #fff on it at 4.84:1.
+  --trinity-danger: #bf1e24;
+  --trinity-danger-solid: #d92b31;
+  --trinity-danger-solid-foreground: #fff;
 
   // --- Trinity surfaces (lightest → most-recessed) ------------------------------
   --trinity-rail: #e3e5e8; // server rail
@@ -133,6 +153,16 @@
   --trinity-text: #dbdee1;
   --trinity-text-muted: #949ba4;
   --trinity-text-bright: #f2f3f5;
+
+  // Danger, lightened for the dark canvas (see :root for why --destructive is not used).
+  // #fc8181 as text is 4.88:1 on --trinity-hover, the lightest surface it lands on, and
+  // 5.77:1 / 6.29:1 on chat / sidebar. The badge fill needs more saturation to stay
+  // distinct, so it keeps shadcn's *light* destructive red (#ef4444) — 3.67:1 against the
+  // sidebar, 4.38:1 against the rail — under near-black text at 4.62:1, rather than white,
+  // which would only reach 3.8:1.
+  --trinity-danger: #fc8181;
+  --trinity-danger-solid: #ef4444; // shadcn's *light* destructive red, reused as a fill
+  --trinity-danger-solid-foreground: #1a1a1a;
 
   // Helm surfaces (dark). Elevated surfaces track the Trinity palette: cards/popovers
   // are the sidebar tone, the muted/secondary/accent layer is one step lighter

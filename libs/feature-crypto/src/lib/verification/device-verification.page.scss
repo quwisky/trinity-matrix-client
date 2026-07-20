@@ -23,7 +23,7 @@
   align-items: center;
   justify-content: center;
   font-size: 32px;
-  color: #fff;
+  color: var(--trinity-green-foreground);
 }
 
 .result--ok {
@@ -32,7 +32,7 @@
 
 .result--bad {
   // Caution-toned so the glyph keeps contrast even when ⚠️ falls back to text
-  // presentation (no colour-emoji font) rather than inheriting the base white.
+  // presentation (no colour-emoji font) rather than inheriting the base on-green colour.
   background: var(--warning);
   color: var(--warning-foreground);
 }
