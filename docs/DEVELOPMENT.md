@@ -45,9 +45,12 @@ pnpm install
 
 > pnpm blocks dependency build scripts by default. The ones this project needs
 > (`esbuild`, `@parcel/watcher`, `lmdb`, `msgpackr-extract`, `@swc/core`, `nx`) are
-> allowlisted under `pnpm.onlyBuiltDependencies` in `package.json`, so they build on
-> install. Installing also runs the `prepare` script, which activates the Husky git
-> hooks (see [Code quality](#code-quality--git-hooks)).
+> approved under `allowBuilds` in `pnpm-workspace.yaml`, so they build on install.
+> (pnpm 11 removed the older `pnpm.onlyBuiltDependencies` list that used to live in
+> `package.json`; `strictDepBuilds` now defaults to true, so any other build-script
+> dependency must be listed there too — see `less: false`.) Installing also runs the
+> `prepare` script, which activates the Husky git hooks (see
+> [Code quality](#code-quality--git-hooks)).
 
 ## Running on the web
 

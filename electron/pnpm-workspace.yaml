@@ -8,3 +8,11 @@
 # never get installed.
 packages: []
 minimumReleaseAge: 1440
+
+# pnpm 11's `strictDepBuilds` defaults to true, so a transitive dep with an install
+# script that is neither allowed nor blocked fails the install. `electron-winstaller`
+# (pulled in by electron-builder for Windows/Squirrel packaging) has one, and pnpm 10
+# never allowlisted it — it was silently skipped, and packaging still worked. Keep that:
+# block it explicitly so the install stays clean instead of erroring.
+allowBuilds:
+  electron-winstaller: false
