@@ -5,6 +5,14 @@ import {
   HlmRadioIndicator,
 } from '@trinity/helm/radio-group';
 import {
+  HlmSelect,
+  HlmSelectContent,
+  HlmSelectItem,
+  HlmSelectPortal,
+  HlmSelectTrigger,
+  HlmSelectValue,
+} from '@trinity/helm/select';
+import {
   ThemeService,
   type Palette,
   type ThemePreference,
@@ -15,7 +23,17 @@ import {
   selector: 'trn-appearance-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './appearance-settings.component.html',
-  imports: [HlmRadioGroup, HlmRadio, HlmRadioIndicator],
+  imports: [
+    HlmRadioGroup,
+    HlmRadio,
+    HlmRadioIndicator,
+    HlmSelect,
+    HlmSelectTrigger,
+    HlmSelectValue,
+    HlmSelectContent,
+    HlmSelectPortal,
+    HlmSelectItem,
+  ],
 })
 export class AppearanceSettingsComponent {
   readonly theme = inject(ThemeService);
@@ -25,8 +43,10 @@ export class AppearanceSettingsComponent {
     this.theme.setPreference(value as ThemePreference);
   }
 
-  /** Apply + persist the chosen colour palette when the radio group changes. */
-  onPaletteChange(value: string): void {
-    this.theme.setPalette(value as Palette);
+  /** Apply + persist the chosen colour palette when the dropdown changes. */
+  onPaletteChange(value: string | null | undefined): void {
+    if (value) {
+      this.theme.setPalette(value as Palette);
+    }
   }
 }

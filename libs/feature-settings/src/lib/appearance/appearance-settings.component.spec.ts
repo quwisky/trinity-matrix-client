@@ -58,33 +58,35 @@ describe('AppearanceSettingsComponent', () => {
     );
   });
 
-  it('gives both radio groups an accessible name via aria-labelledby', async () => {
+  it('gives the mode group and palette select an accessible name via aria-labelledby', async () => {
     const { container } = await renderPage();
 
-    const groups = container.querySelectorAll('hlm-radio-group');
-    expect(groups.length).toBe(2);
-    for (const group of groups) {
-      const id = group.getAttribute('aria-labelledby');
+    const labelled = [
+      container.querySelector('hlm-radio-group'),
+      container.querySelector('[data-testid=palette-select]'),
+    ];
+    for (const control of labelled) {
+      const id = control?.getAttribute('aria-labelledby');
       expect(id).toBeTruthy();
-      const label = container.querySelector(`#${id}`);
-      expect(label?.textContent?.trim()).toBeTruthy();
+      expect(
+        container.querySelector(`#${id}`)?.textContent?.trim(),
+      ).toBeTruthy();
     }
   });
 
-  it('renders one option per registered palette, bound to the current palette', async () => {
+  it('renders the palette dropdown as a select control', async () => {
+    // The option list renders in a CDK overlay only once opened (needs a real browser —
+    // ResizeObserver/scrollIntoView are absent in jsdom), so the open→select round-trip
+    // is covered in e2e (settings.spec.mts). Here: the control is present and is an
+    // hlm-select with a trigger button.
     const { container } = await renderPage();
 
-    const options = container.querySelectorAll('[data-testid^=palette-]');
-    expect(options.length).toBe(TRINITY_PALETTES.length);
-    // The bound palette ('trinity') is reflected on its native radio input.
-    const trinityInput = container.querySelector<HTMLInputElement>(
-      '[data-testid=palette-trinity] input',
-    );
-    expect(trinityInput?.checked).toBe(true);
-    expect(container.textContent).toContain('Amethyst');
+    const select = container.querySelector('[data-testid=palette-select]');
+    expect(select?.tagName.toLowerCase()).toBe('hlm-select');
+    expect(select?.querySelector('button')).not.toBeNull();
   });
 
-  it('applies the chosen palette on change', async () => {
+  it('applies the chosen palette when the dropdown emits a value', async () => {
     const { fixture } = await renderPage();
 
     fixture.componentInstance.onPaletteChange('amethyst');
@@ -92,5 +94,13 @@ describe('AppearanceSettingsComponent', () => {
     expect(TestBed.inject(ThemeService).setPalette).toHaveBeenCalledWith(
       'amethyst',
     );
+  });
+
+  it('ignores a cleared (null) palette value', async () => {
+    const { fixture } = await renderPage();
+
+    fixture.componentInstance.onPaletteChange(null);
+
+    expect(TestBed.inject(ThemeService).setPalette).not.toHaveBeenCalled();
   });
 });

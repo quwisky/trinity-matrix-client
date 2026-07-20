@@ -42,19 +42,26 @@
 >
   Palette
 </h2>
-<hlm-radio-group
-  class="px-4 py-2"
-  aria-labelledby="appearance-palette-heading"
-  [value]="theme.palette()"
-  (valueChange)="onPaletteChange($event)"
->
-  @for (palette of theme.palettes; track palette.id) {
-    <label
-      class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-      [attr.data-testid]="'palette-' + palette.id"
-    >
-      <hlm-radio [value]="palette.id"><hlm-radio-indicator /></hlm-radio>
-      {{ palette.label }}
-    </label>
-  }
-</hlm-radio-group>
+<div class="px-4 py-2">
+  <hlm-select
+    class="block"
+    data-testid="palette-select"
+    aria-labelledby="appearance-palette-heading"
+    [value]="theme.palette()"
+    (valueChange)="onPaletteChange($event)"
+  >
+    <hlm-select-trigger class="w-full">
+      <hlm-select-value placeholder="Select a palette" />
+    </hlm-select-trigger>
+    <hlm-select-content *hlmSelectPortal>
+      @for (palette of theme.palettes; track palette.id) {
+        <hlm-select-item
+          [value]="palette.id"
+          [attr.data-testid]="'palette-' + palette.id"
+        >
+          {{ palette.label }}
+        </hlm-select-item>
+      }
+    </hlm-select-content>
+  </hlm-select>
+</div>
