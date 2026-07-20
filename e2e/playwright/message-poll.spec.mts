@@ -78,6 +78,12 @@ test.describe('Polls', () => {
     } as SynapseSession);
     await openRoom(page, roomName);
 
+    // This runs at the desktop viewport: the composer uses the `+` tray here too, with no
+    // inline action buttons (mobile-nav.spec asserts the same at 390px). Guards the
+    // "tray at all widths" behaviour on the side that actually changed.
+    await expect(page.getByTestId('composer-insert')).toBeVisible();
+    await expect(page.getByTestId('composer-poll')).toHaveCount(0);
+
     // Open the create-poll dialog from the composer's `+` tray and fill it in.
     await page.getByTestId('composer-insert').click();
     await page.getByTestId('insert-poll').click();

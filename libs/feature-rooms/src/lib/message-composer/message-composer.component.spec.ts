@@ -1,4 +1,4 @@
-import { signal, type Provider } from '@angular/core';
+import { ApplicationRef, signal, type Provider } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1001,6 +1001,105 @@ describe('MessageComposerComponent', () => {
       ]) {
         expect(document.querySelector(`[data-testid=${id}]`)).not.toBeNull();
       }
+    });
+
+    it('wires each tray item to its handler', async () => {
+      // The wiring the change moved from inline buttons to tray items: each item's
+      // (triggered) must call the right method. A CDK menu item fires on click only
+      // after a full ApplicationRef.tick() (the overlay is a root view, not the fixture
+      // view), and it closes the menu after firing — so re-open the tray per item.
+      // Handlers are spied so their side effects (dialogs, services) don't run.
+      const { fixture } = await renderComposer({}, [
+        MockProvider(GifSettingsService, {
+          configured: signal(true).asReadonly(),
+        }),
+        MockProvider(VoiceRecorderService, { supported: true }),
+      ]);
+      const cmp = fixture.componentInstance;
+      const appRef = TestBed.inject(ApplicationRef);
+      const wiring: [string, ReturnType<typeof vi.spyOn>][] = [
+        ['insert-attach', vi.spyOn(cmp, 'onAttach').mockReturnValue()],
+        ['insert-gif', vi.spyOn(cmp, 'toggleGifPicker').mockReturnValue()],
+        ['insert-poll', vi.spyOn(cmp, 'openPollDialog').mockReturnValue()],
+        ['insert-location', vi.spyOn(cmp, 'shareLocation').mockReturnValue()],
+        [
+          'insert-voice',
+          vi.spyOn(cmp, 'startVoiceRecording').mockResolvedValue(),
+        ],
+      ];
+
+      for (const [testid, spy] of wiring) {
+        fixture.nativeElement
+          .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+          ?.click();
+        appRef.tick();
+        (
+          document.querySelector(
+            `[data-testid=${testid}]`,
+          ) as HTMLElement | null
+        )?.click();
+        appRef.tick();
+        expect(spy, testid).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it('wires the plain attach fallback button to onAttach', async () => {
+      // The thread composer's only attach affordance (hasInsertMenu false). A plain
+      // button, so a direct click drives it — no overlay/tick plumbing.
+      const { fixture, container } = await renderComposer(
+        { richActions: false },
+        [
+          MockProvider(GifSettingsService, {
+            configured: signal(false).asReadonly(),
+          }),
+        ],
+      );
+      const spy = vi
+        .spyOn(fixture.componentInstance, 'onAttach')
+        .mockReturnValue();
+
+      container
+        .querySelector<HTMLButtonElement>(
+          '[data-testid=composer-insert-attach]',
+        )
+        ?.click();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables the Location item in the tray while a share is in flight', async () => {
+      // The inline location button's disabled state moved to the tray item; the
+      // trigger only shows a spinner, so the item is where the guard now lives.
+      const { fixture } = await renderComposer({}, [
+        MockProvider(LocationShareService, {
+          sharing: signal(true).asReadonly(),
+          share: vi.fn(),
+        }),
+      ]);
+      fixture.nativeElement
+        .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+        ?.click();
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(
+        document
+          .querySelector('[data-testid=insert-location]')
+          ?.getAttribute('data-disabled'),
+      ).toBe('');
+    });
+
+    it('disables the + trigger while editing a message', async () => {
+      // A single [disabled]="editing()" on the trigger locks out every insert while an
+      // edit is in progress — the change replaced five per-button guards with this one.
+      const { container } = await renderComposer({ editing: true }, [
+        MockProvider(VoiceRecorderService, { supported: true }),
+      ]);
+
+      expect(
+        container.querySelector<HTMLButtonElement>(
+          '[data-testid=composer-insert]',
+        )?.disabled,
+      ).toBe(true);
     });
   });
 
