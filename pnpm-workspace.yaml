@@ -14,3 +14,19 @@
 # up to a parent dir) while leaving the single-project install exactly as it is.
 packages: []
 minimumReleaseAge: 1440
+
+# Which dependencies may run install/build scripts. pnpm 11 removed
+# `pnpm.onlyBuiltDependencies` (the old allowlist, formerly in package.json) in favour
+# of `allowBuilds` — an explicit name → boolean map, with `strictDepBuilds` defaulting
+# to true so any build-script dep left off this map fails the install. The six `true`
+# entries are the previous allowlist; `less` (a transitive build-script dep) was never
+# allowed, so it stays off — blocked here explicitly, since strict mode would otherwise
+# error rather than silently skip it as pnpm 10 did.
+allowBuilds:
+  '@parcel/watcher': true
+  '@swc/core': true
+  esbuild: true
+  lmdb: true
+  msgpackr-extract: true
+  nx: true
+  less: false

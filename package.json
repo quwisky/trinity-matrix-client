@@ -48,20 +48,10 @@
     "ios:build": "pnpm run ios:sync && pnpm exec cap build ios --scheme App"
   },
   "private": true,
-  "packageManager": "pnpm@10.26.2",
+  "packageManager": "pnpm@11.15.1",
   "engines": {
     "node": ">=22",
-    "pnpm": ">=10"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "@swc/core",
-      "esbuild",
-      "lmdb",
-      "msgpackr-extract",
-      "nx"
-    ]
+    "pnpm": ">=11"
   },
   "dependencies": {
     "@angular/cdk": "22.0.5",
