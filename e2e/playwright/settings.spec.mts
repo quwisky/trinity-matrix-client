@@ -29,6 +29,10 @@ const PNG_1x1 = Buffer.from(
 const hasDarkPalette = (page: Page): Promise<boolean> =>
   page.evaluate(() => document.documentElement.classList.contains('dark'));
 
+/** The active colour palette, reflected as <html data-theme>; null for the default. */
+const paletteAttr = (page: Page): Promise<string | null> =>
+  page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+
 /** Open a settings section from the submenu and wait for its sub-page URL. */
 async function openSection(page: Page, path: string): Promise<void> {
   await page.getByTestId(`settings-nav-${path}`).click();
@@ -99,6 +103,34 @@ test.describe('Settings', () => {
 
     await page.getByTestId('theme-light').click();
     await expect.poll(() => hasDarkPalette(page)).toBe(false);
+  });
+
+  test('selects a colour palette from the dropdown', async ({ page }) => {
+    await openSection(page, 'appearance');
+
+    // The default palette sets no data-theme attribute.
+    expect(await paletteAttr(page)).toBeNull();
+
+    const trigger = page.getByTestId('palette-select').locator('button');
+    const amethyst = page.getByTestId('palette-amethyst');
+
+    // Closed to start: the options live in the popover overlay, absent until opened.
+    // (A missing *hlmSelectPortal renders them inline and the dropdown can never close.)
+    await expect(amethyst).toHaveCount(0);
+
+    // Open → the options appear; pick Amethyst → <html data-theme> reflects it AND the
+    // overlay closes again. jsdom can't drive this overlay; the unit spec covers the rest.
+    await trigger.click();
+    await expect(amethyst).toBeVisible();
+    await amethyst.click();
+    await expect.poll(() => paletteAttr(page)).toBe('amethyst');
+    await expect(amethyst).toHaveCount(0); // closed after selecting
+
+    // Back to the default palette → the attribute is removed again.
+    await trigger.click();
+    await page.getByTestId('palette-trinity').click();
+    await expect.poll(() => paletteAttr(page)).toBeNull();
+    await expect(amethyst).toHaveCount(0);
   });
 
   test('edits and saves the display name', async ({ page }) => {

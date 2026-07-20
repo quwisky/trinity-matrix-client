@@ -72,7 +72,8 @@
       ],
       "@trinity/helm/avatar": ["./libs/spartan/avatar/src/index.ts"],
       "@trinity/helm/textarea": ["./libs/spartan/textarea/src/index.ts"],
-      "@trinity/helm/card": ["./libs/spartan/card/src/index.ts"]
+      "@trinity/helm/card": ["./libs/spartan/card/src/index.ts"],
+      "@trinity/helm/select": ["./libs/spartan/select/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]
