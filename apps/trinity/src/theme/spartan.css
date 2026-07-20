@@ -42,6 +42,13 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  /*
+   * `text-danger` for alert TEXT. `text-destructive` reads --destructive, which is a
+   * fill-only token: in dark it is a near-black maroon (#7f1d1d) that lands at 1.26:1
+   * on the chat canvas, so error copy set with it is effectively invisible. This maps
+   * to the measured text role instead. See docs/THEMING.md.
+   */
+  --color-danger: var(--trinity-danger);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
@@ -72,4 +79,49 @@
   100% {
     transform: translateX(250%) scaleX(0.4);
   }
+}
+
+/*
+ * Repoint Helm's destructive *text* at the measured alert red.
+ *
+ * The generated Helm components (libs/spartan/*, owned by @spartan-ng/cli — do not
+ * hand-edit) paint destructive buttons, badges and menu items as `bg-destructive/10..30`
+ * with `text-destructive` on top: one token serving as both the background tint and the
+ * text drawn on it. That is unfixable by retoning `--destructive`, because the tint IS
+ * the text colour diluted — the contrast between them is capped no matter what value the
+ * token takes. Every red that clears 4.5:1 against its own 20% tint is above 90%
+ * lightness, i.e. a pale pink that no longer reads as danger.
+ *
+ * So we decouple the two roles instead of recolouring one. `--destructive` keeps its
+ * shadcn value and stays the tint/border/ring source (unchanged appearance); only the
+ * text utilities are redirected to `--trinity-danger`. Contrast over --card/--popover,
+ * sampled from the browser's actual composited pixels: light 5.37:1 on the /10 tint and
+ * 4.72:1 on /20; dark 5.63:1 on /10, 5.53:1 on /20 and 5.43:1 on /30. (Light never
+ * reaches /30 — only `dark:hover:` uses it — which is just as well, as it would be
+ * 4.10:1.) Before the split the same text sat at 1.34:1 in dark.
+ *
+ * These rules are deliberately UNLAYERED: Tailwind emits utilities into `@layer
+ * utilities`, and unlayered declarations outrank any cascade layer, so this wins without
+ * a specificity war.
+ *
+ * The list must cover EVERY emitted variant — an unmatched one does not degrade
+ * gracefully, it produces a half-styled control (a legible label beside an icon still at
+ * ~1.3:1). Note the last entry: the dropdown menu colours its child icon through a
+ * separate rule that targets the `ng-icon` descendant, so fixing the item alone leaves
+ * the glyph behind. After running the spartan CLI, re-derive this list mechanically from
+ * the built CSS rather than by reading the Helm class strings:
+ *
+ *   pnpm exec nx build trinity
+ *   tr '}' '\n' < www/styles-*.css | grep 'text-destructive.*color:var(--destructive)'
+ *
+ * See docs/THEMING.md.
+ */
+.text-destructive,
+[data-invalid='true'].data-\[invalid\=true\]\:text-destructive,
+[data-variant='destructive'].data-\[variant\=destructive\]\:text-destructive,
+[data-variant='destructive'].data-\[variant\=destructive\]\:hover\:text-destructive:hover,
+[data-variant='destructive'].data-\[variant\=destructive\]\:focus\:text-destructive:focus,
+[data-variant='destructive'].data-\[variant\=destructive\]\:\*\:\[ng-icon\]\:text-destructive
+  > ng-icon {
+  color: var(--trinity-danger);
 }

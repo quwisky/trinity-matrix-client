@@ -2,7 +2,7 @@
   <h1 class="sr-only">Completing sign in</h1>
   @if (error(); as e) {
     <p>
-      <span class="text-destructive">{{ e }}</span>
+      <span class="text-danger">{{ e }}</span>
     </p>
     <button hlmBtn (click)="back()">Back to sign in</button>
   } @else {
