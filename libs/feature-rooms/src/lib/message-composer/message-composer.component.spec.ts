@@ -929,6 +929,111 @@ describe('MessageComposerComponent', () => {
     ).not.toBeNull();
   });
 
+  describe('narrow-layout insert tray', () => {
+    // Which of the two `+` variants renders is a template decision (hasInsertMenu);
+    // which one is *visible* is the SCSS media query, which jsdom does not evaluate.
+    // These assert the branch, not the breakpoint — the widths are covered by the
+    // 390px Playwright specs.
+    it('offers the tray whenever more than one insert action exists', async () => {
+      const { container } = await renderComposer({}, [
+        MockProvider(VoiceRecorderService, { supported: true }),
+      ]);
+
+      expect(
+        container.querySelector('[data-testid=composer-insert]'),
+      ).not.toBeNull();
+      expect(
+        container.querySelector('[data-testid=composer-insert-attach]'),
+      ).toBeNull();
+    });
+
+    it('falls back to a plain attach button when the tray would hold one item', async () => {
+      // Thread composer with no GIF provider: attach is the only insert action left,
+      // so a one-item menu would be pure friction.
+      const { container } = await renderComposer({ richActions: false }, [
+        MockProvider(GifSettingsService, { configured: signal(false) }),
+      ]);
+
+      expect(
+        container.querySelector('[data-testid=composer-insert]'),
+      ).toBeNull();
+      expect(
+        container.querySelector('[data-testid=composer-insert-attach]'),
+      ).not.toBeNull();
+    });
+
+    it('omits the room-only actions from the opened tray when richActions is off', async () => {
+      // The thread case. The inline buttons are @if-guarded, but on a narrow layout
+      // they are display:none and the TRAY is what the user actually gets — so the
+      // routing rule has to hold there too, and asserting it needs the menu opened
+      // (CDK only instantiates the ng-template on open, at the document root).
+      const { fixture } = await renderComposer({ richActions: false }, [
+        MockProvider(GifSettingsService, { configured: signal(true) }),
+        MockProvider(VoiceRecorderService, { supported: true }),
+      ]);
+
+      fixture.nativeElement
+        .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+        ?.click();
+      await fixture.whenStable();
+
+      for (const id of ['insert-poll', 'insert-location', 'insert-voice']) {
+        expect(document.querySelector(`[data-testid=${id}]`)).toBeNull();
+      }
+      // ...while the actions that *are* thread-safe still appear.
+      expect(
+        document.querySelector('[data-testid=insert-attach]'),
+      ).not.toBeNull();
+      expect(document.querySelector('[data-testid=insert-gif]')).not.toBeNull();
+    });
+
+    it('keeps the inline actions in the DOM so wide layouts still render them', async () => {
+      const { container } = await renderComposer({}, [
+        MockProvider(VoiceRecorderService, { supported: true }),
+      ]);
+
+      // Both variants coexist; CSS picks one. If this ever regresses to rendering
+      // only the tray, every desktop e2e spec driving these testids breaks.
+      for (const id of [
+        'composer-attach',
+        'composer-poll',
+        'composer-location',
+      ]) {
+        expect(container.querySelector(`[data-testid=${id}]`)).not.toBeNull();
+      }
+    });
+  });
+
+  it('dismisses a picker on Escape from anywhere in the composer, not just the textarea', async () => {
+    // The binding lives on the host: the GIF picker can be opened from the insert tray,
+    // after which focus sits on the `+` trigger and never enters the textarea. Dispatch
+    // from a non-textarea element to prove the handler is not textarea-scoped.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    cmp.gifPickerOpen.set(true);
+
+    fixture.nativeElement
+      .querySelector('[data-testid=composer-insert]')
+      ?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+
+    expect(cmp.gifPickerOpen()).toBe(false);
+  });
+
+  it('always renders the send button, at every width and pointer type', async () => {
+    // Previously touch-only via `@media (hover: none)`. Enter-to-send is not always
+    // unambiguous (newlines in a draft, IME composition), so the target is permanent.
+    const { container } = await renderComposer();
+
+    const send = container.querySelector<HTMLButtonElement>(
+      '[data-testid=composer-send]',
+    );
+    expect(send).not.toBeNull();
+    // Disabled with nothing to send, so it cannot fire an empty message.
+    expect(send?.disabled).toBe(true);
+  });
+
   it('disables the location button and shows a spinner while a share is in flight', async () => {
     const { container } = await renderComposer({}, [
       MockProvider(LocationShareService, {

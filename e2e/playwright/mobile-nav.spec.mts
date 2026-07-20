@@ -220,4 +220,45 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
     await expect(shellSide(page)).toBeVisible();
     await expect(page.getByTestId('back-to-rooms')).toBeHidden();
   });
+
+  // The composer's narrow layout is decided purely by a media query, so nothing in the
+  // unit suite can observe it — jsdom does not lay out. Every other composer spec runs
+  // at the 1280px project viewport, i.e. on the *other* side of the breakpoint. Without
+  // this test the collapse could stop happening and CI would stay green.
+  test('the composer collapses its insert actions into the + tray', async ({
+    page,
+  }) => {
+    const channel = page.locator('button.channel', { hasText: ROOM_NAME });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
+    await channel.first().click();
+
+    const composerInput = page.getByTestId('composer-input');
+    await expect(composerInput).toBeVisible();
+
+    // The inline actions give way to the single tray trigger; emoji and send stay.
+    await expect(page.getByTestId('composer-insert')).toBeVisible();
+    for (const id of [
+      'composer-attach',
+      'composer-poll',
+      'composer-location',
+    ]) {
+      await expect(page.getByTestId(id)).toBeHidden();
+    }
+    await expect(page.getByTestId('composer-send')).toBeVisible();
+
+    // The point of the exercise: the input gets the reclaimed width. Three 44px
+    // targets plus gaps and padding leave ~214px of a 390px viewport; assert well
+    // clear of the ~22px it had when all seven were inline.
+    const box = await composerInput.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThan(150);
+
+    // The demoted actions are reachable, and land on the same handlers.
+    await page.getByTestId('composer-insert').click();
+    await expect(page.getByTestId('insert-attach')).toBeVisible();
+    await expect(page.getByTestId('insert-poll')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('insert-poll')).toBeHidden();
+  });
 });

@@ -94,6 +94,16 @@ test.describe('Thread composer', () => {
     await expect(thread).toBeVisible({ timeout: 15_000 });
 
     // The room-only actions post to the main room, so the thread composer omits them.
+    // This runs at the desktop viewport, where the composer's inline actions are the
+    // rendered ones — so these assertions are meaningful here.
+    //
+    // Their narrow-layout counterparts (insert-poll / insert-location / insert-voice)
+    // deliberately are NOT asserted here: they live in the tray's <ng-template>, which
+    // CDK only instantiates on open and then renders at the document root, outside
+    // `thread`. A toHaveCount(0) on those would pass whether or not the routing rule
+    // held — coverage-shaped, but testing nothing. The tray is asserted where the menu
+    // can actually be opened: message-composer.component.spec.ts, "omits the room-only
+    // actions from the opened tray when richActions is off".
     for (const id of ['composer-poll', 'composer-location', 'composer-voice']) {
       await expect(thread.getByTestId(id)).toHaveCount(0);
     }

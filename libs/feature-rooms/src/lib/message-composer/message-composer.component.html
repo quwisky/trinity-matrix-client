@@ -175,9 +175,12 @@
     hidden
     (change)="onFilePicked($event)"
   />
+  <!-- Insert actions, inline. Where the row would crowd the input these are hidden and
+       the tray below takes over; the breakpoint lives in the SCSS because it is a
+       compound query Tailwind's `max-md:` cannot express. -->
   <button
     type="button"
-    class="composer__attach"
+    class="composer__attach composer__inline-action"
     hlmTooltip="Attach"
     aria-label="Attach a file"
     data-testid="composer-attach"
@@ -189,7 +192,7 @@
   @if (richActions()) {
     <button
       type="button"
-      class="composer__attach"
+      class="composer__attach composer__inline-action"
       hlmTooltip="Create poll"
       aria-label="Create poll"
       data-testid="composer-poll"
@@ -200,7 +203,7 @@
     </button>
     <button
       type="button"
-      class="composer__attach"
+      class="composer__attach composer__inline-action"
       hlmTooltip="Share location"
       aria-label="Share location"
       data-testid="composer-location"
@@ -212,6 +215,102 @@
       } @else {
         <ng-icon name="lucideMapPin" aria-hidden="true" />
       }
+    </button>
+  }
+
+  <!-- Narrow layouts: one `+` opening every insert action, so the row keeps only
+       +, emoji and send and the textarea gets the width back. -->
+  @if (hasInsertMenu()) {
+    <button
+      type="button"
+      class="composer__attach composer__insert"
+      [hlmDropdownMenuTrigger]="insertMenu"
+      hlmTooltip="Add to message"
+      aria-label="Add to message"
+      data-testid="composer-insert"
+      [disabled]="editing()"
+    >
+      @if (locationSharing() || gifDownloading()) {
+        <hlm-spinner class="text-base" />
+      } @else {
+        <ng-icon name="lucidePlus" aria-hidden="true" />
+      }
+    </button>
+    <ng-template #insertMenu>
+      <!-- Each item repeats its inline twin's [disabled] rather than the trigger
+           carrying the union: an upload in flight blocks another *attachment*, it is
+           no reason to stop someone starting a poll. Only editing() is whole-tray. -->
+      <div hlmDropdownMenu aria-label="Add to message">
+        <button
+          hlmDropdownMenuItem
+          class="composer__insert-item"
+          [disabled]="uploadProgress() !== null"
+          (triggered)="onAttach()"
+          data-testid="insert-attach"
+        >
+          <ng-icon name="lucidePaperclip" />
+          Attach a file
+        </button>
+        @if (gifEnabled()) {
+          <button
+            hlmDropdownMenuItem
+            class="composer__insert-item"
+            [disabled]="uploadProgress() !== null || gifDownloading()"
+            (triggered)="toggleGifPicker()"
+            data-testid="insert-gif"
+          >
+            <ng-icon name="lucideImagePlay" />
+            GIF
+          </button>
+        }
+        @if (richActions()) {
+          <button
+            hlmDropdownMenuItem
+            class="composer__insert-item"
+            (triggered)="openPollDialog()"
+            data-testid="insert-poll"
+          >
+            <ng-icon name="lucideVote" />
+            Poll
+          </button>
+          <button
+            hlmDropdownMenuItem
+            class="composer__insert-item"
+            [disabled]="locationSharing()"
+            (triggered)="shareLocation()"
+            data-testid="insert-location"
+          >
+            <ng-icon name="lucideMapPin" />
+            Location
+          </button>
+          @if (voiceSupported && !recordingVoice()) {
+            <button
+              hlmDropdownMenuItem
+              class="composer__insert-item"
+              [disabled]="uploadProgress() !== null"
+              (triggered)="startVoiceRecording()"
+              data-testid="insert-voice"
+            >
+              <ng-icon name="lucideMic" />
+              Voice message
+            </button>
+          }
+        }
+      </div>
+    </ng-template>
+  } @else {
+    <!-- Nothing to collect in a tray (thread composer, no GIF provider), so the
+         narrow-layout `+` stays a plain attach button. -->
+    <button
+      type="button"
+      class="composer__attach composer__insert"
+      hlmTooltip="Attach"
+      aria-label="Attach a file"
+      data-testid="composer-insert-attach"
+      [disabled]="uploadProgress() !== null || editing()"
+      (click)="onAttach()"
+    >
+      <ng-icon name="lucidePlus" aria-hidden="true" />
     </button>
   }
   <textarea
@@ -245,7 +344,6 @@
     "
     (input)="onInput($event)"
     (keydown.enter)="onEnter($event)"
-    (keydown.escape)="onEscape()"
     (keydown.arrowUp)="onArrowUp($event)"
     (keydown.arrowDown)="onArrowDown($event)"
     (keydown.tab)="onTab($event)"
@@ -255,7 +353,7 @@
   @if (gifEnabled()) {
     <button
       type="button"
-      class="composer__gif"
+      class="composer__gif composer__inline-action"
       hlmTooltip="GIF"
       aria-label="Send a GIF"
       data-testid="composer-gif"
@@ -270,7 +368,7 @@
     @if (voiceSupported && !recordingVoice()) {
       <button
         type="button"
-        class="composer__voice"
+        class="composer__voice composer__inline-action"
         hlmTooltip="Record voice message"
         aria-label="Record voice message"
         data-testid="composer-voice"
@@ -291,16 +389,21 @@
   >
     <ng-icon name="lucideSmile" aria-hidden="true" />
   </button>
-  <!-- Touch devices have no reliable Enter-to-send, so surface an explicit send
-       button there (hidden on pointer devices via CSS). -->
-  <button
-    type="button"
-    class="composer__send"
-    hlmTooltip="Send"
-    aria-label="Send message"
-    [disabled]="!text().trim() && !pendingFile()"
-    (click)="submit()"
-  >
-    <ng-icon name="lucideSend" aria-hidden="true" />
-  </button>
+  <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on
+       a pointer device it is still the discoverable way to send when Enter is ambiguous
+       (a draft holding newlines, IME composition). Withheld only while recording, where
+       the recording bar owns the send plane and two identical ones would be a coin-flip. -->
+  @if (!recordingVoice()) {
+    <button
+      type="button"
+      class="composer__send"
+      hlmTooltip="Send"
+      aria-label="Send message"
+      data-testid="composer-send"
+      [disabled]="!text().trim() && !pendingFile()"
+      (click)="submit()"
+    >
+      <ng-icon name="lucideSend" aria-hidden="true" />
+    </button>
+  }
 </div>
