@@ -97,4 +97,39 @@ describe('AvatarComponent', () => {
     });
     expect(dot(container)?.style.width).toBe('8px'); // round(20 * 0.3) = 6 → floored
   });
+
+  // Deliberately a second, independent implementation of the WCAG maths rather
+  // than an import of the component's helper — otherwise a regression in that
+  // helper would be mirrored here and the assertion would pass regardless.
+  const luminance = (hex: string) => {
+    const linear = (offset: number) => {
+      const c = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * linear(1) + 0.7152 * linear(3) + 0.0722 * linear(5);
+  };
+  const contrast = (background: string, ink: string) => {
+    const [a, b] = [luminance(background), luminance(ink)];
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  };
+
+  // Asserts the *property* (AA is met), not the six literal picks — pinning the
+  // current choices would just re-freeze whatever the implementation happens to do.
+  it('picks an initial colour that clears WCAG AA on every hashed background', async () => {
+    const { fixture } = await render(AvatarComponent, {
+      inputs: { name: 'user-0' },
+    });
+    const avatar = fixture.componentInstance;
+
+    const inkByBackground = new Map<string, string>();
+    for (let i = 0; i < 60; i++) {
+      fixture.componentRef.setInput('name', `user-${i}`);
+      inkByBackground.set(avatar.color(), avatar.initialColor());
+    }
+
+    expect(inkByBackground.size).toBe(6); // the whole hash palette is exercised
+    inkByBackground.forEach((ink, background) => {
+      expect(contrast(background, ink)).toBeGreaterThanOrEqual(4.5);
+    });
+  });
 });

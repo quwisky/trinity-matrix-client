@@ -15,6 +15,28 @@ import {
 import { type PresenceState, presenceLabel } from '@trinity/util-matrix';
 import { AVATAR_RESOLVER } from './avatar-resolver';
 
+/** The two inks an initial may be drawn in; the higher-contrast one wins. */
+const INK_DARK = '#1a1a1a';
+const INK_LIGHT = '#ffffff';
+
+/**
+ * WCAG 2.x relative luminance of a full `#rrggbb` colour. Note this is *not* the
+ * cheap YIQ "perceived brightness" — YIQ ranks these palette colours differently
+ * from real luminance, so no YIQ threshold can pick the right ink for all of them.
+ */
+function relativeLuminance(hex: string): number {
+  const linear = (offset: number) => {
+    const c = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * linear(1) + 0.7152 * linear(3) + 0.0722 * linear(5);
+}
+
+/** WCAG contrast ratio between two relative luminances (AA body text needs 4.5). */
+function contrastRatio(a: number, b: number): number {
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
 /**
  * Discord-style avatar over the spartan {@link HlmAvatar}: the image shows once it
  * loads (BrnAvatar swaps to the initials fallback while loading or on error). Bind
@@ -42,7 +64,7 @@ import { AVATAR_RESOLVER } from './avatar-resolver';
         bottom: 0;
         border-radius: 50%;
         /* Ring in the surrounding surface colour so the dot reads as an overlay. */
-        box-shadow: 0 0 0 2px var(--trn-presence-ring, var(--background, #fff));
+        box-shadow: 0 0 0 2px var(--trn-presence-ring, var(--background));
       }
     `,
   ],
@@ -105,16 +127,14 @@ export class AvatarComponent {
     return palette[Math.abs(hash) % palette.length];
   });
 
-  /** Readable text colour for the initial on the hashed background: dark on a light
-   * hash (the amber), white otherwise — so a single letter always meets contrast. */
+  /** Readable text colour for the initial on the hashed background: whichever ink
+   * scores the higher WCAG contrast ratio against it — so a single letter always
+   * meets contrast (every palette entry clears AA under that choice). */
   readonly initialColor = computed(() => {
-    const hex = this.color().slice(1);
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    // Perceived brightness (YIQ), normalised 0–1; light backgrounds need dark text.
-    const brightness = (r * 299 + g * 587 + b * 114) / 255000;
-    return brightness > 0.6 ? '#1a1a1a' : '#fff';
+    const background = relativeLuminance(this.color());
+    const onDark = contrastRatio(background, relativeLuminance(INK_DARK));
+    const onLight = contrastRatio(background, relativeLuminance(INK_LIGHT));
+    return onDark >= onLight ? INK_DARK : INK_LIGHT;
   });
 
   constructor() {
