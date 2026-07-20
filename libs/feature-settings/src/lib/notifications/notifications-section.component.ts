@@ -13,6 +13,7 @@ import {
   PushRulesService,
   type PushRuleToggle,
 } from '@trinity/data-access-notifications';
+import { PushGatewayBlockComponent } from './push-gateway-block.component';
 
 /**
  * Notifications settings sub-page: account-level toggles for which events notify,
@@ -24,7 +25,7 @@ import {
   selector: 'trn-notifications-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './notifications-section.component.html',
-  imports: [HlmCheckbox],
+  imports: [HlmCheckbox, PushGatewayBlockComponent],
 })
 export class NotificationsSectionComponent implements OnInit {
   private readonly push = inject(PushRulesService);

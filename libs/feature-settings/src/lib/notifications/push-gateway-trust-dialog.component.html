@@ -1,0 +1,65 @@
+<div
+  class="w-[min(90vw,30rem)] rounded-lg border border-solid border-border bg-card p-6 text-card-foreground shadow-lg"
+  role="alertdialog"
+  aria-labelledby="push-gateway-trust-heading"
+  aria-describedby="push-gateway-trust-body"
+>
+  <h2
+    id="push-gateway-trust-heading"
+    class="text-lg leading-none font-semibold tracking-tight"
+  >
+    Trust this push gateway?
+  </h2>
+
+  <div id="push-gateway-trust-body" class="mt-3 space-y-3 text-sm">
+    <p class="text-muted-foreground">
+      Your homeserver will send
+      <strong class="text-foreground">{{ host() }}</strong>
+      a notification every time you receive a message, on every account signed
+      in to this device. Its operator will be able to see:
+    </p>
+    <ul class="list-disc space-y-1 pl-5 text-muted-foreground">
+      <li>your Matrix ID</li>
+      <li>that every account on this device belongs to one person</li>
+      <li>which room each message arrived in, and exactly when</li>
+      <li>your device's notification token</li>
+    </ul>
+    <p class="text-muted-foreground">
+      They will <strong class="text-foreground">not</strong> be able to read
+      your messages — Trinity sends only a reference to each message, never its
+      content — and they cannot send notifications to your device without your
+      app's push credentials. Only use a gateway you run yourself or otherwise
+      trust.
+    </p>
+
+    @if (data.insecure) {
+      <p
+        class="rounded-md bg-warning px-3 py-2 text-warning-foreground"
+        data-testid="push-gateway-trust-insecure"
+      >
+        This gateway is not encrypted (<code>http://</code>). Your homeserver
+        will send the metadata above in plain text. Use
+        <code>https://</code> unless the gateway is on your local network.
+      </p>
+    }
+  </div>
+
+  <div class="mt-6 flex justify-end gap-2">
+    <button
+      hlmBtn
+      variant="outline"
+      (click)="cancel()"
+      data-testid="push-gateway-trust-cancel"
+    >
+      Cancel
+    </button>
+    <button
+      hlmBtn
+      variant="destructive"
+      (click)="confirm()"
+      data-testid="push-gateway-trust-confirm"
+    >
+      Use this gateway
+    </button>
+  </div>
+</div>

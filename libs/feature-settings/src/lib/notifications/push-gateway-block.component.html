@@ -1,0 +1,155 @@
+<div>
+  <h2
+    id="push-gateway-heading"
+    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+  >
+    Push gateway (this device)
+  </h2>
+  <p class="px-4 py-1 text-13 text-muted-foreground">
+    Trinity delivers mobile notifications through a push gateway, operated by
+    whoever runs it — it is not part of your homeserver. This setting applies to
+    this device only.
+  </p>
+
+  @if (!supported()) {
+    <p
+      class="px-4 py-2 text-13 text-muted-foreground"
+      data-testid="push-gateway-unsupported"
+    >
+      Push delivery applies on iOS and Android. On desktop and web, Trinity
+      notifies you over its live connection.
+    </p>
+  } @else {
+    <div class="px-4 py-2">
+      <label hlmLabel for="push-gateway-url">Gateway URL</label>
+      <input
+        id="push-gateway-url"
+        hlmInput
+        type="url"
+        inputmode="url"
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck="false"
+        class="mt-1 w-full"
+        placeholder="https://push.example.org/_matrix/push/v1/notify"
+        aria-describedby="push-gateway-help"
+        [value]="urlDraft()"
+        (input)="onUrlInput($event)"
+        data-testid="push-gateway-url"
+      />
+
+      @if (errorText(); as error) {
+        <p
+          class="mt-1 text-13 text-danger"
+          role="alert"
+          data-testid="push-gateway-error"
+        >
+          {{ error }}
+        </p>
+      } @else {
+        @if (normalizedHint(); as normalized) {
+          <p
+            class="mt-1 text-13 text-muted-foreground"
+            data-testid="push-gateway-normalized"
+          >
+            Will use <code>{{ normalized }}</code>
+          </p>
+        }
+        @if (insecure()) {
+          <p
+            class="mt-1 rounded-md bg-warning px-2 py-1 text-13 text-warning-foreground"
+            data-testid="push-gateway-insecure"
+          >
+            Not encrypted — notification metadata is sent in plain text. Use
+            <code>https://</code> unless this gateway is on your local network.
+          </p>
+        }
+      }
+
+      <button
+        type="button"
+        class="mt-2 text-13 text-muted-foreground hover:text-foreground"
+        (click)="toggleAdvanced()"
+        [attr.aria-expanded]="advancedOpen()"
+        data-testid="push-gateway-advanced-toggle"
+      >
+        {{ advancedOpen() ? 'Hide' : 'Show' }} advanced
+      </button>
+
+      @if (advancedOpen()) {
+        <div class="mt-2">
+          <label hlmLabel for="push-gateway-appid">App ID</label>
+          <input
+            id="push-gateway-appid"
+            hlmInput
+            type="text"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            class="mt-1 w-full"
+            placeholder="eu.qwky.trinity"
+            aria-describedby="push-gateway-appid-help"
+            [value]="appIdDraft()"
+            (input)="onAppIdInput($event)"
+            data-testid="push-gateway-appid"
+          />
+          <p
+            id="push-gateway-appid-help"
+            class="mt-1 text-13 text-muted-foreground"
+          >
+            Leave blank unless your gateway registered Trinity under a different
+            app ID.
+          </p>
+        </div>
+      }
+
+      <div class="mt-3 flex items-center gap-2">
+        <button
+          hlmBtn
+          size="sm"
+          [disabled]="!canSave()"
+          (click)="save()"
+          data-testid="push-gateway-save"
+        >
+          Save
+        </button>
+        @if (hasOverride()) {
+          <button
+            hlmBtn
+            size="sm"
+            variant="outline"
+            (click)="clear()"
+            data-testid="push-gateway-clear"
+          >
+            Clear
+          </button>
+        }
+      </div>
+
+      @if (appliedAccounts(); as accounts) {
+        <p
+          class="mt-2 text-13 text-muted-foreground"
+          data-testid="push-gateway-status"
+        >
+          Registered on {{ accounts }}
+          {{ accounts === 1 ? 'account' : 'accounts' }} on this device. This
+          confirms the pushers were accepted, not that a notification has
+          arrived.
+        </p>
+      }
+      @if (errorMessage(); as message) {
+        <p
+          class="mt-2 text-13 text-danger"
+          role="alert"
+          data-testid="push-gateway-status"
+        >
+          {{ message }}
+        </p>
+      }
+    </div>
+  }
+
+  <p id="push-gateway-help" class="sr-only">
+    The gateway URL your homeserver sends push notifications to.
+  </p>
+</div>

@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Set your own mobile push gateway.** Settings → Notifications now has a **Push gateway**
+  section where you can point mobile notifications at a gateway you run or trust, instead
+  of relying on one built into the app. Paste its URL — a bare address is completed for you
+  and an obviously wrong one is caught before saving — and Trinity explains, before you
+  commit, exactly what the gateway's operator can and cannot see. The setting is specific
+  to the device you set it on. After saving, the screen tells you whether your homeserver
+  accepted the registration (it can't promise a notification will actually arrive — only
+  your gateway and Apple/Google can). Advanced users can also set a custom app ID. This
+  applies on iOS and Android; on desktop and web, Trinity notifies you over its live
+  connection instead.
 - **Sign in with next-generation Matrix auth (OIDC).** On homeservers that delegate
   authentication to an OpenID provider (MSC3861 / Matrix Authentication Service — as
   matrix.org now does), the login screen offers a **Continue** button that signs you in
@@ -80,11 +90,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- **Mobile push reaches every account on the same server.** With two or more accounts signed
-  in on one homeserver, registering each account's push cancelled the one before it, so only
-  the most recently registered account could receive mobile notifications. Each account now
-  registers without disturbing the others. (Push still needs a configured gateway to deliver
-  anything — see docs/PUSH.md.)
+- **Mobile push is registered for every account on the same server.** With two or more
+  accounts signed in on one homeserver, registering each account's push cancelled the one
+  before it, so only the most recently registered account kept a pusher the server could
+  route notifications to. Each account now registers without disturbing the others. (Push
+  still needs a configured gateway to deliver anything — see docs/PUSH.md.)
 - **Warnings and alerts are readable in dark mode again.** Danger indicators were painted in
   a very dark maroon that all but disappeared against the dark chat background — the
   "not verified" encryption shield, the retry prompt on a message that failed to send, and
