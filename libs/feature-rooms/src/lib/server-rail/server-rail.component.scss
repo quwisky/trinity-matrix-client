@@ -55,8 +55,8 @@
   height: 18px;
   padding: 0 5px;
   border-radius: var(--trinity-radius-pill);
-  background: #ed4245;
-  color: #fff;
+  background: var(--trinity-danger);
+  color: var(--trinity-danger-foreground);
   font-size: 11px;
   font-weight: 700;
   line-height: 18px;
@@ -94,7 +94,7 @@
 
 .pill.home {
   background: var(--trinity-accent);
-  color: #fff;
+  color: var(--trinity-accent-foreground);
 }
 
 .pill.home.round,
@@ -117,7 +117,7 @@
 .pill.rooms:hover,
 .item.active .pill.rooms {
   background: var(--trinity-accent);
-  color: #fff;
+  color: var(--trinity-accent-foreground);
 }
 
 trn-avatar {

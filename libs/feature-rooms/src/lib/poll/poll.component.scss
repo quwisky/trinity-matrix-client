@@ -7,7 +7,7 @@
   max-width: 440px;
   padding: 10px 12px;
   border: 1px solid var(--trinity-divider);
-  border-radius: 8px;
+  border-radius: var(--trinity-radius);
   background: var(--trinity-sidebar);
 }
 
@@ -34,7 +34,7 @@
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--trinity-divider);
-  border-radius: 6px;
+  border-radius: var(--trinity-radius-md);
   background: var(--trinity-chat);
   color: var(--trinity-text);
   text-align: left;
@@ -83,19 +83,6 @@
   margin-top: 8px;
   color: var(--trinity-text-muted);
   font-size: 12px;
-}
-
-.poll__end {
-  padding: 2px 8px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: 6px;
-  background: none;
-  color: var(--trinity-text);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--trinity-hover);
-  }
 }
 
 // Touch targets: poll options are tapped to vote — give them a 44px minimum on

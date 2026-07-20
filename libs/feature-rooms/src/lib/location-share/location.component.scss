@@ -5,14 +5,14 @@
   margin-top: 4px;
   max-width: 320px;
   padding: 10px 12px;
-  border: 1px solid var(--trinity-border, rgb(255 255 255 / 12%));
-  border-radius: 8px;
-  background: var(--trinity-surface-2, rgb(255 255 255 / 3%));
+  border: 1px solid var(--trinity-divider);
+  border-radius: var(--trinity-radius);
+  background: var(--trinity-surface);
   color: inherit;
   text-decoration: none;
 
   &:hover {
-    background: var(--trinity-surface-3, rgb(255 255 255 / 6%));
+    background: var(--trinity-hover);
   }
 }
 
@@ -20,7 +20,7 @@
   display: flex;
   flex-shrink: 0;
   font-size: 22px;
-  color: var(--trinity-accent, #5865f2);
+  color: var(--trinity-accent);
 }
 
 .location__body {
@@ -41,6 +41,6 @@
 }
 
 .location__open {
-  color: var(--trinity-accent, #5865f2);
+  color: var(--trinity-accent);
   font-size: 12px;
 }

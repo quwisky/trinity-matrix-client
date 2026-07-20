@@ -105,6 +105,18 @@ export class AvatarComponent {
     return palette[Math.abs(hash) % palette.length];
   });
 
+  /** Readable text colour for the initial on the hashed background: dark on a light
+   * hash (the amber), white otherwise — so a single letter always meets contrast. */
+  readonly initialColor = computed(() => {
+    const hex = this.color().slice(1);
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    // Perceived brightness (YIQ), normalised 0–1; light backgrounds need dark text.
+    const brightness = (r * 299 + g * 587 + b * 114) / 255000;
+    return brightness > 0.6 ? '#1a1a1a' : '#fff';
+  });
+
   constructor() {
     // Re-resolve when the bound avatar changes (instances are reused across @for
     // rows); the subscription is torn down on the next run/destroy.

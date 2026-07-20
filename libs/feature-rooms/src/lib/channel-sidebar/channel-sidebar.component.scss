@@ -212,8 +212,8 @@
   height: 16px;
   padding: 0 5px;
   border-radius: var(--trinity-radius-pill);
-  background: #ed4245;
-  color: #fff;
+  background: var(--trinity-danger);
+  color: var(--trinity-danger-foreground);
   font-size: 11px;
   font-weight: 700;
   line-height: 16px;
@@ -222,7 +222,7 @@
   // Ordinary unread (no mention) reads as a neutral count, not the red alert.
   &--muted {
     background: var(--trinity-text-muted);
-    color: var(--trinity-bg);
+    color: var(--trinity-sidebar);
   }
 }
 

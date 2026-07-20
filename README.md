@@ -13,8 +13,9 @@ End-to-end encryption is a first-class, in-MVP feature.
 > crypto bootstrap (cross-signing, key backup, recovery) and **device verification**
 > (emoji-SAS, with an incoming-request prompt). **Encrypted media** (M8 — sending and
 > displaying images/files/video/audio with attachment encryption) and **MVP polish**
-> (M9 — light/dark theme, offline cache + PWA service worker, settings with profile and
-> device management, authenticated avatars) are done. See [Project status](#project-status) below.
+> (M9 — light/dark theme with selectable colour palettes, offline cache + PWA service worker,
+> settings with profile and device management, authenticated avatars) are done. See
+> [Project status](#project-status) below.
 
 ## Documentation
 
@@ -25,6 +26,7 @@ End-to-end encryption is a first-class, in-MVP feature.
 | [docs/SPIKE.md](docs/SPIKE.md)                 | E2EE crypto WASM validation results (the gating risk)    |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)   | How the code is organized and how data flows             |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)     | Setup, running, testing, troubleshooting                 |
+| [docs/THEMING.md](docs/THEMING.md)             | Design tokens, light/dark × palette axes, adding a theme |
 | [docs/PUSH.md](docs/PUSH.md)                   | Push notifications: architecture + native/gateway setup  |
 | [docs/MULTI-ACCOUNT.md](docs/MULTI-ACCOUNT.md) | Multi-account support: design + phased plan (planned)    |
 | [docs/REVIEW.md](docs/REVIEW.md)               | Whole-codebase review findings (2026-06-27)              |

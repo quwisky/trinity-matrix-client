@@ -8,19 +8,41 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 /** The mode actually applied after resolving `system`. */
 export type ResolvedTheme = 'light' | 'dark';
 
+/**
+ * The named colour schemes shipped with the app. A palette is orthogonal to
+ * light/dark — every palette works in both modes. Adding one is two steps: a CSS
+ * block in apps/trinity/src/theme/variables.scss (keyed on `[data-theme='<id>']`)
+ * and an entry here. See docs/THEMING.md.
+ *
+ * `trinity` is the default and applies no `data-theme` attribute (the `:root`
+ * defaults in variables.scss).
+ */
+export const TRINITY_PALETTES = [
+  { id: 'trinity', label: 'Trinity' },
+  { id: 'amethyst', label: 'Amethyst' },
+] as const;
+/** The id of a registered palette. */
+export type Palette = (typeof TRINITY_PALETTES)[number]['id'];
+const DEFAULT_PALETTE: Palette = 'trinity';
+
 const THEME_KEY = 'trinity.theme';
+const PALETTE_KEY = 'trinity.palette';
 /**
  * Class toggled on <html>; its PRESENCE means dark. Light is the `:root` default and
  * dark is layered under `.dark` (see apps/trinity/src/theme/variables.scss), so a
  * resolved dark theme ADDS this class and light removes it.
  */
 const DARK_CLASS = 'dark';
+/** Attribute on <html> naming the active palette; absent for the default palette. */
+const PALETTE_ATTR = 'data-theme';
 
 /**
- * Owns the app's light/dark appearance: persists the user's preference, resolves
- * `system` against `prefers-color-scheme`, and applies the result by toggling
- * {@link DARK_CLASS} on the document root — added for dark, removed for light.
- * Exposed as signals so the settings UI can bind the current choice.
+ * Owns the app's appearance across two orthogonal axes:
+ *   • mode    — light/dark: persists the user's preference, resolves `system` against
+ *     `prefers-color-scheme`, and toggles {@link DARK_CLASS} on the document root;
+ *   • palette — the named colour scheme: persists the choice and reflects it as the
+ *     {@link PALETTE_ATTR} attribute (absent for the default palette).
+ * Both are exposed as signals so the settings UI can bind the current choices.
  */
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
@@ -32,6 +54,13 @@ export class ThemeService {
   /** The mode actually applied right now (system resolved to light/dark). */
   readonly resolved = this._resolved.asReadonly();
 
+  private readonly _palette = signal<Palette>(DEFAULT_PALETTE);
+  /** The active colour palette. */
+  readonly palette = this._palette.asReadonly();
+
+  /** The palettes available to offer in the UI. */
+  readonly palettes = TRINITY_PALETTES;
+
   private media: MediaQueryList | null = null;
   private readonly onSystemChange = (): void => {
     // Only the OS-following preference reacts to a system theme change.
@@ -40,7 +69,7 @@ export class ThemeService {
     }
   };
 
-  /** Read the saved preference and apply it. Call once at app startup. */
+  /** Read the saved preferences and apply them. Call once at app startup. */
   async init(): Promise<void> {
     if (!this.media) {
       // Guard against a double init re-registering the system listener.
@@ -55,14 +84,32 @@ export class ThemeService {
     } catch {
       // No stored preference (or storage unavailable) → keep the default.
     }
+    try {
+      const { value } = await Preferences.get({ key: PALETTE_KEY });
+      if (isPalette(value)) {
+        this._palette.set(value);
+      }
+    } catch {
+      // No stored palette → keep the default.
+    }
     this.apply();
+    this.applyPalette();
   }
 
-  /** Change + persist the preference, applying it immediately. */
+  /** Change + persist the mode preference, applying it immediately. */
   setPreference(pref: ThemePreference): void {
     this._preference.set(pref);
     this.apply();
     void Preferences.set({ key: THEME_KEY, value: pref }).catch(
+      () => undefined,
+    );
+  }
+
+  /** Change + persist the colour palette, applying it immediately. */
+  setPalette(palette: Palette): void {
+    this._palette.set(palette);
+    this.applyPalette();
+    void Preferences.set({ key: PALETTE_KEY, value: palette }).catch(
       () => undefined,
     );
   }
@@ -81,6 +128,19 @@ export class ThemeService {
       );
     }
     this.applyNativeChrome(resolved);
+  }
+
+  /** Reflect the active palette on the document root (default palette = no attribute). */
+  private applyPalette(): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const palette = this._palette();
+    if (palette === DEFAULT_PALETTE) {
+      document.documentElement.removeAttribute(PALETTE_ATTR);
+    } else {
+      document.documentElement.setAttribute(PALETTE_ATTR, palette);
+    }
   }
 
   /**
@@ -103,6 +163,10 @@ export class ThemeService {
 
 function isPreference(value: string | null): value is ThemePreference {
   return value === 'system' || value === 'light' || value === 'dark';
+}
+
+function isPalette(value: string | null): value is Palette {
+  return TRINITY_PALETTES.some((p) => p.id === value);
 }
 
 function systemMedia(): MediaQueryList | null {

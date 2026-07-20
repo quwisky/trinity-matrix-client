@@ -37,8 +37,10 @@
     </span>
     @if (canEnd() && !poll().ended) {
       <button
+        hlmBtn
+        variant="ghost"
+        size="sm"
         type="button"
-        class="poll__end"
         data-testid="poll-end"
         (click)="end.emit()"
       >

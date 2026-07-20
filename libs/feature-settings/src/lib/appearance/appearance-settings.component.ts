@@ -4,9 +4,13 @@ import {
   HlmRadioGroup,
   HlmRadioIndicator,
 } from '@trinity/helm/radio-group';
-import { ThemeService, type ThemePreference } from '@trinity/platform-native';
+import {
+  ThemeService,
+  type Palette,
+  type ThemePreference,
+} from '@trinity/platform-native';
 
-/** Appearance settings sub-page: light / dark / system theme preference. */
+/** Appearance settings sub-page: light/dark/system mode + colour palette. */
 @Component({
   selector: 'trn-appearance-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -16,8 +20,13 @@ import { ThemeService, type ThemePreference } from '@trinity/platform-native';
 export class AppearanceSettingsComponent {
   readonly theme = inject(ThemeService);
 
-  /** Apply + persist the chosen appearance when the radio group changes. */
+  /** Apply + persist the chosen light/dark mode when the radio group changes. */
   onThemeChange(value: string): void {
     this.theme.setPreference(value as ThemePreference);
+  }
+
+  /** Apply + persist the chosen colour palette when the radio group changes. */
+  onPaletteChange(value: string): void {
+    this.theme.setPalette(value as Palette);
   }
 }

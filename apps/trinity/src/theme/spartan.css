@@ -1,14 +1,16 @@
 /*
- * spartan.ng design tokens + Tailwind v4 for the helm libs (@trinity/helm/*).
+ * Tailwind v4 + spartan.ng framework wiring for the helm libs (@trinity/helm/*).
  *
- * Loaded as its own entry in the app's `styles` (see project.json). Now that Ionic
- * is gone, Tailwind's `preflight` is the app's base reset (box-sizing, margin/padding
- * reset, `border: 0 solid` so bare `border` utilities render, form-control reset that
- * the raw <button> rows rely on) — it used to be omitted to avoid fighting Ionic.
+ * This file is *framework wiring only* — it owns no colour values. The design tokens
+ * (both `--trinity-*` and the Helm `--background`/`--card`/… tokens) and every palette
+ * live in theme/variables.scss, the single source of truth. Here we just:
+ *   • pull in Tailwind's layers (preflight is the app's base reset now Ionic is gone),
+ *   • declare the `dark:` variant, and
+ *   • map the Helm tokens to Tailwind colour utilities *by reference* (`@theme inline`),
+ *     so flipping `.dark` or the `data-theme` palette re-themes every utility at runtime.
  *
- * `--primary` is Trinity blurple (#5865f2 ≈ hsl(235 86% 65%)). `@theme inline` maps
- * the tokens to Tailwind color utilities *by reference*, so flipping `.dark`
- * (the class ThemeService toggles on <html>) re-themes at runtime.
+ * Loaded as its own `styles` entry after variables.scss (see project.json); the
+ * `var()` references below resolve at use-time from whichever palette/mode is active.
  */
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
@@ -22,66 +24,6 @@
 
 /* Dark mode keyed to the class ThemeService toggles on <html>. */
 @custom-variant dark (&:where(.dark, .dark *));
-
-:root {
-  --background: hsl(0deg 0% 100%);
-  --foreground: hsl(240deg 10% 3.9%);
-  --card: hsl(0deg 0% 100%);
-  --card-foreground: hsl(240deg 10% 3.9%);
-  --popover: hsl(0deg 0% 100%);
-  --popover-foreground: hsl(240deg 10% 3.9%);
-  --primary: hsl(235deg 86% 65%);
-  --primary-foreground: hsl(0deg 0% 100%);
-  --secondary: hsl(240deg 4.8% 95.9%);
-  --secondary-foreground: hsl(240deg 5.9% 10%);
-  --muted: hsl(240deg 4.8% 95.9%);
-  --muted-foreground: hsl(240deg 3.8% 46.1%);
-  --accent: hsl(240deg 4.8% 95.9%);
-  --accent-foreground: hsl(240deg 5.9% 10%);
-  --destructive: hsl(0deg 84.2% 60.2%);
-  --destructive-foreground: hsl(0deg 0% 98%);
-  --success: hsl(145deg 63% 42%);
-  --success-foreground: hsl(0deg 0% 100%);
-  --warning: hsl(38deg 92% 50%);
-  --warning-foreground: hsl(20deg 14% 4%);
-  --border: hsl(240deg 5.9% 90%);
-  --input: hsl(240deg 5.9% 90%);
-  --ring: hsl(235deg 86% 65%);
-  --radius: 0.5rem;
-}
-
-.dark {
-  /*
-   * Elevated surfaces (dialogs, popovers/menus, cards) are retinted from the stock
-   * shadcn near-black to the Trinity Discord palette: the surface is the sidebar tone
-   * (#2b2d31) and the hover/muted/secondary layer is one step lighter (#35373c =
-   * --trinity-hover), so `hover:bg-accent` reads as a lighter highlight on the surface
-   * rather than inverting darker. The base canvas (--background) stays the deep tone.
-   */
-  --background: hsl(240deg 10% 3.9%);
-  --foreground: hsl(0deg 0% 98%);
-  --card: #2b2d31;
-  --card-foreground: hsl(0deg 0% 98%);
-  --popover: #2b2d31;
-  --popover-foreground: hsl(0deg 0% 98%);
-  --primary: hsl(235deg 86% 65%);
-  --primary-foreground: hsl(0deg 0% 100%);
-  --secondary: #35373c;
-  --secondary-foreground: hsl(0deg 0% 98%);
-  --muted: #35373c;
-  --muted-foreground: hsl(240deg 5% 64.9%);
-  --accent: #35373c;
-  --accent-foreground: hsl(0deg 0% 98%);
-  --destructive: hsl(0deg 62.8% 30.6%);
-  --destructive-foreground: hsl(0deg 0% 98%);
-  --success: hsl(145deg 58% 45%);
-  --success-foreground: hsl(0deg 0% 100%);
-  --warning: hsl(38deg 92% 50%);
-  --warning-foreground: hsl(20deg 14% 4%);
-  --border: hsl(240deg 3.7% 15.9%);
-  --input: hsl(240deg 3.7% 15.9%);
-  --ring: hsl(235deg 86% 65%);
-}
 
 @theme inline {
   --color-background: var(--background);
@@ -110,6 +52,9 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  /* Compact body text (Discord-style), between Tailwind's text-xs (12px) and -sm (14px). */
+  --text-13: 0.8125rem;
 
   /*
    * Indeterminate progress sweep. HlmProgressIndicator toggles

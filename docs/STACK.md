@@ -5,28 +5,28 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
 ## Pinned versions (latest on npm, 2026-06-26)
 
-| Package                              | Version   | Notes                                                                                                          |
-| ------------------------------------ | --------- | -------------------------------------------------------------------------------------------------------------- |
-| `@angular/core`                      | 22.0.7    | Standalone + signals; typed reactive forms                                                                     |
-| `@spartan-ng/brain` + `/cli`         | 1.1.0     | Headless UI primitives (Brain); styled Helm layer copied into `libs/spartan/*` (`@trinity/helm/*`) via the CLI |
-| `@angular/cdk`                       | 22.0.5    | Overlay/Dialog behind the helm overlays (dialog/tooltip/dropdown/sonner) + encryption modals                   |
-| `tailwindcss` + `tw-animate-css`     | 4.3 / 1.4 | Styling + theming (`theme/spartan.css` + `theme/variables.scss`); base reset is Tailwind preflight             |
-| `@ng-icons/{core,lucide}`            | 32.5.0    | Icon components (`<ng-icon name="lucide…">`) used across the UI                                                |
-| `@capacitor/core`                    | 8.4.2     | Capacitor 8: SPM default on iOS, edge-to-edge Android                                                          |
-| `electron` + `electron-builder`      | 42 / 26   | Hand-rolled desktop shell in `electron/` (own package.json); see Electron desktop below                        |
-| `matrix-js-sdk`                      | 41.9.0    | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                                              |
-| `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1    | Rust crypto WASM bindings; E2EE backend                                                                        |
-| `@capacitor/app`                     | 8.1.1     | App URL-open events — native SSO deep-link callback                                                            |
-| `@capacitor/browser`                 | 8.0.4     | System browser for native SSO (keeps the app webview alive)                                                    |
-| `@capacitor/camera`                  | 8.2.1     | Native photo/gallery picker for sending media (web `<input>` fallback)                                         |
-| `@capacitor/filesystem`              | 8.1.2     | Write a downloaded attachment to cache before sharing it (native save)                                         |
-| `@capacitor/share`                   | 8.0.1     | Native OS save/share sheet for downloads (web `<a download>` fallback)                                         |
-| `@capacitor/status-bar`              | 8.0.3     | Sets the native status-bar style to match the light/dark theme                                                 |
-| `@angular/service-worker`            | 22.0.7    | PWA service worker (production web): precaches the app shell + crypto WASM for offline                         |
-| `@capacitor/push-notifications`      | 8.1.2     | FCM/APNs device token for the Matrix pusher (see [PUSH.md](PUSH.md))                                           |
-| `matrix-encrypt-attachment`          | —         | Removed (unmaintained since 2022); ported into `@trinity/util-matrix` `attachment-crypto.ts`                   |
-| `marked`                             | 18.0.6    | Markdown → HTML for the composer/timeline                                                                      |
-| `dompurify`                          | 3.4.12    | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                                                     |
+| Package                              | Version   | Notes                                                                                                                            |
+| ------------------------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `@angular/core`                      | 22.0.7    | Standalone + signals; typed reactive forms                                                                                       |
+| `@spartan-ng/brain` + `/cli`         | 1.1.0     | Headless UI primitives (Brain); styled Helm layer copied into `libs/spartan/*` (`@trinity/helm/*`) via the CLI                   |
+| `@angular/cdk`                       | 22.0.5    | Overlay/Dialog behind the helm overlays (dialog/tooltip/dropdown/sonner) + encryption modals                                     |
+| `tailwindcss` + `tw-animate-css`     | 4.3 / 1.4 | Styling + theming (tokens & palettes in `theme/variables.scss`; wiring in `theme/spartan.css`); base reset is Tailwind preflight |
+| `@ng-icons/{core,lucide}`            | 32.5.0    | Icon components (`<ng-icon name="lucide…">`) used across the UI                                                                  |
+| `@capacitor/core`                    | 8.4.2     | Capacitor 8: SPM default on iOS, edge-to-edge Android                                                                            |
+| `electron` + `electron-builder`      | 42 / 26   | Hand-rolled desktop shell in `electron/` (own package.json); see Electron desktop below                                          |
+| `matrix-js-sdk`                      | 41.9.0    | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                                                                |
+| `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1    | Rust crypto WASM bindings; E2EE backend                                                                                          |
+| `@capacitor/app`                     | 8.1.1     | App URL-open events — native SSO deep-link callback                                                                              |
+| `@capacitor/browser`                 | 8.0.4     | System browser for native SSO (keeps the app webview alive)                                                                      |
+| `@capacitor/camera`                  | 8.2.1     | Native photo/gallery picker for sending media (web `<input>` fallback)                                                           |
+| `@capacitor/filesystem`              | 8.1.2     | Write a downloaded attachment to cache before sharing it (native save)                                                           |
+| `@capacitor/share`                   | 8.0.1     | Native OS save/share sheet for downloads (web `<a download>` fallback)                                                           |
+| `@capacitor/status-bar`              | 8.0.3     | Sets the native status-bar style to match the light/dark theme                                                                   |
+| `@angular/service-worker`            | 22.0.7    | PWA service worker (production web): precaches the app shell + crypto WASM for offline                                           |
+| `@capacitor/push-notifications`      | 8.1.2     | FCM/APNs device token for the Matrix pusher (see [PUSH.md](PUSH.md))                                                             |
+| `matrix-encrypt-attachment`          | —         | Removed (unmaintained since 2022); ported into `@trinity/util-matrix` `attachment-crypto.ts`                                     |
+| `marked`                             | 18.0.6    | Markdown → HTML for the composer/timeline                                                                                        |
+| `dompurify`                          | 3.4.12    | Sanitizes inbound `formatted_body` HTML (Matrix allowlist)                                                                       |
 
 > Versions moved since the original plan draft: Capacitor is on **8** (not 6); the
 > UI layer moved **off Ionic to spartan-ng** (Brain + Helm) on **Tailwind v4**; and
@@ -56,8 +56,11 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
   the copied Helm code is owned in-repo and customizable.
 - Bootstrap via `bootstrapApplication(...)` with `provideSpartanHlm()` (configures the
   Angular CDK overlay) + `provideRouter(routes, withPreloading(PreloadAllModules))`.
-- Styling/theming is **Tailwind CSS v4** (`theme/spartan.css` imports the layers; trinity
-  design tokens in `theme/variables.scss`); the base reset is Tailwind preflight.
+- Styling/theming is **Tailwind CSS v4**: all design tokens (Trinity + Helm) and colour
+  palettes live in `theme/variables.scss` (the single source of truth), while `theme/spartan.css`
+  is framework wiring only (Tailwind layers + the `@theme inline` map). Two orthogonal axes —
+  light/dark mode (`.dark` class) and palette (`data-theme` attribute); base reset is Tailwind
+  preflight. See [THEMING.md](THEMING.md).
 - Use lazy-loaded standalone routes per feature; route-change focus is relocated into the
   entering page by `NavigationFocusService` (replaces Ionic's focus manager).
 

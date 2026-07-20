@@ -39,6 +39,9 @@ All notable changes to this project are documented here. The format is based on
 - **The room list is its own page on phones.** Instead of sliding the channel list over your
   conversation, phones now show the room list as a full screen; tapping a room opens the
   chat, and a back button returns to the list. The desktop two-column layout is unchanged.
+- **Choose a colour palette.** Appearance settings now has a **Palette** picker alongside the
+  light/dark control, with an **Amethyst** violet theme in addition to the default. The two
+  are independent — any palette works in light or dark — and your choice is remembered.
 
 ### Changed
 
@@ -59,9 +62,23 @@ All notable changes to this project are documented here. The format is based on
   menus and reaction/badge chips in particular look more consistent), and muted secondary
   text — timestamps, captions, descriptions, empty states — now follows one size scale
   instead of a mix of five, so the same kind of text is the same size everywhere.
+- **Reworked the design tokens so themes are easy to add.** All colours and radii now live in
+  one place, split into a colour palette and an independent light/dark mode, so a new theme is
+  a single self-contained block. No visible change to the default look. See docs/THEMING.md.
 
 ### Fixed
 
+- **Components follow the colour palette consistently.** Several hand-authored components
+  used fixed colours or undefined tokens: the link-preview and location cards rendered a
+  near-invisible border and background in light mode, and the mention badge and various
+  "danger" reds didn't change with light/dark or the palette. They now use themed tokens, so
+  everything re-colours together. The jump-to-latest pill and accent banner also use the
+  on-accent text colour, keeping their labels legible on light-accent palettes.
+- **More readable icons and initials.** The server rail's Home/Rooms buttons, the voice-note
+  play button and unread badges now use the on-accent text colour so their glyphs stay legible
+  on light-accent palettes; and default avatars pick a dark or light initial to fit their
+  colour (the amber avatars were previously low-contrast). The Explore rooms/spaces toggle and
+  the mention picker's search field also announce their state/label correctly to screen readers.
 - **The member list is reachable on phones and tablets.** Below 1100px the room's member
   list was hidden with no way to open it. It now slides in as a drawer — from the **Members**
   button on tablets, or the room's **⋮** overflow menu on a phone — and closes by tapping

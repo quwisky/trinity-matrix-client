@@ -17,7 +17,7 @@
 
 .banner[data-tone='accent'] {
   background: var(--trinity-accent);
-  color: #fff;
+  color: var(--trinity-accent-foreground);
 }
 
 .banner__icon {
