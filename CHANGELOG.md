@@ -45,6 +45,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room for the message box on narrow windows.** Seven buttons crowded the message field
+  whenever the window was less than about 1024px wide, leaving almost nothing to type in —
+  on a small phone they overflowed the row entirely. Attach, GIF, poll, location and voice
+  message now gather behind the **+** button as a single **Add to message** menu, leaving
+  the field flanked by just **+**, emoji and send. On a phone the typing area goes from
+  unusable to about ten times its old width. A wide window keeps every action inline, where
+  there is room for all of them.
+- **The send button is always there.** It used to appear only on touchscreens, on the
+  assumption that Enter sends everywhere else. Enter isn't always unambiguous — a draft with
+  line breaks, or typing through an input method editor — so the send button now sits beside
+  the message box at every size, on every device. (While you are recording a voice message
+  the recording bar's own send button takes over, so there is never a pair of them.)
 - **Desktop tray icon now matches the app icon.** The system tray / menu-bar icon uses the
   Trinity mark (three connected nodes) instead of the old "T" glyph, so it matches the app
   icon everywhere. On macOS it stays a monochrome template image that follows the light/dark

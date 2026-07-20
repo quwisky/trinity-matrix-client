@@ -272,11 +272,12 @@
   }
 }
 
-// Explicit send affordance for touch devices (Enter-to-send is unreliable on
-// mobile keyboards); hidden on pointer devices, where Enter sends. Accent-tinted,
-// and dimmed rather than faded when there's nothing to send.
+// Send sits beside the input at every width and pointer type. It used to be
+// touch-only (Enter sends on a keyboard), but Enter is not always unambiguous —
+// a draft holding newlines, an IME mid-composition — and an always-present target
+// is one less thing to know. Accent-tinted, and dimmed rather than faded when
+// there is nothing to send.
 .composer__send {
-  display: none;
   color: var(--trinity-accent);
 
   &:disabled {
@@ -285,9 +286,40 @@
   }
 }
 
-@media (hover: none) {
-  .composer__send {
+// Where the insert actions collapse into the `+` tray, leaving the row at
+// +, emoji and send.
+
+// The threshold is the whole viewport, not just phone widths, because the shell keeps a
+// fixed 72+280px side column from md up: at a 768px viewport the composer is only 416px,
+// and eight inline controls need ~340px of it whatever the pointer type. 1024 is where
+// the composer clears 670px and the row stops being the constraint. Below that everything
+// collapses — phone, tablet, and a narrow desktop window alike, since a 416px composer is
+// cramped with a mouse too. (An earlier version gated the tablet range on
+// `pointer: coarse`, which left a fine-pointer window at 768-1023px with ~76px of input.)
+$insert-tray: '(max-width: 1023.98px)';
+
+.composer__insert {
+  display: none;
+}
+
+@media #{$insert-tray} {
+  .composer__inline-action {
+    display: none;
+  }
+
+  .composer__insert {
     display: flex;
+  }
+}
+
+// The tray's items render through a CDK overlay at the document root, so this is
+// deliberately not nested under `.composer` — Angular still stamps the component's
+// encapsulation attribute on them, but they are not descendants at runtime.
+// Helm's own item padding (`px-3 py-2`) computes to ~36px, under the 44px this
+// project holds itself to on touch; the rest of the composer already does this.
+@media (pointer: coarse) {
+  .composer__insert-item {
+    min-height: 44px;
   }
 }
 

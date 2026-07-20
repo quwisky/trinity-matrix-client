@@ -26,6 +26,11 @@ import {
   lucideVote,
   lucideX,
 } from '@ng-icons/lucide';
+import {
+  HlmDropdownMenu,
+  HlmDropdownMenuItem,
+  HlmDropdownMenuTrigger,
+} from '@trinity/helm/dropdown-menu';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
 import { HlmSpinner } from '@trinity/helm/spinner';
 import { HlmTextarea } from '@trinity/helm/textarea';
@@ -101,6 +106,9 @@ const MENTION_SUGGESTION_LIMIT = 8;
     HlmTextarea,
     PickerComponent,
     GifPickerComponent,
+    HlmDropdownMenu,
+    HlmDropdownMenuItem,
+    HlmDropdownMenuTrigger,
     HlmProgress,
     HlmProgressIndicator,
     HlmSpinner,
@@ -119,6 +127,13 @@ const MENTION_SUGGESTION_LIMIT = 8;
       lucideX,
     }),
   ],
+  // Escape is handled at the host, not on the textarea, because the pickers it
+  // dismisses can be opened without the textarea ever holding focus — pick GIF from the
+  // insert tray on a narrow layout and CDK restores focus to the `+` trigger. The
+  // pickers render inside this component, so the keystroke reaches here from anywhere in
+  // the composer. Bound once: a second binding on the textarea would double-fire and
+  // close two things per press.
+  host: { '(keydown.escape)': 'onEscape()' },
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
 })
@@ -194,6 +209,15 @@ export class MessageComposerComponent {
   readonly gifDownloading = signal(false);
   /** The GIF affordance is offered only once a provider + API key are configured. */
   readonly gifEnabled = computed(() => this.gifSettings.configured());
+  /**
+   * Whether the narrow-layout `+` opens the insert tray rather than the file picker
+   * directly. With only one insert action left to offer — the thread composer with no
+   * GIF provider configured — a one-item menu is pure friction, so `+` stays a plain
+   * attach button there. See the media query in the SCSS for where the tray applies.
+   */
+  readonly hasInsertMenu = computed(
+    () => this.richActions() || this.gifEnabled(),
+  );
   /** Match the emoji picker's chrome to the app's active theme. */
   readonly isDarkMode = computed(() => this.theme.resolved() === 'dark');
   /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
