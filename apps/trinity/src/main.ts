@@ -17,6 +17,7 @@ import { GifSettingsService } from '@trinity/data-access-gif';
 import {
   AppBadgeService,
   PUSH_CONFIG,
+  PushGatewayService,
 } from '@trinity/data-access-notifications';
 import {
   BUILD_INFO,
@@ -82,6 +83,10 @@ bootstrapApplication(AppComponent, {
     // Load the saved GIF provider + API key so the composer knows whether to
     // offer the GIF picker on first paint.
     provideAppInitializer(() => inject(GifSettingsService).init()),
+    // Load any user-set push gateway before the shell mounts and calls
+    // PushService.register() — otherwise the first registration would use the
+    // build-time default (usually none) and push would stay dead until a restart.
+    provideAppInitializer(() => inject(PushGatewayService).init()),
     // Instantiate the dock-badge service so its unread-total effect is live for
     // the whole session (desktop-only by feature detection; a no-op elsewhere).
     provideAppInitializer(() => {
