@@ -7,7 +7,7 @@ import {
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
-// Covers recording + sending a voice message (composer-voice → record → send →
+// Covers recording + sending a voice message (+ tray → Voice message → record → send →
 // m.audio with the MSC3245 voice marker), rendered in the timeline as a voice player
 // (data-testid="voice-message"). Chromium is launched with a fake microphone so
 // getUserMedia + MediaRecorder work headless. Needs Synapse (Docker); self-skips.
@@ -89,8 +89,9 @@ test.describe('Voice messages', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openRoom(page, roomName);
 
-    // Start recording; the recording bar appears.
-    await page.getByTestId('composer-voice').click();
+    // Start recording from the composer's `+` tray; the recording bar appears.
+    await page.getByTestId('composer-insert').click();
+    await page.getByTestId('insert-voice').click();
     await expect(page.getByTestId('composer-voice-recording')).toBeVisible({
       timeout: 15_000,
     });

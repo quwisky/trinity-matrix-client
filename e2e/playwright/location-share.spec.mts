@@ -7,7 +7,7 @@ import {
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
-// Covers sharing a location (composer-location → m.location): the location card
+// Covers sharing a location (+ tray → Location → m.location): the location card
 // (data-testid="location-card") shows the coordinates + an OpenStreetMap link. The
 // browser's geolocation is overridden so the position is deterministic offline.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
@@ -86,7 +86,8 @@ test.describe('Share location', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openRoom(page, roomName);
 
-    await page.getByTestId('composer-location').click();
+    await page.getByTestId('composer-insert').click();
+    await page.getByTestId('insert-location').click();
 
     // The location card renders with the (overridden) coordinates + a maps link.
     const card = page.getByTestId('location-card');

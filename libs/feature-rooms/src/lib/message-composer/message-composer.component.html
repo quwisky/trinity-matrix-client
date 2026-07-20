@@ -175,55 +175,13 @@
     hidden
     (change)="onFilePicked($event)"
   />
-  <!-- Insert actions, inline. Where the row would crowd the input these are hidden and
-       the tray below takes over; the breakpoint lives in the SCSS because it is a
-       compound query Tailwind's `max-md:` cannot express. -->
-  <button
-    type="button"
-    class="composer__attach composer__inline-action"
-    hlmTooltip="Attach"
-    aria-label="Attach a file"
-    data-testid="composer-attach"
-    [disabled]="uploadProgress() !== null || editing()"
-    (click)="onAttach()"
-  >
-    <ng-icon name="lucidePlus" aria-hidden="true" />
-  </button>
-  @if (richActions()) {
-    <button
-      type="button"
-      class="composer__attach composer__inline-action"
-      hlmTooltip="Create poll"
-      aria-label="Create poll"
-      data-testid="composer-poll"
-      [disabled]="editing()"
-      (click)="openPollDialog()"
-    >
-      <ng-icon name="lucideVote" aria-hidden="true" />
-    </button>
-    <button
-      type="button"
-      class="composer__attach composer__inline-action"
-      hlmTooltip="Share location"
-      aria-label="Share location"
-      data-testid="composer-location"
-      [disabled]="editing() || locationSharing()"
-      (click)="shareLocation()"
-    >
-      @if (locationSharing()) {
-        <hlm-spinner class="text-base" />
-      } @else {
-        <ng-icon name="lucideMapPin" aria-hidden="true" />
-      }
-    </button>
-  }
-
-  <!-- Narrow layouts: one `+` opening every insert action, so the row keeps only
-       +, emoji and send and the textarea gets the width back. -->
+  <!-- Every compose action lives behind one `+` at all widths: a dropdown tray when
+       there is more than one to offer, a plain attach button when there is not. Keeps
+       the row to +, input, emoji and send. -->
   @if (hasInsertMenu()) {
     <button
       type="button"
-      class="composer__attach composer__insert"
+      class="composer__attach"
       [hlmDropdownMenuTrigger]="insertMenu"
       hlmTooltip="Add to message"
       aria-label="Add to message"
@@ -299,11 +257,11 @@
       </div>
     </ng-template>
   } @else {
-    <!-- Nothing to collect in a tray (thread composer, no GIF provider), so the
-         narrow-layout `+` stays a plain attach button. -->
+    <!-- Nothing to collect in a tray (thread composer, no GIF provider), so the `+`
+         stays a plain attach button. -->
     <button
       type="button"
-      class="composer__attach composer__insert"
+      class="composer__attach"
       hlmTooltip="Attach"
       aria-label="Attach a file"
       data-testid="composer-insert-attach"
@@ -350,35 +308,6 @@
     (blur)="onBlur()"
     (paste)="onPaste($event)"
   ></textarea>
-  @if (gifEnabled()) {
-    <button
-      type="button"
-      class="composer__gif composer__inline-action"
-      hlmTooltip="GIF"
-      aria-label="Send a GIF"
-      data-testid="composer-gif"
-      [disabled]="uploadProgress() !== null || editing() || gifDownloading()"
-      [attr.aria-expanded]="gifPickerOpen()"
-      (click)="toggleGifPicker()"
-    >
-      <ng-icon name="lucideImagePlay" aria-hidden="true" />
-    </button>
-  }
-  @if (richActions()) {
-    @if (voiceSupported && !recordingVoice()) {
-      <button
-        type="button"
-        class="composer__voice composer__inline-action"
-        hlmTooltip="Record voice message"
-        aria-label="Record voice message"
-        data-testid="composer-voice"
-        [disabled]="uploadProgress() !== null || editing()"
-        (click)="startVoiceRecording()"
-      >
-        <ng-icon name="lucideMic" aria-hidden="true" />
-      </button>
-    }
-  }
   <button
     type="button"
     class="composer__emoji"

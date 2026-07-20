@@ -315,22 +315,27 @@ describe('MessageComposerComponent', () => {
     expect(wrapper()).toBeNull();
   });
 
-  it('disables the attach button while an upload is in flight', async () => {
-    const { fixture, container } = await renderComposer();
-    const attach = () =>
-      container.querySelector(
-        '[data-testid=composer-attach]',
-      ) as HTMLButtonElement;
+  it('disables the attach action in the tray while an upload is in flight', async () => {
+    const { fixture } = await renderComposer();
+    fixture.nativeElement
+      .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+      ?.click();
+    await fixture.whenStable();
+    // hlmDropdownMenuItem reflects [disabled] as the data-disabled attribute.
+    const disabled = (): string | null | undefined =>
+      document
+        .querySelector('[data-testid=insert-attach]')
+        ?.getAttribute('data-disabled');
 
-    expect(attach().disabled).toBe(false);
+    expect(disabled()).toBeNull();
 
     fixture.componentRef.setInput('uploadProgress', 0.1);
     fixture.detectChanges();
-    expect(attach().disabled).toBe(true);
+    expect(disabled()).toBe('');
 
     fixture.componentRef.setInput('uploadProgress', null);
     fixture.detectChanges();
-    expect(attach().disabled).toBe(false);
+    expect(disabled()).toBeNull();
   });
 
   it('toggles the emoji picker open and closed from the button', async () => {
@@ -834,16 +839,22 @@ describe('MessageComposerComponent', () => {
     ];
   }
 
-  it('hides the GIF button when no GIF provider is configured', async () => {
-    const { container } = await renderComposer();
-    expect(container.querySelector('[data-testid=composer-gif]')).toBeNull();
+  it('omits GIF from the tray when no provider is configured', async () => {
+    const { fixture } = await renderComposer();
+    fixture.nativeElement
+      .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+      ?.click();
+    await fixture.whenStable();
+    expect(document.querySelector('[data-testid=insert-gif]')).toBeNull();
   });
 
-  it('shows the GIF button when a provider + key are configured', async () => {
-    const { container } = await renderComposer({}, gifProviders());
-    expect(
-      container.querySelector('[data-testid=composer-gif]'),
-    ).not.toBeNull();
+  it('offers GIF in the tray when a provider + key are configured', async () => {
+    const { fixture } = await renderComposer({}, gifProviders());
+    fixture.nativeElement
+      .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+      ?.click();
+    await fixture.whenStable();
+    expect(document.querySelector('[data-testid=insert-gif]')).not.toBeNull();
   });
 
   it('opening the GIF picker closes the emoji picker and vice versa', async () => {
@@ -914,26 +925,9 @@ describe('MessageComposerComponent', () => {
     expect(cmp.gifDownloading()).toBe(false);
   });
 
-  it('hides the room-scoped actions (poll/location/voice) when richActions is off', async () => {
-    // The thread composer sets richActions=false: those actions post to the active
-    // room, not the thread, so they must not be offered there.
-    const { container } = await renderComposer({ richActions: false }, [
-      MockProvider(VoiceRecorderService, { supported: true }),
-    ]);
-    for (const id of ['composer-poll', 'composer-location', 'composer-voice']) {
-      expect(container.querySelector(`[data-testid=${id}]`)).toBeNull();
-    }
-    // Text-routable affordances stay available in a thread.
-    expect(
-      container.querySelector('[data-testid=composer-attach]'),
-    ).not.toBeNull();
-  });
-
-  describe('narrow-layout insert tray', () => {
-    // Which of the two `+` variants renders is a template decision (hasInsertMenu);
-    // which one is *visible* is the SCSS media query, which jsdom does not evaluate.
-    // These assert the branch, not the breakpoint — the widths are covered by the
-    // 390px Playwright specs.
+  describe('insert tray', () => {
+    // Every compose action lives behind the `+` at all widths: a dropdown when there is
+    // more than one to offer (hasInsertMenu), a plain attach button when there is not.
     it('offers the tray whenever more than one insert action exists', async () => {
       const { container } = await renderComposer({}, [
         MockProvider(VoiceRecorderService, { supported: true }),
@@ -963,10 +957,9 @@ describe('MessageComposerComponent', () => {
     });
 
     it('omits the room-only actions from the opened tray when richActions is off', async () => {
-      // The thread case. The inline buttons are @if-guarded, but on a narrow layout
-      // they are display:none and the TRAY is what the user actually gets — so the
-      // routing rule has to hold there too, and asserting it needs the menu opened
-      // (CDK only instantiates the ng-template on open, at the document root).
+      // The thread composer routes poll/location/voice to the room, not the thread, so
+      // they must not appear in its tray. Asserting it needs the menu opened — CDK only
+      // instantiates the ng-template on open, at the document root.
       const { fixture } = await renderComposer({ richActions: false }, [
         MockProvider(GifSettingsService, { configured: signal(true) }),
         MockProvider(VoiceRecorderService, { supported: true }),
@@ -987,19 +980,26 @@ describe('MessageComposerComponent', () => {
       expect(document.querySelector('[data-testid=insert-gif]')).not.toBeNull();
     });
 
-    it('keeps the inline actions in the DOM so wide layouts still render them', async () => {
-      const { container } = await renderComposer({}, [
+    it('offers every insert action in the tray with full config', async () => {
+      const { fixture } = await renderComposer({}, [
+        MockProvider(GifSettingsService, {
+          configured: signal(true).asReadonly(),
+        }),
         MockProvider(VoiceRecorderService, { supported: true }),
       ]);
+      fixture.nativeElement
+        .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
+        ?.click();
+      await fixture.whenStable();
 
-      // Both variants coexist; CSS picks one. If this ever regresses to rendering
-      // only the tray, every desktop e2e spec driving these testids breaks.
       for (const id of [
-        'composer-attach',
-        'composer-poll',
-        'composer-location',
+        'insert-attach',
+        'insert-gif',
+        'insert-poll',
+        'insert-location',
+        'insert-voice',
       ]) {
-        expect(container.querySelector(`[data-testid=${id}]`)).not.toBeNull();
+        expect(document.querySelector(`[data-testid=${id}]`)).not.toBeNull();
       }
     });
   });
@@ -1034,7 +1034,7 @@ describe('MessageComposerComponent', () => {
     expect(send?.disabled).toBe(true);
   });
 
-  it('disables the location button and shows a spinner while a share is in flight', async () => {
+  it('shows a spinner on the + trigger while a location share is in flight', async () => {
     const { container } = await renderComposer({}, [
       MockProvider(LocationShareService, {
         sharing: signal(true).asReadonly(),
@@ -1042,12 +1042,10 @@ describe('MessageComposerComponent', () => {
       }),
     ]);
 
-    const button = container.querySelector<HTMLButtonElement>(
-      '[data-testid=composer-location]',
-    );
-    expect(button?.disabled).toBe(true);
-    // The spinner only renders in the busy branch, so its presence proves the swap.
-    expect(button?.querySelector('hlm-spinner')).not.toBeNull();
+    // The `+` trigger swaps its icon for a spinner while a share (or GIF fetch) runs;
+    // the tray's own Location item carries the disabled state.
+    const trigger = container.querySelector('[data-testid=composer-insert]');
+    expect(trigger?.querySelector('hlm-spinner')).not.toBeNull();
   });
 
   describe('voice messages', () => {

@@ -93,20 +93,14 @@ test.describe('Thread composer', () => {
     const thread = page.getByTestId('thread-view');
     await expect(thread).toBeVisible({ timeout: 15_000 });
 
-    // The room-only actions post to the main room, so the thread composer omits them.
-    // This runs at the desktop viewport, where the composer's inline actions are the
-    // rendered ones — so these assertions are meaningful here.
-    //
-    // Their narrow-layout counterparts (insert-poll / insert-location / insert-voice)
-    // deliberately are NOT asserted here: they live in the tray's <ng-template>, which
-    // CDK only instantiates on open and then renders at the document root, outside
-    // `thread`. A toHaveCount(0) on those would pass whether or not the routing rule
-    // held — coverage-shaped, but testing nothing. The tray is asserted where the menu
-    // can actually be opened: message-composer.component.spec.ts, "omits the room-only
-    // actions from the opened tray when richActions is off".
-    for (const id of ['composer-poll', 'composer-location', 'composer-voice']) {
-      await expect(thread.getByTestId(id)).toHaveCount(0);
-    }
+    // The room-only actions (poll/location/voice) post to the main room, so the thread
+    // composer never offers them: with only attach left and no GIF provider it collapses
+    // to a plain attach button rather than a tray. So the thread has no `+` menu trigger,
+    // just `composer-insert-attach`. (The room composer's tray contents — including that
+    // it omits these when richActions is off — are covered as a unit in
+    // message-composer.component.spec.ts, where the CDK menu can be opened.)
+    await expect(thread.getByTestId('composer-insert')).toHaveCount(0);
+    await expect(thread.getByTestId('composer-insert-attach')).toBeVisible();
 
     // A slash command is parsed in the thread: `/me waves` sends an emote "waves".
     const threadInput = thread.getByTestId('composer-input');

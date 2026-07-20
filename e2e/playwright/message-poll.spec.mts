@@ -78,8 +78,9 @@ test.describe('Polls', () => {
     } as SynapseSession);
     await openRoom(page, roomName);
 
-    // Open the create-poll dialog and fill it in.
-    await page.getByTestId('composer-poll').click();
+    // Open the create-poll dialog from the composer's `+` tray and fill it in.
+    await page.getByTestId('composer-insert').click();
+    await page.getByTestId('insert-poll').click();
     const question = `Best fruit ${runId}?`;
     await page.getByTestId('poll-question').fill(question);
     await page.getByTestId('poll-option-0').fill('Apple');

@@ -55,13 +55,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **Room for the message box on narrow windows.** Seven buttons crowded the message field
-  whenever the window was less than about 1024px wide, leaving almost nothing to type in —
-  on a small phone they overflowed the row entirely. Attach, GIF, poll, location and voice
-  message now gather behind the **+** button as a single **Add to message** menu, leaving
-  the field flanked by just **+**, emoji and send. On a phone the typing area goes from
-  unusable to about ten times its old width. A wide window keeps every action inline, where
-  there is room for all of them.
+- **Room for the message box.** Seven buttons used to crowd the message field, leaving
+  almost nothing to type in on a narrow window and overflowing the row entirely on a small
+  phone. Attach, GIF, poll, location and voice message now gather behind the **+** button as
+  a single **Add to message** menu at every window size, leaving the field flanked by just
+  **+**, emoji and send. On a phone the typing area goes from unusable to about ten times its
+  old width, and the composer looks the same whatever the screen.
 - **The send button is always there.** It used to appear only on touchscreens, on the
   assumption that Enter sends everywhere else. Enter isn't always unambiguous — a draft with
   line breaks, or typing through an input method editor — so the send button now sits beside

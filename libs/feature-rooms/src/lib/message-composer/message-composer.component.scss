@@ -240,13 +240,11 @@
   white-space: nowrap;
 }
 
-// Attach, emoji and send are inline controls in the composer row. Each is sized
-// to the textarea's single-row resting height so its icon centres on one line;
-// the row's `align-items: flex-end` then keeps them on the last line as the
-// textarea grows. They carry no background, so the box is just the hit target.
+// The `+` tray trigger, emoji and send are the composer row's inline controls. Each is
+// sized to the textarea's single-row resting height so its icon centres on one line; the
+// row's `align-items: flex-end` then keeps them on the last line as the textarea grows.
+// They carry no background, so the box is just the hit target.
 .composer__attach,
-.composer__gif,
-.composer__voice,
 .composer__emoji,
 .composer__send {
   flex: 0 0 auto;
@@ -283,32 +281,6 @@
   &:disabled {
     color: var(--trinity-text-muted);
     opacity: 1;
-  }
-}
-
-// Where the insert actions collapse into the `+` tray, leaving the row at
-// +, emoji and send.
-
-// The threshold is the whole viewport, not just phone widths, because the shell keeps a
-// fixed 72+280px side column from md up: at a 768px viewport the composer is only 416px,
-// and eight inline controls need ~340px of it whatever the pointer type. 1024 is where
-// the composer clears 670px and the row stops being the constraint. Below that everything
-// collapses — phone, tablet, and a narrow desktop window alike, since a 416px composer is
-// cramped with a mouse too. (An earlier version gated the tablet range on
-// `pointer: coarse`, which left a fine-pointer window at 768-1023px with ~76px of input.)
-$insert-tray: '(max-width: 1023.98px)';
-
-.composer__insert {
-  display: none;
-}
-
-@media #{$insert-tray} {
-  .composer__inline-action {
-    display: none;
-  }
-
-  .composer__insert {
-    display: flex;
   }
 }
 
@@ -361,8 +333,6 @@ $insert-tray: '(max-width: 1023.98px)';
 // devices only (inert on a mouse, so desktop keeps its 36/40px buttons).
 @media (pointer: coarse) {
   .composer__attach,
-  .composer__gif,
-  .composer__voice,
   .composer__emoji,
   .composer__send,
   .composer__recording-cancel,

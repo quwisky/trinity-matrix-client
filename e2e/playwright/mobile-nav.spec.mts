@@ -225,7 +225,7 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
   // unit suite can observe it — jsdom does not lay out. Every other composer spec runs
   // at the 1280px project viewport, i.e. on the *other* side of the breakpoint. Without
   // this test the collapse could stop happening and CI would stay green.
-  test('the composer collapses its insert actions into the + tray', async ({
+  test('the composer offers its insert actions through the + tray', async ({
     page,
   }) => {
     const channel = page.locator('button.channel', { hasText: ROOM_NAME });
@@ -237,24 +237,20 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
     const composerInput = page.getByTestId('composer-input');
     await expect(composerInput).toBeVisible();
 
-    // The inline actions give way to the single tray trigger; emoji and send stay.
+    // The insert actions sit behind the single `+` tray trigger; emoji and send stay
+    // inline. The old inline action buttons do not exist at any width.
     await expect(page.getByTestId('composer-insert')).toBeVisible();
-    for (const id of [
-      'composer-attach',
-      'composer-poll',
-      'composer-location',
-    ]) {
-      await expect(page.getByTestId(id)).toBeHidden();
+    for (const id of ['composer-attach', 'composer-poll', 'composer-gif']) {
+      await expect(page.getByTestId(id)).toHaveCount(0);
     }
     await expect(page.getByTestId('composer-send')).toBeVisible();
 
-    // The point of the exercise: the input gets the reclaimed width. Three 44px
-    // targets plus gaps and padding leave ~214px of a 390px viewport; assert well
-    // clear of the ~22px it had when all seven were inline.
+    // With only +, input, emoji and send on the row the input keeps its width — well
+    // clear of the ~22px it had when every action was inline.
     const box = await composerInput.boundingBox();
     expect(box?.width ?? 0).toBeGreaterThan(150);
 
-    // The demoted actions are reachable, and land on the same handlers.
+    // The tray opens and its actions are reachable, and Escape closes it.
     await page.getByTestId('composer-insert').click();
     await expect(page.getByTestId('insert-attach')).toBeVisible();
     await expect(page.getByTestId('insert-poll')).toBeVisible();
