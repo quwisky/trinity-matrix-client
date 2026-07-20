@@ -18,22 +18,30 @@ the mode decides which set is active.
 
 ## Token layers
 
-All tokens live in **`apps/trinity/src/theme/variables.scss`** — the single source of
-truth. There are two families:
+Every **colour and radius** token lives in **`apps/trinity/src/theme/variables.scss`** —
+the single source of truth for anything that re-themes. There are two families:
 
 1. **Trinity tokens** (`--trinity-*`) — the app's own vocabulary, consumed directly by
    hand-authored component SCSS: surfaces (`--trinity-sidebar`, `--trinity-chat`,
    `--trinity-hover`, …), text (`--trinity-text`, `--trinity-text-muted`,
    `--trinity-text-bright`), brand + status (`--trinity-accent`, `--trinity-green`,
-   `--trinity-danger` — tracks the Helm `--destructive`), and radii (`--trinity-radius*`).
+   `--trinity-danger` + `--trinity-danger-solid`/`--trinity-danger-solid-foreground`),
+   the on-fill pairs (`--trinity-accent-foreground`, `--trinity-green-foreground`), and
+   radii (`--trinity-radius*`).
 2. **Helm/shadcn tokens** (`--background`, `--card`, `--primary`, `--muted-foreground`,
    `--border`, …) — consumed by the generated Helm components through Tailwind colour
    utilities (`bg-card`, `text-muted-foreground`, `border-border`, …).
 
-**`apps/trinity/src/theme/spartan.css`** is framework wiring only — it owns no values.
-Its `@theme inline` block maps each Helm token to a Tailwind colour utility _by
+**`apps/trinity/src/theme/spartan.css`** is framework wiring — it owns no _colour_
+values. Its `@theme inline` block maps each Helm token to a Tailwind colour utility _by
 reference_ (`--color-card: var(--card)`), so flipping the mode or palette re-themes every
 utility at runtime.
+
+It does own the handful of non-colour tokens that must **generate a Tailwind utility**,
+because only entries inside a `@theme` block do: `--text-13` (0.8125rem, the compact
+body-text size used across the templates) and `--animate-indeterminate`. A token that
+templates consume as a class (`text-13`) therefore cannot move to variables.scss; a token
+consumed as `var(--…)` in SCSS belongs there.
 
 Where a Helm token always equals a Trinity token, it's defined **as a reference** rather
 than a duplicated literal, so a palette only sets the value once:
@@ -54,10 +62,13 @@ palette sets them per mode; a new palette can just bind them to `var(--foregroun
 Hand-authored component SCSS should reference tokens, never hardcode a colour — a literal
 won't follow the mode or palette. In particular:
 
-- **Danger / alert red** → `var(--trinity-danger)` (mention badges, error text, destructive
-  actions), not a hex red.
-- **Text on the accent** (a filled primary button/pill) → `var(--primary-foreground)`, not
-  `#fff` — white fails WCAG AA on light-accent palettes (e.g. Amethyst dark).
+- **Danger / alert red** → one of the two roles below, never a hex red. Picking the wrong
+  one is the easiest way to ship invisible text, so see [Danger has two roles](#danger-has-two-roles).
+- **Text on the accent** (a filled primary button/pill) → `var(--trinity-accent-foreground)`,
+  not `#fff` — white fails WCAG AA on light-accent palettes (e.g. Amethyst dark). The token
+  tracks the Helm `--primary-foreground`, so a palette overrides that one value and both
+  Helm buttons and hand-authored pills follow. Same shape for green fills:
+  `var(--trinity-green-foreground)`.
 - **Radii** → the `--trinity-radius*` scale, not pixel literals.
 - Legitimately fixed values (scrim/shadow blacks like `rgb(0 0 0 / 30%)`, `#fff` text baked
   onto a fixed-colour chip) are fine.
@@ -66,6 +77,66 @@ Content injected via `[innerHTML]` (rendered Matrix markdown) carries no Angular
 encapsulation attributes, so it's styled globally in
 `apps/trinity/src/rendered-markdown.scss` (scoped to `.msg__text--html`) rather than with
 the deprecated `::ng-deep`.
+
+### Danger has two roles
+
+No single red can be both a readable **foreground** and a distinct **fill** in dark mode:
+text needs contrast _against_ the canvas, a badge needs contrast _from_ it while still
+carrying legible text. So there are three tokens, and which one you want depends on
+whether the red is the ink or the background:
+
+| Token                               | Use it for                                         | Light     | Dark                 |
+| ----------------------------------- | -------------------------------------------------- | --------- | -------------------- |
+| `--trinity-danger`                  | alert **text/icons** drawn on a surface (`color:`) | `#bf1e24` | `#fc8181`            |
+| `--trinity-danger-solid`            | a **filled** badge/pill background                 | `#d92b31` | `#ef4444`            |
+| `--trinity-danger-solid-foreground` | the text sitting on that fill                      | `#fff`    | near-black `#1a1a1a` |
+
+In a template, the matching Tailwind utility is **`text-danger`**, not `text-destructive` —
+the latter reads `--destructive` and hits the trap described below.
+
+**Do not reach for Helm's `--destructive` instead** — it looks like the same thing and is
+not. shadcn treats it as a fill-only token, always paired with the near-white
+`--destructive-foreground` under it, and in dark it is `hsl(0deg 62.8% 30.6%)` = `#7f1d1d`,
+a near-black maroon. Used as a `color:` on the chat canvas that is **1.26:1** — the E2EE
+warning shield, the send-failed retry and the kick/ban labels all simply vanish, in the
+mode that is the app's default. `--destructive` stays as-is for Helm's destructive buttons
+(shadcn parity), and `spartan.css` maps `--color-danger` to `--trinity-danger` so the
+`text-danger` utility resolves to the text role.
+
+### Why Helm's destructive text is overridden, not retoned
+
+The generated Helm components (`libs/spartan/*`, owned by `@spartan-ng/cli` — never
+hand-edited) style destructive buttons, badges and menu items as `bg-destructive/10..30`
+with `text-destructive` on top: **one token acting as both the background tint and the text
+drawn on it.** No value of `--destructive` fixes that, because the tint is that same colour
+diluted, so the contrast between them is capped — every red clearing 4.5:1 against its own
+20% tint turns out to be above 90% lightness, a pale pink that no longer reads as danger.
+
+So `spartan.css` decouples the roles instead: `--destructive` keeps its shadcn value and
+remains the tint/border/ring source, while an **unlayered** rule redirects only the
+`text-destructive` utilities to `--trinity-danger`. Unlayered declarations outrank every
+`@layer`, and Tailwind emits utilities into `@layer utilities`, so the override wins without
+a specificity war.
+
+**The selector list must cover every emitted variant, and a miss is not benign.** An
+unmatched variant leaves that element on the old colour — so you get a _half-styled_
+control, e.g. a legible menu label beside an icon still sitting at ~1.3:1. The dropdown menu
+is the case to remember: it colours its child icon through a separate rule targeting the
+`ng-icon` descendant, so matching the menu item alone leaves the glyph behind. After running
+the spartan CLI, re-derive the list mechanically from the built CSS rather than by reading
+Helm's class strings — that is how the icon variant was missed the first time:
+
+```bash
+pnpm exec nx build trinity
+tr '}' '\n' < www/styles-*.css | grep 'text-destructive.*color:var(--destructive)'
+```
+
+The `--trinity-danger*` values above were instead measured against the surfaces each role
+actually lands on — and the binding one is **`--trinity-hover`**, not the chat canvas: a row
+that recolours on `:hover` is where a danger label is usually read, and it is the tightest
+of the six surface/palette combinations. The per-pair ratios are recorded in the rationale
+comments in `variables.scss`. Re-measure against the hover tones if you change a surface: no
+palette overrides the danger reds today, so every palette inherits these three values.
 
 ## Cascade & specificity
 

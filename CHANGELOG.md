@@ -68,16 +68,37 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Warnings and alerts are readable in dark mode again.** Danger indicators were painted in
+  a very dark maroon that all but disappeared against the dark chat background — the
+  "not verified" encryption shield, the retry prompt on a message that failed to send, and
+  kick/ban labels were effectively invisible, and unread mention badges were a near-black
+  dot rather than a red one. Alert text and filled mention badges now use separate, measured
+  reds, so both stay clearly legible in light and dark and on every palette.
+- **Error messages are readable in dark mode again.** The same dark maroon was used for error
+  text throughout the app — a failed sign-in, encryption setup and unlock errors, device
+  verification failures, the room directory's search error, and the profile, presence and
+  account settings warnings — leaving those messages nearly invisible against a dark
+  background at the moment they mattered most. They now use the measured alert red. Colours
+  were also re-checked against _hovered_ rows, not just resting ones, since a row you are
+  pointing at is usually the one you are reading.
+- **Destructive buttons and menu items are legible again.** "Delete", "Leave room", "Kick"
+  and similar destructive controls — along with invalid form fields — drew their label in a
+  maroon so dark it disappeared against the tinted background behind it, worst of all in dark
+  mode. Their labels now use the measured alert red, while the button's own background tint
+  is unchanged, so the controls look the same but can actually be read.
 - **Components follow the colour palette consistently.** Several hand-authored components
   used fixed colours or undefined tokens: the link-preview and location cards rendered a
   near-invisible border and background in light mode, and the mention badge and various
   "danger" reds didn't change with light/dark or the palette. They now use themed tokens, so
   everything re-colours together. The jump-to-latest pill and accent banner also use the
-  on-accent text colour, keeping their labels legible on light-accent palettes.
+  on-accent text colour, keeping their labels legible on light-accent palettes. Attachment
+  cards follow the palette too — image placeholders, file cards and the "couldn't load"
+  card were painted a fixed near-white and glared out of a dark timeline.
 - **More readable icons and initials.** The server rail's Home/Rooms buttons, the voice-note
   play button and unread badges now use the on-accent text colour so their glyphs stay legible
-  on light-accent palettes; and default avatars pick a dark or light initial to fit their
-  colour (the amber avatars were previously low-contrast). The Explore rooms/spaces toggle and
+  on light-accent palettes; and default avatars now pick a dark or light initial by measuring
+  it against the circle behind it, so the green, red, pink and amber avatars are all readable
+  (previously every initial was white, which only suited half of them). The Explore rooms/spaces toggle and
   the mention picker's search field also announce their state/label correctly to screen readers.
 - **The member list is reachable on phones and tablets.** Below 1100px the room's member
   list was hidden with no way to open it. It now slides in as a drawer — from the **Members**
