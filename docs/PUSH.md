@@ -23,12 +23,19 @@ message content) and the client fetches the event after sync.
 - **`PushService`** (`@trinity/data-access-notifications`, `push.service.ts`): requests OS push permission,
   registers for a device token via `@capacitor/push-notifications`, and registers a
   matching Matrix pusher **on every signed-in account** (`client.setPusher`,
-  `app_id = <base>.<platform>`, `kind:'http'`). All accounts share the one device token
-  as the `pushkey`; each pusher tags its `data` with the owning account:
+  `app_id = <base>.<platform>`, `kind:'http'`, `append:true`). All accounts share the one
+  device token as the `pushkey`; each pusher tags its `data` with the owning account:
   `data:{ url, format:'event_id_only', trinity_user_id: <userId> }`. Deletes the
   pusher(s) + detaches listeners on logout (`removePusher`). A notification tap switches
   to the tagged account (`trinity_user_id`) and opens the room (`room_id`) before
   showing it.
+  - **`append` must be `true`.** It governs pushers belonging to _other users_ for the
+    same `(app_id, pushkey)` — and since every account here shares one device token,
+    `append:false` makes each account in the loop delete the previous one's pusher
+    whenever two accounts live on the same homeserver, leaving only the last registered
+    able to receive push. It does not duplicate this user's own pusher: the homeserver
+    replaces that unconditionally on the `(app_id, pushkey)` key, so a repeat
+    `register()` stays at one pusher per account. Both halves verified against Synapse.
 - **Config token `PUSH_CONFIG`**: the app provides it from `environment.push`
   (`main.ts`). **`null` disables push** — the service is then a clean no-op.
 - **Native-only + guarded**: registration runs only on `getPlatform() ∈ {ios, android}`

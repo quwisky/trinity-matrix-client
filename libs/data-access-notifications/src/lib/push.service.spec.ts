@@ -128,7 +128,10 @@ describe('PushService', () => {
         app_id: 'eu.qwky.trinity.ios',
         pushkey: 'TOKEN123',
         kind: 'http',
-        append: false,
+        // Must be true: all accounts share one device token, so `false` would make
+        // each account's registration delete the previous account's pusher when both
+        // live on the same homeserver (verified against Synapse).
+        append: true,
         // Tagged with the owning account so the gateway can fan out per account.
         data: {
           url: CONFIG.gatewayUrl,
@@ -236,6 +239,25 @@ describe('PushService', () => {
         data: expect.objectContaining({ trinity_user_id: '@alt:hs' }),
       }),
     );
+  });
+
+  it('registers every account with append:true so co-hosted accounts survive', async () => {
+    // Regression guard. All accounts share one device token as the pushkey, and
+    // `append` is what tells the homeserver to leave *other users'* pushers for that
+    // key alone. With `append: false` two accounts on the same homeserver clobber
+    // each other and only the last one registered still receives push — confirmed
+    // against Synapse, where the earlier account's pusher count drops to 0.
+    const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+
+    await firstValueFrom(svc.register());
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await flush();
+
+    for (const userId of ['@me:hs', '@alt:hs']) {
+      expect(clients.get(userId)!.setPusher).toHaveBeenCalledWith(
+        expect.objectContaining({ append: true, pushkey: 'TOKEN123' }),
+      );
+    }
   });
 
   it('opens the app when a notification is tapped', async () => {

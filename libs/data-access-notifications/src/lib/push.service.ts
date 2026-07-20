@@ -189,8 +189,15 @@ export class PushService {
           device_display_name: account.client.getDeviceId() ?? 'Trinity',
           lang: 'en',
           data,
-          // `append: false` replaces a stale pusher for this key on this account.
-          append: false,
+          // `append` governs pushers belonging to *other users*, not this one — the
+          // homeserver always replaces this user's own pusher for the same
+          // (app_id, pushkey). It must be true here: every account shares one device
+          // token, so `false` makes each account in this loop delete the previous
+          // one's pusher whenever two accounts live on the same homeserver, leaving
+          // only the last. Verified against Synapse: with `false` the earlier
+          // account's pusher count drops to 0; with `true` both survive, and
+          // re-registering the same account stays idempotent at one pusher.
+          append: true,
         })
         .catch(() => undefined);
     }

@@ -80,6 +80,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Mobile push reaches every account on the same server.** With two or more accounts signed
+  in on one homeserver, registering each account's push cancelled the one before it, so only
+  the most recently registered account could receive mobile notifications. Each account now
+  registers without disturbing the others. (Push still needs a configured gateway to deliver
+  anything — see docs/PUSH.md.)
 - **Warnings and alerts are readable in dark mode again.** Danger indicators were painted in
   a very dark maroon that all but disappeared against the dark chat background — the
   "not verified" encryption shield, the retry prompt on a message that failed to send, and
