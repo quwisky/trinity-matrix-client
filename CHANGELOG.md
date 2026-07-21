@@ -96,6 +96,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Consecutive messages line up again.** When you sent several messages in a row, the
+  first sat a few pixels to the left of the rest, so a group of your own messages looked
+  subtly ragged instead of forming one clean column. The follow-on rows now start exactly
+  where the first one does. (The gap varied with the time of day, which is why it looked
+  inconsistent.)
 - **Mobile push is registered for every account on the same server.** With two or more
   accounts signed in on one homeserver, registering each account's push cancelled the one
   before it, so only the most recently registered account kept a pusher the server could

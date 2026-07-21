@@ -109,10 +109,20 @@
   margin-top: 2px;
 }
 
+// Stands in for the avatar on a grouped row, so it must measure exactly as wide as
+// one (40px) or the body lands out of line with the message above it.
+
+// min-width is load-bearing: `shortTime` joins the meridiem with U+202F (a narrow
+// NO-BREAK space), making "6:16 PM" a single unbreakable ~44px word. A flex item's
+// automatic minimum size is its min-content, which would override the 40px basis and
+// push the row right. Pinning it to 0 keeps the box at 40px and lets the timestamp —
+// hover-only, and right-aligned — spill into the row's own 16px padding instead.
 .msg__gutter {
   flex: 0 0 40px;
+  min-width: 0;
   align-self: center;
   text-align: right;
+  white-space: nowrap;
   font-size: 12px;
   color: var(--trinity-text-muted);
   opacity: 0;
