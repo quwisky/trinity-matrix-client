@@ -5,7 +5,13 @@ import {
 } from 'matrix-js-sdk/lib/crypto-api';
 import { type MessageShield } from '@trinity/util-matrix';
 import { describe, expect, it, vi } from 'vitest';
-import { resolveShieldsInto, shieldKey, toShield } from './shields';
+import {
+  resolveShieldsInto,
+  shieldExplanationText,
+  shieldKey,
+  shieldReasonText,
+  toShield,
+} from './shields';
 
 /** An encrypted event; only getId/isDecryptionFailure are read by the resolver. */
 function event(id: string, decryptionFailure = false): MatrixEvent {
@@ -17,13 +23,85 @@ function event(id: string, decryptionFailure = false): MatrixEvent {
 
 const NOT_STALE = { force: false, isStale: () => false };
 
+/** A shield literal; `explanation` rides along with `reason` from the same code. */
+function shield(level: 'grey' | 'red', reason: string): MessageShield {
+  return { level, reason, explanation: 'because' };
+}
+
 describe('shieldKey', () => {
   it('fingerprints a shield and distinguishes none from any', () => {
     expect(shieldKey(null)).toBe('');
-    expect(shieldKey({ level: 'red', reason: 'why' })).toBe('red:why');
+    expect(shieldKey(shield('red', 'why'))).toBe('red:why');
     // Level and reason both participate, so a change in either re-projects.
-    expect(shieldKey({ level: 'grey', reason: 'why' })).not.toBe(
-      shieldKey({ level: 'red', reason: 'why' }),
+    expect(shieldKey(shield('grey', 'why'))).not.toBe(
+      shieldKey(shield('red', 'why')),
+    );
+  });
+});
+
+/**
+ * Reason codes that deliberately have no wording of their own, by numeric value so this
+ * file needn't name a deprecated constant:
+ *   0 UNKNOWN               — is the fallback, by definition
+ *   5 MISMATCHED_SENDER_KEY — deprecated; unused since matrix-sdk-crypto landed in v37
+ *   6 SENT_IN_CLEAR         — deprecated; per the SDK, "has never been used"
+ */
+const FALLBACK_REASONS = new Set<number>([0, 5, 6]);
+
+/** Every reason the SDK still emits, read off the enum so an SDK upgrade that adds one
+ *  fails the coverage test below instead of silently landing on the generic wording. */
+const LIVE_REASONS = Object.values(EventShieldReason).filter(
+  (value): value is EventShieldReason =>
+    typeof value === 'number' && !FALLBACK_REASONS.has(value),
+);
+
+describe('shield wording', () => {
+  // The icon and its one-line reason say something is off; the explanation says what it
+  // means. Both need to be specific for every reason — including the null/unknown case,
+  // which is what the fail-closed path renders.
+  const ALL: (EventShieldReason | null)[] = [...LIVE_REASONS, null];
+
+  it('covers every reason the SDK still emits', () => {
+    // Guards an SDK upgrade: a new reason code lands on the generic fallback until
+    // someone writes copy for it, and this is what says so.
+    expect(LIVE_REASONS).toHaveLength(6);
+
+    for (const reason of LIVE_REASONS) {
+      expect(shieldReasonText(reason)).not.toBe(shieldReasonText(null));
+      expect(shieldExplanationText(reason)).not.toBe(
+        shieldExplanationText(null),
+      );
+    }
+  });
+
+  it('explains every reason distinctly', () => {
+    const texts = ALL.map((reason) => shieldExplanationText(reason));
+
+    for (const text of texts) {
+      expect(text.length).toBeGreaterThan(20);
+    }
+    expect(new Set(texts).size).toBe(ALL.length);
+    expect(new Set(ALL.map((r) => shieldReasonText(r))).size).toBe(ALL.length);
+  });
+
+  // A shield means "we could not confirm who sent this", never "someone else read it" —
+  // overstating that would frighten users away from a room that is working correctly.
+  it('never claims the message was intercepted or exposed', () => {
+    for (const reason of ALL) {
+      expect(shieldExplanationText(reason)).not.toMatch(
+        /intercept|read by|eavesdrop|compromised|leaked/i,
+      );
+    }
+  });
+
+  // The two most serious codes accuse someone of something, so they must say what to do
+  // rather than leave the reader with a bare warning.
+  it('tells the reader what to do about an identity change', () => {
+    expect(
+      shieldExplanationText(EventShieldReason.VERIFICATION_VIOLATION),
+    ).toMatch(/verify them again/i);
+    expect(shieldExplanationText(EventShieldReason.MISMATCHED_SENDER)).toMatch(
+      /face value|don’t trust|treat/i,
     );
   });
 });
@@ -37,6 +115,18 @@ describe('toShield', () => {
         shieldReason: null,
       } as never),
     ).toBeNull();
+  });
+
+  it('carries the matching explanation alongside the reason', () => {
+    const mapped = toShield({
+      shieldColour: EventShieldColour.GREY,
+      shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+    } as never);
+
+    expect(mapped?.explanation).toBe(
+      shieldExplanationText(EventShieldReason.UNSIGNED_DEVICE),
+    );
+    expect(mapped?.explanation).not.toBe(mapped?.reason);
   });
 
   it('maps RED to red and anything else to grey', () => {

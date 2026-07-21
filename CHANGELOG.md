@@ -55,6 +55,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The authenticity shield now sits at the edge of the message, and explains itself.** The
+  warning icon on a message whose sender couldn't be fully authenticated used to trail the
+  timestamp on one kind of row and the message text on another, so it moved around and read
+  as part of the text. It now sits at the far right of the row, level with the message's
+  first line, in the same place for every message. Pointing at it (or tabbing to it) now
+  opens a tooltip that names what was found — say, that the message came from a device its
+  owner hasn't verified — and, below that, explains what it means for you and who can clear
+  it. Previously it relied on the browser's own tooltip, which said only the first half,
+  never appeared on a touchscreen, and couldn't be reached from the keyboard.
+- **Two serious warnings are no longer described in vague terms.** A message from someone
+  whose verified identity has since changed, or one whose sender doesn't match the device
+  that encrypted it, used to fall back to a generic "authenticity couldn't be verified".
+  Each now says plainly what happened and what to do about it.
 - **Device verification says when it's waiting on the other device.** After you answer
   "They match", verification isn't finished — the other device still has to answer too.
   The emoji screen used to sit there unchanged, as if the tap hadn't registered, inviting

@@ -253,7 +253,10 @@ export interface MessageView {
 /** An authenticity shield on an encrypted message, with a human-readable reason. */
 export interface MessageShield {
   level: 'grey' | 'red';
+  /** What was found, in one line — the shield's own label. */
   reason: string;
+  /** What that means for the reader, and what (if anything) resolves it. */
+  explanation: string;
 }
 
 /** A member who has read up to a message, for the "seen by" receipt avatars. */

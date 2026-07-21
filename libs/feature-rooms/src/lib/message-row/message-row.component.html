@@ -50,17 +50,6 @@
           @if (r.edited) {
             <span class="msg__edited">(edited)</span>
           }
-          @if (r.shield; as shield) {
-            <ng-icon
-              [name]="shieldIcon(shield.level)"
-              class="msg__shield"
-              [class.msg__shield--red]="shield.level === 'red'"
-              [attr.title]="shield.reason"
-              [attr.aria-label]="shield.reason"
-              aria-hidden="false"
-              [attr.data-testid]="'msg-shield-' + shield.level"
-            />
-          }
         </div>
         @if (r.poll; as poll) {
           <trn-poll
@@ -174,17 +163,6 @@
         } @else {
           <p class="msg__text msg__text--cont">{{ r.body }}</p>
         }
-        @if (r.shield; as shield) {
-          <ng-icon
-            [name]="shieldIcon(shield.level)"
-            class="msg__shield msg__shield--cont"
-            [class.msg__shield--red]="shield.level === 'red'"
-            [attr.title]="shield.reason"
-            [attr.aria-label]="shield.reason"
-            aria-hidden="false"
-            [attr.data-testid]="'msg-shield-' + shield.level"
-          />
-        }
         @if (r.previewUrl) {
           <trn-link-preview
             [url]="r.previewUrl"
@@ -227,6 +205,30 @@
           }
         }
       </div>
+    }
+
+    <!-- A row-level property, not part of the text: one shield for both the header and
+         grouped layouts, parked at the row's trailing edge. The icon alone says something
+         is off but not what, so it carries a tooltip that names the finding and explains
+         it. tabindex makes that reachable by keyboard (brn opens on focus as well as
+         hover) and the open tooltip is wired up as the icon's aria-describedby. -->
+    @if (r.shield; as shield) {
+      <ng-icon
+        [name]="shieldIcon(shield.level)"
+        class="msg__shield"
+        [class.msg__shield--red]="shield.level === 'red'"
+        [hlmTooltip]="shieldTip"
+        tabindex="0"
+        [attr.aria-label]="shield.reason"
+        aria-hidden="false"
+        [attr.data-testid]="'msg-shield-' + shield.level"
+      />
+      <ng-template #shieldTip>
+        <span class="msg__shield-tip" data-testid="msg-shield-tip">
+          <strong class="msg__shield-tip-reason">{{ shield.reason }}</strong>
+          <span class="msg__shield-tip-detail">{{ shield.explanation }}</span>
+        </span>
+      </ng-template>
     }
 
     @if (threadSummary(); as thread) {

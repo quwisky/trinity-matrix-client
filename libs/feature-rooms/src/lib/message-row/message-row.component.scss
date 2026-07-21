@@ -60,9 +60,16 @@
   font-size: 12px;
 }
 
-// Authenticity shield: grey = caution (default), red = warning.
+// Authenticity shield: grey = caution (default), red = warning. It qualifies the whole
+// message rather than any run of text, so it parks at the row's trailing edge, top-aligned
+// with the first line — the same place on a header row and a grouped one. Kept a flex item
+// (not absolutely positioned) so it reserves its own column and a long line wraps before
+// it rather than running underneath.
 .msg__shield {
-  margin-left: 4px;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 2px;
+  margin-left: 8px;
   color: var(--trinity-text-muted);
   font-size: 13px;
   cursor: help;
@@ -72,12 +79,32 @@
   color: var(--trinity-danger);
 }
 
-// On a grouped continuation row there's no header to sit in, so show the shield
-// inline with its own gap and no left margin borrowed from the author name.
-.msg__shield--cont {
-  display: inline-flex;
-  margin-left: 0;
-  vertical-align: middle;
+// Focusable so the tooltip is reachable without a mouse; show that focus.
+.msg__shield:focus-visible {
+  outline: 2px solid var(--trinity-accent);
+  outline-offset: 2px;
+  border-radius: var(--trinity-radius-sm);
+}
+
+// The tooltip body renders in a CDK overlay, detached from this row — but it is an
+// embedded view of a template declared here, so it keeps this component's style
+// scoping and these rules still reach it. Layout only; helm's tooltip classes own
+// the surface and ink.
+.msg__shield-tip {
+  display: block;
+  max-width: 260px;
+  text-align: left;
+}
+
+.msg__shield-tip-reason {
+  display: block;
+  font-weight: 600;
+}
+
+.msg__shield-tip-detail {
+  display: block;
+  margin-top: 2px;
+  opacity: 0.85;
 }
 
 .msg__toolbar {

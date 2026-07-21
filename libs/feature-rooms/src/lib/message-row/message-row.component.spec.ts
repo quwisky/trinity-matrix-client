@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { render } from '@trinity/testing';
+import { fireEvent, render, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import { of } from 'rxjs';
@@ -116,15 +116,82 @@ describe('MessageRowComponent', () => {
   it('renders an authenticity shield with its reason when the message has one', async () => {
     const { container } = await renderRow({
       row: row({
-        shield: { level: 'grey', reason: 'Sent from an unverified device.' },
+        shield: {
+          level: 'grey',
+          reason: 'Sent from an unverified device.',
+          explanation: 'Verify this person to be sure.',
+        },
       }),
     });
 
     const shield = container.querySelector('[data-testid=msg-shield-grey]');
     expect(shield).not.toBeNull();
-    expect(shield?.getAttribute('title')).toBe(
+    expect(shield?.getAttribute('aria-label')).toBe(
       'Sent from an unverified device.',
     );
+    // The custom tooltip carries the wording now, so the native one must be gone —
+    // two tooltips on the same icon would fight over the same hover.
+    expect(shield?.getAttribute('title')).toBeNull();
+    // Hover/focus is the only way in, so the icon has to be focusable.
+    expect(shield?.getAttribute('tabindex')).toBe('0');
+  });
+
+  // The icon alone cannot say what is wrong; the tooltip is where the meaning lives, so
+  // it has to actually open and carry BOTH halves — the finding and what it means.
+  it('opens a tooltip explaining the shield on hover', async () => {
+    const { container } = await renderRow({
+      row: row({
+        shield: {
+          level: 'red',
+          reason: 'Sent from a device its owner hasn’t verified.',
+          explanation: 'Only its owner can confirm the device is theirs.',
+        },
+      }),
+    });
+    const shield = container.querySelector(
+      '[data-testid=msg-shield-red]',
+    ) as HTMLElement;
+
+    fireEvent.mouseEnter(shield);
+    // brn opens after a 150ms show delay, into a CDK overlay outside this container.
+    const tip = await waitFor(() => {
+      const found = document.body.querySelector('[data-testid=msg-shield-tip]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+
+    expect(tip.textContent).toContain('hasn’t verified');
+    expect(tip.textContent).toContain('Only its owner can confirm');
+    // Wired as the icon's description so a screen reader reads it on focus.
+    expect(shield.getAttribute('aria-describedby')).not.toBeNull();
+  });
+
+  // Hover is not an input method everyone has. The icon is focusable precisely so the
+  // explanation is reachable by keyboard, which is only true if focus opens it too.
+  it('opens the same tooltip on keyboard focus', async () => {
+    const { container } = await renderRow({
+      row: row({
+        shield: {
+          level: 'grey',
+          reason: 'Sent by a user you haven’t verified.',
+          explanation: 'Verify this person to be sure.',
+        },
+      }),
+    });
+    const shield = container.querySelector(
+      '[data-testid=msg-shield-grey]',
+    ) as HTMLElement;
+
+    shield.focus();
+    expect(document.activeElement).toBe(shield); // tabindex actually took
+    fireEvent.focus(shield);
+
+    const tip = await waitFor(() => {
+      const found = document.body.querySelector('[data-testid=msg-shield-tip]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(tip.textContent).toContain('Verify this person to be sure.');
   });
 
   it('maps shield severity to a distinct icon shape (colour-independent)', async () => {
@@ -137,6 +204,29 @@ describe('MessageRowComponent', () => {
     expect(cmp.shieldIcon('grey')).toBe('lucideShieldQuestion');
   });
 
+  // The shield qualifies the whole message, so it hangs off the row itself rather than
+  // sitting inside the header or the body — that is what lets one element serve both
+  // layouts and park at the row's trailing edge instead of trailing the text.
+  it.each([true, false])(
+    'hangs the shield off the row itself (showHeader=%s)',
+    async (showHeader) => {
+      const { container } = await renderRow({
+        row: row({
+          showHeader,
+          shield: {
+            level: 'grey',
+            reason: 'Sent from an unverified device.',
+            explanation: 'Verify this person to be sure.',
+          },
+        }),
+      });
+
+      const shields = container.querySelectorAll('[data-testid^=msg-shield-]');
+      expect(shields).toHaveLength(1);
+      expect(shields[0].parentElement?.classList.contains('msg')).toBe(true);
+    },
+  );
+
   it('renders no shield when the message has none', async () => {
     const { container } = await renderRow({ row: row() });
     expect(container.querySelector('[data-testid^=msg-shield-]')).toBeNull();
@@ -146,7 +236,11 @@ describe('MessageRowComponent', () => {
     const { container } = await renderRow({
       row: row({
         showHeader: false, // grouped continuation message
-        shield: { level: 'red', reason: 'Sent from an unverified device.' },
+        shield: {
+          level: 'red',
+          reason: 'Sent from an unverified device.',
+          explanation: 'Verify this person to be sure.',
+        },
         previewUrl: 'https://example.com',
       }),
     });
