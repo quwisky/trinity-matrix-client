@@ -109,6 +109,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **"View source" is readable again.** The message-source window had no background of its
+  own, so its JSON was drawn straight over the conversation behind it — two sets of text on
+  top of each other. It now sits on a card like every other dialog.
 - **Consecutive messages line up again.** When you sent several messages in a row, the
   first sat a few pixels to the left of the rest, so a group of your own messages looked
   subtly ragged instead of forming one clean column. The follow-on rows now start exactly
