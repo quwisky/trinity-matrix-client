@@ -20,6 +20,7 @@ function view(partial: Partial<VerificationView>): VerificationView {
     isSelfVerification: true,
     incoming: false,
     emoji: null,
+    sasConfirmed: false,
     cancelReason: null,
     ...partial,
   };
@@ -142,6 +143,23 @@ describe('DeviceVerificationPage', () => {
     fireEvent.click(button(container, 'They match'));
 
     expect(svc.confirmSas).toHaveBeenCalledOnce();
+  });
+
+  it('waits on the other device once the match is confirmed', async () => {
+    const { container } = await renderPage(
+      signal(
+        view({
+          stage: 'sas-shown',
+          emoji: [{ glyph: '🐶', name: 'Dog' }],
+          sasConfirmed: true,
+        }),
+      ),
+    );
+
+    expect(
+      container.querySelector('[data-testid="sas-waiting"] hlm-spinner'),
+    ).not.toBeNull();
+    expect(container.querySelector('[data-testid="sas-match"]')).toBeNull();
   });
 
   it('dismisses and navigates to /rooms when done (routed, no returnTo)', async () => {

@@ -7,28 +7,42 @@
   }
 </ul>
 
-<p class="hint">Do these emoji match the ones shown on your other device?</p>
+@if (confirmed()) {
+  <div
+    class="waiting"
+    data-testid="sas-waiting"
+    role="status"
+    aria-live="polite"
+  >
+    <hlm-spinner />
+    <p class="hint">Waiting for the other device to confirm the emoji match…</p>
+  </div>
+} @else {
+  <p class="hint">Do these emoji match the ones shown on your other device?</p>
+}
 
 <div class="actions">
-  <button
-    hlmBtn
-    class="w-full"
-    data-testid="sas-match"
-    [disabled]="busy()"
-    (click)="match.emit()"
-  >
-    They match
-  </button>
-  <button
-    hlmBtn
-    class="w-full text-danger hover:text-danger"
-    variant="outline"
-    data-testid="sas-mismatch"
-    [disabled]="busy()"
-    (click)="mismatch.emit()"
-  >
-    They don't match
-  </button>
+  @if (!confirmed()) {
+    <button
+      hlmBtn
+      class="w-full"
+      data-testid="sas-match"
+      [disabled]="busy()"
+      (click)="match.emit()"
+    >
+      They match
+    </button>
+    <button
+      hlmBtn
+      class="w-full text-danger hover:text-danger"
+      variant="outline"
+      data-testid="sas-mismatch"
+      [disabled]="busy()"
+      (click)="mismatch.emit()"
+    >
+      They don't match
+    </button>
+  }
   <button
     hlmBtn
     class="w-full"

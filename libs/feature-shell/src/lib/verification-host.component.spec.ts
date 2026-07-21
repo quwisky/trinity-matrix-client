@@ -21,6 +21,7 @@ function incoming(): VerificationView {
     isSelfVerification: true,
     incoming: true,
     emoji: null,
+    sasConfirmed: false,
     cancelReason: null,
   };
 }

@@ -22,6 +22,15 @@ describe('SasCompareComponent', () => {
     ).toBe('true');
   });
 
+  it('asks for an answer until it gets one', async () => {
+    const { container } = await render(SasCompareComponent, {
+      inputs: { emoji: EMOJI },
+    });
+
+    expect(container.querySelector('[data-testid="sas-match"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="sas-waiting"]')).toBeNull();
+  });
+
   it('emits match / mismatch / cancel from the action buttons', async () => {
     const events: string[] = [];
     const { container } = await render(SasCompareComponent, {
@@ -44,5 +53,26 @@ describe('SasCompareComponent', () => {
     fireEvent.click(buttons.find((b) => b.textContent?.includes('Cancel'))!);
 
     expect(events).toEqual(['match', 'mismatch', 'cancel']);
+  });
+
+  // Once "They match" is answered, the exchange hangs on the other device — so the
+  // answer must be spent (no double-confirm) and the wait must be visible.
+  it('swaps the answer for a spinner once confirmed, keeping the emoji and Cancel', async () => {
+    const { container } = await render(SasCompareComponent, {
+      inputs: { emoji: EMOJI, confirmed: true },
+    });
+
+    const waiting = container.querySelector('[data-testid="sas-waiting"]');
+    expect(waiting).not.toBeNull();
+    expect(waiting?.getAttribute('aria-live')).toBe('polite');
+    expect(waiting?.querySelector('hlm-spinner')).not.toBeNull();
+    expect(waiting?.textContent).toMatch(/waiting for the other device/i);
+
+    expect(container.querySelector('[data-testid="sas-match"]')).toBeNull();
+    expect(container.querySelector('[data-testid="sas-mismatch"]')).toBeNull();
+    // The emoji stay up (the other device may still be waiting to be read), and the
+    // user is never trapped in the wait.
+    expect(container.querySelectorAll('.emoji__item').length).toBe(2);
+    expect(container.textContent).toContain('Cancel');
   });
 });

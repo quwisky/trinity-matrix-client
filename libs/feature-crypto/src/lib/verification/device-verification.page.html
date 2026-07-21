@@ -130,6 +130,7 @@
           <trn-sas-compare
             [emoji]="v.emoji ?? []"
             [busy]="busy()"
+            [confirmed]="v.sasConfirmed"
             (match)="confirm()"
             (mismatch)="reportMismatch()"
             (cancelled)="cancelAndLeave()"

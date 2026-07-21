@@ -235,9 +235,97 @@ describe('VerificationService', () => {
 
     const sas = fakeSas();
     verifier.showSas(sas);
+    expect(svc.active()?.sasConfirmed).toBe(false);
     await firstValueFrom(svc.confirmSas());
 
     expect(sas.confirm).toHaveBeenCalledOnce();
+    // Our MAC is out but the other side hasn't answered, so the phase is still Started:
+    // the flag is what lets the UI show the wait instead of asking again.
+    expect(svc.active()?.stage).toBe('sas-shown');
+    expect(svc.active()?.sasConfirmed).toBe(true);
+  });
+
+  // The spinner has to answer the click, not the round-trip: `confirm()` only resolves
+  // once the MAC is queued, which on a slow link is exactly the gap we are covering.
+  it('starts waiting as soon as the answer is given, not when it lands', async () => {
+    const { svc, client } = setup();
+    svc.connect();
+    const req = fakeRequest({ phase: VerificationPhase.Started });
+    const verifier = fakeVerifier();
+    req.attachVerifier(verifier);
+    client.emit(CryptoEvent.VerificationRequestReceived, req);
+
+    const sas = fakeSas();
+    let queueTheMac!: () => void;
+    sas.confirm.mockReturnValue(
+      new Promise<void>((resolve) => (queueTheMac = resolve)),
+    );
+    verifier.showSas(sas);
+
+    const confirmed = firstValueFrom(svc.confirmSas());
+    expect(svc.active()?.sasConfirmed).toBe(true);
+
+    queueTheMac();
+    await confirmed;
+    expect(svc.active()?.sasConfirmed).toBe(true);
+  });
+
+  it('goes back to asking when the SAS is shown again', async () => {
+    const { svc, client } = setup();
+    svc.connect();
+    const req = fakeRequest({ phase: VerificationPhase.Started });
+    const verifier = fakeVerifier();
+    req.attachVerifier(verifier);
+    client.emit(CryptoEvent.VerificationRequestReceived, req);
+
+    verifier.showSas(fakeSas());
+    await firstValueFrom(svc.confirmSas());
+    expect(svc.active()?.sasConfirmed).toBe(true);
+
+    verifier.showSas(fakeSas());
+
+    expect(svc.active()?.sasConfirmed).toBe(false);
+  });
+
+  // A stale wait carried into the next verification would show a spinner on a screen
+  // that has not been answered yet — and hide the answer buttons with it.
+  it('starts the next verification asking, not waiting', async () => {
+    const { svc, client } = setup();
+    svc.connect();
+    const req = fakeRequest({ phase: VerificationPhase.Started });
+    const verifier = fakeVerifier();
+    req.attachVerifier(verifier);
+    client.emit(CryptoEvent.VerificationRequestReceived, req);
+
+    verifier.showSas(fakeSas());
+    await firstValueFrom(svc.confirmSas());
+    expect(svc.active()?.sasConfirmed).toBe(true);
+
+    // The first one ends, so the next incoming request is adopted in its place.
+    req.setPhase(VerificationPhase.Cancelled);
+    client.emit(
+      CryptoEvent.VerificationRequestReceived,
+      fakeRequest({ phase: VerificationPhase.Requested }),
+    );
+
+    expect(svc.active()?.stage).toBe('requested');
+    expect(svc.active()?.sasConfirmed).toBe(false);
+  });
+
+  it('drops back to asking when confirming the SAS fails', async () => {
+    const { svc, client } = setup();
+    svc.connect();
+    const req = fakeRequest({ phase: VerificationPhase.Started });
+    const verifier = fakeVerifier();
+    req.attachVerifier(verifier);
+    client.emit(CryptoEvent.VerificationRequestReceived, req);
+
+    const sas = fakeSas();
+    sas.confirm.mockRejectedValue(new Error('offline'));
+    verifier.showSas(sas);
+
+    await expect(firstValueFrom(svc.confirmSas())).rejects.toThrow(/offline/);
+    expect(svc.active()?.sasConfirmed).toBe(false);
   });
 
   it('cancels with an Error and cancels the request', async () => {
