@@ -27,10 +27,20 @@ export function toShield(
   return {
     level: info.shieldColour === EventShieldColour.RED ? 'red' : 'grey',
     reason: shieldReasonText(info.shieldReason),
+    explanation: shieldExplanationText(info.shieldReason),
   };
 }
 
-/** A human-readable explanation for a shield reason code. */
+/**
+ * A human-readable explanation for a shield reason code.
+ *
+ * Covers every reason matrix-js-sdk still emits. `MISMATCHED_SENDER_KEY` and
+ * `SENT_IN_CLEAR` are deliberately absent: both are deprecated and never raised by
+ * matrix-sdk-crypto (the sender_key field went unchecked in v37, and SENT_IN_CLEAR
+ * "has never been used"), so a case for either would be unreachable — and would put a
+ * deprecated constant in our source. The default below still covers them if that
+ * changes.
+ */
 export function shieldReasonText(reason: EventShieldReason | null): string {
   switch (reason) {
     case EventShieldReason.UNVERIFIED_IDENTITY:
@@ -41,8 +51,38 @@ export function shieldReasonText(reason: EventShieldReason | null): string {
       return 'Sent from an unknown or deleted device.';
     case EventShieldReason.AUTHENTICITY_NOT_GUARANTEED:
       return 'The authenticity of this message can’t be guaranteed.';
+    case EventShieldReason.VERIFICATION_VIOLATION:
+      return 'Sent by a user whose verified identity has changed.';
+    case EventShieldReason.MISMATCHED_SENDER:
+      return 'The sender doesn’t match the device that encrypted this.';
     default:
       return 'This message’s authenticity couldn’t be verified.';
+  }
+}
+
+/**
+ * What a shield means for the reader, paired with {@link shieldReasonText}. A shield
+ * says the message could not be *attributed*, never that it was read by anyone — so
+ * these say what the doubt is and who can clear it, without implying interception.
+ */
+export function shieldExplanationText(
+  reason: EventShieldReason | null,
+): string {
+  switch (reason) {
+    case EventShieldReason.UNVERIFIED_IDENTITY:
+      return 'Trinity can’t confirm it really came from them. Verify this person to be sure.';
+    case EventShieldReason.UNSIGNED_DEVICE:
+      return 'Only its owner can confirm the device is theirs, by verifying it from another of their sessions.';
+    case EventShieldReason.UNKNOWN_DEVICE:
+      return 'There is no record of the device, so there is nothing to check the message against.';
+    case EventShieldReason.AUTHENTICITY_NOT_GUARANTEED:
+      return 'The key that decrypted it didn’t come straight from the sender — a key backup, for example.';
+    case EventShieldReason.VERIFICATION_VIOLATION:
+      return 'You verified this person before and their identity has changed since. Check with them another way, then verify them again.';
+    case EventShieldReason.MISMATCHED_SENDER:
+      return 'It claims to come from someone other than the account that set up its encryption, so don’t take the name on it at face value.';
+    default:
+      return 'Trinity couldn’t work out which device sent it.';
   }
 }
 
@@ -82,7 +122,11 @@ export async function resolveShieldsInto(
       // crypto/store error must not silently upgrade an unverified message's appearance;
       // show the cautious indicator instead. (Still caught, so a probe failure can never
       // break the timeline — that part of the original intent stands.)
-      shield = { level: 'grey', reason: shieldReasonText(null) };
+      shield = {
+        level: 'grey',
+        reason: shieldReasonText(null),
+        explanation: shieldExplanationText(null),
+      };
     }
     if (opts.isStale()) {
       return changed; // switched rooms/threads mid-resolve

@@ -19,6 +19,7 @@ import {
   type MessageAction,
   type MessageToolbarCaps,
 } from '@trinity/ui';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
 import {
   type MatrixLinkTarget,
@@ -87,6 +88,7 @@ export type MessageRowAction =
     LinkPreviewComponent,
     LocationComponent,
     VoiceMessageComponent,
+    HlmTooltip,
   ],
   viewProviders: [
     provideIcons({

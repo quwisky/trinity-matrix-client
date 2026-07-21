@@ -2185,6 +2185,7 @@ describe('TimelineService', () => {
         expect(svc.messages()[0].shield).toEqual({
           level: 'grey',
           reason: expect.any(String),
+          explanation: expect.any(String),
         }),
       );
     });
