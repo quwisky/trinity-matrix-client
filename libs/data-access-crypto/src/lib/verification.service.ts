@@ -37,6 +37,12 @@ export interface VerificationView {
   incoming: boolean;
   /** The seven SAS emoji to compare — populated only in the `sas-shown` stage. */
   emoji: SasEmoji[] | null;
+  /**
+   * We confirmed the emoji match and are waiting for the other side to confirm too.
+   * The SDK phase stays `Started` throughout, so this local flag is what tells the UI
+   * to stop asking and start waiting.
+   */
+  sasConfirmed: boolean;
   cancelReason: string | null;
 }
 
@@ -60,6 +66,7 @@ export class VerificationService {
   private request: VerificationRequest | null = null;
   private verifier: Verifier | null = null;
   private sas: ShowSasCallbacks | null = null;
+  private sasConfirmed = false;
 
   private readonly _active = signal<VerificationView | null>(null);
   /** The active verification, or `null` when none is in flight. */
@@ -92,6 +99,7 @@ export class VerificationService {
 
   private readonly onShowSas = (sas: ShowSasCallbacks): void => {
     this.sas = sas;
+    this.sasConfirmed = false;
     this.recompute();
   };
 
@@ -191,14 +199,29 @@ export class VerificationService {
     );
   }
 
-  /** Confirm the SAS emoji match (completes the verification). */
+  /**
+   * Confirm the SAS emoji match. Our MAC is sent immediately, but the verification only
+   * completes once the other side confirms too — so `sasConfirmed` flips right away and
+   * the view stays in `sas-shown` until the phase moves on.
+   */
   confirmSas(): Observable<void> {
     return defer(() => {
       const sas = this.sas;
       if (!sas) {
         throw new Error('There is nothing to confirm yet.');
       }
-      return from(sas.confirm());
+      return from(
+        (async (): Promise<void> => {
+          this.setSasConfirmed(true);
+          try {
+            await sas.confirm();
+          } catch (error) {
+            // Our MAC never went out, so drop back to asking rather than waiting forever.
+            this.setSasConfirmed(false);
+            throw error;
+          }
+        })(),
+      );
     });
   }
 
@@ -262,6 +285,12 @@ export class VerificationService {
     this.request = null;
     this.verifier = null;
     this.sas = null;
+    this.sasConfirmed = false;
+  }
+
+  private setSasConfirmed(confirmed: boolean): void {
+    this.sasConfirmed = confirmed;
+    this.recompute();
   }
 
   private recompute(): void {
@@ -278,6 +307,7 @@ export class VerificationService {
       incoming: !req.initiatedByMe,
       emoji:
         this.sas?.sas.emoji?.map(([glyph, name]) => ({ glyph, name })) ?? null,
+      sasConfirmed: this.sasConfirmed,
       cancelReason:
         req.phase === VerificationPhase.Cancelled
           ? this.cancelReason(req)

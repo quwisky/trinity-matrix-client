@@ -7,6 +7,10 @@
 // the auto-popped modal, both compare the seven emoji and confirm — asserting both
 // reach data-stage="done" and that the emoji names matched.
 //
+// A confirms first, so the run also covers the half-confirmed window: A waiting on its
+// peer (spinner, answer spent) while B is still being asked. Only a two-device run can
+// observe that state honestly.
+//
 // Homeserver is parameterized by env so this runs against anything:
 //   TRINITY_HS    homeserver the login form types (default https://localhost:8448,
 //                 the bundled Synapse+Caddy harness)
@@ -39,7 +43,9 @@ const log = (m) => console.log(`[verify] ${m}`);
 
 /** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
 async function fillLabeledInput(page, label, value) {
-  const input = page.getByLabel(label);
+  // Exact match: the password field's "Show password" reveal button (aria-label)
+  // otherwise also matches a substring `getByLabel('Password')`, tripping strict mode.
+  const input = page.getByLabel(label, { exact: true });
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
   await input.fill(value);
@@ -142,6 +148,33 @@ async function emojiNames(scope) {
   return scope.locator('.emoji__name').allInnerTexts();
 }
 
+/**
+ * After answering "They match", a device is waiting on its peer: the answer is spent
+ * (no double-confirm), the wait is visible and announced, and the emoji stay up so the
+ * user can still read them off to the device that hasn't answered yet.
+ */
+async function assertWaitingOnPeer(scope) {
+  const waiting = scope.getByTestId('sas-waiting');
+  await waiting.waitFor({ state: 'visible', timeout: STAGE_TIMEOUT });
+
+  await scope
+    .getByTestId('sas-match')
+    .waitFor({ state: 'detached', timeout: STAGE_TIMEOUT });
+  if ((await scope.getByTestId('sas-mismatch').count()) !== 0) {
+    throw new Error('"They don\'t match" is still offered after answering');
+  }
+  if ((await waiting.getAttribute('aria-live')) !== 'polite') {
+    throw new Error('the waiting status is not an aria-live region');
+  }
+  if ((await waiting.locator('hlm-spinner').count()) !== 1) {
+    throw new Error('no spinner inside the waiting status');
+  }
+  const names = await emojiNames(scope);
+  if (names.length !== 7) {
+    throw new Error(`emoji vanished while waiting (${names.length} left)`);
+  }
+}
+
 async function main() {
   await mkdir('e2e/.artifacts', { recursive: true });
   const server = await serve('www', PORT);
@@ -240,14 +273,41 @@ async function main() {
     }
     log('emoji match across both devices ✓');
 
-    // Confirm on both sides.
+    // 7. A answers first. The verification cannot complete until B answers too, so
+    //    this is the real two-device window the waiting spinner exists for — and the
+    //    only place it can be observed honestly (a single-client test would have to
+    //    fake the other side never replying).
     await A.getByTestId('sas-match').click();
+    log('A: confirmed "They match"');
+    await assertWaitingOnPeer(A);
+
+    // B has not answered, so B must still be *asking* — the wait is per device, not
+    // a global "verification is busy" state.
+    if ((await B.getByTestId('sas-waiting').count()) !== 0) {
+      throw new Error('B shows the waiting spinner without having answered');
+    }
+    await B.getByTestId('sas-match').waitFor({
+      state: 'visible',
+      timeout: STAGE_TIMEOUT,
+    });
+    // A cannot be done while B is still being asked.
+    if ((await stageOf(A)) !== 'sas-shown') {
+      throw new Error(
+        `A left sas-shown before B answered (stage=${await stageOf(A)})`,
+      );
+    }
+    log('A waits, B still asks ✓');
+
     await B.getByTestId('sas-match').click();
     log('both confirmed "They match"');
 
-    // 7. Both reach done.
+    // 8. Both reach done.
     await waitForStage(A, 'done');
     await waitForStage(B, 'done');
+    // The spinner belongs to the wait, not to the outcome screen.
+    if ((await A.getByTestId('sas-waiting').count()) !== 0) {
+      throw new Error('A still shows the waiting spinner after completing');
+    }
     log('both reached data-stage="done" ✓');
 
     console.log('\nRESULT: PASS');

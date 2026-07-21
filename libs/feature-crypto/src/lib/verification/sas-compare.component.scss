@@ -38,6 +38,23 @@
   font-size: 14px;
 }
 
+.waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  // The gap to .actions lives here, not on the child: align-items centres each
+  // item's *margin* box, so .hint's own bottom margin would offset the text
+  // against the spinner instead of spacing the row.
+  margin-bottom: 16px;
+
+  .hint {
+    margin: 0;
+    color: var(--trinity-text-muted);
+  }
+}
+
 .actions {
   display: flex;
   flex-direction: column;

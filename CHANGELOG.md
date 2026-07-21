@@ -55,6 +55,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Device verification says when it's waiting on the other device.** After you answer
+  "They match", verification isn't finished — the other device still has to answer too.
+  The emoji screen used to sit there unchanged, as if the tap hadn't registered, inviting
+  you to press it again. It now replaces the answer buttons with a spinner and "Waiting for
+  the other device to confirm", while the emoji stay on screen so you can still read them
+  off. Cancel remains available, and if sending your answer fails the buttons come back so
+  you can try again.
 - **Room for the message box.** Seven buttons used to crowd the message field, leaving
   almost nothing to type in on a narrow window and overflowing the row entirely on a small
   phone. Attach, GIF, poll, location and voice message now gather behind the **+** button as

@@ -5,6 +5,7 @@ import {
   output,
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { type SasEmoji } from '@trinity/data-access-crypto';
 
 /**
@@ -18,7 +19,7 @@ import { type SasEmoji } from '@trinity/data-access-crypto';
   selector: 'trn-sas-compare',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './sas-compare.component.scss',
-  imports: [HlmButton],
+  imports: [HlmButton, HlmSpinner],
   templateUrl: './sas-compare.component.html',
 })
 export class SasCompareComponent {
@@ -26,6 +27,11 @@ export class SasCompareComponent {
   readonly emoji = input.required<SasEmoji[]>();
   /** Disables the actions while a decision is being submitted. */
   readonly busy = input(false);
+  /**
+   * We already answered "they match" and are waiting for the other side. The emoji stay
+   * on screen (the other device may still be waiting to be read) but the answer is spent.
+   */
+  readonly confirmed = input(false);
 
   readonly match = output<void>();
   readonly mismatch = output<void>();

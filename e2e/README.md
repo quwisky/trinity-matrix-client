@@ -76,8 +76,14 @@ harness up, runs it, and tears it down.
 5. One side clicks `[data-testid=verify-start-sas]`.
 6. Both reach `[data-testid=verify-page][data-stage="sas-shown"]`; the runner reads
    `.emoji__name` on **both** contexts and **asserts the seven emoji are identical**,
-   then clicks `[data-testid=sas-match]` on both.
-7. Both reach `[data-testid=verify-page][data-stage="done"]` → `RESULT: PASS`.
+   then clicks `[data-testid=sas-match]` on **A only**.
+7. **A now waits on B** — the runner asserts A shows `[data-testid=sas-waiting]` (spinner +
+   `aria-live`), that A's `sas-match`/`sas-mismatch` are gone and its emoji are not, and
+   that **B is still asking** (its `sas-match` visible, no `sas-waiting`). This is the
+   half-confirmed window; only a two-device run can observe it. Then B clicks
+   `[data-testid=sas-match]`.
+8. Both reach `[data-testid=verify-page][data-stage="done"]`, with `sas-waiting` gone
+   → `RESULT: PASS`.
 
 The runner synchronises the two contexts off the live `data-stage` attribute
 (`idle|requested|ready|waiting|sas-shown|done|cancelled`) via `waitForFunction` —
