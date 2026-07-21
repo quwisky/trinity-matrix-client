@@ -43,4 +43,16 @@ describe('MessageSourceComponent', () => {
     cmp.close();
     expect(TestBed.inject(DialogRef).close).toHaveBeenCalled();
   });
+
+  // The CDK overlay is a bare positioned box: a dialog that doesn't paint its own card
+  // renders transparent over the timeline. jsdom can't see that, so assert the classes
+  // that produce it — the closest a unit test gets to "it looks like a dialog".
+  it('paints itself as a card rather than floating transparent', async () => {
+    const { container } = await build('{}');
+    const card = container.querySelector('[data-testid=message-source]');
+
+    expect(card?.className).toContain('bg-card');
+    expect(card?.className).toContain('text-card-foreground');
+    expect(card?.className).toContain('border');
+  });
 });

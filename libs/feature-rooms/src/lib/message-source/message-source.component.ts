@@ -14,7 +14,7 @@ import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
   imports: [HlmButton],
   template: `
     <div
-      class="flex max-h-[80vh] w-[min(90vw,40rem)] flex-col gap-3 p-4"
+      class="flex max-h-[80vh] w-[min(90vw,40rem)] flex-col gap-3 rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
       data-testid="message-source"
     >
       <h2 class="text-lg font-semibold">Message source</h2>
