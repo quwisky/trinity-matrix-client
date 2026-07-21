@@ -96,5 +96,28 @@ test.describe('Message source', () => {
     const json = dialog.getByTestId('message-source-json');
     await expect(json).toContainText('m.room.message');
     await expect(json).toContainText(body);
+
+    // ...on a surface of its own. A CDK overlay is a bare positioned box, so a dialog
+    // that doesn't paint a card renders transparent and its JSON is drawn straight over
+    // the conversation behind it. Only a real browser computes this: jsdom has no paint,
+    // so the unit spec can assert the classes but never their effect.
+    const surface = await dialog.evaluate((el) => {
+      const style = getComputedStyle(el);
+      // Chromium reports `rgb(r, g, b)` when fully opaque and `rgba(r, g, b, a)`
+      // otherwise — an unpainted element is `rgba(0, 0, 0, 0)`. Read the alpha only
+      // when there is a fourth channel; otherwise the blue channel would pose as one.
+      const channels = style.backgroundColor.match(/[\d.]+/g) ?? [];
+      return {
+        backgroundColor: style.backgroundColor,
+        opaque: channels.length === 4 ? Number(channels[3]) === 1 : true,
+        hasBorder: parseFloat(style.borderTopWidth) > 0,
+        hasShadow: style.boxShadow !== 'none',
+      };
+    });
+    expect(surface.opaque, `background was ${surface.backgroundColor}`).toBe(
+      true,
+    );
+    expect(surface.hasBorder).toBe(true);
+    expect(surface.hasShadow).toBe(true);
   });
 });

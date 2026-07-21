@@ -55,4 +55,27 @@ describe('MessageSourceComponent', () => {
     expect(card?.className).toContain('text-card-foreground');
     expect(card?.className).toContain('border');
   });
+
+  // Painting an inner box would leave the dialog's own padding transparent — the card has
+  // to be the outermost element, with everything else inside it.
+  it('wraps the whole dialog in that card, not an inner box', async () => {
+    const { container } = await build('{"a":1}');
+    const card = container.querySelector('[data-testid=message-source]');
+
+    expect(card?.parentElement).toBe(
+      container.firstElementChild?.parentElement,
+    );
+    expect(
+      card?.querySelector('[data-testid=message-source-json]'),
+    ).not.toBeNull();
+    expect(
+      card?.querySelector('[data-testid=message-source-copy]'),
+    ).not.toBeNull();
+    // Nothing renders outside the card.
+    expect(
+      [...container.children].filter(
+        (el) => el !== card && el.textContent?.trim(),
+      ),
+    ).toHaveLength(0);
+  });
 });
