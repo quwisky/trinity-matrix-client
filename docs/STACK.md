@@ -154,7 +154,8 @@ the architecture changes — find out before building UI on top.
   (`@vitest/browser` + `playwright`).
 - **End-to-end — app journeys:** `@nx/playwright` + `@playwright/test` at
   `e2e/playwright/`. `nx e2e trinity-e2e` builds the dev bundle, serves `www/`, and brings the
-  disposable Synapse harness up/down via global setup (auth specs skip when Docker is absent).
+  disposable Synapse harness up/down via global setup (locally, auth specs skip when Docker is
+  absent; under `CI` the setup fails instead, unless `TRINITY_E2E_ALLOW_NO_SYNAPSE=1`).
   Covers login/guard, navigation, settings, room list & filtering, favourites, notifications, unread badges, pinned messages, mobile nav, and timeline virtualization.
 - **End-to-end — crypto/protocol:** Playwright **standalone** (`playwright`, not
   `@playwright/test`) — `e2e/features/*.mjs` scripts (driven by `e2e/runners/*-run.mjs`) that serve `www/` and drive
@@ -166,7 +167,9 @@ the architecture changes — find out before building UI on top.
 
 ## Open setup decisions / reminders
 
-- Node 22+ required by matrix-js-sdk — current env is Node 25.2.1 (OK).
+- Node 24 — the version CI pins and the repo is developed on. The binding constraint is
+  Angular 22 (`^22.22.3 || ^24.15.0 || >=26.0.0`), not matrix-js-sdk (`>=22.0.0`); note
+  that range excludes Node 25, so "newer is fine" does not hold here.
 - SSO on native: the deep-link / custom URL scheme is configured (App plugin +
   iOS `CFBundleURLSchemes` + Android intent-filter); the round-trip still needs
   on-device validation.

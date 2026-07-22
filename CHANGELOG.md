@@ -66,8 +66,22 @@ All notable changes to this project are documented here. The format is based on
   light/dark control, with an **Amethyst** violet theme in addition to the default. The two
   are independent — any palette works in light or dark — and your choice is remembered.
 
+- **Desktop installers are built for every platform on a version tag.** Pushing a `vX.X.X`
+  tag now packages the desktop app on Linux (AppImage + deb), macOS (dmg + zip), and Windows
+  (installer), and attaches all of them to a **draft** GitHub release for review before
+  anything is published. The Linux `.deb` had never actually been buildable — the packaging
+  metadata it requires was missing, so that target failed the build; it works now. Installers
+  are unsigned until signing credentials are configured.
+
 ### Changed
 
+- **Continuous integration moved to GitHub Actions, and now checks more.** Every pull
+  request, and every push to `develop` or `master`, runs the existing gates (lint, stylelint, formatting, unit tests, production
+  build) plus two things nothing checked before: the Electron desktop main process is
+  unit-tested rather than only compiled, and the Playwright end-to-end journeys run against a
+  disposable Matrix homeserver. The end-to-end job deliberately **fails** if that homeserver
+  cannot start, because the alternative — the behaviour it had locally — is a green run that
+  quietly tested almost nothing. This replaces the previous Crow CI pipeline.
 - **The authenticity shield now sits at the edge of the message, and explains itself.** The
   warning icon on a message whose sender couldn't be fully authenticated used to trail the
   timestamp on one kind of row and the message text on another, so it moved around and read

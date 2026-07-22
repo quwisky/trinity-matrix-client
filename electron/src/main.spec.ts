@@ -34,6 +34,7 @@ vi.mock('./scheme', () => ({
   registerAppProtocol: vi.fn(),
 }));
 vi.mock('./cors', () => ({ installMatrixCors: vi.fn() }));
+vi.mock('./cors-ipc', () => ({ registerCorsIpc: vi.fn() }));
 vi.mock('./menu', () => ({ buildMenu: vi.fn() }));
 vi.mock('./window', () => ({
   createWindow: vi.fn(),

@@ -18,12 +18,17 @@ export default defineConfig([
   globalIgnores([
     '**/dist',
     '**/www',
+    // electron-builder's output (electron/release): packaged app trees carry
+    // Chromium's licence HTML, which ESLint otherwise tries to parse.
+    '**/release',
     '**/coverage',
     '**/node_modules',
     '**/.angular',
     'android',
     'ios',
     'e2e',
+    '.pnpm-store/',
+    '**/.pnpm-store/',
   ]),
   {
     files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx'],

@@ -17,8 +17,17 @@ services:
     environment:
       SYNAPSE_SERVER_NAME: localhost
       SYNAPSE_REPORT_STATS: 'no'
+      # Run as the invoking user so the bind-mounted ./data (config, signing key, sqlite
+      # DB) stays writable by us — the image otherwise runs as 991 and chowns it, which
+      # breaks the next start.mjs config patch and stop.mjs's cleanup on any filesystem
+      # that does NOT remap ownership (i.e. every plain Linux CI runner). start.mjs
+      # supplies these; the defaults keep a bare `docker compose up` behaving as before.
+      UID: ${TRINITY_E2E_UID:-991}
+      GID: ${TRINITY_E2E_GID:-991}
     volumes:
-      - ./data:/data
+      # ${TRINITY_E2E_STATE_DIR:-.} keeps this as ./data everywhere it already works;
+      # see paths.mjs for the one environment where it must move.
+      - ${TRINITY_E2E_STATE_DIR:-.}/data:/data
     # Bind Synapse's HTTP listener to the host too, so register_new_matrix_user
     # (run from stop/setup scripts on the host) can reach it directly.
     ports:
@@ -33,7 +42,7 @@ services:
     depends_on:
       - synapse
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${TRINITY_E2E_STATE_DIR:-.}/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     ports:

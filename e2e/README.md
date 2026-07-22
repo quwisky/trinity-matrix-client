@@ -5,7 +5,8 @@
 > (web) and `e2e/electron/` (desktop) — run the web suite with
 > `pnpm exec nx e2e trinity` (`@playwright/test`, Chromium; it builds the dev
 > bundle, serves `www/`, and spins the Synapse harness below up/down via global
-> setup, skipping auth specs when Docker is absent) and the desktop suite with
+> setup, skipping auth specs when Docker is absent locally — under `CI` a missing
+> harness fails the run instead, unless `TRINITY_E2E_ALLOW_NO_SYNAPSE=1`) and the desktop suite with
 > `pnpm electron:e2e`. The `features/` + `runners/` scripts are specialised
 > crypto/protocol drivers (E2EE spike, two-client SAS verification, encrypted
 > media, emoji composer) kept as raw `playwright` Node harnesses. All of it reuses
@@ -17,6 +18,11 @@
 
 Build the dev bundle first (`pnpm nx build trinity --configuration=development`),
 which the `pnpm` wrappers below do for you.
+
+> On a **containerised CI runner** (a job container talking to a separate Docker
+> daemon), set `TRINITY_E2E_STATE_DIR` and `TRINITY_E2E_NETWORK_CONTAINER` — bind
+> mounts and published ports are both resolved by the daemon, not by the job. See
+> `e2e/synapse/paths.mjs` and docs/DEVELOPMENT.md.
 
 ## Layout
 

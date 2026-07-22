@@ -23,7 +23,7 @@ export default defineConfig({
   // appearing in the list, a rename/receipt propagating) can briefly exceed their
   // per-step timeouts. A retry re-runs when contention has eased; a genuine bug
   // still fails all attempts, and Playwright reports the retried ones as "flaky".
-  // Pairs with `trace: 'on-first-retry'` below.
+  // Pairs with `trace: 'retain-on-failure'` below.
   retries: 2,
   // Every spec drives the same single disposable Synapse; the default worker count
   // (≈half the cores) oversubscribes it, and the resulting slow /sync + round-trips
@@ -45,7 +45,12 @@ export default defineConfig({
     // Accept the disposable Synapse + Caddy self-signed cert (the app CSP only
     // allows https:/wss: for connect-src, so the HS must be served over TLS).
     ignoreHTTPSErrors: true,
-    trace: 'on-first-retry',
+    // retain-on-failure, NOT on-first-retry: the latter traces the *retry*, which for a
+    // flaky spec is the attempt that passed — leaving the failing attempt with no trace at
+    // all. Measured on a full CI-mode run, two specs burned 212s of 464s total test time on
+    // failed first attempts that were consequently undiagnosable. Traces are still only
+    // kept for failures, so a green run costs nothing.
+    trace: 'retain-on-failure',
   },
   webServer: {
     command:

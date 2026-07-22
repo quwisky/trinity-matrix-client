@@ -50,7 +50,7 @@
   "private": true,
   "packageManager": "pnpm@11.15.1",
   "engines": {
-    "node": ">=22",
+    "node": ">=24",
     "pnpm": ">=11"
   },
   "dependencies": {

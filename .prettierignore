@@ -26,3 +26,6 @@ skills-lock.json
 # generator's own class order so a re-sync doesn't fight prettier-plugin-tailwindcss.
 # (Only the generated hlm-*.ts; the hand-authored trn-* overlay adapters stay formatted.)
 libs/spartan/**/hlm-*.ts
+
+.pnpm-store/
+**/.pnpm-store/

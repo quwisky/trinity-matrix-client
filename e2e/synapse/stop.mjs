@@ -6,7 +6,8 @@
 import { execFile } from 'node:child_process';
 import { rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
+import { DATA, composeFiles, resolveNetworkContainer } from './paths.mjs';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
@@ -15,24 +16,31 @@ const log = (m) => console.log(`[synapse] ${m}`);
 
 export async function stop({ keepData = false } = {}) {
   try {
+    // Detection failing must not strand the stack: fall back to the default file set.
+    const networkContainer = await resolveNetworkContainer().catch(() => '');
     log('docker compose down…');
     await exec(
       'docker',
       [
         'compose',
-        '-f',
-        join(HERE, 'docker-compose.yml'),
+        ...composeFiles(networkContainer),
         'down',
         '-v',
         '--remove-orphans',
       ],
-      { cwd: HERE },
+      {
+        cwd: HERE,
+        env: {
+          ...process.env,
+          TRINITY_E2E_NETWORK_CONTAINER: networkContainer,
+        },
+      },
     );
   } catch (err) {
     log(`compose down warning: ${err.message ?? err}`);
   }
   if (!keepData) {
-    await rm(join(HERE, 'data'), { recursive: true, force: true });
+    await rm(DATA, { recursive: true, force: true });
     log('removed ./data');
   }
   log('down.');
