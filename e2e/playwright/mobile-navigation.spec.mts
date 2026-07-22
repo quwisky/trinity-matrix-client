@@ -207,8 +207,16 @@ test.describe('Mobile room navigation', () => {
       timeout: 20_000,
     });
 
-    // Tapping the backdrop dismisses the drawer.
-    await page.getByTestId('members-backdrop').click();
+    // Tapping the backdrop dismisses the drawer — near its top-left corner, deliberately.
+    // The backdrop is `inset-0`, so its centre (195,422 at this viewport) lies *under* the
+    // 240px drawer pinned to the right edge (x 150-390), and Playwright clicks an element's
+    // centre by default. Measured: elementFromPoint at the centre is `aside.members`, at
+    // (10,10) it is the backdrop. This only ever passed because the click raced the 0.2s
+    // slide-in animation while the drawer was still translated off-screen; once the drawer
+    // settles the click is blocked forever, which is what it does on a slower CI runner.
+    await page
+      .getByTestId('members-backdrop')
+      .click({ position: { x: 10, y: 10 } });
     await expect(page.locator('.chat-members')).toBeHidden();
 
     // Reopen and pick the buddy: the info panel opens and the drawer closes with it.
