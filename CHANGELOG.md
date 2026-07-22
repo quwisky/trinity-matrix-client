@@ -8,6 +8,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **See what a message used to say.** An edited message has always been marked "(edited)",
+  but the earlier wording was out of reach. That marker is now a button: click it (or tab to
+  it and press Enter) to see every version of the message, oldest first, with the time each
+  was sent. It works for anyone's messages, not just your own — the versions are kept by the
+  homeserver and any Matrix client can read them, so this shows what is already there rather
+  than anything new. Each version highlights what that edit changed — added words marked,
+  replaced words struck through beside them — so you can see the change at a glance
+  instead of comparing two paragraphs by eye; **Highlight changes** turns that off if you
+  came to read an old version rather than compare. Formatting is kept either way. A message
+  you deleted offers no history: its edits do survive on the server, but Trinity won't put
+  them back in front of you. You can also **remove** any version of your own message from
+  the list — that really deletes it from the server, and the message falls back to the
+  version before it.
 - **Set your own mobile push gateway.** Settings → Notifications now has a **Push gateway**
   section where you can point mobile notifications at a gateway you run or trust, instead
   of relying on one built into the app. Paste its URL — a bare address is completed for you

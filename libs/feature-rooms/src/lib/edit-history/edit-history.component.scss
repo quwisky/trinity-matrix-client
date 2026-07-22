@@ -1,0 +1,72 @@
+.center {
+  text-align: center;
+  padding: 12px 0;
+
+  p {
+    margin: 8px 0 0;
+  }
+}
+
+.truncated {
+  margin: 0;
+  color: var(--trinity-text-muted);
+  font-size: 12px;
+}
+
+.revisions {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.revision + .revision {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--trinity-divider);
+}
+
+.revision__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.revision__label {
+  color: var(--trinity-text-bright);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.revision__time {
+  color: var(--trinity-text-muted);
+  font-size: 12px;
+}
+
+// The body rules the timeline applies live in message-row's own stylesheet, which is
+// component-scoped and cannot reach a dialog rendered in an overlay — so they are
+// restated here rather than borrowed. (The `.msg__text--html` class on the rich variant
+// is a different matter: that one styles the *injected* markdown children and is global.)
+.revision__text {
+  margin: 0;
+  color: var(--trinity-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.revision__text--muted {
+  color: var(--trinity-text-muted);
+  font-style: italic;
+}
+
+.msg__text--html {
+  white-space: normal;
+}
+
+// Pushed to the trailing edge of the row's head, away from the label and time.
+.revision__remove {
+  margin-left: auto;
+}

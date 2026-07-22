@@ -227,6 +227,54 @@ describe('MessageRowComponent', () => {
     },
   );
 
+  // The marker is the only way into the edit history, and it has to work identically in
+  // both layouts — a grouped message has no header for it to sit in.
+  it.each([true, false])(
+    'raises edit-history from the (edited) marker (showHeader=%s)',
+    async (showHeader) => {
+      const actions: MessageRowAction[] = [];
+      const { container } = await render(MessageRowComponent, {
+        inputs: { row: row({ showHeader, edited: true }), caps: caps() },
+        on: { action: (a: MessageRowAction) => actions.push(a) },
+      });
+
+      const marker = container.querySelector(
+        '[data-testid=msg-edited]',
+      ) as HTMLElement;
+      fireEvent.click(marker);
+
+      expect(actions).toEqual([{ type: 'edit-history' }]);
+      // The accessible name keeps the visible text (WCAG 2.5.3 Label in Name), so a
+      // voice-control user can say what they see.
+      expect(marker.getAttribute('aria-label')).toContain('(edited)');
+    },
+  );
+
+  it('offers no marker on a message that was never edited', async () => {
+    const { container } = await render(MessageRowComponent, {
+      inputs: { row: row(), caps: caps() },
+    });
+
+    expect(container.querySelector('[data-testid=msg-edited]')).toBeNull();
+  });
+
+  // `edited` comes from the SDK's replacing event, which survives a redaction that
+  // arrived from the server — so a deleted message can still claim to be edited, and its
+  // edits do still exist. Offering the history there would undo the deletion.
+  it.each([
+    ['deleted', { kind: 'redacted' as const }],
+    ['undecryptable', { decryptionFailed: true }],
+  ])(
+    'offers no marker on a %s message, even if flagged edited',
+    async (_label, over) => {
+      const { container } = await render(MessageRowComponent, {
+        inputs: { row: row({ edited: true, ...over }), caps: caps() },
+      });
+
+      expect(container.querySelector('[data-testid=msg-edited]')).toBeNull();
+    },
+  );
+
   it('renders no shield when the message has none', async () => {
     const { container } = await renderRow({ row: row() });
     expect(container.querySelector('[data-testid^=msg-shield-]')).toBeNull();

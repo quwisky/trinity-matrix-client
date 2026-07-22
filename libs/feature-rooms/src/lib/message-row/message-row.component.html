@@ -47,8 +47,16 @@
         <div class="msg__head">
           <span class="msg__author">{{ r.senderName }}</span>
           <span class="msg__time">{{ r.timestamp | date: 'short' }}</span>
-          @if (r.edited) {
-            <span class="msg__edited">(edited)</span>
+          @if (showEditedMarker()) {
+            <button
+              type="button"
+              class="msg__edited"
+              data-testid="msg-edited"
+              aria-label="(edited) — show edit history"
+              (click)="action.emit({ type: 'edit-history' })"
+            >
+              (edited)
+            </button>
           }
         </div>
         @if (r.poll; as poll) {
@@ -169,8 +177,16 @@
             [encrypted]="r.previewEncrypted ?? true"
           />
         }
-        @if (r.edited) {
-          <span class="msg__edited">(edited)</span>
+        @if (showEditedMarker()) {
+          <button
+            type="button"
+            class="msg__edited"
+            data-testid="msg-edited"
+            aria-label="(edited) — show edit history"
+            (click)="action.emit({ type: 'edit-history' })"
+          >
+            (edited)
+          </button>
         }
         @if (r.reactions.length) {
           <trn-message-reactions

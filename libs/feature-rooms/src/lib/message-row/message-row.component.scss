@@ -54,10 +54,31 @@
   overflow-wrap: anywhere;
 }
 
+// The "(edited)" marker opens the message's edit history. It keeps the muted, 12px
+// look of the label it replaced — the negative margins buy a ~44px touch target out of
+// the surrounding padding without moving the baseline, which matters because on a
+// touchscreen there is no hover toolbar and this is the only way in.
 .msg__edited {
-  margin-left: 4px;
+  margin: -8px 0 -8px 4px;
+  padding: 8px 4px;
+  border: none;
+  background: none;
   color: var(--trinity-text-muted);
+  font: inherit;
   font-size: 12px;
+  line-height: inherit;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--trinity-text);
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--trinity-accent);
+    outline-offset: 2px;
+    border-radius: var(--trinity-radius-sm);
+  }
 }
 
 // Authenticity shield: grey = caution (default), red = warning. It qualifies the whole
