@@ -6,7 +6,12 @@
  * global stylesheet, scoped to the `.msg__text--html` container class, rather than
  * inside message-row.component.scss — which keeps them out of that component's style
  * budget and avoids the deprecated `::ng-deep` (this was the codebase's only use).
- * `.msg__text--html` is rendered only by message-row.
+ *
+ * `.msg__text--html` is rendered by message-row and by the edit-history dialog, which
+ * shows past versions of a message and so must style their markdown identically. Note
+ * that only these child rules are shared: the container's own whitespace/wrapping rules
+ * live in each component's stylesheet, since the dialog renders in an overlay that
+ * message-row's scoped styles cannot reach.
  */
 .msg__text--html {
   p {
@@ -116,4 +121,32 @@
       visibility: hidden;
     }
   }
+}
+
+/*
+ * Edit-history diff highlights. Injected via [innerHTML] by the edit-history dialog, so
+ * like the markdown rules above they cannot live in a component stylesheet.
+ *
+ * Class selectors, never `ins`/`del` element selectors: `del` is a Matrix-permitted tag,
+ * so styling the element would restyle every ~~strikethrough~~ in the timeline, which
+ * shares this stylesheet.
+ *
+ * Colour is never the only signal — an insertion is underlined and a deletion struck
+ * through — so the marks survive a colour-blind reader, a monochrome display, and the
+ * tint failing to render.
+ */
+.diff-ins {
+  background: color-mix(in srgb, var(--success) 22%, transparent);
+  color: inherit;
+  border-radius: var(--trinity-radius-sm);
+  padding: 0 2px;
+  text-decoration: underline;
+}
+
+.diff-del {
+  background: color-mix(in srgb, var(--trinity-danger) 18%, transparent);
+  color: inherit;
+  border-radius: var(--trinity-radius-sm);
+  padding: 0 2px;
+  text-decoration: line-through;
 }

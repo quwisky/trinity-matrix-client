@@ -706,6 +706,13 @@ export function sanitizeMatrixHtml(html: string): string {
   return clean;
 }
 
+/**
+ * Shown in place of a body we hold no key for. Exported so every surface that can render
+ * an undecryptable message says the same thing — never the SDK's internal
+ * `** Unable to decrypt: <reason> **`, which is a diagnostic, not a message to a user.
+ */
+export const UNDECRYPTABLE_BODY = '⚠️ Unable to decrypt this message';
+
 interface RenderedBody {
   body: string;
   html: string | null;
@@ -716,13 +723,52 @@ interface RenderedBody {
   location?: LocationView | null;
 }
 
+/** The text of a message body, rendered every way the msgtype branches need it. */
+export interface RenderedText {
+  /** Plain text, with any reply fallback stripped. */
+  text: string;
+  /** Sanitized `formatted_body`, or null when the sender didn't format it. */
+  html: string | null;
+  /** What a text body renders as: `html`, else the plain text with URLs linkified. */
+  textHtml: string | null;
+}
+
+/**
+ * Render a message content block's text into its three forms. The distinction between
+ * `html` and `textHtml` is load-bearing and not interchangeable: a text/emote/notice body
+ * renders `textHtml` (so bare URLs are clickable), while an MSC2530 media caption renders
+ * `html` — deliberately un-linkified, since a caption is a label rather than prose.
+ *
+ * Shared by {@link buildMessageView} and the edit-history projection so a past revision
+ * renders exactly as the live message does.
+ */
+export function renderTextBody(
+  content: Record<string, unknown>,
+  isReply: boolean,
+): RenderedText {
+  const raw = (content['body'] as string) ?? '';
+  const text = isReply ? stripReplyFallbackText(raw) : raw;
+  // Markdown is delivered as HTML in `formatted_body` (format = custom HTML).
+  const rawHtml =
+    content['format'] === 'org.matrix.custom.html' &&
+    typeof content['formatted_body'] === 'string'
+      ? (content['formatted_body'] as string)
+      : null;
+  const strippedHtml =
+    isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
+  const html = strippedHtml === null ? null : sanitizeMatrixHtml(strippedHtml);
+
+  // Plain text (no formatted_body) still gets bare URLs linkified so they're clickable.
+  return { text, html, textHtml: html ?? linkifyText(text) };
+}
+
 function renderBody(
   event: MatrixEvent,
   decryptionFailed: boolean,
 ): RenderedBody {
   if (decryptionFailed) {
     return {
-      body: '⚠️ Unable to decrypt this message',
+      body: UNDECRYPTABLE_BODY,
       html: null,
       kind: 'unsupported',
       media: null,
@@ -737,21 +783,10 @@ function renderBody(
     };
   }
   const content = event.getContent();
-  const isReply = !!event.replyEventId;
-  const raw = (content['body'] as string) ?? '';
-  const text = isReply ? stripReplyFallbackText(raw) : raw;
-  // Markdown is delivered as HTML in `formatted_body` (format = custom HTML).
-  const rawHtml =
-    content['format'] === 'org.matrix.custom.html' &&
-    typeof content['formatted_body'] === 'string'
-      ? (content['formatted_body'] as string)
-      : null;
-  const strippedHtml =
-    isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
-  const html = strippedHtml === null ? null : sanitizeMatrixHtml(strippedHtml);
-
-  // Plain text (no formatted_body) still gets bare URLs linkified so they're clickable.
-  const textHtml = html ?? linkifyText(text);
+  const { text, html, textHtml } = renderTextBody(
+    content,
+    !!event.replyEventId,
+  );
   switch (content.msgtype) {
     case MsgType.Text:
       return { body: text, html: textHtml, kind: 'text', media: null };

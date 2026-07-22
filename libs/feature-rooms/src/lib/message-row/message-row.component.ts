@@ -58,7 +58,12 @@ export interface MessageRowCaps {
 
 /** A user intent raised from a message row: the toolbar's actions plus row-local ones. */
 export type MessageRowAction =
-  MessageAction | { type: 'retry' } | { type: 'jump'; id: string };
+  | MessageAction
+  | { type: 'retry' }
+  | { type: 'jump'; id: string }
+  /** Show this message's earlier versions — raised by the "(edited)" marker, which is
+   *  part of the row rather than the toolbar, so it stays out of `MessageAction`. */
+  | { type: 'edit-history' };
 
 /**
  * One presentational message row, shared by the main timeline ({@link
@@ -127,6 +132,20 @@ export class MessageRowComponent {
   readonly pollVote = output<{ pollId: string; answerId: string }>();
   /** A request to close this row's poll (the host sends the m.poll.end). */
   readonly pollEnd = output<string>();
+
+  /**
+   * Whether to offer the "(edited)" marker, which opens the edit history.
+   *
+   * `edited` alone isn't enough. It comes from the SDK's replacing event, which survives
+   * a redaction that arrived from the server (only a locally-applied one clears it), so a
+   * deleted message can still claim to be edited — and its edits do still exist server-side.
+   * A message we couldn't decrypt is excluded for the same reason: we can't show versions
+   * of something we can't read.
+   */
+  readonly showEditedMarker = computed(() => {
+    const row = this.row();
+    return row.edited && row.kind !== 'redacted' && !row.decryptionFailed;
+  });
 
   /** Capabilities the overflow toolbar needs, projected from {@link caps}. */
   readonly toolbarCaps = computed<MessageToolbarCaps>(() => {

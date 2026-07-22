@@ -244,6 +244,15 @@ export class TimelineService {
       this.scheduleRefresh();
     }
   };
+  // Which edit a message resolves to can change without any new event arriving — an
+  // edit being redacted re-aggregates the message onto an earlier revision. That is a
+  // different signal from RoomEvent.Timeline (nothing was added or removed from the
+  // timeline), so without this the row keeps rendering the version that just went away.
+  private readonly onReplaced = (event: MatrixEvent): void => {
+    if (event.getRoomId() === this.roomId) {
+      this.scheduleRefresh();
+    }
+  };
   // A member's display name/avatar can arrive (lazy loading) or change *after* the
   // events that reference it — as a header sender or, more subtly, as a reply
   // preview's quoted sender, which would otherwise stay stuck on the raw mxid +
@@ -312,6 +321,7 @@ export class TimelineService {
     room.on(RoomEvent.Receipt, this.onReceipt);
     room.on(RoomStateEvent.Members, this.onMember);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
+    client.on(MatrixEventEvent.Replaced, this.onReplaced);
     client.on(RoomMemberEvent.Typing, this.onTyping);
     client.on(CryptoEvent.UserTrustStatusChanged, this.onTrust);
     client.on(CryptoEvent.DevicesUpdated, this.onTrust);
@@ -347,6 +357,7 @@ export class TimelineService {
     const client = this.connectedClient;
     if (client) {
       client.off(MatrixEventEvent.Decrypted, this.onDecrypted);
+      client.off(MatrixEventEvent.Replaced, this.onReplaced);
       client.off(RoomMemberEvent.Typing, this.onTyping);
       client.off(CryptoEvent.UserTrustStatusChanged, this.onTrust);
       client.off(CryptoEvent.DevicesUpdated, this.onTrust);

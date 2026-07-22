@@ -1432,6 +1432,27 @@ describe('TimelineService', () => {
       expect(m.captionHtml).toBeNull(); // plain caption
     });
 
+    // A caption is a label for the attachment, not prose, so it is NOT linkified the way
+    // a message body is — the two renderings share a code path and only diverge here, on
+    // a plain caption that happens to contain a URL.
+    it('leaves a plain MSC2530 caption unlinkified', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$urlcap',
+          sender: '@a:hs',
+          msgtype: 'm.image',
+          body: 'from https://example.com',
+          filename: 'pic.png',
+          url: 'mxc://hs/abc',
+          info: { mimetype: 'image/png' },
+        }),
+      ]);
+
+      const m = svc.messages()[0];
+      expect(m.caption).toBe('from https://example.com');
+      expect(m.captionHtml).toBeNull();
+    });
+
     it('projects a rich (markdown) MSC2530 caption', () => {
       const svc = setup([
         fakeEvent({
@@ -2118,6 +2139,61 @@ describe('TimelineService', () => {
 
     it('is null for a live (non-tombstoned) room', () => {
       expect(openTombstoneRoom(null).tombstone()).toBeNull();
+    });
+  });
+
+  // Which edit a message resolves to can change with no new event arriving: redacting an
+  // edit re-aggregates the message onto an earlier revision. That is a different signal
+  // from RoomEvent.Timeline — nothing was added or removed — so without a listener for it
+  // the row keeps rendering the version that just went away.
+  describe('re-aggregation after an edit is redacted', () => {
+    function openWithEvent(opts: Parameters<typeof fakeEvent>[0]) {
+      const event = fakeEvent(opts);
+      const room = fakeRoom([event]);
+      const client = fakeClient(room, []);
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(client), mediaProvider()],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return { svc, client, event };
+    }
+
+    it('re-projects the message when it resolves to a different edit', async () => {
+      const opts = {
+        id: '$a',
+        sender: '@a:hs',
+        body: 'newest wording',
+        edited: true,
+      };
+      const { svc, client, event } = openWithEvent(opts);
+      expect(svc.messages()[0].body).toBe('newest wording');
+      expect(svc.messages()[0].edited).toBe(true);
+
+      // What the SDK does after the newest edit is redacted: the same event now reads as
+      // an earlier version, and it emits Replaced rather than a timeline change.
+      opts.body = 'earlier wording';
+      opts.edited = false;
+      client.handlers.get('Event.replaced')?.(event);
+
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].body).toBe('earlier wording'),
+      );
+      // The marker follows too — it is the only way into the edit history.
+      expect(svc.messages()[0].edited).toBe(false);
+    });
+
+    it('ignores a replacement in a room it is not showing', async () => {
+      const opts = { id: '$a', sender: '@a:hs', body: 'unchanged' };
+      const { svc, client } = openWithEvent(opts);
+
+      opts.body = 'should not appear';
+      client.handlers.get('Event.replaced')?.({
+        getRoomId: () => '!other:hs',
+      } as never);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(svc.messages()[0].body).toBe('unchanged');
     });
   });
 

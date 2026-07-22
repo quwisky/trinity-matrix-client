@@ -15,6 +15,7 @@ import { ReactionPickerService } from '../reaction-picker/reaction-picker.servic
 import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
 import { MessageSourceService } from '../message-source/message-source.service';
+import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
 import {
   formatTypingNotice,
@@ -160,6 +161,7 @@ export abstract class MessageListBase {
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
   private readonly sourceSvc = inject(MessageSourceService);
+  private readonly editHistorySvc = inject(EditHistoryDialogService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   // Grouping rows, cached per event id so an unchanged message (same view object AND
@@ -420,6 +422,9 @@ export abstract class MessageListBase {
       case 'thread':
         this.openThread.emit(row.id);
         break;
+      case 'edit-history':
+        void this.showEditHistory(row.id);
+        break;
       default: {
         // Exhaustiveness guard: adding a MessageRowAction variant without a case
         // here becomes a compile error rather than a silently-dropped action.
@@ -427,6 +432,21 @@ export abstract class MessageListBase {
         void unhandled;
         break;
       }
+    }
+  }
+
+  /**
+   * Show a message's earlier versions. A permalink followed inside the dialog comes back
+   * here rather than being routed there, so it travels the same path as one clicked in
+   * the timeline itself.
+   */
+  private async showEditHistory(id: string): Promise<void> {
+    const followed = await this.editHistorySvc.openHistory(
+      this.roomId() ?? '',
+      id,
+    );
+    if (followed) {
+      this.matrixLink.emit(followed);
     }
   }
 

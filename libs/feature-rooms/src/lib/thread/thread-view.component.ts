@@ -41,6 +41,7 @@ import { ReactionPickerService } from '../reaction-picker/reaction-picker.servic
 import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
 import { MessageSourceService } from '../message-source/message-source.service';
+import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -89,6 +90,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
   private readonly sourceSvc = inject(MessageSourceService);
+  private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly timeline = inject(TimelineService);
   private readonly dialogRef =
     inject<DialogRef<void, ThreadViewComponent>>(DialogRef);
@@ -361,6 +363,11 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         break;
       case 'jump':
         this.jumpTo(action.id);
+        break;
+      case 'edit-history':
+        // The thread panel routes no permalinks (its rows don't bind matrixLink either),
+        // so a link followed out of the dialog just closes it.
+        void this.editHistorySvc.openHistory(this.roomId(), row.id);
         break;
       // Pin/thread are not offered inside a thread (caps.canPin/canThread false).
       case 'pin':
