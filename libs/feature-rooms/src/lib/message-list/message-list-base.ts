@@ -349,13 +349,19 @@ export abstract class MessageListBase {
     const pinnedIds = this.pinnedIds();
     const caps = new Map<string, MessageRowCaps>();
     for (const message of this.messages()) {
+      // An unsent message is only a local echo: its id is the SDK's `~roomId:txnId`
+      // placeholder, which the homeserver has never seen. Threading off it would make
+      // that placeholder the thread root — every reply then relates to an event the
+      // server can't resolve — and pinning it would write it into `m.room.pinned_events`
+      // room state. Both wait for the remote echo to swap in the real event id.
+      const unsent = !!message.status;
       const next: MessageRowCaps = {
         editable: this.isEditable(message),
         // Own messages are always deletable; a moderator can also redact others'.
-        deletable: (message.isOwn || canRedactOthers) && !message.status,
-        canPin,
+        deletable: (message.isOwn || canRedactOthers) && !unsent,
+        canPin: canPin && !unsent,
         pinned: pinnedIds.includes(message.id),
-        canThread: true,
+        canThread: !unsent,
         readOnly: false,
       };
       // Reuse the previous object when nothing about this row's caps changed, exactly

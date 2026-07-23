@@ -122,6 +122,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Replies in a thread you start off your newest message no longer vanish.** Opening
+  "Reply in thread" on a message that was still being sent rooted the thread on a
+  placeholder id the homeserver never had: the thread opened normally, but every reply
+  typed into it was silently dropped. Threading — and pinning, which had the same flaw and
+  would have written that placeholder into the room's pinned list — now wait the moment it
+  takes for the message to land, so both always act on the real message.
+- **Voting in a poll right after you create it works.** Clicking an answer while the poll
+  itself was still on its way to the server failed outright with "Could not cast your
+  vote", because the vote pointed at a poll the server hadn't seen yet. Answers (and "End
+  poll") are held for those few hundred milliseconds instead of failing.
 - **"View source" is readable again.** The message-source window had no background of its
   own, so its JSON was drawn straight over the conversation behind it — two sets of text on
   top of each other. It now sits on a card like every other dialog.

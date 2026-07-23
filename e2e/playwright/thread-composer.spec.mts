@@ -5,7 +5,13 @@ import {
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  clickRowToolbar,
+  login,
+  synapseSession,
+  waitForSent,
+  type SynapseSession,
+} from './support/app.mts';
 
 // Covers the thread composer (data-testid="thread-view"): the room-scoped actions
 // (poll/location/voice) are hidden there because they post to the main room,
@@ -85,10 +91,16 @@ test.describe('Thread composer', () => {
     const composer = page.getByTestId('composer-input');
     await composer.fill(rootBody);
     await composer.press('Enter');
-    const row = page.locator('.scroll .msg', { hasText: rootBody });
+    const row = page.locator('.scroll .msg[data-mid]', { hasText: rootBody });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
-    await row.first().hover();
-    await row.first().getByRole('button', { name: 'Reply in thread' }).click();
+    // A thread hangs off its root's event id, so the root has to be sent for real
+    // first — "Reply in thread" is withheld from an unsent local echo (whose id is
+    // only a `~txnId` placeholder the homeserver could never resolve).
+    await waitForSent(row.first());
+    await clickRowToolbar(
+      row.first(),
+      row.first().getByRole('button', { name: 'Reply in thread' }),
+    );
 
     const thread = page.getByTestId('thread-view');
     await expect(thread).toBeVisible({ timeout: 15_000 });
