@@ -32,7 +32,7 @@ import {
 } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
@@ -2105,5 +2105,199 @@ describe('RoomsPage account switcher summary', () => {
       { userId: '@me:hs', displayName: 'Me', avatarMxc: meAvatar, unread: 4 },
       { userId: '@alt:hs', displayName: '@alt:hs', avatarMxc: null, unread: 0 },
     ]);
+  });
+});
+
+// Keyboard room switching (issue #12): the single `onGlobalKeydown` dispatcher. The MRU
+// service and the pure nav helpers have their own specs; these assert the wiring — which
+// chord opens what, the desktop gate, and the overlay guard.
+describe('RoomsPage keyboard room switching', () => {
+  function roomSummary(id: string, unread = 0): RoomSummary {
+    return {
+      id,
+      name: id,
+      initial: id[1].toUpperCase(),
+      avatarMxc: null,
+      topic: '',
+      memberCount: 0,
+      encrypted: false,
+      unreadCount: unread,
+      highlightCount: 0,
+      hasUnread: unread > 0,
+      lastMessage: '',
+      activityTs: 0,
+      favourite: false,
+    };
+  }
+
+  let dialogOpen = false;
+
+  function build(): RoomsPage {
+    dialogOpen = false;
+    // Display order a, b, c; b and c carry unread.
+    const rooms = [
+      roomSummary('!a:hs'),
+      roomSummary('!b:hs', 3),
+      roomSummary('!c:hs', 1),
+    ];
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        MockProvider(RoomsService, {
+          rooms: signal(rooms),
+          directRoomIds: signal<ReadonlySet<string>>(new Set()),
+        }),
+        MockProvider(SpacesService, {
+          spaces: signal([]),
+          childRoomIds: vi.fn(() => []),
+        }),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService),
+        MockProvider(Router),
+        MockProvider(TrnDialogService, { hasOpen: () => dialogOpen }),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return TestBed.inject(RoomsPage);
+  }
+
+  /** A minimal KeyboardEvent-like with a preventDefault spy, for the host handler. */
+  function key(init: Partial<KeyboardEvent>): KeyboardEvent {
+    return {
+      key: '',
+      code: '',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      preventDefault: vi.fn(),
+      ...init,
+    } as unknown as KeyboardEvent;
+  }
+
+  afterEach(() => {
+    delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+  });
+
+  /** Visit a → b → c so the MRU is [c, b, a] and we're in c. */
+  function visitABC(page: RoomsPage): void {
+    page.onSelectRoom('!a:hs');
+    page.onSelectRoom('!b:hs');
+    page.onSelectRoom('!c:hs');
+  }
+
+  it('hops back through the visited stack, cycling deeper, without recording mid-cycle', () => {
+    const page = build();
+    visitABC(page);
+
+    page.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(page.activeRoomId()).toBe('!b:hs'); // previous room
+
+    page.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(page.activeRoomId()).toBe('!a:hs'); // two back — cycling deeper
+
+    // Shift reverses.
+    page.onGlobalKeydown(key({ key: "'", ctrlKey: true, shiftKey: true }));
+    expect(page.activeRoomId()).toBe('!b:hs');
+  });
+
+  it('consumes the chord it handles and ignores an unmodified quote', () => {
+    const page = build();
+    visitABC(page);
+
+    const handled = key({ key: "'", metaKey: true });
+    page.onGlobalKeydown(handled);
+    expect(handled.preventDefault).toHaveBeenCalled();
+
+    const typed = key({ key: "'" }); // no modifier → plain typing
+    page.onGlobalKeydown(typed);
+    expect(typed.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('walks the visible list with Alt+Arrow, wrapping', () => {
+    const page = build(); // list order a, b, c; in c after visiting
+    visitABC(page);
+
+    page.onGlobalKeydown(key({ key: 'ArrowDown', altKey: true }));
+    expect(page.activeRoomId()).toBe('!a:hs'); // c → wrap to a
+
+    page.onGlobalKeydown(key({ key: 'ArrowUp', altKey: true }));
+    expect(page.activeRoomId()).toBe('!c:hs'); // a → wrap back to c
+  });
+
+  it('jumps to the next unread room with Alt+Shift+Arrow', () => {
+    const page = build(); // b(3) and c(1) are unread
+    page.onSelectRoom('!a:hs'); // in a read room
+
+    page.onGlobalKeydown(
+      key({ key: 'ArrowDown', altKey: true, shiftKey: true }),
+    );
+    expect(page.activeRoomId()).toBe('!b:hs'); // first unread
+  });
+
+  it('ignores Ctrl/Cmd+1…9 and Ctrl+Tab on the web (browser-reserved)', () => {
+    const page = build(); // no desktop marker
+    visitABC(page);
+
+    page.onGlobalKeydown(key({ code: 'Digit1', key: '1', metaKey: true }));
+    expect(page.activeRoomId()).toBe('!c:hs'); // unchanged
+    page.onGlobalKeydown(key({ key: 'Tab', ctrlKey: true }));
+    expect(page.activeRoomId()).toBe('!c:hs'); // unchanged
+  });
+
+  it('jumps to the Nth most-recent room with Ctrl/Cmd+1…9 on the desktop shell', () => {
+    // The marker must be present before the page reads it at construction.
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const page = build();
+    visitABC(page); // MRU [c, b, a], in c
+
+    page.onGlobalKeydown(key({ code: 'Digit2', key: '2', ctrlKey: true }));
+    expect(page.activeRoomId()).toBe('!a:hs'); // 2 = two rooms back
+  });
+
+  it('hops with Ctrl+Tab on the desktop shell', () => {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const page = build();
+    visitABC(page); // in c
+
+    page.onGlobalKeydown(key({ key: 'Tab', ctrlKey: true }));
+    expect(page.activeRoomId()).toBe('!b:hs'); // Tab hops like the quote
+  });
+
+  it('stays quiet while an overlay owns the screen', () => {
+    const page = build();
+    visitABC(page);
+    dialogOpen = true;
+
+    const event = key({ key: "'", ctrlKey: true });
+    page.onGlobalKeydown(event);
+    expect(page.activeRoomId()).toBe('!c:hs'); // no hop
+    expect(event.preventDefault).not.toHaveBeenCalled();
   });
 });
