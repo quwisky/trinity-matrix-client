@@ -1,6 +1,6 @@
-import { signal } from '@angular/core';
-import { ComponentFixture } from '@angular/core/testing';
-import { DialogRef } from '@angular/cdk/dialog';
+import { ApplicationRef, signal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { render } from '@trinity/testing';
 import {
   SearchService,
@@ -14,6 +14,7 @@ import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
+import { MessageSearchService } from './message-search.service';
 
 function hit(over: Partial<MessageHit> = {}): MessageHit {
   return {
@@ -89,6 +90,35 @@ describe('MessageSearchComponent', () => {
     expect(focusTarget?.getAttribute('placeholder')).toBe(
       'Search this conversation',
     );
+  });
+
+  it('lands focus in the query field when opened through the service', async () => {
+    // The full production path in one test — real MessageSearchService, real
+    // TrnDialogService, real CDK dialog — because that is where the bug lived: the
+    // component's own focus() ran first and CDK's focus pass then overrode it with the
+    // header's close button. Only the search/timeline backends are stubbed.
+    searchLoadedMessages.mockReturnValue(loaded());
+    TestBed.configureTestingModule({
+      providers: [
+        MockProvider(SearchService, {
+          searchLoadedMessages,
+          searchServerMessages,
+          loadMoreHistory,
+        }),
+        MockProvider(TimelineService, { messages: signal([]) }),
+      ],
+    });
+    const searched = TestBed.inject(MessageSearchService).search('!r:hs');
+    const appRef = TestBed.inject(ApplicationRef);
+    appRef.tick();
+    await appRef.whenStable();
+
+    const query = document.querySelector('[data-autofocus]');
+    expect(query).not.toBeNull();
+    expect(document.activeElement).toBe(query);
+
+    TestBed.inject(Dialog).closeAll();
+    expect(await searched).toBeNull();
   });
 
   it('renders the loaded-timeline matches as result rows', async () => {
