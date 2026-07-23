@@ -18,14 +18,21 @@ function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
 
 /** Build an unread object, overriding only the counts a test cares about. */
 const unread = (over: Partial<RailUnread> = {}): RailUnread => ({
+  recent: 0,
   home: 0,
   rooms: 0,
   perSpace: {},
   ...over,
 });
 
+// Fixed pill order at the head of the rail: Recent, Home, Rooms, then one per space.
+const RECENT = 0;
+const HOME = 1;
+const ROOMS = 2;
+const FIRST_SPACE = 3;
+
 describe('ServerRailComponent', () => {
-  it('renders Home plus a pill per space', async () => {
+  it('renders Recent, Home, Rooms plus a pill per space', async () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [
@@ -36,12 +43,25 @@ describe('ServerRailComponent', () => {
       imports: [MockComponent(AvatarComponent)],
     });
 
+    expect(container.querySelector('.pill.recent')).toBeTruthy();
     expect(container.querySelector('.pill.home')).toBeTruthy();
     expect(container.querySelector('.pill.rooms')).toBeTruthy();
     const spacePills = container.querySelectorAll(
-      '.pill:not(.home):not(.add):not(.rooms)',
+      '.pill:not(.recent):not(.home):not(.add):not(.rooms)',
     );
     expect(spacePills.length).toBe(2);
+  });
+
+  it('emits showRecent when the Recent pill is clicked', async () => {
+    const { fixture } = await render(ServerRailComponent, {
+      imports: [MockComponent(AvatarComponent)],
+    });
+
+    let shown = false;
+    fixture.componentInstance.showRecent.subscribe(() => (shown = true));
+    screen.getByTestId('rail-recent').click();
+
+    expect(shown).toBe(true);
   });
 
   it('emits selectSpace(null) when Home is clicked', async () => {
@@ -65,7 +85,9 @@ describe('ServerRailComponent', () => {
     let selected: string | null = null;
     fixture.componentInstance.selectSpace.subscribe((v) => (selected = v));
     container
-      .querySelector<HTMLElement>('.pill:not(.home):not(.add):not(.rooms)')!
+      .querySelector<HTMLElement>(
+        '.pill:not(.recent):not(.home):not(.add):not(.rooms)',
+      )!
       .click();
 
     expect(selected).toBe('!s:hs');
@@ -85,24 +107,40 @@ describe('ServerRailComponent', () => {
     expect(created).toBe(true);
   });
 
-  it('marks the active space (Home active when no space is selected)', async () => {
+  it('lights Recent while its view is active and dims Home', async () => {
+    const { fixture, container } = await render(ServerRailComponent, {
+      inputs: { recentActive: true },
+      imports: [MockComponent(AvatarComponent)],
+    });
+
+    const items = container.querySelectorAll('.item');
+    expect(items[RECENT].classList.contains('active')).toBe(true);
+    expect(items[HOME].classList.contains('active')).toBe(false);
+
+    // Leaving Recent hands the active marker back to Home (no space, no Rooms view).
+    fixture.componentRef.setInput('recentActive', false);
+    fixture.detectChanges();
+    expect(items[RECENT].classList.contains('active')).toBe(false);
+    expect(items[HOME].classList.contains('active')).toBe(true);
+  });
+
+  it('marks the active space (Home active when nothing else is)', async () => {
     const { fixture, container } = await render(ServerRailComponent, {
       inputs: { spaces: [space({ id: '!s:hs' })] },
       imports: [MockComponent(AvatarComponent)],
     });
 
-    // No selection → Home is the active item.
-    const homeItem = container.querySelector('.item')!;
-    expect(homeItem.classList.contains('active')).toBe(true);
+    // No Recent, no Rooms, no space → Home is the active item.
+    const items = container.querySelectorAll('.item');
+    expect(items[HOME].classList.contains('active')).toBe(true);
 
-    // Selecting the space moves the active marker to its item
-    // (order: Home, Rooms, space, add).
+    // Selecting the space moves the active marker to its item.
     fixture.componentRef.setInput('activeSpaceId', '!s:hs');
     fixture.detectChanges();
-    const items = container.querySelectorAll('.item');
-    expect(items[0].classList.contains('active')).toBe(false); // Home
-    expect(items[1].classList.contains('active')).toBe(false); // Rooms
-    expect(items[2].classList.contains('active')).toBe(true); // the space
+    expect(items[RECENT].classList.contains('active')).toBe(false);
+    expect(items[HOME].classList.contains('active')).toBe(false);
+    expect(items[ROOMS].classList.contains('active')).toBe(false);
+    expect(items[FIRST_SPACE].classList.contains('active')).toBe(true);
   });
 
   it('emits showRooms when the Rooms pill is clicked', async () => {
@@ -124,29 +162,38 @@ describe('ServerRailComponent', () => {
     const items = container.querySelectorAll('.item');
 
     // Default (no Rooms view): Home active, Rooms inactive.
-    expect(items[0].classList.contains('active')).toBe(true); // Home
-    expect(items[1].classList.contains('active')).toBe(false); // Rooms
+    expect(items[HOME].classList.contains('active')).toBe(true);
+    expect(items[ROOMS].classList.contains('active')).toBe(false);
 
     fixture.componentRef.setInput('roomsActive', true);
     fixture.detectChanges();
-    expect(items[0].classList.contains('active')).toBe(false); // Home no longer active
-    expect(items[1].classList.contains('active')).toBe(true); // Rooms active
+    expect(items[HOME].classList.contains('active')).toBe(false);
+    expect(items[ROOMS].classList.contains('active')).toBe(true);
   });
 
-  it('shows unread badges on the Home, Rooms and space pills', async () => {
+  it('shows unread badges on the Recent, Home, Rooms and space pills', async () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [space({ id: '!s:hs' })],
-        unread: unread({ home: 3, rooms: 7, perSpace: { '!s:hs': 12 } }),
+        unread: unread({
+          recent: 9,
+          home: 3,
+          rooms: 7,
+          perSpace: { '!s:hs': 12 },
+        }),
       },
       imports: [MockComponent(AvatarComponent)],
     });
 
-    // order: Home, Rooms, space, add
     const items = container.querySelectorAll('.item');
-    expect(items[0].querySelector('.badge')?.textContent?.trim()).toBe('3');
-    expect(items[1].querySelector('.badge')?.textContent?.trim()).toBe('7');
-    expect(items[2].querySelector('.badge')?.textContent?.trim()).toBe('12');
+    expect(items[RECENT].querySelector('.badge')?.textContent?.trim()).toBe(
+      '9',
+    );
+    expect(items[HOME].querySelector('.badge')?.textContent?.trim()).toBe('3');
+    expect(items[ROOMS].querySelector('.badge')?.textContent?.trim()).toBe('7');
+    expect(
+      items[FIRST_SPACE].querySelector('.badge')?.textContent?.trim(),
+    ).toBe('12');
   });
 
   it('hides a pill badge when its unread count is zero', async () => {
@@ -185,11 +232,15 @@ describe('ServerRailComponent', () => {
       imports: [MockComponent(AvatarComponent)],
     });
 
-    // order: Home, Rooms, a, b, c, add
+    // order: Recent, Home, Rooms, a, b, c, add
     const items = container.querySelectorAll('.item');
-    expect(items[2].querySelector('.badge')?.textContent?.trim()).toBe('1');
-    expect(items[3].querySelector('.badge')).toBeNull(); // zero → hidden
-    expect(items[4].querySelector('.badge')?.textContent?.trim()).toBe('42');
+    expect(
+      items[FIRST_SPACE].querySelector('.badge')?.textContent?.trim(),
+    ).toBe('1');
+    expect(items[FIRST_SPACE + 1].querySelector('.badge')).toBeNull(); // zero → hidden
+    expect(
+      items[FIRST_SPACE + 2].querySelector('.badge')?.textContent?.trim(),
+    ).toBe('42');
   });
 
   it('hides a space badge once its count transitions to 0 via a setInput change', async () => {
@@ -201,7 +252,7 @@ describe('ServerRailComponent', () => {
       imports: [MockComponent(AvatarComponent)],
     });
 
-    const spaceItem = () => container.querySelectorAll('.item')[2];
+    const spaceItem = () => container.querySelectorAll('.item')[FIRST_SPACE];
     expect(spaceItem().querySelector('.badge')?.textContent?.trim()).toBe('6');
 
     fixture.componentRef.setInput(

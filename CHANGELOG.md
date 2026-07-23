@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A Recent activity view that answers "what happened?" in one place.** A new first entry
+  in the left rail, above Home and Rooms, shows every conversation — direct messages and
+  rooms together, including rooms inside your spaces — in one list, favourites at the top
+  and the most recently active first. It's where the app opens now, so the latest activity
+  is in front of you on launch; Home (direct messages) and Rooms are still a click away and
+  scoped exactly as before.
 - **See who reacted, not just how many.** Pointing at a reaction says who is behind it —
   "👍 reacted by You, Alice and 4 others" — and the small people button at the end of the
   reactions opens the full list, with a tab per emoji and everyone who picked it. Tapping

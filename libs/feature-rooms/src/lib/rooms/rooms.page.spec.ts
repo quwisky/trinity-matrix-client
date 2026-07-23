@@ -610,18 +610,33 @@ describe('RoomsPage space filtering', () => {
     return TestBed.inject(RoomsPage);
   }
 
+  it('Recent activity (the default) shows every joined room, mixed', () => {
+    const page = build();
+
+    // Nothing selected → Recent is active from the start, listing all rooms in the
+    // service's favourite-then-recency order (c, a, b as seeded), DM and non-DM alike.
+    expect(page.recentView()).toBe(true);
+    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+      '!c:hs',
+      '!a:hs',
+      '!b:hs',
+    ]);
+    expect(page.sidebarTitle()).toBe('Recent activity');
+  });
+
   it('Home (no space) shows only direct messages', () => {
     const page = build();
-    page.activeSpaceId.set(null);
+    page.onSelectSpace(null); // click Home — leaves the default Recent view
 
     // Only '!a:hs' is a DM (see directRoomIds in build()).
+    expect(page.recentView()).toBe(false);
     expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']);
     expect(page.sidebarTitle()).toBe('Direct Messages');
   });
 
   it('a selected space shows only its joined children, in space order', () => {
     const page = build();
-    page.activeSpaceId.set('!s:hs');
+    page.onSelectSpace('!s:hs');
 
     // '!c:hs' is excluded (not a child); a/b appear in the space's order.
     expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
@@ -633,6 +648,7 @@ describe('RoomsPage space filtering', () => {
     page.onShowRooms();
 
     expect(page.roomsView()).toBe(true);
+    expect(page.recentView()).toBe(false); // Rooms clears the default Recent view
     // Only the spaceless non-DM room '!c:hs': the DM '!a:hs' and the space child
     // '!b:hs' (owned by '!s:hs') are both excluded.
     expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
@@ -670,10 +686,28 @@ describe('RoomsPage space filtering', () => {
     expect(page.sidebarTitle()).toBe('Direct Messages');
   });
 
-  it('sums unread notifications for the Home (DMs) and Rooms rail badges', () => {
+  it('returns to Recent activity from another view', () => {
+    const page = build();
+    page.onShowRooms();
+    expect(page.recentView()).toBe(false);
+
+    page.onShowRecent();
+    expect(page.recentView()).toBe(true);
+    expect(page.roomsView()).toBe(false);
+    expect(page.activeSpaceId()).toBeNull();
+    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+      '!c:hs',
+      '!a:hs',
+      '!b:hs',
+    ]);
+  });
+
+  it('sums unread notifications for the Recent, Home (DMs) and Rooms rail badges', () => {
     const page = build();
     // directRoomIds = {!a:hs}; DMs: a(5). Rooms view (non-DM, spaceless): c(2).
     // b(3) is a child of '!s:hs' → counted on the space pill, not the Rooms badge.
+    // Recent lists everything, so its badge is the sum across all rooms: 2 + 5 + 3.
+    expect(page.recentUnread()).toBe(10);
     expect(page.homeUnread()).toBe(5);
     expect(page.roomsUnread()).toBe(2);
   });

@@ -115,8 +115,10 @@
   color: var(--trinity-text-bright);
 }
 
-// Rooms pill: accent-filled on hover and while its view is active
-// (`.item.active`), matching the Home pill.
+// Recent + Rooms pills: accent-filled on hover and while their view is active
+// (`.item.active`). The always-filled Home pill is the brand exception.
+.pill.recent:hover,
+.item.active .pill.recent,
 .pill.rooms:hover,
 .item.active .pill.rooms {
   background: var(--trinity-accent);

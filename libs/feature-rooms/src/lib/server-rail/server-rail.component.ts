@@ -5,13 +5,15 @@ import {
   output,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideDoorOpen, lucideHouse } from '@ng-icons/lucide';
+import { lucideClock, lucideDoorOpen, lucideHouse } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import { type SpaceSummary } from '@trinity/data-access-rooms';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 
 /** Unread notification counts driving the rail's badges. */
 export interface RailUnread {
+  /** Total across everything the Recent activity view lists (Recent badge). */
+  recent: number;
   /** Total across direct-message rooms (Home badge). */
   home: number;
   /** Total across non-DM rooms (Rooms badge). */
@@ -20,25 +22,37 @@ export interface RailUnread {
   perSpace: Record<string, number>;
 }
 
-/** Discord server rail: Home (direct messages) + a Rooms view + one pill per Matrix Space. */
+/**
+ * Discord server rail: a combined Recent activity view, then Home (direct messages), a
+ * Rooms view, and one pill per Matrix Space.
+ */
 @Component({
   selector: 'trn-server-rail',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AvatarComponent, NgIcon],
-  viewProviders: [provideIcons({ lucideDoorOpen, lucideHouse })],
+  viewProviders: [provideIcons({ lucideClock, lucideDoorOpen, lucideHouse })],
   templateUrl: './server-rail.component.html',
   styleUrl: './server-rail.component.scss',
 })
 export class ServerRailComponent {
   readonly spaces = input<SpaceSummary[]>([]);
   readonly activeSpaceId = input<string | null>(null);
+  /** Whether the Recent activity view is active (drives its pill's active state). */
+  readonly recentActive = input(false);
   /** Whether the Rooms view is active (drives the Rooms pill's active state). */
   readonly roomsActive = input(false);
-  /** Unread notification counts for the Home / Rooms / per-space badges. */
-  readonly unread = input<RailUnread>({ home: 0, rooms: 0, perSpace: {} });
+  /** Unread notification counts for the Recent / Home / Rooms / per-space badges. */
+  readonly unread = input<RailUnread>({
+    recent: 0,
+    home: 0,
+    rooms: 0,
+    perSpace: {},
+  });
   readonly selectSpace = output<string | null>();
   /** The "+" pill at the end of the rail — raise the create-a-space flow. */
   readonly createSpace = output<void>();
+  /** Show the Recent activity view (all DMs + rooms, mixed by recency). */
+  readonly showRecent = output<void>();
   /** Show the Rooms view (non-DM rooms). */
   readonly showRooms = output<void>();
 
