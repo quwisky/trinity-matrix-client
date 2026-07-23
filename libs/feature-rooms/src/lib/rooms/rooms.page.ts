@@ -78,11 +78,16 @@ import { MemberInfoService } from '../member-info/member-info.service';
 import { type SwitcherSelection } from '@trinity/data-access-search';
 import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
 import { type MatrixLinkTarget, type Mention } from '@trinity/util-matrix';
-import { FeatureFlagsService } from '@trinity/platform-native';
+import {
+  FeatureFlagsService,
+  getTrinityDesktopBridge,
+} from '@trinity/platform-native';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
+import { MruRoomsService } from '../shortcuts/mru-rooms.service';
+import { stepList, stepUnread } from '../shortcuts/room-navigation';
 import { MessageSearchService } from '../message-search/message-search.service';
 import {
   ServerRailComponent,
@@ -162,6 +167,11 @@ function isMobileMasterDetail(): boolean {
     '(document:keydown.meta.k)': 'onQuickSwitch($event)',
     '(document:keydown.control.k)': 'onQuickSwitch($event)',
     '(document:keydown.escape)': 'onEscapeKey()',
+    // One delegating listener for the room-switching shortcuts: their keys (the `'`
+    // quote, digits, Tab) don't all express cleanly as Angular pseudo-events, and a
+    // single handler is what the growing keymap wants. It bails on the first line
+    // unless a relevant modifier is held, so plain typing pays almost nothing.
+    '(document:keydown)': 'onGlobalKeydown($event)',
   },
   viewProviders: [
     provideIcons({
@@ -191,6 +201,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly userCard = inject(UserCardService);
   private readonly memberInfo = inject(MemberInfoService);
   private readonly switcher = inject(QuickSwitcherService);
+  private readonly mru = inject(MruRoomsService);
   private readonly messageSearch = inject(MessageSearchService);
   private readonly media = inject(MediaService);
   private readonly unreadAgg = inject(UnreadAggregatorService);
@@ -212,6 +223,13 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly actionSheet = inject(TrnActionSheetService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+
+  /**
+   * Whether we're in the Electron desktop shell (web-safe: false on browser/PWA/mobile).
+   * Gates the browser-reserved shortcuts — Ctrl+Tab and Ctrl/Cmd+1…9 — which only the
+   * desktop shell can actually receive and prevent-default.
+   */
+  private readonly isDesktop = !!getTrinityDesktopBridge()?.isElectron;
 
   readonly activeSpaceId = signal<string | null>(null);
   /**
@@ -486,6 +504,92 @@ export class RoomsPage implements OnInit, OnDestroy {
   onQuickSwitch(event: Event): void {
     event.preventDefault();
     void this.openSwitcher();
+  }
+
+  /**
+   * Keyboard room switching (issue #12). One listener rather than ~two dozen host
+   * bindings — it bails immediately unless a room-switch modifier is held, so ordinary
+   * typing is untouched, and an open overlay owns the screen so the shortcuts stay quiet
+   * there (mirrors {@link openSwitcher}'s guard).
+   *
+   *  - Ctrl/Cmd+'          → hop back through the visited stack (alt-tab, cycles deeper);
+   *    Ctrl/Cmd+Shift+'    → hop forward. Desktop also honours Ctrl+Tab / Ctrl+Shift+Tab.
+   *  - Ctrl/Cmd+1…9        → jump to the Nth most-recent room (desktop only — the browser
+   *                          reserves these for tab switching).
+   *  - Alt+↑/↓             → walk the visible sidebar list;
+   *    Alt+Shift+↑/↓       → jump to the previous/next unread room.
+   */
+  onGlobalKeydown(event: Event): void {
+    const e = event as KeyboardEvent;
+    const accel = e.ctrlKey || e.metaKey;
+    if ((!accel && !e.altKey) || this.dialog.hasOpen()) {
+      return;
+    }
+
+    if (accel && !e.altKey) {
+      this.onAccelKeydown(e);
+      return;
+    }
+    if (e.altKey && !accel) {
+      this.onAltKeydown(e);
+    }
+  }
+
+  /** Ctrl/Cmd chords: quick hop everywhere, plus desktop-only Tab-hop and numbered jump. */
+  private onAccelKeydown(e: KeyboardEvent): void {
+    // The quote key hops on every platform (Shift reverses).
+    if (e.key === "'") {
+      this.runHop(e, e.shiftKey ? 'forward' : 'back');
+      return;
+    }
+    if (!this.isDesktop) {
+      return; // the rest are browser-reserved — desktop shell only
+    }
+    if (e.key === 'Tab') {
+      this.runHop(e, e.shiftKey ? 'forward' : 'back');
+      return;
+    }
+    // Ctrl/Cmd+1…9 → the Nth most-recent room. `event.code` ('Digit1') is layout-stable.
+    const digit = /^Digit([1-9])$/.exec(e.code);
+    if (digit) {
+      const target = this.mru.nth(Number(digit[1]), this.activeRoomId());
+      this.openFromShortcut(e, target, 'user');
+    }
+  }
+
+  /** Alt chords: walk the visible list, or (with Shift) the unread rooms in it. */
+  private onAltKeydown(e: KeyboardEvent): void {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
+      return;
+    }
+    const direction = e.key === 'ArrowDown' ? 'next' : 'previous';
+    const active = this.activeRoomId();
+    const target = e.shiftKey
+      ? stepUnread(this.visibleRooms(), active, direction)
+      : stepList(
+          this.visibleRooms().map((room) => room.id),
+          active,
+          direction,
+        );
+    this.openFromShortcut(e, target, 'user');
+  }
+
+  private runHop(e: KeyboardEvent, direction: 'back' | 'forward'): void {
+    const known = new Set(this.rooms.rooms().map((room) => room.id));
+    const target = this.mru.hop(direction, this.activeRoomId(), known);
+    this.openFromShortcut(e, target, 'hop');
+  }
+
+  /** Open a shortcut's resolved target (if any), always consuming the chord. */
+  private openFromShortcut(
+    e: KeyboardEvent,
+    roomId: string | null,
+    source: 'user' | 'hop',
+  ): void {
+    e.preventDefault();
+    if (roomId && roomId !== this.activeRoomId()) {
+      this.onSelectRoom(roomId, source);
+    }
   }
 
   /**
@@ -891,13 +995,21 @@ export class RoomsPage implements OnInit, OnDestroy {
     }).subscribe(() => void this.showSuccess(`Invitation sent to ${userId}.`));
   }
 
-  onSelectRoom(id: string): void {
+  /**
+   * Open a room. `source` distinguishes a normal open (the default — records the visit,
+   * committing any hop cycle) from a hop-driven one (leaves the MRU stack frozen so
+   * repeated hops keep cycling deeper). Every existing caller uses the default.
+   */
+  onSelectRoom(id: string, source: 'user' | 'hop' = 'user'): void {
     // Drop the previous room's resolved media URLs before switching timelines.
     this.media.releaseAll();
     this.activeRoomId.set(id);
     this.timeline.open(id);
     this.threads.open(id); // project this room's thread summaries for indicators
     this.pinned.open(id); // project this room's pinned messages
+    if (source === 'user') {
+      this.mru.record(id);
+    }
     // On mobile, setting activeRoomId switches from the room-list page to the chat.
     this.focusActiveView();
   }

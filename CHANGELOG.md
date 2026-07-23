@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Keyboard shortcuts to hop between rooms.** Press **Ctrl/Cmd+'** to jump to the room you
+  were just in, and again to keep stepping further back through the rooms you've visited —
+  alt-tab style; **Shift** with it steps forward again. **Alt+↑/↓** walks up and down the
+  room list, and **Alt+Shift+↑/↓** jumps to the previous/next room with unread messages. In
+  the desktop app you also get **Ctrl/Cmd+1–9** to jump straight to one of your recent rooms
+  and **Ctrl+Tab** to hop; those particular keys are reserved by browsers, so they're
+  desktop-only.
 - **A Recent activity view that answers "what happened?" in one place.** A new first entry
   in the left rail, above Home and Rooms, shows every conversation — direct messages and
   rooms together, including rooms inside your spaces — in one list, favourites at the top
