@@ -1,0 +1,70 @@
+name: Feature request
+description: Suggest a capability Trinity does not have yet
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Much of what Trinity is missing is already written down and prioritised. Please skim
+        these first — if your idea is there, say so below rather than opening a duplicate,
+        and add what the plan is missing:
+
+        - `docs/PLAN.md` — the roadmap and the deliberately deferred items
+        - `docs/PARITY-PLAN.md` — gaps against Element, with effort estimates
+        - `docs/UX-POLISH-PLAN.md` — everyday polish, ranked by value ÷ effort
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation you hit, not the solution. What were you trying to do, and what got in the way?
+      placeholder: I can't tell which of my devices sent a message, so I can't spot a session I don't recognise.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+      description: A sketch is fine. Where in the app would it live, and what would it do?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: existing
+    attributes:
+      label: Is this already on a roadmap?
+      description: See the documents linked above.
+      options:
+        - 'No, I could not find it'
+        - 'Yes — but it needs rethinking (explain above)'
+        - 'Yes — I would like to see it prioritised'
+        - I did not check
+    validations:
+      required: true
+
+  - type: input
+    id: prior_art
+    attributes:
+      label: Does another Matrix client do this?
+      description: Optional, and genuinely useful — an existing implementation settles most of the design questions.
+      placeholder: Element Web calls it "Threads"; FluffyChat does X instead
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Which platforms does this apply to?
+      description: Trinity builds from one codebase for all four, but some ideas only make sense on some of them.
+      options:
+        - label: Web (browser)
+        - label: Desktop (Electron)
+        - label: Android
+        - label: iOS
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true

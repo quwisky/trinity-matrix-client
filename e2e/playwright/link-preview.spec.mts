@@ -13,7 +13,12 @@ const session = synapseSession();
 const SYNAPSE_HTTP = 'http://localhost:8008';
 const REG_SECRET = 'trinity-e2e-shared-secret';
 // Reachable by Synapse on the docker network; the browser never fetches it.
-const OG_URL = 'http://caddy:8080/og';
+// Fetched by Synapse server-side. On the compose network that is the `caddy` hostname;
+// when the stack shares the job container's network namespace (containerised CI) there is
+// no compose DNS and everything is on one loopback instead.
+const OG_URL = process.env['TRINITY_E2E_NETWORK_CONTAINER']
+  ? 'http://localhost:8080/og'
+  : 'http://caddy:8080/og';
 
 async function registerUser(
   request: APIRequestContext,

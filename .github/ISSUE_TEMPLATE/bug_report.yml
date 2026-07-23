@@ -1,0 +1,127 @@
+name: Bug report
+description: Something in Trinity behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        **Before you paste anything:** Trinity is an end-to-end encrypted client, and its
+        logs can contain access tokens, recovery keys and message content. Redact them.
+        If the bug is a *security* problem — anything touching encryption, key handling or
+        sessions — please close this and email instead, so it is not disclosed publicly.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: What went wrong, and what you expected instead.
+      placeholder: |
+        Editing a message a second time replaced the wrong version.
+        I expected the newest text to be shown.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps someone else can follow from a fresh sign-in.
+      placeholder: |
+        1. Sign in to matrix.org
+        2. Open an encrypted room
+        3. Send "hello", then edit it twice
+        4. Click "(edited)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Trinity ships from one codebase to four; the same bug often exists on only one.
+      options:
+        - Web (browser)
+        - Desktop (Electron)
+        - Android
+        - iOS
+        - More than one / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and browser version
+      placeholder: Firefox 141 on Fedora 42 · or · Android 15, Pixel 8
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Trinity version
+      description: 'Settings shows it at the bottom of the list, like `Trinity v0.1.0 · ae36459`.'
+      placeholder: Trinity v0.1.0 · ae36459
+    validations:
+      required: true
+
+  - type: dropdown
+    id: encrypted
+    attributes:
+      label: Was the room encrypted?
+      description: Encrypted and unencrypted rooms take different code paths almost everywhere, so this decides where to look first.
+      options:
+        - 'Yes'
+        - 'No'
+        - Not sure
+        - Not applicable (not about a room)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: A rough guess is fine — it only steers the first look.
+      options:
+        - Timeline and messages
+        - Composer (sending, editing, attachments)
+        - Encryption, verification and recovery
+        - Sign-in, SSO or session
+        - Rooms, spaces and invites
+        - Notifications and push
+        - Search
+        - Settings and appearance
+        - Desktop app (window, tray, deep links)
+        - Something else / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: homeserver
+    attributes:
+      label: Homeserver
+      description: Optional. The server implementation and version matter for anything protocol-related.
+      placeholder: matrix.org · or · Synapse 1.119 (self-hosted)
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output or errors
+      description: |
+        Browser devtools console, or the terminal for the desktop app. Rendered as a code
+        block, so no backticks needed.
+        **Redact access tokens, recovery keys and anything you would not post publicly.**
+      render: shell
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I removed access tokens, recovery keys and private message content from anything I pasted.
+          required: true

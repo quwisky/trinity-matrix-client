@@ -17,7 +17,7 @@ Rust crypto WASM, Capacitor 8, and a hand-rolled Electron shell, in an Nx monore
 
 ## Commands
 
-This project is **pnpm-only** (a `preinstall` guard aborts npm/yarn) and needs **Node 22+**.
+This project is **pnpm-only** (a `preinstall` guard aborts npm/yarn) and needs **Node 24**.
 Run `corepack enable` once; it picks up the pinned pnpm version.
 
 | Command                        | Purpose                                                               |

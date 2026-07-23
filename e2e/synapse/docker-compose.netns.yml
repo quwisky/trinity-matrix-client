@@ -1,0 +1,26 @@
+# Applied on top of docker-compose.yml ONLY when TRINITY_E2E_NETWORK_CONTAINER is set
+# (see paths.mjs). Never used on a developer machine or a GitHub-hosted runner, where the
+# job and the Docker daemon share a loopback and the published ports work as written.
+#
+# Where they do not — a containerised job talking to a separate daemon, e.g. Forgejo's
+# act_runner with a dind sidecar — compose publishes to the daemon's loopback, which the
+# job cannot reach on localhost or via the daemon's gateway (both measured). Joining the
+# job container's own network namespace puts Synapse and Caddy on the same loopback as
+# the test runner and the browser, so every URL in the suite stays exactly as it is.
+#
+# `!reset` (Compose 2.24+) is required: port publishing and a `container:` network mode
+# are mutually exclusive, and a plain override would merge the ports rather than drop them.
+services:
+  synapse:
+    network_mode: 'container:${TRINITY_E2E_NETWORK_CONTAINER}'
+    ports: !reset []
+    networks: !reset null
+
+  caddy:
+    # No compose network means no `synapse` DNS name; the shared namespace puts it on
+    # the same loopback instead.
+    environment:
+      TRINITY_E2E_SYNAPSE_UPSTREAM: localhost:8008
+    network_mode: 'container:${TRINITY_E2E_NETWORK_CONTAINER}'
+    ports: !reset []
+    networks: !reset null

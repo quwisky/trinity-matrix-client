@@ -17,10 +17,15 @@ import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
+import {
+  DATA,
+  composeFiles,
+  prepareStateDir,
+  resolveNetworkContainer,
+} from './paths.mjs';
 
 const exec = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DATA = join(HERE, 'data');
 const CONFIG = join(DATA, 'homeserver.yaml');
 
 export const SYNAPSE_HTTP = 'http://localhost:8008';
@@ -43,20 +48,55 @@ async function exists(p) {
   }
 }
 
+/** Resolved once per run by start(); '' means "publish ports", the normal case. */
+let networkContainer = '';
+
 async function compose(args, opts = {}) {
   return exec(
     'docker',
-    ['compose', '-f', join(HERE, 'docker-compose.yml'), ...args],
+    ['compose', ...composeFiles(networkContainer), ...args],
     {
       cwd: HERE,
       ...opts,
+      // Same reason as `containerUser` below: the long-running Synapse must own its
+      // sqlite DB and media_store as *us*, or the next run cannot rewrite the config
+      // and stop.mjs cannot remove ./data. The compose file defaults these to the
+      // image's own 991 when unset.
+      env: {
+        ...process.env,
+        ...(typeof process.getuid === 'function'
+          ? {
+              TRINITY_E2E_UID: String(process.getuid()),
+              TRINITY_E2E_GID: String(process.getgid()),
+            }
+          : {}),
+        // The netns override file interpolates this; it may have been detected, not set.
+        TRINITY_E2E_NETWORK_CONTAINER: networkContainer,
+        ...opts.env,
+      },
     },
   );
 }
 
+/**
+ * The uid/gid to run the Synapse container as, passed through to the image's start.py.
+ *
+ * Without this the container runs as its built-in 991:991 and chowns the bind-mounted
+ * ./data to match — after which *we* cannot rewrite homeserver.yaml (EACCES in
+ * ensureConfig) and stop.mjs cannot delete ./data. That never shows up on a filesystem
+ * that remaps ownership to the calling user (virtiofs, Docker Desktop's gRPC-FUSE), which
+ * is why this went unnoticed locally and would fail every time on a plain Linux CI runner.
+ *
+ * Empty on Windows, where process.getuid is undefined and bind-mount ownership is moot.
+ */
+const containerUser =
+  typeof process.getuid === 'function'
+    ? ['-e', `UID=${process.getuid()}`, '-e', `GID=${process.getgid()}`]
+    : [];
+
 /** Generate homeserver.yaml on first run, then patch in the e2e settings. */
 async function ensureConfig() {
-  await mkdir(DATA, { recursive: true });
+  await prepareStateDir();
   if (!(await exists(CONFIG))) {
     log('generating homeserver.yaml…');
     // One-shot container to scaffold the config into the mounted ./data volume.
@@ -69,6 +109,7 @@ async function ensureConfig() {
       `SYNAPSE_SERVER_NAME=${SERVER_NAME}`,
       '-e',
       'SYNAPSE_REPORT_STATS=no',
+      ...containerUser,
       'matrixdotorg/synapse:v1.119.0',
       'generate',
     ]);
@@ -181,6 +222,12 @@ async function registerUser() {
 }
 
 export async function start() {
+  networkContainer = await resolveNetworkContainer();
+  log(
+    networkContainer
+      ? `sharing the network namespace of container ${networkContainer.slice(0, 12)} (ports not published)`
+      : 'publishing ports on the docker host',
+  );
   await ensureConfig();
   log('docker compose up…');
   await compose(['up', '-d']);

@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, master]
+  pull_request:
+
+# A newer push to the same branch makes the run in flight obsolete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Everything that reads the code without running it. Grouped because each part is
+  # seconds long; split only if one starts dominating.
+  quality:
+    name: Lint & format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: pnpm lint
+      # Deliberately separate from `pnpm lint` in this repo — it is not part of it.
+      - run: pnpm stylelint
+      # `format:check` verifies and exits non-zero on drift, where `pnpm format` fixes.
+      - run: pnpm format:check
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: pnpm test
+
+  # Not redundant with `test`: the production build runs the AOT compiler, which rejects
+  # things Vitest happily runs — template type errors, and the `lib: es2018` trap where
+  # ES2019+ methods pass the unit tests and fail the build (docs/STACK.md).
+  build:
+    name: Web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: pnpm build
+
+  # electron/ is a separate package with its own lockfile, and its specs are not part of
+  # `pnpm test` (the trinity-desktop Nx project exposes only a lint target).
+  desktop:
+    name: Desktop (Electron)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      # Nothing here launches Electron — this only typechecks and unit-tests the main
+      # process — so skip the ~100 MB binary download.
+      - run: pnpm -C electron install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: pnpm -C electron run compile
+      - run: pnpm -C electron test
+
+  # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
+  e2e:
+    name: E2E (Playwright + Synapse)
+    runs-on: ubuntu-latest
+    # 104 specs, each doing a cold UI login (Rust-crypto init + first /sync), at
+    # workers: 2 with retries: 2 — plus the browser install, two Docker image pulls and
+    # a full dev build inside the same budget. Measure a real run before lowering this.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+
+      # Browsers are ~150 MB. `--with-deps` still runs (it apt-installs the shared
+      # libraries Chromium needs, which no cache covers) but the download is skipped
+      # on a hit. The restore-keys prefix matters: without it, any dependency change at
+      # all re-downloads Chromium on the one job with the longest budget.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: playwright-${{ runner.os }}-
+      # Three independent legs that would otherwise run strictly one after another:
+      # Playwright orders webServer (the dev build) BEFORE globalSetup (the Synapse
+      # boot), and the browser install is its own step ahead of both. Overlapping them
+      # is the only real saving available on this job — roughly 25-45s of an 8-11min
+      # critical path. The pre-build is not duplicated work: the suite's own webServer
+      # replays it from the in-job Nx cache (measured 0.97s on the second invocation).
+      - name: Prepare e2e prerequisites
+        run: |
+          pnpm exec playwright install --with-deps chromium >/tmp/pw.log 2>&1 &
+          pw=$!
+          docker compose -f e2e/synapse/docker-compose.yml pull -q >/tmp/pull.log 2>&1 &
+          dk=$!
+          pnpm exec nx run trinity:build:development
+          # Per-pid, deliberately: `wait $pw $dk` returns only the LAST pid's status, so a
+          # failed browser install would be swallowed and the job would then burn its
+          # 45-minute budget on 105 specs x 3 attempts of "Executable doesn't exist".
+          wait "$pw"; pw_rc=$?
+          wait "$dk"; dk_rc=$?
+          echo '--- playwright install ---'; cat /tmp/pw.log
+          echo '--- docker pull ---';        cat /tmp/pull.log
+          # The browser install is fatal; the pre-pull is not. `compose up` in global setup
+          # pulls anything missing anyway, so a Hub rate-limit blip stays self-healing
+          # instead of becoming a hard job failure.
+          [ "$dk_rc" -eq 0 ] || echo "::warning::docker pre-pull failed (rc=$dk_rc); global setup will pull"
+          exit "$pw_rc"
+
+      # No env var needed to make this strict: the harness's graceful "Docker is missing,
+      # skip the authenticated specs" fallback turns itself off whenever CI is set, so a
+      # runner that cannot reach Docker Hub fails here instead of reporting a green E2E
+      # job that tested almost nothing. See e2e/playwright/support/global-setup.mts.
+      - run: pnpm exec nx e2e trinity-e2e
+
+      # always(), not failure(): `timeout-minutes` CANCELS the job, and failure() does not
+      # fire on a cancellation — so the run most in need of a trace would upload nothing.
+      # A superseded run is cancelled too, but concurrency already discards those.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: playwright-report
+          # blob-report is included because the Nx preset turns that reporter on whenever
+          # CI is set (@nx/playwright preset.js), and it is what merges into a report.
+          path: |
+            dist/.playwright/e2e/playwright-report/
+            dist/.playwright/e2e/test-output/
+            dist/.playwright/e2e/blob-report/
+          if-no-files-found: warn
+          retention-days: 7
+          # Artifacts are immutable per run, so without this a re-run of a failed job
+          # dies with "409 Conflict: an artifact with this name already exists".
+          overwrite: true

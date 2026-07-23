@@ -1,0 +1,11 @@
+# Blank issues stay off: triaging a Matrix client needs the platform, the app version and
+# whether the room was encrypted, and a free-form issue almost never carries them.
+blank_issues_enabled: false
+
+contact_links:
+  # Trinity is an end-to-end encrypted client. A publicly filed crypto or transport
+  # vulnerability is disclosed to everyone the moment it is written, including to people
+  # running the affected build — so that path must not go through the issue tracker.
+  - name: Security vulnerability (do not open an issue)
+    url: mailto:quwisky@qwky.eu
+    about: Report privately by email. Encryption, key handling, session or transport issues belong here, not in a public issue.

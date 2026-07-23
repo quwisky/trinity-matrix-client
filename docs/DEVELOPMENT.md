@@ -29,7 +29,7 @@ are unchanged. `pnpm exec nx graph` opens the dependency graph.
 
 ## Prerequisites
 
-- **Node 22+** (matrix-js-sdk requirement; repo developed on Node 25) and **pnpm**
+- **Node 24** (what CI runs and the repo is developed on) and **pnpm**
   (`corepack enable` installs the version pinned in `package.json`). This project is
   **pnpm-only** — a `preinstall` guard aborts `npm install` / `yarn install`.
 - **iOS builds:** macOS with **Xcode** installed and selected
@@ -138,7 +138,8 @@ pnpm exec nx test trinity --configuration=watch
 [`e2e/playwright/`](../e2e/playwright/) covering the app shell/login guard, navigation, notifications, pinned
 messages, favourite and room lists, unread badges, timeline virtualization, and settings
 (theme, profile, device management). Builds the dev bundle, serves `www/`, and brings the Synapse
-harness below up/down via global setup (auth specs skip themselves when Docker is absent):
+harness below up/down via global setup (auth specs skip themselves when Docker is absent —
+except under `CI`, where a missing Synapse is a hard failure instead of a quietly green run):
 
 ```bash
 pnpm exec nx e2e trinity-e2e            # all specs (Chromium)
@@ -198,11 +199,13 @@ to point it at your own homeserver. The verification harness needs a homeserver 
 
 ### What is NOT covered yet
 
-- These e2e harnesses **in CI**. The full `e2e:verify` SAS round-trip has been run to
-  PASS **locally** (2026-06-27, against the bundled Synapse `v1.119.0` + Caddy Docker
-  harness), but CI (`.crow/ci.yaml`) runs only lint/stylelint/format/`test`/build —
-  there is no e2e step yet. Wiring one in needs Docker registry access on the runner
-  (or an external https homeserver via `TRINITY_HS`).
+- The **standalone** harnesses in CI. The Playwright app journeys (`trinity-e2e`) now run
+  on every PR against the disposable Synapse, but the `e2e/runners/*` flows —
+  including the full `e2e:verify` SAS round-trip, run to PASS **locally** on 2026-06-27
+  against the bundled Synapse `v1.119.0` + Caddy — are still hand-run. Each owns the same
+  fixed-port Docker stack, so they cannot run concurrently with the Playwright job.
+- The **Electron** e2e specs (`pnpm electron:e2e`): CI compiles and unit-tests the main
+  process but never launches the app, which would need the ~100 MB binary plus `xvfb`.
 - A **credentialed** plain login → sync → logout cycle against the _public_ homeserver
   (the matrix.org `smoke:login` is unauthenticated; no throwaway account is wired in).
   `e2e/features/verify-sas.mjs` already does credentialed login (twice) against the disposable
@@ -239,47 +242,192 @@ to point it at your own homeserver. The verification harness needs a homeserver 
 
 ## Continuous integration
 
-[Crow CI](https://crowci.dev) runs the same gates on the server, on every **push**
-and **pull request** — and on **tags** it also builds the Electron Linux package
-(config: [`.crow/ci.yaml`](../.crow/ci.yaml); status badge in the
-[README](../README.md)). The `node:22` image has no pnpm, so each step runs
-`corepack enable` first — Corepack (bundled with Node) activates the version pinned in
-`package.json`'s `packageManager` field; `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` keeps its
-first download non-interactive so CI doesn't hang on a prompt.
+**GitHub Actions** runs the same gates on every **push** to `develop`/`master` and every
+**pull request** (config: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml); status
+badge in the [README](../README.md)). Five jobs run **in parallel**, each on its own runner,
+so a failure names itself in the checks list and the long e2e never queues behind the unit
+tests:
 
-| Step                   | Command                             | Mirrors locally               |
-| ---------------------- | ----------------------------------- | ----------------------------- |
-| `install`              | `pnpm install --frozen-lockfile`    | `pnpm install`                |
-| `lint`                 | `pnpm lint`                         | `pnpm lint`                   |
-| `stylelint`            | `pnpm stylelint`                    | `pnpm stylelint`              |
-| `format`               | `pnpm format:check`                 | `pnpm format`                 |
-| `test`                 | `pnpm test`                         | `pnpm test`                   |
-| `build`                | `pnpm build`                        | `pnpm build`                  |
-| `electron`             | `pnpm -C electron run compile`      | (Electron TS compile check)   |
-| `electron-build-linux` | `electron-builder --linux AppImage` | `pnpm electron:package:linux` |
+| Job       | Commands                                                 | Mirrors locally                                         |
+| --------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| `quality` | `pnpm lint` · `pnpm stylelint` · `pnpm format:check`     | same (`pnpm format` fixes what `format:check` verifies) |
+| `test`    | `pnpm test`                                              | `pnpm test`                                             |
+| `build`   | `pnpm build`                                             | `pnpm build`                                            |
+| `desktop` | `pnpm -C electron install` · `run compile` · `test`      | `pnpm -C electron test`                                 |
+| `e2e`     | _prepare prerequisites_ · `pnpm exec nx e2e trinity-e2e` | `pnpm exec nx e2e trinity-e2e`                          |
 
-`electron` (Electron main/preload compile check) runs on push/PR. The **Linux Electron
-package builds only on `tag` events** (electron-builder downloads the Electron binary +
-tooling — too heavy for every push):
+Every job starts with the composite step
+[`.github/actions/setup`](../.github/actions/setup/action.yml): `pnpm/action-setup` (which
+takes the version from `package.json`'s `packageManager` field, so it must **not** also be
+passed a `version:` input, and must run _before_ `setup-node`, whose `cache: pnpm` shells out
+to pnpm to find the store), Node 24, and `pnpm install --frozen-lockfile`.
 
-| Workflow file                           | Runner label    | Builds                               |
-| --------------------------------------- | --------------- | ------------------------------------ |
-| `ci.yaml` (`electron-build-linux` step) | _default agent_ | Linux AppImage → `electron/release/` |
+**There is deliberately no Nx cache step.** Caching `.nx/cache` across runs looks obvious and
+does nothing: Nx 23 keeps the hash→result index in a SQLite database under
+`.nx/workspace-data` — not `.nx/cache` — and that database is keyed by machine ID, so an
+ephemeral runner gets a **0% hit rate** while still paying to upload and download it
+(measured). The supported answer for ephemeral runners is a remote cache (Nx Cloud or a
+self-hosted equivalent), which this repo does not use.
 
-electron-builder **can't cross-build** the macOS/Windows packages, so there is **no macOS
-or Windows CI workflow yet** — each would need its own Crow workflow on a runner of that OS
-(routed via a `labels` filter such as `CROW_AGENT_LABELS="os=macos"`, since labels are
-per-workflow in Crow, not per-step). Such a workflow would produce an **unsigned** artifact
-by default; for the macOS signed + notarized path see [macOS signing &
-notarization](#macos-signing--notarization) below. Publishing the artifacts (release/object
-store) needs a separate upload plugin.
+Every action is pinned to a **commit SHA**, not a tag, with the version in a trailing
+comment. Tags are mutable, and retargeting one is how CVE-2025-30066 reached ~23k
+repositories; the release workflow's packaging job holds signing certificates in its
+environment. Renovate keeps those pins from rotting (below).
 
-Steps share the cloned workspace, so the `node_modules` from `install` is reused by the
-rest. `--frozen-lockfile` makes CI fail if `pnpm-lock.yaml` is out of sync with
-`package.json` — commit lockfile changes alongside dependency edits. To reproduce a CI
-failure locally, run the corresponding command from the **Mirrors locally** column; note
-CI uses `format:check` (verifies, non-zero exit on drift) where you'd run `pnpm format`
-to fix.
+### Dependency updates (Renovate)
+
+[`.github/workflows/renovate.yml`](../.github/workflows/renovate.yml) runs Renovate on a
+**daily cron at 00:00 UTC**, plus on demand (`workflow_dispatch`, with a **dry run** option
+for trying config changes without opening anything). The repo config is
+[`.github/renovate.json`](../.github/renovate.json), and it only ever targets **`develop`**
+(`baseBranches`) — no update PR is opened against `master`.
+
+| Setting                        | Why                                                                                                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `build(deps): …` commits       | Matches the repo's existing convention and passes the commitlint hook                                                                                                          |
+| Grouped families               | angular · nx · matrix-js-sdk (+ crypto WASM) · capacitor · spartan-ng · playwright · vitest · eslint · tailwind — each is version-locked, so a partial bump breaks the build   |
+| `electron/` on its own         | Separate package and lockfile; it pins TypeScript 5.9 against the workspace's 6.x, and must never be merged into a root group                                                  |
+| `automerge: false`             | Nothing Renovate opens ever merges itself — every update is reviewed and merged by a human, including patches and lock-file maintenance                                        |
+| Everything opens a PR          | No rule uses `dependencyDashboardApproval`, so **every** update reaches a PR eventually, framework majors included — the limits below throttle the rate, they never cancel one |
+| 5 open / 2 per hour            | `prConcurrentLimit` / `prHourlyLimit` keep the queue reviewable and stop a burst saturating the runners; the rest follow as slots free up                                      |
+| `minimumReleaseAge: 3 days`    | Skips a release that gets yanked hours after publishing — the one thing that delays a PR (by three days), waived for `vulnerabilityAlerts`                                     |
+| `android/**`, `ios/**` ignored | Capacitor owns those native projects                                                                                                                                           |
+
+Two operational notes. It needs a **`RENOVATE_TOKEN` secret** — a PAT with repo scope, or a
+GitHub App token, **not** the default `GITHUB_TOKEN`: pull requests opened with the latter do
+not trigger other workflows, so every Renovate PR would sit there with no CI run against it.
+And the cron **is** the schedule: Renovate's own `schedule` is deliberately left open, because
+setting both is the classic way to get a bot that never runs — the job fires outside
+Renovate's window, Renovate declines, nothing happens.
+
+There is no Dependabot config; Renovate covers the same ground including the GitHub Actions
+digests, and running both would open duplicate PRs for the same updates.
+
+Nothing is ever withheld and nothing ever self-merges: the limits decide only **when** a PR
+appears, so a backlog drains a few at a time (five open, two an hour) instead of arriving as
+one burst that saturates the runners — each PR triggers the full CI matrix, including the
+45-minute e2e job.
+
+A framework **major** opens a PR like anything else, but it will usually fail CI until the
+corresponding migration is run (`nx migrate`, Angular update schematics, an SDK deep-import
+change): treat that PR as the notification, not as something to merge.
+
+`automerge: false` binds Renovate only. What stops _anything_ — a bot or a person — merging
+into `develop` unreviewed is a **branch protection rule** requiring a pull request and an
+approving review; that lives in repo settings, not in this file.
+
+Two things worth knowing about the jobs that are new to CI:
+
+- **`desktop`** exists because `electron/`'s specs are part of no other command — `pnpm test`
+  is `nx run-many -t test`, and the `trinity-desktop` project exposes only a `lint` target.
+  It sets `ELECTRON_SKIP_BINARY_DOWNLOAD=1`: nothing here launches Electron, so the ~100 MB
+  binary is dead weight.
+- **`e2e`** runs the Playwright journeys against the disposable Synapse + Caddy stack in
+  Docker. Its first step runs three independent things **concurrently** — the
+  browser install, the Synapse/Caddy image pull, and the dev build — because Playwright
+  otherwise does them in sequence (it orders `webServer` before `globalSetup`, and the
+  browser install precedes both). Worth ~25-45s on the only job on the critical path; the
+  pre-build is not duplicated work, since the suite's own `webServer` replays it from the
+  in-job Nx cache. A failed browser install is fatal, a failed image pre-pull is only a
+  warning — `compose up` in global setup pulls anything missing anyway. The harness normally degrades gracefully when Docker is missing (auth specs skip
+  themselves), which in CI would mean a **green run that tested almost nothing** — so
+  `e2e/playwright/support/global-setup.mts` rethrows instead whenever `CI` is set. Override
+  with `TRINITY_E2E_ALLOW_NO_SYNAPSE=1` only if you deliberately want the unauthenticated
+  subset. Traces use `retain-on-failure`, not `on-first-retry` — the latter captures the
+  retry, which for a flaky spec is the attempt that _passed_, leaving the failure with no
+  trace. The HTML report, traces and blob report upload as the `playwright-report` artifact
+  on **`always()`** — `timeout-minutes` _cancels_ a job rather than failing it, and
+  `if: failure()` does not fire on a cancellation, which would lose the traces in exactly
+  the run that needs them.
+
+  **Running CI on a containerised runner** (Forgejo's `act_runner` with a dind sidecar,
+  and anything else where the job is a container talking to a separate Docker daemon) needs
+  two environment variables. Both are unset on a developer machine and on a GitHub-hosted
+  runner — where the job runs directly on the VM — so those paths are untouched:
+
+  | Variable                        | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+  | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `TRINITY_E2E_STATE_DIR`         | A bind mount is resolved by the _daemon_, against the daemon's filesystem. Point this at a directory that means the same thing to the job and the daemon (under `act_runner`, a path beneath the `/workspace` both mount from one host directory). Choose a path **outside the checkout**: the runner mounts the workspace over it, which shadows the shared bind underneath. Without this, `generate` writes the config somewhere the job cannot see and start-up fails with `ENOENT ... homeserver.yaml`. |
+  | `TRINITY_E2E_NETWORK_CONTAINER` | Compose publishes to the _daemon's_ loopback, which the job cannot reach — not on `localhost`, and not via the daemon's gateway (both measured). Set to the job container's id and the stack joins that container's network namespace instead, so `localhost:8008`/`:8448` behave as they do locally and Caddy's `localhost` certificate stays valid. `ci.yml` already sets it from `${{ job.container.id }}`, which is empty off a container runner.                                                       |
+
+  For `act_runner`, the state directory belongs in the runner's own config rather than the
+  workflow, since it is a property of that runner's layout:
+
+  ```yaml
+  # config.yml
+  runner:
+    envs:
+      TRINITY_E2E_STATE_DIR: /workspace/.trinity-e2e-state
+  container:
+    valid_volumes: ['/workspace', '/workspace/**']
+  ```
+
+  The harness passes `UID`/`GID` into the Synapse container ([`e2e/synapse/start.mjs`](../e2e/synapse/start.mjs),
+  [`docker-compose.yml`](../e2e/synapse/docker-compose.yml)). Without it the image runs as
+  its built-in `991` and chowns the bind-mounted `e2e/synapse/data`, after which the config
+  patch fails `EACCES` and teardown cannot delete the directory. It only ever _looked_ fine
+  because a filesystem that remaps ownership (virtiofs, FUSE, Docker Desktop) hides it —
+  on a plain Linux runner it fails every time.
+
+`--frozen-lockfile` makes CI fail if `pnpm-lock.yaml` is out of sync with `package.json` —
+commit lockfile changes alongside dependency edits. To reproduce a CI failure locally, run the
+command from the **Mirrors locally** column.
+
+### Desktop releases
+
+Pushing a **`vX.X.X` tag** runs [`.github/workflows/release.yml`](../.github/workflows/release.yml),
+which packages the Electron app on all three desktop platforms and attaches the installers to a
+**draft** GitHub Release — nothing is downloadable until you review it and press publish.
+
+| Job               | Runner           | Produces                                                                                                                  |
+| ----------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `verify`          | `ubuntu-latest`  | ancestry + version checks, then `lint`, `stylelint`, `format:check`, `test`, `build` + the Electron specs — **not** `e2e` |
+| `package (linux)` | `ubuntu-latest`  | `.AppImage`, `.deb`                                                                                                       |
+| `package (mac)`   | `macos-latest`   | `.dmg`, `.zip` (**arm64 only** — the runner's own architecture)                                                           |
+| `package (win)`   | `windows-latest` | `.exe` (NSIS installer)                                                                                                   |
+| `draft-release`   | `ubuntu-latest`  | the draft Release, with every artifact attached                                                                           |
+
+**A tag triggers no `ci.yml` run at all**, so `verify` is the only gate a release gets —
+which is why it runs `lint`, `stylelint`, `format:check`, `test` **and** `build`, not just the
+tests. It also refuses a tag whose commit is not contained in `develop` or `master`, so a
+release can only be cut from code that went through a PR.
+
+Re-run a failed release with **`workflow_dispatch`** (Actions → Release → Run workflow, giving
+the existing tag) rather than by moving the tag: artifacts are immutable per run, and the
+uploads set `overwrite: true` so a re-run replaces them cleanly. If one platform fails, the
+other two are still drafted — `draft-release` runs on `!cancelled()` and annotates which
+installer is missing, because a matrix job reports failure if any leg fails and the default
+`success()` would silently throw the good artifacts away. Re-running against an **already
+published** release is refused outright: `--clobber` deletes live assets, and rebuilt
+installers are not byte-identical.
+
+Three things about this are easy to get wrong:
+
+- **Do not use `pnpm electron:build` in CI.** It ends with `electron:sign:dev`, which runs
+  `codesign` against a local `trinity-dev` identity — absent on every runner, and absent
+  entirely off macOS. The workflow runs the three useful steps directly instead
+  (`pnpm build` → `pnpm -C electron install` → `pnpm -C electron run build`), then
+  `electron-builder`.
+- **The tag must match `package.json` and `electron/package.json`.** electron-builder names
+  artifacts after the manifest version, not the tag, so a mismatch would ship
+  `Trinity Setup 0.1.0.exe` for `v0.3.0`. `verify` refuses the tag instead — bump both
+  versions in the release commit (see [semver](../.claude/rules/git/semver.md)) before tagging.
+- **Artifacts are unsigned unless secrets are configured.** Signing is wired but inert: set
+  `MAC_CSC_LINK` + `MAC_CSC_KEY_PASSWORD` (base64 `.p12` and its password) and macOS signing
+  turns itself on; add `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID` and
+  `build/notarize.cjs` notarizes too. Windows uses `WIN_CSC_LINK` + `WIN_CSC_KEY_PASSWORD`.
+  See [macOS signing & notarization](#macos-signing--notarization) below.
+
+  **When you add those secrets, configure the `release` environment first.** The `package`
+  job already declares `environment: release`; until you set required reviewers on it in
+  repo settings that declaration does nothing. It matters once a certificate exists, because
+  electron-builder runs repo-controlled hooks (`electron/afterPack.cjs`,
+  `electron/build/notarize.cjs`) in the same process that holds `CSC_KEY_PASSWORD` — so
+  anyone able to push a tag could otherwise mint a signed installer, or exfiltrate the cert
+  itself, unattended.
+
+Pre-release tags (`v1.2.3-beta.1`) deliberately do not match the trigger. Android/iOS builds
+remain manual.
 
 ## macOS signing & notarization
 
@@ -319,10 +467,21 @@ export APPLE_TEAM_ID=ABCDE12345
 If no notarization creds are set, `notarize.cjs` logs `skipping notarization — no
 credentials` and the (still-signed, if a cert was found) `.app` is left un-notarized.
 
-**CI:** No macOS CI workflow exists yet — `.crow/ci.yaml` builds only the Linux AppImage
-on tags, so no macOS package is produced today. A dedicated macOS workflow (on a macOS
-runner) must be added first; it should run `pnpm electron:package:mac:signed` and provide
-the cert + notarization values as Crow **secrets** wired into the step's `environment:`.
+**CI:** the `package (mac)` job in
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) builds the macOS `.dmg`
+and `.zip` on every `vX.X.X` tag, and the signing path is already wired — it is simply
+**inert until the secrets exist**. Add these as GitHub repository secrets and the same job
+starts producing signed, notarized artifacts with no workflow change:
+
+| Secret                                                       | Effect                                                          |
+| ------------------------------------------------------------ | --------------------------------------------------------------- |
+| `MAC_CSC_LINK` + `MAC_CSC_KEY_PASSWORD`                      | base64 of the Developer ID `.p12` and its password → signing on |
+| `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID` | `build/notarize.cjs` notarizes and staples the signed `.app`    |
+
+Without `MAC_CSC_LINK` the job sets `CSC_IDENTITY_AUTO_DISCOVERY=false`, so it produces a
+cleanly unsigned build instead of failing on a half-found identity. The API-key notarization
+style (`APPLE_API_KEY` …) is **not** wired, because that variable must be a _path_ to a `.p8`
+file, which a secret cannot be without an extra write-to-disk step.
 
 > Cannot be verified on Linux/CI without an Apple Developer cert — the signed path needs a
 > real macOS host with a Developer ID identity and notarization credentials.

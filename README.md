@@ -1,6 +1,6 @@
 # Trinity
 
-[![status-badge](https://crow.qwky.eu/api/v1/badges/2/status.svg)](https://crow.qwky.eu/repos/2)
+[![CI](https://github.com/quwisky/trinity-matrix-client/actions/workflows/ci.yml/badge.svg)](https://github.com/quwisky/trinity-matrix-client/actions/workflows/ci.yml)
 
 A multiplatform [Matrix](https://matrix.org) client built with **Angular + spartan-ng**,
 running from a single codebase on **Web (PWA), iOS, Android, and Desktop (Electron)**.
@@ -47,14 +47,16 @@ End-to-end encryption is a first-class, in-MVP feature.
 - **Testing:** Vitest (unit) + Playwright e2e (`@nx/playwright` app journeys +
   standalone crypto/protocol harnesses)
 - **Quality gates:** ESLint (+ module boundaries), Prettier, Stylelint, and Husky
-  hooks (lint-staged + commitlint / Angular commit convention), re-run on every
-  push/PR by **Crow CI** (the badge above; see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#continuous-integration))
+  hooks (lint-staged + commitlint / Angular commit convention), re-run on every PR
+  (and on pushes to `develop`/`master`) by **GitHub Actions** — alongside the unit tests, the production build, the
+  Electron main-process checks, and the Playwright e2e journeys (the badge above; see
+  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#continuous-integration))
 
 Exact versions and gotchas live in [STACK.md](docs/STACK.md).
 
 ## Quick start
 
-Requires **Node 22+** (matrix-js-sdk requirement; repo developed on Node 25) and
+Requires **Node 24** (what CI runs and the repo is developed on) and
 **pnpm** (`corepack enable` picks up the pinned version in `package.json`).
 
 ```bash
@@ -162,8 +164,8 @@ Full breakdown in [PLAN.md](docs/PLAN.md).
 
 - No credentialed login test against a _public_ homeserver yet (the matrix.org
   `smoke:login` check is unauthenticated). The credentialed path is covered end-to-end
-  by `e2e:verify` against a disposable local Synapse (live SAS round-trip verified
-  2026-06-27); it is not yet wired into CI.
+  against a disposable local Synapse — the Playwright app journeys run in CI on every PR, and the standalone `e2e:verify` SAS round-trip (verified 2026-06-27) is still
+  run by hand.
 - Native SSO deep link (`eu.qwky.trinity://sso-callback`) is implemented end-to-end —
   system-browser login, the custom scheme registered on iOS/Android, warm + cold-start
   (`getLaunchUrl`) handling, and a single-use `state` nonce checked on the callback — but

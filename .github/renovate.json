@@ -1,0 +1,113 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    ":dependencyDashboard"
+  ],
+  "baseBranches": ["develop"],
+  "timezone": "Europe/Berlin",
+  "semanticCommits": "enabled",
+  "semanticCommitType": "build",
+  "semanticCommitScope": "deps",
+  "automerge": false,
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rebaseWhen": "conflicted",
+  "minimumReleaseAge": "3 days",
+  "ignorePaths": [
+    "android/**",
+    "ios/**",
+    "www/**",
+    "dist/**",
+    "electron/www/**",
+    "electron/dist/**",
+    "electron/release/**"
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 4am on monday"]
+  },
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "minimumReleaseAge": null
+  },
+  "packageRules": [
+    {
+      "description": "Angular and everything version-locked to it. These must move together — a partial bump leaves @angular/compiler-cli disagreeing with @angular/core and the build fails outright.",
+      "groupName": "angular",
+      "matchPackageNames": [
+        "@angular/**",
+        "@angular-devkit/**",
+        "@schematics/angular",
+        "angular-eslint",
+        "ng-packagr",
+        "@analogjs/**"
+      ]
+    },
+    {
+      "description": "Nx and its plugins are released in lockstep and share a workspace version.",
+      "groupName": "nx",
+      "matchPackageNames": ["nx", "@nx/**"]
+    },
+    {
+      "description": "The Rust crypto WASM is coupled to the SDK that loads it; bumping one alone is how the E2EE init breaks.",
+      "groupName": "matrix-js-sdk",
+      "matchPackageNames": ["matrix-js-sdk", "@matrix-org/**"]
+    },
+    {
+      "description": "Capacitor core, CLI and every plugin track one major — including the third-party ones, which peer-depend on @capacitor/core and break if they lag behind it.",
+      "groupName": "capacitor",
+      "matchPackageNames": [
+        "@capacitor/**",
+        "@capawesome/**",
+        "@aparajita/capacitor-secure-storage"
+      ]
+    },
+    {
+      "description": "Brain (headless) and the CLI that generates the Helm components from it.",
+      "groupName": "spartan-ng",
+      "matchPackageNames": ["@spartan-ng/**"]
+    },
+    {
+      "description": "The Playwright runner and its browser package must match, or the browsers are re-downloaded and the versions disagree.",
+      "groupName": "playwright",
+      "matchPackageNames": ["playwright", "@playwright/test"]
+    },
+    {
+      "description": "Vitest core and its coverage provider.",
+      "groupName": "vitest",
+      "matchPackageNames": ["vitest", "@vitest/**"]
+    },
+    {
+      "description": "ESLint and the plugins that peer-depend on it.",
+      "groupName": "eslint",
+      "matchPackageNames": [
+        "eslint",
+        "typescript-eslint",
+        "@typescript-eslint/**",
+        "eslint-plugin-**"
+      ]
+    },
+    {
+      "description": "Tailwind v4 is CSS-configured; its PostCSS plugin and the prettier plugin follow the same version.",
+      "groupName": "tailwind",
+      "matchPackageNames": [
+        "tailwindcss",
+        "@tailwindcss/**",
+        "prettier-plugin-tailwindcss",
+        "tw-animate-css"
+      ]
+    },
+    {
+      "description": "The desktop shell is a separate package with its own lockfile and its own toolchain — it deliberately pins TypeScript 5.9 against the workspace's 6.x, so its updates must never be merged into a root group.",
+      "groupName": "electron shell",
+      "matchFileNames": ["electron/package.json"]
+    },
+    {
+      "description": "Action digests are pinned for supply-chain reasons (see .github/actions/setup/action.yml); this is what keeps the pins from rotting.",
+      "groupName": "github actions",
+      "matchManagers": ["github-actions"]
+    }
+  ]
+}

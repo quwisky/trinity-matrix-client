@@ -27,7 +27,10 @@ https://localhost:8448 {
 		body `{"m.server":"localhost:8448"}`
 	}
 
-	reverse_proxy synapse:8008
+	# Default is the compose-network hostname. When the stack shares a job container's
+	# network namespace there is no compose network and no DNS for it, but Synapse is on
+	# the same loopback — see docker-compose.netns.yml.
+	reverse_proxy {$TRINITY_E2E_SYNAPSE_UPSTREAM:synapse:8008}
 }
 
 # Plain-HTTP Open-Graph page for the link-preview e2e. Synapse (on this docker
