@@ -60,6 +60,17 @@ describe('QuickSwitcherComponent', () => {
     });
   }
 
+  it('marks the search field as the dialog’s autofocus target', async () => {
+    // QuickSwitcherService opens with `autoFocus: '[data-autofocus]'`; CDK focuses
+    // nothing at all if that selector matches nothing, so the two must stay paired.
+    const { container } = await renderSwitcher();
+    const focusTarget = container.querySelector('[data-autofocus]');
+    expect(focusTarget?.tagName).toBe('INPUT');
+    expect(focusTarget?.getAttribute('placeholder')).toBe(
+      'Search rooms, spaces, people',
+    );
+  });
+
   it('renders the ranked local results as rows', async () => {
     const { fixture, container } = await renderSwitcher();
 

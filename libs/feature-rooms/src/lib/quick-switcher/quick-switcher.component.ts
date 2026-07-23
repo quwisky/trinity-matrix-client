@@ -1,12 +1,9 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  ElementRef,
-  afterNextRender,
   computed,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
@@ -68,7 +65,9 @@ const KIND_ICON: Record<SwitcherKind, string> = {
  * debounced RxJS stream. Keyboard nav (Up/Down move, Enter select, Esc close) lives on
  * the native input. On a pick it closes with the chosen {@link SwitcherSelection},
  * leaving the actual navigation to `RoomsPage`. The card self-sizes so it works in a
- * bare CDK dialog (no `ion-modal` host).
+ * bare CDK dialog (no `ion-modal` host). The search field takes focus on open through
+ * the dialog's `autoFocus` selector (see {@link QuickSwitcherService}) — CDK focuses
+ * after attach, so anything the component focuses itself is immediately overridden.
  */
 @Component({
   selector: 'trn-quick-switcher',
@@ -92,9 +91,6 @@ export class QuickSwitcherComponent {
       DialogRef,
     );
   private readonly search = inject(SearchService);
-
-  private readonly searchInput =
-    viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   /** Current query text, driving both the local computed and the people stream. */
   readonly query = signal('');
@@ -141,11 +137,6 @@ export class QuickSwitcherComponent {
       ? 'No matches.'
       : 'Search rooms, spaces, and people — or pick a recent chat.',
   );
-
-  constructor() {
-    // Autofocus the field once the dialog has rendered.
-    afterNextRender(() => this.searchInput()?.nativeElement.focus());
-  }
 
   onInput(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);

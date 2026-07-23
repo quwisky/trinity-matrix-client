@@ -26,6 +26,8 @@ describe('QuickSwitcherService', () => {
 
     expect(dialog.openAndWait).toHaveBeenCalledWith(QuickSwitcherComponent, {
       ariaLabel: 'Jump to a room',
+      // Names the search field so CDK doesn't focus the Cancel button instead.
+      autoFocus: '[data-autofocus]',
     });
     expect(result).toEqual(selection);
   });

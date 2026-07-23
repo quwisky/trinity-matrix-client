@@ -80,6 +80,17 @@ describe('MessageSearchComponent', () => {
     loadMoreHistory = vi.fn(() => of(0));
   });
 
+  it('marks the query field as the dialog’s autofocus target', async () => {
+    // MessageSearchService opens with `autoFocus: '[data-autofocus]'`; CDK focuses
+    // nothing at all if that selector matches nothing, so the two must stay paired.
+    const { container } = await build(loaded());
+    const focusTarget = container.querySelector('[data-autofocus]');
+    expect(focusTarget?.tagName).toBe('INPUT');
+    expect(focusTarget?.getAttribute('placeholder')).toBe(
+      'Search this conversation',
+    );
+  });
+
   it('renders the loaded-timeline matches as result rows', async () => {
     const { container } = await build(
       loaded({ hits: [hit({ eventId: '$1' }), hit({ eventId: '$2' })] }),

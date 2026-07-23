@@ -136,6 +136,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **"Jump to…" and in-room search open ready to type.** Both dialogs put the cursor in
+  their search field on open, instead of quietly parking it on the Cancel/Close button
+  and swallowing whatever you typed until you clicked into the field. Open-and-type is
+  the point of a quick switcher, so Ctrl/Cmd+K now works in one flow again.
 - **Replies in a thread you start off your newest message no longer vanish.** Opening
   "Reply in thread" on a message that was still being sent rooted the thread on a
   placeholder id the homeserver never had: the thread opened normally, but every reply
