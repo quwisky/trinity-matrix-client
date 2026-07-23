@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
+  MAX_NAMED_REACTORS,
+  collectMessageSenders,
   firstUrl,
   isEditableMessage,
   linkifyText,
   parseGeoUri,
   parseLocationInput,
+  reactionDetailsFor,
+  reactionsFor,
   safeBuildMessageView,
   sanitizeMatrixHtml,
   type MessageKind,
@@ -267,5 +271,169 @@ describe('sanitizeMatrixHtml — spoilers', () => {
     );
     expect(clean).not.toContain('onclick');
     expect(clean).not.toContain('<script');
+  });
+});
+
+/** A reaction (`m.annotation`) event stub: only sender + redaction are read. */
+function reaction(sender: string, redacted = false): MatrixEvent {
+  return {
+    getSender: () => sender,
+    isRedacted: () => redacted,
+  } as unknown as MatrixEvent;
+}
+
+/** A room whose relations return `byKey`, with `members` resolving display names. */
+function reactedRoom(
+  byKey: Record<string, MatrixEvent[]>,
+  members: Record<string, { name: string; avatar?: string }> = {},
+): Room {
+  const annotations = new Map(
+    Object.entries(byKey).map(([key, events]) => [key, new Set(events)]),
+  );
+  return {
+    relations: {
+      getChildEventsForEvent: () => ({
+        getSortedAnnotationsByKey: () => annotations,
+      }),
+    },
+    getMember: (userId: string) => {
+      const member = members[userId];
+      return member
+        ? { name: member.name, getMxcAvatarUrl: () => member.avatar ?? null }
+        : null;
+    },
+    findEventById: () => undefined,
+  } as unknown as Room;
+}
+
+const REACTED_MESSAGE = { getId: () => '$m' } as unknown as MatrixEvent;
+const ME = { getUserId: () => '@me:hs' } as unknown as MatrixClient;
+
+describe('reactionsFor', () => {
+  it('names the first few reactors, the local user first as "You"', () => {
+    const room = reactedRoom(
+      {
+        '👍': [
+          reaction('@alice:hs'),
+          reaction('@me:hs'),
+          reaction('@bob:hs'),
+          reaction('@carol:hs'),
+          reaction('@dave:hs'),
+        ],
+      },
+      {
+        '@alice:hs': { name: 'Alice' },
+        '@bob:hs': { name: 'Bob' },
+        '@carol:hs': { name: 'Carol' },
+      },
+    );
+
+    const [pill] = reactionsFor(ME, room, REACTED_MESSAGE);
+
+    expect(pill.count).toBe(5);
+    expect(pill.reacted).toBe(true);
+    // Capped at MAX_NAMED_REACTORS, "You" ahead of the rest; the tail is "and N others".
+    expect(pill.reactors).toEqual(['You', 'Alice', 'Bob']);
+    expect(pill.reactors.length).toBe(MAX_NAMED_REACTORS);
+  });
+
+  it('falls back to the mxid for a member who has not loaded yet', () => {
+    const room = reactedRoom({ '🎉': [reaction('@ghost:hs')] });
+
+    expect(reactionsFor(ME, room, REACTED_MESSAGE)[0].reactors).toEqual([
+      '@ghost:hs',
+    ]);
+  });
+
+  it('ignores redacted reactions, and drops a key once all of them are gone', () => {
+    const room = reactedRoom(
+      {
+        '👍': [reaction('@alice:hs'), reaction('@bob:hs', true)],
+        '❤️': [reaction('@bob:hs', true)],
+      },
+      { '@alice:hs': { name: 'Alice' } },
+    );
+
+    const pills = reactionsFor(ME, room, REACTED_MESSAGE);
+
+    expect(pills.map((p) => p.key)).toEqual(['👍']);
+    expect(pills[0].count).toBe(1);
+    expect(pills[0].reacted).toBe(false);
+    expect(pills[0].reactors).toEqual(['Alice']);
+  });
+});
+
+describe('reactionDetailsFor', () => {
+  it('lists every reactor per key, resolved for display', () => {
+    const room = reactedRoom(
+      {
+        '👍': [reaction('@alice:hs'), reaction('@me:hs'), reaction('@bob:hs')],
+        '❤️': [reaction('@alice:hs')],
+      },
+      {
+        '@alice:hs': { name: 'Alice', avatar: 'mxc://hs/a' },
+        '@bob:hs': { name: 'Bob' },
+        '@me:hs': { name: 'Me' },
+      },
+    );
+
+    const details = reactionDetailsFor(ME, room, REACTED_MESSAGE);
+
+    expect(details.map((d) => d.key)).toEqual(['👍', '❤️']);
+    // Uncapped, unlike the pill's hint — this is the full "who reacted" list.
+    expect(details[0].reactors.map((r) => r.name)).toEqual([
+      'Alice',
+      'Me',
+      'Bob',
+    ]);
+    expect(details[0].reacted).toBe(true);
+    expect(details[0].reactors[0]).toEqual({
+      userId: '@alice:hs',
+      name: 'Alice',
+      initial: 'A',
+      avatarMxc: 'mxc://hs/a',
+    });
+    expect(details[1].reactors.map((r) => r.userId)).toEqual(['@alice:hs']);
+    expect(details[1].reacted).toBe(false);
+  });
+
+  it('skips redacted reactions', () => {
+    const room = reactedRoom(
+      { '👍': [reaction('@alice:hs'), reaction('@bob:hs', true)] },
+      { '@alice:hs': { name: 'Alice' }, '@bob:hs': { name: 'Bob' } },
+    );
+
+    expect(
+      reactionDetailsFor(ME, room, REACTED_MESSAGE)[0].reactors,
+    ).toHaveLength(1);
+  });
+});
+
+describe('collectMessageSenders', () => {
+  it('registers the reactors a pill names, so their late profiles re-map the row', () => {
+    // Only the named ones: nobody past the cap renders, so nobody past it needs to
+    // pass the member-listener gate (see TimelineService.relevantSenders).
+    const room = reactedRoom({
+      '👍': [
+        reaction('@alice:hs'),
+        reaction('@bob:hs'),
+        reaction('@carol:hs'),
+        reaction('@dave:hs'),
+      ],
+    });
+    const message = {
+      getId: () => '$m',
+      getSender: () => '@author:hs',
+    } as unknown as MatrixEvent;
+    const senders = new Set<string>();
+
+    collectMessageSenders(room, message, senders);
+
+    expect([...senders]).toEqual([
+      '@author:hs',
+      '@alice:hs',
+      '@bob:hs',
+      '@carol:hs',
+    ]);
   });
 });

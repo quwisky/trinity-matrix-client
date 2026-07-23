@@ -18,8 +18,23 @@
   line-height: 18px;
   cursor: pointer;
 
+  // A long press is the touch route to "who reacted" — without these it starts a
+  // text selection (or the platform's own callout) instead of the gesture.
+  user-select: none;
+  touch-action: manipulation;
+
   &:hover {
     border-color: var(--trinity-text-muted);
+  }
+}
+
+// Opens the full "who reacted" list. Sits at the end of the pills, deliberately
+// quieter than them: it reports nothing itself, it just leads somewhere.
+.reaction--who {
+  color: var(--trinity-text-muted);
+
+  &:hover {
+    color: var(--trinity-text-bright);
   }
 }
 

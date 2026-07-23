@@ -63,7 +63,10 @@ export type MessageRowAction =
   | { type: 'jump'; id: string }
   /** Show this message's earlier versions — raised by the "(edited)" marker, which is
    *  part of the row rather than the toolbar, so it stays out of `MessageAction`. */
-  | { type: 'edit-history' };
+  | { type: 'edit-history' }
+  /** Show everyone who reacted — raised by the reaction pills (their trailing chip, or
+   *  a long-pressed pill, which names its `key`; null asks for the whole list). */
+  | { type: 'reactors'; key: string | null };
 
 /**
  * One presentational message row, shared by the main timeline ({@link

@@ -48,6 +48,7 @@ import {
   pollEndContent,
   mediaCaptionFields,
   myReactionId,
+  reactionDetailsFor,
   reactionsFor,
   readReceiptUserIds,
   locationMessageContent,
@@ -62,6 +63,7 @@ import {
   type MessageView,
   type MessageShield,
   type Mention,
+  type ReactionDetail,
 } from '@trinity/util-matrix';
 import { resolveShieldsInto, shieldKey } from './shields';
 
@@ -617,6 +619,22 @@ export class TimelineService {
     }).pipe(map(() => void 0));
   }
 
+  /**
+   * Everyone who reacted to `eventId`, grouped by reaction key — the full list behind
+   * the pills' capped "reacted by …" hint, read on demand when the who-reacted dialog
+   * opens. `findEventById` also searches the room's thread timelines, so this serves a
+   * thread row as well (like {@link votePoll}). Empty when the room isn't open or the
+   * event isn't loaded; a snapshot, not a live signal.
+   */
+  reactionDetails(eventId: string): ReactionDetail[] {
+    const ctx = this.context();
+    const event = ctx?.room.findEventById(eventId);
+    if (!ctx || !event) {
+      return [];
+    }
+    return reactionDetailsFor(ctx.client, ctx.room, event);
+  }
+
   /** Cast (or change) the local user's vote on a poll. Cold: runs on subscribe. */
   votePoll(pollId: string, answerId: string): Observable<void> {
     return defer(() => {
@@ -1061,13 +1079,23 @@ function replyTargetSignature(room: Room, replyId: string | undefined): string {
   ].join('\x02');
 }
 
-/** Stable signature of an event's aggregated reactions (key, count, own flag). */
+/**
+ * Stable signature of an event's aggregated reactions (key, count, own flag) — plus
+ * the reactor names the pill shows. Those names resolve late (lazy member loading),
+ * and without them in the fingerprint the cached view is reused verbatim and the
+ * pill keeps naming a raw mxid; same reasoning as {@link replyTargetSignature}. The
+ * list is capped at projection time (`MAX_NAMED_REACTORS`), which is what keeps this
+ * bounded on a heavily-reacted message.
+ */
 function reactionSignature(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
 ): string {
   return reactionsFor(client, room, event)
-    .map((r) => `${r.key}:${r.count}:${r.reacted ? 1 : 0}`)
+    .map(
+      (r) =>
+        `${r.key}:${r.count}:${r.reacted ? 1 : 0}:${r.reactors.join('\x03')}`,
+    )
     .join(',');
 }

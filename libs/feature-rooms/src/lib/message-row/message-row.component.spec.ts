@@ -113,6 +113,25 @@ describe('MessageRowComponent', () => {
     });
   }
 
+  it('raises the who-reacted request from the reaction pills', async () => {
+    const { fixture, container } = await renderRow({
+      row: row({
+        reactions: [
+          { key: '👍', count: 2, reacted: false, reactors: ['Alice', 'Bob'] },
+        ],
+      }),
+    });
+    const actions: MessageRowAction[] = [];
+    fixture.componentInstance.action.subscribe((a) => actions.push(a));
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid=reactions-who]')!
+      .click();
+
+    // No key from the trailing chip — the dialog opens on its first section.
+    expect(actions).toEqual([{ type: 'reactors', key: null }]);
+  });
+
   it('renders an authenticity shield with its reason when the message has one', async () => {
     const { container } = await renderRow({
       row: row({

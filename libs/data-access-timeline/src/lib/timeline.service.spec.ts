@@ -631,8 +631,9 @@ describe('TimelineService', () => {
     );
 
     expect(svc.messages()[0].reactions).toEqual([
-      { key: '👍', count: 2, reacted: true },
-      { key: '❤️', count: 1, reacted: false },
+      // "You" leads the named reactors so the pill's hint reads naturally.
+      { key: '👍', count: 2, reacted: true, reactors: ['You', 'Alice'] },
+      { key: '❤️', count: 1, reacted: false, reactors: ['Alice'] },
     ]);
   });
 
@@ -836,6 +837,89 @@ describe('TimelineService', () => {
     expect(svc.messages().find((m) => m.id === '$inv')?.summary).toBe(
       'Me invited Bob',
     );
+  });
+
+  it('renames a reaction’s named reactor when their member loads late', async () => {
+    // The pill hint names reactors, whose profiles load lazily like any other member.
+    // Without the reactor names in `eventRevision`'s reaction signature the cached view
+    // is reused verbatim and the pill keeps naming a raw mxid forever.
+    const events = [fakeEvent({ id: '$1', sender: '@me:hs', body: 'hi' })];
+    let aliceLoaded = false;
+    let memberHandler: ((...a: unknown[]) => void) | undefined;
+    const relations = fakeRelations([['👍', new Set([fakeReaction('@a:hs')])]]);
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+        getState: () => undefined,
+      }),
+      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      getMember: (id: string) => {
+        if (id === '@me:hs') {
+          return { name: 'Me', getMxcAvatarUrl: () => null };
+        }
+        return aliceLoaded
+          ? { name: 'Alice', getMxcAvatarUrl: () => null }
+          : null;
+      },
+      relations: {
+        getChildEventsForEvent: (id: string) =>
+          id === '$1' ? relations : undefined,
+      },
+      hasEncryptionStateEvent: () => false,
+      on: (ev: string, cb: (...a: unknown[]) => void) => {
+        if (ev === RoomStateEvent.Members) {
+          memberHandler = cb;
+        }
+      },
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: () => Promise.resolve({}),
+      scrollback: () => Promise.resolve(room),
+    };
+    TestBed.configureTestingModule({
+      providers: [TimelineService, matrixProvider(client)],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    expect(svc.messages()[0].reactions[0].reactors).toEqual(['@a:hs']);
+
+    aliceLoaded = true;
+    memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@a:hs' });
+    await Promise.resolve(); // re-projection is coalesced into a microtask
+
+    expect(svc.messages()[0].reactions[0].reactors).toEqual(['Alice']);
+  });
+
+  it('reports every reactor per key on demand, and nothing for an unknown event', () => {
+    const svc = setup(
+      [fakeEvent({ id: '$1', sender: '@me:hs', body: 'hi' })],
+      [],
+      {
+        $1: fakeRelations([
+          ['👍', new Set([fakeReaction('@me:hs'), fakeReaction('@a:hs')])],
+        ]),
+      },
+    );
+
+    const [details] = svc.reactionDetails('$1');
+
+    expect(details.key).toBe('👍');
+    expect(details.reacted).toBe(true);
+    // Uncapped and identified — this is what the who-reacted dialog lists.
+    expect(details.reactors).toEqual([
+      { userId: '@me:hs', name: 'Me', initial: 'M', avatarMxc: null },
+      { userId: '@a:hs', name: 'Alice', initial: 'A', avatarMxc: null },
+    ]);
+    expect(svc.reactionDetails('$nope')).toEqual([]);
   });
 
   it('does not re-project when an unreferenced member changes', async () => {
