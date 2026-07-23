@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Customise your keyboard shortcuts.** Settings now has a **Keyboard shortcuts** section
+  listing every shortcut and its keys — so you can finally see what's available — and you can
+  rebind any of them: click one, press the new combination, done. If the combination is
+  already used elsewhere it's taken over (the old shortcut is left unset, with a note), and a
+  chord your browser reserves is flagged as desktop-app only. A **Reset all to defaults**
+  button (and a per-shortcut reset) puts things back. Your choices are saved on the device.
 - **Keyboard shortcuts to hop between rooms.** Press **Ctrl/Cmd+'** to jump to the room you
   were just in, and again to keep stepping further back through the rooms you've visited —
   alt-tab style; **Shift** with it steps forward again. **Alt+↑/↓** walks up and down the

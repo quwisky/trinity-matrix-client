@@ -27,6 +27,7 @@ import {
   lucideFlaskConical,
   lucideImage,
   lucideKeyRound,
+  lucideKeyboard,
   lucideLock,
   lucideMonitorSmartphone,
   lucidePalette,
@@ -55,6 +56,7 @@ const MENU: readonly SettingsMenuItem[] = [
   { path: 'notifications', label: 'Notifications', icon: 'lucideBell' },
   { path: 'privacy', label: 'Privacy', icon: 'lucideShield' },
   { path: 'gifs', label: 'GIFs', icon: 'lucideImage' },
+  { path: 'shortcuts', label: 'Keyboard shortcuts', icon: 'lucideKeyboard' },
   { path: 'experimental', label: 'Experimental', icon: 'lucideFlaskConical' },
 ];
 
@@ -94,6 +96,7 @@ const WIDE_QUERY = '(min-width: 768px)';
       lucideBell,
       lucideShield,
       lucideImage,
+      lucideKeyboard,
       lucideFlaskConical,
     }),
   ],
