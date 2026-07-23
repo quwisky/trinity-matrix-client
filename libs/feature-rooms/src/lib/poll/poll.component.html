@@ -10,7 +10,7 @@
           [class.poll__option--chosen]="option.chosen"
           [class.poll__option--ended]="poll().ended"
           [attr.aria-pressed]="option.chosen"
-          [disabled]="poll().ended"
+          [disabled]="poll().ended || pending()"
           (click)="onVote(option.id)"
         >
           <span
@@ -42,6 +42,7 @@
         size="sm"
         type="button"
         data-testid="poll-end"
+        [disabled]="pending()"
         (click)="end.emit()"
       >
         End poll

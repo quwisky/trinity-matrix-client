@@ -106,6 +106,33 @@ describe('SimpleMessageListComponent', () => {
     expect(cmp.rowCaps(row).deletable).toBe(true);
   });
 
+  it('withholds threading and pinning from a message that is still unsent', async () => {
+    // A local echo is keyed by the SDK's `~roomId:txnId` placeholder. Threading off it
+    // would make that placeholder the thread root — `ThreadsService` then can't fetch
+    // the root and every reply is dropped — and pinning it would write the placeholder
+    // into `m.room.pinned_events`. Both only make sense once the echo is confirmed.
+    const sending: MessageView = {
+      ...msg('~!r:hs:m1.0', '@me:hs', 'Me', 1000),
+      isOwn: true,
+      status: 'sending',
+    };
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [sending], canPin: true },
+    });
+    const cmp = fixture.componentInstance;
+
+    const pending = cmp.rowCaps({ ...sending, showHeader: true });
+    expect(pending.canThread).toBe(false);
+    expect(pending.canPin).toBe(false);
+
+    // The remote echo swaps in the server's event id and clears the status.
+    const confirmed: MessageView = { ...sending, id: '$1', status: null };
+    fixture.componentRef.setInput('messages', [confirmed]);
+    const caps = cmp.rowCaps({ ...confirmed, showHeader: true });
+    expect(caps.canThread).toBe(true);
+    expect(caps.canPin).toBe(true);
+  });
+
   it('keeps each row’s caps object identical when nothing about them changed', async () => {
     // `caps` is an input<MessageRowCaps> on the OnPush MessageRowComponent, so it is
     // compared by Object.is. TimelineService mints a NEW messages array on every

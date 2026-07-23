@@ -5,7 +5,12 @@ import {
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  login,
+  synapseSession,
+  waitForSent,
+  type SynapseSession,
+} from './support/app.mts';
 
 // End-to-end for polls (MSC3381): create a poll from the composer, vote, see the tally
 // update, and end it. Needs a Synapse homeserver (Docker).
@@ -99,7 +104,14 @@ test.describe('Polls', () => {
     await expect(poll).toContainText(question);
     await expect(poll).toContainText('0 votes');
 
-    // Vote for the first option → the tally updates live.
+    // Vote for the first option → the tally updates live. A vote *relates* to the
+    // poll's event id, so it can only be cast once the poll itself has been sent —
+    // the options stay disabled while it is still a local echo.
+    await waitForSent(
+      page
+        .locator('.scroll .msg[data-mid]', { has: page.getByTestId('poll') })
+        .first(),
+    );
     await poll.locator('.poll__option').first().click();
     await expect(poll).toContainText('1 vote');
     await expect(poll).toContainText('1 (100%)');

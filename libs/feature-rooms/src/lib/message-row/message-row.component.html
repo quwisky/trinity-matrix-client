@@ -63,6 +63,7 @@
           <trn-poll
             [poll]="poll"
             [canEnd]="r.isOwn"
+            [pending]="!!r.status"
             (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
             (end)="pollEnd.emit(poll.id)"
           />
@@ -140,6 +141,7 @@
           <trn-poll
             [poll]="poll"
             [canEnd]="r.isOwn"
+            [pending]="!!r.status"
             (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
             (end)="pollEnd.emit(poll.id)"
           />

@@ -73,6 +73,30 @@ describe('PollComponent', () => {
     expect(ended).toBe(true);
   });
 
+  it('keeps voting and ending inert while the poll itself is still being sent', async () => {
+    // Until the remote echo lands, `poll.id` is the SDK's `~roomId:txnId` local-echo
+    // placeholder; relating a vote (or an end) to it makes matrix-js-sdk throw, so the
+    // controls must not fire at all.
+    const { fixture, container } = await render(PollComponent, {
+      inputs: { poll: poll(), canEnd: true, pending: true },
+    });
+    let voted = false;
+    let ended = false;
+    fixture.componentInstance.vote.subscribe(() => (voted = true));
+    fixture.componentInstance.end.subscribe(() => (ended = true));
+
+    const option = container.querySelector<HTMLButtonElement>('.poll__option')!;
+    const endBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid=poll-end]',
+    )!;
+    expect(option.disabled).toBe(true);
+    expect(endBtn.disabled).toBe(true);
+    option.click();
+    endBtn.click();
+    expect(voted).toBe(false);
+    expect(ended).toBe(false);
+  });
+
   it('hides "End poll" when the poll has ended', async () => {
     const { container } = await render(PollComponent, {
       inputs: { poll: poll({ ended: true }), canEnd: true },

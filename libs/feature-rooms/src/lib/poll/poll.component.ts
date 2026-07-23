@@ -25,6 +25,13 @@ export class PollComponent {
   readonly poll = input.required<PollView>();
   /** Whether to offer the "End poll" control (the creator, while the poll is open). */
   readonly canEnd = input(false);
+  /**
+   * Whether the poll's own event is still being sent (a local echo). A vote and an end
+   * both *relate* to the poll's event id, and until the remote echo lands that id is the
+   * SDK's `~roomId:txnId` placeholder — matrix-js-sdk throws outright on a relation to a
+   * pending event — so both controls stay inert for those few hundred milliseconds.
+   */
+  readonly pending = input(false);
 
   /** The chosen answer id to cast a vote for. */
   readonly vote = output<string>();
@@ -42,7 +49,7 @@ export class PollComponent {
   });
 
   onVote(answerId: string): void {
-    if (!this.poll().ended) {
+    if (!this.poll().ended && !this.pending()) {
       this.vote.emit(answerId);
     }
   }

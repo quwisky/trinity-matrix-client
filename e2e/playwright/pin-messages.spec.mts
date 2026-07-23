@@ -1,6 +1,11 @@
 import { createHmac } from 'node:crypto';
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  clickRowToolbar,
+  login,
+  synapseSession,
+  type SynapseSession,
+} from './support/app.mts';
 
 // Covers the pin-messages feature end to end: a message's hover toolbar's ⋯
 // menu (`data-testid="msg-more"`) offers "Pin message" (`data-testid="msg-pin"`),
@@ -236,9 +241,12 @@ test.describe('Pin messages', () => {
 
     // Reveal the row's hover toolbar (opacity/pointer-events are hover/focus
     // gated — see message-row.component.scss) before its ⋯ trigger is
-    // clickable.
-    await targetRow.first().hover();
-    await targetRow.first().getByTestId('msg-more').click();
+    // clickable. The room has only just opened, so the timeline can still shift
+    // under the cursor: re-hover per attempt rather than clicking once.
+    await clickRowToolbar(
+      targetRow.first(),
+      targetRow.first().getByTestId('msg-more'),
+    );
 
     // The ⋯ overlay menu renders at page root (CDK overlay), not nested under
     // the row — select its "Pin message" item at page scope.
