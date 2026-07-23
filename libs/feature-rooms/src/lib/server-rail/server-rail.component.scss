@@ -95,12 +95,14 @@
   border-radius: 50%;
 }
 
-.pill.home {
+// Recent is the primary view (first item, default on launch), so its pill is the
+// always-filled brand exception — accent-filled at rest, round when its view is active.
+.pill.recent {
   background: var(--trinity-accent);
   color: var(--trinity-accent-foreground);
 }
 
-.pill.home.round,
+.pill.recent.round,
 .item.active .pill {
   border-radius: 50%;
 }
@@ -115,10 +117,10 @@
   color: var(--trinity-text-bright);
 }
 
-// Recent + Rooms pills: accent-filled on hover and while their view is active
-// (`.item.active`). The always-filled Home pill is the brand exception.
-.pill.recent:hover,
-.item.active .pill.recent,
+// Home + Rooms pills: accent-filled on hover and while their view is active
+// (`.item.active`), the quieter treatment against Recent's always-filled pill.
+.pill.home:hover,
+.item.active .pill.home,
 .pill.rooms:hover,
 .item.active .pill.rooms {
   background: var(--trinity-accent);
