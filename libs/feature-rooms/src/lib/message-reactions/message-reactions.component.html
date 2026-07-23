@@ -1,15 +1,26 @@
 <div class="reactions">
-  @for (r of reactions(); track r.key) {
+  @for (r of pills(); track r.key) {
     <button
       type="button"
       class="reaction"
       [class.reaction--mine]="r.reacted"
       [attr.aria-pressed]="r.reacted"
-      [title]="r.key"
+      [attr.aria-label]="r.hint"
+      [hlmTooltip]="r.hint"
       (click)="toggleReaction.emit(r.key)"
     >
       <span class="reaction__key">{{ r.key }}</span>
       <span class="reaction__count">{{ r.count }}</span>
     </button>
   }
+  <button
+    type="button"
+    class="reaction reaction--who"
+    data-testid="reactions-who"
+    aria-label="See who reacted"
+    hlmTooltip="See who reacted"
+    (click)="showReactors.emit()"
+  >
+    <ng-icon name="lucideUsers" aria-hidden="true" />
+  </button>
 </div>

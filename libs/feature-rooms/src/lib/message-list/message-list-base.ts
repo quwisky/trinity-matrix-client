@@ -16,6 +16,7 @@ import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
 import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
+import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
 import {
   formatTypingNotice,
@@ -162,6 +163,7 @@ export abstract class MessageListBase {
   private readonly reportSvc = inject(ReportService);
   private readonly sourceSvc = inject(MessageSourceService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
+  private readonly reactionsDialog = inject(ReactionsDialogService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
   // Grouping rows, cached per event id so an unchanged message (same view object AND
@@ -430,6 +432,9 @@ export abstract class MessageListBase {
         break;
       case 'edit-history':
         void this.showEditHistory(row.id);
+        break;
+      case 'reactors':
+        void this.reactionsDialog.open(row.id);
         break;
       default: {
         // Exhaustiveness guard: adding a MessageRowAction variant without a case

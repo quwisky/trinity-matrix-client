@@ -105,6 +105,7 @@
           <trn-message-reactions
             [reactions]="r.reactions"
             (toggleReaction)="action.emit({ type: 'react', key: $event })"
+            (showReactors)="action.emit({ type: 'reactors' })"
           />
         }
         @if (r.readReceipts.length) {
@@ -194,6 +195,7 @@
           <trn-message-reactions
             [reactions]="r.reactions"
             (toggleReaction)="action.emit({ type: 'react', key: $event })"
+            (showReactors)="action.emit({ type: 'reactors' })"
           />
         }
         @if (r.readReceipts.length) {

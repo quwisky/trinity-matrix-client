@@ -177,7 +177,34 @@ export interface ReactionView {
   count: number;
   /** Whether the current user is among them (their reaction can be toggled off). */
   reacted: boolean;
+  /**
+   * The first few reactors by display name, for the pill's "reacted by …" hint —
+   * `'You'` first when {@link reacted}. Capped at {@link MAX_NAMED_REACTORS}: the
+   * hint only ever shows a handful, and this list is fingerprinted per event on
+   * every projection (see `reactionSignature` in `TimelineService`), so it has to
+   * stay bounded. The full list is read on demand by {@link reactionDetailsFor}.
+   */
+  reactors: string[];
 }
+
+/** One person who reacted, for the "who reacted" list. Mirrors {@link ReceiptView}. */
+export interface ReactionReactor {
+  userId: string;
+  name: string;
+  initial: string;
+  avatarMxc: string | null;
+}
+
+/** Every reactor for one reaction key, for the "who reacted" dialog. */
+export interface ReactionDetail {
+  key: string;
+  /** Whether the current user is among them. */
+  reacted: boolean;
+  reactors: ReactionReactor[];
+}
+
+/** How many reactors a reaction pill names before "and N others". */
+export const MAX_NAMED_REACTORS = 3;
 
 /** A compact preview of the message a reply points at. */
 export interface ReplyPreview {
@@ -515,14 +542,27 @@ export function collectMessageSenders(
       into.add(targetSender);
     }
   }
+  // The reactors a pill names, whose display names can also arrive late. Only the
+  // named ones: nobody beyond the cap renders, so nobody beyond it needs to re-map.
+  for (const [, reactions] of reactionEventsFor(room, event)) {
+    for (const reaction of reactions.slice(0, MAX_NAMED_REACTORS)) {
+      const reactor = reaction.getSender();
+      if (reactor) {
+        into.add(reactor);
+      }
+    }
+  }
 }
 
-/** Read aggregated reactions for an event from the room's relations. */
-export function reactionsFor(
-  client: MatrixClient,
+/**
+ * An event's live reactions grouped by key in the SDK's order (count, then first
+ * seen), with redacted ones dropped and empty keys omitted. Shared by the pill
+ * projection and the full "who reacted" list so both read the same set.
+ */
+function reactionEventsFor(
   room: Room,
   event: MatrixEvent,
-): ReactionView[] {
+): [string, MatrixEvent[]][] {
   const id = event.getId();
   if (!id) {
     return [];
@@ -533,20 +573,90 @@ export function reactionsFor(
   if (!annotations) {
     return [];
   }
-  const myId = client.getUserId();
-  const views: ReactionView[] = [];
+  const groups: [string, MatrixEvent[]][] = [];
   for (const [key, set] of annotations) {
     const events = [...set].filter((e) => !e.isRedacted());
-    if (events.length === 0) {
-      continue;
+    if (events.length > 0) {
+      groups.push([key, events]);
     }
-    views.push({
-      key,
-      count: events.length,
-      reacted: events.some((e) => e.getSender() === myId),
-    });
   }
-  return views;
+  return groups;
+}
+
+/** A member's resolved display name, falling back to the raw mxid. */
+function displayNameOf(room: Room, userId: string): string {
+  // `||` (not `??`) so an empty display name still falls back to the mxid.
+  return room.getMember(userId)?.name || userId;
+}
+
+/** Read aggregated reactions for an event from the room's relations. */
+export function reactionsFor(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+): ReactionView[] {
+  const myId = client.getUserId();
+  return reactionEventsFor(room, event).map(([key, reactions]) => ({
+    key,
+    count: reactions.length,
+    reacted: reactions.some((e) => e.getSender() === myId),
+    reactors: namedReactors(room, reactions, myId),
+  }));
+}
+
+/** The first few reactors by display name, the local user first as "You". */
+function namedReactors(
+  room: Room,
+  reactions: MatrixEvent[],
+  myId: string | null,
+): string[] {
+  const names: string[] = [];
+  if (reactions.some((e) => e.getSender() === myId)) {
+    names.push('You');
+  }
+  for (const reaction of reactions) {
+    if (names.length >= MAX_NAMED_REACTORS) {
+      break;
+    }
+    const reactor = reaction.getSender();
+    if (reactor && reactor !== myId) {
+      names.push(displayNameOf(room, reactor));
+    }
+  }
+  return names;
+}
+
+/**
+ * Every reactor of every reaction on an event, grouped by key — the full list behind
+ * a pill's capped {@link ReactionView.reactors} hint. Read on demand (when the "who
+ * reacted" dialog opens) rather than carried on every {@link MessageView}, so a
+ * heavily-reacted message costs nothing until someone asks.
+ */
+export function reactionDetailsFor(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+): ReactionDetail[] {
+  const myId = client.getUserId();
+  return reactionEventsFor(room, event).map(([key, reactions]) => ({
+    key,
+    reacted: reactions.some((e) => e.getSender() === myId),
+    reactors: reactions.flatMap((reaction) => {
+      const userId = reaction.getSender();
+      if (!userId) {
+        return [];
+      }
+      const name = displayNameOf(room, userId);
+      return [
+        {
+          userId,
+          name,
+          initial: initialOf(name),
+          avatarMxc: room.getMember(userId)?.getMxcAvatarUrl() ?? null,
+        },
+      ];
+    }),
+  }));
 }
 
 export function mapStatus(

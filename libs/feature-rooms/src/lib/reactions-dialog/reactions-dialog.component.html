@@ -1,0 +1,54 @@
+<div
+  class="flex max-h-[80vh] w-[min(90vw,26rem)] flex-col gap-3 rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
+  data-testid="reactions-dialog"
+>
+  <div class="flex items-center gap-2">
+    <h2 class="flex-1 text-lg font-semibold">Reactions</h2>
+    <button hlmBtn type="button" variant="ghost" size="sm" (click)="close()">
+      Close
+    </button>
+  </div>
+
+  @if (sections().length === 0) {
+    <p class="empty" data-testid="reactions-empty">
+      Nobody has reacted to this message.
+    </p>
+  } @else {
+    <!-- One chip per emoji; the selected one's reactors are listed below. -->
+    <div class="keys" role="tablist" aria-label="Reactions">
+      @for (section of sections(); track section.key) {
+        <button
+          type="button"
+          role="tab"
+          class="key"
+          [class.key--active]="section.key === selected()?.key"
+          [attr.aria-selected]="section.key === selected()?.key"
+          [attr.data-testid]="'reactions-key'"
+          [attr.aria-label]="
+            section.key + ', ' + section.reactors.length + ' reacted'
+          "
+          (click)="select(section.key)"
+        >
+          <span class="key__emoji">{{ section.key }}</span>
+          <span class="key__count">{{ section.reactors.length }}</span>
+        </button>
+      }
+    </div>
+
+    @if (selected(); as section) {
+      <ul class="reactors" data-testid="reactors-list">
+        @for (reactor of section.reactors; track reactor.userId) {
+          <li class="reactor">
+            <trn-avatar
+              [mxc]="reactor.avatarMxc"
+              [initial]="reactor.initial"
+              [name]="reactor.name"
+              [size]="32"
+            />
+            <span class="reactor__name">{{ reactor.name }}</span>
+          </li>
+        }
+      </ul>
+    }
+  }
+</div>

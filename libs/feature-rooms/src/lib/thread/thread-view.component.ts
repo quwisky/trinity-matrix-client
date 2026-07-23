@@ -42,6 +42,7 @@ import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
 import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
+import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -91,6 +92,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   private readonly reportSvc = inject(ReportService);
   private readonly sourceSvc = inject(MessageSourceService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
+  private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = inject(TimelineService);
   private readonly dialogRef =
     inject<DialogRef<void, ThreadViewComponent>>(DialogRef);
@@ -363,6 +365,9 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         break;
       case 'jump':
         this.jumpTo(action.id);
+        break;
+      case 'reactors':
+        void this.reactionsDialog.open(row.id);
         break;
       case 'edit-history':
         // The thread panel routes no permalinks (its rows don't bind matrixLink either),
