@@ -19,6 +19,8 @@ import {
   RoomAliasesService,
   PublicRoomsService,
   SpacesService,
+  MixedRoomsService,
+  MixedSpacesService,
   UnreadAggregatorService,
   type RoomSummary,
   type SpaceChildRoom,
@@ -2329,5 +2331,149 @@ describe('RoomsPage keyboard room switching', () => {
     expect(page.activeRoomId()).toBe('!b:hs'); // the new chord does
 
     TestBed.inject(KeyboardShortcutsService).resetAll(); // don't leak into other specs
+  });
+});
+
+// Mixed-account view (issue #10): the Recent list + rail spaces span every signed-in
+// account when the toggle is "All accounts", and opening a foreign-account item switches
+// to that account first.
+describe('RoomsPage mixed-account view', () => {
+  function room(id: string, accountId: string): RoomSummary {
+    return {
+      id,
+      accountId,
+      name: id,
+      initial: id[1].toUpperCase(),
+      avatarMxc: null,
+      topic: '',
+      memberCount: 0,
+      encrypted: false,
+      unreadCount: 0,
+      highlightCount: 0,
+      hasUnread: false,
+      lastMessage: '',
+      activityTs: 0,
+      favourite: false,
+    };
+  }
+
+  function space(id: string, accountId: string): SpaceSummary {
+    return {
+      id,
+      accountId,
+      name: id,
+      initial: 'S',
+      avatarMxc: null,
+      childRoomIds: [],
+    };
+  }
+
+  let switchAccount: ReturnType<typeof vi.fn>;
+  let setMixedRoomsEnabled: ReturnType<typeof vi.fn>;
+
+  function build(accountIds: string[]): RoomsPage {
+    switchAccount = vi.fn(() => of(undefined));
+    setMixedRoomsEnabled = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        MockProvider(RoomsService, {
+          rooms: signal([room('!mine:hs', '@me:hs')]),
+          directRoomIds: signal<ReadonlySet<string>>(new Set()),
+          revision: signal(0).asReadonly(),
+        }),
+        MockProvider(SpacesService, {
+          spaces: signal([space('!s-mine:hs', '@me:hs')]),
+          childRoomIds: vi.fn(() => []),
+        }),
+        MockProvider(MixedRoomsService, {
+          rooms: signal([
+            room('!mine:hs', '@me:hs'),
+            room('!theirs:hs', '@alt:hs'),
+          ]),
+          setEnabled: setMixedRoomsEnabled,
+        }),
+        MockProvider(MixedSpacesService, {
+          spaces: signal([
+            space('!s-mine:hs', '@me:hs'),
+            space('!s-alt:hs', '@alt:hs'),
+          ]),
+          setEnabled: vi.fn(),
+        }),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(accountIds).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService, { switchAccount }),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return TestBed.inject(RoomsPage);
+  }
+
+  it('offers the mixed toggle only when more than one account is signed in', () => {
+    expect(build(['@me:hs']).mixedAvailable()).toBe(false);
+    TestBed.resetTestingModule();
+    expect(build(['@me:hs', '@alt:hs']).mixedAvailable()).toBe(true);
+  });
+
+  it('scopes Recent + rail spaces to the active account by default', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    // Default 'this' — the active account only.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
+    expect(page.railSpaces().map((s) => s.id)).toEqual(['!s-mine:hs']);
+    expect(page.accountBadges().size).toBe(0); // no badges outside mixed mode
+  });
+
+  it('spans every account when the toggle is "All accounts"', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    page.mixedMode.set('all');
+    TestBed.tick(); // run the enable effect
+
+    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+      '!mine:hs',
+      '!theirs:hs',
+    ]);
+    expect(page.railSpaces().map((s) => s.id)).toEqual([
+      '!s-mine:hs',
+      '!s-alt:hs',
+    ]);
+    expect(setMixedRoomsEnabled).toHaveBeenCalledWith(true);
+    expect(page.accountBadges().size).toBeGreaterThan(0);
+  });
+
+  it('switches to the owning account before opening a foreign room', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    page.mixedMode.set('all');
+
+    page.onSelectRoomRow('!theirs:hs'); // belongs to @alt:hs
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+
+    // A room on the active account opens without a switch.
+    switchAccount.mockClear();
+    page.onSelectRoomRow('!mine:hs');
+    expect(switchAccount).not.toHaveBeenCalled();
+    expect(page.activeRoomId()).toBe('!mine:hs');
   });
 });

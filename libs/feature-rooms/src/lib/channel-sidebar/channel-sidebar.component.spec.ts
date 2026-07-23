@@ -36,6 +36,7 @@ const presenceStub = {
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {
     id: '!a:hs',
+    accountId: '@me:hs',
     name: 'general',
     initial: 'G',
     avatarMxc: null,
@@ -853,5 +854,54 @@ describe('ChannelSidebarComponent', () => {
     expect(container.querySelector('.empty--error')).not.toBeNull();
     // No joinable rows render while erroring.
     expect(container.querySelector('.joinable')).toBeNull();
+  });
+
+  it('badges each room with its owning account only in the mixed view', async () => {
+    const badges = new Map([
+      ['@me:hs', { initial: 'M', name: 'Me' }],
+      ['@alt:hs', { initial: 'A', name: 'Alt' }],
+    ]);
+    const { container, fixture } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!mine:hs', accountId: '@me:hs' }),
+          room({ id: '!theirs:hs', accountId: '@alt:hs' }),
+        ],
+        accountBadges: badges,
+      },
+    });
+    // Both rows carry an account badge.
+    expect(
+      container.querySelectorAll('[data-testid="account-badge"]').length,
+    ).toBe(2);
+
+    // With no badge map (single-account), no badge renders.
+    fixture.componentRef.setInput('accountBadges', new Map());
+    fixture.detectChanges();
+    expect(container.querySelector('[data-testid="account-badge"]')).toBeNull();
+  });
+
+  it('shows the account-scope toggle only when recentScope is set, and emits changes', async () => {
+    const { container, fixture } = await renderSidebar({
+      inputs: { rooms: [room()], recentScope: 'this' },
+    });
+    const changes: string[] = [];
+    fixture.componentInstance.recentScopeChange.subscribe((s) =>
+      changes.push(s),
+    );
+
+    const all = container.querySelector<HTMLButtonElement>(
+      '[data-testid="recent-scope-all"]',
+    );
+    expect(all).toBeTruthy();
+    all!.click();
+    expect(changes).toEqual(['all']);
+
+    // Hidden when the scope is null (not Recent, or a single account).
+    fixture.componentRef.setInput('recentScope', null);
+    fixture.detectChanges();
+    expect(
+      container.querySelector('[data-testid="recent-scope-all"]'),
+    ).toBeNull();
   });
 });

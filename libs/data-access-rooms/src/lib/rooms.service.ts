@@ -3,13 +3,11 @@ import {
   ClientEvent,
   EventType,
   MatrixEventEvent,
-  NotificationCountType,
   Preset,
   ReceiptType,
   RoomEvent,
   RoomStateEvent,
   type MatrixClient,
-  type Room,
   type RoomMember,
 } from 'matrix-js-sdk';
 import {
@@ -29,11 +27,15 @@ import {
 import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   isValidUserId,
-  liveRoomState,
-  messagePreview,
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util-matrix';
+import {
+  buildRoomSummary,
+  compareRoomSummaries,
+  directMapOf,
+  initialOf,
+} from './room-projection';
 
 /** Fields a {@link RoomsService.createRoom} call accepts. */
 export interface CreateRoomOptions {
@@ -55,6 +57,8 @@ export interface UserSearchResult {
 /** A joinable room shown in the channel sidebar. */
 export interface RoomSummary {
   id: string;
+  /** The signed-in account this room belongs to (its user id) — for the mixed view. */
+  accountId: string;
   name: string;
   initial: string;
   avatarMxc: string | null;
@@ -579,65 +583,19 @@ export class RoomsService {
       return;
     }
     const client = this.matrix.instance;
-    const all = client.getRooms();
-
-    // Reverse `m.direct` ({ userId: roomId[] }) once into the set of DM room ids AND a
-    // roomId → counterpart-user-id lookup, so each DM room can carry the other party's id.
-    const direct = new Set<string>();
-    const directUserByRoom = new Map<string, string>();
-    for (const [userId, ids] of Object.entries(this.directMap(client))) {
-      if (Array.isArray(ids)) {
-        for (const roomId of ids) {
-          direct.add(roomId);
-          if (!directUserByRoom.has(roomId)) {
-            directUserByRoom.set(roomId, userId);
-          }
-        }
-      }
-    }
+    const accountId = this.matrix.activeUserId() ?? client.getUserId?.() ?? '';
+    const { ids: direct, userByRoom } = directMapOf(client);
 
     this._rooms.set(
-      all
+      client
+        .getRooms()
         // Spaces are rendered in the server rail, not as channels in the room list.
         .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
-        .map((r) => this.toRoom(r, directUserByRoom.get(r.roomId)))
-        // Favourite rooms first, then most recently active; fall back to name.
-        .sort(
-          (a, b) =>
-            Number(b.favourite) - Number(a.favourite) ||
-            b.activityTs - a.activityTs ||
-            a.name.localeCompare(b.name),
-        ),
+        .map((r) => buildRoomSummary(r, accountId, userByRoom.get(r.roomId)))
+        .sort(compareRoomSummaries),
     );
     this._directRoomIds.set(direct);
     this._revision.update((n) => n + 1);
-  }
-
-  private toRoom(room: Room, directUserId?: string): RoomSummary {
-    const name = room.name || room.roomId;
-    const topicEvent = liveRoomState(room)?.getStateEvents('m.room.topic', '');
-    const unreadCount = room.getUnreadNotificationCount(
-      NotificationCountType.Total,
-    );
-    const highlightCount = room.getUnreadNotificationCount(
-      NotificationCountType.Highlight,
-    );
-    return {
-      id: room.roomId,
-      name,
-      initial: initialOf(name),
-      avatarMxc: room.getMxcAvatarUrl(),
-      topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
-      memberCount: room.getJoinedMemberCount(),
-      encrypted: room.hasEncryptionStateEvent(),
-      unreadCount,
-      highlightCount,
-      hasUnread: unreadCount > 0,
-      lastMessage: lastMessageOf(room),
-      activityTs: room.getLastActiveTimestamp(),
-      favourite: room.tags?.['m.favourite'] !== undefined,
-      directUserId,
-    };
   }
 
   private toMember(member: RoomMember): MemberSummary {
@@ -650,26 +608,4 @@ export class RoomsService {
       powerLevel: member.powerLevel,
     };
   }
-}
-
-/** First visible character (sans leading `#`/`@`), uppercased, for fallback avatars. */
-function initialOf(name: string): string {
-  const stripped = name.replace(/^[#@!]+/, '').trim();
-  return (stripped[0] ?? '?').toUpperCase();
-}
-
-/**
- * Single-line preview of the room's most recent `m.room.message`, or `''` when the
- * room has no message in its live timeline. The timeline is walked back-to-front so
- * membership/state events between messages are skipped. `getLiveTimeline` is called
- * optionally since not every Room stub (unit fakes) exposes it.
- */
-function lastMessageOf(room: Room): string {
-  const events = room.getLiveTimeline?.()?.getEvents() ?? [];
-  for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].getType() === EventType.RoomMessage) {
-      return messagePreview(events[i]);
-    }
-  }
-  return '';
 }

@@ -48,6 +48,13 @@ export class ServerRailComponent {
     rooms: 0,
     perSpace: {},
   });
+  /**
+   * Owning-account badge per account id (mixed-account view): account id → {initial,
+   * name}. Empty when not in mixed mode — space pills then show no badge.
+   */
+  readonly accountBadges = input<
+    ReadonlyMap<string, { initial: string; name: string }>
+  >(new Map());
   readonly selectSpace = output<string | null>();
   /** The "+" pill at the end of the rail — raise the create-a-space flow. */
   readonly createSpace = output<void>();
@@ -55,6 +62,11 @@ export class ServerRailComponent {
   readonly showRecent = output<void>();
   /** Show the Rooms view (non-DM rooms). */
   readonly showRooms = output<void>();
+
+  /** The account badge for a space pill (mixed view), or null when not badged. */
+  badgeFor(accountId: string): { initial: string; name: string } | null {
+    return this.accountBadges().get(accountId) ?? null;
+  }
 
   /** Cap an unread count for a pill badge, Discord-style ("99+"). */
   readonly badgeLabel = unreadBadgeLabel;

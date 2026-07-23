@@ -14,12 +14,13 @@
          At md+ both are static columns side by side. -->
     <aside #listView tabindex="-1" class="shell-side w-full shrink-0 md:w-88">
       <trn-server-rail
-        [spaces]="spaces.spaces()"
+        [spaces]="railSpaces()"
         [activeSpaceId]="activeSpaceId()"
         [recentActive]="recentView()"
         [roomsActive]="roomsView()"
         [unread]="railUnread()"
-        (selectSpace)="onSelectSpace($event)"
+        [accountBadges]="accountBadges()"
+        (selectSpace)="onSelectSpaceRow($event)"
         (createSpace)="onCreateSpace()"
         (showRecent)="onShowRecent()"
         (showRooms)="onShowRooms()"
@@ -35,7 +36,10 @@
         [accounts]="accounts()"
         [activeUserId]="activeAccountId()"
         [reauthAccounts]="reauthAccounts()"
-        (selectRoom)="onSelectRoom($event)"
+        [accountBadges]="accountBadges()"
+        [recentScope]="recentView() && mixedAvailable() ? mixedMode() : null"
+        (recentScopeChange)="mixedMode.set($event)"
+        (selectRoom)="onSelectRoomRow($event)"
         (switchAccount)="switchAccount($event)"
         (reauthAccount)="reauthAccount($event)"
         (addAccount)="addAccount()"

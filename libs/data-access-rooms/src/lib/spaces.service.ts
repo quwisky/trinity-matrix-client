@@ -54,6 +54,8 @@ export interface CreateRoomInSpaceOptions {
 /** A Matrix Space (a room with `type: m.space`) shown as a pill in the server rail. */
 export interface SpaceSummary {
   id: string;
+  /** The signed-in account this space belongs to (its user id) — for the mixed view. */
+  accountId: string;
   name: string;
   /** Uppercased first character (sans sigil), for the avatar initials fallback. */
   initial: string;
@@ -600,6 +602,7 @@ export class SpacesService {
     const name = room.name || room.roomId;
     return {
       id: room.roomId,
+      accountId: this.matrix.activeUserId() ?? client.getUserId?.() ?? '',
       name,
       initial: initialOf(name),
       avatarMxc: room.getMxcAvatarUrl(),

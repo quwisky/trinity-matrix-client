@@ -60,6 +60,33 @@
     </div>
   </header>
 
+  @if (recentScope(); as scope) {
+    <!-- Mixed-account toggle: shown only on Recent with 2+ accounts. Flips the list
+         between the active account and every signed-in account. -->
+    <div class="sidebar__scope" role="group" aria-label="Account scope">
+      <button
+        type="button"
+        class="sidebar__scope-btn"
+        [class.active]="scope === 'this'"
+        [attr.aria-pressed]="scope === 'this'"
+        data-testid="recent-scope-this"
+        (click)="recentScopeChange.emit('this')"
+      >
+        This account
+      </button>
+      <button
+        type="button"
+        class="sidebar__scope-btn"
+        [class.active]="scope === 'all'"
+        [attr.aria-pressed]="scope === 'all'"
+        data-testid="recent-scope-all"
+        (click)="recentScopeChange.emit('all')"
+      >
+        All accounts
+      </button>
+    </div>
+  }
+
   <div class="sidebar__scroll">
     @if (invites().length) {
       <div class="category">Invites</div>
@@ -233,6 +260,7 @@
           [name]="room.name"
           [size]="36"
           [presence]="presenceOf(room)"
+          [accountBadge]="badgeFor(room.accountId)"
         />
         <div class="channel__text">
           <span class="channel__name">{{ room.name }}</span>

@@ -624,4 +624,61 @@ test.describe('Multiple accounts', () => {
     // two distinct toasts.
     expect(match?.options?.tag).toBe(`${b.readerUserId} ${b.roomId}`);
   });
+
+  test('mixed view shows both accounts’ rooms, badged, and opening one switches account', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}mx`;
+    const userA = `mixed-a-${runId}`;
+    const passA = `mixed-a-pass-${runId}`;
+    const userB = `mixed-b-${runId}`;
+    const passB = `mixed-b-pass-${runId}`;
+    const roomA = `Room A ${runId}`;
+    const roomB = `Room B ${runId}`;
+
+    await registerUser(request, userA, passA);
+    await registerUser(request, userB, passB);
+    const a = await apiLogin(request, hs, userA, passA);
+    const b = await apiLogin(request, hs, userB, passB);
+    for (const [who, name] of [
+      [a, roomA],
+      [b, roomB],
+    ] as const) {
+      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: who.headers,
+        data: { name, preset: 'private_chat' },
+      });
+    }
+
+    // Sign in A, then add B (B becomes the active account) — both now signed in.
+    await login(page, { available: true, hs, user: userA, pass: passA });
+    await addAccountViaUi(page, hs, userB, passB);
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+
+    // Recent is the default view; with two accounts the scope toggle appears. Only B's
+    // room shows under "This account"; switch to "All accounts".
+    const roomARow = page.locator('.channel', { hasText: roomA });
+    const roomBRow = page.locator('.channel', { hasText: roomB });
+    await expect(roomBRow).toBeVisible({ timeout: 20_000 });
+    await expect(roomARow).toHaveCount(0); // A's room is on the other account
+    await page.getByTestId('recent-scope-all').click();
+
+    // Now both accounts' rooms are listed, each carrying an account badge.
+    await expect(roomARow).toBeVisible({ timeout: 20_000 });
+    await expect(roomBRow).toBeVisible();
+    await expect(
+      roomARow.locator('[data-testid="account-badge"]'),
+    ).toBeVisible();
+
+    // Opening A's room switches the active account to A and opens it.
+    await roomARow.click();
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userA}:`, {
+      timeout: 20_000,
+    });
+    await expect(
+      page.locator('trn-channel-sidebar .channel.active', { hasText: roomA }),
+    ).toBeVisible({ timeout: 15_000 });
+  });
 });

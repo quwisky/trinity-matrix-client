@@ -98,6 +98,7 @@
           [name]="space.name"
           [square]="activeSpaceId() !== space.id || roomsActive()"
           [size]="48"
+          [accountBadge]="badgeFor(space.accountId)"
         />
       </button>
       @if (spaceUnreadCount > 0) {

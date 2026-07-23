@@ -119,6 +119,11 @@ export class ChannelSidebarComponent {
   );
   /** Whether any room has unread messages — gates the header "Mark all as read". */
   readonly hasAnyUnread = computed(() => this.rooms().some((r) => r.hasUnread));
+
+  /** The account badge for a room row (mixed view), or null when not badged. */
+  badgeFor(accountId: string): { initial: string; name: string } | null {
+    return this.accountBadges().get(accountId) ?? null;
+  }
   /** Not-yet-joined channels of the active space (the "More Channels" list). */
   readonly joinableRooms = this.spacesSvc.notJoinedRooms;
   /** Sub-spaces of the active space (joined → Open, otherwise Join). */
@@ -142,6 +147,20 @@ export class ChannelSidebarComponent {
   readonly activeUserId = input<string | null>(null);
   /** User ids of accounts the server signed out that need re-authentication. */
   readonly reauthAccounts = input<readonly string[]>([]);
+  /**
+   * Owning-account badge per account id (mixed-account view): account id → {initial,
+   * name}. Empty when not in mixed mode — room rows then show no badge.
+   */
+  readonly accountBadges = input<
+    ReadonlyMap<string, { initial: string; name: string }>
+  >(new Map());
+  /**
+   * The Recent view's account scope when the mixed toggle applies: `'this'` / `'all'`, or
+   * null to hide the toggle (not Recent, or only one account signed in).
+   */
+  readonly recentScope = input<'this' | 'all' | null>(null);
+  /** The user changed the Recent account scope via the header toggle. */
+  readonly recentScopeChange = output<'this' | 'all'>();
   readonly selectRoom = output<string>();
   /** Header "+" on Home — raise the new-room / new-DM chooser. */
   readonly newChat = output<void>();

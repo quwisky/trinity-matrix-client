@@ -34,3 +34,18 @@
     [style.background]="presenceColor()"
   ></span>
 }
+@if (accountBadge(); as badge) {
+  <span
+    class="account-badge"
+    role="img"
+    data-testid="account-badge"
+    [attr.aria-label]="'Account: ' + badge.name"
+    [title]="badge.name"
+    [style.width.px]="badgeSize()"
+    [style.height.px]="badgeSize()"
+    [style.font-size.px]="badgeSize() * 0.6"
+    [style.background]="badgeColor()"
+    [style.color]="badgeInk()"
+    >{{ badge.initial }}</span
+  >
+}

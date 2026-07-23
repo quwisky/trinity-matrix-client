@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **See all your accounts' conversations in one place.** When more than one account is
+  signed in, the Recent activity view gains a **This account / All accounts** switch. Turn on
+  "All accounts" and the list mixes every account's direct messages and rooms together — and
+  the left rail shows every account's spaces — each item marked with a small badge for the
+  account it belongs to, so you can tell apart the same person reached through two of your
+  accounts. Opening a conversation from another account switches to it automatically, so
+  everything you do there (sending, receipts, reactions) happens as the right account. With
+  one account signed in, nothing changes.
 - **Customise your keyboard shortcuts.** Settings now has a **Keyboard shortcuts** section
   listing every shortcut and its keys — so you can finally see what's available — and you can
   rebind any of them: click one, press the new combination, done. If the combination is

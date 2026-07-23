@@ -64,9 +64,12 @@ import {
   RoomAliasesService,
   PublicRoomsService,
   SpacesService,
+  MixedRoomsService,
+  MixedSpacesService,
   UnreadAggregatorService,
   type MemberSummary,
   type RoomSummary,
+  type SpaceSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
@@ -188,6 +191,8 @@ function isMobileMasterDetail(): boolean {
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);
   readonly spaces = inject(SpacesService);
+  private readonly mixedRooms = inject(MixedRoomsService);
+  private readonly mixedSpaces = inject(MixedSpacesService);
   readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
   readonly threads = inject(ThreadsService);
@@ -235,6 +240,20 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly roomsView = signal(false);
   readonly activeRoomId = signal<string | null>(null);
 
+  /**
+   * Mixed-account scope for the Recent view + rail spaces: `'this'` (the active account
+   * only, today's behaviour) or `'all'` (every signed-in account's rooms/spaces, badged).
+   * Session-scoped. Only meaningful when {@link mixedAvailable} — with one account the
+   * toggle is hidden and this stays `'this'`.
+   */
+  readonly mixedMode = signal<'this' | 'all'>('this');
+  /** Whether the mixed-account toggle applies — more than one account is signed in. */
+  readonly mixedAvailable = computed(() => this.matrix.accountIds().length > 1);
+  /** Whether the mixed-account projection is active (toggle on AND >1 account). */
+  readonly mixedOn = computed(
+    () => this.mixedAvailable() && this.mixedMode() === 'all',
+  );
+
   // The two mobile pages (the rail/room-list and the chat), focused on a view switch
   // so keyboard/screen-reader focus follows to the newly-shown page (see focusActiveView).
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
@@ -281,13 +300,14 @@ export class RoomsPage implements OnInit, OnDestroy {
    * sync, membership, and `m.space.child` changes.
    */
   readonly visibleRooms = computed<RoomSummary[]>(() => {
-    const all = this.rooms.rooms();
-    // Recent activity: every joined DM + room, mixed. `rooms()` is already exactly that
-    // (spaces are excluded at the source), sorted favourite-first then most-recent, so it
-    // is used unfiltered.
+    // Recent activity: every joined DM + room, mixed. In mixed-account mode ("All
+    // accounts") that spans every signed-in account (each row badged); otherwise the
+    // active account's `rooms()` — already exactly that list, favourite-first then
+    // most-recent, so it is used unfiltered.
     if (this.recentView()) {
-      return all;
+      return this.mixedOn() ? this.mixedRooms.rooms() : this.rooms.rooms();
     }
+    const all = this.rooms.rooms();
     const direct = this.rooms.directRoomIds();
     // Rooms view: non-DM joined rooms that aren't owned by a space (overrides the space scope).
     if (this.roomsView()) {
@@ -432,6 +452,35 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** The account currently in view — marks the active row in the switcher. */
   readonly activeAccountId = this.matrix.activeUserId;
 
+  /**
+   * Space pills for the rail: every signed-in account's spaces (badged) in mixed mode,
+   * else just the active account's.
+   */
+  readonly railSpaces = computed<SpaceSummary[]>(() =>
+    this.mixedOn() ? this.mixedSpaces.spaces() : this.spaces.spaces(),
+  );
+
+  /**
+   * Account-badge lookup for the sidebar rows + rail pills: account id → {initial, name},
+   * or empty when not in mixed mode (no badge shown). Reads `accounts()` for names.
+   */
+  readonly accountBadges = computed<
+    Map<string, { initial: string; name: string }>
+  >(() => {
+    const badges = new Map<string, { initial: string; name: string }>();
+    if (!this.mixedOn()) {
+      return badges;
+    }
+    for (const account of this.accounts()) {
+      const name = account.displayName;
+      badges.set(account.userId, {
+        name,
+        initial: (name.replace(/^[@#!]+/, '').trim()[0] ?? '?').toUpperCase(),
+      });
+    }
+    return badges;
+  });
+
   /** Accounts the server signed out that need re-authentication (switcher re-auth rows). */
   readonly reauthAccounts = this.matrix.softLoggedOut;
 
@@ -462,6 +511,13 @@ export class RoomsPage implements OnInit, OnDestroy {
       if (!this.matrix.activeUserId()) {
         void this.router.navigateByUrl('/login', { replaceUrl: true });
       }
+    });
+    // Attach the cross-account projections only while mixed mode is on (they cost
+    // nothing otherwise), so the Recent list + rail spaces span every account.
+    effect(() => {
+      const on = this.mixedOn();
+      this.mixedRooms.setEnabled(on);
+      this.mixedSpaces.setEnabled(on);
     });
   }
 
@@ -980,6 +1036,44 @@ export class RoomsPage implements OnInit, OnDestroy {
    * committing any hop cycle) from a hop-driven one (leaves the MRU stack frozen so
    * repeated hops keep cycling deeper). Every existing caller uses the default.
    */
+  /**
+   * Open a room chosen from the sidebar list. In mixed-account mode the row may belong to
+   * a different signed-in account — switch to that account first (so every downstream
+   * action runs on its client), then open the room; otherwise open it directly.
+   */
+  onSelectRoomRow(id: string): void {
+    const accountId = this.visibleRooms().find((r) => r.id === id)?.accountId;
+    if (accountId && accountId !== this.matrix.activeUserId()) {
+      this.runOnAccount(accountId, () => this.onSelectRoom(id));
+      return;
+    }
+    this.onSelectRoom(id);
+  }
+
+  /**
+   * Select a space pill from the rail. In mixed mode a foreign account's space switches to
+   * that account first; Home (`null`) and same-account spaces select directly.
+   */
+  onSelectSpaceRow(id: string | null): void {
+    const accountId = id
+      ? this.railSpaces().find((s) => s.id === id)?.accountId
+      : undefined;
+    if (accountId && accountId !== this.matrix.activeUserId()) {
+      this.runOnAccount(accountId, () => this.onSelectSpace(id));
+      return;
+    }
+    this.onSelectSpace(id);
+  }
+
+  /** Switch to `accountId`, then run `then` once the switch has landed. */
+  private runOnAccount(accountId: string, then: () => void): void {
+    this.closeOpenRoom();
+    this.auth
+      .switchAccount(accountId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => then());
+  }
+
   onSelectRoom(id: string, source: 'user' | 'hop' = 'user'): void {
     // Drop the previous room's resolved media URLs before switching timelines.
     this.media.releaseAll();

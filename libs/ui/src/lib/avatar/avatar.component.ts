@@ -37,6 +37,34 @@ function contrastRatio(a: number, b: number): number {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
+/** Discord-style default-avatar palette (name-hashed). */
+const PALETTE = [
+  '#5865f2',
+  '#3ba55d',
+  '#faa81a',
+  '#ed4245',
+  '#eb459e',
+  '#9b59b6',
+];
+
+/** Stable colour picked from a key, like Discord's default avatars. */
+function hashColor(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  }
+  return PALETTE[Math.abs(hash) % PALETTE.length];
+}
+
+/** Whichever ink (dark/light) scores the higher WCAG contrast against `hex`. */
+function readableInk(hex: string): string {
+  const bg = relativeLuminance(hex);
+  return contrastRatio(bg, relativeLuminance(INK_DARK)) >=
+    contrastRatio(bg, relativeLuminance(INK_LIGHT))
+    ? INK_DARK
+    : INK_LIGHT;
+}
+
 /**
  * Discord-style avatar over the spartan {@link HlmAvatar}: the image shows once it
  * loads (BrnAvatar swaps to the initials fallback while loading or on error). Bind
@@ -66,6 +94,19 @@ function contrastRatio(a: number, b: number): number {
         /* Ring in the surrounding surface colour so the dot reads as an overlay. */
         box-shadow: 0 0 0 2px var(--trn-presence-ring, var(--background));
       }
+      .account-badge {
+        position: absolute;
+        right: -2px;
+        bottom: -2px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-weight: 700;
+        line-height: 1;
+        /* Ring in the surrounding surface colour so the badge reads as an overlay. */
+        box-shadow: 0 0 0 2px var(--trn-presence-ring, var(--background));
+      }
     `,
   ],
 })
@@ -79,11 +120,27 @@ export class AvatarComponent {
   readonly square = input(false);
   /** Online-status indicator; omit (null) to render no presence dot. */
   readonly presence = input<PresenceState | null>(null);
+  /**
+   * A small owning-account badge in the corner (the mixed-account view): the account's
+   * initial, coloured from its name, with the account name as its label. Null = no badge.
+   */
+  readonly accountBadge = input<{ initial: string; name: string } | null>(null);
 
   private readonly resolver = inject(AVATAR_RESOLVER, { optional: true });
 
   /** Diameter of the presence dot, scaled to the avatar (floored so it stays visible). */
   readonly dotSize = computed(() => Math.max(8, Math.round(this.size() * 0.3)));
+
+  /** Diameter of the account badge, scaled to the avatar (floored so its letter fits). */
+  readonly badgeSize = computed(() =>
+    Math.max(14, Math.round(this.size() * 0.42)),
+  );
+
+  /** Name-hashed fill for the account badge, and a readable ink for its letter. */
+  readonly badgeColor = computed(() =>
+    hashColor(this.accountBadge()?.name ?? ''),
+  );
+  readonly badgeInk = computed(() => readableInk(this.badgeColor()));
 
   /** Fill colour for the presence dot, by state. */
   readonly presenceColor = computed(() => {
@@ -110,32 +167,12 @@ export class AvatarComponent {
   readonly src = computed(() => this.resolvedUrl() ?? this.url());
 
   /** Stable color picked from the name, like Discord's default avatars. */
-  readonly color = computed(() => {
-    const palette = [
-      '#5865f2',
-      '#3ba55d',
-      '#faa81a',
-      '#ed4245',
-      '#eb459e',
-      '#9b59b6',
-    ];
-    const key = this.name() || this.initial();
-    let hash = 0;
-    for (let i = 0; i < key.length; i++) {
-      hash = (hash * 31 + key.charCodeAt(i)) | 0;
-    }
-    return palette[Math.abs(hash) % palette.length];
-  });
+  readonly color = computed(() => hashColor(this.name() || this.initial()));
 
   /** Readable text colour for the initial on the hashed background: whichever ink
    * scores the higher WCAG contrast ratio against it — so a single letter always
    * meets contrast (every palette entry clears AA under that choice). */
-  readonly initialColor = computed(() => {
-    const background = relativeLuminance(this.color());
-    const onDark = contrastRatio(background, relativeLuminance(INK_DARK));
-    const onLight = contrastRatio(background, relativeLuminance(INK_LIGHT));
-    return onDark >= onLight ? INK_DARK : INK_LIGHT;
-  });
+  readonly initialColor = computed(() => readableInk(this.color()));
 
   constructor() {
     // Re-resolve when the bound avatar changes (instances are reused across @for
