@@ -15,6 +15,15 @@ class TestDialogComponent {
   }
 }
 
+@Component({
+  standalone: true,
+  template: `
+    <button type="button">Cancel</button>
+    <input data-autofocus placeholder="Search" />
+  `,
+})
+class FocusDialogComponent {}
+
 describe('TrnDialogService', () => {
   it('opens a component, sets its inputs, and closes with a value', async () => {
     const svc = TestBed.inject(TrnDialogService);
@@ -55,6 +64,24 @@ describe('TrnDialogService', () => {
     const closed = firstValueFrom(ref.closed);
     ref.componentInstance!.close('done');
     expect(await closed).toBe('done');
+  });
+
+  it('focuses the element named by autoFocus, not the first tabbable one', async () => {
+    // The shape every search-style dialog has: a dismiss button ahead of the field the
+    // user came to type in. CDK's default ('first-tabbable') would take the button, and
+    // a focus() call inside the component can't win — CDK focuses after attach.
+    const svc = TestBed.inject(TrnDialogService);
+    const ref = svc.open<void, FocusDialogComponent>(FocusDialogComponent, {
+      autoFocus: '[data-autofocus]',
+    });
+    const appRef = TestBed.inject(ApplicationRef);
+    appRef.tick();
+    await appRef.whenStable();
+
+    expect(document.activeElement?.tagName).toBe('INPUT');
+    expect(document.activeElement?.getAttribute('placeholder')).toBe('Search');
+
+    ref.close();
   });
 
   it('reports whether any dialog is currently open (getTop replacement)', () => {

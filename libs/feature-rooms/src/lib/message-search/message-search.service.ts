@@ -28,7 +28,13 @@ export class MessageSearchService {
       // Signal inputs are populated from `inputs` (app sets useSetInputAPI).
       return await this.dialog.openAndWait<string, MessageSearchComponent>(
         MessageSearchComponent,
-        { ariaLabel: 'Search messages', side: 'end', inputs: { roomId } },
+        {
+          ariaLabel: 'Search messages',
+          side: 'end',
+          inputs: { roomId },
+          // Focus the query field, not CDK's first tabbable element (the close button).
+          autoFocus: '[data-autofocus]',
+        },
       );
     } finally {
       this.open = false;

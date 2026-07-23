@@ -1,4 +1,6 @@
-import { DialogRef } from '@angular/cdk/dialog';
+import { ApplicationRef } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import {
   SearchService,
   type SwitcherResult,
@@ -8,6 +10,7 @@ import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuickSwitcherComponent } from './quick-switcher.component';
+import { QuickSwitcherService } from './quick-switcher.service';
 
 function result(over: Partial<SwitcherResult> = {}): SwitcherResult {
   return {
@@ -59,6 +62,38 @@ describe('QuickSwitcherComponent', () => {
       ],
     });
   }
+
+  it('marks the search field as the dialog’s autofocus target', async () => {
+    // QuickSwitcherService opens with `autoFocus: '[data-autofocus]'`; CDK focuses
+    // nothing at all if that selector matches nothing, so the two must stay paired.
+    const { container } = await renderSwitcher();
+    const focusTarget = container.querySelector('[data-autofocus]');
+    expect(focusTarget?.tagName).toBe('INPUT');
+    expect(focusTarget?.getAttribute('placeholder')).toBe(
+      'Search rooms, spaces, people',
+    );
+  });
+
+  it('lands focus in the search field when opened through the service', async () => {
+    // The full production path in one test — real QuickSwitcherService, real
+    // TrnDialogService, real CDK dialog — because that is where the bug lived: the
+    // component's own focus() ran first and CDK's focus pass then overrode it with the
+    // header's Cancel button. Only the search backend is stubbed.
+    TestBed.configureTestingModule({
+      providers: [MockProvider(SearchService, { localResults, searchPeople })],
+    });
+    const picked = TestBed.inject(QuickSwitcherService).pick();
+    const appRef = TestBed.inject(ApplicationRef);
+    appRef.tick();
+    await appRef.whenStable();
+
+    const search = document.querySelector('[data-autofocus]');
+    expect(search).not.toBeNull();
+    expect(document.activeElement).toBe(search);
+
+    TestBed.inject(Dialog).closeAll();
+    expect(await picked).toBeNull();
+  });
 
   it('renders the ranked local results as rows', async () => {
     const { fixture, container } = await renderSwitcher();

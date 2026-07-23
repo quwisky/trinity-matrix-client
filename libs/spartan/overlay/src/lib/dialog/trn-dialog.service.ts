@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Dialog, DialogRef } from '@angular/cdk/dialog';
+import { Dialog, DialogConfig, DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import type { ComponentType } from '@angular/cdk/portal';
 import { firstValueFrom } from 'rxjs';
@@ -26,6 +26,15 @@ export interface DialogOptions {
    * visible title (e.g. its `<h2>` text).
    */
   ariaLabel?: string;
+  /**
+   * Which element takes focus when the dialog opens, defaulting to CDK's
+   * `'first-tabbable'`. That default is wrong for any dialog whose header carries a
+   * Cancel/Close button ahead of the field the user came to type in — the button wins.
+   * A component-side `focus()` can't fix it either: CDK focuses *after* attach, so it
+   * simply overrides the earlier call. Name the element instead — a CSS selector
+   * (`'[data-autofocus]'`), `'first-heading'`, `'dialog'` or `false`.
+   */
+  autoFocus?: DialogConfig['autoFocus'];
 }
 
 /**
@@ -51,6 +60,10 @@ export class TrnDialogService {
       disableClose: opts.disableClose ?? false,
       data: opts.data,
       ariaLabel: opts.ariaLabel,
+      // Spelled out rather than left off: CDK merges the config over its defaults with
+      // a spread, so an `autoFocus: undefined` key would clobber the default instead of
+      // falling back to it.
+      autoFocus: opts.autoFocus ?? 'first-tabbable',
       // Default (undefined) lets CDK center the card; `'end'` pins it top-right
       // and full-height (the panel's own h-screen fills the axis).
       positionStrategy:

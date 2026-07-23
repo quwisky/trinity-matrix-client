@@ -2,13 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
-  afterNextRender,
   computed,
   inject,
   input,
   signal,
-  viewChild,
 } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import { NgIcon, provideIcons } from '@ng-icons/core';
@@ -49,6 +46,9 @@ interface HighlightPart {
  *    history, paged via `next_batch`.
  *
  * Selecting a result closes with its event id; `RoomsPage` jumps the timeline to it.
+ * The query field takes focus on open through the dialog's `autoFocus` selector (see
+ * {@link MessageSearchService}) — CDK focuses after attach, so anything the component
+ * focuses itself is immediately overridden.
  */
 @Component({
   selector: 'trn-message-search',
@@ -67,9 +67,6 @@ export class MessageSearchComponent {
 
   /** Active room, populated from the dialog's `inputs` (app sets `useSetInputAPI`). */
   readonly roomId = input.required<string>();
-
-  private readonly searchInput =
-    viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   /** Current query text. */
   readonly query = signal('');
@@ -116,11 +113,6 @@ export class MessageSearchComponent {
     }
     return 'No matching messages.';
   });
-
-  constructor() {
-    // Autofocus the field once the dialog has rendered.
-    afterNextRender(() => this.searchInput()?.nativeElement.focus());
-  }
 
   onInput(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);

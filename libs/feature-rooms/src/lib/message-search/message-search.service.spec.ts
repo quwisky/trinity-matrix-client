@@ -26,6 +26,8 @@ describe('MessageSearchService', () => {
       ariaLabel: 'Search messages',
       side: 'end',
       inputs: { roomId: '!r:hs' },
+      // Names the query field so CDK doesn't focus the close button instead.
+      autoFocus: '[data-autofocus]',
     });
     expect(result).toBe('$jump:hs');
   });

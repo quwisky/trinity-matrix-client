@@ -27,7 +27,12 @@ export class QuickSwitcherService {
       return await this.dialog.openAndWait<
         SwitcherSelection,
         QuickSwitcherComponent
-      >(QuickSwitcherComponent, { ariaLabel: 'Jump to a room' });
+      >(QuickSwitcherComponent, {
+        ariaLabel: 'Jump to a room',
+        // Open-and-type is the whole point of a quick switcher, so focus lands on the
+        // search field rather than CDK's first tabbable element (the Cancel button).
+        autoFocus: '[data-autofocus]',
+      });
     } finally {
       this.open = false;
     }
