@@ -23,6 +23,7 @@ import {
   BUILD_INFO,
   DraftStoreService,
   FeatureFlagsService,
+  KeyboardShortcutsService,
   PrivacySettingsService,
   StoragePersistenceService,
   ThemeService,
@@ -74,6 +75,9 @@ bootstrapApplication(AppComponent, {
     // Load persisted per-conversation composer drafts before any composer mounts,
     // so a half-typed message is restored on cold start.
     provideAppInitializer(() => inject(DraftStoreService).init()),
+    // Load any custom keyboard-shortcut bindings before the rooms page mounts, so a
+    // rebound chord is in effect from the first keydown.
+    provideAppInitializer(() => inject(KeyboardShortcutsService).init()),
     // Ask the browser to make our IndexedDB persistent so multi-account sync +
     // crypto stores aren't evicted under storage pressure (best-effort; no-op where
     // unsupported). Fire-and-forget — nothing blocks startup on the prompt.

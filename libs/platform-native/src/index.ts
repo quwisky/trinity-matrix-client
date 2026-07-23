@@ -9,5 +9,7 @@ export * from './lib/draft-store.service';
 export * from './lib/theme.service';
 export * from './lib/mobile-badge.service';
 export * from './lib/trinity-desktop-bridge';
+export * from './lib/shortcuts/chord';
+export * from './lib/shortcuts/keyboard-shortcuts.service';
 export * from './lib/trinity-error-handler';
 export * from './lib/build-info';

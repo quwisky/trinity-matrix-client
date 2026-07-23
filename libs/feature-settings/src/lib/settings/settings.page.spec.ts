@@ -22,6 +22,7 @@ const SECTIONS = [
   'notifications',
   'privacy',
   'gifs',
+  'shortcuts',
   'experimental',
 ];
 

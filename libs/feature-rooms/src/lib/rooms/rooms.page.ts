@@ -80,7 +80,7 @@ import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
 import { type MatrixLinkTarget, type Mention } from '@trinity/util-matrix';
 import {
   FeatureFlagsService,
-  getTrinityDesktopBridge,
+  KeyboardShortcutsService,
 } from '@trinity/platform-native';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -163,15 +163,13 @@ function isMobileMasterDetail(): boolean {
     TombstoneBannerComponent,
   ],
   host: {
-    // Both accelerators, per the style guide's `host`-over-@HostListener rule.
-    '(document:keydown.meta.k)': 'onQuickSwitch($event)',
-    '(document:keydown.control.k)': 'onQuickSwitch($event)',
-    '(document:keydown.escape)': 'onEscapeKey()',
-    // One delegating listener for the room-switching shortcuts: their keys (the `'`
-    // quote, digits, Tab) don't all express cleanly as Angular pseudo-events, and a
-    // single handler is what the growing keymap wants. It bails on the first line
-    // unless a relevant modifier is held, so plain typing pays almost nothing.
+    // One delegating listener for every global shortcut: the quick switcher and the
+    // room-switching keys all resolve through KeyboardShortcutsService, so a binding is
+    // defined (and configurable) in one place. It bails on the first line unless a
+    // modifier is held, so plain typing pays almost nothing. Escape stays a dedicated
+    // binding — it's a contextual dismiss, not a configurable navigation shortcut.
     '(document:keydown)': 'onGlobalKeydown($event)',
+    '(document:keydown.escape)': 'onEscapeKey()',
   },
   viewProviders: [
     provideIcons({
@@ -202,6 +200,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly memberInfo = inject(MemberInfoService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly mru = inject(MruRoomsService);
+  private readonly shortcuts = inject(KeyboardShortcutsService);
   private readonly messageSearch = inject(MessageSearchService);
   private readonly media = inject(MediaService);
   private readonly unreadAgg = inject(UnreadAggregatorService);
@@ -223,13 +222,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly actionSheet = inject(TrnActionSheetService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
-
-  /**
-   * Whether we're in the Electron desktop shell (web-safe: false on browser/PWA/mobile).
-   * Gates the browser-reserved shortcuts — Ctrl+Tab and Ctrl/Cmd+1…9 — which only the
-   * desktop shell can actually receive and prevent-default.
-   */
-  private readonly isDesktop = !!getTrinityDesktopBridge()?.isElectron;
 
   readonly activeSpaceId = signal<string | null>(null);
   /**
@@ -493,100 +485,88 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   /**
-   * Global quick switcher. `meta` is Cmd (macOS) and `control` is Ctrl (Win/Linux);
-   * Angular auto-unbinds both on destroy, and the chord's modifier means plain typing
-   * (including in the composer) never triggers it. `preventDefault` stops the
-   * browser's own Cmd/Ctrl+K. Re-entrancy is guarded in {@link QuickSwitcherService}.
-   */
-  // Angular 21 type-checks host listeners; `document:keydown` is typed as the base
-  // `Event`, so accept that and just call the shared `preventDefault`.
-  /** Opens the quick switcher. Bound for BOTH Cmd+K (macOS) and Ctrl+K in `host`. */
-  onQuickSwitch(event: Event): void {
-    event.preventDefault();
-    void this.openSwitcher();
-  }
-
-  /**
-   * Keyboard room switching (issue #12). One listener rather than ~two dozen host
-   * bindings — it bails immediately unless a room-switch modifier is held, so ordinary
-   * typing is untouched, and an open overlay owns the screen so the shortcuts stay quiet
-   * there (mirrors {@link openSwitcher}'s guard).
-   *
-   *  - Ctrl/Cmd+'          → hop back through the visited stack (alt-tab, cycles deeper);
-   *    Ctrl/Cmd+Shift+'    → hop forward. Desktop also honours Ctrl+Tab / Ctrl+Shift+Tab.
-   *  - Ctrl/Cmd+1…9        → jump to the Nth most-recent room (desktop only — the browser
-   *                          reserves these for tab switching).
-   *  - Alt+↑/↓             → walk the visible sidebar list;
-   *    Alt+Shift+↑/↓       → jump to the previous/next unread room.
+   * Global keyboard shortcuts (issues #12/#13). One listener rather than many host
+   * bindings: it bails unless a modifier is held (so plain typing is untouched) and no
+   * overlay owns the screen (mirrors {@link openSwitcher}'s guard), then asks
+   * {@link KeyboardShortcutsService} which shortcut the chord triggers — honouring the
+   * user's custom bindings and the desktop-only gate — and dispatches it. The bindings
+   * themselves live in the registry (and the settings page); this only maps an id to its
+   * action.
    */
   onGlobalKeydown(event: Event): void {
     const e = event as KeyboardEvent;
-    const accel = e.ctrlKey || e.metaKey;
-    if ((!accel && !e.altKey) || this.dialog.hasOpen()) {
+    if ((!e.ctrlKey && !e.metaKey && !e.altKey) || this.dialog.hasOpen()) {
       return;
     }
-
-    if (accel && !e.altKey) {
-      this.onAccelKeydown(e);
+    const hit = this.shortcuts.resolve(e);
+    if (!hit) {
       return;
     }
-    if (e.altKey && !accel) {
-      this.onAltKeydown(e);
+    e.preventDefault();
+    switch (hit.id) {
+      case 'switcher.open':
+        void this.openSwitcher();
+        break;
+      case 'room.hop.back':
+        this.hopRoom('back');
+        break;
+      case 'room.hop.forward':
+        this.hopRoom('forward');
+        break;
+      case 'room.walk.down':
+        this.walkList('next');
+        break;
+      case 'room.walk.up':
+        this.walkList('previous');
+        break;
+      case 'room.walk.unread.down':
+        this.walkUnread('next');
+        break;
+      case 'room.walk.unread.up':
+        this.walkUnread('previous');
+        break;
+      case 'room.jump':
+        if (hit.digit) {
+          this.openShortcutTarget(
+            this.mru.nth(hit.digit, this.activeRoomId()),
+            'user',
+          );
+        }
+        break;
     }
   }
 
-  /** Ctrl/Cmd chords: quick hop everywhere, plus desktop-only Tab-hop and numbered jump. */
-  private onAccelKeydown(e: KeyboardEvent): void {
-    // The quote key hops on every platform (Shift reverses).
-    if (e.key === "'") {
-      this.runHop(e, e.shiftKey ? 'forward' : 'back');
-      return;
-    }
-    if (!this.isDesktop) {
-      return; // the rest are browser-reserved — desktop shell only
-    }
-    if (e.key === 'Tab') {
-      this.runHop(e, e.shiftKey ? 'forward' : 'back');
-      return;
-    }
-    // Ctrl/Cmd+1…9 → the Nth most-recent room. `event.code` ('Digit1') is layout-stable.
-    const digit = /^Digit([1-9])$/.exec(e.code);
-    if (digit) {
-      const target = this.mru.nth(Number(digit[1]), this.activeRoomId());
-      this.openFromShortcut(e, target, 'user');
-    }
-  }
-
-  /** Alt chords: walk the visible list, or (with Shift) the unread rooms in it. */
-  private onAltKeydown(e: KeyboardEvent): void {
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
-      return;
-    }
-    const direction = e.key === 'ArrowDown' ? 'next' : 'previous';
-    const active = this.activeRoomId();
-    const target = e.shiftKey
-      ? stepUnread(this.visibleRooms(), active, direction)
-      : stepList(
-          this.visibleRooms().map((room) => room.id),
-          active,
-          direction,
-        );
-    this.openFromShortcut(e, target, 'user');
-  }
-
-  private runHop(e: KeyboardEvent, direction: 'back' | 'forward'): void {
+  private hopRoom(direction: 'back' | 'forward'): void {
     const known = new Set(this.rooms.rooms().map((room) => room.id));
-    const target = this.mru.hop(direction, this.activeRoomId(), known);
-    this.openFromShortcut(e, target, 'hop');
+    this.openShortcutTarget(
+      this.mru.hop(direction, this.activeRoomId(), known),
+      'hop',
+    );
   }
 
-  /** Open a shortcut's resolved target (if any), always consuming the chord. */
-  private openFromShortcut(
-    e: KeyboardEvent,
+  private walkList(direction: 'next' | 'previous'): void {
+    this.openShortcutTarget(
+      stepList(
+        this.visibleRooms().map((room) => room.id),
+        this.activeRoomId(),
+        direction,
+      ),
+      'user',
+    );
+  }
+
+  private walkUnread(direction: 'next' | 'previous'): void {
+    this.openShortcutTarget(
+      stepUnread(this.visibleRooms(), this.activeRoomId(), direction),
+      'user',
+    );
+  }
+
+  /** Open a shortcut's resolved target when there is one and it isn't already open. */
+  private openShortcutTarget(
     roomId: string | null,
     source: 'user' | 'hop',
   ): void {
-    e.preventDefault();
     if (roomId && roomId !== this.activeRoomId()) {
       this.onSelectRoom(roomId, source);
     }

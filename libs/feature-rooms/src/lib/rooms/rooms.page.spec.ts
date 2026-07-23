@@ -1,5 +1,6 @@
 import { ApplicationRef, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { Router } from '@angular/router';
 import { AuthService } from '@trinity/data-access-auth';
 import { CryptoService } from '@trinity/data-access-crypto';
@@ -1846,7 +1847,16 @@ describe('RoomsPage quick switcher', () => {
     pick.mockResolvedValue(null);
     const preventDefault = vi.fn();
 
-    page.onQuickSwitch({ preventDefault } as unknown as KeyboardEvent);
+    // Cmd+K resolves to the `switcher.open` shortcut through the registry.
+    page.onGlobalKeydown({
+      key: 'k',
+      code: 'KeyK',
+      metaKey: true,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      preventDefault,
+    } as unknown as KeyboardEvent);
 
     expect(preventDefault).toHaveBeenCalled(); // sync — stops the browser's Cmd+K
     await new Promise((resolve) => setTimeout(resolve)); // settle the async openSwitcher()
@@ -2299,5 +2309,25 @@ describe('RoomsPage keyboard room switching', () => {
     page.onGlobalKeydown(event);
     expect(page.activeRoomId()).toBe('!c:hs'); // no hop
     expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('follows a rebound chord, not the old one', () => {
+    const page = build();
+    visitABC(page); // in c, MRU [c, b, a]
+    // Move "hop back" from Ctrl+' to Alt+J through the registry.
+    TestBed.inject(KeyboardShortcutsService).rebind('room.hop.back', {
+      accel: false,
+      alt: true,
+      shift: false,
+      key: 'j',
+    });
+
+    page.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(page.activeRoomId()).toBe('!c:hs'); // old chord no longer hops
+
+    page.onGlobalKeydown(key({ key: 'j', altKey: true }));
+    expect(page.activeRoomId()).toBe('!b:hs'); // the new chord does
+
+    TestBed.inject(KeyboardShortcutsService).resetAll(); // don't leak into other specs
   });
 });

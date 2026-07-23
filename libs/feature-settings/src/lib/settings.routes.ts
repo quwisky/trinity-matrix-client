@@ -10,6 +10,7 @@ import { AccountSectionComponent } from './account/account-section.component';
 import { PrivacySettingsComponent } from './privacy/privacy-settings.component';
 import { NotificationsSectionComponent } from './notifications/notifications-section.component';
 import { SecuritySectionComponent } from './security/security-section.component';
+import { ShortcutsSectionComponent } from './shortcuts/shortcuts-section.component';
 
 /**
  * Settings routes: the {@link SettingsPage} shell hosts a submenu + a routed detail
@@ -29,6 +30,7 @@ export const settingsRoutes: Routes = [
       { path: 'notifications', component: NotificationsSectionComponent },
       { path: 'privacy', component: PrivacySettingsComponent },
       { path: 'gifs', component: GifsSectionComponent },
+      { path: 'shortcuts', component: ShortcutsSectionComponent },
       { path: 'experimental', component: ExperimentalSettingsComponent },
     ],
   },
