@@ -28,12 +28,20 @@
   }
 }
 
-// Opens the full "who reacted" list. Sits at the end of the pills, deliberately
-// quieter than them: it reports nothing itself, it just leads somewhere.
+// Opens the full "who reacted" list. It counts nothing and toggles nothing, so it
+// deliberately sheds the pill chrome — no border, no fill, muted ink — and reads as a
+// plain icon button set slightly apart from the pills it follows. A hover fill (rather
+// than the pills' border highlight) says it acts rather than reports.
 .reaction--who {
+  margin-left: 2px;
+  padding: 1px 5px;
+  border-color: transparent;
+  background: none;
   color: var(--trinity-text-muted);
 
   &:hover {
+    border-color: transparent;
+    background: var(--trinity-hover);
     color: var(--trinity-text-bright);
   }
 }
