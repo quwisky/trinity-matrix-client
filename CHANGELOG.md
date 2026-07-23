@@ -10,9 +10,8 @@ All notable changes to this project are documented here. The format is based on
 
 - **See who reacted, not just how many.** Pointing at a reaction says who is behind it —
   "👍 reacted by You, Alice and 4 others" — and the small people button at the end of the
-  reactions opens the full list, with a tab per emoji and everyone who picked it. On a
-  phone, press and hold a reaction to open the same list on that emoji; the reaction
-  itself is left alone. Tapping a reaction still adds or removes your own, as before.
+  reactions opens the full list, with a tab per emoji and everyone who picked it. Tapping
+  a reaction still adds or removes your own, as before.
 - **See what a message used to say.** An edited message has always been marked "(edited)",
   but the earlier wording was out of reach. That marker is now a button: click it (or tab to
   it and press Enter) to see every version of the message, oldest first, with the time each

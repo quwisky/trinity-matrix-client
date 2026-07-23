@@ -367,7 +367,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         this.jumpTo(action.id);
         break;
       case 'reactors':
-        void this.reactionsDialog.open(row.id, action.key);
+        void this.reactionsDialog.open(row.id);
         break;
       case 'edit-history':
         // The thread panel routes no permalinks (its rows don't bind matrixLink either),

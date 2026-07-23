@@ -128,8 +128,7 @@ describe('MessageRowComponent', () => {
       .querySelector<HTMLButtonElement>('[data-testid=reactions-who]')!
       .click();
 
-    // No key from the trailing chip — the dialog opens on its first section.
-    expect(actions).toEqual([{ type: 'reactors', key: null }]);
+    expect(actions).toEqual([{ type: 'reactors' }]);
   });
 
   it('renders an authenticity shield with its reason when the message has one', async () => {

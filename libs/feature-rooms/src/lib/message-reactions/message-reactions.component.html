@@ -7,8 +7,6 @@
       [attr.aria-pressed]="r.reacted"
       [attr.aria-label]="r.hint"
       [hlmTooltip]="r.hint"
-      trnLongPress
-      (longPress)="showReactors.emit(r.key)"
       (click)="toggleReaction.emit(r.key)"
     >
       <span class="reaction__key">{{ r.key }}</span>
@@ -21,7 +19,7 @@
     data-testid="reactions-who"
     aria-label="See who reacted"
     hlmTooltip="See who reacted"
-    (click)="showReactors.emit(null)"
+    (click)="showReactors.emit()"
   >
     <ng-icon name="lucideUsers" aria-hidden="true" />
   </button>

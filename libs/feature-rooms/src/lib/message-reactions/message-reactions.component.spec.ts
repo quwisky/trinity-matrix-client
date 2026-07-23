@@ -61,15 +61,13 @@ describe('MessageReactionsComponent', () => {
     const { container, fixture } = await render(MessageReactionsComponent, {
       inputs: { reactions: [reaction({ key: '🎉' })] },
     });
-    const asked: (string | null)[] = [];
-    fixture.componentInstance.showReactors.subscribe((key) => asked.push(key));
+    let asked = 0;
+    fixture.componentInstance.showReactors.subscribe(() => asked++);
 
     container
       .querySelector<HTMLButtonElement>('[data-testid=reactions-who]')!
       .click();
 
-    // null = no particular emoji, so the dialog opens on its first section. The
-    // per-pill route is a long press, owned by LongPressDirective (its own spec).
-    expect(asked).toEqual([null]);
+    expect(asked).toBe(1);
   });
 });

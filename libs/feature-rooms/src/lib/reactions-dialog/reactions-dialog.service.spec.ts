@@ -17,26 +17,15 @@ describe('ReactionsDialogService', () => {
     svc = TestBed.inject(ReactionsDialogService);
   });
 
-  it('opens the dialog for the message, on the requested key', async () => {
-    vi.mocked(dialog.openAndWait).mockResolvedValue(null);
-
-    await svc.open('$m', '🎉');
-
-    expect(dialog.openAndWait).toHaveBeenCalledWith(ReactionsDialogComponent, {
-      ariaLabel: 'Reactions',
-      inputs: { eventId: '$m', initialKey: '🎉' },
-    });
-  });
-
-  it('defaults to no particular key (the trailing chip)', async () => {
+  it('opens the dialog for the message', async () => {
     vi.mocked(dialog.openAndWait).mockResolvedValue(null);
 
     await svc.open('$m');
 
-    expect(dialog.openAndWait).toHaveBeenCalledWith(
-      ReactionsDialogComponent,
-      expect.objectContaining({ inputs: { eventId: '$m', initialKey: null } }),
-    );
+    expect(dialog.openAndWait).toHaveBeenCalledWith(ReactionsDialogComponent, {
+      ariaLabel: 'Reactions',
+      inputs: { eventId: '$m' },
+    });
   });
 
   it('ignores a repeat trigger while one is already open', async () => {

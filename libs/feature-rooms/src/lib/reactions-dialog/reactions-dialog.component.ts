@@ -35,8 +35,6 @@ export class ReactionsDialogComponent implements OnInit {
 
   /** The message whose reactors to list (populated from the dialog's `inputs`). */
   readonly eventId = input.required<string>();
-  /** Reaction key to show first — null (the trailing chip) starts at the first one. */
-  readonly initialKey = input<string | null>(null);
 
   /** The reactors, grouped by reaction key, as they stood when the dialog opened. */
   readonly sections = signal<ReactionDetail[]>([]);
@@ -62,12 +60,7 @@ export class ReactionsDialogComponent implements OnInit {
   ngOnInit(): void {
     const sections = this.timeline.reactionDetails(this.eventId());
     this.sections.set(sections);
-    const requested = this.initialKey();
-    this.selectedKey.set(
-      sections.some((section) => section.key === requested)
-        ? requested
-        : (sections[0]?.key ?? null),
-    );
+    this.selectedKey.set(sections[0]?.key ?? null);
   }
 
   select(key: string): void {

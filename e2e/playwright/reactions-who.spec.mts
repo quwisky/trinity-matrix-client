@@ -8,8 +8,7 @@ import {
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
 // Covers "who reacted" (issue #8): a reaction pill names its reactors on hover, and
-// the trailing chip (or a long press on a pill, the touch route) opens the full list
-// grouped by emoji.
+// the trailing chip opens the full list, grouped by emoji.
 //
 // Two people react to one message — the logged-in user and a second account whose
 // reaction is sent straight over the CS API, which is all the second participant is
@@ -212,49 +211,5 @@ test.describe('Who reacted', () => {
     await expect(dialog.getByTestId('reactors-list')).toContainText(
       seeded.otherName,
     );
-  });
-
-  test('a long press on a pill opens the list without toggling the reaction', async ({
-    page,
-    request,
-  }) => {
-    const runId = `${Date.now().toString(36)}wl`;
-    const seeded = await seedReactedMessage(
-      request,
-      session.hs as string,
-      runId,
-    );
-
-    await login(page, seeded.reader);
-    await openRoom(page, seeded.roomName);
-
-    const row = page.locator('.scroll .msg', { hasText: seeded.body });
-    await expect(row.first()).toBeVisible({ timeout: 20_000 });
-    const thumbsUp = row
-      .first()
-      .locator('.reaction:not(.reaction--who)')
-      .filter({ hasText: '👍' });
-    await expect(thumbsUp).toContainText('2', { timeout: 20_000 });
-
-    // The touch gesture, driven as the browser would: a pointerdown that is held.
-    // (Mouse presses are ignored by design, hence the explicit pointerType.)
-    await thumbsUp.dispatchEvent('pointerdown', {
-      pointerType: 'touch',
-      pointerId: 1,
-      clientX: 0,
-      clientY: 0,
-    });
-    const dialog = page.getByTestId('reactions-dialog');
-    await expect(dialog).toBeVisible({ timeout: 10_000 });
-
-    // Lifting the finger must not also toggle the reaction off — the click the
-    // browser synthesises after the gesture is swallowed.
-    await thumbsUp.dispatchEvent('pointerup', {
-      pointerType: 'touch',
-      pointerId: 1,
-    });
-    await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden({ timeout: 10_000 });
-    await expect(thumbsUp).toContainText('2');
   });
 });

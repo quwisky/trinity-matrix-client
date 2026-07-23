@@ -14,11 +14,8 @@ export class ReactionsDialogService {
   private readonly dialog = inject(TrnDialogService);
   private showing = false;
 
-  /**
-   * Show who reacted to `eventId`. `initialKey` selects the section to open on (the
-   * long-pressed pill's emoji); null opens on the first.
-   */
-  async open(eventId: string, initialKey: string | null = null): Promise<void> {
+  /** Show who reacted to `eventId`, opening on its first reaction. */
+  async open(eventId: string): Promise<void> {
     if (this.showing) {
       return; // already open — ignore the repeat trigger
     }
@@ -26,10 +23,7 @@ export class ReactionsDialogService {
     try {
       await this.dialog.openAndWait<void, ReactionsDialogComponent>(
         ReactionsDialogComponent,
-        {
-          ariaLabel: 'Reactions',
-          inputs: { eventId, initialKey },
-        },
+        { ariaLabel: 'Reactions', inputs: { eventId } },
       );
     } finally {
       this.showing = false;

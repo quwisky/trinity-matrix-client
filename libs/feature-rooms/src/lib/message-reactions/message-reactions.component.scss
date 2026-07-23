@@ -18,11 +18,6 @@
   line-height: 18px;
   cursor: pointer;
 
-  // A long press is the touch route to "who reacted" — without these it starts a
-  // text selection (or the platform's own callout) instead of the gesture.
-  user-select: none;
-  touch-action: manipulation;
-
   &:hover {
     border-color: var(--trinity-text-muted);
   }

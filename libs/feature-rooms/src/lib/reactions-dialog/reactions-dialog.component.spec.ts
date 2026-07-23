@@ -28,9 +28,9 @@ describe('ReactionsDialogComponent', () => {
     reactionDetails = vi.fn(() => SECTIONS);
   });
 
-  async function build(initialKey: string | null = null) {
+  async function build() {
     const { fixture, container } = await render(ReactionsDialogComponent, {
-      inputs: { eventId: '$m', initialKey },
+      inputs: { eventId: '$m' },
       imports: [MockComponent(AvatarComponent)],
       providers: [
         MockProvider(DialogRef, { close: vi.fn() }),
@@ -51,22 +51,6 @@ describe('ReactionsDialogComponent', () => {
 
     expect(reactionDetails).toHaveBeenCalledWith('$m');
     expect(container.querySelectorAll('.key').length).toBe(2);
-    expect(names(container)).toEqual(['Alice', 'Bob']);
-  });
-
-  it('opens on the key it was asked for (the long-pressed pill)', async () => {
-    const { container } = await build('🎉');
-
-    expect(names(container)).toEqual(['Carol']);
-    expect(container.querySelector('.key--active')?.textContent).toContain(
-      '🎉',
-    );
-  });
-
-  it('falls back to the first key when the requested one is gone', async () => {
-    // The reaction could have been redacted between the long press and the open.
-    const { container } = await build('😮');
-
     expect(names(container)).toEqual(['Alice', 'Bob']);
   });
 

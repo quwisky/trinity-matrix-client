@@ -434,7 +434,7 @@ export abstract class MessageListBase {
         void this.showEditHistory(row.id);
         break;
       case 'reactors':
-        void this.reactionsDialog.open(row.id, action.key);
+        void this.reactionsDialog.open(row.id);
         break;
       default: {
         // Exhaustiveness guard: adding a MessageRowAction variant without a case
