@@ -1,12 +1,43 @@
 <nav class="rail">
-  <div class="item" [class.active]="activeSpaceId() === null && !roomsActive()">
+  <div class="item" [class.active]="recentActive()">
+    <span class="indicator"></span>
+    <button
+      class="pill recent"
+      [class.round]="recentActive()"
+      (click)="showRecent.emit()"
+      [attr.aria-current]="recentActive() ? 'true' : null"
+      aria-label="Recent activity"
+      title="Recent activity"
+      data-testid="rail-recent"
+    >
+      <ng-icon name="lucideClock" aria-hidden="true" />
+    </button>
+    @if (unread().recent > 0) {
+      <span
+        class="badge"
+        [attr.aria-label]="badgeLabel(unread().recent) + ' unread'"
+        >{{ badgeLabel(unread().recent) }}</span
+      >
+    }
+  </div>
+
+  <div
+    class="item"
+    [class.active]="
+      activeSpaceId() === null && !roomsActive() && !recentActive()
+    "
+  >
     <span class="indicator"></span>
     <button
       class="pill home"
-      [class.round]="activeSpaceId() === null && !roomsActive()"
+      [class.round]="
+        activeSpaceId() === null && !roomsActive() && !recentActive()
+      "
       (click)="selectSpace.emit(null)"
       [attr.aria-current]="
-        activeSpaceId() === null && !roomsActive() ? 'true' : null
+        activeSpaceId() === null && !roomsActive() && !recentActive()
+          ? 'true'
+          : null
       "
       aria-label="Home"
       title="Home"

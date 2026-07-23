@@ -214,8 +214,14 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly injector = inject(Injector);
 
   readonly activeSpaceId = signal<string | null>(null);
-  /** Whether the Rooms view is active — filters the sidebar to non-DM rooms. Home (the
-   * default, no space) shows direct messages only; a space or this view clears the other. */
+  /**
+   * Whether the Recent activity view is active — the default on launch. It lists every
+   * joined DM + room (space-owned included), mixed by recency, so it overrides the
+   * Home/Rooms/space scoping below. Cleared by selecting Home, Rooms, or a space.
+   */
+  readonly recentView = signal(true);
+  /** Whether the Rooms view is active — filters the sidebar to non-DM rooms. Home (no
+   * space) shows direct messages only; Recent, a space, or this view clears the others. */
   readonly roomsView = signal(false);
   readonly activeRoomId = signal<string | null>(null);
 
@@ -266,6 +272,12 @@ export class RoomsPage implements OnInit, OnDestroy {
    */
   readonly visibleRooms = computed<RoomSummary[]>(() => {
     const all = this.rooms.rooms();
+    // Recent activity: every joined DM + room, mixed. `rooms()` is already exactly that
+    // (spaces are excluded at the source), sorted favourite-first then most-recent, so it
+    // is used unfiltered.
+    if (this.recentView()) {
+      return all;
+    }
     const direct = this.rooms.directRoomIds();
     // Rooms view: non-DM joined rooms that aren't owned by a space (overrides the space scope).
     if (this.roomsView()) {
@@ -294,13 +306,21 @@ export class RoomsPage implements OnInit, OnDestroy {
     return this.spaces.spaces().find((s) => s.id === id)?.name ?? 'Home';
   });
 
-  /** Channel-sidebar header: the Rooms view label, a selected space, else Home's DMs. */
+  /** Channel-sidebar header: Recent activity, the Rooms view, a selected space, else Home's DMs. */
   readonly sidebarTitle = computed(() => {
+    if (this.recentView()) {
+      return 'Recent activity';
+    }
     if (this.roomsView()) {
       return 'Rooms';
     }
     return this.activeSpaceId() ? this.activeSpaceName() : 'Direct Messages';
   });
+
+  /** Total unread notifications across everything the Recent view lists (its rail badge). */
+  readonly recentUnread = computed(() =>
+    this.rooms.rooms().reduce((sum, r) => sum + r.unreadCount, 0),
+  );
 
   /** Total unread notifications across direct-message rooms (Home rail badge). */
   readonly homeUnread = computed(() => {
@@ -338,6 +358,7 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** The rail's unread badges bundled into one object input. */
   readonly railUnread = computed<RailUnread>(() => ({
+    recent: this.recentUnread(),
     home: this.homeUnread(),
     rooms: this.roomsUnread(),
     perSpace: this.spaceUnread(),
@@ -529,8 +550,18 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.jumpRequest.update((n) => n + 1);
   }
 
+  /** Switch to the Recent activity view (all DMs + rooms, mixed); clears any space. */
+  onShowRecent(): void {
+    this.recentView.set(true);
+    this.roomsView.set(false);
+    this.activeSpaceId.set(null);
+    // Home clears the space hierarchy the same way; keep the sidebar's space extras off.
+    this.spaces.openSpace(null);
+  }
+
   onSelectSpace(id: string | null): void {
-    // Selecting a space (or Home) leaves the Rooms view.
+    // Selecting a space (or Home) leaves the Recent + Rooms views.
+    this.recentView.set(false);
     this.roomsView.set(false);
     this.activeSpaceId.set(id);
     // Load (or clear, for Home) the space's full child hierarchy so the sidebar can
@@ -539,8 +570,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.spaces.openSpace(id);
   }
 
-  /** Switch to the Rooms view (non-DM rooms); clears any selected space. */
+  /** Switch to the Rooms view (non-DM rooms); clears Recent and any selected space. */
   onShowRooms(): void {
+    this.recentView.set(false);
     this.activeSpaceId.set(null);
     this.roomsView.set(true);
   }

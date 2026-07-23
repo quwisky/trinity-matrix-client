@@ -16,15 +16,19 @@
       <trn-server-rail
         [spaces]="spaces.spaces()"
         [activeSpaceId]="activeSpaceId()"
+        [recentActive]="recentView()"
         [roomsActive]="roomsView()"
         [unread]="railUnread()"
         (selectSpace)="onSelectSpace($event)"
         (createSpace)="onCreateSpace()"
+        (showRecent)="onShowRecent()"
         (showRooms)="onShowRooms()"
       />
       <trn-channel-sidebar
         [spaceName]="sidebarTitle()"
-        [spaceActive]="!roomsView() && activeSpaceId() !== null"
+        [spaceActive]="
+          !recentView() && !roomsView() && activeSpaceId() !== null
+        "
         [rooms]="visibleRooms()"
         [activeRoomId]="activeRoomId()"
         [user]="userProfile()"
