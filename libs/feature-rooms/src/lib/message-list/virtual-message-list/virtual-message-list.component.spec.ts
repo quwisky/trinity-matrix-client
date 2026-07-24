@@ -1,9 +1,11 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type MessageView } from '@trinity/util-matrix';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
+import { DayBoundaryService } from '../day-boundary.service';
 import { VirtualMessageListComponent } from './virtual-message-list.component';
 
 function msg(
@@ -102,6 +104,120 @@ describe('VirtualMessageListComponent', () => {
   }
   const rect = (top: number, bottom = top): DOMRect =>
     ({ top, bottom }) as unknown as DOMRect;
+
+  describe('day separators', () => {
+    const TODAY = new Date(2026, 6, 24).getTime();
+    const PER_DAY = 40;
+
+    /** 120 rows over three local days — past SMALL_LIST_ROWS, so windowing really engages. */
+    function acrossThreeDays(): MessageView[] {
+      return [-2, -1, 0].flatMap((dayOffset, day) =>
+        Array.from({ length: PER_DAY }, (_, i) =>
+          msg(
+            `$${day}-${i}`,
+            '@a:hs',
+            'A',
+            new Date(2026, 6, 24 + dayOffset, 9, i).getTime(),
+          ),
+        ),
+      );
+    }
+
+    function renderDays() {
+      return render(VirtualMessageListComponent, {
+        inputs: { messages: acrossThreeDays() },
+        imports: [MockComponent(MessageComposerComponent)],
+        providers: [
+          {
+            provide: DayBoundaryService,
+            useValue: { todayStart: signal(TODAY) },
+          },
+        ],
+      });
+    }
+
+    /** Scroll geometry that lands the window's top edge mid-day, not on a day boundary. */
+    function scrollTo(container: Element, scrollTop: number): HTMLElement {
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      let st = scrollTop;
+      Object.defineProperty(scroll, 'scrollTop', {
+        get: () => st,
+        set: (v: number) => (st = v),
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'clientHeight', {
+        value: 600,
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'scrollHeight', {
+        value: 3 * PER_DAY * EST,
+        configurable: true,
+      });
+      return scroll;
+    }
+
+    // The reason the derivation lives on the full list rather than the template: the answer
+    // must not depend on which slice happens to be rendered.
+    it('marks the same rows whatever the scroll position', async () => {
+      const { fixture, container } = await renderDays();
+      const cmp = fixture.componentInstance;
+      const marked = () =>
+        cmp
+          .rows()
+          .filter((r) => r.daySeparator)
+          .map((r) => `${r.id}:${r.daySeparator}`);
+
+      expect(marked()).toEqual(['$1-0:Yesterday', '$2-0:Today']);
+
+      scrollTo(container, 4320);
+      cmp.onScroll();
+      fixture.detectChanges();
+      expect(marked()).toEqual(['$1-0:Yesterday', '$2-0:Today']);
+
+      scrollTo(container, 0);
+      cmp.onScroll();
+      fixture.detectChanges();
+      expect(marked()).toEqual(['$1-0:Yesterday', '$2-0:Today']);
+    });
+
+    // Deriving from "the previous rendered row" would put a separator on the first row of
+    // every window — a date appearing out of nowhere mid-conversation each time you scroll.
+    it('renders no separator at the top edge of a window that opens mid-day', async () => {
+      const { fixture, container } = await renderDays();
+      const cmp = fixture.componentInstance;
+
+      scrollTo(container, 4320);
+      cmp.onScroll();
+      fixture.detectChanges();
+
+      const window = cmp.windowedRows();
+      // Guard against a vacuous pass: the window has to be a real slice that opens partway
+      // into one day and runs past a boundary into the next.
+      expect(window.length).toBeLessThan(cmp.rows().length);
+      expect(window[0].id).not.toBe('$0-0');
+      expect(window.filter((r) => r.daySeparator).length).toBeGreaterThan(0);
+
+      expect(window[0].daySeparator).toBeNull();
+      expect(
+        container.querySelectorAll('[data-testid=day-separator]').length,
+      ).toBe(window.filter((r) => r.daySeparator).length);
+    });
+
+    // Documents an accepted limitation rather than asserting a goal: separators sit outside
+    // the prefix-sum height model (as the unread divider already does), so the window maths
+    // must stay internally consistent even though the rendered content is slightly taller.
+    it('leaves the window height model undisturbed', async () => {
+      const { fixture, container } = await renderDays();
+      const cmp = fixture.componentInstance;
+
+      scrollTo(container, 4320);
+      cmp.onScroll();
+      fixture.detectChanges();
+
+      const visible = cmp.windowedRows().length * EST;
+      expect(cmp.topPad() + visible + cmp.bottomPad()).toBe(3 * PER_DAY * EST);
+    });
+  });
 
   it('renders rows and groups consecutive senders (shared base logic)', async () => {
     const { container } = await renderList({

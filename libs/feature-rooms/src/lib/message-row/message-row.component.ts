@@ -35,9 +35,20 @@ import { LinkPreviewComponent } from '../link-preview/link-preview.component';
 import { LocationComponent } from '../location-share/location.component';
 import { VoiceMessageComponent } from '../voice-message/voice-message.component';
 
-/** A {@link MessageView} plus Discord-style grouping flag (own header vs continuation). */
+/** A {@link MessageView} plus the presentation state the list derives for it. */
 export interface MessageRow extends MessageView {
+  /** Discord-style grouping: own header, or a continuation of the row above. */
   showHeader: boolean;
+  /**
+   * Label for a day separator rendered ABOVE this row ("Today"/"Yesterday"/a date), or
+   * absent when this row does not begin a new local calendar day.
+   *
+   * The finished label rather than a flag or an epoch, because at midnight a row that read
+   * "Today" becomes "Yesterday" while both of those stay identical — the list's row cache
+   * would hit, hand back the same object, and the OnPush row would never re-render. Making
+   * the label the cached value means a rollover invalidates the row for free.
+   */
+  daySeparator?: string | null;
 }
 
 /** The per-row capability/state flags the row (and its toolbar) render from. */

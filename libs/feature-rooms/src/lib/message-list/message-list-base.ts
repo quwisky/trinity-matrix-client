@@ -19,13 +19,17 @@ import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import { type ThreadSummary } from '@trinity/data-access-timeline';
 import {
+  dayLabel,
   formatTypingNotice,
+  hasUsableTimestamp,
   isEditableMessage,
   messagePermalink,
+  startOfLocalDay,
   type MatrixLinkTarget,
   type MessageView,
   type Mention,
 } from '@trinity/util-matrix';
+import { DayBoundaryService } from './day-boundary.service';
 import {
   type MessageRow,
   type MessageRowAction,
@@ -45,6 +49,14 @@ const DEFAULT_ROW_CAPS: MessageRowCaps = {
   canThread: true,
   readOnly: false,
 };
+
+/** A memoized row, with the inputs it was derived from (see {@link MessageListBase.rows}). */
+interface RowCacheEntry {
+  readonly view: MessageView;
+  readonly showHeader: boolean;
+  readonly daySeparator: string | null;
+  readonly row: MessageRow;
+}
 
 /** Whether two caps carry the same capabilities — all six fields are flat booleans. */
 function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
@@ -161,6 +173,7 @@ export abstract class MessageListBase {
   readonly showJumpToUnread = signal(false);
 
   protected readonly alert = inject(TrnAlertService);
+  private readonly dayBoundary = inject(DayBoundaryService);
   private readonly reactionPicker = inject(ReactionPickerService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
@@ -169,24 +182,47 @@ export abstract class MessageListBase {
   private readonly reactionsDialog = inject(ReactionsDialogService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
-  // Grouping rows, cached per event id so an unchanged message (same view object AND
-  // same header flag) keeps its row identity — an OnPush row is then re-rendered only
-  // when its own message or grouping changes, not on every live event in the room.
-  private rowCache = new Map<
-    string,
-    { view: MessageView; showHeader: boolean; row: MessageRow }
-  >();
+  // Grouping rows, cached per event id so an unchanged message (same view object, same
+  // header flag AND same day-separator label) keeps its row identity — an OnPush row is
+  // then re-rendered only when its own message, grouping or separator changes, not on
+  // every live event in the room.
+  private rowCache = new Map<string, RowCacheEntry>();
 
-  /** Group consecutive messages from the same sender (Discord-style). */
+  /**
+   * Group consecutive messages from the same sender (Discord-style), and mark where the
+   * local calendar day changes.
+   *
+   * Both are derived over the FULL list. The windowed list renders a `slice()` of this, so
+   * anything derived from "the previous *rendered* row" would emit a spurious separator at
+   * the top of every window and lose the one where a window opens mid-day.
+   */
   readonly rows = computed<MessageRow[]>(() => {
     const GAP_MS = 5 * 60 * 1000;
     const msgs = this.messages();
-    const nextCache = new Map<
-      string,
-      { view: MessageView; showHeader: boolean; row: MessageRow }
-    >();
+    const todayStart = this.dayBoundary.todayStart();
+    const nextCache = new Map<string, RowCacheEntry>();
+    // The calendar day the rows so far belong to, or null before the first row with a
+    // usable timestamp. A row whose timestamp is missing or implausible (a malformed event
+    // degraded to `timestamp: 0` by safeBuildMessageView) neither opens nor closes a day:
+    // it inherits this, so it mints no 1970 separator AND the next real row is still
+    // compared against the last real day rather than against 1970.
+    let currentDayStart: number | null = null;
     const result = msgs.map((m, i) => {
       const prev = msgs[i - 1];
+
+      let daySeparator: string | null = null;
+      if (hasUsableTimestamp(m.timestamp)) {
+        const dayStart = startOfLocalDay(m.timestamp);
+        // Nothing above the FIRST row: the loaded window is an arbitrary slice of the
+        // room's history, so "the day changed here" only means something relative to a row
+        // we are actually showing. A separator at the top would also jump to a different
+        // row on every page of backfilled history.
+        if (currentDayStart !== null && dayStart !== currentDayStart) {
+          daySeparator = dayLabel(dayStart, todayStart);
+        }
+        currentDayStart = dayStart;
+      }
+
       const showHeader =
         !prev ||
         // A system (state/membership) line breaks the group, so the next message
@@ -194,16 +230,24 @@ export abstract class MessageListBase {
         prev.kind === 'event' ||
         prev.senderId !== m.senderId ||
         m.timestamp - prev.timestamp > GAP_MS ||
+        // Same reason a system line breaks the group: two messages either side of midnight
+        // can be seconds apart, and a headerless continuation directly under a day
+        // separator reads as if the message lost its author.
+        daySeparator !== null ||
         // A reply always shows its own header: the quoted preview breaks the visual
         // flow, so a headerless continuation would look like the reply lost its
         // author (name + avatar).
         !!m.replyTo;
+
       const cached = this.rowCache.get(m.id);
       const row =
-        cached && cached.view === m && cached.showHeader === showHeader
+        cached &&
+        cached.view === m &&
+        cached.showHeader === showHeader &&
+        cached.daySeparator === daySeparator
           ? cached.row
-          : { ...m, showHeader };
-      nextCache.set(m.id, { view: m, showHeader, row });
+          : { ...m, showHeader, daySeparator };
+      nextCache.set(m.id, { view: m, showHeader, daySeparator, row });
       return row;
     });
     this.rowCache = nextCache;

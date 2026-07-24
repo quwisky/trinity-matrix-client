@@ -1,4 +1,5 @@
 export * from './lib/message-view';
+export * from './lib/day-separator';
 export * from './lib/edit-history';
 export * from './lib/edit-history-diff';
 export * from './lib/timeline-event';

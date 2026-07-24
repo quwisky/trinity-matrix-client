@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -5,6 +6,7 @@ import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
 import { type MessageView } from '@trinity/util-matrix';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { SimpleMessageListComponent } from './simple-message-list.component';
+import { DayBoundaryService } from '../day-boundary.service';
 import { ReactionPickerService } from '../../reaction-picker/reaction-picker.service';
 import { MessageSourceService } from '../../message-source/message-source.service';
 
@@ -806,6 +808,213 @@ describe('SimpleMessageListComponent', () => {
       cmp.jumpToUnread();
 
       expect(jumpTo).toHaveBeenCalledWith('$2');
+    });
+  });
+
+  describe('day separators', () => {
+    /**
+     * "Today" for these tests. Built with the local-time `Date` constructor rather than a
+     * literal epoch so every case holds in any timezone, and injected through a stubbed
+     * DayBoundaryService — faking the clock instead would swallow the `requestAnimationFrame`
+     * the base's constructor effect schedules.
+     */
+    const TODAY = new Date(2026, 6, 24).getTime();
+
+    /** Local `hh:mm` on a day offset from TODAY, as epoch ms. */
+    function at(
+      dayOffset: number,
+      hour: number,
+      minute = 0,
+      second = 0,
+    ): number {
+      return new Date(2026, 6, 24 + dayOffset, hour, minute, second).getTime();
+    }
+
+    function renderDays(
+      messages: MessageView[],
+      inputs: Record<string, unknown> = {},
+      todayStart = signal(TODAY),
+    ) {
+      return render(SimpleMessageListComponent, {
+        inputs: { messages, ...inputs },
+        providers: [{ provide: DayBoundaryService, useValue: { todayStart } }],
+      });
+    }
+
+    const separators = (container: Element) =>
+      Array.from(container.querySelectorAll('[data-testid=day-separator]'));
+
+    // safeBuildMessageView degrades an unreadable origin_server_ts to 0. Bucketing that as a
+    // real day mints a "1 January 1970" separator above it AND a second one on the next real
+    // message, which is compared against 1970 rather than against the last real day.
+    it('mints no 1970 separator for a message with no usable timestamp', async () => {
+      const stranded = { ...msg('$x', '@a:hs', 'Alice', 0), timestamp: 0 };
+      const { container } = await renderDays([
+        msg('$1', '@a:hs', 'Alice', at(-1, 10)),
+        stranded,
+        msg('$2', '@b:hs', 'Bob', at(0, 10)),
+      ]);
+
+      const found = separators(container);
+      expect(found.map((el) => el.textContent?.trim())).toEqual(['Today']);
+      // On the day-2 row, not on the stranded one: the malformed row inherits the day
+      // around it rather than opening one of its own.
+      expect(
+        found[0]?.nextElementSibling
+          ?.querySelector('[data-mid]')
+          ?.getAttribute('data-mid'),
+      ).toBe('$2');
+    });
+
+    // Two messages from one sender 40 seconds apart are a continuation by the 5-minute
+    // grouping rule — but across midnight a separator lands between them, and a headerless,
+    // avatar-less row directly under it reads as if the message lost its author.
+    it('breaks sender grouping when the day changes mid-conversation', async () => {
+      const { container } = await renderDays([
+        msg('$1', '@a:hs', 'Alice', at(-1, 23, 59, 40)),
+        msg('$2', '@a:hs', 'Alice', at(0, 0, 0, 20)),
+      ]);
+
+      expect(separators(container).length).toBe(1);
+      expect(container.querySelectorAll('.msg--cont').length).toBe(0);
+      expect(container.querySelectorAll('.msg__avatar').length).toBe(2);
+    });
+
+    it('separates each day change and leaves the first row alone', async () => {
+      const { container } = await renderDays([
+        msg('$1', '@a:hs', 'Alice', at(-2, 10)),
+        msg('$2', '@a:hs', 'Alice', at(-1, 10)),
+        msg('$3', '@b:hs', 'Bob', at(0, 10)),
+      ]);
+
+      // Two changes across three days — the loaded window is an arbitrary slice of history,
+      // so the row that opens it gets nothing above it.
+      const found = separators(container);
+      expect(found.map((el) => el.textContent?.trim())).toEqual([
+        'Yesterday',
+        'Today',
+      ]);
+      expect(
+        found.map((el) =>
+          el.nextElementSibling
+            ?.querySelector('[data-mid]')
+            ?.getAttribute('data-mid'),
+        ),
+      ).toEqual(['$2', '$3']);
+    });
+
+    it('renders no separator when the whole window is one day', async () => {
+      const { container } = await renderDays([
+        msg('$1', '@a:hs', 'Alice', at(0, 9)),
+        msg('$2', '@b:hs', 'Bob', at(0, 14)),
+        msg('$3', '@a:hs', 'Alice', at(0, 23, 59)),
+      ]);
+
+      expect(separators(container).length).toBe(0);
+    });
+
+    it('puts the day separator above the unread divider, not below it', async () => {
+      const { container } = await renderDays(
+        [
+          msg('$1', '@a:hs', 'Alice', at(-1, 10)),
+          msg('$2', '@b:hs', 'Bob', at(0, 10)),
+        ],
+        { firstUnreadId: '$2' },
+      );
+
+      // "Today / New messages / the row" reads as a sentence; the other order says the day
+      // changed after the unread boundary.
+      const unread = separators(container)[0]?.nextElementSibling;
+      expect(unread?.getAttribute('data-testid')).toBe('new-messages-divider');
+      expect(
+        unread?.nextElementSibling
+          ?.querySelector('[data-mid]')
+          ?.getAttribute('data-mid'),
+      ).toBe('$2');
+    });
+
+    // Separators are derived from the projected list, which TimelineService has already
+    // filtered (#24). A day whose every event was a hidden system line therefore leaves no
+    // rows — and must leave no separator either, rather than a bare date with nothing under
+    // it. Both the run-boundary and mid-run shapes, since only the latter exercises the
+    // "compare against the last surviving row" path.
+    it.each([
+      ['at a run boundary', [-2, 0]],
+      ['mid-run', [-2, -2, 0, 0]],
+    ])(
+      'skips a day whose rows were all filtered out (%s)',
+      async (_l, days) => {
+        const { container } = await renderDays(
+          days.map((offset, i) =>
+            msg(`$${i}`, '@a:hs', 'Alice', at(offset, 10 + i)),
+          ),
+        );
+
+        expect(
+          separators(container).map((el) => el.textContent?.trim()),
+        ).toEqual(['Today']);
+      },
+    );
+
+    // The staleness the row cache would otherwise hide: the row itself did not change, only
+    // what sits above it did.
+    it('re-mints a row when backfill gives it a separator it did not have', async () => {
+      const today = [
+        msg('$2', '@a:hs', 'Alice', at(0, 10)),
+        msg('$3', '@a:hs', 'Alice', at(0, 11)),
+      ];
+      const { fixture } = await renderDays(today);
+      const cmp = fixture.componentInstance;
+      const before = cmp.rows()[0];
+
+      expect(before.daySeparator).toBeNull();
+
+      // A page of older history arrives: $2 now opens a day it did not open before.
+      fixture.componentRef.setInput('messages', [
+        msg('$1', '@a:hs', 'Alice', at(-1, 10)),
+        ...today,
+      ]);
+
+      const after = cmp.rows()[1];
+      expect(after.daySeparator).toBe('Today');
+      expect(after).not.toBe(before); // a new object, or OnPush never re-renders it
+    });
+
+    it('keeps row identity when a rebuild changes nothing', async () => {
+      const messages = [
+        msg('$1', '@a:hs', 'Alice', at(-1, 10)),
+        msg('$2', '@a:hs', 'Alice', at(0, 10)),
+      ];
+      const { fixture } = await renderDays(messages);
+      const cmp = fixture.componentInstance;
+      const before = cmp.rows();
+
+      // TimelineService mints a new array on every timeline event; the views inside it are
+      // reused, and so must the rows be.
+      fixture.componentRef.setInput('messages', [...messages]);
+
+      expect(cmp.rows()[0]).toBe(before[0]);
+      expect(cmp.rows()[1]).toBe(before[1]);
+    });
+
+    it('re-labels the separator when the day turns over under an open room', async () => {
+      const todayStart = signal(TODAY);
+      const { container, fixture } = await renderDays(
+        [
+          msg('$1', '@a:hs', 'Alice', at(-1, 10)),
+          msg('$2', '@a:hs', 'Alice', at(0, 10)),
+        ],
+        {},
+        todayStart,
+      );
+      expect(separators(container)[0]?.textContent?.trim()).toBe('Today');
+
+      // Midnight: what was "Today" is now "Yesterday". Nothing about the messages changed,
+      // so only the label re-deriving can move this.
+      todayStart.set(new Date(2026, 6, 25).getTime());
+      fixture.detectChanges();
+
+      expect(separators(container)[0]?.textContent?.trim()).toBe('Yesterday');
     });
   });
 });

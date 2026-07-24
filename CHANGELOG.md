@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **See where the days begin.** The timeline now draws a labelled divider wherever the
+  calendar day changes, reading **Today**, **Yesterday**, or the date further back — so
+  scrolling through a room tells you _when_ something was said without reading the small
+  timestamp on every message and working it out. Dates follow your browser's language, and
+  a room left open overnight relabels itself at midnight rather than going on calling
+  yesterday "Today".
+
 - **Quieten the timeline.** Settings → Appearance gains three switches for the system lines
   that appear between messages: **joins and leaves** (including invites, knocks, kicks and
   bans), **display name and avatar changes**, and **room changes** (name, topic, avatar,
