@@ -13,6 +13,25 @@ import { initialOf, type MessageView } from './message-view';
  * cleanly separated; the timeline interleaves both in chronological order.
  */
 
+/**
+ * Which class of change a system line describes, so the timeline can hide categories the
+ * user isn't interested in. Membership and profile changes are BOTH `m.room.member` events —
+ * only the transition tells them apart — which is why the category is decided here, next to
+ * the code that already computes it, rather than from the event type alone.
+ */
+export type SystemLineCategory = 'membership' | 'profile' | 'room';
+
+/** A rendered system line: its text plus the category that governs whether it shows. */
+export interface SystemLine {
+  readonly text: string;
+  readonly category: SystemLineCategory;
+}
+
+/** Tag a room-state summary (name/topic/avatar/…); null passes through. */
+function roomLine(text: string | null): SystemLine | null {
+  return text === null ? null : { text, category: 'room' };
+}
+
 /** State / membership event types rendered as a system line. */
 const DISPLAYABLE_STATE_TYPES = new Set<string>([
   EventType.RoomMember,
@@ -57,35 +76,38 @@ function nameFor(
 }
 
 /**
- * A one-line, human-readable summary of a state / membership change, or null when there's
- * nothing worth showing (an unsupported type, or a no-op membership event such as a repeat
- * `join` that changed neither display name nor avatar). Naming is resolved through `room`.
+ * A one-line, human-readable summary of a state / membership change plus the category it
+ * belongs to, or null when there's nothing worth showing (an unsupported type, or a no-op
+ * membership event such as a repeat `join` that changed neither display name nor avatar).
+ * Naming is resolved through `room`.
  */
 export function describeTimelineEvent(
   event: MatrixEvent,
   room: Room | undefined,
-): string | null {
+): SystemLine | null {
   switch (event.getType()) {
     case EventType.RoomMember:
       return describeMembership(event, room);
     case EventType.RoomName:
-      return describeName(event, room);
+      return roomLine(describeName(event, room));
     case EventType.RoomTopic:
-      return describeTopic(event, room);
+      return roomLine(describeTopic(event, room));
     case EventType.RoomAvatar:
-      return describeAvatar(event, room);
+      return roomLine(describeAvatar(event, room));
     case EventType.RoomCanonicalAlias:
-      return describeCanonicalAlias(event, room);
+      return roomLine(describeCanonicalAlias(event, room));
     case EventType.RoomJoinRules:
-      return describeJoinRules(event, room);
+      return roomLine(describeJoinRules(event, room));
     case EventType.RoomHistoryVisibility:
-      return describeHistoryVisibility(event, room);
+      return roomLine(describeHistoryVisibility(event, room));
     case EventType.RoomGuestAccess:
-      return describeGuestAccess(event, room);
+      return roomLine(describeGuestAccess(event, room));
     case EventType.RoomEncryption:
-      return `${actorName(event, room)} turned on end-to-end encryption`;
+      return roomLine(
+        `${actorName(event, room)} turned on end-to-end encryption`,
+      );
     case EventType.RoomCreate:
-      return `${actorName(event, room)} created the room`;
+      return roomLine(`${actorName(event, room)} created the room`);
     default:
       return null;
   }
@@ -94,7 +116,7 @@ export function describeTimelineEvent(
 function describeMembership(
   event: MatrixEvent,
   room: Room | undefined,
-): string | null {
+): SystemLine | null {
   const content = event.getContent() as Record<string, unknown>;
   const prev = event.getPrevContent() as Record<string, unknown>;
   const membership = content['membership'];
@@ -109,46 +131,76 @@ function describeMembership(
   switch (membership) {
     case 'join': {
       if (was !== 'join') {
-        return `${targetName} joined the room`;
+        return {
+          text: `${targetName} joined the room`,
+          category: 'membership',
+        };
       }
-      // Same membership → a profile change (or nothing visible).
+      // Same membership → a profile change (or nothing visible). These are the lines a
+      // user most often wants gone, and they are only distinguishable from a real
+      // membership transition by comparing the previous content.
       const prevName = str(prev['displayname']);
       const newName = str(content['displayname']);
       if (prevName !== newName) {
-        return newName
-          ? `${prevName || target} changed their display name to "${newName}"`
-          : `${prevName || target} removed their display name`;
+        return {
+          text: newName
+            ? `${prevName || target} changed their display name to "${newName}"`
+            : `${prevName || target} removed their display name`,
+          category: 'profile',
+        };
       }
       if (prev['avatar_url'] !== content['avatar_url']) {
-        return `${targetName} changed their profile picture`;
+        return {
+          text: `${targetName} changed their profile picture`,
+          category: 'profile',
+        };
       }
       return null;
     }
     case 'invite':
-      return `${actor} invited ${targetName}`;
+      return { text: `${actor} invited ${targetName}`, category: 'membership' };
     case 'knock':
-      return `${targetName} requested to join`;
+      return {
+        text: `${targetName} requested to join`,
+        category: 'membership',
+      };
     case 'ban':
-      return `${actor} banned ${targetName}${because}`;
-    case 'leave':
-      if (was === 'ban') {
-        return `${actor} unbanned ${targetName}`;
-      }
-      if (actorIsTarget) {
-        if (was === 'invite') {
-          return `${targetName} rejected the invitation`;
-        }
-        if (was === 'knock') {
-          return `${targetName} cancelled their request to join`;
-        }
-        return `${targetName} left the room`;
-      }
-      return was === 'invite'
-        ? `${actor} withdrew ${targetName}'s invitation`
-        : `${actor} removed ${targetName}${because}`;
+      return {
+        text: `${actor} banned ${targetName}${because}`,
+        category: 'membership',
+      };
+    case 'leave': {
+      const text = leaveText(was, actorIsTarget, actor, targetName, because);
+      return { text, category: 'membership' };
+    }
     default:
       return null;
   }
+}
+
+/** The wording for a `leave` transition: an unban, a self-leave/reject/cancel, or a kick. */
+function leaveText(
+  was: unknown,
+  actorIsTarget: boolean,
+  actor: string,
+  targetName: string,
+  because: string,
+): string {
+  if (was === 'ban') {
+    return `${actor} unbanned ${targetName}`;
+  }
+  if (actorIsTarget) {
+    if (was === 'invite') {
+      return `${targetName} rejected the invitation`;
+    }
+    if (was === 'knock') {
+      return `${targetName} cancelled their request to join`;
+    }
+    return `${targetName} left the room`;
+  }
+  return was === 'invite'
+    ? `${actor} withdrew ${targetName}'s invitation`
+    : `${actor} removed ${targetName}${because}`;
 }
 
 function describeName(

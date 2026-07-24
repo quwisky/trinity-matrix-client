@@ -43,12 +43,20 @@ const room = {
     NAMES[id] ? ({ name: NAMES[id] } as never) : null,
 } as unknown as Room;
 
+/**
+ * The rendered TEXT of a system line, or null when nothing is shown. The projection returns
+ * `{ text, category }`; these tests assert wording, and the category has its own describe.
+ */
+function text(event: MatrixEvent, r: Room | undefined = room): string | null {
+  return describeTimelineEvent(event, r)?.text ?? null;
+}
+
 /** Convenience: summary of a membership transition. */
 function membership(
   membershipTo: string,
   extra: Partial<EventInit> = {},
 ): string | null {
-  return describeTimelineEvent(
+  return text(
     stateEvent({
       type: 'm.room.member',
       stateKey: '@bob:hs',
@@ -157,13 +165,13 @@ describe('describeTimelineEvent — membership', () => {
 describe('describeTimelineEvent — room state', () => {
   it('name set / changed / removed', () => {
     expect(
-      describeTimelineEvent(
+      text(
         stateEvent({ type: 'm.room.name', content: { name: 'General' } }),
         room,
       ),
     ).toBe('Mod set the room name to "General"');
     expect(
-      describeTimelineEvent(
+      text(
         stateEvent({
           type: 'm.room.name',
           content: { name: 'Lobby' },
@@ -173,7 +181,7 @@ describe('describeTimelineEvent — room state', () => {
       ),
     ).toBe('Mod changed the room name to "Lobby"');
     expect(
-      describeTimelineEvent(
+      text(
         stateEvent({ type: 'm.room.name', prevContent: { name: 'General' } }),
         room,
       ),
@@ -182,14 +190,14 @@ describe('describeTimelineEvent — room state', () => {
 
   it('topic, avatar, alias, join rules, history, guests, encryption, create', () => {
     const d = (type: string, content: Record<string, unknown> = {}) =>
-      describeTimelineEvent(stateEvent({ type, content }), room);
+      text(stateEvent({ type, content }), room);
 
     expect(d('m.room.topic', { topic: 'hi' })).toBe('Mod set the room topic');
     expect(d('m.room.avatar', { url: 'mxc://x' })).toBe(
       'Mod changed the room avatar',
     );
     expect(
-      describeTimelineEvent(
+      text(
         stateEvent({
           type: 'm.room.avatar',
           prevContent: { url: 'mxc://old' },
@@ -220,7 +228,7 @@ describe('describeTimelineEvent — room state', () => {
 
   it('falls back to the bare id when the actor is unknown', () => {
     expect(
-      describeTimelineEvent(
+      text(
         stateEvent({
           type: 'm.room.name',
           content: { name: 'X' },
@@ -232,17 +240,12 @@ describe('describeTimelineEvent — room state', () => {
   });
 
   it('returns null for an unsupported state type', () => {
-    expect(
-      describeTimelineEvent(stateEvent({ type: 'm.room.pinned_events' }), room),
-    ).toBeNull();
+    expect(text(stateEvent({ type: 'm.room.pinned_events' }), room)).toBeNull();
   });
 
   it('drops a re-assert that did not change the value (no spurious "changed")', () => {
     const noop = (type: string, content: Record<string, unknown>) =>
-      describeTimelineEvent(
-        stateEvent({ type, content, prevContent: content }),
-        room,
-      );
+      text(stateEvent({ type, content, prevContent: content }), room);
 
     expect(noop('m.room.name', { name: 'General' })).toBeNull();
     expect(noop('m.room.topic', { topic: 'hi' })).toBeNull();
@@ -256,7 +259,7 @@ describe('describeTimelineEvent — room state', () => {
     expect(noop('m.room.avatar', { url: 'mxc://x' })).toBeNull();
     // A genuine change still renders.
     expect(
-      describeTimelineEvent(
+      text(
         stateEvent({
           type: 'm.room.name',
           content: { name: 'Lobby' },
@@ -272,8 +275,7 @@ describe('describeTimelineEvent — room state', () => {
       type: string,
       content: Record<string, unknown>,
       prevContent: Record<string, unknown> = {},
-    ) =>
-      describeTimelineEvent(stateEvent({ type, content, prevContent }), room);
+    ) => text(stateEvent({ type, content, prevContent }), room);
 
     expect(d('m.room.topic', { topic: 'new' }, { topic: 'old' })).toBe(
       'Mod changed the room topic',
@@ -288,7 +290,7 @@ describe('describeTimelineEvent — room state', () => {
 
   it('covers the remaining join-rule / history / guest / knock variants', () => {
     const d = (type: string, content: Record<string, unknown>) =>
-      describeTimelineEvent(stateEvent({ type, content }), room);
+      text(stateEvent({ type, content }), room);
 
     expect(d('m.room.join_rules', { join_rule: 'knock' })).toBe(
       'Mod allowed people to request to join',
@@ -308,7 +310,7 @@ describe('describeTimelineEvent — room state', () => {
       'Mod allowed guests to join',
     );
     expect(
-      describeTimelineEvent(
+      text(
         stateEvent({
           type: 'm.room.member',
           stateKey: '@bob:hs',
@@ -343,5 +345,90 @@ describe('buildTimelineEventView', () => {
     expect(view.isOwn).toBe(false);
     expect(view.reactions).toEqual([]);
     expect(view.readReceipts).toEqual([]);
+  });
+});
+
+// The category is what the Settings → Appearance toggles switch on, and membership vs
+// profile is the subtle one: both are m.room.member events, told apart only by comparing
+// the previous content. Getting that wrong would hide the wrong half of the churn.
+describe('describeTimelineEvent — categories', () => {
+  const categoryOf = (event: MatrixEvent) =>
+    describeTimelineEvent(event, room)?.category ?? null;
+
+  const member = (
+    membershipTo: string,
+    extra: Partial<EventInit> = {},
+  ): MatrixEvent =>
+    stateEvent({
+      type: 'm.room.member',
+      stateKey: '@bob:hs',
+      content: { membership: membershipTo, ...(extra.content ?? {}) },
+      prevContent: extra.prevContent,
+      sender: extra.sender ?? '@actor:hs',
+    });
+
+  it('treats real membership transitions as membership', () => {
+    expect(categoryOf(member('join'))).toBe('membership');
+    expect(categoryOf(member('invite'))).toBe('membership');
+    expect(categoryOf(member('knock'))).toBe('membership');
+    expect(categoryOf(member('ban'))).toBe('membership');
+    expect(
+      categoryOf(member('leave', { prevContent: { membership: 'join' } })),
+    ).toBe('membership');
+    // An unban and a kick are both `leave` transitions, still membership.
+    expect(
+      categoryOf(member('leave', { prevContent: { membership: 'ban' } })),
+    ).toBe('membership');
+  });
+
+  // join → join carrying a new displayname/avatar: the same event type as above, but the
+  // user asked for these separately because they are the noisiest.
+  it('treats a join→join profile change as profile', () => {
+    expect(
+      categoryOf(
+        member('join', {
+          content: { membership: 'join', displayname: 'Bobby' },
+          prevContent: { membership: 'join', displayname: 'Bob' },
+        }),
+      ),
+    ).toBe('profile');
+    expect(
+      categoryOf(
+        member('join', {
+          content: { membership: 'join', avatar_url: 'mxc://new' },
+          prevContent: { membership: 'join', avatar_url: 'mxc://old' },
+        }),
+      ),
+    ).toBe('profile');
+  });
+
+  it('treats room-state changes as room', () => {
+    const forType = (type: string, content: Record<string, unknown> = {}) =>
+      categoryOf(stateEvent({ type, content }));
+
+    expect(forType('m.room.name', { name: 'General' })).toBe('room');
+    expect(forType('m.room.topic', { topic: 'hi' })).toBe('room');
+    expect(forType('m.room.avatar', { url: 'mxc://x' })).toBe('room');
+    expect(forType('m.room.canonical_alias', { alias: '#x:hs' })).toBe('room');
+    expect(forType('m.room.join_rules', { join_rule: 'public' })).toBe('room');
+    expect(
+      forType('m.room.history_visibility', { history_visibility: 'shared' }),
+    ).toBe('room');
+    expect(forType('m.room.guest_access', { guest_access: 'can_join' })).toBe(
+      'room',
+    );
+    expect(forType('m.room.encryption')).toBe('room');
+    expect(forType('m.room.create')).toBe('room');
+  });
+
+  it('has no category for a no-op change', () => {
+    expect(
+      categoryOf(
+        member('join', {
+          content: { membership: 'join', displayname: 'Bob' },
+          prevContent: { membership: 'join', displayname: 'Bob' },
+        }),
+      ),
+    ).toBeNull();
   });
 });

@@ -12,13 +12,18 @@ import {
   HlmSelectTrigger,
   HlmSelectValue,
 } from '@trinity/helm/select';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
 import {
+  SystemLineSettingsService,
   ThemeService,
   type Palette,
   type ThemePreference,
 } from '@trinity/platform-native';
 
-/** Appearance settings sub-page: light/dark/system mode + colour palette. */
+/**
+ * Appearance settings sub-page: light/dark/system mode, colour palette, and which system
+ * lines (joins, profile changes, room changes) the timeline shows.
+ */
 @Component({
   selector: 'trn-appearance-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,10 +38,12 @@ import {
     HlmSelectContent,
     HlmSelectPortal,
     HlmSelectItem,
+    HlmCheckbox,
   ],
 })
 export class AppearanceSettingsComponent {
   readonly theme = inject(ThemeService);
+  readonly systemLines = inject(SystemLineSettingsService);
 
   /** Apply + persist the chosen light/dark mode when the radio group changes. */
   onThemeChange(value: string): void {

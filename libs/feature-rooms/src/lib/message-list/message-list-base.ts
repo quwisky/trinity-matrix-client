@@ -80,6 +80,9 @@ export abstract class MessageListBase {
   readonly pinnedIds = input<readonly string[]>([]);
   readonly loadingOlder = input(false);
   readonly canLoadOlder = input(false);
+  /** Oldest RAW event in the loaded window — the backfill progress marker (see
+   * TimelineService.oldestEventId). Not the oldest rendered row: rows can be filtered out. */
+  readonly oldestEventId = input<string | null>(null);
   readonly roomName = input('');
   /**
    * Active room id. The list instance is reused across room switches, so a change

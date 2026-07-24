@@ -65,3 +65,55 @@
     </hlm-select-content>
   </hlm-select>
 </div>
+
+<h2
+  id="appearance-timeline-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Timeline
+</h2>
+<p class="block px-4 py-2 text-13 text-muted-foreground">
+  In busy or bridged rooms, membership and profile churn can drown out the
+  conversation. Hiding a category removes those lines entirely — it doesn't
+  change your unread counts.
+</p>
+<label
+  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+  data-testid="timeline-show-membership"
+>
+  <hlm-checkbox
+    [checked]="systemLines.showMembership()"
+    (checkedChange)="systemLines.setShowMembership($event)"
+  />
+  Show joins and leaves
+</label>
+<p class="block px-4 pb-2 text-13 text-muted-foreground">
+  Includes invites, knocks, kicks and bans.
+</p>
+
+<label
+  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+  data-testid="timeline-show-profile"
+>
+  <hlm-checkbox
+    [checked]="systemLines.showProfile()"
+    (checkedChange)="systemLines.setShowProfile($event)"
+  />
+  Show display name and avatar changes
+</label>
+
+<label
+  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+  data-testid="timeline-show-room-changes"
+>
+  <hlm-checkbox
+    [checked]="systemLines.showRoomChanges()"
+    (checkedChange)="systemLines.setShowRoomChanges($event)"
+  />
+  Show room changes
+</label>
+<p class="block px-4 pb-4 text-13 text-muted-foreground">
+  Name, topic, avatar, address and access changes, plus the notices for room
+  creation and encryption being turned on. The lock in the room header still
+  shows whether a room is encrypted.
+</p>
