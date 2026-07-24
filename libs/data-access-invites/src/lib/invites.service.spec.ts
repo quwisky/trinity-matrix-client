@@ -202,3 +202,77 @@ describe('InvitesService', () => {
     expect(clientB.on).toHaveBeenCalled();
   });
 });
+
+// A mixed-account sidebar lists invites for accounts other than the active one, so
+// answering one must join/leave as the invited account — joining as the active account
+// would either fail or join the wrong user to the room.
+describe('InvitesService per-account answers', () => {
+  function setupOwned() {
+    const activeClient = {
+      getUserId: () => '@me:hs',
+      getRooms: () => [],
+      joinRoom: vi.fn().mockResolvedValue({}),
+      leave: vi.fn().mockResolvedValue({}),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const ownerClient = {
+      getUserId: () => '@owner:hs',
+      getRooms: () => [],
+      joinRoom: vi.fn().mockResolvedValue({}),
+      leave: vi.fn().mockResolvedValue({}),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        InvitesService,
+        MockProvider(MatrixClientService, {
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          clientFor: vi.fn((id: string) =>
+            id === '@owner:hs' ? (ownerClient as never) : null,
+          ),
+        }),
+      ],
+    });
+    const matrix = TestBed.inject(MatrixClientService);
+    ngMocks.stubMember(matrix, 'isInitialized', true);
+    ngMocks.stubMember(matrix, 'instance', activeClient);
+    return { svc: TestBed.inject(InvitesService), activeClient, ownerClient };
+  }
+
+  it('accepts on the invited account, not the active one', async () => {
+    const { svc, activeClient, ownerClient } = setupOwned();
+
+    await firstValueFrom(svc.acceptInvite('!i:hs', '@owner:hs'));
+
+    expect(ownerClient.joinRoom).toHaveBeenCalledWith('!i:hs');
+    expect(activeClient.joinRoom).not.toHaveBeenCalled();
+  });
+
+  it('declines on the invited account', async () => {
+    const { svc, activeClient, ownerClient } = setupOwned();
+
+    await firstValueFrom(svc.declineInvite('!i:hs', '@owner:hs'));
+
+    expect(ownerClient.leave).toHaveBeenCalledWith('!i:hs');
+    expect(activeClient.leave).not.toHaveBeenCalled();
+  });
+
+  it('still uses the active account when none is named', async () => {
+    const { svc, activeClient } = setupOwned();
+
+    await firstValueFrom(svc.acceptInvite('!i:hs'));
+
+    expect(activeClient.joinRoom).toHaveBeenCalledWith('!i:hs');
+  });
+
+  it('errors rather than falling back when the invited account has no client', async () => {
+    const { svc, activeClient } = setupOwned();
+
+    await expect(
+      firstValueFrom(svc.acceptInvite('!i:hs', '@gone:hs')),
+    ).rejects.toThrow('Not signed in.');
+    expect(activeClient.joinRoom).not.toHaveBeenCalled();
+  });
+});

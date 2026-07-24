@@ -2244,19 +2244,21 @@ describe('RoomsPage keyboard room switching', () => {
 
   let dialogOpen = false;
 
+  let keyboardRooms: WritableSignal<RoomSummary[]>;
+
   function build(): RoomsPage {
     dialogOpen = false;
     // Display order a, b, c; b and c carry unread.
-    const rooms = [
+    keyboardRooms = signal<RoomSummary[]>([
       roomSummary('!a:hs'),
       roomSummary('!b:hs', 3),
       roomSummary('!c:hs', 1),
-    ];
+    ]);
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         MockProvider(RoomsService, {
-          rooms: signal(rooms),
+          rooms: keyboardRooms,
           directRoomIds: signal<ReadonlySet<string>>(new Set()),
         }),
         MockProvider(SpacesService, {
@@ -2400,6 +2402,35 @@ describe('RoomsPage keyboard room switching', () => {
 
     page.onGlobalKeydown(key({ key: 'Tab', ctrlKey: true }));
     expect(page.activeRoomId()).toBe('!b:hs'); // Tab hops like the quote
+  });
+
+  // The MRU outlives account switches and unticks, so a numbered jump can name a room no
+  // account in scope still holds — unlike hop, nth() filters against nothing. Opening it
+  // would tear the timeline down and leave a blank chat pane, so it must decline.
+  it('ignores a numbered jump to a room the list no longer knows', () => {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const page = build();
+    visitABC(page); // MRU [c, b, a], in c
+    // '!b:hs' leaves the scope (its account was unticked, or signed out).
+    keyboardRooms.set([roomSummary('!a:hs'), roomSummary('!c:hs')]);
+
+    page.onGlobalKeydown(key({ code: 'Digit1', key: '1', ctrlKey: true }));
+
+    expect(page.activeRoomId()).toBe('!c:hs'); // stayed put rather than opening a ghost
+  });
+
+  it('still jumps to a room that is in scope', () => {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const page = build();
+    visitABC(page);
+
+    page.onGlobalKeydown(key({ code: 'Digit1', key: '1', ctrlKey: true }));
+
+    expect(page.activeRoomId()).toBe('!b:hs');
   });
 
   it('stays quiet while an overlay owns the screen', () => {
@@ -2740,6 +2771,54 @@ describe('RoomsPage mixed-account view', () => {
     await page.openSwitcher();
 
     expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+  });
+
+  // A room that is top-level for the account you are ACTING AS must not vanish from the
+  // Rooms view just because a different mixed account files it inside one of its spaces.
+  it('keeps a room that only another account files under a space', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onShowRooms();
+
+    // '!child-theirs:hs' is a child of @alt's space, so it is excluded for @alt…
+    expect(page.visibleRooms().map((r) => r.id)).not.toContain(
+      '!child-theirs:hs',
+    );
+    // …while @me's own spaceless room stays, even though @alt's space claims a room id.
+    expect(page.visibleRooms().map((r) => r.id)).toContain('!mine:hs');
+  });
+
+  // The pill's unread badge is summed over the mixed union, so the space it opens must
+  // list that same union — otherwise the badge counts rooms the view never renders.
+  it('lists a mixed space’s children from the same union its badge counts', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onSelectSpace('!s-alt:hs');
+
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!child-theirs:hs']);
+  });
+
+  // The space scope belongs to the outgoing account; the Recent/DMs/Rooms filter does not.
+  it('keeps the Rooms filter across an account switch but drops the space', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onShowRooms();
+
+    page.onSelectRoomRow('!theirs:hs'); // switches to @alt
+
+    expect(page.roomsView()).toBe(true); // the user's filter survives
+    expect(page.activeSpaceId()).toBeNull();
+  });
+
+  it('returns to Recent when the switch happened from inside a space', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onSelectSpace('!s-mine:hs');
+
+    page.onSelectRoomRow('!theirs:hs');
+
+    expect(page.activeSpaceId()).toBeNull();
+    expect(page.recentView()).toBe(true);
   });
 
   it('forwards a picker tick to the account scope', () => {

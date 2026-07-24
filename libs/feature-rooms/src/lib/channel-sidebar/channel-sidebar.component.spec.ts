@@ -5,6 +5,7 @@ import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import {
   InvitesService,
+  MixedInvitesService,
   type PendingInvite,
 } from '@trinity/data-access-invites';
 import {
@@ -12,6 +13,7 @@ import {
   type UserProfile,
 } from '@trinity/data-access-profile';
 import {
+  AccountScopeService,
   RoomsService,
   SpacesService,
   type RoomSummary,
@@ -108,6 +110,9 @@ async function renderSidebar(
     childrenLoading?: boolean;
     childrenError?: string | null;
     invites?: PendingInvite[];
+    /** Cross-account invites, used instead of `invites` when `mixing` is true. */
+    mixedInvites?: PendingInvite[];
+    mixing?: boolean;
     notifyMode?: RoomNotifyMode;
   } = {},
 ) {
@@ -118,6 +123,7 @@ async function renderSidebar(
     childrenLoading: signal(opts.childrenLoading ?? false),
     childrenError: signal<string | null>(opts.childrenError ?? null),
     pendingInvites: signal<PendingInvite[]>(opts.invites ?? []),
+    mixedInvites: signal<PendingInvite[]>(opts.mixedInvites ?? []),
   };
 
   const rendered = await render(ChannelSidebarComponent, {
@@ -130,6 +136,10 @@ async function renderSidebar(
         childrenError: signals.childrenError,
       }),
       MockProvider(InvitesService, { pendingInvites: signals.pendingInvites }),
+      MockProvider(MixedInvitesService, { invites: signals.mixedInvites }),
+      MockProvider(AccountScopeService, {
+        mixing: signal(opts.mixing ?? false).asReadonly(),
+      }),
       MockProvider(RoomsService),
       MockProvider(RoomNotificationsService, {
         modeFor: modeForSpy,
@@ -925,5 +935,85 @@ describe('ChannelSidebarComponent', () => {
     fixture.componentRef.setInput('accountBadges', new Map());
     fixture.detectChanges();
     expect(container.querySelector('[data-testid="account-badge"]')).toBeNull();
+  });
+
+  // An invite to an account you're SHOWING but not acting as must be visible here, or it
+  // stays hidden until you happen to switch to that account.
+  it('lists invites from every mixed account, badged, while mixing', async () => {
+    const badges = new Map([
+      [
+        '@alt:hs',
+        { id: '@alt:hs', name: 'Alt', initial: 'A', avatarMxc: null },
+      ],
+    ]);
+    const { container } = await renderSidebar({
+      mixing: true,
+      mixedInvites: [
+        {
+          roomId: '!i:hs',
+          accountId: '@alt:hs',
+          name: 'Ops',
+          initial: 'O',
+          avatarMxc: null,
+          inviterName: 'Al',
+          isSpace: false,
+          isDirect: false,
+        },
+      ],
+      inputs: { accountBadges: badges },
+    });
+
+    expect(container.querySelector('.invite__name')?.textContent).toContain(
+      'Ops',
+    );
+    expect(
+      container.querySelector('.invite [data-testid="account-badge"]'),
+    ).toBeTruthy();
+  });
+
+  it('answers an invite on the account it was sent to', async () => {
+    const { fixture, container } = await renderSidebar({
+      mixing: true,
+      mixedInvites: [
+        {
+          roomId: '!i:hs',
+          accountId: '@alt:hs',
+          name: 'Ops',
+          initial: 'O',
+          avatarMxc: null,
+          inviterName: 'Al',
+          isSpace: false,
+          isDirect: false,
+        },
+      ],
+    });
+    const accepted: { roomId: string; accountId: string }[] = [];
+    fixture.componentInstance.acceptInvite.subscribe((e) => accepted.push(e));
+
+    container.querySelector<HTMLElement>('.invite__btn.accept')!.click();
+
+    expect(accepted).toEqual([{ roomId: '!i:hs', accountId: '@alt:hs' }]);
+  });
+
+  it('falls back to the active account’s invites when not mixing', async () => {
+    const single: PendingInvite = {
+      roomId: '!mine:hs',
+      accountId: '@me:hs',
+      name: 'Mine',
+      initial: 'M',
+      avatarMxc: null,
+      inviterName: 'Al',
+      isSpace: false,
+      isDirect: false,
+    };
+    const { container } = await renderSidebar({
+      mixing: false,
+      invites: [single],
+      mixedInvites: [{ ...single, roomId: '!other:hs', name: 'Other' }],
+    });
+
+    expect(container.querySelector('.invite__name')?.textContent).toContain(
+      'Mine',
+    );
   });
 });

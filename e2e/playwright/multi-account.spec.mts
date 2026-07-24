@@ -869,4 +869,67 @@ test.describe('Multiple accounts', () => {
       page.locator('trn-channel-sidebar .channel.active', { hasText: roomA }),
     ).toBeVisible({ timeout: 15_000 });
   });
+
+  // Two things unit tests cannot reach: an invite addressed to an account you are only
+  // SHOWING (it must be visible and answerable without switching), and the header chip that
+  // names the identity you are acting as after a cross-account open.
+  test('shows a mixed-in account’s invite and names the acting identity in the header', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}iv`;
+    const userA = `inv-a-${runId}`;
+    const passA = `inv-a-pass-${runId}`;
+    const userB = `inv-b-${runId}`;
+    const passB = `inv-b-pass-${runId}`;
+    const host = `inv-h-${runId}`;
+    const passH = `inv-h-pass-${runId}`;
+    const roomA = `Room A ${runId}`;
+    const invited = `Invited ${runId}`;
+
+    await registerUser(request, userA, passA);
+    await registerUser(request, userB, passB);
+    await registerUser(request, host, passH);
+    const a = await apiLogin(request, hs, userA, passA);
+    const h = await apiLogin(request, hs, host, passH);
+
+    // A owns a room (so the mixed list has something of A's), and a third party invites A
+    // to another room — the invite therefore belongs to an account that will NOT be active.
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: a.headers,
+      data: { name: roomA, preset: 'private_chat' },
+    });
+    const created = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: h.headers,
+      data: { name: invited, preset: 'private_chat' },
+    });
+    const invitedRoomId = (await created.json()).room_id as string;
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(invitedRoomId)}/invite`,
+      { headers: h.headers, data: { user_id: `@${userA}:localhost` } },
+    );
+
+    await login(page, { available: true, hs, user: userA, pass: passA });
+    await addAccountViaUi(page, hs, userB, passB);
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+
+    // Active account is B, so A's invite is invisible until A is mixed in.
+    await expect(page.locator('.invite', { hasText: invited })).toHaveCount(0);
+
+    await mixInAccount(page, userA);
+    const inviteRow = page.locator('.invite', { hasText: invited });
+    await expect(inviteRow).toBeVisible({ timeout: 20_000 });
+    await expect(
+      inviteRow.locator('[data-testid="account-badge"]'),
+    ).toBeVisible();
+
+    // Opening one of A's rooms switches the acting identity — and says so in the header.
+    await page.locator('.channel', { hasText: roomA }).click();
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userA}:`, {
+      timeout: 20_000,
+    });
+    await expect(page.getByTestId('active-account-chip')).toBeVisible();
+    await expect(page.getByTestId('active-account-chip')).toContainText(userA);
+  });
 });
