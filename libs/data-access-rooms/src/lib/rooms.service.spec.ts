@@ -300,66 +300,6 @@ describe('RoomsService', () => {
     expect(sendReadReceipt).not.toHaveBeenCalled();
   });
 
-  it('markAllRead acks only the rooms with unread', async () => {
-    const latest = { getId: () => '$l', status: null };
-    const room = {
-      getLiveTimeline: () => ({
-        getEvents: () => [latest],
-        getState: () => undefined,
-      }),
-    };
-    const sendReadReceipt = vi.fn().mockResolvedValue({});
-    const setRoomReadMarkers = vi.fn().mockResolvedValue({});
-    const client = {
-      baseUrl: 'https://hs',
-      getRooms: () => [
-        fakeRoom({ roomId: '!a:hs', name: 'A', unread: 2 }),
-        fakeRoom({ roomId: '!b:hs', name: 'B', unread: 0 }),
-      ],
-      getRoom: () => room,
-      sendReadReceipt,
-      setRoomReadMarkers,
-      on: () => {},
-    };
-    const { svc } = provideRooms(client);
-    svc.connect();
-
-    await firstValueFrom(svc.markAllRead());
-
-    expect(setRoomReadMarkers).toHaveBeenCalledTimes(1);
-    expect(setRoomReadMarkers).toHaveBeenCalledWith('!a:hs', '$l');
-  });
-
-  it('markAllRead restricts to the given scope of room ids', async () => {
-    const latest = { getId: () => '$l', status: null };
-    const room = {
-      getLiveTimeline: () => ({
-        getEvents: () => [latest],
-        getState: () => undefined,
-      }),
-    };
-    const setRoomReadMarkers = vi.fn().mockResolvedValue({});
-    const client = {
-      baseUrl: 'https://hs',
-      getRooms: () => [
-        fakeRoom({ roomId: '!a:hs', name: 'A', unread: 2 }),
-        fakeRoom({ roomId: '!b:hs', name: 'B', unread: 5 }),
-      ],
-      getRoom: () => room,
-      sendReadReceipt: vi.fn().mockResolvedValue({}),
-      setRoomReadMarkers,
-      on: () => {},
-    };
-    const { svc } = provideRooms(client);
-    svc.connect();
-
-    // Only !a:hs is in scope, so !b:hs stays unread even though it has unread messages.
-    await firstValueFrom(svc.markAllRead(['!a:hs']));
-
-    expect(setRoomReadMarkers).toHaveBeenCalledTimes(1);
-    expect(setRoomReadMarkers).toHaveBeenCalledWith('!a:hs', '$l');
-  });
-
   it('re-projects onto the newly-active account when the active account switches', () => {
     const clientA = {
       baseUrl: 'https://a.hs',

@@ -29,6 +29,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {
     id: '!r:hs',
     accountId: '@me:hs',
+    accountIds: ['@me:hs'],
     name: 'room',
     initial: 'R',
     avatarMxc: null,
@@ -582,6 +583,35 @@ describe('SearchService.localResults mixed accounts', () => {
     const byId = new Map(svc.localResults('bob').map((r) => [r.id, r.kind]));
     expect(byId.get('!dm:hs')).toBe('dm');
     expect(byId.get('!plain:hs')).toBe('room');
+  });
+
+  // Scoping must happen BEFORE ranking/slicing, or a busier account consumes the result
+  // cap and the scoped caller (message forwarding) is left with nothing.
+  it('scopes the corpus to one account before the result cap', () => {
+    const noisy = Array.from({ length: 40 }, (_, i) =>
+      room({
+        id: `!noisy${i}:hs`,
+        accountId: '@alt:hs',
+        name: `noisy ${i}`,
+        activityTs: 1000 + i, // all more recent than the active account's room
+      }),
+    );
+    const { svc } = setup({
+      mixedRooms: [
+        ...noisy,
+        room({ id: '!mine:hs', accountId: '@me:hs', name: 'noisy mine' }),
+      ],
+      mixing: true,
+    });
+
+    // Unscoped, the 30-row cap is entirely the other account's rooms.
+    expect(svc.localResults('noisy').some((r) => r.id === '!mine:hs')).toBe(
+      false,
+    );
+    // Scoped, the active account's room survives.
+    expect(
+      svc.localResults('noisy', undefined, '@me:hs').map((r) => r.id),
+    ).toEqual(['!mine:hs']);
   });
 
   it('leaves rows unbadged when a single account is in view', () => {

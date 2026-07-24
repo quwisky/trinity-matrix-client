@@ -97,10 +97,18 @@ export class MixedRoomsService {
       }
     }
     for (const userId of wanted) {
-      if (this.listeners.has(userId)) {
-        continue;
-      }
       const client = this.matrix.clientFor(userId);
+      const held = this.listeners.get(userId);
+      if (held) {
+        // Same user id can get a NEW client object (re-adding an already signed-in account
+        // stops and re-creates it). Holding the old one strands the listener on a stopped
+        // client and that account silently stops updating.
+        if (held.client === client) {
+          continue;
+        }
+        this.detach(held.client, held.handler);
+        this.listeners.delete(userId);
+      }
       if (!client) {
         continue; // not fully started yet; a later event re-checks it
       }
@@ -166,6 +174,9 @@ export class MixedRoomsService {
             : existing;
         byRoomId.set(room.roomId, {
           ...winner,
+          // Both memberships travel with the row: the merged unread below is the loudest of
+          // the two, and only an action that reaches BOTH accounts can clear it again.
+          accountIds: [...existing.accountIds, userId],
           unreadCount: Math.max(existing.unreadCount, summary.unreadCount),
           highlightCount: Math.max(
             existing.highlightCount,

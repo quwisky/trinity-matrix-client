@@ -112,15 +112,17 @@ export class QuickSwitcherComponent {
   readonly searching = signal(false);
 
   /** Instant, ranked local matches — reactive because the service reads live signals. */
-  private readonly localResults = computed(() => {
-    const results = this.search.localResults(this.query());
-    if (!this.activeAccountOnly()) {
-      return results;
-    }
-    // Rows carry an accountId only while mixing; an unbadged row is the active account's.
-    const active = this.matrix.activeUserId();
-    return results.filter((r) => !r.accountId || r.accountId === active);
-  });
+  private readonly localResults = computed(() =>
+    this.search.localResults(
+      this.query(),
+      undefined,
+      // Scoping inside the query keeps the result cap meaningful — post-filtering would let
+      // another account's rooms fill it and starve this one's out entirely.
+      this.activeAccountOnly()
+        ? (this.matrix.activeUserId() ?? undefined)
+        : undefined,
+    ),
+  );
 
   /** Debounced directory people, appended after the local matches. */
   private readonly people = toSignal(

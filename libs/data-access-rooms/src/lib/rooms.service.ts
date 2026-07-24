@@ -10,16 +10,7 @@ import {
   type MatrixClient,
   type RoomMember,
 } from 'matrix-js-sdk';
-import {
-  Observable,
-  defer,
-  forkJoin,
-  from,
-  map,
-  of,
-  switchMap,
-  throwError,
-} from 'rxjs';
+import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import {
   MatrixClientService,
   reprojectOnAccountSwitch,
@@ -59,6 +50,13 @@ export interface RoomSummary {
   id: string;
   /** The signed-in account this room belongs to (its user id) — for the mixed view. */
   accountId: string;
+  /**
+   * Every mixed account joined to this room. Usually just `[accountId]`, but a room both
+   * mixed accounts are in is shown as ONE row whose unread is the loudest of the two — so
+   * idempotent actions (mark read, mute, favourite) must reach all of them, or the badge
+   * the merge produced could never be cleared.
+   */
+  accountIds: readonly string[];
   name: string;
   initial: string;
   avatarMxc: string | null;
@@ -371,7 +369,7 @@ export class RoomsService {
       const room = client.getRoom(roomId);
       const events = room?.getLiveTimeline().getEvents() ?? [];
       // Walk backward for the newest confirmed (non-local-echo) event — no array
-      // copy/reverse, since markAllRead runs this per unread room.
+      // copy/reverse, since the caller runs this per unread room.
       let latest: (typeof events)[number] | undefined;
       for (let i = events.length - 1; i >= 0; i--) {
         if (!events[i].status) {
@@ -391,26 +389,6 @@ export class RoomsService {
         ? ReceiptType.Read
         : ReceiptType.ReadPrivate;
       return from(client.sendReadReceipt(latest, receiptType)).pipe(
-        map(() => void 0),
-      );
-    });
-  }
-
-  /**
-   * Mark unread rooms read, in parallel. Pass `roomIds` to restrict to a scope (e.g.
-   * the rooms currently shown in the sidebar) so the action matches the affordance
-   * that triggered it; omit to ack every unread room. Cold — runs on subscribe.
-   */
-  markAllRead(roomIds?: readonly string[]): Observable<void> {
-    return defer(() => {
-      const scope = roomIds ? new Set(roomIds) : null;
-      const unread = this.rooms().filter(
-        (room) => room.hasUnread && (!scope || scope.has(room.id)),
-      );
-      if (unread.length === 0) {
-        return of(void 0);
-      }
-      return forkJoin(unread.map((room) => this.markRead(room.id))).pipe(
         map(() => void 0),
       );
     });

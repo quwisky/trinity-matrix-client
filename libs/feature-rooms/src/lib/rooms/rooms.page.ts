@@ -43,7 +43,11 @@ import {
 } from '@trinity/helm/overlay';
 import { AuthService } from '@trinity/data-access-auth';
 import { CryptoService } from '@trinity/data-access-crypto';
-import { InvitesService } from '@trinity/data-access-invites';
+import {
+  InvitesService,
+  MixedInvitesService,
+  type PendingInvite,
+} from '@trinity/data-access-invites';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
 import {
@@ -86,7 +90,7 @@ import {
   FeatureFlagsService,
   KeyboardShortcutsService,
 } from '@trinity/platform-native';
-import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
+import { AvatarComponent, PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
@@ -158,6 +162,7 @@ function isMobileMasterDetail(): boolean {
     HlmDropdownMenuTrigger,
     HlmTooltip,
     NgIcon,
+    AvatarComponent,
     ServerRailComponent,
     ChannelSidebarComponent,
     MemberListComponent,
@@ -196,6 +201,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly mixedSpaces = inject(MixedSpacesService);
   private readonly accountScope = inject(AccountScopeService);
+  private readonly mixedInvites = inject(MixedInvitesService);
   private readonly accountBadgesSvc = inject(AccountBadgesService);
   readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
@@ -284,16 +290,28 @@ export class RoomsPage implements OnInit, OnDestroy {
    * Used to keep space-owned rooms out of the flat Rooms view (they live in their space).
    * In mixed mode this spans every account's spaces so the global Rooms list excludes
    * space-owned rooms from all accounts, matching the single-account view. */
-  private readonly spaceChildRoomIds = computed<Set<string>>(() => {
-    const ids = new Set<string>();
-    const spaces = this.mixedOn()
-      ? this.mixedSpaces.spaces()
-      : this.spaces.spaces();
-    for (const space of spaces) {
-      for (const id of space.childRoomIds) ids.add(id);
-    }
-    return ids;
-  });
+  private readonly spaceChildRoomIds = computed<Map<string, Set<string>>>(
+    () => {
+      const byAccount = new Map<string, Set<string>>();
+      const spaces = this.mixedOn()
+        ? this.mixedSpaces.spaces()
+        : this.spaces.spaces();
+      for (const space of spaces) {
+        const ids = byAccount.get(space.accountId) ?? new Set<string>();
+        for (const id of space.childRoomIds) ids.add(id);
+        byAccount.set(space.accountId, ids);
+      }
+      return byAccount;
+    },
+  );
+
+  /** Whether a row is filed under one of ITS OWN account's spaces. Keyed per account: a
+   * room that is top-level for the account you're acting as must not vanish from the Rooms
+   * view just because a different mixed account files it inside one of its spaces. */
+  private isSpaceChild(room: RoomSummary): boolean {
+    const byAccount = this.spaceChildRoomIds();
+    return room.accountIds.some((id) => byAccount.get(id)?.has(room.id));
+  }
 
   /**
    * Rooms shown in the channel sidebar. Home (`null`, the default) shows only direct
@@ -319,9 +337,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     const all = mixed ? this.mixedRooms.rooms() : this.rooms.rooms();
     // Rooms view: non-DM joined rooms that aren't owned by a space (overrides the space scope).
     if (this.roomsView()) {
-      const inSpace = this.spaceChildRoomIds();
       return all.filter(
-        (room) => !this.isDirectRow(room) && !inSpace.has(room.id),
+        (room) => !this.isDirectRow(room) && !this.isSpaceChild(room),
       );
     }
     const spaceId = this.activeSpaceId();
@@ -329,12 +346,17 @@ export class RoomsPage implements OnInit, OnDestroy {
       // Home: direct messages only.
       return all.filter((room) => this.isDirectRow(room));
     }
-    // A selected space is single-account (selecting a foreign space switches to its account
-    // first), so its children come from the now-active account's SpacesService; `all` (the
-    // mixed superset) still resolves every child id.
+    // While mixing, take the children from the mixed projection — the same union the space
+    // pill's unread badge is summed over. Reading the active account's SpacesService here
+    // would list fewer rooms than the badge counted for a space BOTH accounts have joined,
+    // leaving an unread total with nothing on screen to clear it. Foreign children are safe:
+    // every row opens through onSelectRoomRow, which switches accounts first.
     const byId = new Map(all.map((room) => [room.id, room] as const));
-    return this.spaces
-      .childRoomIds(spaceId)
+    const childIds = this.mixedOn()
+      ? (this.mixedSpaces.spaces().find((s) => s.id === spaceId)
+          ?.childRoomIds ?? [])
+      : this.spaces.childRoomIds(spaceId);
+    return childIds
       .map((id) => byId.get(id))
       .filter((room): room is RoomSummary => room !== undefined);
   });
@@ -392,10 +414,9 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Total unread notifications across the Rooms view — non-DM rooms that don't
    * belong to any space (space unread is surfaced on the space pills). */
   readonly roomsUnread = computed(() => {
-    const inSpace = this.spaceChildRoomIds();
     return this.railRoomSource().reduce(
       (sum, r) =>
-        this.isDirectRow(r) || inSpace.has(r.id) ? sum : sum + r.unreadCount,
+        this.isDirectRow(r) || this.isSpaceChild(r) ? sum : sum + r.unreadCount,
       0,
     );
   });
@@ -460,6 +481,15 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
     return this.matrix.instance.getUser(uid)?.avatarUrl ?? null;
   });
+
+  /** First letter of the active account's display name, for the header chip's avatar. */
+  readonly userInitial = computed(() =>
+    (
+      this.userName()
+        .replace(/^[@#!]+/, '')
+        .trim()[0] ?? '?'
+    ).toUpperCase(),
+  );
 
   /** The signed-in user's profile, bundled for the channel sidebar's user panel. */
   readonly userProfile = computed<UserProfile>(() => ({
@@ -538,6 +568,7 @@ export class RoomsPage implements OnInit, OnDestroy {
       const accounts = this.shownAccountIds();
       this.mixedRooms.setAccounts(accounts);
       this.mixedSpaces.setAccounts(accounts);
+      this.mixedInvites.setAccounts(accounts);
     });
   }
 
@@ -640,14 +671,23 @@ export class RoomsPage implements OnInit, OnDestroy {
     );
   }
 
-  /** Open a shortcut's resolved target when there is one and it isn't already open. */
+  /**
+   * Open a shortcut's resolved target when there is one and it isn't already open. The MRU
+   * remembers rooms across account switches, so a target can name a room no account in the
+   * current scope holds (it was unticked, or signed out) — opening that would tear down the
+   * timeline and leave a blank chat pane, so drop it instead.
+   */
   private openShortcutTarget(
     roomId: string | null,
     source: 'user' | 'hop',
   ): void {
-    if (roomId && roomId !== this.activeRoomId()) {
-      this.onSelectRoomRow(roomId, source);
+    if (!roomId || roomId === this.activeRoomId()) {
+      return;
     }
+    if (!this.knownRooms().some((room) => room.id === roomId)) {
+      return;
+    }
+    this.onSelectRoomRow(roomId, source);
   }
 
   /**
@@ -691,7 +731,7 @@ export class RoomsPage implements OnInit, OnDestroy {
         }).subscribe((roomId) => this.onSelectRoom(roomId));
         break;
       case 'invite':
-        this.onAcceptInvite(selection.id);
+        this.onAcceptInvite({ roomId: selection.id });
         break;
     }
   }
@@ -879,9 +919,13 @@ export class RoomsPage implements OnInit, OnDestroy {
   }): Promise<void> {
     const name =
       this.visibleRooms().find((r) => r.id === roomId)?.name ?? 'this room';
+    // Leaving is per-account and irreversible, so never fan it out the way the idempotent
+    // actions are — name the account instead, since a merged row represents two memberships.
+    const as =
+      this.mixedOn() && accountId ? ` as ${this.accountLabel(accountId)}` : '';
     const confirmed = await this.alert.confirm({
       header: 'Leave room',
-      message: `Leave “${name}”? You'll stop receiving its messages and need a new invite (or a public join) to come back.`,
+      message: `Leave “${name}”${as}? You'll stop receiving its messages and need a new invite (or a public join) to come back.`,
       confirmText: 'Leave',
       destructive: true,
     });
@@ -1006,12 +1050,18 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   /** Accept a pending invite (join); select the joined room when it's not a space. */
-  onAcceptInvite(roomId: string): void {
+  onAcceptInvite({
+    roomId,
+    accountId,
+  }: {
+    roomId: string;
+    accountId?: string;
+  }): void {
     this.spaceError.set(null);
-    const invite = this.invites
-      .pendingInvites()
-      .find((i) => i.roomId === roomId);
-    runWithBusy(this.invites.acceptInvite(roomId), {
+    const invite = this.knownInvites().find((i) => i.roomId === roomId);
+    // Joined on the account the invite was sent to — answering one must never need an
+    // account switch, and joining as the wrong account would fail or join the wrong user.
+    runWithBusy(this.invites.acceptInvite(roomId, accountId), {
       busy: this.spaceBusy,
       error: this.spaceError,
       destroyRef: this.destroyRef,
@@ -1020,15 +1070,28 @@ export class RoomsPage implements OnInit, OnDestroy {
       // opening it. A joined space just appears in the rail (no auto-select).
       if (invite && !invite.isSpace) {
         this.onSelectSpace(null);
-        this.onSelectRoom(roomId);
+        this.onSelectRoomRow(roomId);
       }
     });
   }
 
+  /** Pending invites across the mixed accounts, or the active account's when not mixing. */
+  private knownInvites(): readonly PendingInvite[] {
+    return this.mixedOn()
+      ? this.mixedInvites.invites()
+      : this.invites.pendingInvites();
+  }
+
   /** Decline a pending invite (leave the invited room/space). */
-  onDeclineInvite(roomId: string): void {
+  onDeclineInvite({
+    roomId,
+    accountId,
+  }: {
+    roomId: string;
+    accountId?: string;
+  }): void {
     this.spaceError.set(null);
-    runWithBusy(this.invites.declineInvite(roomId), {
+    runWithBusy(this.invites.declineInvite(roomId, accountId), {
       busy: this.spaceBusy,
       error: this.spaceError,
       destroyRef: this.destroyRef,
@@ -1115,6 +1178,11 @@ export class RoomsPage implements OnInit, OnDestroy {
     return this.mixedOn() ? this.mixedRooms.rooms() : this.rooms.rooms();
   }
 
+  /** An account's display name for user-facing copy, falling back to its user id. */
+  private accountLabel(accountId: string): string {
+    return this.accountBadges().get(accountId)?.name ?? accountId;
+  }
+
   /** Switch to `accountId`, then run `then` once the switch has landed. */
   private runOnAccount(accountId: string, then: () => void): void {
     this.closeOpenRoom();
@@ -1122,7 +1190,13 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.auth
       .switchAccount(accountId)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => then());
+      .subscribe(() =>
+        // Deferred past the render that follows the switch: RoomsService/SpacesService
+        // re-project onto the new client from an effect, and a space hierarchy requested
+        // before that flush is wiped by it — leaving the sidebar's "More Channels" and
+        // sub-space sections permanently empty until the pill is clicked a second time.
+        afterNextRender(() => then(), { injector: this.injector }),
+      );
   }
 
   onSelectRoom(id: string, source: 'user' | 'hop' = 'user'): void {
@@ -1204,12 +1278,15 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
   private openLinkedRoom(roomId: string, eventId?: string): void {
-    if (!this.rooms.rooms().some((r) => r.id === roomId)) {
+    // Against the mixed superset: while mixing, a room owned by another selected account is
+    // listed and openable in the sidebar, so refusing its permalink would contradict the
+    // list one column to the left.
+    if (!this.knownRooms().some((r) => r.id === roomId)) {
       void this.showError("You're not in that room.");
       return;
     }
     if (roomId !== this.activeRoomId()) {
-      this.onSelectRoom(roomId);
+      this.onSelectRoomRow(roomId);
     }
     if (eventId) {
       // Jump to the linked event (a no-op until it's in the loaded timeline).
@@ -1280,22 +1357,28 @@ export class RoomsPage implements OnInit, OnDestroy {
   onSetNotifyMode({
     roomId,
     mode,
-    accountId,
+    accountIds,
   }: {
     roomId: string;
     mode: RoomNotifyMode;
-    accountId?: string;
+    accountIds?: readonly string[];
   }): void {
-    this.setNotifyMode(roomId, mode, accountId);
+    this.setNotifyMode(roomId, mode, accountIds);
   }
 
+  /** Apply a notification level on every account joined to the row — a merged row shows one
+   * menu, so muting it must actually mute the room everywhere it is contributing. */
   private setNotifyMode(
     roomId: string,
     mode: RoomNotifyMode,
-    accountId?: string,
+    accountIds?: readonly string[],
   ): void {
-    this.roomNotifications
-      .setMode(roomId, mode, accountId)
+    const targets = accountIds?.length ? accountIds : [undefined];
+    forkJoin(
+      targets.map((accountId) =>
+        this.roomNotifications.setMode(roomId, mode, accountId),
+      ),
+    )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not update notifications.'),
@@ -1306,17 +1389,31 @@ export class RoomsPage implements OnInit, OnDestroy {
    * row's own account, which in the mixed view need not be the active one. */
   onMarkRead({
     roomId,
-    accountId,
+    accountIds,
   }: {
     roomId: string;
-    accountId?: string;
+    accountIds?: readonly string[];
   }): void {
-    this.rooms
-      .markRead(roomId, accountId)
+    this.ackRead(roomId, accountIds)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not mark the room read.'),
       });
+  }
+
+  /**
+   * Ack a room on every account joined to it. A room both mixed accounts are in is ONE row
+   * carrying the loudest unread of the two, so acking only one leaves a badge the user has
+   * no way to clear.
+   */
+  private ackRead(
+    roomId: string,
+    accountIds?: readonly string[],
+  ): Observable<unknown> {
+    const targets = accountIds?.length ? accountIds : [undefined];
+    return forkJoin(
+      targets.map((accountId) => this.rooms.markRead(roomId, accountId)),
+    );
   }
 
   /**
@@ -1534,9 +1631,15 @@ export class RoomsPage implements OnInit, OnDestroy {
    * sets its own afterwards.
    */
   private resetViewScope(): void {
-    this.recentView.set(true);
-    this.roomsView.set(false);
-    this.activeSpaceId.set(null);
+    // Only the SPACE scope is account-bound. Recent / Direct Messages / Rooms are filters
+    // over whatever the new account has, so preserve the user's choice — resetting it too
+    // silently dumped them in Recent mid-task. Fall back to Recent only when a space was
+    // open, since that space belongs to the outgoing account.
+    if (this.activeSpaceId() !== null) {
+      this.recentView.set(true);
+      this.roomsView.set(false);
+      this.activeSpaceId.set(null);
+    }
     this.spaces.openSpace(null);
   }
 

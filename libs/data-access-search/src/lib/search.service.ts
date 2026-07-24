@@ -217,9 +217,18 @@ export class SearchService {
    * reactive. An empty query returns recents (everything, ordered by recency).
    * Ordering: score desc, then last-activity desc, then title.
    */
-  localResults(query: string, limit = DEFAULT_LIMIT): SwitcherResult[] {
+  localResults(
+    query: string,
+    limit = DEFAULT_LIMIT,
+    accountId?: string,
+  ): SwitcherResult[] {
     const qLower = query.trim().toLowerCase();
-    return this.entries()
+    // Scope BEFORE ranking and slicing: filtering afterwards lets a busier other account
+    // consume the whole cap and leaves the caller with nothing.
+    const corpus = accountId
+      ? this.entries().filter((e) => !e.accountId || e.accountId === accountId)
+      : this.entries();
+    return corpus
       .map((entry) => ({
         entry,
         score: scoreOf(entry.titleLower, entry.haystack, qLower),

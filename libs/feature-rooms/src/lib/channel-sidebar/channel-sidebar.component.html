@@ -68,6 +68,8 @@
           <trn-avatar
             class="invite__avatar"
             [mxc]="invite.avatarMxc"
+            [accountId]="invite.accountId"
+            [accountBadge]="badgeFor(invite.accountId)"
             [initial]="invite.initial"
             [name]="invite.name"
             [size]="32"
@@ -86,7 +88,12 @@
           <div class="invite__actions">
             <button
               class="invite__btn accept"
-              (click)="acceptInvite.emit(invite.roomId)"
+              (click)="
+                acceptInvite.emit({
+                  roomId: invite.roomId,
+                  accountId: invite.accountId,
+                })
+              "
               [attr.aria-label]="'Accept invite to ' + invite.name"
               title="Accept"
             >
@@ -94,7 +101,12 @@
             </button>
             <button
               class="invite__btn decline"
-              (click)="declineInvite.emit(invite.roomId)"
+              (click)="
+                declineInvite.emit({
+                  roomId: invite.roomId,
+                  accountId: invite.accountId,
+                })
+              "
               [attr.aria-label]="'Decline invite to ' + invite.name"
               title="Decline"
             >
@@ -283,7 +295,7 @@
           <button
             hlmDropdownMenuItem
             (triggered)="
-              markRead.emit({ roomId: room.id, accountId: room.accountId })
+              markRead.emit({ roomId: room.id, accountIds: room.accountIds })
             "
             data-testid="room-mark-read"
           >
@@ -337,7 +349,7 @@
               setNotifyMode.emit({
                 roomId: room.id,
                 mode: 'all',
-                accountId: room.accountId,
+                accountIds: room.accountIds,
               })
             "
             data-testid="room-notify-all"
@@ -353,7 +365,7 @@
               setNotifyMode.emit({
                 roomId: room.id,
                 mode: 'mentions',
-                accountId: room.accountId,
+                accountIds: room.accountIds,
               })
             "
             data-testid="room-notify-mentions"
@@ -369,7 +381,7 @@
               setNotifyMode.emit({
                 roomId: room.id,
                 mode: 'mute',
-                accountId: room.accountId,
+                accountIds: room.accountIds,
               })
             "
             data-testid="room-notify-mute"

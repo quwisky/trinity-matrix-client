@@ -130,7 +130,7 @@ describe('QuickSwitcherComponent', () => {
 
     // Read first so the lazy `results` computed re-evaluates against the new query.
     expect(c.results()).toEqual([LOCAL[0]]);
-    expect(localResults).toHaveBeenLastCalledWith('alp');
+    expect(localResults).toHaveBeenLastCalledWith('alp', undefined, undefined);
   });
 
   it('moves the highlight with arrow keys, wrapping and preventing the caret move', async () => {
@@ -258,21 +258,21 @@ describe('QuickSwitcherComponent', () => {
   });
 
   // Forwarding sends through the active client without switching, so its picker must hide
-  // rooms the active account isn't in.
-  it('hides other accounts’ rooms when scoped to the active account', async () => {
-    localResults = vi.fn(() => [
-      result({ id: '!mine:hs', title: 'alpha', accountId: '@me:hs' }),
-      result({ id: '!theirs:hs', title: 'alpha team', accountId: '@alt:hs' }),
-      result({ id: '!plain:hs', title: 'alpha plain' }), // single-account row
-    ]);
-    const { fixture } = await renderSwitcher({
+  // rooms the active account isn't in. The scope goes INTO the query rather than filtering
+  // the answer: post-filtering would let a busier account fill the result cap and starve
+  // the active account's rooms out entirely.
+  it('asks the search service to scope the corpus to the active account', async () => {
+    await renderSwitcher({
       inputs: { activeAccountOnly: true },
       activeUserId: '@me:hs',
     });
 
-    expect(fixture.componentInstance.results().map((r) => r.id)).toEqual([
-      '!mine:hs',
-      '!plain:hs',
-    ]);
+    expect(localResults).toHaveBeenLastCalledWith('', undefined, '@me:hs');
+  });
+
+  it('leaves the corpus unscoped for an ordinary jump', async () => {
+    await renderSwitcher({ activeUserId: '@me:hs' });
+
+    expect(localResults).toHaveBeenLastCalledWith('', undefined, undefined);
   });
 });

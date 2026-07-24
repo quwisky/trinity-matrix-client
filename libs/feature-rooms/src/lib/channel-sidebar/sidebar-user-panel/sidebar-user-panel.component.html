@@ -161,7 +161,19 @@
           [attr.data-testid]="'show-account-' + account.userId"
         >
           <hlm-dropdown-menu-checkbox-indicator />
-          {{ account.displayName }}
+          <trn-avatar
+            [mxc]="account.avatarMxc"
+            [accountId]="account.userId"
+            [initial]="initialFor(account)"
+            [name]="account.displayName"
+            [size]="20"
+          />
+          <span class="account-pick__id">
+            <span class="account-pick__name">{{ account.displayName }}</span>
+            <!-- The mxid, because two accounts can share a display name and the tick alone
+                 would not say which server you are blending in. -->
+            <span class="account-pick__handle">{{ account.userId }}</span>
+          </span>
           @if (isActive) {
             <span class="account-row__active">active</span>
           }

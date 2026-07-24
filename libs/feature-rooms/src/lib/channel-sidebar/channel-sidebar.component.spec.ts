@@ -37,6 +37,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {
     id: '!a:hs',
     accountId: '@me:hs',
+    accountIds: ['@me:hs'],
     name: 'general',
     initial: 'G',
     avatarMxc: null,
@@ -339,8 +340,12 @@ describe('ChannelSidebarComponent', () => {
 
     let accepted: string | undefined;
     let declined: string | undefined;
-    fixture.componentInstance.acceptInvite.subscribe((id) => (accepted = id));
-    fixture.componentInstance.declineInvite.subscribe((id) => (declined = id));
+    fixture.componentInstance.acceptInvite.subscribe(
+      (e) => (accepted = e.roomId),
+    );
+    fixture.componentInstance.declineInvite.subscribe(
+      (e) => (declined = e.roomId),
+    );
 
     container.querySelector<HTMLElement>('.invite__btn.accept')!.click();
     container.querySelector<HTMLElement>('.invite__btn.decline')!.click();
@@ -795,7 +800,7 @@ describe('ChannelSidebarComponent', () => {
     muteItem!.click();
 
     expect(picks).toEqual([
-      { roomId: '!a:hs', mode: 'mute', accountId: '@me:hs' },
+      { roomId: '!a:hs', mode: 'mute', accountIds: ['@me:hs'] },
     ]);
   });
 
@@ -847,7 +852,7 @@ describe('ChannelSidebarComponent', () => {
       .click();
 
     expect(picks).toEqual([
-      { roomId: '!a:hs', mode: 'mentions', accountId: '@me:hs' },
+      { roomId: '!a:hs', mode: 'mentions', accountIds: ['@me:hs'] },
     ]);
   });
 
@@ -878,7 +883,7 @@ describe('ChannelSidebarComponent', () => {
       .click();
 
     expect(picks).toEqual([
-      { roomId: '!b:hs', mode: 'mute', accountId: '@me:hs' },
+      { roomId: '!b:hs', mode: 'mute', accountIds: ['@me:hs'] },
     ]);
   });
 

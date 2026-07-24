@@ -93,6 +93,27 @@
                 aria-hidden="false"
               />
             }
+            <!-- Which identity you are acting as. Opening another account's room switches
+                 the active account silently, and below md the sidebar (the only other
+                 indicator) is off-screen entirely — so without this you can send a message
+                 with nothing on screen saying who from. -->
+            @if (mixedOn()) {
+              <span
+                class="title-account"
+                data-testid="active-account-chip"
+                [attr.aria-label]="'Acting as ' + userName()"
+                [title]="userId()"
+              >
+                <trn-avatar
+                  [mxc]="userAvatarMxc()"
+                  [accountId]="userId()"
+                  [initial]="userInitial()"
+                  [name]="userName()"
+                  [size]="18"
+                />
+                <span class="title-account__name">{{ userName() }}</span>
+              </span>
+            }
           } @else {
             Trinity
           }

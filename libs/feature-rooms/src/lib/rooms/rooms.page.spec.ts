@@ -11,6 +11,7 @@ import { AuthService } from '@trinity/data-access-auth';
 import { CryptoService } from '@trinity/data-access-crypto';
 import {
   InvitesService,
+  MixedInvitesService,
   type PendingInvite,
 } from '@trinity/data-access-invites';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
@@ -96,7 +97,6 @@ describe('RoomsPage action error feedback', () => {
   let canManageAliases: ReturnType<typeof vi.fn>;
   let joinPublicRoom: ReturnType<typeof vi.fn>;
   let markReadFn: ReturnType<typeof vi.fn>;
-  let markAllReadFn: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
@@ -121,7 +121,6 @@ describe('RoomsPage action error feedback', () => {
     canManageAliases = vi.fn(() => false);
     joinPublicRoom = vi.fn(() => of('!new:hs'));
     markReadFn = vi.fn(() => of(undefined));
-    markAllReadFn = vi.fn(() => of(undefined));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -130,7 +129,6 @@ describe('RoomsPage action error feedback', () => {
           rooms: roomsSignal,
           directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
           markRead: markReadFn,
-          markAllRead: markAllReadFn,
         }),
         MockProvider(RoomSettingsService, { editableFields, currentAccess }),
         MockProvider(RoomModerationService, { canManageBans }),
@@ -282,6 +280,8 @@ describe('RoomsPage action error feedback', () => {
     roomsSignal.set([
       {
         id: '!r:hs',
+        accountId: '@me:hs',
+        accountIds: ['@me:hs'],
         name: 'General',
         initial: 'G',
         avatarMxc: null,
@@ -396,6 +396,30 @@ describe('RoomsPage action error feedback', () => {
     expect(markReadFn).toHaveBeenCalledWith('!r:hs', undefined);
   });
 
+  // A row merged from two accounts carries the loudest unread of the two, so acking only
+  // one would leave a badge the user has no way to clear.
+  it('acks every account joined to a merged row', () => {
+    const page = build();
+
+    page.onMarkRead({ roomId: '!r:hs', accountIds: ['@me:hs', '@alt:hs'] });
+
+    expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@me:hs');
+    expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@alt:hs');
+  });
+
+  it('applies a notification level on every account joined to a merged row', () => {
+    const page = build();
+
+    page.onSetNotifyMode({
+      roomId: '!r:hs',
+      mode: 'mute',
+      accountIds: ['@me:hs', '@alt:hs'],
+    });
+
+    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mute', '@me:hs');
+    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mute', '@alt:hs');
+  });
+
   // Acked per owning account rather than through one bulk call: in the mixed view the
   // header button is offered for rooms belonging to accounts other than the active one,
   // and acking those through the active client would silently do nothing.
@@ -408,6 +432,7 @@ describe('RoomsPage action error feedback', () => {
     ): RoomSummary => ({
       id,
       accountId,
+      accountIds: [accountId],
       name: id,
       initial: 'X',
       avatarMxc: null,
@@ -589,6 +614,8 @@ describe('RoomsPage space filtering', () => {
   function roomSummary(id: string, name: string, unread = 0): RoomSummary {
     return {
       id,
+      accountId: '@me:hs',
+      accountIds: ['@me:hs'],
       name,
       initial: name[0].toUpperCase(),
       avatarMxc: null,
@@ -605,7 +632,14 @@ describe('RoomsPage space filtering', () => {
   }
 
   function spaceSummary(id: string, childRoomIds: string[]): SpaceSummary {
-    return { id, name: id, initial: 'S', avatarMxc: null, childRoomIds };
+    return {
+      id,
+      accountId: '@me:hs',
+      name: id,
+      initial: 'S',
+      avatarMxc: null,
+      childRoomIds,
+    };
   }
 
   function build(): RoomsPage {
@@ -881,6 +915,8 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
   function roomSummary(id: string, name: string, unread = 0): RoomSummary {
     return {
       id,
+      accountId: '@me:hs',
+      accountIds: ['@me:hs'],
       name,
       initial: name[0].toUpperCase(),
       avatarMxc: null,
@@ -897,7 +933,14 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
   }
 
   function spaceSummary(id: string, childRoomIds: string[]): SpaceSummary {
-    return { id, name: id, initial: 'S', avatarMxc: null, childRoomIds };
+    return {
+      id,
+      accountId: '@me:hs',
+      name: id,
+      initial: 'S',
+      avatarMxc: null,
+      childRoomIds,
+    };
   }
 
   function build(): RoomsPage {
@@ -1559,9 +1602,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     const page = build();
     pending.set([pendingInvite({ roomId: '!i:hs', isSpace: false })]);
 
-    page.onAcceptInvite('!i:hs');
+    page.onAcceptInvite({ roomId: '!i:hs' });
 
-    expect(acceptInvite).toHaveBeenCalledWith('!i:hs');
+    expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
     expect(page.activeSpaceId()).toBeNull();
     expect(page.activeRoomId()).toBe('!i:hs');
   });
@@ -1570,18 +1613,18 @@ describe('RoomsPage room / DM / invite actions', () => {
     const page = build();
     pending.set([pendingInvite({ roomId: '!s:hs', isSpace: true })]);
 
-    page.onAcceptInvite('!s:hs');
+    page.onAcceptInvite({ roomId: '!s:hs' });
 
-    expect(acceptInvite).toHaveBeenCalledWith('!s:hs');
+    expect(acceptInvite).toHaveBeenCalledWith('!s:hs', undefined);
     expect(page.activeRoomId()).toBeNull(); // a space lands in the rail, not selected
   });
 
   it('declines an invite (leaves)', () => {
     const page = build();
 
-    page.onDeclineInvite('!i:hs');
+    page.onDeclineInvite({ roomId: '!i:hs' });
 
-    expect(declineInvite).toHaveBeenCalledWith('!i:hs');
+    expect(declineInvite).toHaveBeenCalledWith('!i:hs', undefined);
   });
 
   it('opens the new-chat action sheet on Home', async () => {
@@ -1887,7 +1930,7 @@ describe('RoomsPage quick switcher', () => {
 
     await page.openSwitcher();
 
-    expect(acceptInvite).toHaveBeenCalledWith('!i:hs');
+    expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
     expect(page.activeRoomId()).toBe('!i:hs');
   });
 
@@ -2403,6 +2446,7 @@ describe('RoomsPage mixed-account view', () => {
     return {
       id,
       accountId,
+      accountIds: [accountId],
       name: id,
       initial: id[1].toUpperCase(),
       avatarMxc: null,
@@ -2484,6 +2528,10 @@ describe('RoomsPage mixed-account view', () => {
             space('!s-mine:hs', '@me:hs'),
             space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
           ]),
+          setAccounts: vi.fn(),
+        }),
+        MockProvider(MixedInvitesService, {
+          invites: signal<PendingInvite[]>([]),
           setAccounts: vi.fn(),
         }),
         MockProvider(TimelineService),
@@ -2676,6 +2724,7 @@ describe('RoomsPage mixed-account view', () => {
     );
 
     await page.openSwitcher();
+    TestBed.tick(); // the follow-up open is deferred past the re-projection render
 
     expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
     expect(page.activeRoomId()).toBe('!theirs:hs');

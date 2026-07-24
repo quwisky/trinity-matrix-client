@@ -220,6 +220,61 @@ describe('MixedRoomsService', () => {
     expect(svc.rooms()[0].accountId).toBe('@b:hs');
   });
 
+  // The merged badge is only clearable if the row remembers BOTH memberships — acking one
+  // account would leave the other's unread standing with nothing left to click.
+  it('records every account joined to a shared room', async () => {
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom('!shared:hs')]));
+    clients.set('@b:hs', fakeClient([fakeRoom('!shared:hs', { unread: 4 })]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@a:hs');
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+
+    const row = svc.rooms()[0];
+    expect(row.accountId).toBe('@a:hs');
+    expect([...row.accountIds].sort()).toEqual(['@a:hs', '@b:hs']);
+    expect(row.unreadCount).toBe(4);
+  });
+
+  it('carries a single membership for an unshared room', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom('!a:hs')]));
+    clients.set('@b:hs', fakeClient([fakeRoom('!b:hs')]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+
+    expect(svc.rooms().every((r) => r.accountIds.length === 1)).toBe(true);
+  });
+
+  // A re-added account gets a new client object under the same user id; keeping the old one
+  // strands the listener on a stopped client and that account silently stops updating.
+  it('re-attaches when an account’s client object is replaced', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const first = fakeClient([fakeRoom('!a:hs')]);
+    clients.set('@a:hs', first);
+    clients.set('@b:hs', fakeClient([fakeRoom('!b:hs')]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+    expect(first.listenerCount()).toBeGreaterThan(0);
+
+    const replacement = fakeClient([fakeRoom('!a2:hs')]);
+    clients.set('@a:hs', replacement);
+    clients.get('@b:hs')!.emit('Room'); // nudge a re-reconcile
+    await flush();
+
+    expect(first.listenerCount()).toBe(0);
+    expect(replacement.listenerCount()).toBeGreaterThan(0);
+    expect(
+      svc
+        .rooms()
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(['!a2:hs', '!b:hs']);
+  });
+
   it('picks a stable owner for a shared room when neither account is active', async () => {
     const { svc, accountIds, clients, flush } = harness();
     clients.set('@b:hs', fakeClient([fakeRoom('!shared:hs')]));

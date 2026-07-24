@@ -88,6 +88,7 @@ export function buildRoomSummary(
   return {
     id: room.roomId,
     accountId,
+    accountIds: [accountId],
     name,
     initial: initialOf(name),
     avatarMxc: room.getMxcAvatarUrl(),

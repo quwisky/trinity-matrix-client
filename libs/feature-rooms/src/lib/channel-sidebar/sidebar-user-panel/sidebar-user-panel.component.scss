@@ -181,3 +181,22 @@
 .account-pick[data-disabled] {
   opacity: 1;
 }
+
+.account-pick__id {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.account-pick__name {
+  @include ellipsis;
+
+  font-size: 13px;
+}
+
+.account-pick__handle {
+  @include ellipsis;
+
+  font-size: 11px;
+  color: var(--trinity-text-muted);
+}

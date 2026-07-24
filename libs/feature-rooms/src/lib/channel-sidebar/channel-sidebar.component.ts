@@ -33,12 +33,17 @@ import {
   lucideX,
 } from '@ng-icons/lucide';
 import { AvatarComponent, type AccountBadge } from '@trinity/ui';
-import { InvitesService } from '@trinity/data-access-invites';
+import {
+  InvitesService,
+  MixedInvitesService,
+  type PendingInvite,
+} from '@trinity/data-access-invites';
 import {
   PresenceService,
   type UserProfile,
 } from '@trinity/data-access-profile';
 import {
+  AccountScopeService,
   RoomsService,
   SpacesService,
   type RoomSummary,
@@ -97,6 +102,8 @@ export type { AccountSummary };
 export class ChannelSidebarComponent {
   private readonly spacesSvc = inject(SpacesService);
   private readonly invitesSvc = inject(InvitesService);
+  private readonly mixedInvites = inject(MixedInvitesService);
+  private readonly accountScope = inject(AccountScopeService);
   private readonly roomsSvc = inject(RoomsService);
   private readonly presence = inject(PresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
@@ -132,8 +139,13 @@ export class ChannelSidebarComponent {
   readonly childrenLoading = this.spacesSvc.childrenLoading;
   /** Non-null when the active space's child hierarchy failed to load. */
   readonly childrenError = this.spacesSvc.childrenError;
-  /** Pending invites surfaced in an "Invites" group above the channels. */
-  readonly invites = this.invitesSvc.pendingInvites;
+  /** Pending invites surfaced in an "Invites" group above the channels — across every
+   * mixed account, so an invite to one you aren't currently acting as is still visible. */
+  readonly invites = computed<readonly PendingInvite[]>(() =>
+    this.accountScope.mixing()
+      ? this.mixedInvites.invites()
+      : this.invitesSvc.pendingInvites(),
+  );
   readonly activeRoomId = input<string | null>(null);
   /** The signed-in user (name + handle + avatar) for the bottom user panel. */
   readonly user = input<UserProfile>({
@@ -178,8 +190,8 @@ export class ChannelSidebarComponent {
   /** Open a joined sub-space (select it in the rail), by room id. */
   readonly openChildSpace = output<string>();
   /** Accept / decline a pending invite by room id. */
-  readonly acceptInvite = output<string>();
-  readonly declineInvite = output<string>();
+  readonly acceptInvite = output<{ roomId: string; accountId: string }>();
+  readonly declineInvite = output<{ roomId: string; accountId: string }>();
   /** Header search icon — open the global quick switcher (Ctrl/Cmd+K). */
   readonly openSwitcher = output<void>();
   /** User-panel gear — open the settings page. */
@@ -196,10 +208,14 @@ export class ChannelSidebarComponent {
   readonly setNotifyMode = output<{
     roomId: string;
     mode: RoomNotifyMode;
-    accountId: string;
+    accountIds: readonly string[];
   }>();
-  /** Mark a single room read (from its ⋮ menu); carries the owning account. */
-  readonly markRead = output<{ roomId: string; accountId: string }>();
+  /** Mark a single room read (from its ⋮ menu); carries every owning account, since a row
+   * merged from two mixed accounts only clears when both are acked. */
+  readonly markRead = output<{
+    roomId: string;
+    accountIds: readonly string[];
+  }>();
   /** Mark every room read (header action). */
   readonly markAllRead = output<void>();
 
@@ -228,7 +244,10 @@ export class ChannelSidebarComponent {
   /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service, on the
    * account that owns the row (not necessarily the active one). */
   toggleFavourite(room: RoomSummary): void {
-    this.roomsSvc.setFavourite(room.id, !room.favourite, room.accountId);
+    // Across every account joined to the row, so a merged row's star doesn't flip back.
+    for (const accountId of room.accountIds) {
+      this.roomsSvc.setFavourite(room.id, !room.favourite, accountId);
+    }
   }
 
   /**
