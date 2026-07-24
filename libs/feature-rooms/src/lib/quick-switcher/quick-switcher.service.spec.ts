@@ -28,8 +28,22 @@ describe('QuickSwitcherService', () => {
       ariaLabel: 'Jump to a room',
       // Names the search field so CDK doesn't focus the Cancel button instead.
       autoFocus: '[data-autofocus]',
+      inputs: { activeAccountOnly: false },
     });
     expect(result).toEqual(selection);
+  });
+
+  // Forwarding sends through the ACTIVE client without switching accounts, so its picker
+  // must not offer a mixed-in account's room (an unpostable 403 destination).
+  it('scopes the list to the active account when the caller asks for it', async () => {
+    vi.mocked(dialog.openAndWait).mockResolvedValue(null);
+
+    await svc.pick({ activeAccountOnly: true });
+
+    expect(dialog.openAndWait).toHaveBeenCalledWith(
+      QuickSwitcherComponent,
+      expect.objectContaining({ inputs: { activeAccountOnly: true } }),
+    );
   });
 
   it('resolves null when dismissed without a selection', async () => {

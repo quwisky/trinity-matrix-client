@@ -17,8 +17,17 @@ export class QuickSwitcherService {
   private readonly dialog = inject(TrnDialogService);
   private open = false;
 
-  /** Open the switcher; resolves the chosen selection, or null if cancelled/already open. */
-  async pick(): Promise<SwitcherSelection | null> {
+  /**
+   * Open the switcher; resolves the chosen selection, or null if cancelled/already open.
+   *
+   * `activeAccountOnly` restricts the list to the account currently in use. Jumping to a
+   * room switches accounts first, so the full mixed corpus is right there — but a caller
+   * that ACTS on the target without switching (forwarding a message) must not be offered a
+   * room the active account isn't in.
+   */
+  async pick(
+    opts: { activeAccountOnly?: boolean } = {},
+  ): Promise<SwitcherSelection | null> {
     if (this.open) {
       return null; // already showing — ignore the repeat trigger
     }
@@ -29,6 +38,7 @@ export class QuickSwitcherService {
         QuickSwitcherComponent
       >(QuickSwitcherComponent, {
         ariaLabel: 'Jump to a room',
+        inputs: { activeAccountOnly: opts.activeAccountOnly ?? false },
         // Open-and-type is the whole point of a quick switcher, so focus lands on the
         // search field rather than CDK's first tabbable element (the Cancel button).
         autoFocus: '[data-autofocus]',

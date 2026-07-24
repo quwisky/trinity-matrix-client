@@ -1,6 +1,10 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { AccountScopeService, RoomsService } from '@trinity/data-access-rooms';
+import {
+  AccountScopeService,
+  RoomsService,
+  UnreadAggregatorService,
+} from '@trinity/data-access-rooms';
 import { type AccountBadge } from '@trinity/ui';
 
 /**
@@ -18,13 +22,20 @@ export class AccountBadgesService {
   private readonly matrix = inject(MatrixClientService);
   private readonly scope = inject(AccountScopeService);
   private readonly rooms = inject(RoomsService);
+  private readonly unreadAgg = inject(UnreadAggregatorService);
 
   readonly badges = computed<ReadonlyMap<string, AccountBadge>>(() => {
     const badges = new Map<string, AccountBadge>();
     if (!this.scope.mixing()) {
       return badges;
     }
-    this.rooms.revision(); // re-read each account's profile as it hydrates on sync
+    // Invalidate on ANY mixed account's sync, not just the active one. `rooms.revision()`
+    // is bumped only by the active client, so on its own a mixed-in account whose profile
+    // hydrates later would keep a stale badge (its mxid and a hashed letter instead of its
+    // name and picture) until the active account happened to sync. The unread aggregator is
+    // the one signal already fed by every signed-in client.
+    this.rooms.revision();
+    this.unreadAgg.unreadByAccount();
     for (const userId of this.scope.selected()) {
       const user = this.matrix.clientFor(userId)?.getUser(userId);
       const name = user?.displayName || userId;

@@ -23,10 +23,23 @@ function setup(
       MockProvider(TrnToastService, { show }),
     ],
   });
-  return { svc: TestBed.inject(ForwardService), forwardMessage, show };
+  return { svc: TestBed.inject(ForwardService), forwardMessage, show, pick };
 }
 
 describe('ForwardService', () => {
+  // The send goes through the ACTIVE client with no account switch, so offering a mixed-in
+  // account's room would just 403 with an unexplainable toast.
+  it('asks the picker for the active account’s rooms only', async () => {
+    const { svc, pick } = setup({
+      kind: 'room',
+      id: '!t:hs',
+    } as SwitcherSelection);
+
+    await svc.forward('!s:hs', '$e');
+
+    expect(pick).toHaveBeenCalledWith({ activeAccountOnly: true });
+  });
+
   it('forwards to the picked room and toasts success', async () => {
     const { svc, forwardMessage, show } = setup({
       kind: 'room',

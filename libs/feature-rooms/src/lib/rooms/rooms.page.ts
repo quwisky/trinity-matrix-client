@@ -1118,6 +1118,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Switch to `accountId`, then run `then` once the switch has landed. */
   private runOnAccount(accountId: string, then: () => void): void {
     this.closeOpenRoom();
+    this.resetViewScope();
     this.auth
       .switchAccount(accountId)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -1517,10 +1518,26 @@ export class RoomsPage implements OnInit, OnDestroy {
     // decryption) with no way to re-bind short of a reload. The user re-picks a room on
     // the new account, which opens it cleanly.
     this.closeOpenRoom();
+    this.resetViewScope();
     this.auth
       .switchAccount(userId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+
+  /**
+   * Drop the space/Rooms scope back to Recent before an account switch. `activeSpaceId`
+   * names a space on the OUTGOING account: SpacesService re-projects onto the new client and
+   * wipes it, leaving the sidebar empty, the header falling back to "Home", and the
+   * space-only actions (leave / invite / create channel) aimed at a space the now-active
+   * account isn't in. A selection that wants a different scope — selecting a foreign space —
+   * sets its own afterwards.
+   */
+  private resetViewScope(): void {
+    this.recentView.set(true);
+    this.roomsView.set(false);
+    this.activeSpaceId.set(null);
+    this.spaces.openSpace(null);
   }
 
   /**

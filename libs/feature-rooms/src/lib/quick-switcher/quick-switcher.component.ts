@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   inject,
+  input,
   signal,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
@@ -20,6 +21,7 @@ import {
   type SwitcherResult,
   type SwitcherSelection,
 } from '@trinity/data-access-search';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { AvatarComponent, type AccountBadge } from '@trinity/ui';
 import { DialogRef } from '@trinity/helm/overlay';
@@ -93,6 +95,14 @@ export class QuickSwitcherComponent {
     );
   private readonly search = inject(SearchService);
   private readonly accountBadges = inject(AccountBadgesService);
+  private readonly matrix = inject(MatrixClientService);
+
+  /**
+   * Restrict results to the active account. Set by callers that act on the target without
+   * switching accounts first (message forwarding), for which another account's room is not
+   * a usable destination.
+   */
+  readonly activeAccountOnly = input(false);
 
   /** Current query text, driving both the local computed and the people stream. */
   readonly query = signal('');
@@ -102,9 +112,15 @@ export class QuickSwitcherComponent {
   readonly searching = signal(false);
 
   /** Instant, ranked local matches — reactive because the service reads live signals. */
-  private readonly localResults = computed(() =>
-    this.search.localResults(this.query()),
-  );
+  private readonly localResults = computed(() => {
+    const results = this.search.localResults(this.query());
+    if (!this.activeAccountOnly()) {
+      return results;
+    }
+    // Rows carry an accountId only while mixing; an unbadged row is the active account's.
+    const active = this.matrix.activeUserId();
+    return results.filter((r) => !r.accountId || r.accountId === active);
+  });
 
   /** Debounced directory people, appended after the local matches. */
   private readonly people = toSignal(

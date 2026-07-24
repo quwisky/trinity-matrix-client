@@ -9,8 +9,11 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { signal } from '@angular/core';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 import { QuickSwitcherService } from './quick-switcher.service';
+import { AccountBadgesService } from '../shared/account-badges.service';
 
 function result(over: Partial<SwitcherResult> = {}): SwitcherResult {
   return {
@@ -54,11 +57,25 @@ describe('QuickSwitcherComponent', () => {
   });
 
   /** Render the switcher with the dialog ref and search service stubbed. */
-  function renderSwitcher() {
+  function renderSwitcher(
+    opts: { inputs?: Record<string, unknown>; activeUserId?: string } = {},
+  ) {
     return render(QuickSwitcherComponent, {
+      ...(opts.inputs ? { inputs: opts.inputs } : {}),
       providers: [
         { provide: DialogRef, useValue: { close: dismiss } },
         MockProvider(SearchService, { localResults, searchPeople }),
+        MockProvider(MatrixClientService, {
+          activeUserId: signal<string | null>(
+            opts.activeUserId ?? '@me:hs',
+          ).asReadonly(),
+        }),
+        MockProvider(AccountBadgesService, {
+          forAccount: (id?: string) =>
+            id
+              ? { id, name: id, initial: id[1].toUpperCase(), avatarMxc: null }
+              : null,
+        }),
       ],
     });
   }
@@ -219,5 +236,43 @@ describe('QuickSwitcherComponent', () => {
     await new Promise((resolve) => setTimeout(resolve, 320));
 
     expect(searchPeople).not.toHaveBeenCalled();
+  });
+
+  // The mixed corpus is only useful if each row says which account it belongs to — the
+  // same name can exist on two accounts, and picking one silently changes who you act as.
+  it('badges a result that belongs to another account', async () => {
+    localResults = vi.fn(() => [
+      result({ id: '!mine:hs', title: 'alpha', accountId: '@me:hs' }),
+      result({ id: '!theirs:hs', title: 'alpha team', accountId: '@alt:hs' }),
+    ]);
+    const { container } = await renderSwitcher();
+
+    expect(
+      container.querySelectorAll('[data-testid="account-badge"]').length,
+    ).toBe(2);
+  });
+
+  it('renders no badges when the rows carry no account', async () => {
+    const { container } = await renderSwitcher();
+    expect(container.querySelector('[data-testid="account-badge"]')).toBeNull();
+  });
+
+  // Forwarding sends through the active client without switching, so its picker must hide
+  // rooms the active account isn't in.
+  it('hides other accounts’ rooms when scoped to the active account', async () => {
+    localResults = vi.fn(() => [
+      result({ id: '!mine:hs', title: 'alpha', accountId: '@me:hs' }),
+      result({ id: '!theirs:hs', title: 'alpha team', accountId: '@alt:hs' }),
+      result({ id: '!plain:hs', title: 'alpha plain' }), // single-account row
+    ]);
+    const { fixture } = await renderSwitcher({
+      inputs: { activeAccountOnly: true },
+      activeUserId: '@me:hs',
+    });
+
+    expect(fixture.componentInstance.results().map((r) => r.id)).toEqual([
+      '!mine:hs',
+      '!plain:hs',
+    ]);
   });
 });
