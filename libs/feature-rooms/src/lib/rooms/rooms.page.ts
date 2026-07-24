@@ -85,7 +85,11 @@ import {
   FeatureFlagsService,
   KeyboardShortcutsService,
 } from '@trinity/platform-native';
-import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
+import {
+  PageHeaderComponent,
+  runWithBusy,
+  type AccountBadge,
+} from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
@@ -497,13 +501,12 @@ export class RoomsPage implements OnInit, OnDestroy {
   );
 
   /**
-   * Account-badge lookup for the sidebar rows + rail pills: account id → {initial, name},
-   * or empty when not in mixed mode (no badge shown). Reads `accounts()` for names.
+   * Account-badge lookup for the sidebar rows + rail pills: account id → its avatar/initial/
+   * name, or empty when not in mixed mode (no badge shown). Reads `accounts()` for each
+   * account's real avatar and name.
    */
-  readonly accountBadges = computed<
-    Map<string, { initial: string; name: string }>
-  >(() => {
-    const badges = new Map<string, { initial: string; name: string }>();
+  readonly accountBadges = computed<Map<string, AccountBadge>>(() => {
+    const badges = new Map<string, AccountBadge>();
     if (!this.mixedOn()) {
       return badges;
     }
@@ -512,6 +515,7 @@ export class RoomsPage implements OnInit, OnDestroy {
       badges.set(account.userId, {
         name,
         initial: (name.replace(/^[@#!]+/, '').trim()[0] ?? '?').toUpperCase(),
+        avatarMxc: account.avatarMxc,
       });
     }
     return badges;

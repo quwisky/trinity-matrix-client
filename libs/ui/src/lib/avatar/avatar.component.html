@@ -46,6 +46,17 @@
     [style.font-size.px]="badgeSize() * 0.6"
     [style.background]="badgeColor()"
     [style.color]="badgeInk()"
-    >{{ badge.initial }}</span
   >
+    @if (badgeSrc(); as badgeUrl) {
+      <img
+        class="account-badge__img"
+        decoding="async"
+        [src]="badgeUrl"
+        alt=""
+        (error)="onBadgeImageError()"
+      />
+    } @else {
+      {{ badge.initial }}
+    }
+  </span>
 }

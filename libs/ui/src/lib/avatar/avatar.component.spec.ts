@@ -166,8 +166,157 @@ describe('AvatarComponent', () => {
     expect(contrast(badgeColor, avatar.badgeInk())).toBeGreaterThanOrEqual(4.5);
 
     // Changing the row name must not move the account badge's colour — it's hashed
-    // from the account, not the room.
+    // from the account, not the row.
     fixture.componentRef.setInput('name', 'A completely different room');
     expect(avatar.badgeColor()).toBe(badgeColor);
+  });
+
+  const badgeImg = (host: HTMLElement) =>
+    host.querySelector<HTMLImageElement>('.account-badge__img');
+
+  it('shows the account’s real avatar in the badge, resolved from its mxc', async () => {
+    const resolver = vi.fn(() => of('blob:account-avatar'));
+    const { container, fixture } = await render(AvatarComponent, {
+      inputs: {
+        initial: 'R',
+        name: 'Room',
+        accountBadge: {
+          initial: 'W',
+          name: 'Work',
+          avatarMxc: 'mxc://hs/work',
+        },
+      },
+      providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
+    });
+
+    // Resolved at the badge's own (smaller) size, not the avatar's.
+    expect(resolver).toHaveBeenCalledWith(
+      'mxc://hs/work',
+      fixture.componentInstance.badgeSize(),
+    );
+    const img = badgeImg(container)!;
+    expect(img).toBeTruthy();
+    expect(img.getAttribute('src')).toBe('blob:account-avatar');
+    // With an image the initial letter is not also rendered.
+    expect(badge(container)?.textContent?.trim()).toBe('');
+  });
+
+  it('falls back to the account initial when the badge avatar cannot be resolved', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: {
+        initial: 'R',
+        name: 'Room',
+        accountBadge: {
+          initial: 'W',
+          name: 'Work',
+          avatarMxc: 'mxc://hs/missing',
+        },
+      },
+      providers: [{ provide: AVATAR_RESOLVER, useValue: () => of(null) }],
+    });
+
+    expect(badgeImg(container)).toBeNull();
+    expect(badge(container)?.textContent?.trim()).toBe('W');
+  });
+
+  it('shows the initial when the account has no avatar (no resolver call)', async () => {
+    const resolver = vi.fn(() => of('blob:should-not-be-used'));
+    const { container } = await render(AvatarComponent, {
+      inputs: {
+        initial: 'R',
+        name: 'Room',
+        accountBadge: { initial: 'W', name: 'Work', avatarMxc: null },
+      },
+      providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
+    });
+
+    expect(resolver).not.toHaveBeenCalled();
+    expect(badgeImg(container)).toBeNull();
+    expect(badge(container)?.textContent?.trim()).toBe('W');
+  });
+
+  // Avatar instances are recycled across @for rows, so a badge that changes account must
+  // not keep the previous account's face under the new account's label.
+  it('re-resolves the badge avatar when the row is reused for another account', async () => {
+    const resolver = vi.fn((mxc: string) => of(`blob:${mxc}`));
+    const { container, fixture } = await render(AvatarComponent, {
+      inputs: {
+        accountBadge: {
+          initial: 'W',
+          name: 'Work',
+          avatarMxc: 'mxc://hs/work',
+        },
+      },
+      providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
+    });
+    expect(badgeImg(container)?.getAttribute('src')).toBe('blob:mxc://hs/work');
+
+    // Recycled onto a row owned by an account that has no avatar → back to the initial.
+    fixture.componentRef.setInput('accountBadge', {
+      initial: 'A',
+      name: 'Alt',
+      avatarMxc: null,
+    });
+    fixture.detectChanges();
+    expect(fixture.componentInstance.badgeSrc()).toBeNull();
+    expect(badgeImg(container)).toBeNull();
+    expect(badge(container)?.textContent?.trim()).toBe('A');
+
+    // …and onto one that has a different avatar → that account's image.
+    fixture.componentRef.setInput('accountBadge', {
+      initial: 'A',
+      name: 'Alt',
+      avatarMxc: 'mxc://hs/alt',
+    });
+    fixture.detectChanges();
+    expect(badgeImg(container)?.getAttribute('src')).toBe('blob:mxc://hs/alt');
+  });
+
+  it('does not re-resolve when the host rebuilds an equal badge object', async () => {
+    const resolver = vi.fn(() => of('blob:work'));
+    const { fixture } = await render(AvatarComponent, {
+      inputs: {
+        accountBadge: {
+          initial: 'W',
+          name: 'Work',
+          avatarMxc: 'mxc://hs/work',
+        },
+      },
+      providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
+    });
+    expect(resolver).toHaveBeenCalledTimes(1);
+
+    // The rooms page rebuilds its badge map (fresh objects, same contents) on every sync
+    // tick. Re-fetching then would hammer the resolver — which doesn't cache failures.
+    fixture.componentRef.setInput('accountBadge', {
+      initial: 'W',
+      name: 'Work',
+      avatarMxc: 'mxc://hs/work',
+    });
+    fixture.detectChanges();
+    expect(resolver).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the initial when the resolved badge image fails to load', async () => {
+    const { container, fixture } = await render(AvatarComponent, {
+      inputs: {
+        accountBadge: {
+          initial: 'W',
+          name: 'Work',
+          avatarMxc: 'mxc://hs/work',
+        },
+      },
+      providers: [
+        { provide: AVATAR_RESOLVER, useValue: () => of('blob:broken') },
+      ],
+    });
+    const img = badgeImg(container);
+    expect(img).toBeTruthy();
+
+    // An undecodable blob would otherwise pin a broken-image glyph in the corner.
+    img!.dispatchEvent(new Event('error'));
+    fixture.detectChanges();
+    expect(badgeImg(container)).toBeNull();
+    expect(badge(container)?.textContent?.trim()).toBe('W');
   });
 });

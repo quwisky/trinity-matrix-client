@@ -32,7 +32,7 @@ import {
   lucideUserPlus,
   lucideX,
 } from '@ng-icons/lucide';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent, type AccountBadge } from '@trinity/ui';
 import { InvitesService } from '@trinity/data-access-invites';
 import {
   PresenceService,
@@ -121,7 +121,7 @@ export class ChannelSidebarComponent {
   readonly hasAnyUnread = computed(() => this.rooms().some((r) => r.hasUnread));
 
   /** The account badge for a room row (mixed view), or null when not badged. */
-  badgeFor(accountId: string): { initial: string; name: string } | null {
+  badgeFor(accountId: string): AccountBadge | null {
     return this.accountBadges().get(accountId) ?? null;
   }
   /** Not-yet-joined channels of the active space (the "More Channels" list). */
@@ -148,12 +148,10 @@ export class ChannelSidebarComponent {
   /** User ids of accounts the server signed out that need re-authentication. */
   readonly reauthAccounts = input<readonly string[]>([]);
   /**
-   * Owning-account badge per account id (mixed-account view): account id → {initial,
-   * name}. Empty when not in mixed mode — room rows then show no badge.
+   * Owning-account badge per account id (mixed-account view): account id → its avatar/
+   * initial/name. Empty when not in mixed mode — room rows then show no badge.
    */
-  readonly accountBadges = input<
-    ReadonlyMap<string, { initial: string; name: string }>
-  >(new Map());
+  readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
   /**
    * The global account scope when the mixed toggle applies: `'this'` / `'all'`, or null to
    * hide the toggle (only one account signed in). Governs every view — Recent, Home's DMs,

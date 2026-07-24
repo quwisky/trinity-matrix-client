@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideClock, lucideDoorOpen, lucideHouse } from '@ng-icons/lucide';
-import { AvatarComponent } from '@trinity/ui';
+import { AvatarComponent, type AccountBadge } from '@trinity/ui';
 import { type SpaceSummary } from '@trinity/data-access-rooms';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 
@@ -49,12 +49,10 @@ export class ServerRailComponent {
     perSpace: {},
   });
   /**
-   * Owning-account badge per account id (mixed-account view): account id → {initial,
-   * name}. Empty when not in mixed mode — space pills then show no badge.
+   * Owning-account badge per account id (mixed-account view): account id → its avatar/
+   * initial/name. Empty when not in mixed mode — space pills then show no badge.
    */
-  readonly accountBadges = input<
-    ReadonlyMap<string, { initial: string; name: string }>
-  >(new Map());
+  readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
   readonly selectSpace = output<string | null>();
   /** The "+" pill at the end of the rail — raise the create-a-space flow. */
   readonly createSpace = output<void>();
@@ -64,7 +62,7 @@ export class ServerRailComponent {
   readonly showRooms = output<void>();
 
   /** The account badge for a space pill (mixed view), or null when not badged. */
-  badgeFor(accountId: string): { initial: string; name: string } | null {
+  badgeFor(accountId: string): AccountBadge | null {
     return this.accountBadges().get(accountId) ?? null;
   }
 

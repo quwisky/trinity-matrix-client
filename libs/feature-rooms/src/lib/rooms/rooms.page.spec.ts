@@ -2390,7 +2390,10 @@ describe('RoomsPage mixed-account view', () => {
   let switchAccount: ReturnType<typeof vi.fn>;
   let setMixedRoomsEnabled: ReturnType<typeof vi.fn>;
 
-  function build(accountIds: string[]): RoomsPage {
+  function build(
+    accountIds: string[],
+    avatars: Record<string, string | null> = {},
+  ): RoomsPage {
     switchAccount = vi.fn(() => of(undefined));
     setMixedRoomsEnabled = vi.fn();
     TestBed.configureTestingModule({
@@ -2422,7 +2425,10 @@ describe('RoomsPage mixed-account view', () => {
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
           activeUserId: signal<string | null>('@me:hs').asReadonly(),
           accountIds: signal<readonly string[]>(accountIds).asReadonly(),
-          clientFor: () => ({ getUser: () => null }) as never,
+          clientFor: (id: string) =>
+            ({
+              getUser: () => ({ avatarUrl: avatars[id] ?? null }),
+            }) as never,
         }),
         MockProvider(UnreadAggregatorService, {
           unreadByAccount: signal<ReadonlyMap<string, number>>(
@@ -2481,6 +2487,20 @@ describe('RoomsPage mixed-account view', () => {
     ]);
     expect(setMixedRoomsEnabled).toHaveBeenCalledWith(true);
     expect(page.accountBadges().size).toBeGreaterThan(0);
+  });
+
+  it('carries each account’s real avatar into the badge lookup', () => {
+    const page = build(['@me:hs', '@alt:hs'], {
+      '@alt:hs': 'mxc://hs/alt-avatar',
+    });
+    page.mixedMode.set('all');
+
+    // The badge exposes the account's own avatar (resolved to the real image downstream)…
+    expect(page.accountBadges().get('@alt:hs')?.avatarMxc).toBe(
+      'mxc://hs/alt-avatar',
+    );
+    // …and null for an account with no avatar, so the badge falls back to its initial.
+    expect(page.accountBadges().get('@me:hs')?.avatarMxc).toBeNull();
   });
 
   it('Home shows every account’s DMs in mixed mode', () => {
