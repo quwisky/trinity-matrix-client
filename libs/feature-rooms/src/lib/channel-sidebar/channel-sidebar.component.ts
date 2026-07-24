@@ -155,12 +155,13 @@ export class ChannelSidebarComponent {
     ReadonlyMap<string, { initial: string; name: string }>
   >(new Map());
   /**
-   * The Recent view's account scope when the mixed toggle applies: `'this'` / `'all'`, or
-   * null to hide the toggle (not Recent, or only one account signed in).
+   * The global account scope when the mixed toggle applies: `'this'` / `'all'`, or null to
+   * hide the toggle (only one account signed in). Governs every view — Recent, Home's DMs,
+   * the Rooms list and the rail's space pills all follow it, not just Recent.
    */
-  readonly recentScope = input<'this' | 'all' | null>(null);
-  /** The user changed the Recent account scope via the header toggle. */
-  readonly recentScopeChange = output<'this' | 'all'>();
+  readonly accountScope = input<'this' | 'all' | null>(null);
+  /** The user changed the account scope via the header toggle. */
+  readonly accountScopeChange = output<'this' | 'all'>();
   readonly selectRoom = output<string>();
   /** Header "+" on Home — raise the new-room / new-DM chooser. */
   readonly newChat = output<void>();

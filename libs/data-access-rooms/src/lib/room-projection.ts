@@ -7,6 +7,16 @@ import {
 import { liveRoomState, messagePreview } from '@trinity/util-matrix';
 import { type RoomSummary } from './rooms.service';
 
+/** State event type linking a space to a child room. */
+const SPACE_CHILD_EVENT = 'm.space.child';
+
+/** Internal scratch shape used while sorting a space's children. */
+interface ChildEntry {
+  id: string;
+  order: string;
+  name: string;
+}
+
 /** First visible character (sans leading `#`/`@`), uppercased, for fallback avatars. */
 export function initialOf(name: string): string {
   const stripped = name.replace(/^[#@!]+/, '').trim();
@@ -101,4 +111,37 @@ export function compareRoomSummaries(a: RoomSummary, b: RoomSummary): number {
     b.activityTs - a.activityTs ||
     a.name.localeCompare(b.name)
   );
+}
+
+/**
+ * A space's *joined* child room ids, ordered by the `m.space.child` `order` field
+ * (lexicographic) then room name. Children we have not joined — and removed/dangling
+ * child links — are dropped. Pure read of the space room, shared by {@link SpacesService}
+ * (active account) and the cross-account {@link MixedSpacesService}.
+ */
+export function spaceChildIdsOf(client: MatrixClient, space: Room): string[] {
+  const children = (
+    liveRoomState(space)?.getStateEvents(SPACE_CHILD_EVENT) ?? []
+  )
+    .map((event): ChildEntry | null => {
+      const childId = event.getStateKey();
+      const content = event.getContent();
+      const via = content['via'];
+      if (!childId || !Array.isArray(via) || via.length === 0) {
+        return null; // removed / invalid child link
+      }
+      const child = client.getRoom(childId);
+      if (!child || child.getMyMembership() !== 'join') {
+        return null; // only joined children
+      }
+      const order =
+        typeof content['order'] === 'string' ? content['order'] : '';
+      return { id: childId, order, name: child.name || childId };
+    })
+    .filter((entry): entry is ChildEntry => entry !== null);
+
+  children.sort(
+    (a, b) => a.order.localeCompare(b.order) || a.name.localeCompare(b.name),
+  );
+  return children.map((entry) => entry.id);
 }

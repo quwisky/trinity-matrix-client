@@ -2334,11 +2334,15 @@ describe('RoomsPage keyboard room switching', () => {
   });
 });
 
-// Mixed-account view (issue #10): the Recent list + rail spaces span every signed-in
-// account when the toggle is "All accounts", and opening a foreign-account item switches
-// to that account first.
+// Mixed-account view (issue #10): the global "All accounts" scope spans every signed-in
+// account across ALL surfaces — Recent, Home's DMs, the Rooms list and the rail spaces —
+// and opening a foreign-account item switches to that account first.
 describe('RoomsPage mixed-account view', () => {
-  function room(id: string, accountId: string): RoomSummary {
+  function room(
+    id: string,
+    accountId: string,
+    opts: { directUserId?: string } = {},
+  ): RoomSummary {
     return {
       id,
       accountId,
@@ -2354,19 +2358,34 @@ describe('RoomsPage mixed-account view', () => {
       lastMessage: '',
       activityTs: 0,
       favourite: false,
+      directUserId: opts.directUserId,
     };
   }
 
-  function space(id: string, accountId: string): SpaceSummary {
+  function space(
+    id: string,
+    accountId: string,
+    childRoomIds: string[] = [],
+  ): SpaceSummary {
     return {
       id,
       accountId,
       name: id,
       initial: 'S',
       avatarMxc: null,
-      childRoomIds: [],
+      childRoomIds,
     };
   }
+
+  // Cross-account rooms the aggregator projects while "All accounts" is on: two plain
+  // rooms, two DMs (one per account), and one non-DM room that is a child of @alt's space.
+  const mixedRoomList = (): RoomSummary[] => [
+    room('!mine:hs', '@me:hs'),
+    room('!theirs:hs', '@alt:hs'),
+    room('!dm-mine:hs', '@me:hs', { directUserId: '@x:hs' }),
+    room('!dm-theirs:hs', '@alt:hs', { directUserId: '@y:hs' }),
+    room('!child-theirs:hs', '@alt:hs'),
+  ];
 
   let switchAccount: ReturnType<typeof vi.fn>;
   let setMixedRoomsEnabled: ReturnType<typeof vi.fn>;
@@ -2387,16 +2406,13 @@ describe('RoomsPage mixed-account view', () => {
           childRoomIds: vi.fn(() => []),
         }),
         MockProvider(MixedRoomsService, {
-          rooms: signal([
-            room('!mine:hs', '@me:hs'),
-            room('!theirs:hs', '@alt:hs'),
-          ]),
+          rooms: signal(mixedRoomList()),
           setEnabled: setMixedRoomsEnabled,
         }),
         MockProvider(MixedSpacesService, {
           spaces: signal([
             space('!s-mine:hs', '@me:hs'),
-            space('!s-alt:hs', '@alt:hs'),
+            space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
           ]),
           setEnabled: vi.fn(),
         }),
@@ -2446,14 +2462,18 @@ describe('RoomsPage mixed-account view', () => {
     expect(page.accountBadges().size).toBe(0); // no badges outside mixed mode
   });
 
-  it('spans every account when the toggle is "All accounts"', () => {
+  it('Recent spans every account when the toggle is "All accounts"', () => {
     const page = build(['@me:hs', '@alt:hs']);
     page.mixedMode.set('all');
     TestBed.tick(); // run the enable effect
 
+    // Recent lists every account's rooms unfiltered, in the aggregator's order.
     expect(page.visibleRooms().map((r) => r.id)).toEqual([
       '!mine:hs',
       '!theirs:hs',
+      '!dm-mine:hs',
+      '!dm-theirs:hs',
+      '!child-theirs:hs',
     ]);
     expect(page.railSpaces().map((s) => s.id)).toEqual([
       '!s-mine:hs',
@@ -2461,6 +2481,32 @@ describe('RoomsPage mixed-account view', () => {
     ]);
     expect(setMixedRoomsEnabled).toHaveBeenCalledWith(true);
     expect(page.accountBadges().size).toBeGreaterThan(0);
+  });
+
+  it('Home shows every account’s DMs in mixed mode', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    page.mixedMode.set('all');
+    page.onSelectSpace(null); // Home — leaves Recent
+
+    // Both accounts' DMs (classified by each row's own-account m.direct), nothing else.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+      '!dm-mine:hs',
+      '!dm-theirs:hs',
+    ]);
+    expect(page.sidebarTitle()).toBe('Direct Messages');
+  });
+
+  it('Rooms shows every account’s non-DM, non-space rooms in mixed mode', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    page.mixedMode.set('all');
+    page.onShowRooms();
+
+    // Non-DM rooms from both accounts, excluding DMs and @alt's space child.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+      '!mine:hs',
+      '!theirs:hs',
+    ]);
+    expect(page.sidebarTitle()).toBe('Rooms');
   });
 
   it('switches to the owning account before opening a foreign room', () => {

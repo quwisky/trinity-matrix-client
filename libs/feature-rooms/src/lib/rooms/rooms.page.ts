@@ -241,10 +241,11 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly activeRoomId = signal<string | null>(null);
 
   /**
-   * Mixed-account scope for the Recent view + rail spaces: `'this'` (the active account
-   * only, today's behaviour) or `'all'` (every signed-in account's rooms/spaces, badged).
-   * Session-scoped. Only meaningful when {@link mixedAvailable} — with one account the
-   * toggle is hidden and this stays `'this'`.
+   * Global mixed-account scope: `'this'` (the active account only, today's behaviour) or
+   * `'all'` (every signed-in account, badged). Session-scoped. When `'all'` it governs
+   * **every** surface — the Recent list, Home's DMs, the Rooms list, and the rail's space
+   * pills — not just Recent. Only meaningful when {@link mixedAvailable}; with one account
+   * the toggle is hidden and this stays `'this'`.
    */
   readonly mixedMode = signal<'this' | 'all'>('this');
   /** Whether the mixed-account toggle applies — more than one account is signed in. */
@@ -282,10 +283,15 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly spaceError = signal<string | null>(null);
 
   /** Ids of every joined room that is a child of some space, unioned across all spaces.
-   * Used to keep space-owned rooms out of the flat Rooms view (they live in their space). */
+   * Used to keep space-owned rooms out of the flat Rooms view (they live in their space).
+   * In mixed mode this spans every account's spaces so the global Rooms list excludes
+   * space-owned rooms from all accounts, matching the single-account view. */
   private readonly spaceChildRoomIds = computed<Set<string>>(() => {
     const ids = new Set<string>();
-    for (const space of this.spaces.spaces()) {
+    const spaces = this.mixedOn()
+      ? this.mixedSpaces.spaces()
+      : this.spaces.spaces();
+    for (const space of spaces) {
       for (const id of space.childRoomIds) ids.add(id);
     }
     return ids;
@@ -298,29 +304,36 @@ export class RoomsPage implements OnInit, OnDestroy {
    * A selected space shows only its joined child rooms, in the space's own order
    * (`m.space.child` `order` then name). All read live signals, so the list reacts to
    * sync, membership, and `m.space.child` changes.
+   *
+   * When the global "All accounts" scope is on ({@link mixedOn}), every list — Recent,
+   * Home's DMs and the Rooms view — reads the cross-account {@link MixedRoomsService}
+   * instead of the active account's rooms, classifying DMs by each row's own-account
+   * `m.direct` (`directUserId`) rather than the active account's `directRoomIds()`.
    */
   readonly visibleRooms = computed<RoomSummary[]>(() => {
-    // Recent activity: every joined DM + room, mixed. In mixed-account mode ("All
-    // accounts") that spans every signed-in account (each row badged); otherwise the
-    // active account's `rooms()` — already exactly that list, favourite-first then
-    // most-recent, so it is used unfiltered.
+    const mixed = this.mixedOn();
+    // Recent activity: every joined DM + room, mixed by recency. In mixed mode that spans
+    // every signed-in account (each row badged); otherwise the active account's `rooms()`
+    // — already exactly that list, favourite-first then most-recent, used unfiltered.
     if (this.recentView()) {
-      return this.mixedOn() ? this.mixedRooms.rooms() : this.rooms.rooms();
+      return mixed ? this.mixedRooms.rooms() : this.rooms.rooms();
     }
-    const all = this.rooms.rooms();
-    const direct = this.rooms.directRoomIds();
+    const all = mixed ? this.mixedRooms.rooms() : this.rooms.rooms();
     // Rooms view: non-DM joined rooms that aren't owned by a space (overrides the space scope).
     if (this.roomsView()) {
       const inSpace = this.spaceChildRoomIds();
       return all.filter(
-        (room) => !direct.has(room.id) && !inSpace.has(room.id),
+        (room) => !this.isDirectRow(room) && !inSpace.has(room.id),
       );
     }
     const spaceId = this.activeSpaceId();
     if (!spaceId) {
       // Home: direct messages only.
-      return all.filter((room) => direct.has(room.id));
+      return all.filter((room) => this.isDirectRow(room));
     }
+    // A selected space is single-account (selecting a foreign space switches to its account
+    // first), so its children come from the now-active account's SpacesService; `all` (the
+    // mixed superset) still resolves every child id.
     const byId = new Map(all.map((room) => [room.id, room] as const));
     return this.spaces
       .childRoomIds(spaceId)
@@ -347,41 +360,64 @@ export class RoomsPage implements OnInit, OnDestroy {
     return this.activeSpaceId() ? this.activeSpaceName() : 'Direct Messages';
   });
 
+  /**
+   * Whether a room row counts as a direct message in the current scope: in mixed mode by
+   * the row's own-account `m.direct` (`directUserId`), otherwise by the active account's
+   * `directRoomIds()` set. Shared by {@link visibleRooms} and the rail unread badges so the
+   * badges count exactly what their view shows.
+   */
+  private isDirectRow(room: RoomSummary): boolean {
+    return this.mixedOn()
+      ? room.directUserId != null
+      : this.rooms.directRoomIds().has(room.id);
+  }
+
+  /** The room list the rail badges count over — every account's in mixed mode, else the
+   * active account's — so each badge matches what its view renders. */
+  private railRoomSource(): RoomSummary[] {
+    return this.mixedOn() ? this.mixedRooms.rooms() : this.rooms.rooms();
+  }
+
   /** Total unread notifications across everything the Recent view lists (its rail badge). */
   readonly recentUnread = computed(() =>
-    this.rooms.rooms().reduce((sum, r) => sum + r.unreadCount, 0),
+    this.railRoomSource().reduce((sum, r) => sum + r.unreadCount, 0),
   );
 
   /** Total unread notifications across direct-message rooms (Home rail badge). */
-  readonly homeUnread = computed(() => {
-    const direct = this.rooms.directRoomIds();
-    return this.rooms
-      .rooms()
-      .reduce((sum, r) => (direct.has(r.id) ? sum + r.unreadCount : sum), 0);
-  });
+  readonly homeUnread = computed(() =>
+    this.railRoomSource().reduce(
+      (sum, r) => (this.isDirectRow(r) ? sum + r.unreadCount : sum),
+      0,
+    ),
+  );
 
   /** Total unread notifications across the Rooms view — non-DM rooms that don't
    * belong to any space (space unread is surfaced on the space pills). */
   readonly roomsUnread = computed(() => {
-    const direct = this.rooms.directRoomIds();
     const inSpace = this.spaceChildRoomIds();
-    return this.rooms
-      .rooms()
-      .reduce(
-        (sum, r) =>
-          direct.has(r.id) || inSpace.has(r.id) ? sum : sum + r.unreadCount,
-        0,
-      );
+    return this.railRoomSource().reduce(
+      (sum, r) =>
+        this.isDirectRow(r) || inSpace.has(r.id) ? sum : sum + r.unreadCount,
+      0,
+    );
   });
 
-  /** Unread notifications summed per space, keyed by space id (space-pill badges). */
+  /** Unread notifications summed per space, keyed by space id (space-pill badges). In mixed
+   * mode this covers every account's space pills, summing over that account's child rooms. */
   readonly spaceUnread = computed<Record<string, number>>(() => {
-    const byId = new Map(this.rooms.rooms().map((r) => [r.id, r] as const));
+    const mixed = this.mixedOn();
+    const source = mixed ? this.mixedRooms.rooms() : this.rooms.rooms();
+    const byId = new Map(source.map((r) => [r.id, r] as const));
+    const spaces = mixed ? this.mixedSpaces.spaces() : this.spaces.spaces();
     const totals: Record<string, number> = {};
-    for (const space of this.spaces.spaces()) {
-      totals[space.id] = this.spaces
-        .childRoomIds(space.id)
-        .reduce((sum, id) => sum + (byId.get(id)?.unreadCount ?? 0), 0);
+    for (const space of spaces) {
+      const childIds = mixed
+        ? space.childRoomIds
+        : this.spaces.childRoomIds(space.id);
+      totals[space.id] = childIds.reduce(
+        (sum, id) => sum + (byId.get(id)?.unreadCount ?? 0),
+        0,
+      );
     }
     return totals;
   });

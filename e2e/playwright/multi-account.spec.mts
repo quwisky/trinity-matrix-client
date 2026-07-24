@@ -663,7 +663,7 @@ test.describe('Multiple accounts', () => {
     const roomBRow = page.locator('.channel', { hasText: roomB });
     await expect(roomBRow).toBeVisible({ timeout: 20_000 });
     await expect(roomARow).toHaveCount(0); // A's room is on the other account
-    await page.getByTestId('recent-scope-all').click();
+    await page.getByTestId('account-scope-all').click();
 
     // Now both accounts' rooms are listed, each carrying an account badge.
     await expect(roomARow).toBeVisible({ timeout: 20_000 });
@@ -726,7 +726,7 @@ test.describe('Multiple accounts', () => {
     await expect(railPill(spaceA)).toHaveCount(0);
 
     // Switch to "All accounts" → both accounts' space pills show, each badged.
-    await page.getByTestId('recent-scope-all').click();
+    await page.getByTestId('account-scope-all').click();
     await expect(railPill(spaceA)).toBeVisible({ timeout: 20_000 });
     await expect(
       railPill(spaceA).locator('[data-testid="account-badge"]'),

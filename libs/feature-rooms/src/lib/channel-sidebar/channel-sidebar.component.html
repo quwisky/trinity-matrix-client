@@ -60,17 +60,18 @@
     </div>
   </header>
 
-  @if (recentScope(); as scope) {
-    <!-- Mixed-account toggle: shown only on Recent with 2+ accounts. Flips the list
-         between the active account and every signed-in account. -->
+  @if (accountScope(); as scope) {
+    <!-- Global mixed-account toggle: shown with 2+ accounts, in every view. Flips the
+         whole sidebar (Recent, DMs, Rooms) and the rail spaces between the active account
+         and every signed-in account. -->
     <div class="sidebar__scope" role="group" aria-label="Account scope">
       <button
         type="button"
         class="sidebar__scope-btn"
         [class.active]="scope === 'this'"
         [attr.aria-pressed]="scope === 'this'"
-        data-testid="recent-scope-this"
-        (click)="recentScopeChange.emit('this')"
+        data-testid="account-scope-this"
+        (click)="accountScopeChange.emit('this')"
       >
         This account
       </button>
@@ -79,8 +80,8 @@
         class="sidebar__scope-btn"
         [class.active]="scope === 'all'"
         [attr.aria-pressed]="scope === 'all'"
-        data-testid="recent-scope-all"
-        (click)="recentScopeChange.emit('all')"
+        data-testid="account-scope-all"
+        (click)="accountScopeChange.emit('all')"
       >
         All accounts
       </button>

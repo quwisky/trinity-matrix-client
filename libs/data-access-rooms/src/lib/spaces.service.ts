@@ -16,10 +16,10 @@ import {
   reprojectOnAccountSwitch,
 } from '@trinity/data-access-matrix-client';
 import {
-  liveRoomState,
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util-matrix';
+import { spaceChildIdsOf } from './room-projection';
 
 /** Children fetched per `getRoomHierarchy` page. */
 const HIERARCHY_LIMIT = 100;
@@ -67,13 +67,6 @@ export interface SpaceSummary {
    * removed/dangling child links — are dropped for this increment.
    */
   childRoomIds: string[];
-}
-
-/** Internal scratch shape used while sorting a space's children. */
-interface ChildEntry {
-  id: string;
-  order: string;
-  name: string;
 }
 
 /**
@@ -606,44 +599,8 @@ export class SpacesService {
       name,
       initial: initialOf(name),
       avatarMxc: room.getMxcAvatarUrl(),
-      childRoomIds: this.orderedChildIds(client, room),
+      childRoomIds: spaceChildIdsOf(client, room),
     };
-  }
-
-  /**
-   * Resolve a space's `m.space.child` links to the ids of its *joined* child rooms,
-   * ordered by the child's `order` field then its name.
-   *
-   * Per the spec a valid child carries a non-empty `via` array; a child link with
-   * empty content (no `via`) is a removed/tombstoned link and is skipped. Children
-   * whose room we have not joined are dropped for this increment (not-yet-joined
-   * children are a deferred follow-up).
-   */
-  private orderedChildIds(client: MatrixClient, space: Room): string[] {
-    const children = (
-      liveRoomState(space)?.getStateEvents(SPACE_CHILD_EVENT) ?? []
-    )
-      .map((event): ChildEntry | null => {
-        const childId = event.getStateKey();
-        const content = event.getContent();
-        const via = content['via'];
-        if (!childId || !Array.isArray(via) || via.length === 0) {
-          return null; // removed / invalid child link
-        }
-        const child = client.getRoom(childId);
-        if (!child || child.getMyMembership() !== 'join') {
-          return null; // only joined children for this increment
-        }
-        const order =
-          typeof content['order'] === 'string' ? content['order'] : '';
-        return { id: childId, order, name: child.name || childId };
-      })
-      .filter((entry): entry is ChildEntry => entry !== null);
-
-    children.sort(
-      (a, b) => a.order.localeCompare(b.order) || a.name.localeCompare(b.name),
-    );
-    return children.map((entry) => entry.id);
   }
 }
 

@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { ClientEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { initialOf } from './room-projection';
+import { initialOf, spaceChildIdsOf } from './room-projection';
 import { type SpaceSummary } from './spaces.service';
 
 type Listener = () => void;
@@ -12,11 +12,12 @@ interface AccountListener {
 }
 
 /**
- * Cross-account **space pills** for the mixed-account view: every signed-in account's
- * joined spaces, each tagged with its `accountId`. Pills only — a selected space's child
- * hierarchy still loads through {@link SpacesService} once its account is made active
- * (selecting a foreign space switches the active account first). So `childRoomIds` is left
- * empty here; the rail only needs the pill (id, name, avatar, account).
+ * Cross-account spaces for the mixed-account view: every signed-in account's joined
+ * spaces, each tagged with its `accountId` and its joined `childRoomIds`. The child ids
+ * let the global mixed Rooms view exclude space-owned rooms across every account (as the
+ * single-account view does); a selected space's full hierarchy still loads through
+ * {@link SpacesService} once its account is made active (selecting a foreign space switches
+ * the active account first).
  *
  * Only attaches per-account listeners while {@link setEnabled enabled}, mirroring
  * {@link MixedRoomsService}.
@@ -104,7 +105,7 @@ export class MixedSpacesService {
           name,
           initial: initialOf(name),
           avatarMxc: room.getMxcAvatarUrl(),
-          childRoomIds: [],
+          childRoomIds: spaceChildIdsOf(client, room),
         });
       }
     }

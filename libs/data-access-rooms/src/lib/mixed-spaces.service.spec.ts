@@ -16,6 +16,8 @@ function fakeSpace(
     isSpaceRoom: () => opts.space ?? true,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,
+    // childRoomIds reads m.space.child off the live timeline state; these fakes have none.
+    getLiveTimeline: () => ({ getState: () => undefined }),
   };
 }
 
@@ -86,7 +88,7 @@ describe('MixedSpacesService', () => {
       ['!s2:hs', '@b:hs', 'Personal'],
       ['!s1:hs', '@a:hs', 'Work'],
     ]);
-    // Pills only — the child hierarchy loads later via SpacesService.
+    // childRoomIds is read from each space's m.space.child links; these fakes have none.
     expect(svc.spaces()[0].childRoomIds).toEqual([]);
   });
 
