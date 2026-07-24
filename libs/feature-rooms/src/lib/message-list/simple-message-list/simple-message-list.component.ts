@@ -57,7 +57,11 @@ export class SimpleMessageListComponent extends MessageListBase {
   // nothing leaves it unchanged — rather than the message count, which a
   // same-length redaction/dedup could fool into stopping early or spinning.
   private backfilling = false;
-  private lastBackfillOldestId = '';
+  // Null (not '') so an EMPTY projection still counts as "history not yet requested" — a
+  // room whose whole loaded window is hidden system lines would otherwise compare '' to ''
+  // and never backfill, leaving a permanently blank timeline with no scrollbar to recover
+  // from.
+  private lastBackfillOldestId: string | null = null;
   private backfillRounds = 0;
 
   constructor() {
@@ -122,7 +126,7 @@ export class SimpleMessageListComponent extends MessageListBase {
         // out, the last load prepended nothing (oldest id unchanged), or the
         // round cap is hit.
         const notFull = el.scrollHeight <= el.clientHeight + 1;
-        const oldestId = msgs[0]?.id ?? '';
+        const oldestId = this.oldestEventId();
         const prependedOlder = oldestId !== this.lastBackfillOldestId;
         if (
           notFull &&
@@ -158,7 +162,7 @@ export class SimpleMessageListComponent extends MessageListBase {
   protected override resetOnRoomChange(): void {
     super.resetOnRoomChange();
     this.lastId = '';
-    this.lastBackfillOldestId = '';
+    this.lastBackfillOldestId = null;
     this.backfillRounds = 0;
     this.pendingPrepend = false;
     this.atBottom = true;

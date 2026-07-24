@@ -508,6 +508,30 @@ describe('SimpleMessageListComponent', () => {
     );
     afterEach(() => vi.unstubAllGlobals());
 
+    // A window that projects to NOTHING (every row hidden by a timeline filter) must still
+    // pull history: there are no rows, so there is no scrollbar and onScroll can never fire
+    // — without this the room is stuck showing "No messages yet." forever.
+    it('backfills an empty projection that still has history behind it', () => {
+      const fixture = TestBed.createComponent(SimpleMessageListComponent);
+      fixture.componentRef.setInput('canLoadOlder', true);
+      fixture.detectChanges();
+
+      let emits = 0;
+      fixture.componentInstance.loadOlder.subscribe(() => emits++);
+
+      // Zero rendered rows, but the raw window has events behind them.
+      fixture.componentRef.setInput('messages', []);
+      fixture.componentRef.setInput('oldestEventId', '$join');
+      fixture.detectChanges();
+      expect(emits).toBe(1);
+
+      // The next page is also entirely hidden — still no rows, but the raw oldest moved,
+      // so the loop keeps going rather than concluding "nothing was prepended".
+      fixture.componentRef.setInput('oldestEventId', '$older-join');
+      fixture.detectChanges();
+      expect(emits).toBe(2);
+    });
+
     it('keeps backfilling while older history arrives, even if the count stays equal, then stops', () => {
       // A detached TestBed fixture (not ATL render()) is deliberate here: render()
       // attaches the component to ApplicationRef, so the signal write from the
@@ -522,11 +546,14 @@ describe('SimpleMessageListComponent', () => {
       let emits = 0;
       fixture.componentInstance.loadOlder.subscribe(() => emits++);
 
-      // Round 1: a short, unscrollable timeline → request older history.
+      // Round 1: a short, unscrollable timeline → request older history. The guard reads
+      // the oldest RAW event (what the page binds from TimelineService), not the oldest
+      // rendered row — rows can be filtered out of the projection entirely.
       fixture.componentRef.setInput('messages', [
         msg('$b', '@a:hs', 'A', 2000),
         msg('$c', '@a:hs', 'A', 3000),
       ]);
+      fixture.componentRef.setInput('oldestEventId', '$b');
       fixture.detectChanges();
       expect(emits).toBe(1);
 
@@ -537,6 +564,7 @@ describe('SimpleMessageListComponent', () => {
         msg('$a', '@a:hs', 'A', 1000),
         msg('$c', '@a:hs', 'A', 3000),
       ]);
+      fixture.componentRef.setInput('oldestEventId', '$a');
       fixture.detectChanges();
       expect(emits).toBe(2);
 

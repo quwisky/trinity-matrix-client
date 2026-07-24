@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, effect, inject, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import {
   Direction,
@@ -30,6 +30,7 @@ import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
 import {
   PrivacySettingsService,
+  SystemLineSettingsService,
   type VoiceRecording,
 } from '@trinity/platform-native';
 import {
@@ -37,6 +38,7 @@ import {
   safeBuildMessageView,
   buildTimelineEventView,
   describeTimelineEvent,
+  type SystemLineCategory,
   collectMessageSenders,
   editMessageContent,
   isDisplayableMessage,
@@ -104,6 +106,7 @@ export class TimelineService {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly mediaSvc = inject(MediaService);
   private readonly privacy = inject(PrivacySettingsService);
+  private readonly systemLines = inject(SystemLineSettingsService);
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();
@@ -113,6 +116,16 @@ export class TimelineService {
 
   private readonly _canLoadOlder = signal(false);
   readonly canLoadOlder = this._canLoadOlder.asReadonly();
+
+  /**
+   * Id of the OLDEST raw event in the loaded window — including ones the projection drops
+   * (system lines the user hid, edits, reactions). The message lists use it to tell whether
+   * a backfill round actually pulled in history: the oldest *rendered* row can't answer that
+   * once rows are filtered out, so a page of purely-hidden events would look like "nothing
+   * was prepended" and stop the viewport-filling loop with history still to load.
+   */
+  private readonly _oldestEventId = signal<string | null>(null);
+  readonly oldestEventId = this._oldestEventId.asReadonly();
 
   // Display names of the *other* members currently typing in the open room, projected
   // from the room's `m.typing` ephemeral (via RoomMemberEvent.Typing). Drives the
@@ -163,6 +176,36 @@ export class TimelineService {
    * schedules change detection on its own — so typing indicators and shield changes
    * flush without waiting for an incidental tick.
    */
+  constructor() {
+    // Re-project the open room when a system-line category is toggled: the filter runs during
+    // refresh, so without this the timeline would keep the lines until the next live event
+    // happened to arrive. The effect's first run is the initial read of those signals, not a
+    // change, so it must not schedule a refresh of its own.
+    let seenInitial = false;
+    effect(() => {
+      this.systemLines.showMembership();
+      this.systemLines.showProfile();
+      this.systemLines.showRoomChanges();
+      if (!seenInitial) {
+        seenInitial = true;
+        return;
+      }
+      this.scheduleRefresh();
+    });
+  }
+
+  /** Whether the user has this category of system line switched on. */
+  private showsCategory(category: SystemLineCategory): boolean {
+    switch (category) {
+      case 'membership':
+        return this.systemLines.showMembership();
+      case 'profile':
+        return this.systemLines.showProfile();
+      case 'room':
+        return this.systemLines.showRoomChanges();
+    }
+  }
+
   private scheduleRefresh(): void {
     if (this.refreshScheduled) {
       return;
@@ -206,30 +249,18 @@ export class TimelineService {
   private readonly _readMarker = signal<string | null>(null);
 
   /**
-   * Event id of the first unread message: the message right after the on-open
-   * {@link _readMarker} that isn't the user's own. Drives the "New messages" divider
-   * and the jump-to-unread control. Null when nothing is unread (or the marker isn't a
-   * loaded message).
+   * Event id of the first unread message: the first message after the on-open
+   * {@link _readMarker} that isn't the user's own. Drives the "New messages" divider and the
+   * jump-to-unread control; null when nothing is unread.
+   *
+   * Resolved during {@link refresh} against the RAW timeline order rather than computed from
+   * the projected list. `markRead` acks the newest raw event, so `m.fully_read` can name an
+   * event the projection never renders — a hidden system line, but equally a reaction, an
+   * edit or a pin — and looking the marker up among the rendered rows would find nothing and
+   * silently drop the divider.
    */
-  readonly firstUnreadId = computed<string | null>(() => {
-    const marker = this._readMarker();
-    if (!marker) {
-      return null;
-    }
-    const msgs = this._messages();
-    const markerIdx = msgs.findIndex((m) => m.id === marker);
-    if (markerIdx < 0) {
-      return null; // the marker isn't among the loaded messages — no divider
-    }
-    for (let i = markerIdx + 1; i < msgs.length; i++) {
-      // A system line (join/leave/room change) isn't an unread *message*, so it must
-      // not anchor the "New messages" divider or the jump-to-unread pill.
-      if (!msgs[i].isOwn && msgs[i].kind !== 'event') {
-        return msgs[i].id; // first message after the marker that someone else sent
-      }
-    }
-    return null;
-  });
+  private readonly _firstUnreadId = signal<string | null>(null);
+  readonly firstUnreadId = this._firstUnreadId.asReadonly();
 
   // User ids the current projection renders a member for: every message's sender
   // (its header) plus every reply's quoted sender (its preview). Recomputed each
@@ -370,6 +401,8 @@ export class TimelineService {
     this.roomId = null;
     this.lastReadEventId = null;
     this._readMarker.set(null);
+    this._firstUnreadId.set(null);
+    this._oldestEventId.set(null);
     this.relevantSenders.clear();
     this.viewCache.clear();
     this.shields.clear();
@@ -815,6 +848,20 @@ export class TimelineService {
     const events = liveTimeline.getEvents();
     const seen = new Set<string>();
     const relevant = new Set<string>();
+    // Divider anchor: the first surviving message after the read marker that someone else
+    // sent. The "after the marker" test runs on the RAW event order — markRead acks the
+    // newest raw event, so m.fully_read can name an event the projection drops (a hidden
+    // system line, but also a reaction, an edit or a pin). Deriving it from the projected
+    // list would find nothing and silently take the divider with it.
+    const marker = this._readMarker();
+    const markerIdx = marker
+      ? events.findIndex((e) => e.getId() === marker)
+      : -1;
+    const afterMarker =
+      markerIdx >= 0
+        ? new Set(events.slice(markerIdx + 1).map((e) => e.getId() ?? ''))
+        : null;
+    let firstUnread: string | null = null;
     const views = events
       // Edit events (m.replace) are aggregated onto their target, so hide them.
       // Threaded replies (`threadRootId` set on a non-root) are projected by
@@ -832,10 +879,14 @@ export class TimelineService {
         // determines the row, so it doubles as the cache rev (and re-derives on a late
         // display-name resolution); a no-op change (null) is dropped entirely.
         if (!isDisplayableMessage(e)) {
-          const summary = describeTimelineEvent(e, room);
-          if (!summary) {
+          const line = describeTimelineEvent(e, room);
+          // Dropped when there is nothing to say (a no-op change) or when the user has
+          // hidden this category. Returning null collapses the row entirely — no gap or
+          // placeholder — and keeps `seen` clean so the view cache prunes it.
+          if (!line || !this.showsCategory(line.category)) {
             return null;
           }
+          const summary = line.text;
           seen.add(id);
           collectMessageSenders(room, e, relevant);
           // A membership line names the TARGET (state_key), whose display name can
@@ -855,6 +906,15 @@ export class TimelineService {
         }
         seen.add(id);
         collectMessageSenders(room, e, relevant);
+        // A system line is not an unread *message*, so only real messages from someone else
+        // can anchor the divider.
+        if (
+          afterMarker?.has(id) &&
+          !firstUnread &&
+          e.getSender() !== client.getUserId()
+        ) {
+          firstUnread = id;
+        }
         // Reuse the existing view (preserving its object identity for OnPush)
         // unless something this event renders from has actually changed. The shield
         // (resolved asynchronously) is folded into the rev so a trust change re-projects.
@@ -870,6 +930,9 @@ export class TimelineService {
       })
       .filter((view): view is MessageView => view !== null);
     this.relevantSenders = relevant;
+    this._oldestEventId.set(events[0]?.getId() ?? null);
+    // Null when there is no marker, the marker isn't loaded, or nothing followed it.
+    this._firstUnreadId.set(afterMarker ? firstUnread : null);
     // Drop cache entries for events no longer in the timeline (redacted-away,
     // replaced by their remote id, or scrolled out under a window cap). Prune the
     // shields map on the same key set so it can't grow unbounded across a session.

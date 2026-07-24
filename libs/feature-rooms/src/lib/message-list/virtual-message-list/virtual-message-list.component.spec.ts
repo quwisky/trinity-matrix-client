@@ -515,10 +515,13 @@ describe('VirtualMessageListComponent', () => {
       fixture.componentInstance.loadOlder.subscribe(() => emits++);
 
       // jsdom has no layout → the viewport always reads "not full" → backfill engages.
+      // The guard tracks the oldest RAW event (bound from TimelineService), not the oldest
+      // rendered row, so a page of events the projection drops still counts as progress.
       fixture.componentRef.setInput('messages', [
         msg('$b', '@a:hs', 'A', 2000),
         msg('$c', '@a:hs', 'A', 3000),
       ]);
+      fixture.componentRef.setInput('oldestEventId', '$b');
       fixture.detectChanges();
       expect(emits).toBe(1);
 
@@ -527,6 +530,7 @@ describe('VirtualMessageListComponent', () => {
         msg('$a', '@a:hs', 'A', 1000),
         msg('$c', '@a:hs', 'A', 3000),
       ]);
+      fixture.componentRef.setInput('oldestEventId', '$a');
       fixture.detectChanges();
       expect(emits).toBe(2);
 

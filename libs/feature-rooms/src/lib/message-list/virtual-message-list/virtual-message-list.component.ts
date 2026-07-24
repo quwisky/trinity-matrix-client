@@ -74,7 +74,11 @@ export class VirtualMessageListComponent extends MessageListBase {
 
   // Backfill state — see SimpleMessageListComponent for the rationale (tracked by oldest id).
   private backfilling = false;
-  private lastBackfillOldestId = '';
+  // Null (not '') so an EMPTY projection still counts as "history not yet requested" — a
+  // room whose whole loaded window is hidden system lines would otherwise compare '' to ''
+  // and never backfill, leaving a permanently blank timeline with no scrollbar to recover
+  // from.
+  private lastBackfillOldestId: string | null = null;
   private backfillRounds = 0;
 
   // Windowing state. `scrollTop`/`viewportH` drive which rows are in view; `measured`
@@ -222,7 +226,7 @@ export class VirtualMessageListComponent extends MessageListBase {
         }
 
         const notFull = el.scrollHeight <= el.clientHeight + 1;
-        const oldestId = msgs[0]?.id ?? '';
+        const oldestId = this.oldestEventId();
         const prependedOlder = oldestId !== this.lastBackfillOldestId;
         if (
           notFull &&
@@ -290,7 +294,7 @@ export class VirtualMessageListComponent extends MessageListBase {
   protected override resetOnRoomChange(): void {
     super.resetOnRoomChange();
     this.lastId = '';
-    this.lastBackfillOldestId = '';
+    this.lastBackfillOldestId = null;
     this.backfillRounds = 0;
     this.pendingPrepend = false;
     this.atBottomSig.set(true);

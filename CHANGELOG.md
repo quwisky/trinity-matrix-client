@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Quieten the timeline.** Settings → Appearance gains three switches for the system lines
+  that appear between messages: **joins and leaves** (including invites, knocks, kicks and
+  bans), **display name and avatar changes**, and **room changes** (name, topic, avatar,
+  address, access, encryption and room creation). In busy or bridged rooms that churn can drown out the conversation —
+  turning a category off removes those lines completely, with no gap left behind, and
+  messages that were separated by them group together again. Everything is shown by default,
+  so nothing changes until you say so, and hiding lines never affects your unread counts.
 - **Mix the accounts you choose into one view.** With more than one account signed in, the
   account menu gains a **Show accounts** picker: tick whichever accounts you want to see
   together and every view mixes just those — Recent activity, your direct messages, the Rooms

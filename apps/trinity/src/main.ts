@@ -27,6 +27,7 @@ import {
   KeyboardShortcutsService,
   PrivacySettingsService,
   StoragePersistenceService,
+  SystemLineSettingsService,
   ThemeService,
   TrinityErrorHandler,
 } from '@trinity/platform-native';
@@ -76,6 +77,10 @@ bootstrapApplication(AppComponent, {
     // Load persisted per-conversation composer drafts before any composer mounts,
     // so a half-typed message is restored on cold start.
     provideAppInitializer(() => inject(DraftStoreService).init()),
+    // Load which system lines (joins, profile changes, room changes) the timeline shows,
+    // before the first room is projected — otherwise a user who hid them would see the
+    // churn flash in on every cold start.
+    provideAppInitializer(() => inject(SystemLineSettingsService).init()),
     // Load any custom keyboard-shortcut bindings before the rooms page mounts, so a
     // rebound chord is in effect from the first keydown.
     provideAppInitializer(() => inject(KeyboardShortcutsService).init()),
