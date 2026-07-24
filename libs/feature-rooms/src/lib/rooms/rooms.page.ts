@@ -86,11 +86,8 @@ import {
   FeatureFlagsService,
   KeyboardShortcutsService,
 } from '@trinity/platform-native';
-import {
-  PageHeaderComponent,
-  runWithBusy,
-  type AccountBadge,
-} from '@trinity/ui';
+import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
+import { AccountBadgesService } from '../shared/account-badges.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
@@ -199,6 +196,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly mixedSpaces = inject(MixedSpacesService);
   private readonly accountScope = inject(AccountScopeService);
+  private readonly accountBadgesSvc = inject(AccountBadgesService);
   readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
   readonly threads = inject(ThreadsService);
@@ -497,26 +495,10 @@ export class RoomsPage implements OnInit, OnDestroy {
   );
 
   /**
-   * Account-badge lookup for the sidebar rows + rail pills: account id → its avatar/initial/
-   * name, or empty when not in mixed mode (no badge shown). Reads `accounts()` for each
-   * account's real avatar and name.
+   * Account-badge lookup for the sidebar rows + rail pills, shared with the quick switcher
+   * so every mixed surface badges rows the same way. Empty when not mixing.
    */
-  readonly accountBadges = computed<Map<string, AccountBadge>>(() => {
-    const badges = new Map<string, AccountBadge>();
-    if (!this.mixedOn()) {
-      return badges;
-    }
-    for (const account of this.accounts()) {
-      const name = account.displayName;
-      badges.set(account.userId, {
-        id: account.userId,
-        name,
-        initial: (name.replace(/^[@#!]+/, '').trim()[0] ?? '?').toUpperCase(),
-        avatarMxc: account.avatarMxc,
-      });
-    }
-    return badges;
-  });
+  readonly accountBadges = this.accountBadgesSvc.badges;
 
   /** Accounts the server signed out that need re-authentication (switcher re-auth rows). */
   readonly reauthAccounts = this.matrix.softLoggedOut;
@@ -693,10 +675,12 @@ export class RoomsPage implements OnInit, OnDestroy {
     switch (selection.kind) {
       case 'room':
       case 'dm':
-        this.onSelectRoom(selection.id);
+        // Via the row path, so picking a mixed-in account's room switches to that account
+        // before opening it — otherwise the jump would land on the wrong client.
+        this.onSelectRoomRow(selection.id);
         break;
       case 'space':
-        this.onSelectSpace(selection.id);
+        this.onSelectSpaceRow(selection.id);
         break;
       case 'user':
         this.spaceError.set(null);

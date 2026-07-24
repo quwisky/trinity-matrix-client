@@ -1782,8 +1782,17 @@ describe('RoomsPage quick switcher', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        MockProvider(RoomsService, { createDirectMessage }),
-        MockProvider(SpacesService, { openSpace }),
+        MockProvider(RoomsService, {
+          createDirectMessage,
+          // The jump resolves the row's owning account from the known room set.
+          rooms: signal<RoomSummary[]>([]),
+          directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
+        }),
+        MockProvider(SpacesService, {
+          openSpace,
+          spaces: signal<SpaceSummary[]>([]),
+          childRoomIds: vi.fn(() => []),
+        }),
         invitesProvider({
           pendingInvites: pending,
           acceptInvite,
@@ -2653,6 +2662,33 @@ describe('RoomsPage mixed-account view', () => {
     expect(page.visibleRooms().map((r) => r.id)).not.toContain('!theirs:hs');
 
     page.onSelectRoomRow('!theirs:hs');
+
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+  });
+
+  // The switcher searches every mixed account, so a jump can land on a room owned by an
+  // account that isn't active — it must switch first, exactly like clicking the row.
+  it('switches accounts when jumping to a foreign room from the quick switcher', async () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
+      Promise.resolve({ kind: 'room' as const, id: '!theirs:hs' }),
+    );
+
+    await page.openSwitcher();
+
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+    expect(page.activeRoomId()).toBe('!theirs:hs');
+  });
+
+  it('switches accounts when jumping to a foreign space from the quick switcher', async () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
+      Promise.resolve({ kind: 'space' as const, id: '!s-alt:hs' }),
+    );
+
+    await page.openSwitcher();
 
     expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
   });

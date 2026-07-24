@@ -818,4 +818,55 @@ test.describe('Multiple accounts', () => {
     await expect(roomBRow).toBeVisible();
     await expect(page.getByTestId('account-stack')).toHaveCount(0);
   });
+  // The quick switcher shares the picker's scope, so it must find another account's rooms
+  // and switch to that account on the jump — the same contract as clicking a sidebar row.
+  test('the quick switcher finds a mixed-in account’s room and switches to it', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}qs`;
+    const userA = `qs-a-${runId}`;
+    const passA = `qs-a-pass-${runId}`;
+    const userB = `qs-b-${runId}`;
+    const passB = `qs-b-pass-${runId}`;
+    // A distinctive name so the switcher query cannot match anything else.
+    const roomA = `Zephyr ${runId}`;
+
+    await registerUser(request, userA, passA);
+    await registerUser(request, userB, passB);
+    const a = await apiLogin(request, hs, userA, passA);
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: a.headers,
+      data: { name: roomA, preset: 'private_chat' },
+    });
+
+    await login(page, { available: true, hs, user: userA, pass: passA });
+    await addAccountViaUi(page, hs, userB, passB);
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+    await expect(page.locator('.channel', { hasText: roomA })).toHaveCount(0);
+
+    // Not mixed yet: the switcher searches the active account only, so A's room is absent.
+    await page.getByTestId('open-switcher').click();
+    await page.getByTestId('switcher-input').fill('Zephyr');
+    await expect(page.getByTestId('switcher-result')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    // Tick A in, and the same query now finds its room, badged with the owning account.
+    await mixInAccount(page, userA);
+    await page.getByTestId('open-switcher').click();
+    await page.getByTestId('switcher-input').fill('Zephyr');
+    const hit = page.getByTestId('switcher-result').filter({ hasText: roomA });
+    await expect(hit).toBeVisible({ timeout: 20_000 });
+    await expect(hit.locator('[data-testid="account-badge"]')).toBeVisible();
+
+    // Jumping to it switches the active account to A and opens the room.
+    await hit.click();
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userA}:`, {
+      timeout: 20_000,
+    });
+    await expect(
+      page.locator('trn-channel-sidebar .channel.active', { hasText: roomA }),
+    ).toBeVisible({ timeout: 15_000 });
+  });
 });

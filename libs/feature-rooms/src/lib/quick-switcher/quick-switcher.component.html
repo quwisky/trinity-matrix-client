@@ -12,6 +12,7 @@
     <input
       hlmInput
       data-autofocus
+      data-testid="switcher-input"
       placeholder="Search rooms, spaces, people"
       autocapitalize="off"
       autocorrect="off"
@@ -48,14 +49,17 @@
         [attr.aria-selected]="i === highlight()"
         class="qs-row flex w-full items-center gap-3 rounded-md p-2 text-left hover:bg-accent"
         [class.bg-accent]="i === highlight()"
+        data-testid="switcher-result"
         (click)="select(result)"
       >
         <trn-avatar
           [mxc]="result.avatarMxc"
+          [accountId]="result.accountId ?? null"
           [initial]="result.initial"
           [name]="result.title"
           [size]="40"
           [square]="result.kind === 'space'"
+          [accountBadge]="badgeFor(result)"
         />
         <span class="min-w-0 flex-1">
           <span class="block truncate text-sm font-medium">{{

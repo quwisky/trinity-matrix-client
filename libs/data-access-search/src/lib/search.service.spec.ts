@@ -15,6 +15,9 @@ import {
 } from '@trinity/data-access-invites';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import {
+  AccountScopeService,
+  MixedRoomsService,
+  MixedSpacesService,
   RoomsService,
   type RoomSummary,
   type UserSearchResult,
@@ -25,6 +28,7 @@ import { SpacesService, type SpaceSummary } from '@trinity/data-access-rooms';
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {
     id: '!r:hs',
+    accountId: '@me:hs',
     name: 'room',
     initial: 'R',
     avatarMxc: null,
@@ -44,6 +48,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
 function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
   return {
     id: '!s:hs',
+    accountId: '@me:hs',
     name: 'space',
     initial: 'S',
     avatarMxc: null,
@@ -72,6 +77,10 @@ function setup(opts: {
   invites?: PendingInvite[];
   searchUsers?: ReturnType<typeof vi.fn>;
   matrix?: Partial<MatrixClientService>;
+  /** Mixed-account corpus: when `mixing` is true these replace the single-account lists. */
+  mixing?: boolean;
+  mixedRooms?: RoomSummary[];
+  mixedSpaces?: SpaceSummary[];
 }): { svc: SearchService; searchUsers: ReturnType<typeof vi.fn> } {
   const searchUsers =
     opts.searchUsers ?? vi.fn(() => of<UserSearchResult[]>([]));
@@ -93,6 +102,15 @@ function setup(opts: {
         MatrixClientService,
         opts.matrix ?? { isInitialized: false },
       ),
+      MockProvider(AccountScopeService, {
+        mixing: signal(opts.mixing ?? false).asReadonly(),
+      }),
+      MockProvider(MixedRoomsService, {
+        rooms: signal(opts.mixedRooms ?? []),
+      }),
+      MockProvider(MixedSpacesService, {
+        spaces: signal(opts.mixedSpaces ?? []),
+      }),
     ],
   });
   return { svc: TestBed.inject(SearchService), searchUsers };
@@ -493,5 +511,85 @@ describe('SearchService.loadMoreHistory', () => {
 
     expect(scrollback).toHaveBeenCalledWith(room, 40);
     expect(count).toBe(2);
+  });
+});
+
+// The quick switcher shares the sidebar's account scope: while mixing it searches every
+// selected account's rooms and spaces, and each row carries the account that owns it so the
+// jump can switch to it first.
+describe('SearchService.localResults mixed accounts', () => {
+  it('searches only the active account while not mixing', () => {
+    const { svc } = setup({
+      rooms: [room({ id: '!mine:hs', name: 'design' })],
+      mixedRooms: [
+        room({ id: '!mine:hs', name: 'design' }),
+        room({ id: '!theirs:hs', accountId: '@alt:hs', name: 'design team' }),
+      ],
+      mixing: false,
+    });
+
+    expect(svc.localResults('design').map((r) => r.id)).toEqual(['!mine:hs']);
+  });
+
+  it('searches every mixed account and tags each row with its owner', () => {
+    const { svc } = setup({
+      rooms: [room({ id: '!mine:hs', name: 'design' })],
+      spaces: [space({ id: '!s-mine:hs', name: 'design space' })],
+      mixedRooms: [
+        room({ id: '!mine:hs', name: 'design' }),
+        room({ id: '!theirs:hs', accountId: '@alt:hs', name: 'design team' }),
+      ],
+      mixedSpaces: [
+        space({ id: '!s-mine:hs', name: 'design space' }),
+        space({
+          id: '!s-alt:hs',
+          accountId: '@alt:hs',
+          name: 'design guild',
+        }),
+      ],
+      mixing: true,
+    });
+
+    const byId = new Map(svc.localResults('design').map((r) => [r.id, r]));
+    expect([...byId.keys()].sort()).toEqual([
+      '!mine:hs',
+      '!s-alt:hs',
+      '!s-mine:hs',
+      '!theirs:hs',
+    ]);
+    expect(byId.get('!theirs:hs')?.accountId).toBe('@alt:hs');
+    expect(byId.get('!s-alt:hs')?.accountId).toBe('@alt:hs');
+    expect(byId.get('!mine:hs')?.accountId).toBe('@me:hs');
+  });
+
+  // The active account's m.direct says nothing about another account's rooms, so a mixed
+  // row is classified by its own account's direct flag.
+  it('classifies a mixed-in DM from its own account, not the active one', () => {
+    const { svc } = setup({
+      directRoomIds: new Set<string>(), // the active account knows of no DMs
+      mixedRooms: [
+        room({
+          id: '!dm:hs',
+          accountId: '@alt:hs',
+          name: 'bob',
+          directUserId: '@bob:hs',
+        }),
+        room({ id: '!plain:hs', accountId: '@alt:hs', name: 'bobsleigh' }),
+      ],
+      mixing: true,
+    });
+
+    const byId = new Map(svc.localResults('bob').map((r) => [r.id, r.kind]));
+    expect(byId.get('!dm:hs')).toBe('dm');
+    expect(byId.get('!plain:hs')).toBe('room');
+  });
+
+  it('leaves rows unbadged when a single account is in view', () => {
+    const { svc } = setup({
+      rooms: [room({ id: '!mine:hs', name: 'design' })],
+      mixing: false,
+    });
+
+    expect(svc.localResults('design')[0].accountId).toBeUndefined();
   });
 });

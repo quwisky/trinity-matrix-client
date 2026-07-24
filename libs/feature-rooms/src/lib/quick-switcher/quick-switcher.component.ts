@@ -20,7 +20,8 @@ import {
   type SwitcherResult,
   type SwitcherSelection,
 } from '@trinity/data-access-search';
-import { AvatarComponent } from '@trinity/ui';
+import { AccountBadgesService } from '../shared/account-badges.service';
+import { AvatarComponent, type AccountBadge } from '@trinity/ui';
 import { DialogRef } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
@@ -91,6 +92,7 @@ export class QuickSwitcherComponent {
       DialogRef,
     );
   private readonly search = inject(SearchService);
+  private readonly accountBadges = inject(AccountBadgesService);
 
   /** Current query text, driving both the local computed and the people stream. */
   readonly query = signal('');
@@ -165,7 +167,16 @@ export class QuickSwitcherComponent {
 
   /** Click/Enter on a row: close with its selection. */
   select(result: SwitcherResult): void {
-    this.dismiss({ kind: result.kind, id: result.id });
+    this.dismiss({
+      kind: result.kind,
+      id: result.id,
+      ...(result.accountId ? { accountId: result.accountId } : {}),
+    });
+  }
+
+  /** The owning-account badge for a result (mixed view only), or null. */
+  badgeFor(result: SwitcherResult): AccountBadge | null {
+    return this.accountBadges.forAccount(result.accountId);
   }
 
   dismiss(selection: SwitcherSelection | null): void {

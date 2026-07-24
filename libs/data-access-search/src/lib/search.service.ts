@@ -9,8 +9,13 @@ import { Observable, catchError, defer, from, map, of } from 'rxjs';
 import { InvitesService } from '@trinity/data-access-invites';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { isDisplayableMessage } from '@trinity/util-matrix';
-import { RoomsService } from '@trinity/data-access-rooms';
-import { SpacesService } from '@trinity/data-access-rooms';
+import {
+  AccountScopeService,
+  MixedRoomsService,
+  MixedSpacesService,
+  RoomsService,
+  SpacesService,
+} from '@trinity/data-access-rooms';
 
 /** What a {@link SwitcherResult} points at, driving its icon and the jump on select. */
 export type SwitcherKind = 'room' | 'space' | 'dm' | 'invite' | 'user';
@@ -31,12 +36,17 @@ export interface SwitcherResult {
   score: number;
   /** Whether the underlying room is encrypted (drives the lock badge). */
   encrypted?: boolean;
+  /** The signed-in account this row belongs to — the mixed-account view badges rows with
+   * it, and jumping to one switches to that account first. */
+  accountId?: string;
 }
 
 /** What the switcher dismisses with when a row is chosen. */
 export interface SwitcherSelection {
   kind: SwitcherKind;
   id: string;
+  /** Owning account, when the row came from the mixed-account corpus. */
+  accountId?: string;
 }
 
 /** A single message that matched an in-room search (client- or server-side). */
@@ -95,6 +105,7 @@ interface SwitcherEntry {
   /** Last-activity ms for the recency tiebreak (0 for spaces/invites). */
   activityTs: number;
   encrypted?: boolean;
+  accountId?: string;
 }
 
 const SCORE_EXACT = 1000;
@@ -124,6 +135,9 @@ const DEFAULT_LIMIT = 30;
 export class SearchService {
   private readonly rooms = inject(RoomsService);
   private readonly spaces = inject(SpacesService);
+  private readonly mixedRooms = inject(MixedRoomsService);
+  private readonly mixedSpaces = inject(MixedSpacesService);
+  private readonly scope = inject(AccountScopeService);
   private readonly invites = inject(InvitesService);
   private readonly matrix = inject(MatrixClientService);
 
@@ -133,11 +147,16 @@ export class SearchService {
    * re-projecting and re-casing every name.
    */
   private readonly entries = computed<SwitcherEntry[]>(() => {
+    // Mirror the sidebar's scope: while mixing, the switcher searches every selected
+    // account's rooms and spaces, each row tagged with the account that owns it. DMs are
+    // then classified by the row's OWN account's m.direct, since the active account's
+    // direct set says nothing about another account's rooms.
+    const mixing = this.scope.mixing();
     const directIds = this.rooms.directRoomIds();
     const out: SwitcherEntry[] = [];
 
-    for (const room of this.rooms.rooms()) {
-      const isDm = directIds.has(room.id);
+    for (const room of mixing ? this.mixedRooms.rooms() : this.rooms.rooms()) {
+      const isDm = mixing ? room.directUserId != null : directIds.has(room.id);
       const topic = room.topic.trim();
       const titleLower = room.name.toLowerCase();
       out.push({
@@ -151,10 +170,13 @@ export class SearchService {
         haystack: topic ? `${titleLower}\n${topic.toLowerCase()}` : titleLower,
         activityTs: room.activityTs,
         encrypted: room.encrypted,
+        ...(mixing ? { accountId: room.accountId } : {}),
       });
     }
 
-    for (const space of this.spaces.spaces()) {
+    for (const space of mixing
+      ? this.mixedSpaces.spaces()
+      : this.spaces.spaces()) {
       const titleLower = space.name.toLowerCase();
       out.push({
         kind: 'space',
@@ -165,9 +187,12 @@ export class SearchService {
         titleLower,
         haystack: titleLower,
         activityTs: 0,
+        ...(mixing ? { accountId: space.accountId } : {}),
       });
     }
 
+    // Invites stay active-account only: InvitesService projects one client, and accepting
+    // one is an action on that account.
     for (const invite of this.invites.pendingInvites()) {
       const titleLower = invite.name.toLowerCase();
       out.push({
@@ -218,6 +243,7 @@ export class SearchService {
         ...(entry.encrypted !== undefined
           ? { encrypted: entry.encrypted }
           : {}),
+        ...(entry.accountId ? { accountId: entry.accountId } : {}),
       }));
   }
 
