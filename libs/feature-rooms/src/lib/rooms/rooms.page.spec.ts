@@ -2476,4 +2476,31 @@ describe('RoomsPage mixed-account view', () => {
     expect(switchAccount).not.toHaveBeenCalled();
     expect(page.activeRoomId()).toBe('!mine:hs');
   });
+
+  it('switches to the owning account before selecting a foreign space', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    page.mixedMode.set('all');
+
+    page.onSelectSpaceRow('!s-alt:hs'); // belongs to @alt:hs
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+
+    // The active account's own space selects without a switch; Home (null) too.
+    switchAccount.mockClear();
+    page.onSelectSpaceRow('!s-mine:hs');
+    page.onSelectSpaceRow(null);
+    expect(switchAccount).not.toHaveBeenCalled();
+  });
+
+  it('detaches the cross-account projections when the toggle returns to This account', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    page.mixedMode.set('all');
+    TestBed.tick();
+    expect(setMixedRoomsEnabled).toHaveBeenLastCalledWith(true);
+
+    page.mixedMode.set('this');
+    TestBed.tick();
+    expect(setMixedRoomsEnabled).toHaveBeenLastCalledWith(false);
+    // Recent falls back to the active account's rooms only.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
+  });
 });

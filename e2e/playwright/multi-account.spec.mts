@@ -681,4 +681,61 @@ test.describe('Multiple accounts', () => {
       page.locator('trn-channel-sidebar .channel.active', { hasText: roomA }),
     ).toBeVisible({ timeout: 15_000 });
   });
+
+  test('mixed view shows both accounts’ space pills, badged, and opening one switches account', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}sp`;
+    const userA = `msp-a-${runId}`;
+    const passA = `msp-a-pass-${runId}`;
+    const userB = `msp-b-${runId}`;
+    const passB = `msp-b-pass-${runId}`;
+    const spaceA = `Space A ${runId}`;
+    const spaceB = `Space B ${runId}`;
+
+    await registerUser(request, userA, passA);
+    await registerUser(request, userB, passB);
+    const a = await apiLogin(request, hs, userA, passA);
+    const b = await apiLogin(request, hs, userB, passB);
+    // Each account creates a space (a room with creation_content.type: m.space).
+    for (const [who, name] of [
+      [a, spaceA],
+      [b, spaceB],
+    ] as const) {
+      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: who.headers,
+        data: {
+          name,
+          preset: 'private_chat',
+          creation_content: { type: 'm.space' },
+        },
+      });
+    }
+
+    await login(page, { available: true, hs, user: userA, pass: passA });
+    await addAccountViaUi(page, hs, userB, passB);
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+
+    const railPill = (name: string) =>
+      page.locator('trn-server-rail').getByRole('button', { name });
+
+    // With "This account" (the default), only B's space pill is in the rail.
+    await expect(railPill(spaceB)).toBeVisible({ timeout: 20_000 });
+    await expect(railPill(spaceA)).toHaveCount(0);
+
+    // Switch to "All accounts" → both accounts' space pills show, each badged.
+    await page.getByTestId('recent-scope-all').click();
+    await expect(railPill(spaceA)).toBeVisible({ timeout: 20_000 });
+    await expect(
+      railPill(spaceA).locator('[data-testid="account-badge"]'),
+    ).toBeVisible();
+
+    // Opening A's space switches the active account to A.
+    await railPill(spaceA).click();
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userA}:`, {
+      timeout: 20_000,
+    });
+  });
 });

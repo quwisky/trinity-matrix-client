@@ -132,4 +132,42 @@ describe('AvatarComponent', () => {
       expect(contrast(background, ink)).toBeGreaterThanOrEqual(4.5);
     });
   });
+
+  const badge = (host: HTMLElement) =>
+    host.querySelector<HTMLElement>('[data-testid="account-badge"]');
+
+  it('renders no account badge by default', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: { initial: 'R', name: 'Room' },
+    });
+    expect(badge(container)).toBeNull();
+  });
+
+  it('renders the account badge with the account initial and label', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: {
+        initial: 'R',
+        name: 'Room',
+        accountBadge: { initial: 'W', name: 'Work' },
+      },
+    });
+    const el = badge(container)!;
+    expect(el.textContent?.trim()).toBe('W');
+    expect(el.getAttribute('aria-label')).toBe('Account: Work');
+    expect(el.getAttribute('title')).toBe('Work');
+  });
+
+  it('colours the badge from the account name (not the row) and keeps its letter legible', async () => {
+    const { fixture } = await render(AvatarComponent, {
+      inputs: { name: 'Room A', accountBadge: { initial: 'W', name: 'Work' } },
+    });
+    const avatar = fixture.componentInstance;
+    const badgeColor = avatar.badgeColor();
+    expect(contrast(badgeColor, avatar.badgeInk())).toBeGreaterThanOrEqual(4.5);
+
+    // Changing the row name must not move the account badge's colour — it's hashed
+    // from the account, not the room.
+    fixture.componentRef.setInput('name', 'A completely different room');
+    expect(avatar.badgeColor()).toBe(badgeColor);
+  });
 });
