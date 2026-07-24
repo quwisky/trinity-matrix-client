@@ -234,6 +234,16 @@ describe('RoomsPage action error feedback', () => {
     expect(TestBed.inject(MediaService).releaseAll).toHaveBeenCalled();
   });
 
+  // Leaving is irreversible for a private room, so a mixed-in row must leave on ITS
+  // account rather than falling through to whichever one happens to be active.
+  it('leaves a foreign-account room on its own account', async () => {
+    const page = build();
+
+    await page.onLeaveRoom({ roomId: '!r:hs', accountId: '@alt:hs' });
+
+    expect(leaveRoom).toHaveBeenCalledWith('!r:hs', '@alt:hs');
+  });
+
   it('leaves a room but keeps a different open room selected', async () => {
     const page = build();
     page.activeRoomId.set('!other:hs');
@@ -2631,6 +2641,20 @@ describe('RoomsPage mixed-account view', () => {
     // Unticking drops back to the active account's own totals (all zero here).
     shownAccounts.set(new Set(['@me:hs']));
     expect(page.recentUnread()).toBe(0);
+  });
+
+  // A shortcut/MRU target is routinely OUTSIDE the current view (Home lists DMs only, a
+  // space lists its children), so resolving the owning account from visibleRooms() would
+  // miss and open the room on whatever client happens to be active.
+  it('resolves a foreign room’s account even when the current view filters it out', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onSelectSpace(null); // Home — DMs only, so '!theirs:hs' is not visible
+    expect(page.visibleRooms().map((r) => r.id)).not.toContain('!theirs:hs');
+
+    page.onSelectRoomRow('!theirs:hs');
+
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
   });
 
   it('forwards a picker tick to the account scope', () => {

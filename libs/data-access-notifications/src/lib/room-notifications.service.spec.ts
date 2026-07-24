@@ -143,3 +143,60 @@ describe('RoomNotificationsService', () => {
     });
   });
 });
+
+// A mixed-account sidebar row can belong to an account that isn't active. Push rules live
+// per-account, so reading or writing them through the active client reports the wrong level
+// and mutes the wrong account while the menu claims success.
+describe('RoomNotificationsService per-account rules', () => {
+  function setupOwned() {
+    const activeClient = makeClient();
+    const ownerClient = makeClient({
+      room: [{ rule_id: ROOM, enabled: true, actions: ['dont_notify'] }],
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        RoomNotificationsService,
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: activeClient as never,
+          clientFor: vi.fn((id: string) =>
+            id === '@owner:hs' ? (ownerClient as never) : null,
+          ),
+        }),
+      ],
+    });
+    return {
+      svc: TestBed.inject(RoomNotificationsService),
+      activeClient,
+      ownerClient,
+    };
+  }
+
+  it('reads the level from the owning account', () => {
+    const { svc, activeClient } = setupOwned();
+
+    // The owning account has a mentions-only rule; the active account has none.
+    expect(svc.modeFor(ROOM, '@owner:hs')).toBe('mentions');
+    expect(svc.modeFor(ROOM)).toBe('all');
+    expect(activeClient.getRoomPushRule).toHaveBeenCalled();
+  });
+
+  it('writes the level to the owning account, not the active one', async () => {
+    const { svc, activeClient, ownerClient } = setupOwned();
+
+    await firstValueFrom(svc.setMode(ROOM, 'mute', '@owner:hs'));
+
+    expect(ownerClient.setRoomMutePushRule).toHaveBeenCalled();
+    expect(activeClient.setRoomMutePushRule).not.toHaveBeenCalled();
+  });
+
+  it('reports "all" and refuses to write when the owning account has no client', async () => {
+    const { svc, activeClient } = setupOwned();
+
+    expect(svc.modeFor(ROOM, '@gone:hs')).toBe('all');
+    await expect(
+      firstValueFrom(svc.setMode(ROOM, 'mute', '@gone:hs')),
+    ).rejects.toThrow('Not signed in.');
+    expect(activeClient.setRoomMutePushRule).not.toHaveBeenCalled();
+  });
+});

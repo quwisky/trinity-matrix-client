@@ -997,3 +997,115 @@ describe('RoomsService membersOf', () => {
     expect(svc.membersOf('!a:hs')[0].powerLevel).toBe(100);
   });
 });
+
+// In the mixed-account view a sidebar row can belong to a signed-in account that ISN'T
+// active. Every mutating action therefore takes an optional owning-account id and must act
+// on THAT account's client — running them on the active one silently no-ops at best and, for
+// leave(), makes the wrong account leave a room.
+describe('RoomsService per-account actions', () => {
+  function setup() {
+    const activeClient = {
+      getRoom: vi.fn(() => null),
+      leave: vi.fn().mockResolvedValue({}),
+      setRoomTag: vi.fn().mockResolvedValue({}),
+      deleteRoomTag: vi.fn().mockResolvedValue({}),
+      getRooms: () => [],
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    // markRead walks the live timeline for the newest confirmed event, so the owning
+    // account's room needs one.
+    const latest = { getId: () => '$latest', status: null };
+    const ownerRoom = {
+      ...fakeRoom({ roomId: '!r:hs', name: 'general' }),
+      getLiveTimeline: () => ({
+        getEvents: () => [latest],
+        getState: () => undefined,
+      }),
+    };
+    const ownerClient = {
+      getRoom: vi.fn(() => ownerRoom),
+      leave: vi.fn().mockResolvedValue({}),
+      setRoomTag: vi.fn().mockResolvedValue({}),
+      deleteRoomTag: vi.fn().mockResolvedValue({}),
+      sendReadReceipt: vi.fn().mockResolvedValue({}),
+      setRoomReadMarkers: vi.fn().mockResolvedValue({}),
+      getRooms: () => [ownerRoom],
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const { svc, matrix } = provideRooms(activeClient);
+    ngMocks.stubMember(
+      matrix,
+      'clientFor',
+      vi.fn((id: string) => (id === '@owner:hs' ? ownerClient : null)),
+    );
+    return { svc, activeClient, ownerClient };
+  }
+
+  it('leaves on the owning account, not the active one', async () => {
+    const { svc, activeClient, ownerClient } = setup();
+
+    await firstValueFrom(svc.leave('!r:hs', '@owner:hs'));
+
+    expect(ownerClient.leave).toHaveBeenCalledWith('!r:hs');
+    expect(activeClient.leave).not.toHaveBeenCalled();
+  });
+
+  it('still leaves on the active account when no owner is given', async () => {
+    const { svc, activeClient, ownerClient } = setup();
+
+    await firstValueFrom(svc.leave('!r:hs'));
+
+    expect(activeClient.leave).toHaveBeenCalledWith('!r:hs');
+    expect(ownerClient.leave).not.toHaveBeenCalled();
+  });
+
+  it('favourites on the owning account', async () => {
+    const { svc, activeClient, ownerClient } = setup();
+
+    svc.setFavourite('!r:hs', true, '@owner:hs');
+    await Promise.resolve();
+
+    expect(ownerClient.setRoomTag).toHaveBeenCalledWith(
+      '!r:hs',
+      'm.favourite',
+      {},
+    );
+    expect(activeClient.setRoomTag).not.toHaveBeenCalled();
+  });
+
+  it('acks the read receipt on the owning account', async () => {
+    const { svc, activeClient, ownerClient } = setup();
+
+    await firstValueFrom(svc.markRead('!r:hs', '@owner:hs'));
+
+    expect(ownerClient.setRoomReadMarkers).toHaveBeenCalledWith(
+      '!r:hs',
+      '$latest',
+    );
+    expect(ownerClient.sendReadReceipt).toHaveBeenCalled();
+    expect(activeClient.getRoom).not.toHaveBeenCalled();
+  });
+
+  // clientFor() is null for an account that has signed out or hasn't started yet. A
+  // destructive action must fail loudly rather than fall through to the active client.
+  it('errors rather than falling back when the owning account has no client', async () => {
+    const { svc, activeClient } = setup();
+
+    await expect(
+      firstValueFrom(svc.leave('!r:hs', '@gone:hs')),
+    ).rejects.toThrow('Not signed in.');
+    await expect(
+      firstValueFrom(svc.markRead('!r:hs', '@gone:hs')),
+    ).rejects.toThrow('Not signed in.');
+    expect(activeClient.leave).not.toHaveBeenCalled();
+  });
+
+  it('quietly does nothing when favouriting on an account with no client', () => {
+    const { svc, activeClient } = setup();
+
+    expect(() => svc.setFavourite('!r:hs', true, '@gone:hs')).not.toThrow();
+    expect(activeClient.setRoomTag).not.toHaveBeenCalled();
+  });
+});

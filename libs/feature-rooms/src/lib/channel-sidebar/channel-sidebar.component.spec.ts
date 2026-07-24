@@ -650,6 +650,27 @@ describe('ChannelSidebarComponent', () => {
     expect(removed).toBe('!a:hs');
   });
 
+  // Presence is projected from the ACTIVE client only, so a mixed-in account's DM partner
+  // has no entry there — a dot would render grey and read as genuinely offline.
+  it('shows no presence dot on a DM owned by another account', async () => {
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!mine:hs', accountId: '@me:hs', directUserId: '@x:hs' }),
+          room({
+            id: '!theirs:hs',
+            accountId: '@alt:hs',
+            directUserId: '@y:hs',
+          }),
+        ],
+        activeUserId: '@me:hs',
+      },
+    });
+
+    // One dot only: the active account's DM keeps it, the mixed-in one does not.
+    expect(container.querySelectorAll('.presence-dot').length).toBe(1);
+  });
+
   it('emits leaveRoom from the room kebab menu', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },

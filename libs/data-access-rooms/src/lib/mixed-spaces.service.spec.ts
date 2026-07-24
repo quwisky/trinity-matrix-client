@@ -170,6 +170,52 @@ describe('MixedSpacesService', () => {
     expect(svc.spaces()[0].accountId).toBe('@b:hs');
   });
 
+  // Each account's copy of a shared space lists only the children THAT account joined, so
+  // keeping one copy would stop excluding the other's space-owned rooms from the flat Rooms
+  // list — they would reappear there as top-level entries.
+  it('unions the child ids of a space both accounts have joined', async () => {
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set(
+      '@a:hs',
+      fakeClient([fakeSpace('!s:hs', { name: 'Shared', children: ['!x:hs'] })]),
+    );
+    clients.set(
+      '@b:hs',
+      fakeClient([
+        fakeSpace('!s:hs', { name: 'Shared', children: ['!x:hs', '!y:hs'] }),
+      ]),
+    );
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@a:hs'); // @a's copy wins the pill, but not the child list
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+
+    expect(svc.spaces().length).toBe(1);
+    expect(svc.spaces()[0].accountId).toBe('@a:hs');
+    expect([...svc.spaces()[0].childRoomIds].sort()).toEqual([
+      '!x:hs',
+      '!y:hs',
+    ]);
+  });
+
+  it('re-attributes a shared space when the active account changes', async () => {
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeSpace('!s:hs')]));
+    clients.set('@b:hs', fakeClient([fakeSpace('!s:hs')]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@a:hs');
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+    expect(svc.spaces()[0].accountId).toBe('@a:hs');
+
+    // Switching accounts emits no client event; without an explicit re-flush the pill
+    // would stay tagged @a and selecting it would switch straight back.
+    activeUserId.set('@b:hs');
+    TestBed.tick();
+    await flush();
+    expect(svc.spaces()[0].accountId).toBe('@b:hs');
+  });
+
   it('stays empty and attaches nothing until accounts are selected', async () => {
     const { svc, accountIds, clients, flush } = harness();
     clients.set('@a:hs', fakeClient([fakeSpace('!s:hs')]));

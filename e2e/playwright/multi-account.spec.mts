@@ -751,4 +751,71 @@ test.describe('Multiple accounts', () => {
       timeout: 20_000,
     });
   });
+  // The picker's headline promises: the mix survives a restart, the account you're acting
+  // as can't be dropped, and unticking really puts the view back to one account. Those are
+  // all persisted/stateful behaviours that unit tests can only assert against a mock.
+  test('the account mix persists across a reload, locks the active account, and can be turned off', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}pk`;
+    const userA = `pick-a-${runId}`;
+    const passA = `pick-a-pass-${runId}`;
+    const userB = `pick-b-${runId}`;
+    const passB = `pick-b-pass-${runId}`;
+    const roomA = `Room A ${runId}`;
+    const roomB = `Room B ${runId}`;
+
+    await registerUser(request, userA, passA);
+    await registerUser(request, userB, passB);
+    const a = await apiLogin(request, hs, userA, passA);
+    const b = await apiLogin(request, hs, userB, passB);
+    for (const [who, name] of [
+      [a, roomA],
+      [b, roomB],
+    ] as const) {
+      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: who.headers,
+        data: { name, preset: 'private_chat' },
+      });
+    }
+
+    await login(page, { available: true, hs, user: userA, pass: passA });
+    await addAccountViaUi(page, hs, userB, passB);
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+
+    const roomARow = page.locator('.channel', { hasText: roomA });
+    const roomBRow = page.locator('.channel', { hasText: roomB });
+    await expect(roomBRow).toBeVisible({ timeout: 20_000 });
+
+    await mixInAccount(page, userA);
+    await expect(roomARow).toBeVisible({ timeout: 20_000 });
+    // While mixing, the footer states the mix size and stacks the accounts' avatars.
+    await expect(page.getByTestId('account-stack')).toBeVisible();
+    await expect(page.getByTestId('account-stack-count')).toContainText(
+      '2 accounts',
+    );
+
+    // The selection is persisted, so a cold reload comes back mixed rather than resetting.
+    await page.reload();
+    await expect(roomARow).toBeVisible({ timeout: 30_000 });
+    await expect(roomBRow).toBeVisible();
+
+    // The account being acted as is always shown: its picker row is present but disabled,
+    // so it cannot be unticked.
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('show-accounts').click();
+    const activeRow = page.locator(`[data-testid^="show-account-@${userB}:"]`);
+    await expect(activeRow).toHaveAttribute('aria-checked', 'true');
+    await expect(activeRow).toHaveAttribute('data-disabled', '');
+
+    // Unticking the other account returns the view to a single account.
+    await page.locator(`[data-testid^="show-account-@${userA}:"]`).click();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(roomARow).toHaveCount(0);
+    await expect(roomBRow).toBeVisible();
+    await expect(page.getByTestId('account-stack')).toHaveCount(0);
+  });
 });
