@@ -34,8 +34,9 @@ export function sameAccountSet(
  *
  * The stored selection is kept raw and intersected with the live accounts on read, so an
  * account that is signed out simply stops contributing (and returns to the mix if it is
- * added back) rather than being silently forgotten mid-session. Dead ids are pruned on the
- * next write.
+ * added back) rather than being silently forgotten mid-session. Stale ids are deliberately
+ * NOT pruned on write — a soft-logged-out account is absent from `accountIds()`, and
+ * dropping it there would discard the user's pick for good.
  */
 @Injectable({ providedIn: 'root' })
 export class AccountScopeService {
@@ -114,6 +115,12 @@ export class AccountScopeService {
       }
     } else {
       next.delete(userId);
+      // Turning the mix off must clear the stored active account too. Leaving it behind
+      // means the set is still "one explicit member", so the next time the user switches
+      // accounts that member plus the new active account would silently re-enable mixing.
+      if (active && next.size === 1 && next.has(active)) {
+        next.clear();
+      }
     }
     if (sameAccountSet(next, this.stored())) {
       return;

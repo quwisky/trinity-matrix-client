@@ -212,9 +212,17 @@ export class ChannelSidebarComponent {
    * the row updates when that user's presence changes.
    */
   presenceOf(room: RoomSummary): PresenceState | null {
-    return room.directUserId
-      ? this.presence.presenceFor(room.directUserId)()
-      : null;
+    // Presence is projected from the ACTIVE client only, so a mixed-in account's DM partner
+    // has no entry there and would render a grey dot — indistinguishable from genuinely
+    // offline. Show nothing rather than something false.
+    const active = this.activeUserId();
+    if (
+      !room.directUserId ||
+      (active && room.accountId && room.accountId !== active)
+    ) {
+      return null;
+    }
+    return this.presence.presenceFor(room.directUserId)();
   }
 
   /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service, on the

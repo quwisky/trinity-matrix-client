@@ -1,6 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
+import { NotificationCountType } from 'matrix-js-sdk';
 import { MixedRoomsService } from './mixed-rooms.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
@@ -15,6 +16,8 @@ function fakeRoom(
     membership?: string;
     activityTs?: number;
     favourite?: boolean;
+    unread?: number;
+    highlight?: number;
   } = {},
 ) {
   return {
@@ -25,7 +28,10 @@ function fakeRoom(
     getMxcAvatarUrl: () => null,
     getJoinedMemberCount: () => 1,
     hasEncryptionStateEvent: () => false,
-    getUnreadNotificationCount: () => 0,
+    getUnreadNotificationCount: (type?: unknown) =>
+      type === NotificationCountType.Highlight
+        ? (opts.highlight ?? 0)
+        : (opts.unread ?? 0),
     getLastActiveTimestamp: () => opts.activityTs ?? 0,
     getLiveTimeline: () => ({
       getEvents: () => [],
@@ -173,6 +179,44 @@ describe('MixedRoomsService', () => {
 
     expect(svc.rooms().map((r) => r.id)).toEqual(['!shared:hs']);
     // The active account's copy wins, so opening it acts as the account already in use.
+    expect(svc.rooms()[0].accountId).toBe('@b:hs');
+  });
+
+  // Dropping the losing copy wholesale would hide a mention that landed on it.
+  it('keeps the loudest unread of the two copies of a shared room', async () => {
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom('!shared:hs', { unread: 0 })]));
+    clients.set(
+      '@b:hs',
+      fakeClient([fakeRoom('!shared:hs', { unread: 3, highlight: 2 })]),
+    );
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@a:hs'); // the read copy would otherwise win outright
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+
+    const row = svc.rooms()[0];
+    expect(row.accountId).toBe('@a:hs'); // identity still prefers the active account
+    expect(row.unreadCount).toBe(3);
+    expect(row.highlightCount).toBe(2);
+    expect(row.hasUnread).toBe(true);
+  });
+
+  it('re-attributes a shared room when the active account changes', async () => {
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom('!shared:hs')]));
+    clients.set('@b:hs', fakeClient([fakeRoom('!shared:hs')]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@a:hs');
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+    expect(svc.rooms()[0].accountId).toBe('@a:hs');
+
+    // Switching accounts emits no client event, so without an explicit re-flush the row
+    // would stay tagged @a and clicking it would switch straight back.
+    activeUserId.set('@b:hs');
+    TestBed.tick();
+    await flush();
     expect(svc.rooms()[0].accountId).toBe('@b:hs');
   });
 

@@ -87,6 +87,10 @@ function child(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
  * and invites now come from `SpacesService`/`InvitesService` signals (not inputs),
  * so tests seed and later mutate those signals directly.
  */
+/** Spy behind RoomNotificationsService.modeFor, so tests can assert the account it was
+ * asked about (a mixed-in row must be read from ITS account, not the active one). */
+let modeForSpy: ReturnType<typeof vi.fn>;
+
 async function renderSidebar(
   opts: {
     inputs?: {
@@ -106,6 +110,7 @@ async function renderSidebar(
     notifyMode?: RoomNotifyMode;
   } = {},
 ) {
+  modeForSpy = vi.fn(() => opts.notifyMode ?? 'all');
   const signals = {
     notJoinedRooms: signal<SpaceChildRoom[]>(opts.joinableRooms ?? []),
     childSpaces: signal<SpaceChildRoom[]>(opts.childSpaces ?? []),
@@ -126,7 +131,7 @@ async function renderSidebar(
       MockProvider(InvitesService, { pendingInvites: signals.pendingInvites }),
       MockProvider(RoomsService),
       MockProvider(RoomNotificationsService, {
-        modeFor: () => opts.notifyMode ?? 'all',
+        modeFor: modeForSpy,
       }),
       { provide: PresenceService, useValue: presenceStub },
     ],
@@ -728,12 +733,17 @@ describe('ChannelSidebarComponent', () => {
     expect(notify?.textContent).toContain('Notifications');
   });
 
-  it('reads the room’s current notification level for the menu', async () => {
+  it('reads the level from the account that owns the row, not the active one', async () => {
     const { fixture } = await renderSidebar({
       inputs: { rooms: [room({ id: '!a:hs' })] },
       notifyMode: 'mentions',
     });
-    expect(fixture.componentInstance.notifyMode('!a:hs')).toBe('mentions');
+
+    const foreign = room({ id: '!a:hs', accountId: '@alt:hs' });
+    expect(fixture.componentInstance.notifyMode(foreign)).toBe('mentions');
+    // A mixed-in row's push rules live on ITS account; reading them from the active client
+    // would report the wrong level and silently mute/unmute the wrong account.
+    expect(modeForSpy).toHaveBeenCalledWith('!a:hs', '@alt:hs');
   });
 
   it('emits setNotifyMode when a level is chosen from the submenu', async () => {

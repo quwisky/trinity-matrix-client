@@ -102,6 +102,19 @@ describe('AccountScopeService', () => {
     expect(svc.selected().has('@alt:hs')).toBe(true);
   });
 
+  // Turning the mix off must forget the active account too, or the next account switch
+  // would pair it with the newly-active one and silently turn mixing back on.
+  it('stays single-account after unticking, even across an account switch', () => {
+    const { svc, activeUserId } = harness(['@me:hs', '@alt:hs']);
+    svc.toggle('@alt:hs');
+    svc.toggle('@alt:hs'); // back off again
+    expect(svc.mixing()).toBe(false);
+
+    activeUserId.set('@alt:hs'); // user switches accounts from the switcher
+    expect([...svc.selected()]).toEqual(['@alt:hs']);
+    expect(svc.mixing()).toBe(false);
+  });
+
   it('persists the selection and restores it on the next launch', async () => {
     const first = harness(['@me:hs', '@alt:hs']);
     first.svc.toggle('@alt:hs');

@@ -74,7 +74,7 @@ describe('SidebarUserPanelComponent', () => {
     expect(
       container.querySelector('[data-testid="account-stack-count"]')
         ?.textContent,
-    ).toContain('+1');
+    ).toContain('2 accounts');
   });
 
   it('offers the picker only when more than one account is signed in', async () => {

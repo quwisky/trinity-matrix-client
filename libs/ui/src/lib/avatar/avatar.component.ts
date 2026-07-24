@@ -138,6 +138,13 @@ export class AvatarComponent {
   readonly url = input<string | null>(null);
   /** Raw `mxc://`; resolved via {@link AVATAR_RESOLVER} when one is provided. */
   readonly mxc = input<string | null>(null);
+  /**
+   * Account that owns this avatar's media. Resolves through THAT account's client, so a
+   * mixed-account view never asks one homeserver for another identity's media (which would
+   * both leak the association and fail wherever the two servers don't federate media).
+   * Null = the active account, which is right for every single-account surface.
+   */
+  readonly accountId = input<string | null>(null);
   readonly name = input('');
   readonly initial = input('?');
   readonly size = input(40);
@@ -237,9 +244,10 @@ export class AvatarComponent {
     effect((onCleanup) => {
       const mxc = this.mxc();
       const size = this.size();
+      const accountId = this.accountId() ?? undefined;
       this.resolvedUrl.set(null);
       if (mxc && this.resolver) {
-        const sub = this.resolver(mxc, size).subscribe((resolved) =>
+        const sub = this.resolver(mxc, size, accountId).subscribe((resolved) =>
           this.resolvedUrl.set(resolved),
         );
         onCleanup(() => sub.unsubscribe());

@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, effect, inject, signal } from '@angular/core';
 import {
   ClientEvent,
   MatrixEventEvent,
@@ -70,6 +70,16 @@ export class MixedRoomsService {
     this.scheduleFlush();
   }
 
+  constructor() {
+    // The dedupe below prefers the ACTIVE account's copy of a shared room, so a switch has
+    // to re-attribute those rows. Nothing else triggers it: the selection set is unchanged
+    // by a switch, so both setAccounts() and the page's effect early-return.
+    effect(() => {
+      this.matrix.activeUserId();
+      this.scheduleFlush();
+    });
+  }
+
   /** Reconcile the per-account listener set against the selection (attach/detach). */
   private syncListeners(): void {
     // Only accounts that are both selected and still signed in.
@@ -137,14 +147,32 @@ export class MixedRoomsService {
         if (room.isSpaceRoom() || room.getMyMembership() !== 'join') {
           continue;
         }
+        const summary = buildRoomSummary(
+          room,
+          userId,
+          userByRoom.get(room.roomId),
+        );
         const existing = byRoomId.get(room.roomId);
-        if (existing && !(userId === active && existing.accountId !== active)) {
+        if (!existing) {
+          byRoomId.set(room.roomId, summary);
           continue;
         }
-        byRoomId.set(
-          room.roomId,
-          buildRoomSummary(room, userId, userByRoom.get(room.roomId)),
-        );
+        // Same room on two accounts: keep one identity but carry the LOUDEST unread of the
+        // two, or a mention that arrived on the copy we drop would be invisible — the row
+        // and the rail badge would both read as read.
+        const winner =
+          userId === active && existing.accountId !== active
+            ? summary
+            : existing;
+        byRoomId.set(room.roomId, {
+          ...winner,
+          unreadCount: Math.max(existing.unreadCount, summary.unreadCount),
+          highlightCount: Math.max(
+            existing.highlightCount,
+            summary.highlightCount,
+          ),
+          hasUnread: existing.hasUnread || summary.hasUnread,
+        });
       }
     }
     const all = [...byRoomId.values()];

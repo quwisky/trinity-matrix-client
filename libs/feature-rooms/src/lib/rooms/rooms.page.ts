@@ -631,7 +631,9 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   private hopRoom(direction: 'back' | 'forward'): void {
-    const known = new Set(this.rooms.rooms().map((room) => room.id));
+    // Across every mixed account, not just the active one — otherwise hopping back to a
+    // room you opened on another account silently does nothing.
+    const known = new Set(this.knownRooms().map((room) => room.id));
     this.openShortcutTarget(
       this.mru.hop(direction, this.activeRoomId(), known),
       'hop',
@@ -1088,7 +1090,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    * action runs on its client), then open the room; otherwise open it directly.
    */
   onSelectRoomRow(id: string, source: 'user' | 'hop' = 'user'): void {
-    const accountId = this.visibleRooms().find((r) => r.id === id)?.accountId;
+    const accountId = this.knownRooms().find((r) => r.id === id)?.accountId;
     if (accountId && accountId !== this.matrix.activeUserId()) {
       this.runOnAccount(accountId, () => this.onSelectRoom(id, source));
       return;
@@ -1117,6 +1119,16 @@ export class RoomsPage implements OnInit, OnDestroy {
    */
   onToggleAccountShown(userId: string): void {
     this.accountScope.toggle(userId);
+  }
+
+  /**
+   * Every room the shell can currently open, unfiltered by the active view. `visibleRooms()`
+   * is a *filtered* projection (Home shows DMs only, a space shows its children), so an MRU
+   * or hop target is routinely absent from it — resolving a row's owning account there would
+   * silently miss and open the room on the wrong client.
+   */
+  private knownRooms(): RoomSummary[] {
+    return this.mixedOn() ? this.mixedRooms.rooms() : this.rooms.rooms();
   }
 
   /** Switch to `accountId`, then run `then` once the switch has landed. */

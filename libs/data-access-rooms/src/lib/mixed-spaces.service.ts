@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, effect, inject, signal } from '@angular/core';
 import { ClientEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { sameAccountSet } from './account-scope.service';
@@ -54,6 +54,14 @@ export class MixedSpacesService {
     this.scheduleFlush();
   }
 
+  constructor() {
+    // Re-attribute deduped pills when the active account changes (see MixedRoomsService).
+    effect(() => {
+      this.matrix.activeUserId();
+      this.scheduleFlush();
+    });
+  }
+
   private syncListeners(): void {
     const live = new Set(this.matrix.accountIds());
     const wanted = new Set<string>();
@@ -101,6 +109,10 @@ export class MixedSpacesService {
     // for why duplicate ids across mixed accounts must not reach the view.
     const active = this.matrix.activeUserId();
     const bySpaceId = new Map<string, SpaceSummary>();
+    // Child ids are per-account (each keeps only the children THAT account joined), so the
+    // deduped pill must carry the union — otherwise the dropped account's space-owned rooms
+    // stop being excluded from the flat Rooms list and reappear there as top-level entries.
+    const childrenBySpace = new Map<string, string[]>();
     for (const userId of [...this.listeners.keys()].sort()) {
       const client = this.matrix.clientFor(userId);
       if (!client) {
@@ -110,6 +122,14 @@ export class MixedSpacesService {
         if (!room.isSpaceRoom() || room.getMyMembership() !== 'join') {
           continue;
         }
+        const merged = childrenBySpace.get(room.roomId) ?? [];
+        for (const childId of spaceChildIdsOf(client, room)) {
+          if (!merged.includes(childId)) {
+            merged.push(childId);
+          }
+        }
+        childrenBySpace.set(room.roomId, merged);
+
         const existing = bySpaceId.get(room.roomId);
         if (existing && !(userId === active && existing.accountId !== active)) {
           continue;
@@ -121,11 +141,14 @@ export class MixedSpacesService {
           name,
           initial: initialOf(name),
           avatarMxc: room.getMxcAvatarUrl(),
-          childRoomIds: spaceChildIdsOf(client, room),
+          childRoomIds: [],
         });
       }
     }
-    const all = [...bySpaceId.values()];
+    const all = [...bySpaceId.values()].map((space) => ({
+      ...space,
+      childRoomIds: childrenBySpace.get(space.id) ?? [],
+    }));
     all.sort((a, b) => a.name.localeCompare(b.name));
     this._spaces.set(all);
   }

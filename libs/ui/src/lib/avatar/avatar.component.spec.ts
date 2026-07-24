@@ -40,7 +40,7 @@ describe('AvatarComponent', () => {
       providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
     });
 
-    expect(resolver).toHaveBeenCalledWith('mxc://hs/a', 64);
+    expect(resolver).toHaveBeenCalledWith('mxc://hs/a', 64, undefined);
     expect(fixture.componentInstance.src()).toBe('blob:resolved');
   });
 
@@ -131,6 +131,18 @@ describe('AvatarComponent', () => {
     inkByBackground.forEach((ink, background) => {
       expect(contrast(background, ink)).toBeGreaterThanOrEqual(4.5);
     });
+  });
+
+  it('resolves through the owning account’s client when one is given', async () => {
+    const resolver = vi.fn(() => of('blob:resolved'));
+    await render(AvatarComponent, {
+      inputs: { mxc: 'mxc://corp/a', size: 36, accountId: '@work:corp' },
+      providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
+    });
+
+    // A mixed-in account's room avatar must not be fetched through the ACTIVE account's
+    // homeserver — that leaks the association and fails where the two don't federate media.
+    expect(resolver).toHaveBeenCalledWith('mxc://corp/a', 36, '@work:corp');
   });
 
   const badge = (host: HTMLElement) =>

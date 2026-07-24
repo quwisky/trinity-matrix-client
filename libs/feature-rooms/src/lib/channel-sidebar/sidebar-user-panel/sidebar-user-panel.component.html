@@ -19,6 +19,7 @@
           <trn-avatar
             class="userbar__stack-item"
             [mxc]="account.avatarMxc"
+            [accountId]="account.userId"
             [initial]="initialFor(account)"
             [name]="account.displayName"
             [size]="24"
@@ -39,7 +40,7 @@
         <span class="userbar__meta">
           <span class="userbar__handle">{{ user().userId }}</span>
           <span class="userbar__mixed" data-testid="account-stack-count"
-            >+{{ mixedAccounts().length - 1 }}</span
+            >{{ mixedAccounts().length }} accounts</span
           >
         </span>
       } @else {
@@ -72,6 +73,7 @@
       >
         <trn-avatar
           [mxc]="account.avatarMxc"
+          [accountId]="account.userId"
           [name]="account.displayName"
           [size]="28"
         />
