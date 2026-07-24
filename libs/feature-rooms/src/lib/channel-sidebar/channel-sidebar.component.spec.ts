@@ -591,7 +591,7 @@ describe('ChannelSidebarComponent', () => {
     expect(favouriteItem?.textContent).toContain('Favourite');
     favouriteItem?.click();
 
-    expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', true);
+    expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', true, '@me:hs');
   });
 
   it('unfavourites a favourite room via the kebab menu', async () => {
@@ -611,7 +611,11 @@ describe('ChannelSidebarComponent', () => {
     expect(favouriteItem?.textContent).toContain('Unfavourite');
     favouriteItem?.click();
 
-    expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', false);
+    expect(roomsSvc.setFavourite).toHaveBeenCalledWith(
+      '!a:hs',
+      false,
+      '@me:hs',
+    );
   });
 
   it('emits removeRoom for a joined channel only while a space is active', async () => {
@@ -646,7 +650,7 @@ describe('ChannelSidebarComponent', () => {
       inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
     });
     let left: string | undefined;
-    fixture.componentInstance.leaveRoom.subscribe((id) => (left = id));
+    fixture.componentInstance.leaveRoom.subscribe((e) => (left = e.roomId));
 
     container.querySelector<HTMLElement>('.channel__menu')!.click();
     fixture.detectChanges();
@@ -662,7 +666,7 @@ describe('ChannelSidebarComponent', () => {
       },
     });
     let marked: string | undefined;
-    fixture.componentInstance.markRead.subscribe((id) => (marked = id));
+    fixture.componentInstance.markRead.subscribe((e) => (marked = e.roomId));
 
     container.querySelector<HTMLElement>('.channel__menu')!.click();
     fixture.detectChanges();
@@ -759,7 +763,9 @@ describe('ChannelSidebarComponent', () => {
     ).toBe('true');
     muteItem!.click();
 
-    expect(picks).toEqual([{ roomId: '!a:hs', mode: 'mute' }]);
+    expect(picks).toEqual([
+      { roomId: '!a:hs', mode: 'mute', accountId: '@me:hs' },
+    ]);
   });
 
   // One render per case (a second render() in the same test re-configures an already
@@ -809,7 +815,9 @@ describe('ChannelSidebarComponent', () => {
       .querySelector<HTMLElement>('[data-testid="room-notify-mentions"]')!
       .click();
 
-    expect(picks).toEqual([{ roomId: '!a:hs', mode: 'mentions' }]);
+    expect(picks).toEqual([
+      { roomId: '!a:hs', mode: 'mentions', accountId: '@me:hs' },
+    ]);
   });
 
   it('emits the level for the specific room whose menu was opened', async () => {
@@ -838,7 +846,9 @@ describe('ChannelSidebarComponent', () => {
       .querySelector<HTMLElement>('[data-testid="room-notify-mute"]')!
       .click();
 
-    expect(picks).toEqual([{ roomId: '!b:hs', mode: 'mute' }]);
+    expect(picks).toEqual([
+      { roomId: '!b:hs', mode: 'mute', accountId: '@me:hs' },
+    ]);
   });
 
   it('shows loading then error states for the space hierarchy', async () => {

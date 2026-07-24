@@ -126,19 +126,58 @@
 }
 
 // Included accounts as an overlapping stack, replacing the single avatar while mixing.
-// The 24px tiles keep the cluster inside the .userbar's fixed 52px budget even at three
-// deep, and the ring reads each tile as a separate face rather than one wide blob.
+// The 24px tiles keep the cluster inside the .userbar's fixed 52px budget (capped at three
+// in the template), and the ring reads each tile as a separate face rather than one blob.
 .userbar__stack {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
 }
 
-.userbar__stack-item:not(:first-child) {
-  margin-left: -10px;
-}
-
 .userbar__stack-item {
+  position: relative;
   border-radius: 50%;
   box-shadow: 0 0 0 2px var(--trinity-sidebar-header);
+
+  &:not(:first-child) {
+    margin-left: -10px;
+  }
+
+  // Descending z-index so the ACTIVE account (rendered first) sits on top of the stack —
+  // by default later siblings paint over earlier ones, which would bury the very account
+  // whose name is displayed next to it.
+  &:nth-child(1) {
+    z-index: 3;
+  }
+
+  &:nth-child(2) {
+    z-index: 2;
+  }
+
+  &:nth-child(3) {
+    z-index: 1;
+  }
+}
+
+// The handle ellipsises, the "+N" must not: an ordinary mxid would otherwise clip away the
+// only textual sign that the view is mixed.
+.userbar__meta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.userbar__mixed {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--trinity-text-muted);
+}
+
+// The active account is always shown, so its picker row is disabled to stop it being
+// unticked. Undo the disabled dimming: greying out the one row that is guaranteed present
+// reads as "excluded", the exact opposite of what it means.
+.account-pick[data-disabled] {
+  opacity: 1;
 }

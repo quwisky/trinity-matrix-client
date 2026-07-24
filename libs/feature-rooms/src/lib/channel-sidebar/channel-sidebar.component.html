@@ -281,7 +281,9 @@
         @if (room.hasUnread) {
           <button
             hlmDropdownMenuItem
-            (triggered)="markRead.emit(room.id)"
+            (triggered)="
+              markRead.emit({ roomId: room.id, accountId: room.accountId })
+            "
             data-testid="room-mark-read"
           >
             <ng-icon name="lucideCheckCheck" />
@@ -313,7 +315,9 @@
         <button
           hlmDropdownMenuItem
           variant="destructive"
-          (triggered)="leaveRoom.emit(room.id)"
+          (triggered)="
+            leaveRoom.emit({ roomId: room.id, accountId: room.accountId })
+          "
           data-testid="room-leave"
         >
           <ng-icon name="lucideLogOut" />
@@ -323,12 +327,18 @@
 
       <ng-template #notifyMenu>
         <div hlmDropdownMenuSub>
-          @let mode = notifyMode(room.id);
+          @let mode = notifyMode(room);
           <button
             hlmDropdownMenuRadio
             [checked]="mode === 'all'"
             [keepOpen]="false"
-            (triggered)="setNotifyMode.emit({ roomId: room.id, mode: 'all' })"
+            (triggered)="
+              setNotifyMode.emit({
+                roomId: room.id,
+                mode: 'all',
+                accountId: room.accountId,
+              })
+            "
             data-testid="room-notify-all"
           >
             <hlm-dropdown-menu-radio-indicator />
@@ -339,7 +349,11 @@
             [checked]="mode === 'mentions'"
             [keepOpen]="false"
             (triggered)="
-              setNotifyMode.emit({ roomId: room.id, mode: 'mentions' })
+              setNotifyMode.emit({
+                roomId: room.id,
+                mode: 'mentions',
+                accountId: room.accountId,
+              })
             "
             data-testid="room-notify-mentions"
           >
@@ -350,7 +364,13 @@
             hlmDropdownMenuRadio
             [checked]="mode === 'mute'"
             [keepOpen]="false"
-            (triggered)="setNotifyMode.emit({ roomId: room.id, mode: 'mute' })"
+            (triggered)="
+              setNotifyMode.emit({
+                roomId: room.id,
+                mode: 'mute',
+                accountId: room.accountId,
+              })
+            "
             data-testid="room-notify-mute"
           >
             <hlm-dropdown-menu-radio-indicator />

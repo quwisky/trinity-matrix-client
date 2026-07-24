@@ -114,16 +114,34 @@ describe('AccountScopeService', () => {
     expect([...second.svc.selected()].sort()).toEqual(['@alt:hs', '@me:hs']);
   });
 
-  it('prunes signed-out accounts from what it writes', () => {
-    const { svc, accountIds } = harness(['@me:hs', '@alt:hs', '@gone:hs']);
+  // A soft-logged-out account is absent from accountIds(); pruning it on write would throw
+  // away the user's pick for good, so the stored set keeps it and `selected` filters on read.
+  it('keeps a signed-out account in storage so its pick survives re-authentication', () => {
+    const { svc, accountIds } = harness(['@me:hs', '@alt:hs', '@away:hs']);
     svc.toggle('@alt:hs');
-    svc.toggle('@gone:hs');
+    svc.toggle('@away:hs');
 
-    accountIds.set(['@me:hs', '@alt:hs']); // @gone signs out
-    svc.toggle('@me:hs'); // a no-op on the active account…
-    svc.setSelected('@alt:hs', true); // …so force a write via an equal-but-explicit set
-    svc.toggle('@alt:hs'); // real write
-    expect(JSON.parse(store.get(KEY) ?? '[]')).not.toContain('@gone:hs');
+    accountIds.set(['@me:hs', '@alt:hs']); // @away's token is revoked overnight
+    expect(svc.selected().has('@away:hs')).toBe(false); // inert while signed out
+
+    svc.toggle('@alt:hs'); // any later write must not drop @away
+    expect(JSON.parse(store.get(KEY) ?? '[]')).toContain('@away:hs');
+
+    accountIds.set(['@me:hs', '@alt:hs', '@away:hs']); // re-authenticated
+    expect(svc.selected().has('@away:hs')).toBe(true);
+  });
+
+  // The active account is only unioned in at read time, so it must be materialised into
+  // storage when a mix is created — otherwise opening a mixed-in account's room (which
+  // switches the active account) drops the account you were mixing FROM straight back out.
+  it('survives the account switch that opening a mixed-in room performs', () => {
+    const { svc, activeUserId } = harness(['@me:hs', '@alt:hs']);
+    svc.toggle('@alt:hs');
+    expect(svc.mixing()).toBe(true);
+
+    activeUserId.set('@alt:hs'); // opening one of @alt's rooms switches to it
+    expect([...svc.selected()].sort()).toEqual(['@alt:hs', '@me:hs']);
+    expect(svc.mixing()).toBe(true); // the mix does NOT collapse
   });
 
   it('starts clean when the stored value is absent or corrupt', async () => {

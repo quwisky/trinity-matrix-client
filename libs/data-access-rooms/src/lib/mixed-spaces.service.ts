@@ -97,8 +97,11 @@ export class MixedSpacesService {
   }
 
   private flush(): void {
-    const all: SpaceSummary[] = [];
-    for (const userId of this.listeners.keys()) {
+    // One pill per space id, preferring the active account's copy — see MixedRoomsService
+    // for why duplicate ids across mixed accounts must not reach the view.
+    const active = this.matrix.activeUserId();
+    const bySpaceId = new Map<string, SpaceSummary>();
+    for (const userId of [...this.listeners.keys()].sort()) {
       const client = this.matrix.clientFor(userId);
       if (!client) {
         continue;
@@ -107,8 +110,12 @@ export class MixedSpacesService {
         if (!room.isSpaceRoom() || room.getMyMembership() !== 'join') {
           continue;
         }
+        const existing = bySpaceId.get(room.roomId);
+        if (existing && !(userId === active && existing.accountId !== active)) {
+          continue;
+        }
         const name = room.name || room.roomId;
-        all.push({
+        bySpaceId.set(room.roomId, {
           id: room.roomId,
           accountId: userId,
           name,
@@ -118,6 +125,7 @@ export class MixedSpacesService {
         });
       }
     }
+    const all = [...bySpaceId.values()];
     all.sort((a, b) => a.name.localeCompare(b.name));
     this._spaces.set(all);
   }

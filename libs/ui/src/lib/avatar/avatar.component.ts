@@ -21,6 +21,9 @@ import { AVATAR_RESOLVER } from './avatar-resolver';
  * loads or when the account has no avatar set.
  */
 export interface AccountBadge {
+  /** The owning account's user id — the badge's stable identity. Two accounts can share a
+   * display name, so the hashed colour and the resolver both key off this, not the name. */
+  readonly id: string;
   readonly initial: string;
   readonly name: string;
   /** The account's raw `mxc://` avatar; resolved via the resolver, initial as fallback. */
@@ -108,7 +111,9 @@ function readableInk(hex: string): string {
       }
       .account-badge {
         position: absolute;
-        right: -2px;
+        /* Bottom-LEFT: the presence dot owns bottom-right, and a DM row in the mixed view
+           carries both — same corner would hide the online indicator entirely. */
+        left: -2px;
         bottom: -2px;
         display: flex;
         align-items: center;
@@ -156,10 +161,12 @@ export class AvatarComponent {
     Math.max(14, Math.round(this.size() * 0.42)),
   );
 
-  /** Name-hashed fill for the account badge, and a readable ink for its letter. */
-  readonly badgeColor = computed(() =>
-    hashColor(this.accountBadge()?.name ?? ''),
-  );
+  /** Account-hashed fill for the badge, and a readable ink for its letter. Hashed on the
+   * user id so two accounts with the same display name stay visually distinct. */
+  readonly badgeColor = computed(() => {
+    const badge = this.accountBadge();
+    return hashColor(badge?.id || badge?.name || '');
+  });
   readonly badgeInk = computed(() => readableInk(this.badgeColor()));
 
   /** Fill colour for the presence dot, by state. */
@@ -196,6 +203,10 @@ export class AvatarComponent {
   private readonly badgeMxc = computed(
     () => this.accountBadge()?.avatarMxc ?? null,
   );
+
+  /** The owning account id, likewise isolated from the badge object's identity so the
+   * resolve effect below stays keyed on primitives only. */
+  private readonly badgeAccountId = computed(() => this.accountBadge()?.id);
 
   /** The account badge's avatar, resolved via the resolver (null until resolved / no
    * resolver / the account has no avatar) — when null the badge falls back to its initial. */
@@ -243,9 +254,13 @@ export class AvatarComponent {
     effect((onCleanup) => {
       const mxc = this.badgeMxc();
       const size = this.badgeSize();
+      const accountId = this.badgeAccountId();
       this.resolvedBadgeUrl.set(null);
       if (mxc && this.resolver) {
-        const sub = this.resolver(mxc, size).subscribe((resolved) =>
+        // Through the OWNING account's client: resolving a mixed-in account's avatar via
+        // the active account would make its homeserver fetch (and log) the other identity's
+        // media.
+        const sub = this.resolver(mxc, size, accountId).subscribe((resolved) =>
           this.resolvedBadgeUrl.set(resolved),
         );
         onCleanup(() => sub.unsubscribe());

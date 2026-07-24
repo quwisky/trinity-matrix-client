@@ -8,16 +8,33 @@ type Listener = (...args: unknown[]) => void;
 
 function fakeSpace(
   id: string,
-  opts: { name?: string; space?: boolean; membership?: string } = {},
+  opts: {
+    name?: string;
+    space?: boolean;
+    membership?: string;
+    /** Child room ids linked via `m.space.child` state events. */
+    children?: string[];
+  } = {},
 ) {
+  const children = opts.children ?? [];
   return {
     roomId: id,
     name: opts.name ?? id,
     isSpaceRoom: () => opts.space ?? true,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,
-    // childRoomIds reads m.space.child off the live timeline state; these fakes have none.
-    getLiveTimeline: () => ({ getState: () => undefined }),
+    // childRoomIds reads m.space.child off the live timeline state.
+    getLiveTimeline: () => ({
+      getState: () => ({
+        getStateEvents: (type: string) =>
+          type === 'm.space.child'
+            ? children.map((childId) => ({
+                getStateKey: () => childId,
+                getContent: () => ({ via: ['hs'] }),
+              }))
+            : [],
+      }),
+    }),
   };
 }
 
@@ -25,6 +42,11 @@ function fakeClient(rooms: ReturnType<typeof fakeSpace>[]) {
   const handlers = new Map<string, Set<Listener>>();
   return {
     getRooms: () => rooms,
+    // spaceChildIdsOf resolves each linked child and keeps only joined ones.
+    getRoom: (id: string) => ({
+      name: id,
+      getMyMembership: () => 'join',
+    }),
     on(evt: string, handler: Listener) {
       (handlers.get(evt) ?? handlers.set(evt, new Set()).get(evt)!).add(
         handler,
@@ -44,13 +66,16 @@ function fakeClient(rooms: ReturnType<typeof fakeSpace>[]) {
 function harness(): {
   svc: MixedSpacesService;
   accountIds: WritableSignal<readonly string[]>;
+  activeUserId: WritableSignal<string | null>;
   clients: Map<string, ReturnType<typeof fakeClient>>;
   flush: () => Promise<void>;
 } {
   const accountIds = signal<readonly string[]>([]);
   const clients = new Map<string, ReturnType<typeof fakeClient>>();
+  const activeUserId = signal<string | null>(null);
   const matrix = {
     accountIds: accountIds.asReadonly(),
+    activeUserId: activeUserId.asReadonly(),
     clientFor: (id: string) => clients.get(id) ?? null,
   } as unknown as MatrixClientService;
 
@@ -65,7 +90,7 @@ function harness(): {
     await Promise.resolve();
     await Promise.resolve();
   };
-  return { svc, accountIds, clients, flush };
+  return { svc, accountIds, activeUserId, clients, flush };
 }
 
 describe('MixedSpacesService', () => {
@@ -88,7 +113,7 @@ describe('MixedSpacesService', () => {
       ['!s2:hs', '@b:hs', 'Personal'],
       ['!s1:hs', '@a:hs', 'Work'],
     ]);
-    // childRoomIds is read from each space's m.space.child links; these fakes have none.
+    // childRoomIds is resolved from each space's own m.space.child links, on its own client.
     expect(svc.spaces()[0].childRoomIds).toEqual([]);
   });
 
@@ -108,6 +133,41 @@ describe('MixedSpacesService', () => {
         .sort(),
     ).toEqual(['!s1:hs', '!s2:hs']);
     expect(clients.get('@c:hs')!.listenerCount()).toBe(0);
+  });
+
+  // Guards the Rooms view's cross-account space-child exclusion: without real child ids
+  // every account's space-owned rooms leak back into the flat Rooms list.
+  it('resolves each space’s joined children from its own account’s client', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set(
+      '@a:hs',
+      fakeClient([
+        fakeSpace('!s1:hs', { name: 'Work', children: ['!c1:hs', '!c2:hs'] }),
+      ]),
+    );
+    clients.set('@b:hs', fakeClient([fakeSpace('!s2:hs', { name: 'Home' })]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+
+    const work = svc.spaces().find((s) => s.id === '!s1:hs');
+    expect(work?.childRoomIds).toEqual(['!c1:hs', '!c2:hs']);
+    expect(svc.spaces().find((s) => s.id === '!s2:hs')?.childRoomIds).toEqual(
+      [],
+    );
+  });
+
+  it('emits one pill when two accounts share a space, preferring the active account', async () => {
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeSpace('!s:hs', { name: 'Shared' })]));
+    clients.set('@b:hs', fakeClient([fakeSpace('!s:hs', { name: 'Shared' })]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@b:hs');
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+
+    expect(svc.spaces().map((s) => s.id)).toEqual(['!s:hs']);
+    expect(svc.spaces()[0].accountId).toBe('@b:hs');
   });
 
   it('stays empty and attaches nothing until accounts are selected', async () => {

@@ -69,13 +69,16 @@ function fakeClient(
 function harness(): {
   svc: MixedRoomsService;
   accountIds: WritableSignal<readonly string[]>;
+  activeUserId: WritableSignal<string | null>;
   clients: Map<string, ReturnType<typeof fakeClient>>;
   flush: () => Promise<void>;
 } {
   const accountIds = signal<readonly string[]>([]);
   const clients = new Map<string, ReturnType<typeof fakeClient>>();
+  const activeUserId = signal<string | null>(null);
   const matrix = {
     accountIds: accountIds.asReadonly(),
+    activeUserId: activeUserId.asReadonly(),
     clientFor: (id: string) => clients.get(id) ?? null,
   } as unknown as MatrixClientService;
 
@@ -90,7 +93,7 @@ function harness(): {
     await Promise.resolve();
     await Promise.resolve();
   };
-  return { svc, accountIds, clients, flush };
+  return { svc, accountIds, activeUserId, clients, flush };
 }
 
 describe('MixedRoomsService', () => {
@@ -148,6 +151,41 @@ describe('MixedRoomsService', () => {
         .sort(),
     ).toEqual(['!a:hs', '!b:hs']);
     expect(clients.get('@c:hs')!.listenerCount()).toBe(0);
+  });
+
+  // Two mixed accounts can be joined to the SAME room. Emitting both would put duplicate
+  // ids in the list, so `find(r => r.id === …)` — how a click resolves its account — could
+  // return the other account's row and open the room as the wrong identity.
+  it('emits one row per room when two accounts share it, preferring the active account', async () => {
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set(
+      '@a:hs',
+      fakeClient([fakeRoom('!shared:hs', { name: 'Shared' })]),
+    );
+    clients.set(
+      '@b:hs',
+      fakeClient([fakeRoom('!shared:hs', { name: 'Shared' })]),
+    );
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@b:hs');
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+
+    expect(svc.rooms().map((r) => r.id)).toEqual(['!shared:hs']);
+    // The active account's copy wins, so opening it acts as the account already in use.
+    expect(svc.rooms()[0].accountId).toBe('@b:hs');
+  });
+
+  it('picks a stable owner for a shared room when neither account is active', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set('@b:hs', fakeClient([fakeRoom('!shared:hs')]));
+    clients.set('@a:hs', fakeClient([fakeRoom('!shared:hs')]));
+    accountIds.set(['@b:hs', '@a:hs']);
+    svc.setAccounts(new Set(['@b:hs', '@a:hs']));
+    await flush();
+
+    expect(svc.rooms().length).toBe(1);
+    expect(svc.rooms()[0].accountId).toBe('@a:hs'); // first by sorted account id
   });
 
   it('classifies a room as a DM from its own account’s m.direct', async () => {

@@ -4,7 +4,7 @@
     [hlmDropdownMenuTrigger]="accountMenu"
     side="top"
     align="start"
-    aria-label="Account menu"
+    [attr.aria-label]="accountSummaryLabel()"
     data-testid="user-menu-trigger"
   >
     @if (mixedAccounts().length > 1) {
@@ -15,7 +15,7 @@
         data-testid="account-stack"
         aria-hidden="true"
       >
-        @for (account of mixedAccounts(); track account.userId) {
+        @for (account of stackAvatars(); track account.userId) {
           <trn-avatar
             class="userbar__stack-item"
             [mxc]="account.avatarMxc"
@@ -36,12 +36,12 @@
     <div class="userbar__id">
       <span class="userbar__name">{{ user().displayName }}</span>
       @if (mixedAccounts().length > 1) {
-        <span class="userbar__handle"
-          >{{ user().userId }} ·
-          <span data-testid="account-stack-count"
-            >+{{ mixedAccounts().length - 1 }} shown</span
-          ></span
-        >
+        <span class="userbar__meta">
+          <span class="userbar__handle">{{ user().userId }}</span>
+          <span class="userbar__mixed" data-testid="account-stack-count"
+            >+{{ mixedAccounts().length - 1 }}</span
+          >
+        </span>
       } @else {
         <span class="userbar__handle">{{ user().userId }}</span>
       }
@@ -151,6 +151,7 @@
       @for (account of accounts(); track account.userId) {
         @let isActive = account.userId === activeUserId();
         <button
+          class="account-pick"
           hlmDropdownMenuCheckbox
           [checked]="shownAccountIds().has(account.userId)"
           [disabled]="isActive"

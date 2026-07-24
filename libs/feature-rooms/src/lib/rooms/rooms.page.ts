@@ -15,7 +15,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { Observable, finalize } from 'rxjs';
+import { Observable, finalize, forkJoin } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
@@ -509,6 +509,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     for (const account of this.accounts()) {
       const name = account.displayName;
       badges.set(account.userId, {
+        id: account.userId,
         name,
         initial: (name.replace(/^[@#!]+/, '').trim()[0] ?? '?').toUpperCase(),
         avatarMxc: account.avatarMxc,
@@ -661,7 +662,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     source: 'user' | 'hop',
   ): void {
     if (roomId && roomId !== this.activeRoomId()) {
-      this.onSelectRoom(roomId, source);
+      this.onSelectRoomRow(roomId, source);
     }
   }
 
@@ -880,10 +881,18 @@ export class RoomsPage implements OnInit, OnDestroy {
     }).subscribe();
   }
 
-  /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely. */
-  async onLeaveRoom(roomId: string): Promise<void> {
+  /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely — on the
+   * account that owns the row. Leaving is irreversible for a private room, so it must
+   * never fall through to the active account just because the row belongs to another. */
+  async onLeaveRoom({
+    roomId,
+    accountId,
+  }: {
+    roomId: string;
+    accountId?: string;
+  }): Promise<void> {
     const name =
-      this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this room';
+      this.visibleRooms().find((r) => r.id === roomId)?.name ?? 'this room';
     const confirmed = await this.alert.confirm({
       header: 'Leave room',
       message: `Leave “${name}”? You'll stop receiving its messages and need a new invite (or a public join) to come back.`,
@@ -894,7 +903,7 @@ export class RoomsPage implements OnInit, OnDestroy {
       return;
     }
     this.rooms
-      .leave(roomId)
+      .leave(roomId, accountId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         // The room drops from the sidebar via sync. If it was the open one, tear the
@@ -1078,13 +1087,13 @@ export class RoomsPage implements OnInit, OnDestroy {
    * a different signed-in account — switch to that account first (so every downstream
    * action runs on its client), then open the room; otherwise open it directly.
    */
-  onSelectRoomRow(id: string): void {
+  onSelectRoomRow(id: string, source: 'user' | 'hop' = 'user'): void {
     const accountId = this.visibleRooms().find((r) => r.id === id)?.accountId;
     if (accountId && accountId !== this.matrix.activeUserId()) {
-      this.runOnAccount(accountId, () => this.onSelectRoom(id));
+      this.runOnAccount(accountId, () => this.onSelectRoom(id, source));
       return;
     }
-    this.onSelectRoom(id);
+    this.onSelectRoom(id, source);
   }
 
   /**
@@ -1274,37 +1283,58 @@ export class RoomsPage implements OnInit, OnDestroy {
   onSetNotifyMode({
     roomId,
     mode,
+    accountId,
   }: {
     roomId: string;
     mode: RoomNotifyMode;
+    accountId?: string;
   }): void {
-    this.setNotifyMode(roomId, mode);
+    this.setNotifyMode(roomId, mode, accountId);
   }
 
-  private setNotifyMode(roomId: string, mode: RoomNotifyMode): void {
+  private setNotifyMode(
+    roomId: string,
+    mode: RoomNotifyMode,
+    accountId?: string,
+  ): void {
     this.roomNotifications
-      .setMode(roomId, mode)
+      .setMode(roomId, mode, accountId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not update notifications.'),
       });
   }
 
-  /** Mark a single room read (from its ⋮ menu); the badge clears via sync. */
-  onMarkRead(roomId: string): void {
+  /** Mark a single room read (from its ⋮ menu); the badge clears via sync. Acked on the
+   * row's own account, which in the mixed view need not be the active one. */
+  onMarkRead({
+    roomId,
+    accountId,
+  }: {
+    roomId: string;
+    accountId?: string;
+  }): void {
     this.rooms
-      .markRead(roomId)
+      .markRead(roomId, accountId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not mark the room read.'),
       });
   }
 
-  /** Mark the currently-visible unread rooms read (header action). Scoped to the
-   * sidebar's rooms so it matches the button, which is gated on their unread state. */
+  /**
+   * Mark the currently-visible unread rooms read (header action). Scoped to the sidebar's
+   * rooms so it matches the button, which is gated on their unread state — and acked per
+   * owning account, since in the mixed view the button is offered for rooms belonging to
+   * accounts other than the active one (acking those through the active client would
+   * silently do nothing).
+   */
   onMarkAllRead(): void {
-    this.rooms
-      .markAllRead(this.visibleRooms().map((room) => room.id))
+    const unread = this.visibleRooms().filter((room) => room.hasUnread);
+    if (unread.length === 0) {
+      return;
+    }
+    forkJoin(unread.map((room) => this.rooms.markRead(room.id, room.accountId)))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not mark rooms read.'),

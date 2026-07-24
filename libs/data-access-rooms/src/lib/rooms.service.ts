@@ -311,11 +311,11 @@ export class RoomsService {
    * `RoomEvent.Tags` listener also rebuilds, but the explicit refresh makes the
    * local change land immediately). Failures are logged, not thrown.
    */
-  setFavourite(roomId: string, favourite: boolean): void {
-    if (!this.matrix.isInitialized) {
+  setFavourite(roomId: string, favourite: boolean, accountId?: string): void {
+    const client = this.clientOwning(accountId);
+    if (!client) {
       return;
     }
-    const client = this.matrix.instance;
     const write = favourite
       ? client.setRoomTag(roomId, 'm.favourite', {})
       : client.deleteRoomTag(roomId, 'm.favourite');
@@ -334,13 +334,27 @@ export class RoomsService {
    * `RoomEvent.MyMembership`, which drops the room from {@link rooms} (the list is
    * filtered to `join`), so no explicit refresh is needed; errors reach the subscriber.
    */
-  leave(roomId: string): Observable<void> {
+  leave(roomId: string, accountId?: string): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.clientOwning(accountId);
+      if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
-      return from(this.matrix.instance.leave(roomId)).pipe(map(() => void 0));
+      return from(client.leave(roomId)).pipe(map(() => void 0));
     });
+  }
+
+  /**
+   * The client that owns a row's room: the named account's when one is given (the
+   * mixed-account view, where a row may belong to a signed-in account that isn't active),
+   * else the active client. Null when there is no such client — the caller decides whether
+   * that is a silent no-op or an error.
+   */
+  private clientOwning(accountId?: string): MatrixClient | null {
+    if (accountId) {
+      return this.matrix.clientFor(accountId);
+    }
+    return this.matrix.isInitialized ? this.matrix.instance : null;
   }
 
   /**
@@ -348,12 +362,12 @@ export class RoomsService {
    * marker, clearing its unread badge. Cold — runs on subscribe; a no-op for an empty
    * or unknown room. The client emits the receipt so {@link rooms} re-derives the badge.
    */
-  markRead(roomId: string): Observable<void> {
+  markRead(roomId: string, accountId?: string): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.clientOwning(accountId);
+      if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
-      const client = this.matrix.instance;
       const room = client.getRoom(roomId);
       const events = room?.getLiveTimeline().getEvents() ?? [];
       // Walk backward for the newest confirmed (non-local-echo) event — no array

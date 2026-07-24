@@ -172,8 +172,9 @@ export class ChannelSidebarComponent {
   readonly joinRoom = output<SpaceChildRoom>();
   /** Remove (unlink) a joined channel from the active space, by room id. */
   readonly removeRoom = output<string>();
-  /** Leave a joined room entirely (not just unlink from a space), by room id. */
-  readonly leaveRoom = output<string>();
+  /** Leave a joined room entirely (not just unlink from a space); carries the owning
+   * account so a mixed-in row leaves on ITS account, never the active one. */
+  readonly leaveRoom = output<{ roomId: string; accountId: string }>();
   /** Open a joined sub-space (select it in the rail), by room id. */
   readonly openChildSpace = output<string>();
   /** Accept / decline a pending invite by room id. */
@@ -192,9 +193,13 @@ export class ChannelSidebarComponent {
   /** Sign out the given account (the active one, from the user panel). */
   readonly logout = output<string>();
   /** Set a room's notification level (all / mentions / mute) from its ⋮ menu. */
-  readonly setNotifyMode = output<{ roomId: string; mode: RoomNotifyMode }>();
-  /** Mark a single room read (from its ⋮ menu), by room id. */
-  readonly markRead = output<string>();
+  readonly setNotifyMode = output<{
+    roomId: string;
+    mode: RoomNotifyMode;
+    accountId: string;
+  }>();
+  /** Mark a single room read (from its ⋮ menu); carries the owning account. */
+  readonly markRead = output<{ roomId: string; accountId: string }>();
   /** Mark every room read (header action). */
   readonly markAllRead = output<void>();
 
@@ -212,9 +217,10 @@ export class ChannelSidebarComponent {
       : null;
   }
 
-  /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service. */
+  /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service, on the
+   * account that owns the row (not necessarily the active one). */
   toggleFavourite(room: RoomSummary): void {
-    this.roomsSvc.setFavourite(room.id, !room.favourite);
+    this.roomsSvc.setFavourite(room.id, !room.favourite, room.accountId);
   }
 
   /**
@@ -222,7 +228,7 @@ export class ChannelSidebarComponent {
    * ⋮ menu's radio checks. Re-read each time the submenu opens (the write is delegated to
    * the host via {@link setNotifyMode}), so the check reflects the persisted preference.
    */
-  notifyMode(roomId: string): RoomNotifyMode {
-    return this.roomNotifications.modeFor(roomId);
+  notifyMode(room: RoomSummary): RoomNotifyMode {
+    return this.roomNotifications.modeFor(room.id, room.accountId);
   }
 }

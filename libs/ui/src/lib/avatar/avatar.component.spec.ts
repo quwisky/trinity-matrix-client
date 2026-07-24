@@ -148,18 +148,21 @@ describe('AvatarComponent', () => {
       inputs: {
         initial: 'R',
         name: 'Room',
-        accountBadge: { initial: 'W', name: 'Work' },
+        accountBadge: { id: '@work:hs', initial: 'W', name: 'Work' },
       },
     });
     const el = badge(container)!;
     expect(el.textContent?.trim()).toBe('W');
-    expect(el.getAttribute('aria-label')).toBe('Account: Work');
-    expect(el.getAttribute('title')).toBe('Work');
+    expect(el.getAttribute('aria-label')).toBe('Account: Work (@work:hs)');
+    expect(el.getAttribute('title')).toBe('Work (@work:hs)');
   });
 
   it('colours the badge from the account name (not the row) and keeps its letter legible', async () => {
     const { fixture } = await render(AvatarComponent, {
-      inputs: { name: 'Room A', accountBadge: { initial: 'W', name: 'Work' } },
+      inputs: {
+        name: 'Room A',
+        accountBadge: { id: '@work:hs', initial: 'W', name: 'Work' },
+      },
     });
     const avatar = fixture.componentInstance;
     const badgeColor = avatar.badgeColor();
@@ -181,6 +184,7 @@ describe('AvatarComponent', () => {
         initial: 'R',
         name: 'Room',
         accountBadge: {
+          id: '@work:hs',
           initial: 'W',
           name: 'Work',
           avatarMxc: 'mxc://hs/work',
@@ -190,9 +194,11 @@ describe('AvatarComponent', () => {
     });
 
     // Resolved at the badge's own (smaller) size, not the avatar's.
+    // Resolved through the OWNING account's client, not the active one.
     expect(resolver).toHaveBeenCalledWith(
       'mxc://hs/work',
       fixture.componentInstance.badgeSize(),
+      '@work:hs',
     );
     const img = badgeImg(container)!;
     expect(img).toBeTruthy();
@@ -207,6 +213,7 @@ describe('AvatarComponent', () => {
         initial: 'R',
         name: 'Room',
         accountBadge: {
+          id: '@work:hs',
           initial: 'W',
           name: 'Work',
           avatarMxc: 'mxc://hs/missing',
@@ -225,7 +232,12 @@ describe('AvatarComponent', () => {
       inputs: {
         initial: 'R',
         name: 'Room',
-        accountBadge: { initial: 'W', name: 'Work', avatarMxc: null },
+        accountBadge: {
+          id: '@work:hs',
+          initial: 'W',
+          name: 'Work',
+          avatarMxc: null,
+        },
       },
       providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
     });
@@ -242,6 +254,7 @@ describe('AvatarComponent', () => {
     const { container, fixture } = await render(AvatarComponent, {
       inputs: {
         accountBadge: {
+          id: '@work:hs',
           initial: 'W',
           name: 'Work',
           avatarMxc: 'mxc://hs/work',
@@ -253,6 +266,7 @@ describe('AvatarComponent', () => {
 
     // Recycled onto a row owned by an account that has no avatar → back to the initial.
     fixture.componentRef.setInput('accountBadge', {
+      id: '@alt:hs',
       initial: 'A',
       name: 'Alt',
       avatarMxc: null,
@@ -264,6 +278,7 @@ describe('AvatarComponent', () => {
 
     // …and onto one that has a different avatar → that account's image.
     fixture.componentRef.setInput('accountBadge', {
+      id: '@alt:hs',
       initial: 'A',
       name: 'Alt',
       avatarMxc: 'mxc://hs/alt',
@@ -277,6 +292,7 @@ describe('AvatarComponent', () => {
     const { fixture } = await render(AvatarComponent, {
       inputs: {
         accountBadge: {
+          id: '@work:hs',
           initial: 'W',
           name: 'Work',
           avatarMxc: 'mxc://hs/work',
@@ -289,6 +305,7 @@ describe('AvatarComponent', () => {
     // The rooms page rebuilds its badge map (fresh objects, same contents) on every sync
     // tick. Re-fetching then would hammer the resolver — which doesn't cache failures.
     fixture.componentRef.setInput('accountBadge', {
+      id: '@work:hs',
       initial: 'W',
       name: 'Work',
       avatarMxc: 'mxc://hs/work',
@@ -301,6 +318,7 @@ describe('AvatarComponent', () => {
     const { container, fixture } = await render(AvatarComponent, {
       inputs: {
         accountBadge: {
+          id: '@work:hs',
           initial: 'W',
           name: 'Work',
           avatarMxc: 'mxc://hs/work',

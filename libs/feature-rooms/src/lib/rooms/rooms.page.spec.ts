@@ -201,7 +201,7 @@ describe('RoomsPage action error feedback', () => {
 
     page.onSetNotifyMode({ roomId: '!r:hs', mode: 'mentions' });
 
-    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mentions');
+    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mentions', undefined);
     expect(toastShow).not.toHaveBeenCalled();
   });
 
@@ -221,10 +221,10 @@ describe('RoomsPage action error feedback', () => {
     const page = build();
     page.activeRoomId.set('!r:hs');
 
-    await page.onLeaveRoom('!r:hs');
+    await page.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(alertConfirm).toHaveBeenCalled();
-    expect(leaveRoom).toHaveBeenCalledWith('!r:hs');
+    expect(leaveRoom).toHaveBeenCalledWith('!r:hs', undefined);
     expect(page.activeRoomId()).toBeNull();
     // Tear every open-room projection down so none keeps listening on it.
     expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
@@ -238,9 +238,9 @@ describe('RoomsPage action error feedback', () => {
     const page = build();
     page.activeRoomId.set('!other:hs');
 
-    await page.onLeaveRoom('!r:hs');
+    await page.onLeaveRoom({ roomId: '!r:hs' });
 
-    expect(leaveRoom).toHaveBeenCalledWith('!r:hs');
+    expect(leaveRoom).toHaveBeenCalledWith('!r:hs', undefined);
     expect(page.activeRoomId()).toBe('!other:hs');
     // The open room wasn't the one left, so its projections stay put.
     expect(TestBed.inject(TimelineService).close).not.toHaveBeenCalled();
@@ -250,7 +250,7 @@ describe('RoomsPage action error feedback', () => {
     const page = build();
     alertConfirm.mockResolvedValue(false);
 
-    await page.onLeaveRoom('!r:hs');
+    await page.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(leaveRoom).not.toHaveBeenCalled();
   });
@@ -259,7 +259,7 @@ describe('RoomsPage action error feedback', () => {
     const page = build();
     leaveRoom.mockReturnValue(throwError(() => new Error('nope')));
 
-    await page.onLeaveRoom('!r:hs');
+    await page.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
@@ -382,14 +382,46 @@ describe('RoomsPage action error feedback', () => {
 
   it('marks a room read via RoomsService', () => {
     const page = build();
-    page.onMarkRead('!r:hs');
-    expect(markReadFn).toHaveBeenCalledWith('!r:hs');
+    page.onMarkRead({ roomId: '!r:hs' });
+    expect(markReadFn).toHaveBeenCalledWith('!r:hs', undefined);
   });
 
-  it('marks all rooms read via RoomsService', () => {
+  // Acked per owning account rather than through one bulk call: in the mixed view the
+  // header button is offered for rooms belonging to accounts other than the active one,
+  // and acking those through the active client would silently do nothing.
+  it('marks every unread visible room read on its own account', () => {
     const page = build();
+    const unreadRoom = (
+      id: string,
+      accountId: string,
+      hasUnread: boolean,
+    ): RoomSummary => ({
+      id,
+      accountId,
+      name: id,
+      initial: 'X',
+      avatarMxc: null,
+      topic: '',
+      memberCount: 2,
+      encrypted: false,
+      unreadCount: hasUnread ? 3 : 0,
+      highlightCount: 0,
+      hasUnread,
+      lastMessage: '',
+      activityTs: 0,
+      favourite: false,
+    });
+    roomsSignal.set([
+      unreadRoom('!a:hs', '@me:hs', true),
+      unreadRoom('!b:hs', '@me:hs', false),
+      unreadRoom('!c:hs', '@alt:hs', true),
+    ]);
+
     page.onMarkAllRead();
-    expect(markAllReadFn).toHaveBeenCalled();
+
+    expect(markReadFn).toHaveBeenCalledWith('!a:hs', '@me:hs');
+    expect(markReadFn).toHaveBeenCalledWith('!c:hs', '@alt:hs');
+    expect(markReadFn).not.toHaveBeenCalledWith('!b:hs', expect.anything());
   });
 
   it('opens the threads-list panel for the active room', () => {
@@ -2347,7 +2379,7 @@ describe('RoomsPage mixed-account view', () => {
   function room(
     id: string,
     accountId: string,
-    opts: { directUserId?: string } = {},
+    opts: { directUserId?: string; unread?: number } = {},
   ): RoomSummary {
     return {
       id,
@@ -2358,9 +2390,9 @@ describe('RoomsPage mixed-account view', () => {
       topic: '',
       memberCount: 0,
       encrypted: false,
-      unreadCount: 0,
+      unreadCount: opts.unread ?? 0,
       highlightCount: 0,
-      hasUnread: false,
+      hasUnread: (opts.unread ?? 0) > 0,
       lastMessage: '',
       activityTs: 0,
       favourite: false,
@@ -2387,10 +2419,10 @@ describe('RoomsPage mixed-account view', () => {
   // rooms, two DMs (one per account), and one non-DM room that is a child of @alt's space.
   const mixedRoomList = (): RoomSummary[] => [
     room('!mine:hs', '@me:hs'),
-    room('!theirs:hs', '@alt:hs'),
+    room('!theirs:hs', '@alt:hs', { unread: 7 }),
     room('!dm-mine:hs', '@me:hs', { directUserId: '@x:hs' }),
-    room('!dm-theirs:hs', '@alt:hs', { directUserId: '@y:hs' }),
-    room('!child-theirs:hs', '@alt:hs'),
+    room('!dm-theirs:hs', '@alt:hs', { directUserId: '@y:hs', unread: 3 }),
+    room('!child-theirs:hs', '@alt:hs', { unread: 5 }),
   ];
 
   let switchAccount: ReturnType<typeof vi.fn>;
@@ -2583,6 +2615,22 @@ describe('RoomsPage mixed-account view', () => {
     expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(new Set(['@me:hs']));
     // Recent falls back to the active account's rooms only.
     expect(page.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
+  });
+
+  // The rail badges must count what their view renders: before this they summed the ACTIVE
+  // account's rooms while the list below showed every mixed account's.
+  it('sums the rail unread badges across the mixed accounts', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+
+    expect(page.recentUnread()).toBe(15); // 7 + 3 + 5 across both accounts
+    expect(page.homeUnread()).toBe(3); // the foreign account's DM
+    expect(page.roomsUnread()).toBe(7); // non-DM, minus @alt's space child
+    expect(page.spaceUnread()['!s-alt:hs']).toBe(5); // the foreign space's child
+
+    // Unticking drops back to the active account's own totals (all zero here).
+    shownAccounts.set(new Set(['@me:hs']));
+    expect(page.recentUnread()).toBe(0);
   });
 
   it('forwards a picker tick to the account scope', () => {

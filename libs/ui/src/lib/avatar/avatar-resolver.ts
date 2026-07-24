@@ -8,6 +8,9 @@ import { type Observable } from 'rxjs';
 export type AvatarResolver = (
   mxc: string | null,
   sizePx: number,
+  /** Account that owns the media; resolves through THAT account's client when given, so a
+   * mixed-account view doesn't fetch one account's avatars through another's homeserver. */
+  accountId?: string,
 ) => Observable<string | null>;
 
 /**

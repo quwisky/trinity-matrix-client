@@ -16,9 +16,12 @@ All notable changes to this project are documented here. The format is based on
   picture, so you can tell apart the same person reached through two of your accounts, and the
   user panel shows the mixed accounts' avatars stacked so you always know what you're looking
   at. Opening a conversation from another account switches to it automatically, so everything
-  you do there (sending, receipts, reactions) happens as the right account. The account you're
-  acting as is always shown, your picks are remembered between launches, and with one account
-  signed in nothing changes.
+  you do there (sending, receipts, reactions) happens as the right account — including the
+  room menu's Leave, Favourite, Mute and Mark-as-read, which act on the account that owns the
+  room rather than whichever one you happen to be using. The account you're acting as is
+  always shown, your picks are remembered between launches (and survive an account being
+  temporarily signed out), and with one account signed in nothing changes. A room both of your
+  accounts have joined is listed once, not twice.
 - **Customise your keyboard shortcuts.** Settings now has a **Keyboard shortcuts** section
   listing every shortcut and its keys — so you can finally see what's available — and you can
   rebind any of them: click one, press the new combination, done. If the combination is

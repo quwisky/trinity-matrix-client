@@ -30,6 +30,9 @@ import {
 import { initialOf } from '@trinity/util-matrix';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 
+/** Most avatars drawn in the mixed-account stack before it collapses to a "+N" count. */
+const STACK_MAX = 3;
+
 /** One signed-in account in the user-panel switcher: the profile plus its unread total. */
 export interface AccountSummary extends UserProfile {
   /** Unread notification total for this account (drives the switcher badge). */
@@ -106,6 +109,19 @@ export class SidebarUserPanelComponent {
   });
   /** The picker is only meaningful with more than one account signed in. */
   readonly canPickAccounts = computed(() => this.accounts().length > 1);
+  /** Avatars actually drawn in the stack — capped so the cluster stays inside the footer's
+   * fixed 52px budget; the "+N" text carries the rest. */
+  readonly stackAvatars = computed(() =>
+    this.mixedAccounts().slice(0, STACK_MAX),
+  );
+  /** Accessible summary of the mixed state; the stack itself is decorative. */
+  readonly accountSummaryLabel = computed(() => {
+    const mixed = this.mixedAccounts();
+    if (mixed.length < 2) {
+      return 'Account menu';
+    }
+    return `Account menu — ${this.user().displayName}, showing ${mixed.length} accounts`;
+  });
   /** Gear — open the settings page. */
   readonly openSettings = output<void>();
   /** The user ticked/unticked an account in the "Show accounts" picker. */

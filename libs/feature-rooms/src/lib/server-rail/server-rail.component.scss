@@ -4,6 +4,11 @@
   @include column(var(--trinity-rail));
   @include scrollable;
 
+  // Ring the account badge against the rail surface, not the page background — the default
+  // resolves to --background, which is near-black in dark themes and reads as a punched
+  // hole around the badge rather than an overlay. (Mirrors channel-sidebar.)
+  --trn-presence-ring: var(--trinity-rail);
+
   width: 72px;
   align-items: center;
   padding: 12px 0;

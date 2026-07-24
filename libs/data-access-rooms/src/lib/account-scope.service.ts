@@ -94,14 +94,24 @@ export class AccountScopeService {
   /**
    * Include or exclude an account. The active account is always shown, so a request to drop
    * it is ignored rather than producing a view that hides the account you're acting as.
+   *
+   * Including an account also *materialises* the current active account into the stored set.
+   * The active account is only unioned in at read time, so without this the mix would
+   * collapse the moment you used it: opening a mixed-in account's room switches to that
+   * account, and the account you were mixing *from* — never stored, only implied — would
+   * drop straight back out.
    */
   setSelected(userId: string, included: boolean): void {
-    if (!included && userId === this.matrix.activeUserId()) {
+    const active = this.matrix.activeUserId();
+    if (!included && userId === active) {
       return;
     }
     const next = new Set(this.stored());
     if (included) {
       next.add(userId);
+      if (active) {
+        next.add(active);
+      }
     } else {
       next.delete(userId);
     }
@@ -117,18 +127,18 @@ export class AccountScopeService {
     this.setSelected(userId, !this.isSelected(userId));
   }
 
-  /** Write the selection back, dropping ids for accounts that are no longer signed in. */
+  /**
+   * Write the selection back verbatim. Deliberately *not* pruned against the live accounts:
+   * an account that is soft-logged-out (revoked token) or still starting up is absent from
+   * `accountIds()`, and pruning here would silently discard the user's pick the next time
+   * they touched the picker — losing it for good on the next launch. Stale ids are inert
+   * anyway, since {@link selected} intersects with the live accounts on read, and the set is
+   * bounded by the number of accounts the user has ever mixed.
+   */
   private persist(selection: ReadonlySet<string>): void {
-    const live = new Set(this.matrix.accountIds());
-    const keep: string[] = [];
-    for (const id of selection) {
-      if (live.has(id)) {
-        keep.push(id);
-      }
-    }
     void Preferences.set({
       key: SCOPE_KEY,
-      value: JSON.stringify(keep),
+      value: JSON.stringify([...selection]),
     }).catch(() => undefined);
   }
 }

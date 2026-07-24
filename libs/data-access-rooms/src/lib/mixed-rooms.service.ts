@@ -118,8 +118,16 @@ export class MixedRoomsService {
   }
 
   private flush(): void {
-    const all: RoomSummary[] = [];
-    for (const userId of this.listeners.keys()) {
+    // Two mixed accounts can be joined to the SAME room (a shared public room, or a DM
+    // between your own two accounts). Emitting both would put duplicate ids in the list:
+    // `@for`'s track key collides (NG0955) and every `find(r => r.id === …)` lookup would
+    // resolve to an arbitrary one — so clicking the row badged A could open it as B.
+    // Keep one row per room id, preferring the active account's copy so opening it acts as
+    // the account you're already using. Accounts are visited in a stable order so the
+    // fallback pick doesn't flip between flushes.
+    const active = this.matrix.activeUserId();
+    const byRoomId = new Map<string, RoomSummary>();
+    for (const userId of [...this.listeners.keys()].sort()) {
       const client = this.matrix.clientFor(userId);
       if (!client) {
         continue;
@@ -129,9 +137,17 @@ export class MixedRoomsService {
         if (room.isSpaceRoom() || room.getMyMembership() !== 'join') {
           continue;
         }
-        all.push(buildRoomSummary(room, userId, userByRoom.get(room.roomId)));
+        const existing = byRoomId.get(room.roomId);
+        if (existing && !(userId === active && existing.accountId !== active)) {
+          continue;
+        }
+        byRoomId.set(
+          room.roomId,
+          buildRoomSummary(room, userId, userByRoom.get(room.roomId)),
+        );
       }
     }
+    const all = [...byRoomId.values()];
     all.sort(compareRoomSummaries);
     this._rooms.set(all);
   }

@@ -109,7 +109,8 @@ bootstrapApplication(AppComponent, {
       provide: AVATAR_RESOLVER,
       useFactory: () => {
         const avatars = inject(AvatarService);
-        return (mxc: string | null, size: number) => avatars.resolve(mxc, size);
+        return (mxc: string | null, size: number, accountId?: string) =>
+          avatars.resolve(mxc, size, accountId);
       },
     },
     // Push-gateway config for PushService (null = push disabled; see environment.ts).
