@@ -116,3 +116,29 @@
   font-weight: 600;
   color: var(--trinity-accent);
 }
+
+.account-row__active {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--trinity-text-muted);
+}
+
+// Included accounts as an overlapping stack, replacing the single avatar while mixing.
+// The 24px tiles keep the cluster inside the .userbar's fixed 52px budget even at three
+// deep, and the ring reads each tile as a separate face rather than one wide blob.
+.userbar__stack {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.userbar__stack-item:not(:first-child) {
+  margin-left: -10px;
+}
+
+.userbar__stack-item {
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--trinity-sidebar-header);
+}

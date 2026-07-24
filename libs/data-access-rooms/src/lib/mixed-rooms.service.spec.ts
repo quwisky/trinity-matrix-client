@@ -94,7 +94,7 @@ function harness(): {
 }
 
 describe('MixedRoomsService', () => {
-  it('does nothing while disabled', async () => {
+  it('does nothing until accounts are selected', async () => {
     const { svc, accountIds, clients, flush } = harness();
     clients.set('@a:hs', fakeClient([fakeRoom('!r:hs')]));
     accountIds.set(['@a:hs']);
@@ -104,7 +104,7 @@ describe('MixedRoomsService', () => {
     expect(clients.get('@a:hs')!.listenerCount()).toBe(0);
   });
 
-  it('aggregates every account’s rooms, tagged with the account, sorted across accounts', async () => {
+  it('aggregates the selected accounts’ rooms, tagged, sorted across accounts', async () => {
     const { svc, accountIds, clients, flush } = harness();
     clients.set(
       '@a:hs',
@@ -119,7 +119,7 @@ describe('MixedRoomsService', () => {
       ]),
     );
     accountIds.set(['@a:hs', '@b:hs']);
-    svc.setEnabled(true);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
     await flush();
 
     // Favourite first, then most-recent, across both accounts; spaces dropped.
@@ -130,39 +130,86 @@ describe('MixedRoomsService', () => {
     ]);
   });
 
+  // The point of the picker: a signed-in account you did not tick contributes nothing and
+  // costs nothing (no listener), rather than being aggregated and filtered out later.
+  it('ignores signed-in accounts that are not selected', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom('!a:hs')]));
+    clients.set('@b:hs', fakeClient([fakeRoom('!b:hs')]));
+    clients.set('@c:hs', fakeClient([fakeRoom('!c:hs')]));
+    accountIds.set(['@a:hs', '@b:hs', '@c:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+
+    expect(
+      svc
+        .rooms()
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(['!a:hs', '!b:hs']);
+    expect(clients.get('@c:hs')!.listenerCount()).toBe(0);
+  });
+
   it('classifies a room as a DM from its own account’s m.direct', async () => {
     const { svc, accountIds, clients, flush } = harness();
     clients.set('@a:hs', fakeClient([fakeRoom('!dm:hs')], ['!dm:hs']));
-    accountIds.set(['@a:hs']);
-    svc.setEnabled(true);
+    clients.set('@b:hs', fakeClient([fakeRoom('!other:hs')]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
     await flush();
 
-    expect(svc.rooms()[0].directUserId).toBe('@peer:hs');
+    expect(svc.rooms().find((r) => r.id === '!dm:hs')?.directUserId).toBe(
+      '@peer:hs',
+    );
+    // The other account's room is not a DM just because this one's is.
+    expect(
+      svc.rooms().find((r) => r.id === '!other:hs')?.directUserId,
+    ).toBeUndefined();
   });
 
-  it('detaches every listener and clears the list when disabled', async () => {
+  it('detaches every listener and clears the list when the mix drops below two', async () => {
     const { svc, accountIds, clients, flush } = harness();
-    clients.set('@a:hs', fakeClient([fakeRoom('!r:hs')]));
-    accountIds.set(['@a:hs']);
-    svc.setEnabled(true);
+    clients.set('@a:hs', fakeClient([fakeRoom('!a:hs')]));
+    clients.set('@b:hs', fakeClient([fakeRoom('!b:hs')]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
     await flush();
-    expect(svc.rooms().length).toBe(1);
+    expect(svc.rooms().length).toBe(2);
     expect(clients.get('@a:hs')!.listenerCount()).toBeGreaterThan(0);
 
-    svc.setEnabled(false);
+    // One account left selected is not a mix — the plain RoomsService covers that.
+    svc.setAccounts(new Set(['@a:hs']));
     expect(svc.rooms()).toEqual([]);
     expect(clients.get('@a:hs')!.listenerCount()).toBe(0);
+    expect(clients.get('@b:hs')!.listenerCount()).toBe(0);
   });
 
-  it('reconciles when an account is added or removed', async () => {
+  it('re-applying an equal selection does not churn listeners', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom('!a:hs')]));
+    clients.set('@b:hs', fakeClient([fakeRoom('!b:hs')]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+    const before = clients.get('@a:hs')!.listenerCount();
+
+    // A fresh Set with the same members (what a recomputed signal hands us) is a no-op.
+    svc.setAccounts(new Set(['@b:hs', '@a:hs']));
+    await flush();
+    expect(clients.get('@a:hs')!.listenerCount()).toBe(before);
+    expect(svc.rooms().length).toBe(2);
+  });
+
+  it('reconciles the selection against accounts signing in and out', async () => {
     const { svc, accountIds, clients, flush } = harness();
     clients.set('@a:hs', fakeClient([fakeRoom('!a:hs')]));
     accountIds.set(['@a:hs']);
-    svc.setEnabled(true);
+    // Both are selected, but only @a is signed in so far.
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
     await flush();
     expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs']);
 
-    // Add a second account and nudge an event so the flush re-reconciles.
+    // @b signs in; nudge an event so the flush re-reconciles.
     clients.set('@b:hs', fakeClient([fakeRoom('!b:hs')]));
     accountIds.set(['@a:hs', '@b:hs']);
     clients.get('@a:hs')!.emit('Room');
@@ -174,7 +221,7 @@ describe('MixedRoomsService', () => {
         .sort(),
     ).toEqual(['!a:hs', '!b:hs']);
 
-    // Remove the first; its listener is detached and its rooms drop.
+    // @a signs out; its listener is detached and its rooms drop.
     const gone = clients.get('@a:hs')!;
     accountIds.set(['@b:hs']);
     clients.get('@b:hs')!.emit('Room');

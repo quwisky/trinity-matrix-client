@@ -129,6 +129,19 @@ async function installBadgeRecorder(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Tick another account into the mixed view via the user panel's "Show accounts" picker.
+ * The active account is always included (its row is disabled), so this is only for others.
+ */
+async function mixInAccount(page: Page, localpart: string): Promise<void> {
+  await page.getByTestId('user-menu-trigger').click();
+  await page.getByTestId('show-accounts').click();
+  await page.locator(`[data-testid^="show-account-@${localpart}:"]`).click();
+  // The picker keeps the menu open for multi-select; close it to get back to the list.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+}
+
 /** Drive the user-panel "Add account" flow through to a signed-in second account. */
 async function addAccountViaUi(
   page: Page,
@@ -657,13 +670,13 @@ test.describe('Multiple accounts', () => {
     await addAccountViaUi(page, hs, userB, passB);
     await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
 
-    // Recent is the default view; with two accounts the scope toggle appears. Only B's
-    // room shows under "This account"; switch to "All accounts".
+    // Recent is the default view. Only the active account (B) is shown until A is
+    // ticked into the mix via the user panel's account picker.
     const roomARow = page.locator('.channel', { hasText: roomA });
     const roomBRow = page.locator('.channel', { hasText: roomB });
     await expect(roomBRow).toBeVisible({ timeout: 20_000 });
     await expect(roomARow).toHaveCount(0); // A's room is on the other account
-    await page.getByTestId('account-scope-all').click();
+    await mixInAccount(page, userA);
 
     // Now both accounts' rooms are listed, each carrying an account badge.
     await expect(roomARow).toBeVisible({ timeout: 20_000 });
@@ -721,12 +734,12 @@ test.describe('Multiple accounts', () => {
     const railPill = (name: string) =>
       page.locator('trn-server-rail').getByRole('button', { name });
 
-    // With "This account" (the default), only B's space pill is in the rail.
+    // Only the active account (B) is mixed in by default, so only its pill is in the rail.
     await expect(railPill(spaceB)).toBeVisible({ timeout: 20_000 });
     await expect(railPill(spaceA)).toHaveCount(0);
 
-    // Switch to "All accounts" → both accounts' space pills show, each badged.
-    await page.getByTestId('account-scope-all').click();
+    // Tick A into the mix → both accounts' space pills show, each badged.
+    await mixInAccount(page, userA);
     await expect(railPill(spaceA)).toBeVisible({ timeout: 20_000 });
     await expect(
       railPill(spaceA).locator('[data-testid="account-badge"]'),

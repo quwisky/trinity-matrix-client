@@ -153,13 +153,12 @@ export class ChannelSidebarComponent {
    */
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
   /**
-   * The global account scope when the mixed toggle applies: `'this'` / `'all'`, or null to
-   * hide the toggle (only one account signed in). Governs every view — Recent, Home's DMs,
-   * the Rooms list and the rail's space pills all follow it, not just Recent.
+   * The accounts the view currently draws from (the user's picker selection). Passed to the
+   * user panel, which renders the picker and the stacked-avatar indicator.
    */
-  readonly accountScope = input<'this' | 'all' | null>(null);
-  /** The user changed the account scope via the header toggle. */
-  readonly accountScopeChange = output<'this' | 'all'>();
+  readonly shownAccountIds = input<ReadonlySet<string>>(new Set());
+  /** The user ticked/unticked an account in the picker. */
+  readonly toggleAccountShown = output<string>();
   readonly selectRoom = output<string>();
   /** Header "+" on Home — raise the new-room / new-DM chooser. */
   readonly newChat = output<void>();

@@ -880,28 +880,4 @@ describe('ChannelSidebarComponent', () => {
     fixture.detectChanges();
     expect(container.querySelector('[data-testid="account-badge"]')).toBeNull();
   });
-
-  it('shows the account-scope toggle only when accountScope is set, and emits changes', async () => {
-    const { container, fixture } = await renderSidebar({
-      inputs: { rooms: [room()], accountScope: 'this' },
-    });
-    const changes: string[] = [];
-    fixture.componentInstance.accountScopeChange.subscribe((s) =>
-      changes.push(s),
-    );
-
-    const all = container.querySelector<HTMLButtonElement>(
-      '[data-testid="account-scope-all"]',
-    );
-    expect(all).toBeTruthy();
-    all!.click();
-    expect(changes).toEqual(['all']);
-
-    // Hidden when the scope is null (only a single account signed in).
-    fixture.componentRef.setInput('accountScope', null);
-    fixture.detectChanges();
-    expect(
-      container.querySelector('[data-testid="account-scope-all"]'),
-    ).toBeNull();
-  });
 });

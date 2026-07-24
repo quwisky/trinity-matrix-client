@@ -7,6 +7,7 @@ import {
   type MatrixClient,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { sameAccountSet } from './account-scope.service';
 import {
   buildRoomSummary,
   compareRoomSummaries,
@@ -30,53 +31,62 @@ interface AccountListener {
  * account's `m.direct` DM classification), sorted favourite-first then most-recent across
  * accounts.
  *
- * Only attaches its per-account listeners while {@link setEnabled enabled} (the mixed
- * toggle), so single-account / toggle-off users pay nothing. Mirrors
- * {@link UnreadAggregatorService}'s reconcile-and-coalesce shape.
+ * Only attaches listeners for the accounts named by {@link setAccounts} (the user's picker
+ * selection), so you pay for exactly the accounts you mix and nothing when you don't mix at
+ * all. Mirrors {@link UnreadAggregatorService}'s reconcile-and-coalesce shape.
  */
 @Injectable({ providedIn: 'root' })
 export class MixedRoomsService {
   private readonly matrix = inject(MatrixClientService);
 
   private readonly _rooms = signal<RoomSummary[]>([]);
-  /** Every signed-in account's joined rooms, mixed and sorted; empty while disabled. */
+  /** The selected accounts' joined rooms, mixed and sorted; empty unless mixing. */
   readonly rooms = this._rooms.asReadonly();
 
-  private enabled = false;
+  private accounts: ReadonlySet<string> = new Set();
   private readonly listeners = new Map<string, AccountListener>();
   private flushScheduled = false;
 
   /**
-   * Turn the aggregation on or off. Enabling attaches listeners to every account's client
-   * and does a first read; disabling detaches everything and clears the list.
+   * Aggregate exactly these accounts (the user's mixed-account selection). Fewer than two is
+   * not a mix — the single-account {@link RoomsService} covers that — so the projection
+   * detaches and empties, and only the selected accounts ever get listeners attached.
    */
-  setEnabled(on: boolean): void {
-    if (on === this.enabled) {
+  setAccounts(ids: ReadonlySet<string>): void {
+    const next = ids.size > 1 ? ids : new Set<string>();
+    if (sameAccountSet(next, this.accounts)) {
       return;
     }
-    this.enabled = on;
-    if (on) {
-      this.syncListeners();
-      this.scheduleFlush();
-    } else {
+    this.accounts = next;
+    if (next.size === 0) {
       for (const { client, handler } of this.listeners.values()) {
         this.detach(client, handler);
       }
       this.listeners.clear();
       this._rooms.set([]);
+      return;
     }
+    this.syncListeners();
+    this.scheduleFlush();
   }
 
-  /** Reconcile the per-account listener set against the live accounts (attach/detach). */
+  /** Reconcile the per-account listener set against the selection (attach/detach). */
   private syncListeners(): void {
+    // Only accounts that are both selected and still signed in.
     const live = new Set(this.matrix.accountIds());
+    const wanted = new Set<string>();
+    for (const id of this.accounts) {
+      if (live.has(id)) {
+        wanted.add(id);
+      }
+    }
     for (const [userId, listener] of this.listeners) {
-      if (!live.has(userId)) {
+      if (!wanted.has(userId)) {
         this.detach(listener.client, listener.handler);
         this.listeners.delete(userId);
       }
     }
-    for (const userId of this.matrix.accountIds()) {
+    for (const userId of wanted) {
       if (this.listeners.has(userId)) {
         continue;
       }
@@ -98,7 +108,7 @@ export class MixedRoomsService {
     this.flushScheduled = true;
     queueMicrotask(() => {
       this.flushScheduled = false;
-      if (this.enabled) {
+      if (this.accounts.size > 1) {
         // An account can be added/removed between flushes; keep the listener set current,
         // then flush() writes the signal (which schedules change detection).
         this.syncListeners();

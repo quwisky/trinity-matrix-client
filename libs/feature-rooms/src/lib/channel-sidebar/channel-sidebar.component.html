@@ -60,34 +60,6 @@
     </div>
   </header>
 
-  @if (accountScope(); as scope) {
-    <!-- Global mixed-account toggle: shown with 2+ accounts, in every view. Flips the
-         whole sidebar (Recent, DMs, Rooms) and the rail spaces between the active account
-         and every signed-in account. -->
-    <div class="sidebar__scope" role="group" aria-label="Account scope">
-      <button
-        type="button"
-        class="sidebar__scope-btn"
-        [class.active]="scope === 'this'"
-        [attr.aria-pressed]="scope === 'this'"
-        data-testid="account-scope-this"
-        (click)="accountScopeChange.emit('this')"
-      >
-        This account
-      </button>
-      <button
-        type="button"
-        class="sidebar__scope-btn"
-        [class.active]="scope === 'all'"
-        [attr.aria-pressed]="scope === 'all'"
-        data-testid="account-scope-all"
-        (click)="accountScopeChange.emit('all')"
-      >
-        All accounts
-      </button>
-    </div>
-  }
-
   <div class="sidebar__scroll">
     @if (invites().length) {
       <div class="category">Invites</div>
@@ -238,6 +210,8 @@
     [accounts]="accounts()"
     [activeUserId]="activeUserId()"
     [reauthAccounts]="reauthAccounts()"
+    [shownAccountIds]="shownAccountIds()"
+    (toggleAccountShown)="toggleAccountShown.emit($event)"
     (openSettings)="openSettings.emit()"
     (switchAccount)="switchAccount.emit($event)"
     (reauthAccount)="reauthAccount.emit($event)"

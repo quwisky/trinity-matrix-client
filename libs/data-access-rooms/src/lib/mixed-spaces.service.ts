@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { ClientEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { sameAccountSet } from './account-scope.service';
 import { initialOf, spaceChildIdsOf } from './room-projection';
 import { type SpaceSummary } from './spaces.service';
 
@@ -12,14 +13,14 @@ interface AccountListener {
 }
 
 /**
- * Cross-account spaces for the mixed-account view: every signed-in account's joined
- * spaces, each tagged with its `accountId` and its joined `childRoomIds`. The child ids
+ * Cross-account spaces for the mixed-account view: the selected accounts' joined spaces,
+ * each tagged with its `accountId` and its joined `childRoomIds`. The child ids
  * let the global mixed Rooms view exclude space-owned rooms across every account (as the
  * single-account view does); a selected space's full hierarchy still loads through
  * {@link SpacesService} once its account is made active (selecting a foreign space switches
  * the active account first).
  *
- * Only attaches per-account listeners while {@link setEnabled enabled}, mirroring
+ * Only attaches listeners for the accounts named by {@link setAccounts}, mirroring
  * {@link MixedRoomsService}.
  */
 @Injectable({ providedIn: 'root' })
@@ -27,39 +28,47 @@ export class MixedSpacesService {
   private readonly matrix = inject(MatrixClientService);
 
   private readonly _spaces = signal<SpaceSummary[]>([]);
-  /** Every signed-in account's joined spaces as pills; empty while disabled. */
+  /** The selected accounts' joined spaces as pills; empty unless mixing. */
   readonly spaces = this._spaces.asReadonly();
 
-  private enabled = false;
+  private accounts: ReadonlySet<string> = new Set();
   private readonly listeners = new Map<string, AccountListener>();
   private flushScheduled = false;
 
-  setEnabled(on: boolean): void {
-    if (on === this.enabled) {
+  /** Aggregate exactly these accounts; fewer than two is not a mix (see MixedRoomsService). */
+  setAccounts(ids: ReadonlySet<string>): void {
+    const next = ids.size > 1 ? ids : new Set<string>();
+    if (sameAccountSet(next, this.accounts)) {
       return;
     }
-    this.enabled = on;
-    if (on) {
-      this.syncListeners();
-      this.scheduleFlush();
-    } else {
+    this.accounts = next;
+    if (next.size === 0) {
       for (const { client, handler } of this.listeners.values()) {
         this.detach(client, handler);
       }
       this.listeners.clear();
       this._spaces.set([]);
+      return;
     }
+    this.syncListeners();
+    this.scheduleFlush();
   }
 
   private syncListeners(): void {
     const live = new Set(this.matrix.accountIds());
+    const wanted = new Set<string>();
+    for (const id of this.accounts) {
+      if (live.has(id)) {
+        wanted.add(id);
+      }
+    }
     for (const [userId, listener] of this.listeners) {
-      if (!live.has(userId)) {
+      if (!wanted.has(userId)) {
         this.detach(listener.client, listener.handler);
         this.listeners.delete(userId);
       }
     }
-    for (const userId of this.matrix.accountIds()) {
+    for (const userId of wanted) {
       if (this.listeners.has(userId)) {
         continue;
       }
@@ -80,7 +89,7 @@ export class MixedSpacesService {
     this.flushScheduled = true;
     queueMicrotask(() => {
       this.flushScheduled = false;
-      if (this.enabled) {
+      if (this.accounts.size > 1) {
         this.syncListeners();
         this.flush();
       }

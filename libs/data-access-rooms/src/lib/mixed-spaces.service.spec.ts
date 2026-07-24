@@ -69,7 +69,7 @@ function harness(): {
 }
 
 describe('MixedSpacesService', () => {
-  it('aggregates every account’s joined spaces as pills, tagged with the account', async () => {
+  it('aggregates the selected accounts’ joined spaces, tagged with the account', async () => {
     const { svc, accountIds, clients, flush } = harness();
     clients.set('@a:hs', fakeClient([fakeSpace('!s1:hs', { name: 'Work' })]));
     clients.set(
@@ -80,7 +80,7 @@ describe('MixedSpacesService', () => {
       ]),
     );
     accountIds.set(['@a:hs', '@b:hs']);
-    svc.setEnabled(true);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
     await flush();
 
     // Sorted by name; each pill carries its owning account.
@@ -92,7 +92,25 @@ describe('MixedSpacesService', () => {
     expect(svc.spaces()[0].childRoomIds).toEqual([]);
   });
 
-  it('stays empty and attaches nothing while disabled', async () => {
+  it('ignores signed-in accounts that are not selected', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeSpace('!s1:hs', { name: 'Work' })]));
+    clients.set('@b:hs', fakeClient([fakeSpace('!s2:hs', { name: 'Home' })]));
+    clients.set('@c:hs', fakeClient([fakeSpace('!s3:hs', { name: 'Other' })]));
+    accountIds.set(['@a:hs', '@b:hs', '@c:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+
+    expect(
+      svc
+        .spaces()
+        .map((s) => s.id)
+        .sort(),
+    ).toEqual(['!s1:hs', '!s2:hs']);
+    expect(clients.get('@c:hs')!.listenerCount()).toBe(0);
+  });
+
+  it('stays empty and attaches nothing until accounts are selected', async () => {
     const { svc, accountIds, clients, flush } = harness();
     clients.set('@a:hs', fakeClient([fakeSpace('!s:hs')]));
     accountIds.set(['@a:hs']);

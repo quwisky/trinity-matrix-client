@@ -8,15 +8,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- **See all your accounts' conversations in one place.** When more than one account is
-  signed in, a global **This account / All accounts** switch appears above the room list.
-  Turn on "All accounts" and every view mixes your accounts together — Recent activity, your
-  direct messages, the Rooms list, and the left rail's spaces all show items from every
-  account, each marked with a small badge showing that account's own profile picture, so you
-  can tell apart the same person reached through two of your accounts. Opening a conversation
-  from another account switches to it automatically, so everything you do there (sending,
-  receipts, reactions) happens as the right account. With one account signed in, nothing
-  changes.
+- **Mix the accounts you choose into one view.** With more than one account signed in, the
+  account menu gains a **Show accounts** picker: tick whichever accounts you want to see
+  together and every view mixes just those — Recent activity, your direct messages, the Rooms
+  list, and the left rail's spaces. So you can blend work and personal while leaving a third
+  account out of it. Each item is marked with a small badge showing its account's own profile
+  picture, so you can tell apart the same person reached through two of your accounts, and the
+  user panel shows the mixed accounts' avatars stacked so you always know what you're looking
+  at. Opening a conversation from another account switches to it automatically, so everything
+  you do there (sending, receipts, reactions) happens as the right account. The account you're
+  acting as is always shown, your picks are remembered between launches, and with one account
+  signed in nothing changes.
 - **Customise your keyboard shortcuts.** Settings now has a **Keyboard shortcuts** section
   listing every shortcut and its keys — so you can finally see what's available — and you can
   rebind any of them: click one, press the new combination, done. If the combination is

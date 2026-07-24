@@ -14,6 +14,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
 import { AvatarService } from '@trinity/data-access-media';
 import { GifSettingsService } from '@trinity/data-access-gif';
+import { AccountScopeService } from '@trinity/data-access-rooms';
 import {
   AppBadgeService,
   PUSH_CONFIG,
@@ -87,6 +88,10 @@ bootstrapApplication(AppComponent, {
     // Load the saved GIF provider + API key so the composer knows whether to
     // offer the GIF picker on first paint.
     provideAppInitializer(() => inject(GifSettingsService).init()),
+    // Restore which accounts the room list mixes, before the shell projects its
+    // first room list — otherwise a multi-account user's chosen mix would flash
+    // as single-account on every cold start.
+    provideAppInitializer(() => inject(AccountScopeService).init()),
     // Load any user-set push gateway before the shell mounts and calls
     // PushService.register() — otherwise the first registration would use the
     // build-time default (usually none) and push would stay dead until a restart.

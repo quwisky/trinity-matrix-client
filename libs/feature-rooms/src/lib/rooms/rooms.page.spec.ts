@@ -1,4 +1,9 @@
-import { ApplicationRef, signal, type WritableSignal } from '@angular/core';
+import {
+  ApplicationRef,
+  computed,
+  signal,
+  type WritableSignal,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { Router } from '@angular/router';
@@ -19,6 +24,7 @@ import {
   RoomAliasesService,
   PublicRoomsService,
   SpacesService,
+  AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
   UnreadAggregatorService,
@@ -2388,14 +2394,19 @@ describe('RoomsPage mixed-account view', () => {
   ];
 
   let switchAccount: ReturnType<typeof vi.fn>;
-  let setMixedRoomsEnabled: ReturnType<typeof vi.fn>;
+  let setMixedRoomsAccounts: ReturnType<typeof vi.fn>;
+  /** The picker's current selection, driven directly by the tests. */
+  let shownAccounts: WritableSignal<ReadonlySet<string>>;
+  let toggleAccount: ReturnType<typeof vi.fn>;
 
   function build(
     accountIds: string[],
     avatars: Record<string, string | null> = {},
   ): RoomsPage {
     switchAccount = vi.fn(() => of(undefined));
-    setMixedRoomsEnabled = vi.fn();
+    setMixedRoomsAccounts = vi.fn();
+    shownAccounts = signal<ReadonlySet<string>>(new Set(['@me:hs']));
+    toggleAccount = vi.fn();
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -2408,16 +2419,21 @@ describe('RoomsPage mixed-account view', () => {
           spaces: signal([space('!s-mine:hs', '@me:hs')]),
           childRoomIds: vi.fn(() => []),
         }),
+        MockProvider(AccountScopeService, {
+          selected: shownAccounts.asReadonly(),
+          mixing: computed(() => shownAccounts().size > 1),
+          toggle: toggleAccount,
+        }),
         MockProvider(MixedRoomsService, {
           rooms: signal(mixedRoomList()),
-          setEnabled: setMixedRoomsEnabled,
+          setAccounts: setMixedRoomsAccounts,
         }),
         MockProvider(MixedSpacesService, {
           spaces: signal([
             space('!s-mine:hs', '@me:hs'),
             space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
           ]),
-          setEnabled: vi.fn(),
+          setAccounts: vi.fn(),
         }),
         MockProvider(TimelineService),
         MockProvider(MatrixClientService, {
@@ -2454,12 +2470,6 @@ describe('RoomsPage mixed-account view', () => {
     return TestBed.inject(RoomsPage);
   }
 
-  it('offers the mixed toggle only when more than one account is signed in', () => {
-    expect(build(['@me:hs']).mixedAvailable()).toBe(false);
-    TestBed.resetTestingModule();
-    expect(build(['@me:hs', '@alt:hs']).mixedAvailable()).toBe(true);
-  });
-
   it('scopes Recent + rail spaces to the active account by default', () => {
     const page = build(['@me:hs', '@alt:hs']);
     // Default 'this' — the active account only.
@@ -2470,7 +2480,7 @@ describe('RoomsPage mixed-account view', () => {
 
   it('Recent spans every account when the toggle is "All accounts"', () => {
     const page = build(['@me:hs', '@alt:hs']);
-    page.mixedMode.set('all');
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.tick(); // run the enable effect
 
     // Recent lists every account's rooms unfiltered, in the aggregator's order.
@@ -2485,7 +2495,9 @@ describe('RoomsPage mixed-account view', () => {
       '!s-mine:hs',
       '!s-alt:hs',
     ]);
-    expect(setMixedRoomsEnabled).toHaveBeenCalledWith(true);
+    expect(setMixedRoomsAccounts).toHaveBeenCalledWith(
+      new Set(['@me:hs', '@alt:hs']),
+    );
     expect(page.accountBadges().size).toBeGreaterThan(0);
   });
 
@@ -2493,7 +2505,7 @@ describe('RoomsPage mixed-account view', () => {
     const page = build(['@me:hs', '@alt:hs'], {
       '@alt:hs': 'mxc://hs/alt-avatar',
     });
-    page.mixedMode.set('all');
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
 
     // The badge exposes the account's own avatar (resolved to the real image downstream)…
     expect(page.accountBadges().get('@alt:hs')?.avatarMxc).toBe(
@@ -2505,7 +2517,7 @@ describe('RoomsPage mixed-account view', () => {
 
   it('Home shows every account’s DMs in mixed mode', () => {
     const page = build(['@me:hs', '@alt:hs']);
-    page.mixedMode.set('all');
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     page.onSelectSpace(null); // Home — leaves Recent
 
     // Both accounts' DMs (classified by each row's own-account m.direct), nothing else.
@@ -2518,7 +2530,7 @@ describe('RoomsPage mixed-account view', () => {
 
   it('Rooms shows every account’s non-DM, non-space rooms in mixed mode', () => {
     const page = build(['@me:hs', '@alt:hs']);
-    page.mixedMode.set('all');
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     page.onShowRooms();
 
     // Non-DM rooms from both accounts, excluding DMs and @alt's space child.
@@ -2531,7 +2543,7 @@ describe('RoomsPage mixed-account view', () => {
 
   it('switches to the owning account before opening a foreign room', () => {
     const page = build(['@me:hs', '@alt:hs']);
-    page.mixedMode.set('all');
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
 
     page.onSelectRoomRow('!theirs:hs'); // belongs to @alt:hs
     expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
@@ -2545,7 +2557,7 @@ describe('RoomsPage mixed-account view', () => {
 
   it('switches to the owning account before selecting a foreign space', () => {
     const page = build(['@me:hs', '@alt:hs']);
-    page.mixedMode.set('all');
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
 
     page.onSelectSpaceRow('!s-alt:hs'); // belongs to @alt:hs
     expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
@@ -2557,16 +2569,25 @@ describe('RoomsPage mixed-account view', () => {
     expect(switchAccount).not.toHaveBeenCalled();
   });
 
-  it('detaches the cross-account projections when the toggle returns to This account', () => {
+  it('narrows the projections back down when an account is unticked', () => {
     const page = build(['@me:hs', '@alt:hs']);
-    page.mixedMode.set('all');
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.tick();
-    expect(setMixedRoomsEnabled).toHaveBeenLastCalledWith(true);
+    expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(
+      new Set(['@me:hs', '@alt:hs']),
+    );
 
-    page.mixedMode.set('this');
+    shownAccounts.set(new Set(['@me:hs']));
     TestBed.tick();
-    expect(setMixedRoomsEnabled).toHaveBeenLastCalledWith(false);
+    // One account is not a mix — the projection is told so and empties itself.
+    expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(new Set(['@me:hs']));
     // Recent falls back to the active account's rooms only.
     expect(page.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
+  });
+
+  it('forwards a picker tick to the account scope', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    page.onToggleAccountShown('@alt:hs');
+    expect(toggleAccount).toHaveBeenCalledWith('@alt:hs');
   });
 });

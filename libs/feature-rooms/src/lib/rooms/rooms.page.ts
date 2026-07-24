@@ -64,6 +64,7 @@ import {
   RoomAliasesService,
   PublicRoomsService,
   SpacesService,
+  AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
   UnreadAggregatorService,
@@ -197,6 +198,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly spaces = inject(SpacesService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly mixedSpaces = inject(MixedSpacesService);
+  private readonly accountScope = inject(AccountScopeService);
   readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
   readonly threads = inject(ThreadsService);
@@ -245,19 +247,13 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly activeRoomId = signal<string | null>(null);
 
   /**
-   * Global mixed-account scope: `'this'` (the active account only, today's behaviour) or
-   * `'all'` (every signed-in account, badged). Session-scoped. When `'all'` it governs
-   * **every** surface — the Recent list, Home's DMs, the Rooms list, and the rail's space
-   * pills — not just Recent. Only meaningful when {@link mixedAvailable}; with one account
-   * the toggle is hidden and this stays `'this'`.
+   * The accounts the view draws from — the user's picker selection, persisted and always
+   * including the active account. When it names more than one, mixed mode governs **every**
+   * surface: the Recent list, Home's DMs, the Rooms list, and the rail's space pills.
    */
-  readonly mixedMode = signal<'this' | 'all'>('this');
-  /** Whether the mixed-account toggle applies — more than one account is signed in. */
-  readonly mixedAvailable = computed(() => this.matrix.accountIds().length > 1);
-  /** Whether the mixed-account projection is active (toggle on AND >1 account). */
-  readonly mixedOn = computed(
-    () => this.mixedAvailable() && this.mixedMode() === 'all',
-  );
+  readonly shownAccountIds = this.accountScope.selected;
+  /** Whether the cross-account projection is active (more than one account selected). */
+  readonly mixedOn = this.accountScope.mixing;
 
   // The two mobile pages (the rail/room-list and the chat), focused on a view switch
   // so keyboard/screen-reader focus follows to the newly-shown page (see focusActiveView).
@@ -552,12 +548,13 @@ export class RoomsPage implements OnInit, OnDestroy {
         void this.router.navigateByUrl('/login', { replaceUrl: true });
       }
     });
-    // Attach the cross-account projections only while mixed mode is on (they cost
-    // nothing otherwise), so the Recent list + rail spaces span every account.
+    // Point the cross-account projections at the selected accounts. They attach listeners
+    // only for those accounts (and none at all below two), so an unmixed session costs
+    // nothing. `selected` is set-equal-compared, so this doesn't churn on every sync tick.
     effect(() => {
-      const on = this.mixedOn();
-      this.mixedRooms.setEnabled(on);
-      this.mixedSpaces.setEnabled(on);
+      const accounts = this.shownAccountIds();
+      this.mixedRooms.setAccounts(accounts);
+      this.mixedSpaces.setAccounts(accounts);
     });
   }
 
@@ -1103,6 +1100,14 @@ export class RoomsPage implements OnInit, OnDestroy {
       return;
     }
     this.onSelectSpace(id);
+  }
+
+  /**
+   * Include/exclude an account from the mixed view (the account picker's checkbox). The
+   * active account is always shown, and the service ignores an attempt to drop it.
+   */
+  onToggleAccountShown(userId: string): void {
+    this.accountScope.toggle(userId);
   }
 
   /** Switch to `accountId`, then run `then` once the switch has landed. */
