@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   inject,
+  input,
   signal,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
@@ -20,7 +21,9 @@ import {
   type SwitcherResult,
   type SwitcherSelection,
 } from '@trinity/data-access-search';
-import { AvatarComponent } from '@trinity/ui';
+import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { AccountBadgesService } from '../shared/account-badges.service';
+import { AvatarComponent, type AccountBadge } from '@trinity/ui';
 import { DialogRef } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
@@ -91,6 +94,15 @@ export class QuickSwitcherComponent {
       DialogRef,
     );
   private readonly search = inject(SearchService);
+  private readonly accountBadges = inject(AccountBadgesService);
+  private readonly matrix = inject(MatrixClientService);
+
+  /**
+   * Restrict results to the active account. Set by callers that act on the target without
+   * switching accounts first (message forwarding), for which another account's room is not
+   * a usable destination.
+   */
+  readonly activeAccountOnly = input(false);
 
   /** Current query text, driving both the local computed and the people stream. */
   readonly query = signal('');
@@ -101,7 +113,15 @@ export class QuickSwitcherComponent {
 
   /** Instant, ranked local matches — reactive because the service reads live signals. */
   private readonly localResults = computed(() =>
-    this.search.localResults(this.query()),
+    this.search.localResults(
+      this.query(),
+      undefined,
+      // Scoping inside the query keeps the result cap meaningful — post-filtering would let
+      // another account's rooms fill it and starve this one's out entirely.
+      this.activeAccountOnly()
+        ? (this.matrix.activeUserId() ?? undefined)
+        : undefined,
+    ),
   );
 
   /** Debounced directory people, appended after the local matches. */
@@ -165,7 +185,16 @@ export class QuickSwitcherComponent {
 
   /** Click/Enter on a row: close with its selection. */
   select(result: SwitcherResult): void {
-    this.dismiss({ kind: result.kind, id: result.id });
+    this.dismiss({
+      kind: result.kind,
+      id: result.id,
+      ...(result.accountId ? { accountId: result.accountId } : {}),
+    });
+  }
+
+  /** The owning-account badge for a result (mixed view only), or null. */
+  badgeFor(result: SwitcherResult): AccountBadge | null {
+    return this.accountBadges.forAccount(result.accountId);
   }
 
   dismiss(selection: SwitcherSelection | null): void {

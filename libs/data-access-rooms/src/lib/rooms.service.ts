@@ -3,25 +3,14 @@ import {
   ClientEvent,
   EventType,
   MatrixEventEvent,
-  NotificationCountType,
   Preset,
   ReceiptType,
   RoomEvent,
   RoomStateEvent,
   type MatrixClient,
-  type Room,
   type RoomMember,
 } from 'matrix-js-sdk';
-import {
-  Observable,
-  defer,
-  forkJoin,
-  from,
-  map,
-  of,
-  switchMap,
-  throwError,
-} from 'rxjs';
+import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import {
   MatrixClientService,
   reprojectOnAccountSwitch,
@@ -29,11 +18,15 @@ import {
 import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   isValidUserId,
-  liveRoomState,
-  messagePreview,
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util-matrix';
+import {
+  buildRoomSummary,
+  compareRoomSummaries,
+  directMapOf,
+  initialOf,
+} from './room-projection';
 
 /** Fields a {@link RoomsService.createRoom} call accepts. */
 export interface CreateRoomOptions {
@@ -55,6 +48,15 @@ export interface UserSearchResult {
 /** A joinable room shown in the channel sidebar. */
 export interface RoomSummary {
   id: string;
+  /** The signed-in account this room belongs to (its user id) — for the mixed view. */
+  accountId: string;
+  /**
+   * Every mixed account joined to this room. Usually just `[accountId]`, but a room both
+   * mixed accounts are in is shown as ONE row whose unread is the loudest of the two — so
+   * idempotent actions (mark read, mute, favourite) must reach all of them, or the badge
+   * the merge produced could never be cleared.
+   */
+  accountIds: readonly string[];
   name: string;
   initial: string;
   avatarMxc: string | null;
@@ -307,11 +309,11 @@ export class RoomsService {
    * `RoomEvent.Tags` listener also rebuilds, but the explicit refresh makes the
    * local change land immediately). Failures are logged, not thrown.
    */
-  setFavourite(roomId: string, favourite: boolean): void {
-    if (!this.matrix.isInitialized) {
+  setFavourite(roomId: string, favourite: boolean, accountId?: string): void {
+    const client = this.clientOwning(accountId);
+    if (!client) {
       return;
     }
-    const client = this.matrix.instance;
     const write = favourite
       ? client.setRoomTag(roomId, 'm.favourite', {})
       : client.deleteRoomTag(roomId, 'm.favourite');
@@ -330,13 +332,27 @@ export class RoomsService {
    * `RoomEvent.MyMembership`, which drops the room from {@link rooms} (the list is
    * filtered to `join`), so no explicit refresh is needed; errors reach the subscriber.
    */
-  leave(roomId: string): Observable<void> {
+  leave(roomId: string, accountId?: string): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.clientOwning(accountId);
+      if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
-      return from(this.matrix.instance.leave(roomId)).pipe(map(() => void 0));
+      return from(client.leave(roomId)).pipe(map(() => void 0));
     });
+  }
+
+  /**
+   * The client that owns a row's room: the named account's when one is given (the
+   * mixed-account view, where a row may belong to a signed-in account that isn't active),
+   * else the active client. Null when there is no such client — the caller decides whether
+   * that is a silent no-op or an error.
+   */
+  private clientOwning(accountId?: string): MatrixClient | null {
+    if (accountId) {
+      return this.matrix.clientFor(accountId);
+    }
+    return this.matrix.isInitialized ? this.matrix.instance : null;
   }
 
   /**
@@ -344,16 +360,16 @@ export class RoomsService {
    * marker, clearing its unread badge. Cold — runs on subscribe; a no-op for an empty
    * or unknown room. The client emits the receipt so {@link rooms} re-derives the badge.
    */
-  markRead(roomId: string): Observable<void> {
+  markRead(roomId: string, accountId?: string): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.clientOwning(accountId);
+      if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
-      const client = this.matrix.instance;
       const room = client.getRoom(roomId);
       const events = room?.getLiveTimeline().getEvents() ?? [];
       // Walk backward for the newest confirmed (non-local-echo) event — no array
-      // copy/reverse, since markAllRead runs this per unread room.
+      // copy/reverse, since the caller runs this per unread room.
       let latest: (typeof events)[number] | undefined;
       for (let i = events.length - 1; i >= 0; i--) {
         if (!events[i].status) {
@@ -373,26 +389,6 @@ export class RoomsService {
         ? ReceiptType.Read
         : ReceiptType.ReadPrivate;
       return from(client.sendReadReceipt(latest, receiptType)).pipe(
-        map(() => void 0),
-      );
-    });
-  }
-
-  /**
-   * Mark unread rooms read, in parallel. Pass `roomIds` to restrict to a scope (e.g.
-   * the rooms currently shown in the sidebar) so the action matches the affordance
-   * that triggered it; omit to ack every unread room. Cold — runs on subscribe.
-   */
-  markAllRead(roomIds?: readonly string[]): Observable<void> {
-    return defer(() => {
-      const scope = roomIds ? new Set(roomIds) : null;
-      const unread = this.rooms().filter(
-        (room) => room.hasUnread && (!scope || scope.has(room.id)),
-      );
-      if (unread.length === 0) {
-        return of(void 0);
-      }
-      return forkJoin(unread.map((room) => this.markRead(room.id))).pipe(
         map(() => void 0),
       );
     });
@@ -579,65 +575,19 @@ export class RoomsService {
       return;
     }
     const client = this.matrix.instance;
-    const all = client.getRooms();
-
-    // Reverse `m.direct` ({ userId: roomId[] }) once into the set of DM room ids AND a
-    // roomId → counterpart-user-id lookup, so each DM room can carry the other party's id.
-    const direct = new Set<string>();
-    const directUserByRoom = new Map<string, string>();
-    for (const [userId, ids] of Object.entries(this.directMap(client))) {
-      if (Array.isArray(ids)) {
-        for (const roomId of ids) {
-          direct.add(roomId);
-          if (!directUserByRoom.has(roomId)) {
-            directUserByRoom.set(roomId, userId);
-          }
-        }
-      }
-    }
+    const accountId = this.matrix.activeUserId() ?? client.getUserId?.() ?? '';
+    const { ids: direct, userByRoom } = directMapOf(client);
 
     this._rooms.set(
-      all
+      client
+        .getRooms()
         // Spaces are rendered in the server rail, not as channels in the room list.
         .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
-        .map((r) => this.toRoom(r, directUserByRoom.get(r.roomId)))
-        // Favourite rooms first, then most recently active; fall back to name.
-        .sort(
-          (a, b) =>
-            Number(b.favourite) - Number(a.favourite) ||
-            b.activityTs - a.activityTs ||
-            a.name.localeCompare(b.name),
-        ),
+        .map((r) => buildRoomSummary(r, accountId, userByRoom.get(r.roomId)))
+        .sort(compareRoomSummaries),
     );
     this._directRoomIds.set(direct);
     this._revision.update((n) => n + 1);
-  }
-
-  private toRoom(room: Room, directUserId?: string): RoomSummary {
-    const name = room.name || room.roomId;
-    const topicEvent = liveRoomState(room)?.getStateEvents('m.room.topic', '');
-    const unreadCount = room.getUnreadNotificationCount(
-      NotificationCountType.Total,
-    );
-    const highlightCount = room.getUnreadNotificationCount(
-      NotificationCountType.Highlight,
-    );
-    return {
-      id: room.roomId,
-      name,
-      initial: initialOf(name),
-      avatarMxc: room.getMxcAvatarUrl(),
-      topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
-      memberCount: room.getJoinedMemberCount(),
-      encrypted: room.hasEncryptionStateEvent(),
-      unreadCount,
-      highlightCount,
-      hasUnread: unreadCount > 0,
-      lastMessage: lastMessageOf(room),
-      activityTs: room.getLastActiveTimestamp(),
-      favourite: room.tags?.['m.favourite'] !== undefined,
-      directUserId,
-    };
   }
 
   private toMember(member: RoomMember): MemberSummary {
@@ -650,26 +600,4 @@ export class RoomsService {
       powerLevel: member.powerLevel,
     };
   }
-}
-
-/** First visible character (sans leading `#`/`@`), uppercased, for fallback avatars. */
-function initialOf(name: string): string {
-  const stripped = name.replace(/^[#@!]+/, '').trim();
-  return (stripped[0] ?? '?').toUpperCase();
-}
-
-/**
- * Single-line preview of the room's most recent `m.room.message`, or `''` when the
- * room has no message in its live timeline. The timeline is walked back-to-front so
- * membership/state events between messages are skipped. `getLiveTimeline` is called
- * optionally since not every Room stub (unit fakes) exposes it.
- */
-function lastMessageOf(room: Room): string {
-  const events = room.getLiveTimeline?.()?.getEvents() ?? [];
-  for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].getType() === EventType.RoomMessage) {
-      return messagePreview(events[i]);
-    }
-  }
-  return '';
 }

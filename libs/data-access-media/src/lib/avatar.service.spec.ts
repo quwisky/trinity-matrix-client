@@ -170,3 +170,70 @@ describe('AvatarService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+// In the mixed-account view a row can belong to a signed-in account that isn't active.
+// Resolving its media through the ACTIVE client would ask one homeserver for another
+// identity's media — leaking the association, and failing outright where the two servers
+// don't federate media to each other.
+describe('AvatarService per-account resolution', () => {
+  function setupAccounts() {
+    const activeClient = fakeClient();
+    const ownerClient = fakeClient({
+      mxcUrlToHttp: vi.fn(
+        (mxc: string) => `https://owner/${mxc.replace('mxc://', '')}`,
+      ),
+    });
+    TestBed.configureTestingModule({
+      providers: [AvatarService, MockProvider(MatrixClientService)],
+    });
+    const matrix = TestBed.inject(MatrixClientService);
+    ngMocks.stubMember(matrix, 'instance', activeClient as never);
+    ngMocks.stubMember(matrix, 'isInitialized', true);
+    ngMocks.stubMember(
+      matrix,
+      'clientFor',
+      vi.fn((id: string) =>
+        id === '@owner:hs' ? (ownerClient as never) : null,
+      ),
+    );
+    return { svc: TestBed.inject(AvatarService), activeClient, ownerClient };
+  }
+
+  it('fetches through the owning account’s client, not the active one', async () => {
+    const { svc, activeClient, ownerClient } = setupAccounts();
+
+    await firstValueFrom(svc.resolve('mxc://hs/a', 40, '@owner:hs'));
+
+    expect(ownerClient.mxcUrlToHttp).toHaveBeenCalled();
+    expect(activeClient.mxcUrlToHttp).not.toHaveBeenCalled();
+  });
+
+  it('still uses the active client when no account is named', async () => {
+    const { svc, activeClient, ownerClient } = setupAccounts();
+
+    await firstValueFrom(svc.resolve('mxc://hs/a', 40));
+
+    expect(activeClient.mxcUrlToHttp).toHaveBeenCalled();
+    expect(ownerClient.mxcUrlToHttp).not.toHaveBeenCalled();
+  });
+
+  // The same mxc through a different homeserver is a different request, so it must not
+  // share a cache entry — that would defeat the routing above.
+  it('caches per account rather than by mxc alone', async () => {
+    const { svc, activeClient, ownerClient } = setupAccounts();
+
+    await firstValueFrom(svc.resolve('mxc://hs/a', 40, '@owner:hs'));
+    await firstValueFrom(svc.resolve('mxc://hs/a', 40));
+
+    expect(ownerClient.mxcUrlToHttp).toHaveBeenCalled();
+    expect(activeClient.mxcUrlToHttp).toHaveBeenCalled();
+  });
+
+  it('falls back to the active client when the named account has none', async () => {
+    const { svc, activeClient } = setupAccounts();
+
+    await firstValueFrom(svc.resolve('mxc://hs/a', 40, '@gone:hs'));
+
+    expect(activeClient.mxcUrlToHttp).toHaveBeenCalled();
+  });
+});

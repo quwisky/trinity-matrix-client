@@ -5,6 +5,7 @@ import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import {
   InvitesService,
+  MixedInvitesService,
   type PendingInvite,
 } from '@trinity/data-access-invites';
 import {
@@ -12,6 +13,7 @@ import {
   type UserProfile,
 } from '@trinity/data-access-profile';
 import {
+  AccountScopeService,
   RoomsService,
   SpacesService,
   type RoomSummary,
@@ -36,6 +38,8 @@ const presenceStub = {
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {
     id: '!a:hs',
+    accountId: '@me:hs',
+    accountIds: ['@me:hs'],
     name: 'general',
     initial: 'G',
     avatarMxc: null,
@@ -86,6 +90,10 @@ function child(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
  * and invites now come from `SpacesService`/`InvitesService` signals (not inputs),
  * so tests seed and later mutate those signals directly.
  */
+/** Spy behind RoomNotificationsService.modeFor, so tests can assert the account it was
+ * asked about (a mixed-in row must be read from ITS account, not the active one). */
+let modeForSpy: ReturnType<typeof vi.fn>;
+
 async function renderSidebar(
   opts: {
     inputs?: {
@@ -102,15 +110,20 @@ async function renderSidebar(
     childrenLoading?: boolean;
     childrenError?: string | null;
     invites?: PendingInvite[];
+    /** Cross-account invites, used instead of `invites` when `mixing` is true. */
+    mixedInvites?: PendingInvite[];
+    mixing?: boolean;
     notifyMode?: RoomNotifyMode;
   } = {},
 ) {
+  modeForSpy = vi.fn(() => opts.notifyMode ?? 'all');
   const signals = {
     notJoinedRooms: signal<SpaceChildRoom[]>(opts.joinableRooms ?? []),
     childSpaces: signal<SpaceChildRoom[]>(opts.childSpaces ?? []),
     childrenLoading: signal(opts.childrenLoading ?? false),
     childrenError: signal<string | null>(opts.childrenError ?? null),
     pendingInvites: signal<PendingInvite[]>(opts.invites ?? []),
+    mixedInvites: signal<PendingInvite[]>(opts.mixedInvites ?? []),
   };
 
   const rendered = await render(ChannelSidebarComponent, {
@@ -123,9 +136,13 @@ async function renderSidebar(
         childrenError: signals.childrenError,
       }),
       MockProvider(InvitesService, { pendingInvites: signals.pendingInvites }),
+      MockProvider(MixedInvitesService, { invites: signals.mixedInvites }),
+      MockProvider(AccountScopeService, {
+        mixing: signal(opts.mixing ?? false).asReadonly(),
+      }),
       MockProvider(RoomsService),
       MockProvider(RoomNotificationsService, {
-        modeFor: () => opts.notifyMode ?? 'all',
+        modeFor: modeForSpy,
       }),
       { provide: PresenceService, useValue: presenceStub },
     ],
@@ -333,8 +350,12 @@ describe('ChannelSidebarComponent', () => {
 
     let accepted: string | undefined;
     let declined: string | undefined;
-    fixture.componentInstance.acceptInvite.subscribe((id) => (accepted = id));
-    fixture.componentInstance.declineInvite.subscribe((id) => (declined = id));
+    fixture.componentInstance.acceptInvite.subscribe(
+      (e) => (accepted = e.roomId),
+    );
+    fixture.componentInstance.declineInvite.subscribe(
+      (e) => (declined = e.roomId),
+    );
 
     container.querySelector<HTMLElement>('.invite__btn.accept')!.click();
     container.querySelector<HTMLElement>('.invite__btn.decline')!.click();
@@ -590,7 +611,7 @@ describe('ChannelSidebarComponent', () => {
     expect(favouriteItem?.textContent).toContain('Favourite');
     favouriteItem?.click();
 
-    expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', true);
+    expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', true, '@me:hs');
   });
 
   it('unfavourites a favourite room via the kebab menu', async () => {
@@ -610,7 +631,11 @@ describe('ChannelSidebarComponent', () => {
     expect(favouriteItem?.textContent).toContain('Unfavourite');
     favouriteItem?.click();
 
-    expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', false);
+    expect(roomsSvc.setFavourite).toHaveBeenCalledWith(
+      '!a:hs',
+      false,
+      '@me:hs',
+    );
   });
 
   it('emits removeRoom for a joined channel only while a space is active', async () => {
@@ -640,12 +665,33 @@ describe('ChannelSidebarComponent', () => {
     expect(removed).toBe('!a:hs');
   });
 
+  // Presence is projected from the ACTIVE client only, so a mixed-in account's DM partner
+  // has no entry there — a dot would render grey and read as genuinely offline.
+  it('shows no presence dot on a DM owned by another account', async () => {
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!mine:hs', accountId: '@me:hs', directUserId: '@x:hs' }),
+          room({
+            id: '!theirs:hs',
+            accountId: '@alt:hs',
+            directUserId: '@y:hs',
+          }),
+        ],
+        activeUserId: '@me:hs',
+      },
+    });
+
+    // One dot only: the active account's DM keeps it, the mixed-in one does not.
+    expect(container.querySelectorAll('.presence-dot').length).toBe(1);
+  });
+
   it('emits leaveRoom from the room kebab menu', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
     });
     let left: string | undefined;
-    fixture.componentInstance.leaveRoom.subscribe((id) => (left = id));
+    fixture.componentInstance.leaveRoom.subscribe((e) => (left = e.roomId));
 
     container.querySelector<HTMLElement>('.channel__menu')!.click();
     fixture.detectChanges();
@@ -661,7 +707,7 @@ describe('ChannelSidebarComponent', () => {
       },
     });
     let marked: string | undefined;
-    fixture.componentInstance.markRead.subscribe((id) => (marked = id));
+    fixture.componentInstance.markRead.subscribe((e) => (marked = e.roomId));
 
     container.querySelector<HTMLElement>('.channel__menu')!.click();
     fixture.detectChanges();
@@ -723,12 +769,17 @@ describe('ChannelSidebarComponent', () => {
     expect(notify?.textContent).toContain('Notifications');
   });
 
-  it('reads the room’s current notification level for the menu', async () => {
+  it('reads the level from the account that owns the row, not the active one', async () => {
     const { fixture } = await renderSidebar({
       inputs: { rooms: [room({ id: '!a:hs' })] },
       notifyMode: 'mentions',
     });
-    expect(fixture.componentInstance.notifyMode('!a:hs')).toBe('mentions');
+
+    const foreign = room({ id: '!a:hs', accountId: '@alt:hs' });
+    expect(fixture.componentInstance.notifyMode(foreign)).toBe('mentions');
+    // A mixed-in row's push rules live on ITS account; reading them from the active client
+    // would report the wrong level and silently mute/unmute the wrong account.
+    expect(modeForSpy).toHaveBeenCalledWith('!a:hs', '@alt:hs');
   });
 
   it('emits setNotifyMode when a level is chosen from the submenu', async () => {
@@ -758,7 +809,9 @@ describe('ChannelSidebarComponent', () => {
     ).toBe('true');
     muteItem!.click();
 
-    expect(picks).toEqual([{ roomId: '!a:hs', mode: 'mute' }]);
+    expect(picks).toEqual([
+      { roomId: '!a:hs', mode: 'mute', accountIds: ['@me:hs'] },
+    ]);
   });
 
   // One render per case (a second render() in the same test re-configures an already
@@ -808,7 +861,9 @@ describe('ChannelSidebarComponent', () => {
       .querySelector<HTMLElement>('[data-testid="room-notify-mentions"]')!
       .click();
 
-    expect(picks).toEqual([{ roomId: '!a:hs', mode: 'mentions' }]);
+    expect(picks).toEqual([
+      { roomId: '!a:hs', mode: 'mentions', accountIds: ['@me:hs'] },
+    ]);
   });
 
   it('emits the level for the specific room whose menu was opened', async () => {
@@ -837,7 +892,9 @@ describe('ChannelSidebarComponent', () => {
       .querySelector<HTMLElement>('[data-testid="room-notify-mute"]')!
       .click();
 
-    expect(picks).toEqual([{ roomId: '!b:hs', mode: 'mute' }]);
+    expect(picks).toEqual([
+      { roomId: '!b:hs', mode: 'mute', accountIds: ['@me:hs'] },
+    ]);
   });
 
   it('shows loading then error states for the space hierarchy', async () => {
@@ -853,5 +910,110 @@ describe('ChannelSidebarComponent', () => {
     expect(container.querySelector('.empty--error')).not.toBeNull();
     // No joinable rows render while erroring.
     expect(container.querySelector('.joinable')).toBeNull();
+  });
+
+  it('badges each room with its owning account only in the mixed view', async () => {
+    const badges = new Map([
+      ['@me:hs', { initial: 'M', name: 'Me' }],
+      ['@alt:hs', { initial: 'A', name: 'Alt' }],
+    ]);
+    const { container, fixture } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!mine:hs', accountId: '@me:hs' }),
+          room({ id: '!theirs:hs', accountId: '@alt:hs' }),
+        ],
+        accountBadges: badges,
+      },
+    });
+    // Both rows carry an account badge.
+    expect(
+      container.querySelectorAll('[data-testid="account-badge"]').length,
+    ).toBe(2);
+
+    // With no badge map (single-account), no badge renders.
+    fixture.componentRef.setInput('accountBadges', new Map());
+    fixture.detectChanges();
+    expect(container.querySelector('[data-testid="account-badge"]')).toBeNull();
+  });
+
+  // An invite to an account you're SHOWING but not acting as must be visible here, or it
+  // stays hidden until you happen to switch to that account.
+  it('lists invites from every mixed account, badged, while mixing', async () => {
+    const badges = new Map([
+      [
+        '@alt:hs',
+        { id: '@alt:hs', name: 'Alt', initial: 'A', avatarMxc: null },
+      ],
+    ]);
+    const { container } = await renderSidebar({
+      mixing: true,
+      mixedInvites: [
+        {
+          roomId: '!i:hs',
+          accountId: '@alt:hs',
+          name: 'Ops',
+          initial: 'O',
+          avatarMxc: null,
+          inviterName: 'Al',
+          isSpace: false,
+          isDirect: false,
+        },
+      ],
+      inputs: { accountBadges: badges },
+    });
+
+    expect(container.querySelector('.invite__name')?.textContent).toContain(
+      'Ops',
+    );
+    expect(
+      container.querySelector('.invite [data-testid="account-badge"]'),
+    ).toBeTruthy();
+  });
+
+  it('answers an invite on the account it was sent to', async () => {
+    const { fixture, container } = await renderSidebar({
+      mixing: true,
+      mixedInvites: [
+        {
+          roomId: '!i:hs',
+          accountId: '@alt:hs',
+          name: 'Ops',
+          initial: 'O',
+          avatarMxc: null,
+          inviterName: 'Al',
+          isSpace: false,
+          isDirect: false,
+        },
+      ],
+    });
+    const accepted: { roomId: string; accountId: string }[] = [];
+    fixture.componentInstance.acceptInvite.subscribe((e) => accepted.push(e));
+
+    container.querySelector<HTMLElement>('.invite__btn.accept')!.click();
+
+    expect(accepted).toEqual([{ roomId: '!i:hs', accountId: '@alt:hs' }]);
+  });
+
+  it('falls back to the active account’s invites when not mixing', async () => {
+    const single: PendingInvite = {
+      roomId: '!mine:hs',
+      accountId: '@me:hs',
+      name: 'Mine',
+      initial: 'M',
+      avatarMxc: null,
+      inviterName: 'Al',
+      isSpace: false,
+      isDirect: false,
+    };
+    const { container } = await renderSidebar({
+      mixing: false,
+      invites: [single],
+      mixedInvites: [{ ...single, roomId: '!other:hs', name: 'Other' }],
+    });
+
+    expect(container.querySelector('.invite__name')?.textContent).toContain(
+      'Mine',
+    );
   });
 });

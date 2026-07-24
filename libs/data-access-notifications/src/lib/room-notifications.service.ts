@@ -27,12 +27,14 @@ export type RoomNotifyMode = 'all' | 'mentions' | 'mute';
 export class RoomNotificationsService {
   private readonly matrix = inject(MatrixClientService);
 
-  /** The room's current notification mode, derived from its push rules. */
-  modeFor(roomId: string): RoomNotifyMode {
-    if (!this.matrix.isInitialized) {
+  /** The room's current notification mode, derived from its push rules. Pass `accountId`
+   * for a room owned by a non-active account (the mixed-account view) so the mode is read
+   * from the account that actually holds the rules. */
+  modeFor(roomId: string, accountId?: string): RoomNotifyMode {
+    const client = this.clientOwning(accountId);
+    if (!client) {
       return 'all';
     }
-    const client = this.matrix.instance;
     if (this.overrideMuteRule(client, roomId)) {
       return 'mute';
     }
@@ -51,13 +53,26 @@ export class RoomNotificationsService {
    * subscribe — and refreshes the client's cached rules so {@link modeFor} reflects the
    * change immediately (before the `m.push_rules` account-data echo arrives on sync).
    */
-  setMode(roomId: string, mode: RoomNotifyMode): Observable<void> {
+  setMode(
+    roomId: string,
+    mode: RoomNotifyMode,
+    accountId?: string,
+  ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.clientOwning(accountId);
+      if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
-      return from(this.applyMode(this.matrix.instance, roomId, mode));
+      return from(this.applyMode(client, roomId, mode));
     });
+  }
+
+  /** The client owning a room: the named account's, else the active one. */
+  private clientOwning(accountId?: string): MatrixClient | null {
+    if (accountId) {
+      return this.matrix.clientFor(accountId);
+    }
+    return this.matrix.isInitialized ? this.matrix.instance : null;
   }
 
   private async applyMode(

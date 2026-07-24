@@ -8,6 +8,7 @@ import { ServerRailComponent, type RailUnread } from './server-rail.component';
 function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
   return {
     id: '!s:hs',
+    accountId: '@me:hs',
     name: 'Space',
     initial: 'S',
     avatarMxc: null,
@@ -262,5 +263,33 @@ describe('ServerRailComponent', () => {
     fixture.detectChanges();
 
     expect(spaceItem().querySelector('.badge')).toBeNull();
+  });
+
+  it('badges each space pill with its owning account in the mixed view', async () => {
+    // Use the real AvatarComponent (its badge renders without the image resolver) so the
+    // account-badge overlay is actually present.
+    const { container } = await render(ServerRailComponent, {
+      inputs: {
+        spaces: [
+          space({ id: '!s1:hs', accountId: '@me:hs' }),
+          space({ id: '!s2:hs', accountId: '@alt:hs' }),
+        ],
+        accountBadges: new Map([
+          ['@me:hs', { initial: 'M', name: 'Me' }],
+          ['@alt:hs', { initial: 'A', name: 'Alt' }],
+        ]),
+      },
+    });
+
+    expect(
+      container.querySelectorAll('[data-testid="account-badge"]').length,
+    ).toBe(2);
+  });
+
+  it('shows no space-pill badge without an account-badge map', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: { spaces: [space({ id: '!s1:hs' })] },
+    });
+    expect(container.querySelector('[data-testid="account-badge"]')).toBeNull();
   });
 });

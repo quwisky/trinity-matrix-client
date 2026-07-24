@@ -1,3 +1,10 @@
+// Account badges on result rows ring themselves in --trn-presence-ring; inside a dialog
+// that must be the card surface, or the default (--background) punches a near-black halo
+// through each badge in dark themes.
+:host {
+  --trn-presence-ring: var(--card);
+}
+
 // Trailing kind + lock icons (ng-icon) — muted to match the subtitle.
 .qs-kind,
 .qs-lock {

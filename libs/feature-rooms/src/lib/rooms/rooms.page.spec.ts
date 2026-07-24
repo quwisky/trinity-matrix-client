@@ -1,4 +1,9 @@
-import { ApplicationRef, signal, type WritableSignal } from '@angular/core';
+import {
+  ApplicationRef,
+  computed,
+  signal,
+  type WritableSignal,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { Router } from '@angular/router';
@@ -6,6 +11,7 @@ import { AuthService } from '@trinity/data-access-auth';
 import { CryptoService } from '@trinity/data-access-crypto';
 import {
   InvitesService,
+  MixedInvitesService,
   type PendingInvite,
 } from '@trinity/data-access-invites';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
@@ -19,6 +25,9 @@ import {
   RoomAliasesService,
   PublicRoomsService,
   SpacesService,
+  AccountScopeService,
+  MixedRoomsService,
+  MixedSpacesService,
   UnreadAggregatorService,
   type RoomSummary,
   type SpaceChildRoom,
@@ -88,7 +97,6 @@ describe('RoomsPage action error feedback', () => {
   let canManageAliases: ReturnType<typeof vi.fn>;
   let joinPublicRoom: ReturnType<typeof vi.fn>;
   let markReadFn: ReturnType<typeof vi.fn>;
-  let markAllReadFn: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
@@ -113,7 +121,6 @@ describe('RoomsPage action error feedback', () => {
     canManageAliases = vi.fn(() => false);
     joinPublicRoom = vi.fn(() => of('!new:hs'));
     markReadFn = vi.fn(() => of(undefined));
-    markAllReadFn = vi.fn(() => of(undefined));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -122,7 +129,6 @@ describe('RoomsPage action error feedback', () => {
           rooms: roomsSignal,
           directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
           markRead: markReadFn,
-          markAllRead: markAllReadFn,
         }),
         MockProvider(RoomSettingsService, { editableFields, currentAccess }),
         MockProvider(RoomModerationService, { canManageBans }),
@@ -193,7 +199,7 @@ describe('RoomsPage action error feedback', () => {
 
     page.onSetNotifyMode({ roomId: '!r:hs', mode: 'mentions' });
 
-    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mentions');
+    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mentions', undefined);
     expect(toastShow).not.toHaveBeenCalled();
   });
 
@@ -213,10 +219,10 @@ describe('RoomsPage action error feedback', () => {
     const page = build();
     page.activeRoomId.set('!r:hs');
 
-    await page.onLeaveRoom('!r:hs');
+    await page.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(alertConfirm).toHaveBeenCalled();
-    expect(leaveRoom).toHaveBeenCalledWith('!r:hs');
+    expect(leaveRoom).toHaveBeenCalledWith('!r:hs', undefined);
     expect(page.activeRoomId()).toBeNull();
     // Tear every open-room projection down so none keeps listening on it.
     expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
@@ -226,13 +232,23 @@ describe('RoomsPage action error feedback', () => {
     expect(TestBed.inject(MediaService).releaseAll).toHaveBeenCalled();
   });
 
+  // Leaving is irreversible for a private room, so a mixed-in row must leave on ITS
+  // account rather than falling through to whichever one happens to be active.
+  it('leaves a foreign-account room on its own account', async () => {
+    const page = build();
+
+    await page.onLeaveRoom({ roomId: '!r:hs', accountId: '@alt:hs' });
+
+    expect(leaveRoom).toHaveBeenCalledWith('!r:hs', '@alt:hs');
+  });
+
   it('leaves a room but keeps a different open room selected', async () => {
     const page = build();
     page.activeRoomId.set('!other:hs');
 
-    await page.onLeaveRoom('!r:hs');
+    await page.onLeaveRoom({ roomId: '!r:hs' });
 
-    expect(leaveRoom).toHaveBeenCalledWith('!r:hs');
+    expect(leaveRoom).toHaveBeenCalledWith('!r:hs', undefined);
     expect(page.activeRoomId()).toBe('!other:hs');
     // The open room wasn't the one left, so its projections stay put.
     expect(TestBed.inject(TimelineService).close).not.toHaveBeenCalled();
@@ -242,7 +258,7 @@ describe('RoomsPage action error feedback', () => {
     const page = build();
     alertConfirm.mockResolvedValue(false);
 
-    await page.onLeaveRoom('!r:hs');
+    await page.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(leaveRoom).not.toHaveBeenCalled();
   });
@@ -251,7 +267,7 @@ describe('RoomsPage action error feedback', () => {
     const page = build();
     leaveRoom.mockReturnValue(throwError(() => new Error('nope')));
 
-    await page.onLeaveRoom('!r:hs');
+    await page.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
@@ -264,6 +280,8 @@ describe('RoomsPage action error feedback', () => {
     roomsSignal.set([
       {
         id: '!r:hs',
+        accountId: '@me:hs',
+        accountIds: ['@me:hs'],
         name: 'General',
         initial: 'G',
         avatarMxc: null,
@@ -374,14 +392,71 @@ describe('RoomsPage action error feedback', () => {
 
   it('marks a room read via RoomsService', () => {
     const page = build();
-    page.onMarkRead('!r:hs');
-    expect(markReadFn).toHaveBeenCalledWith('!r:hs');
+    page.onMarkRead({ roomId: '!r:hs' });
+    expect(markReadFn).toHaveBeenCalledWith('!r:hs', undefined);
   });
 
-  it('marks all rooms read via RoomsService', () => {
+  // A row merged from two accounts carries the loudest unread of the two, so acking only
+  // one would leave a badge the user has no way to clear.
+  it('acks every account joined to a merged row', () => {
     const page = build();
+
+    page.onMarkRead({ roomId: '!r:hs', accountIds: ['@me:hs', '@alt:hs'] });
+
+    expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@me:hs');
+    expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@alt:hs');
+  });
+
+  it('applies a notification level on every account joined to a merged row', () => {
+    const page = build();
+
+    page.onSetNotifyMode({
+      roomId: '!r:hs',
+      mode: 'mute',
+      accountIds: ['@me:hs', '@alt:hs'],
+    });
+
+    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mute', '@me:hs');
+    expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mute', '@alt:hs');
+  });
+
+  // Acked per owning account rather than through one bulk call: in the mixed view the
+  // header button is offered for rooms belonging to accounts other than the active one,
+  // and acking those through the active client would silently do nothing.
+  it('marks every unread visible room read on its own account', () => {
+    const page = build();
+    const unreadRoom = (
+      id: string,
+      accountId: string,
+      hasUnread: boolean,
+    ): RoomSummary => ({
+      id,
+      accountId,
+      accountIds: [accountId],
+      name: id,
+      initial: 'X',
+      avatarMxc: null,
+      topic: '',
+      memberCount: 2,
+      encrypted: false,
+      unreadCount: hasUnread ? 3 : 0,
+      highlightCount: 0,
+      hasUnread,
+      lastMessage: '',
+      activityTs: 0,
+      favourite: false,
+    });
+    roomsSignal.set([
+      unreadRoom('!a:hs', '@me:hs', true),
+      unreadRoom('!b:hs', '@me:hs', false),
+      unreadRoom('!c:hs', '@alt:hs', true),
+    ]);
+
     page.onMarkAllRead();
-    expect(markAllReadFn).toHaveBeenCalled();
+
+    expect(markReadFn).toHaveBeenCalledWith('!a:hs', '@me:hs');
+    expect(markReadFn).toHaveBeenCalledWith('!c:hs', '@alt:hs');
+    expect(markReadFn).not.toHaveBeenCalledWith('!b:hs', expect.anything());
   });
 
   it('opens the threads-list panel for the active room', () => {
@@ -539,6 +614,8 @@ describe('RoomsPage space filtering', () => {
   function roomSummary(id: string, name: string, unread = 0): RoomSummary {
     return {
       id,
+      accountId: '@me:hs',
+      accountIds: ['@me:hs'],
       name,
       initial: name[0].toUpperCase(),
       avatarMxc: null,
@@ -555,7 +632,14 @@ describe('RoomsPage space filtering', () => {
   }
 
   function spaceSummary(id: string, childRoomIds: string[]): SpaceSummary {
-    return { id, name: id, initial: 'S', avatarMxc: null, childRoomIds };
+    return {
+      id,
+      accountId: '@me:hs',
+      name: id,
+      initial: 'S',
+      avatarMxc: null,
+      childRoomIds,
+    };
   }
 
   function build(): RoomsPage {
@@ -831,6 +915,8 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
   function roomSummary(id: string, name: string, unread = 0): RoomSummary {
     return {
       id,
+      accountId: '@me:hs',
+      accountIds: ['@me:hs'],
       name,
       initial: name[0].toUpperCase(),
       avatarMxc: null,
@@ -847,7 +933,14 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
   }
 
   function spaceSummary(id: string, childRoomIds: string[]): SpaceSummary {
-    return { id, name: id, initial: 'S', avatarMxc: null, childRoomIds };
+    return {
+      id,
+      accountId: '@me:hs',
+      name: id,
+      initial: 'S',
+      avatarMxc: null,
+      childRoomIds,
+    };
   }
 
   function build(): RoomsPage {
@@ -1509,9 +1602,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     const page = build();
     pending.set([pendingInvite({ roomId: '!i:hs', isSpace: false })]);
 
-    page.onAcceptInvite('!i:hs');
+    page.onAcceptInvite({ roomId: '!i:hs' });
 
-    expect(acceptInvite).toHaveBeenCalledWith('!i:hs');
+    expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
     expect(page.activeSpaceId()).toBeNull();
     expect(page.activeRoomId()).toBe('!i:hs');
   });
@@ -1520,18 +1613,18 @@ describe('RoomsPage room / DM / invite actions', () => {
     const page = build();
     pending.set([pendingInvite({ roomId: '!s:hs', isSpace: true })]);
 
-    page.onAcceptInvite('!s:hs');
+    page.onAcceptInvite({ roomId: '!s:hs' });
 
-    expect(acceptInvite).toHaveBeenCalledWith('!s:hs');
+    expect(acceptInvite).toHaveBeenCalledWith('!s:hs', undefined);
     expect(page.activeRoomId()).toBeNull(); // a space lands in the rail, not selected
   });
 
   it('declines an invite (leaves)', () => {
     const page = build();
 
-    page.onDeclineInvite('!i:hs');
+    page.onDeclineInvite({ roomId: '!i:hs' });
 
-    expect(declineInvite).toHaveBeenCalledWith('!i:hs');
+    expect(declineInvite).toHaveBeenCalledWith('!i:hs', undefined);
   });
 
   it('opens the new-chat action sheet on Home', async () => {
@@ -1732,8 +1825,17 @@ describe('RoomsPage quick switcher', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
-        MockProvider(RoomsService, { createDirectMessage }),
-        MockProvider(SpacesService, { openSpace }),
+        MockProvider(RoomsService, {
+          createDirectMessage,
+          // The jump resolves the row's owning account from the known room set.
+          rooms: signal<RoomSummary[]>([]),
+          directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
+        }),
+        MockProvider(SpacesService, {
+          openSpace,
+          spaces: signal<SpaceSummary[]>([]),
+          childRoomIds: vi.fn(() => []),
+        }),
         invitesProvider({
           pendingInvites: pending,
           acceptInvite,
@@ -1828,7 +1930,7 @@ describe('RoomsPage quick switcher', () => {
 
     await page.openSwitcher();
 
-    expect(acceptInvite).toHaveBeenCalledWith('!i:hs');
+    expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
     expect(page.activeRoomId()).toBe('!i:hs');
   });
 
@@ -2142,19 +2244,21 @@ describe('RoomsPage keyboard room switching', () => {
 
   let dialogOpen = false;
 
+  let keyboardRooms: WritableSignal<RoomSummary[]>;
+
   function build(): RoomsPage {
     dialogOpen = false;
     // Display order a, b, c; b and c carry unread.
-    const rooms = [
+    keyboardRooms = signal<RoomSummary[]>([
       roomSummary('!a:hs'),
       roomSummary('!b:hs', 3),
       roomSummary('!c:hs', 1),
-    ];
+    ]);
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         MockProvider(RoomsService, {
-          rooms: signal(rooms),
+          rooms: keyboardRooms,
           directRoomIds: signal<ReadonlySet<string>>(new Set()),
         }),
         MockProvider(SpacesService, {
@@ -2300,6 +2404,35 @@ describe('RoomsPage keyboard room switching', () => {
     expect(page.activeRoomId()).toBe('!b:hs'); // Tab hops like the quote
   });
 
+  // The MRU outlives account switches and unticks, so a numbered jump can name a room no
+  // account in scope still holds — unlike hop, nth() filters against nothing. Opening it
+  // would tear the timeline down and leave a blank chat pane, so it must decline.
+  it('ignores a numbered jump to a room the list no longer knows', () => {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const page = build();
+    visitABC(page); // MRU [c, b, a], in c
+    // '!b:hs' leaves the scope (its account was unticked, or signed out).
+    keyboardRooms.set([roomSummary('!a:hs'), roomSummary('!c:hs')]);
+
+    page.onGlobalKeydown(key({ code: 'Digit1', key: '1', ctrlKey: true }));
+
+    expect(page.activeRoomId()).toBe('!c:hs'); // stayed put rather than opening a ghost
+  });
+
+  it('still jumps to a room that is in scope', () => {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const page = build();
+    visitABC(page);
+
+    page.onGlobalKeydown(key({ code: 'Digit1', key: '1', ctrlKey: true }));
+
+    expect(page.activeRoomId()).toBe('!b:hs');
+  });
+
   it('stays quiet while an overlay owns the screen', () => {
     const page = build();
     visitABC(page);
@@ -2329,5 +2462,368 @@ describe('RoomsPage keyboard room switching', () => {
     expect(page.activeRoomId()).toBe('!b:hs'); // the new chord does
 
     TestBed.inject(KeyboardShortcutsService).resetAll(); // don't leak into other specs
+  });
+});
+
+// Mixed-account view (issue #10): the global "All accounts" scope spans every signed-in
+// account across ALL surfaces — Recent, Home's DMs, the Rooms list and the rail spaces —
+// and opening a foreign-account item switches to that account first.
+describe('RoomsPage mixed-account view', () => {
+  function room(
+    id: string,
+    accountId: string,
+    opts: { directUserId?: string; unread?: number } = {},
+  ): RoomSummary {
+    return {
+      id,
+      accountId,
+      accountIds: [accountId],
+      name: id,
+      initial: id[1].toUpperCase(),
+      avatarMxc: null,
+      topic: '',
+      memberCount: 0,
+      encrypted: false,
+      unreadCount: opts.unread ?? 0,
+      highlightCount: 0,
+      hasUnread: (opts.unread ?? 0) > 0,
+      lastMessage: '',
+      activityTs: 0,
+      favourite: false,
+      directUserId: opts.directUserId,
+    };
+  }
+
+  function space(
+    id: string,
+    accountId: string,
+    childRoomIds: string[] = [],
+  ): SpaceSummary {
+    return {
+      id,
+      accountId,
+      name: id,
+      initial: 'S',
+      avatarMxc: null,
+      childRoomIds,
+    };
+  }
+
+  // Cross-account rooms the aggregator projects while "All accounts" is on: two plain
+  // rooms, two DMs (one per account), and one non-DM room that is a child of @alt's space.
+  const mixedRoomList = (): RoomSummary[] => [
+    room('!mine:hs', '@me:hs'),
+    room('!theirs:hs', '@alt:hs', { unread: 7 }),
+    room('!dm-mine:hs', '@me:hs', { directUserId: '@x:hs' }),
+    room('!dm-theirs:hs', '@alt:hs', { directUserId: '@y:hs', unread: 3 }),
+    room('!child-theirs:hs', '@alt:hs', { unread: 5 }),
+  ];
+
+  let switchAccount: ReturnType<typeof vi.fn>;
+  let setMixedRoomsAccounts: ReturnType<typeof vi.fn>;
+  /** The picker's current selection, driven directly by the tests. */
+  let shownAccounts: WritableSignal<ReadonlySet<string>>;
+  let toggleAccount: ReturnType<typeof vi.fn>;
+
+  function build(
+    accountIds: string[],
+    avatars: Record<string, string | null> = {},
+  ): RoomsPage {
+    switchAccount = vi.fn(() => of(undefined));
+    setMixedRoomsAccounts = vi.fn();
+    shownAccounts = signal<ReadonlySet<string>>(new Set(['@me:hs']));
+    toggleAccount = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        MockProvider(RoomsService, {
+          rooms: signal([room('!mine:hs', '@me:hs')]),
+          directRoomIds: signal<ReadonlySet<string>>(new Set()),
+          revision: signal(0).asReadonly(),
+        }),
+        MockProvider(SpacesService, {
+          spaces: signal([space('!s-mine:hs', '@me:hs')]),
+          childRoomIds: vi.fn(() => []),
+        }),
+        MockProvider(AccountScopeService, {
+          selected: shownAccounts.asReadonly(),
+          mixing: computed(() => shownAccounts().size > 1),
+          toggle: toggleAccount,
+        }),
+        MockProvider(MixedRoomsService, {
+          rooms: signal(mixedRoomList()),
+          setAccounts: setMixedRoomsAccounts,
+        }),
+        MockProvider(MixedSpacesService, {
+          spaces: signal([
+            space('!s-mine:hs', '@me:hs'),
+            space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
+          ]),
+          setAccounts: vi.fn(),
+        }),
+        MockProvider(MixedInvitesService, {
+          invites: signal<PendingInvite[]>([]),
+          setAccounts: vi.fn(),
+        }),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(accountIds).asReadonly(),
+          clientFor: (id: string) =>
+            ({
+              getUser: () => ({ avatarUrl: avatars[id] ?? null }),
+            }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService, { switchAccount }),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return TestBed.inject(RoomsPage);
+  }
+
+  it('scopes Recent + rail spaces to the active account by default', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    // Default 'this' — the active account only.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
+    expect(page.railSpaces().map((s) => s.id)).toEqual(['!s-mine:hs']);
+    expect(page.accountBadges().size).toBe(0); // no badges outside mixed mode
+  });
+
+  it('Recent spans every account when the toggle is "All accounts"', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.tick(); // run the enable effect
+
+    // Recent lists every account's rooms unfiltered, in the aggregator's order.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+      '!mine:hs',
+      '!theirs:hs',
+      '!dm-mine:hs',
+      '!dm-theirs:hs',
+      '!child-theirs:hs',
+    ]);
+    expect(page.railSpaces().map((s) => s.id)).toEqual([
+      '!s-mine:hs',
+      '!s-alt:hs',
+    ]);
+    expect(setMixedRoomsAccounts).toHaveBeenCalledWith(
+      new Set(['@me:hs', '@alt:hs']),
+    );
+    expect(page.accountBadges().size).toBeGreaterThan(0);
+  });
+
+  it('carries each account’s real avatar into the badge lookup', () => {
+    const page = build(['@me:hs', '@alt:hs'], {
+      '@alt:hs': 'mxc://hs/alt-avatar',
+    });
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+
+    // The badge exposes the account's own avatar (resolved to the real image downstream)…
+    expect(page.accountBadges().get('@alt:hs')?.avatarMxc).toBe(
+      'mxc://hs/alt-avatar',
+    );
+    // …and null for an account with no avatar, so the badge falls back to its initial.
+    expect(page.accountBadges().get('@me:hs')?.avatarMxc).toBeNull();
+  });
+
+  it('Home shows every account’s DMs in mixed mode', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onSelectSpace(null); // Home — leaves Recent
+
+    // Both accounts' DMs (classified by each row's own-account m.direct), nothing else.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+      '!dm-mine:hs',
+      '!dm-theirs:hs',
+    ]);
+    expect(page.sidebarTitle()).toBe('Direct Messages');
+  });
+
+  it('Rooms shows every account’s non-DM, non-space rooms in mixed mode', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onShowRooms();
+
+    // Non-DM rooms from both accounts, excluding DMs and @alt's space child.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+      '!mine:hs',
+      '!theirs:hs',
+    ]);
+    expect(page.sidebarTitle()).toBe('Rooms');
+  });
+
+  it('switches to the owning account before opening a foreign room', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+
+    page.onSelectRoomRow('!theirs:hs'); // belongs to @alt:hs
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+
+    // A room on the active account opens without a switch.
+    switchAccount.mockClear();
+    page.onSelectRoomRow('!mine:hs');
+    expect(switchAccount).not.toHaveBeenCalled();
+    expect(page.activeRoomId()).toBe('!mine:hs');
+  });
+
+  it('switches to the owning account before selecting a foreign space', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+
+    page.onSelectSpaceRow('!s-alt:hs'); // belongs to @alt:hs
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+
+    // The active account's own space selects without a switch; Home (null) too.
+    switchAccount.mockClear();
+    page.onSelectSpaceRow('!s-mine:hs');
+    page.onSelectSpaceRow(null);
+    expect(switchAccount).not.toHaveBeenCalled();
+  });
+
+  it('narrows the projections back down when an account is unticked', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.tick();
+    expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(
+      new Set(['@me:hs', '@alt:hs']),
+    );
+
+    shownAccounts.set(new Set(['@me:hs']));
+    TestBed.tick();
+    // One account is not a mix — the projection is told so and empties itself.
+    expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(new Set(['@me:hs']));
+    // Recent falls back to the active account's rooms only.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
+  });
+
+  // The rail badges must count what their view renders: before this they summed the ACTIVE
+  // account's rooms while the list below showed every mixed account's.
+  it('sums the rail unread badges across the mixed accounts', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+
+    expect(page.recentUnread()).toBe(15); // 7 + 3 + 5 across both accounts
+    expect(page.homeUnread()).toBe(3); // the foreign account's DM
+    expect(page.roomsUnread()).toBe(7); // non-DM, minus @alt's space child
+    expect(page.spaceUnread()['!s-alt:hs']).toBe(5); // the foreign space's child
+
+    // Unticking drops back to the active account's own totals (all zero here).
+    shownAccounts.set(new Set(['@me:hs']));
+    expect(page.recentUnread()).toBe(0);
+  });
+
+  // A shortcut/MRU target is routinely OUTSIDE the current view (Home lists DMs only, a
+  // space lists its children), so resolving the owning account from visibleRooms() would
+  // miss and open the room on whatever client happens to be active.
+  it('resolves a foreign room’s account even when the current view filters it out', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onSelectSpace(null); // Home — DMs only, so '!theirs:hs' is not visible
+    expect(page.visibleRooms().map((r) => r.id)).not.toContain('!theirs:hs');
+
+    page.onSelectRoomRow('!theirs:hs');
+
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+  });
+
+  // The switcher searches every mixed account, so a jump can land on a room owned by an
+  // account that isn't active — it must switch first, exactly like clicking the row.
+  it('switches accounts when jumping to a foreign room from the quick switcher', async () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
+      Promise.resolve({ kind: 'room' as const, id: '!theirs:hs' }),
+    );
+
+    await page.openSwitcher();
+    TestBed.tick(); // the follow-up open is deferred past the re-projection render
+
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+    expect(page.activeRoomId()).toBe('!theirs:hs');
+  });
+
+  it('switches accounts when jumping to a foreign space from the quick switcher', async () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
+      Promise.resolve({ kind: 'space' as const, id: '!s-alt:hs' }),
+    );
+
+    await page.openSwitcher();
+
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+  });
+
+  // A room that is top-level for the account you are ACTING AS must not vanish from the
+  // Rooms view just because a different mixed account files it inside one of its spaces.
+  it('keeps a room that only another account files under a space', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onShowRooms();
+
+    // '!child-theirs:hs' is a child of @alt's space, so it is excluded for @alt…
+    expect(page.visibleRooms().map((r) => r.id)).not.toContain(
+      '!child-theirs:hs',
+    );
+    // …while @me's own spaceless room stays, even though @alt's space claims a room id.
+    expect(page.visibleRooms().map((r) => r.id)).toContain('!mine:hs');
+  });
+
+  // The pill's unread badge is summed over the mixed union, so the space it opens must
+  // list that same union — otherwise the badge counts rooms the view never renders.
+  it('lists a mixed space’s children from the same union its badge counts', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onSelectSpace('!s-alt:hs');
+
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!child-theirs:hs']);
+  });
+
+  // The space scope belongs to the outgoing account; the Recent/DMs/Rooms filter does not.
+  it('keeps the Rooms filter across an account switch but drops the space', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onShowRooms();
+
+    page.onSelectRoomRow('!theirs:hs'); // switches to @alt
+
+    expect(page.roomsView()).toBe(true); // the user's filter survives
+    expect(page.activeSpaceId()).toBeNull();
+  });
+
+  it('returns to Recent when the switch happened from inside a space', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    page.onSelectSpace('!s-mine:hs');
+
+    page.onSelectRoomRow('!theirs:hs');
+
+    expect(page.activeSpaceId()).toBeNull();
+    expect(page.recentView()).toBe(true);
+  });
+
+  it('forwards a picker tick to the account scope', () => {
+    const page = build(['@me:hs', '@alt:hs']);
+    page.onToggleAccountShown('@alt:hs');
+    expect(toggleAccount).toHaveBeenCalledWith('@alt:hs');
   });
 });

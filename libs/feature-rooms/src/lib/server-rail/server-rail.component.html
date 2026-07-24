@@ -89,15 +89,21 @@
         [attr.aria-current]="
           activeSpaceId() === space.id && !roomsActive() ? 'true' : null
         "
-        [attr.aria-label]="space.name"
+        [attr.aria-label]="
+          badgeFor(space.accountId)
+            ? space.name + ' — ' + badgeFor(space.accountId)!.name
+            : space.name
+        "
         [title]="space.name"
       >
         <trn-avatar
           [mxc]="space.avatarMxc"
+          [accountId]="space.accountId"
           [initial]="space.initial"
           [name]="space.name"
           [square]="activeSpaceId() !== space.id || roomsActive()"
           [size]="48"
+          [accountBadge]="badgeFor(space.accountId)"
         />
       </button>
       @if (spaceUnreadCount > 0) {

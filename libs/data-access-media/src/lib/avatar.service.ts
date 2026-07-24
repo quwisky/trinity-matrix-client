@@ -35,18 +35,28 @@ export class AvatarService {
   private readonly urls = new Set<string>();
 
   /** Resolve an `mxc://` avatar to a cached `blob:` URL, or null when unset/failed. */
-  resolve(mxc: string | null, sizePx = AVATAR_PX): Observable<string | null> {
+  resolve(
+    mxc: string | null,
+    sizePx = AVATAR_PX,
+    accountId?: string,
+  ): Observable<string | null> {
     if (!mxc) {
       return of(null);
     }
-    const key = `${mxc}|${sizePx}`;
+    // Key by account too: the same mxc fetched through a different homeserver is a
+    // different request, and sharing one entry would defeat the point of routing a
+    // foreign account's media through its own client.
+    const key = `${mxc}|${sizePx}|${accountId ?? ''}`;
     const hit = this.cache.get(key);
     if (hit) {
       return hit;
     }
     const edge = Math.ceil(sizePx * DPR);
+    const client =
+      (accountId ? this.matrix.clientFor(accountId) : null) ??
+      this.matrix.instance;
     const resolved = fetchMediaBytes(
-      this.matrix.instance,
+      client,
       mxc,
       { w: edge, h: edge },
       true,

@@ -68,6 +68,8 @@
           <trn-avatar
             class="invite__avatar"
             [mxc]="invite.avatarMxc"
+            [accountId]="invite.accountId"
+            [accountBadge]="badgeFor(invite.accountId)"
             [initial]="invite.initial"
             [name]="invite.name"
             [size]="32"
@@ -86,7 +88,12 @@
           <div class="invite__actions">
             <button
               class="invite__btn accept"
-              (click)="acceptInvite.emit(invite.roomId)"
+              (click)="
+                acceptInvite.emit({
+                  roomId: invite.roomId,
+                  accountId: invite.accountId,
+                })
+              "
               [attr.aria-label]="'Accept invite to ' + invite.name"
               title="Accept"
             >
@@ -94,7 +101,12 @@
             </button>
             <button
               class="invite__btn decline"
-              (click)="declineInvite.emit(invite.roomId)"
+              (click)="
+                declineInvite.emit({
+                  roomId: invite.roomId,
+                  accountId: invite.accountId,
+                })
+              "
               [attr.aria-label]="'Decline invite to ' + invite.name"
               title="Decline"
             >
@@ -210,6 +222,8 @@
     [accounts]="accounts()"
     [activeUserId]="activeUserId()"
     [reauthAccounts]="reauthAccounts()"
+    [shownAccountIds]="shownAccountIds()"
+    (toggleAccountShown)="toggleAccountShown.emit($event)"
     (openSettings)="openSettings.emit()"
     (switchAccount)="switchAccount.emit($event)"
     (reauthAccount)="reauthAccount.emit($event)"
@@ -229,10 +243,12 @@
         <trn-avatar
           class="channel__avatar"
           [mxc]="room.avatarMxc"
+          [accountId]="room.accountId"
           [initial]="room.initial"
           [name]="room.name"
           [size]="36"
           [presence]="presenceOf(room)"
+          [accountBadge]="badgeFor(room.accountId)"
         />
         <div class="channel__text">
           <span class="channel__name">{{ room.name }}</span>
@@ -278,7 +294,9 @@
         @if (room.hasUnread) {
           <button
             hlmDropdownMenuItem
-            (triggered)="markRead.emit(room.id)"
+            (triggered)="
+              markRead.emit({ roomId: room.id, accountIds: room.accountIds })
+            "
             data-testid="room-mark-read"
           >
             <ng-icon name="lucideCheckCheck" />
@@ -310,7 +328,9 @@
         <button
           hlmDropdownMenuItem
           variant="destructive"
-          (triggered)="leaveRoom.emit(room.id)"
+          (triggered)="
+            leaveRoom.emit({ roomId: room.id, accountId: room.accountId })
+          "
           data-testid="room-leave"
         >
           <ng-icon name="lucideLogOut" />
@@ -320,12 +340,18 @@
 
       <ng-template #notifyMenu>
         <div hlmDropdownMenuSub>
-          @let mode = notifyMode(room.id);
+          @let mode = notifyMode(room);
           <button
             hlmDropdownMenuRadio
             [checked]="mode === 'all'"
             [keepOpen]="false"
-            (triggered)="setNotifyMode.emit({ roomId: room.id, mode: 'all' })"
+            (triggered)="
+              setNotifyMode.emit({
+                roomId: room.id,
+                mode: 'all',
+                accountIds: room.accountIds,
+              })
+            "
             data-testid="room-notify-all"
           >
             <hlm-dropdown-menu-radio-indicator />
@@ -336,7 +362,11 @@
             [checked]="mode === 'mentions'"
             [keepOpen]="false"
             (triggered)="
-              setNotifyMode.emit({ roomId: room.id, mode: 'mentions' })
+              setNotifyMode.emit({
+                roomId: room.id,
+                mode: 'mentions',
+                accountIds: room.accountIds,
+              })
             "
             data-testid="room-notify-mentions"
           >
@@ -347,7 +377,13 @@
             hlmDropdownMenuRadio
             [checked]="mode === 'mute'"
             [keepOpen]="false"
-            (triggered)="setNotifyMode.emit({ roomId: room.id, mode: 'mute' })"
+            (triggered)="
+              setNotifyMode.emit({
+                roomId: room.id,
+                mode: 'mute',
+                accountIds: room.accountIds,
+              })
+            "
             data-testid="room-notify-mute"
           >
             <hlm-dropdown-menu-radio-indicator />

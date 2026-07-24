@@ -15,7 +15,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { Observable, finalize } from 'rxjs';
+import { Observable, finalize, forkJoin } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
@@ -43,7 +43,11 @@ import {
 } from '@trinity/helm/overlay';
 import { AuthService } from '@trinity/data-access-auth';
 import { CryptoService } from '@trinity/data-access-crypto';
-import { InvitesService } from '@trinity/data-access-invites';
+import {
+  InvitesService,
+  MixedInvitesService,
+  type PendingInvite,
+} from '@trinity/data-access-invites';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
 import {
@@ -64,9 +68,13 @@ import {
   RoomAliasesService,
   PublicRoomsService,
   SpacesService,
+  AccountScopeService,
+  MixedRoomsService,
+  MixedSpacesService,
   UnreadAggregatorService,
   type MemberSummary,
   type RoomSummary,
+  type SpaceSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
@@ -82,7 +90,8 @@ import {
   FeatureFlagsService,
   KeyboardShortcutsService,
 } from '@trinity/platform-native';
-import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
+import { AvatarComponent, PageHeaderComponent, runWithBusy } from '@trinity/ui';
+import { AccountBadgesService } from '../shared/account-badges.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
@@ -153,6 +162,7 @@ function isMobileMasterDetail(): boolean {
     HlmDropdownMenuTrigger,
     HlmTooltip,
     NgIcon,
+    AvatarComponent,
     ServerRailComponent,
     ChannelSidebarComponent,
     MemberListComponent,
@@ -188,6 +198,11 @@ function isMobileMasterDetail(): boolean {
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);
   readonly spaces = inject(SpacesService);
+  private readonly mixedRooms = inject(MixedRoomsService);
+  private readonly mixedSpaces = inject(MixedSpacesService);
+  private readonly accountScope = inject(AccountScopeService);
+  private readonly mixedInvites = inject(MixedInvitesService);
+  private readonly accountBadgesSvc = inject(AccountBadgesService);
   readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
   readonly threads = inject(ThreadsService);
@@ -235,6 +250,15 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly roomsView = signal(false);
   readonly activeRoomId = signal<string | null>(null);
 
+  /**
+   * The accounts the view draws from — the user's picker selection, persisted and always
+   * including the active account. When it names more than one, mixed mode governs **every**
+   * surface: the Recent list, Home's DMs, the Rooms list, and the rail's space pills.
+   */
+  readonly shownAccountIds = this.accountScope.selected;
+  /** Whether the cross-account projection is active (more than one account selected). */
+  readonly mixedOn = this.accountScope.mixing;
+
   // The two mobile pages (the rail/room-list and the chat), focused on a view switch
   // so keyboard/screen-reader focus follows to the newly-shown page (see focusActiveView).
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
@@ -263,14 +287,31 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly spaceError = signal<string | null>(null);
 
   /** Ids of every joined room that is a child of some space, unioned across all spaces.
-   * Used to keep space-owned rooms out of the flat Rooms view (they live in their space). */
-  private readonly spaceChildRoomIds = computed<Set<string>>(() => {
-    const ids = new Set<string>();
-    for (const space of this.spaces.spaces()) {
-      for (const id of space.childRoomIds) ids.add(id);
-    }
-    return ids;
-  });
+   * Used to keep space-owned rooms out of the flat Rooms view (they live in their space).
+   * In mixed mode this spans every account's spaces so the global Rooms list excludes
+   * space-owned rooms from all accounts, matching the single-account view. */
+  private readonly spaceChildRoomIds = computed<Map<string, Set<string>>>(
+    () => {
+      const byAccount = new Map<string, Set<string>>();
+      const spaces = this.mixedOn()
+        ? this.mixedSpaces.spaces()
+        : this.spaces.spaces();
+      for (const space of spaces) {
+        const ids = byAccount.get(space.accountId) ?? new Set<string>();
+        for (const id of space.childRoomIds) ids.add(id);
+        byAccount.set(space.accountId, ids);
+      }
+      return byAccount;
+    },
+  );
+
+  /** Whether a row is filed under one of ITS OWN account's spaces. Keyed per account: a
+   * room that is top-level for the account you're acting as must not vanish from the Rooms
+   * view just because a different mixed account files it inside one of its spaces. */
+  private isSpaceChild(room: RoomSummary): boolean {
+    const byAccount = this.spaceChildRoomIds();
+    return room.accountIds.some((id) => byAccount.get(id)?.has(room.id));
+  }
 
   /**
    * Rooms shown in the channel sidebar. Home (`null`, the default) shows only direct
@@ -279,31 +320,43 @@ export class RoomsPage implements OnInit, OnDestroy {
    * A selected space shows only its joined child rooms, in the space's own order
    * (`m.space.child` `order` then name). All read live signals, so the list reacts to
    * sync, membership, and `m.space.child` changes.
+   *
+   * When the global "All accounts" scope is on ({@link mixedOn}), every list — Recent,
+   * Home's DMs and the Rooms view — reads the cross-account {@link MixedRoomsService}
+   * instead of the active account's rooms, classifying DMs by each row's own-account
+   * `m.direct` (`directUserId`) rather than the active account's `directRoomIds()`.
    */
   readonly visibleRooms = computed<RoomSummary[]>(() => {
-    const all = this.rooms.rooms();
-    // Recent activity: every joined DM + room, mixed. `rooms()` is already exactly that
-    // (spaces are excluded at the source), sorted favourite-first then most-recent, so it
-    // is used unfiltered.
+    const mixed = this.mixedOn();
+    // Recent activity: every joined DM + room, mixed by recency. In mixed mode that spans
+    // every signed-in account (each row badged); otherwise the active account's `rooms()`
+    // — already exactly that list, favourite-first then most-recent, used unfiltered.
     if (this.recentView()) {
-      return all;
+      return mixed ? this.mixedRooms.rooms() : this.rooms.rooms();
     }
-    const direct = this.rooms.directRoomIds();
+    const all = mixed ? this.mixedRooms.rooms() : this.rooms.rooms();
     // Rooms view: non-DM joined rooms that aren't owned by a space (overrides the space scope).
     if (this.roomsView()) {
-      const inSpace = this.spaceChildRoomIds();
       return all.filter(
-        (room) => !direct.has(room.id) && !inSpace.has(room.id),
+        (room) => !this.isDirectRow(room) && !this.isSpaceChild(room),
       );
     }
     const spaceId = this.activeSpaceId();
     if (!spaceId) {
       // Home: direct messages only.
-      return all.filter((room) => direct.has(room.id));
+      return all.filter((room) => this.isDirectRow(room));
     }
+    // While mixing, take the children from the mixed projection — the same union the space
+    // pill's unread badge is summed over. Reading the active account's SpacesService here
+    // would list fewer rooms than the badge counted for a space BOTH accounts have joined,
+    // leaving an unread total with nothing on screen to clear it. Foreign children are safe:
+    // every row opens through onSelectRoomRow, which switches accounts first.
     const byId = new Map(all.map((room) => [room.id, room] as const));
-    return this.spaces
-      .childRoomIds(spaceId)
+    const childIds = this.mixedOn()
+      ? (this.mixedSpaces.spaces().find((s) => s.id === spaceId)
+          ?.childRoomIds ?? [])
+      : this.spaces.childRoomIds(spaceId);
+    return childIds
       .map((id) => byId.get(id))
       .filter((room): room is RoomSummary => room !== undefined);
   });
@@ -327,41 +380,63 @@ export class RoomsPage implements OnInit, OnDestroy {
     return this.activeSpaceId() ? this.activeSpaceName() : 'Direct Messages';
   });
 
+  /**
+   * Whether a room row counts as a direct message in the current scope: in mixed mode by
+   * the row's own-account `m.direct` (`directUserId`), otherwise by the active account's
+   * `directRoomIds()` set. Shared by {@link visibleRooms} and the rail unread badges so the
+   * badges count exactly what their view shows.
+   */
+  private isDirectRow(room: RoomSummary): boolean {
+    return this.mixedOn()
+      ? room.directUserId != null
+      : this.rooms.directRoomIds().has(room.id);
+  }
+
+  /** The room list the rail badges count over — every account's in mixed mode, else the
+   * active account's — so each badge matches what its view renders. */
+  private railRoomSource(): RoomSummary[] {
+    return this.mixedOn() ? this.mixedRooms.rooms() : this.rooms.rooms();
+  }
+
   /** Total unread notifications across everything the Recent view lists (its rail badge). */
   readonly recentUnread = computed(() =>
-    this.rooms.rooms().reduce((sum, r) => sum + r.unreadCount, 0),
+    this.railRoomSource().reduce((sum, r) => sum + r.unreadCount, 0),
   );
 
   /** Total unread notifications across direct-message rooms (Home rail badge). */
-  readonly homeUnread = computed(() => {
-    const direct = this.rooms.directRoomIds();
-    return this.rooms
-      .rooms()
-      .reduce((sum, r) => (direct.has(r.id) ? sum + r.unreadCount : sum), 0);
-  });
+  readonly homeUnread = computed(() =>
+    this.railRoomSource().reduce(
+      (sum, r) => (this.isDirectRow(r) ? sum + r.unreadCount : sum),
+      0,
+    ),
+  );
 
   /** Total unread notifications across the Rooms view — non-DM rooms that don't
    * belong to any space (space unread is surfaced on the space pills). */
   readonly roomsUnread = computed(() => {
-    const direct = this.rooms.directRoomIds();
-    const inSpace = this.spaceChildRoomIds();
-    return this.rooms
-      .rooms()
-      .reduce(
-        (sum, r) =>
-          direct.has(r.id) || inSpace.has(r.id) ? sum : sum + r.unreadCount,
-        0,
-      );
+    return this.railRoomSource().reduce(
+      (sum, r) =>
+        this.isDirectRow(r) || this.isSpaceChild(r) ? sum : sum + r.unreadCount,
+      0,
+    );
   });
 
-  /** Unread notifications summed per space, keyed by space id (space-pill badges). */
+  /** Unread notifications summed per space, keyed by space id (space-pill badges). In mixed
+   * mode this covers every account's space pills, summing over that account's child rooms. */
   readonly spaceUnread = computed<Record<string, number>>(() => {
-    const byId = new Map(this.rooms.rooms().map((r) => [r.id, r] as const));
+    const mixed = this.mixedOn();
+    const source = mixed ? this.mixedRooms.rooms() : this.rooms.rooms();
+    const byId = new Map(source.map((r) => [r.id, r] as const));
+    const spaces = mixed ? this.mixedSpaces.spaces() : this.spaces.spaces();
     const totals: Record<string, number> = {};
-    for (const space of this.spaces.spaces()) {
-      totals[space.id] = this.spaces
-        .childRoomIds(space.id)
-        .reduce((sum, id) => sum + (byId.get(id)?.unreadCount ?? 0), 0);
+    for (const space of spaces) {
+      const childIds = mixed
+        ? space.childRoomIds
+        : this.spaces.childRoomIds(space.id);
+      totals[space.id] = childIds.reduce(
+        (sum, id) => sum + (byId.get(id)?.unreadCount ?? 0),
+        0,
+      );
     }
     return totals;
   });
@@ -407,6 +482,15 @@ export class RoomsPage implements OnInit, OnDestroy {
     return this.matrix.instance.getUser(uid)?.avatarUrl ?? null;
   });
 
+  /** First letter of the active account's display name, for the header chip's avatar. */
+  readonly userInitial = computed(() =>
+    (
+      this.userName()
+        .replace(/^[@#!]+/, '')
+        .trim()[0] ?? '?'
+    ).toUpperCase(),
+  );
+
   /** The signed-in user's profile, bundled for the channel sidebar's user panel. */
   readonly userProfile = computed<UserProfile>(() => ({
     userId: this.userId(),
@@ -431,6 +515,20 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** The account currently in view — marks the active row in the switcher. */
   readonly activeAccountId = this.matrix.activeUserId;
+
+  /**
+   * Space pills for the rail: every signed-in account's spaces (badged) in mixed mode,
+   * else just the active account's.
+   */
+  readonly railSpaces = computed<SpaceSummary[]>(() =>
+    this.mixedOn() ? this.mixedSpaces.spaces() : this.spaces.spaces(),
+  );
+
+  /**
+   * Account-badge lookup for the sidebar rows + rail pills, shared with the quick switcher
+   * so every mixed surface badges rows the same way. Empty when not mixing.
+   */
+  readonly accountBadges = this.accountBadgesSvc.badges;
 
   /** Accounts the server signed out that need re-authentication (switcher re-auth rows). */
   readonly reauthAccounts = this.matrix.softLoggedOut;
@@ -462,6 +560,15 @@ export class RoomsPage implements OnInit, OnDestroy {
       if (!this.matrix.activeUserId()) {
         void this.router.navigateByUrl('/login', { replaceUrl: true });
       }
+    });
+    // Point the cross-account projections at the selected accounts. They attach listeners
+    // only for those accounts (and none at all below two), so an unmixed session costs
+    // nothing. `selected` is set-equal-compared, so this doesn't churn on every sync tick.
+    effect(() => {
+      const accounts = this.shownAccountIds();
+      this.mixedRooms.setAccounts(accounts);
+      this.mixedSpaces.setAccounts(accounts);
+      this.mixedInvites.setAccounts(accounts);
     });
   }
 
@@ -537,7 +644,9 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   private hopRoom(direction: 'back' | 'forward'): void {
-    const known = new Set(this.rooms.rooms().map((room) => room.id));
+    // Across every mixed account, not just the active one — otherwise hopping back to a
+    // room you opened on another account silently does nothing.
+    const known = new Set(this.knownRooms().map((room) => room.id));
     this.openShortcutTarget(
       this.mru.hop(direction, this.activeRoomId(), known),
       'hop',
@@ -562,14 +671,23 @@ export class RoomsPage implements OnInit, OnDestroy {
     );
   }
 
-  /** Open a shortcut's resolved target when there is one and it isn't already open. */
+  /**
+   * Open a shortcut's resolved target when there is one and it isn't already open. The MRU
+   * remembers rooms across account switches, so a target can name a room no account in the
+   * current scope holds (it was unticked, or signed out) — opening that would tear down the
+   * timeline and leave a blank chat pane, so drop it instead.
+   */
   private openShortcutTarget(
     roomId: string | null,
     source: 'user' | 'hop',
   ): void {
-    if (roomId && roomId !== this.activeRoomId()) {
-      this.onSelectRoom(roomId, source);
+    if (!roomId || roomId === this.activeRoomId()) {
+      return;
     }
+    if (!this.knownRooms().some((room) => room.id === roomId)) {
+      return;
+    }
+    this.onSelectRoomRow(roomId, source);
   }
 
   /**
@@ -597,10 +715,12 @@ export class RoomsPage implements OnInit, OnDestroy {
     switch (selection.kind) {
       case 'room':
       case 'dm':
-        this.onSelectRoom(selection.id);
+        // Via the row path, so picking a mixed-in account's room switches to that account
+        // before opening it — otherwise the jump would land on the wrong client.
+        this.onSelectRoomRow(selection.id);
         break;
       case 'space':
-        this.onSelectSpace(selection.id);
+        this.onSelectSpaceRow(selection.id);
         break;
       case 'user':
         this.spaceError.set(null);
@@ -611,7 +731,7 @@ export class RoomsPage implements OnInit, OnDestroy {
         }).subscribe((roomId) => this.onSelectRoom(roomId));
         break;
       case 'invite':
-        this.onAcceptInvite(selection.id);
+        this.onAcceptInvite({ roomId: selection.id });
         break;
     }
   }
@@ -787,13 +907,25 @@ export class RoomsPage implements OnInit, OnDestroy {
     }).subscribe();
   }
 
-  /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely. */
-  async onLeaveRoom(roomId: string): Promise<void> {
+  /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely — on the
+   * account that owns the row. Leaving is irreversible for a private room, so it must
+   * never fall through to the active account just because the row belongs to another. */
+  async onLeaveRoom({
+    roomId,
+    accountId,
+  }: {
+    roomId: string;
+    accountId?: string;
+  }): Promise<void> {
     const name =
-      this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this room';
+      this.visibleRooms().find((r) => r.id === roomId)?.name ?? 'this room';
+    // Leaving is per-account and irreversible, so never fan it out the way the idempotent
+    // actions are — name the account instead, since a merged row represents two memberships.
+    const as =
+      this.mixedOn() && accountId ? ` as ${this.accountLabel(accountId)}` : '';
     const confirmed = await this.alert.confirm({
       header: 'Leave room',
-      message: `Leave “${name}”? You'll stop receiving its messages and need a new invite (or a public join) to come back.`,
+      message: `Leave “${name}”${as}? You'll stop receiving its messages and need a new invite (or a public join) to come back.`,
       confirmText: 'Leave',
       destructive: true,
     });
@@ -801,7 +933,7 @@ export class RoomsPage implements OnInit, OnDestroy {
       return;
     }
     this.rooms
-      .leave(roomId)
+      .leave(roomId, accountId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         // The room drops from the sidebar via sync. If it was the open one, tear the
@@ -918,12 +1050,18 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   /** Accept a pending invite (join); select the joined room when it's not a space. */
-  onAcceptInvite(roomId: string): void {
+  onAcceptInvite({
+    roomId,
+    accountId,
+  }: {
+    roomId: string;
+    accountId?: string;
+  }): void {
     this.spaceError.set(null);
-    const invite = this.invites
-      .pendingInvites()
-      .find((i) => i.roomId === roomId);
-    runWithBusy(this.invites.acceptInvite(roomId), {
+    const invite = this.knownInvites().find((i) => i.roomId === roomId);
+    // Joined on the account the invite was sent to — answering one must never need an
+    // account switch, and joining as the wrong account would fail or join the wrong user.
+    runWithBusy(this.invites.acceptInvite(roomId, accountId), {
       busy: this.spaceBusy,
       error: this.spaceError,
       destroyRef: this.destroyRef,
@@ -932,15 +1070,28 @@ export class RoomsPage implements OnInit, OnDestroy {
       // opening it. A joined space just appears in the rail (no auto-select).
       if (invite && !invite.isSpace) {
         this.onSelectSpace(null);
-        this.onSelectRoom(roomId);
+        this.onSelectRoomRow(roomId);
       }
     });
   }
 
+  /** Pending invites across the mixed accounts, or the active account's when not mixing. */
+  private knownInvites(): readonly PendingInvite[] {
+    return this.mixedOn()
+      ? this.mixedInvites.invites()
+      : this.invites.pendingInvites();
+  }
+
   /** Decline a pending invite (leave the invited room/space). */
-  onDeclineInvite(roomId: string): void {
+  onDeclineInvite({
+    roomId,
+    accountId,
+  }: {
+    roomId: string;
+    accountId?: string;
+  }): void {
     this.spaceError.set(null);
-    runWithBusy(this.invites.declineInvite(roomId), {
+    runWithBusy(this.invites.declineInvite(roomId, accountId), {
       busy: this.spaceBusy,
       error: this.spaceError,
       destroyRef: this.destroyRef,
@@ -980,6 +1131,74 @@ export class RoomsPage implements OnInit, OnDestroy {
    * committing any hop cycle) from a hop-driven one (leaves the MRU stack frozen so
    * repeated hops keep cycling deeper). Every existing caller uses the default.
    */
+  /**
+   * Open a room chosen from the sidebar list. In mixed-account mode the row may belong to
+   * a different signed-in account — switch to that account first (so every downstream
+   * action runs on its client), then open the room; otherwise open it directly.
+   */
+  onSelectRoomRow(id: string, source: 'user' | 'hop' = 'user'): void {
+    const accountId = this.knownRooms().find((r) => r.id === id)?.accountId;
+    if (accountId && accountId !== this.matrix.activeUserId()) {
+      this.runOnAccount(accountId, () => this.onSelectRoom(id, source));
+      return;
+    }
+    this.onSelectRoom(id, source);
+  }
+
+  /**
+   * Select a space pill from the rail. In mixed mode a foreign account's space switches to
+   * that account first; Home (`null`) and same-account spaces select directly.
+   */
+  onSelectSpaceRow(id: string | null): void {
+    const accountId = id
+      ? this.railSpaces().find((s) => s.id === id)?.accountId
+      : undefined;
+    if (accountId && accountId !== this.matrix.activeUserId()) {
+      this.runOnAccount(accountId, () => this.onSelectSpace(id));
+      return;
+    }
+    this.onSelectSpace(id);
+  }
+
+  /**
+   * Include/exclude an account from the mixed view (the account picker's checkbox). The
+   * active account is always shown, and the service ignores an attempt to drop it.
+   */
+  onToggleAccountShown(userId: string): void {
+    this.accountScope.toggle(userId);
+  }
+
+  /**
+   * Every room the shell can currently open, unfiltered by the active view. `visibleRooms()`
+   * is a *filtered* projection (Home shows DMs only, a space shows its children), so an MRU
+   * or hop target is routinely absent from it — resolving a row's owning account there would
+   * silently miss and open the room on the wrong client.
+   */
+  private knownRooms(): RoomSummary[] {
+    return this.mixedOn() ? this.mixedRooms.rooms() : this.rooms.rooms();
+  }
+
+  /** An account's display name for user-facing copy, falling back to its user id. */
+  private accountLabel(accountId: string): string {
+    return this.accountBadges().get(accountId)?.name ?? accountId;
+  }
+
+  /** Switch to `accountId`, then run `then` once the switch has landed. */
+  private runOnAccount(accountId: string, then: () => void): void {
+    this.closeOpenRoom();
+    this.resetViewScope();
+    this.auth
+      .switchAccount(accountId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() =>
+        // Deferred past the render that follows the switch: RoomsService/SpacesService
+        // re-project onto the new client from an effect, and a space hierarchy requested
+        // before that flush is wiped by it — leaving the sidebar's "More Channels" and
+        // sub-space sections permanently empty until the pill is clicked a second time.
+        afterNextRender(() => then(), { injector: this.injector }),
+      );
+  }
+
   onSelectRoom(id: string, source: 'user' | 'hop' = 'user'): void {
     // Drop the previous room's resolved media URLs before switching timelines.
     this.media.releaseAll();
@@ -1059,12 +1278,15 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
   private openLinkedRoom(roomId: string, eventId?: string): void {
-    if (!this.rooms.rooms().some((r) => r.id === roomId)) {
+    // Against the mixed superset: while mixing, a room owned by another selected account is
+    // listed and openable in the sidebar, so refusing its permalink would contradict the
+    // list one column to the left.
+    if (!this.knownRooms().some((r) => r.id === roomId)) {
       void this.showError("You're not in that room.");
       return;
     }
     if (roomId !== this.activeRoomId()) {
-      this.onSelectRoom(roomId);
+      this.onSelectRoomRow(roomId);
     }
     if (eventId) {
       // Jump to the linked event (a no-op until it's in the loaded timeline).
@@ -1135,37 +1357,78 @@ export class RoomsPage implements OnInit, OnDestroy {
   onSetNotifyMode({
     roomId,
     mode,
+    accountIds,
   }: {
     roomId: string;
     mode: RoomNotifyMode;
+    accountIds?: readonly string[];
   }): void {
-    this.setNotifyMode(roomId, mode);
+    this.setNotifyMode(roomId, mode, accountIds);
   }
 
-  private setNotifyMode(roomId: string, mode: RoomNotifyMode): void {
-    this.roomNotifications
-      .setMode(roomId, mode)
+  /** Apply a notification level on every account joined to the row — a merged row shows one
+   * menu, so muting it must actually mute the room everywhere it is contributing. */
+  private setNotifyMode(
+    roomId: string,
+    mode: RoomNotifyMode,
+    accountIds?: readonly string[],
+  ): void {
+    const targets = accountIds?.length ? accountIds : [undefined];
+    forkJoin(
+      targets.map((accountId) =>
+        this.roomNotifications.setMode(roomId, mode, accountId),
+      ),
+    )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not update notifications.'),
       });
   }
 
-  /** Mark a single room read (from its ⋮ menu); the badge clears via sync. */
-  onMarkRead(roomId: string): void {
-    this.rooms
-      .markRead(roomId)
+  /** Mark a single room read (from its ⋮ menu); the badge clears via sync. Acked on the
+   * row's own account, which in the mixed view need not be the active one. */
+  onMarkRead({
+    roomId,
+    accountIds,
+  }: {
+    roomId: string;
+    accountIds?: readonly string[];
+  }): void {
+    this.ackRead(roomId, accountIds)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not mark the room read.'),
       });
   }
 
-  /** Mark the currently-visible unread rooms read (header action). Scoped to the
-   * sidebar's rooms so it matches the button, which is gated on their unread state. */
+  /**
+   * Ack a room on every account joined to it. A room both mixed accounts are in is ONE row
+   * carrying the loudest unread of the two, so acking only one leaves a badge the user has
+   * no way to clear.
+   */
+  private ackRead(
+    roomId: string,
+    accountIds?: readonly string[],
+  ): Observable<unknown> {
+    const targets = accountIds?.length ? accountIds : [undefined];
+    return forkJoin(
+      targets.map((accountId) => this.rooms.markRead(roomId, accountId)),
+    );
+  }
+
+  /**
+   * Mark the currently-visible unread rooms read (header action). Scoped to the sidebar's
+   * rooms so it matches the button, which is gated on their unread state — and acked per
+   * owning account, since in the mixed view the button is offered for rooms belonging to
+   * accounts other than the active one (acking those through the active client would
+   * silently do nothing).
+   */
   onMarkAllRead(): void {
-    this.rooms
-      .markAllRead(this.visibleRooms().map((room) => room.id))
+    const unread = this.visibleRooms().filter((room) => room.hasUnread);
+    if (unread.length === 0) {
+      return;
+    }
+    forkJoin(unread.map((room) => this.rooms.markRead(room.id, room.accountId)))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not mark rooms read.'),
@@ -1352,10 +1615,32 @@ export class RoomsPage implements OnInit, OnDestroy {
     // decryption) with no way to re-bind short of a reload. The user re-picks a room on
     // the new account, which opens it cleanly.
     this.closeOpenRoom();
+    this.resetViewScope();
     this.auth
       .switchAccount(userId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+
+  /**
+   * Drop the space/Rooms scope back to Recent before an account switch. `activeSpaceId`
+   * names a space on the OUTGOING account: SpacesService re-projects onto the new client and
+   * wipes it, leaving the sidebar empty, the header falling back to "Home", and the
+   * space-only actions (leave / invite / create channel) aimed at a space the now-active
+   * account isn't in. A selection that wants a different scope — selecting a foreign space —
+   * sets its own afterwards.
+   */
+  private resetViewScope(): void {
+    // Only the SPACE scope is account-bound. Recent / Direct Messages / Rooms are filters
+    // over whatever the new account has, so preserve the user's choice — resetting it too
+    // silently dumped them in Recent mid-task. Fall back to Recent only when a space was
+    // open, since that space belongs to the outgoing account.
+    if (this.activeSpaceId() !== null) {
+      this.recentView.set(true);
+      this.roomsView.set(false);
+      this.activeSpaceId.set(null);
+    }
+    this.spaces.openSpace(null);
   }
 
   /**

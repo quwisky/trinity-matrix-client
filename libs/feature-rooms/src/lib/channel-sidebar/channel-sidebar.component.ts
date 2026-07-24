@@ -32,13 +32,18 @@ import {
   lucideUserPlus,
   lucideX,
 } from '@ng-icons/lucide';
-import { AvatarComponent } from '@trinity/ui';
-import { InvitesService } from '@trinity/data-access-invites';
+import { AvatarComponent, type AccountBadge } from '@trinity/ui';
+import {
+  InvitesService,
+  MixedInvitesService,
+  type PendingInvite,
+} from '@trinity/data-access-invites';
 import {
   PresenceService,
   type UserProfile,
 } from '@trinity/data-access-profile';
 import {
+  AccountScopeService,
   RoomsService,
   SpacesService,
   type RoomSummary,
@@ -97,6 +102,8 @@ export type { AccountSummary };
 export class ChannelSidebarComponent {
   private readonly spacesSvc = inject(SpacesService);
   private readonly invitesSvc = inject(InvitesService);
+  private readonly mixedInvites = inject(MixedInvitesService);
+  private readonly accountScope = inject(AccountScopeService);
   private readonly roomsSvc = inject(RoomsService);
   private readonly presence = inject(PresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
@@ -119,6 +126,11 @@ export class ChannelSidebarComponent {
   );
   /** Whether any room has unread messages — gates the header "Mark all as read". */
   readonly hasAnyUnread = computed(() => this.rooms().some((r) => r.hasUnread));
+
+  /** The account badge for a room row (mixed view), or null when not badged. */
+  badgeFor(accountId: string): AccountBadge | null {
+    return this.accountBadges().get(accountId) ?? null;
+  }
   /** Not-yet-joined channels of the active space (the "More Channels" list). */
   readonly joinableRooms = this.spacesSvc.notJoinedRooms;
   /** Sub-spaces of the active space (joined → Open, otherwise Join). */
@@ -127,8 +139,13 @@ export class ChannelSidebarComponent {
   readonly childrenLoading = this.spacesSvc.childrenLoading;
   /** Non-null when the active space's child hierarchy failed to load. */
   readonly childrenError = this.spacesSvc.childrenError;
-  /** Pending invites surfaced in an "Invites" group above the channels. */
-  readonly invites = this.invitesSvc.pendingInvites;
+  /** Pending invites surfaced in an "Invites" group above the channels — across every
+   * mixed account, so an invite to one you aren't currently acting as is still visible. */
+  readonly invites = computed<readonly PendingInvite[]>(() =>
+    this.accountScope.mixing()
+      ? this.mixedInvites.invites()
+      : this.invitesSvc.pendingInvites(),
+  );
   readonly activeRoomId = input<string | null>(null);
   /** The signed-in user (name + handle + avatar) for the bottom user panel. */
   readonly user = input<UserProfile>({
@@ -142,6 +159,18 @@ export class ChannelSidebarComponent {
   readonly activeUserId = input<string | null>(null);
   /** User ids of accounts the server signed out that need re-authentication. */
   readonly reauthAccounts = input<readonly string[]>([]);
+  /**
+   * Owning-account badge per account id (mixed-account view): account id → its avatar/
+   * initial/name. Empty when not in mixed mode — room rows then show no badge.
+   */
+  readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
+  /**
+   * The accounts the view currently draws from (the user's picker selection). Passed to the
+   * user panel, which renders the picker and the stacked-avatar indicator.
+   */
+  readonly shownAccountIds = input<ReadonlySet<string>>(new Set());
+  /** The user ticked/unticked an account in the picker. */
+  readonly toggleAccountShown = output<string>();
   readonly selectRoom = output<string>();
   /** Header "+" on Home — raise the new-room / new-DM chooser. */
   readonly newChat = output<void>();
@@ -155,13 +184,14 @@ export class ChannelSidebarComponent {
   readonly joinRoom = output<SpaceChildRoom>();
   /** Remove (unlink) a joined channel from the active space, by room id. */
   readonly removeRoom = output<string>();
-  /** Leave a joined room entirely (not just unlink from a space), by room id. */
-  readonly leaveRoom = output<string>();
+  /** Leave a joined room entirely (not just unlink from a space); carries the owning
+   * account so a mixed-in row leaves on ITS account, never the active one. */
+  readonly leaveRoom = output<{ roomId: string; accountId: string }>();
   /** Open a joined sub-space (select it in the rail), by room id. */
   readonly openChildSpace = output<string>();
   /** Accept / decline a pending invite by room id. */
-  readonly acceptInvite = output<string>();
-  readonly declineInvite = output<string>();
+  readonly acceptInvite = output<{ roomId: string; accountId: string }>();
+  readonly declineInvite = output<{ roomId: string; accountId: string }>();
   /** Header search icon — open the global quick switcher (Ctrl/Cmd+K). */
   readonly openSwitcher = output<void>();
   /** User-panel gear — open the settings page. */
@@ -175,9 +205,17 @@ export class ChannelSidebarComponent {
   /** Sign out the given account (the active one, from the user panel). */
   readonly logout = output<string>();
   /** Set a room's notification level (all / mentions / mute) from its ⋮ menu. */
-  readonly setNotifyMode = output<{ roomId: string; mode: RoomNotifyMode }>();
-  /** Mark a single room read (from its ⋮ menu), by room id. */
-  readonly markRead = output<string>();
+  readonly setNotifyMode = output<{
+    roomId: string;
+    mode: RoomNotifyMode;
+    accountIds: readonly string[];
+  }>();
+  /** Mark a single room read (from its ⋮ menu); carries every owning account, since a row
+   * merged from two mixed accounts only clears when both are acked. */
+  readonly markRead = output<{
+    roomId: string;
+    accountIds: readonly string[];
+  }>();
   /** Mark every room read (header action). */
   readonly markAllRead = output<void>();
 
@@ -190,14 +228,26 @@ export class ChannelSidebarComponent {
    * the row updates when that user's presence changes.
    */
   presenceOf(room: RoomSummary): PresenceState | null {
-    return room.directUserId
-      ? this.presence.presenceFor(room.directUserId)()
-      : null;
+    // Presence is projected from the ACTIVE client only, so a mixed-in account's DM partner
+    // has no entry there and would render a grey dot — indistinguishable from genuinely
+    // offline. Show nothing rather than something false.
+    const active = this.activeUserId();
+    if (
+      !room.directUserId ||
+      (active && room.accountId && room.accountId !== active)
+    ) {
+      return null;
+    }
+    return this.presence.presenceFor(room.directUserId)();
   }
 
-  /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service. */
+  /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service, on the
+   * account that owns the row (not necessarily the active one). */
   toggleFavourite(room: RoomSummary): void {
-    this.roomsSvc.setFavourite(room.id, !room.favourite);
+    // Across every account joined to the row, so a merged row's star doesn't flip back.
+    for (const accountId of room.accountIds) {
+      this.roomsSvc.setFavourite(room.id, !room.favourite, accountId);
+    }
   }
 
   /**
@@ -205,7 +255,7 @@ export class ChannelSidebarComponent {
    * ⋮ menu's radio checks. Re-read each time the submenu opens (the write is delegated to
    * the host via {@link setNotifyMode}), so the check reflects the persisted preference.
    */
-  notifyMode(roomId: string): RoomNotifyMode {
-    return this.roomNotifications.modeFor(roomId);
+  notifyMode(room: RoomSummary): RoomNotifyMode {
+    return this.roomNotifications.modeFor(room.id, room.accountId);
   }
 }

@@ -175,3 +175,26 @@
     transform: translateX(0);
   }
 }
+
+// Active-identity chip in the chat header, shown only while mixing accounts. Compact so it
+// never competes with the room name, but always present — on the mobile master-detail
+// layout this is the ONLY thing on screen naming the account you send as.
+.title-account {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  max-width: 40%;
+  padding: 2px 8px 2px 2px;
+  border-radius: var(--trinity-radius-pill);
+  background: var(--trinity-hover);
+}
+
+.title-account__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--trinity-text-muted);
+}

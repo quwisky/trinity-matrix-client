@@ -5,7 +5,7 @@ import {
   type MatrixClient,
   type Room,
 } from 'matrix-js-sdk';
-import { Observable, defer, from, map } from 'rxjs';
+import { Observable, defer, from, map, throwError } from 'rxjs';
 import {
   MatrixClientService,
   reprojectOnAccountSwitch,
@@ -14,6 +14,8 @@ import {
 /** A room we have been invited to but not yet joined (shown in the Invites group). */
 export interface PendingInvite {
   roomId: string;
+  /** The signed-in account this invite belongs to — for the mixed-account view. */
+  accountId: string;
   /** Room (or inviter, for an unnamed DM) display name. */
   name: string;
   /** Uppercased first character (sans sigil), for the avatar initials fallback. */
@@ -133,18 +135,34 @@ export class InvitesService {
     this._pendingInvites.set([]);
   }
 
-  /** Accept an invite by joining the room/space. Cold: runs on subscribe. */
-  acceptInvite(roomId: string): Observable<void> {
-    return defer(() => from(this.matrix.instance.joinRoom(roomId))).pipe(
-      map(() => void 0),
-    );
+  /** Accept an invite by joining the room/space, on the account it was sent to. Cold. */
+  acceptInvite(roomId: string, accountId?: string): Observable<void> {
+    return defer(() => {
+      const client = this.clientOwning(accountId);
+      if (!client) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      return from(client.joinRoom(roomId)).pipe(map(() => void 0));
+    });
   }
 
-  /** Decline an invite by leaving the invited room/space. Cold: runs on subscribe. */
-  declineInvite(roomId: string): Observable<void> {
-    return defer(() => from(this.matrix.instance.leave(roomId))).pipe(
-      map(() => void 0),
-    );
+  /** Decline an invite by leaving the invited room/space, on its own account. Cold. */
+  declineInvite(roomId: string, accountId?: string): Observable<void> {
+    return defer(() => {
+      const client = this.clientOwning(accountId);
+      if (!client) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      return from(client.leave(roomId)).pipe(map(() => void 0));
+    });
+  }
+
+  /** The client owning an invite: the named account's, else the active one. */
+  private clientOwning(accountId?: string): MatrixClient | null {
+    if (accountId) {
+      return this.matrix.clientFor(accountId);
+    }
+    return this.matrix.isInitialized ? this.matrix.instance : null;
   }
 
   private refresh(): void {
@@ -156,30 +174,48 @@ export class InvitesService {
       client
         .getRooms()
         .filter((r) => r.getMyMembership() === 'invite')
-        .map((r) => this.toInvite(client, r))
+        .map((r) => this.toInvite(client, r, this.matrix.activeUserId() ?? ''))
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
   }
 
-  private toInvite(client: MatrixClient, room: Room): PendingInvite {
-    const name = room.name || room.roomId;
-    // Our own `m.room.member` invite event carries the inviter (its sender) and,
-    // for a DM, the `is_direct` flag the inviter set.
-    const myMemberEvent = client.getUserId()
-      ? room.getMember(client.getUserId() as string)?.events?.member
-      : undefined;
-    const inviterId = myMemberEvent?.getSender() ?? '';
-    const inviter = inviterId ? room.getMember(inviterId) : null;
-    return {
-      roomId: room.roomId,
-      name,
-      initial: initialOf(name),
-      avatarMxc: room.getMxcAvatarUrl(),
-      inviterName: inviter?.name || inviterId || 'Someone',
-      isSpace: room.isSpaceRoom(),
-      isDirect: myMemberEvent?.getContent()?.['is_direct'] === true,
-    };
+  private toInvite(
+    client: MatrixClient,
+    room: Room,
+    accountId: string,
+  ): PendingInvite {
+    return buildInvite(client, room, accountId);
   }
+}
+
+/**
+ * Project one invited {@link Room} into a {@link PendingInvite}, tagged with the account it
+ * was sent to. Pure read — shared by {@link InvitesService} (active account) and the
+ * cross-account {@link MixedInvitesService} so both build identical rows.
+ */
+export function buildInvite(
+  client: MatrixClient,
+  room: Room,
+  accountId: string,
+): PendingInvite {
+  const name = room.name || room.roomId;
+  // Our own `m.room.member` invite event carries the inviter (its sender) and,
+  // for a DM, the `is_direct` flag the inviter set.
+  const myMemberEvent = client.getUserId()
+    ? room.getMember(client.getUserId() as string)?.events?.member
+    : undefined;
+  const inviterId = myMemberEvent?.getSender() ?? '';
+  const inviter = inviterId ? room.getMember(inviterId) : null;
+  return {
+    roomId: room.roomId,
+    accountId,
+    name,
+    initial: initialOf(name),
+    avatarMxc: room.getMxcAvatarUrl(),
+    inviterName: inviter?.name || inviterId || 'Someone',
+    isSpace: room.isSpaceRoom(),
+    isDirect: myMemberEvent?.getContent()?.['is_direct'] === true,
+  };
 }
 
 /** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallbacks. */

@@ -4,4 +4,8 @@ export * from './lib/room-moderation.service';
 export * from './lib/room-aliases.service';
 export * from './lib/public-rooms.service';
 export * from './lib/spaces.service';
+export * from './lib/room-projection';
+export * from './lib/account-scope.service';
+export * from './lib/mixed-rooms.service';
+export * from './lib/mixed-spaces.service';
 export * from './lib/unread-aggregator.service';

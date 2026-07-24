@@ -4,18 +4,48 @@
     [hlmDropdownMenuTrigger]="accountMenu"
     side="top"
     align="start"
-    aria-label="Account menu"
+    [attr.aria-label]="accountSummaryLabel()"
     data-testid="user-menu-trigger"
   >
-    <trn-avatar
-      [mxc]="user().avatarMxc"
-      [initial]="userInitial()"
-      [name]="user().displayName"
-      [size]="32"
-    />
+    @if (mixedAccounts().length > 1) {
+      <!-- Mixing: show the included accounts as an overlapping stack, active one in front,
+           so the mixed view has a persistent, honest indicator right where you change it. -->
+      <span
+        class="userbar__stack"
+        data-testid="account-stack"
+        aria-hidden="true"
+      >
+        @for (account of stackAvatars(); track account.userId) {
+          <trn-avatar
+            class="userbar__stack-item"
+            [mxc]="account.avatarMxc"
+            [accountId]="account.userId"
+            [initial]="initialFor(account)"
+            [name]="account.displayName"
+            [size]="24"
+          />
+        }
+      </span>
+    } @else {
+      <trn-avatar
+        [mxc]="user().avatarMxc"
+        [initial]="userInitial()"
+        [name]="user().displayName"
+        [size]="32"
+      />
+    }
     <div class="userbar__id">
       <span class="userbar__name">{{ user().displayName }}</span>
-      <span class="userbar__handle">{{ user().userId }}</span>
+      @if (mixedAccounts().length > 1) {
+        <span class="userbar__meta">
+          <span class="userbar__handle">{{ user().userId }}</span>
+          <span class="userbar__mixed" data-testid="account-stack-count"
+            >{{ mixedAccounts().length }} accounts</span
+          >
+        </span>
+      } @else {
+        <span class="userbar__handle">{{ user().userId }}</span>
+      }
     </div>
   </button>
   <button
@@ -43,6 +73,7 @@
       >
         <trn-avatar
           [mxc]="account.avatarMxc"
+          [accountId]="account.userId"
           [name]="account.displayName"
           [size]="28"
         />
@@ -77,6 +108,18 @@
         <span class="account-row__reauth">Sign in</span>
       </button>
     }
+    @if (canPickAccounts()) {
+      <div hlmDropdownMenuSeparator></div>
+      <button
+        hlmDropdownMenuItem
+        [hlmDropdownMenuSubTrigger]="showAccountsMenu"
+        data-testid="show-accounts"
+      >
+        <ng-icon name="lucideUsers" />
+        Show accounts
+        <hlm-dropdown-menu-item-sub-indicator />
+      </button>
+    }
     <div hlmDropdownMenuSeparator></div>
     <button
       hlmDropdownMenuItem
@@ -97,4 +140,45 @@
       Sign out
     </button>
   </div>
+
+  <!-- Which accounts the room list, rail and space pills draw from. Checkboxes keep the
+       menu open (the Hlm wrapper defaults keepOpen to true), so several accounts can be
+       ticked in one visit. The active account is disabled rather than merely pre-checked:
+       CDK early-returns on a disabled item, so it can neither be unticked nor drift out of
+       sync with the state that refuses to drop it. -->
+  <ng-template #showAccountsMenu>
+    <div hlmDropdownMenuSub>
+      <div hlmDropdownMenuLabel>Show accounts</div>
+      <div hlmDropdownMenuSeparator></div>
+      @for (account of accounts(); track account.userId) {
+        @let isActive = account.userId === activeUserId();
+        <button
+          class="account-pick"
+          hlmDropdownMenuCheckbox
+          [checked]="shownAccountIds().has(account.userId)"
+          [disabled]="isActive"
+          (triggered)="toggleAccountShown.emit(account.userId)"
+          [attr.data-testid]="'show-account-' + account.userId"
+        >
+          <hlm-dropdown-menu-checkbox-indicator />
+          <trn-avatar
+            [mxc]="account.avatarMxc"
+            [accountId]="account.userId"
+            [initial]="initialFor(account)"
+            [name]="account.displayName"
+            [size]="20"
+          />
+          <span class="account-pick__id">
+            <span class="account-pick__name">{{ account.displayName }}</span>
+            <!-- The mxid, because two accounts can share a display name and the tick alone
+                 would not say which server you are blending in. -->
+            <span class="account-pick__handle">{{ account.userId }}</span>
+          </span>
+          @if (isActive) {
+            <span class="account-row__active">active</span>
+          }
+        </button>
+      }
+    </div>
+  </ng-template>
 </ng-template>
