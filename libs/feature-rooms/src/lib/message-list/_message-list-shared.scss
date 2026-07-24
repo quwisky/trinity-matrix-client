@@ -55,6 +55,31 @@
   color: var(--trinity-text-muted);
 }
 
+// Marks where the local calendar day changes. Neutral tokens deliberately: this is
+// wayfinding chrome, not an alert, and it has to sit quieter than the accent-coloured
+// unread divider it can appear directly above. Extra top margin so the day reads as
+// opening the block below it rather than floating between two rows.
+.day-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 8px;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--trinity-divider);
+  }
+}
+
+.day-divider__label {
+  @include category-label;
+
+  flex: 0 0 auto;
+}
+
 .new-divider {
   display: flex;
   align-items: center;

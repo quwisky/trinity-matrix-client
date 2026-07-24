@@ -22,6 +22,16 @@
     <div class="vpad" [style.height.px]="topPad()"></div>
 
     @for (row of windowedRows(); track row.id) {
+      @if (row.daySeparator; as day) {
+        <div
+          class="day-divider"
+          role="separator"
+          [attr.aria-label]="day"
+          data-testid="day-separator"
+        >
+          <span class="day-divider__label" aria-hidden="true">{{ day }}</span>
+        </div>
+      }
       @if (row.id === firstUnreadId()) {
         <div class="new-divider" data-testid="new-messages-divider">
           <span class="new-divider__label">New messages</span>
