@@ -163,6 +163,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The supported browser list now matches Angular's own.** The build targets Chrome and Edge
+  111+, Firefox 112+, and Safari and iOS 16.4+ — Angular 22's published support policy. The
+  project had been asking for older browsers than the framework supports (Chrome 107, Firefox
+  106, Safari 16.1), which the build warned about on every single run, and which meant CSS and
+  JavaScript were being down-levelled for browsers Angular itself makes no promises about.
+  Android is now listed explicitly too; it had been missing entirely, so the Android WebView was
+  not considered when deciding what to compile down. If you are on a browser older than the
+  above, update it — those versions are all from early 2023 or before.
+
+- **The iOS app now requires iOS 16.4 or later.** It previously declared support for iOS 15
+  while the web build it wraps was already being compiled for newer browsers — so an iPhone on
+  iOS 15 could install Trinity and then be handed JavaScript and CSS its WebView could not
+  parse. On iOS the WebView is tied to the OS and cannot be updated separately, so the only
+  honest fix is to stop claiming support. In practice this affects devices that cannot go past
+  iOS 15 at all — the iPhone 6s, 7 and 1st-generation SE. Anything that can run iOS 16 can run
+  16.4, which is a free update.
+
 - **Continuous integration moved to GitHub Actions, and now checks more.** Every pull
   request, and every push to `develop` or `master`, runs the existing gates (lint, stylelint, formatting, unit tests, production
   build) plus two things nothing checked before: the Electron desktop main process is
