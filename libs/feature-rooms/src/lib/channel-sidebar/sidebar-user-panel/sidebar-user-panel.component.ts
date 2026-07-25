@@ -89,6 +89,16 @@ export class SidebarUserPanelComponent {
    * stacked-avatar indicator; defaults to empty so the panel renders standalone.
    */
   readonly shownAccountIds = input<ReadonlySet<string>>(new Set());
+
+  /**
+   * Present the account picker as a dialog rather than a submenu.
+   *
+   * Set by the host from the layout, not read here: this component stays presentational and
+   * injects nothing. Below the `md` breakpoint the sidebar is a full-screen page and this
+   * panel is a bar across the bottom of the viewport, so a submenu flying out beside the
+   * account menu has nowhere to go and lands back on top of it.
+   */
+  readonly pickAccountsInDialog = input(false);
   /**
    * The accounts being mixed, active account first so it stays the front tile of the stack.
    * Empty unless more than one account is shown — a single account renders the plain avatar.
@@ -124,6 +134,9 @@ export class SidebarUserPanelComponent {
   });
   /** Gear — open the settings page. */
   readonly openSettings = output<void>();
+  /** Show the account picker as a dialog — raised only when {@link pickAccountsInDialog}. */
+  readonly openAccountPicker = output<void>();
+
   /** The user ticked/unticked an account in the "Show accounts" picker. */
   readonly toggleAccountShown = output<string>();
   /** Switch the active account to the given user id (a switcher row that isn't active). */

@@ -122,4 +122,63 @@ describe('SidebarUserPanelComponent', () => {
     row('@carol:hs').click();
     expect(toggled).toEqual(['@carol:hs']);
   });
+
+  // Issue #28. Below the md breakpoint this panel is a bar across the bottom of a full-screen
+  // sidebar, so a submenu flying out beside the account menu has nowhere to go and lands back
+  // on top of it. The host decides; this component only renders the affordance it is told to.
+  describe('narrow layout', () => {
+    async function openMenu(pickAccountsInDialog: boolean) {
+      const rendered = await render(SidebarUserPanelComponent, {
+        inputs: {
+          user: USER,
+          accounts: ACCOUNTS,
+          activeUserId: '@alice:hs',
+          shownAccountIds: new Set(['@alice:hs']),
+          pickAccountsInDialog,
+        },
+      });
+      rendered.container
+        .querySelector<HTMLElement>('.userbar__trigger')!
+        .click();
+      rendered.fixture.detectChanges();
+      return rendered;
+    }
+
+    it('raises a request for the dialog instead of opening a submenu', async () => {
+      const { fixture } = await openMenu(true);
+      const asked: number[] = [];
+      fixture.componentInstance.openAccountPicker.subscribe(() =>
+        asked.push(1),
+      );
+
+      document
+        .querySelector<HTMLElement>('[data-testid="show-accounts"]')!
+        .click();
+      fixture.detectChanges();
+
+      expect(asked).toHaveLength(1);
+      // Nothing flew out — that is the whole point on this layout.
+      expect(
+        document.querySelector('[data-testid="show-account-@bob:hs"]'),
+      ).toBeNull();
+    });
+
+    it('still opens the submenu on the wide layout', async () => {
+      const { fixture } = await openMenu(false);
+      const asked: number[] = [];
+      fixture.componentInstance.openAccountPicker.subscribe(() =>
+        asked.push(1),
+      );
+
+      document
+        .querySelector<HTMLElement>('[data-testid="show-accounts"]')!
+        .click();
+      fixture.detectChanges();
+
+      expect(asked).toHaveLength(0);
+      expect(
+        document.querySelector('[data-testid="show-account-@bob:hs"]'),
+      ).not.toBeNull();
+    });
+  });
 });

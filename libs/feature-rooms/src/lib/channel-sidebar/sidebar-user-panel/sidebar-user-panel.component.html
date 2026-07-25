@@ -110,15 +110,28 @@
     }
     @if (canPickAccounts()) {
       <div hlmDropdownMenuSeparator></div>
-      <button
-        hlmDropdownMenuItem
-        [hlmDropdownMenuSubTrigger]="showAccountsMenu"
-        data-testid="show-accounts"
-      >
-        <ng-icon name="lucideUsers" />
-        Show accounts
-        <hlm-dropdown-menu-item-sub-indicator />
-      </button>
+      @if (pickAccountsInDialog()) {
+        <!-- Narrow layout: a submenu would have nowhere to fly out to, so this opens a
+             dialog instead. Same testid, so the affordance is one thing to drive either way. -->
+        <button
+          hlmDropdownMenuItem
+          (triggered)="openAccountPicker.emit()"
+          data-testid="show-accounts"
+        >
+          <ng-icon name="lucideUsers" />
+          Show accounts
+        </button>
+      } @else {
+        <button
+          hlmDropdownMenuItem
+          [hlmDropdownMenuSubTrigger]="showAccountsMenu"
+          data-testid="show-accounts"
+        >
+          <ng-icon name="lucideUsers" />
+          Show accounts
+          <hlm-dropdown-menu-item-sub-indicator />
+        </button>
+      }
     }
     <div hlmDropdownMenuSeparator></div>
     <button

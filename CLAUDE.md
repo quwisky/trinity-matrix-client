@@ -141,8 +141,11 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
 - **Selectors**: `trn` prefix — elements kebab-case (`trn-avatar`), directives camelCase. Class
   suffix must be `Page` or `Component`.
 - **`libs/spartan/*` is generated and owned via `@spartan-ng/cli`** (config in root
-  `components.json`). Add/regenerate Helm components with the CLI, don't hand-author; it's
-  intentionally exempt from the `trn`-prefix and class-suffix ESLint rules.
+  `components.json`). Add/regenerate Helm components with the CLI rather than hand-authoring;
+  it's intentionally exempt from the `trn`-prefix and class-suffix ESLint rules. Where upstream
+  is wrong we *do* diverge — but on the record: comment it at the site, add it to the banner at
+  the top of the file, pin it with a test, and list it under **Vendored spartan overrides** in
+  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#vendored-spartan-overrides).
 - **Commits use the Conventional Commits convention** (commitlint `commit-msg` hook via
   `@commitlint/config-conventional`): `type(scope): subject` where `type` ∈
   `feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert`. A `pre-commit` hook

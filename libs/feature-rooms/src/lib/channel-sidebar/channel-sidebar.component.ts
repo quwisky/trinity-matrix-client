@@ -32,7 +32,12 @@ import {
   lucideUserPlus,
   lucideX,
 } from '@ng-icons/lucide';
-import { AvatarComponent, type AccountBadge } from '@trinity/ui';
+import {
+  AvatarComponent,
+  BELOW_MD_QUERY,
+  mediaQuerySignal,
+  type AccountBadge,
+} from '@trinity/ui';
 import {
   InvitesService,
   MixedInvitesService,
@@ -55,6 +60,7 @@ import {
 } from '@trinity/data-access-notifications';
 import { type PresenceState } from '@trinity/util-matrix';
 import { unreadBadgeLabel } from '../shared/unread-badge';
+import { AccountPickerService } from '../account-picker/account-picker.service';
 import {
   SidebarUserPanelComponent,
   type AccountSummary,
@@ -107,6 +113,15 @@ export class ChannelSidebarComponent {
   private readonly roomsSvc = inject(RoomsService);
   private readonly presence = inject(PresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
+  private readonly accountPicker = inject(AccountPickerService);
+
+  /**
+   * True on the narrow single-pane layout, where this sidebar is a full-screen page and its
+   * user panel is a bar across the bottom of the viewport. A signal rather than a one-shot
+   * read so rotating a phone re-renders the affordance instead of stranding whichever one the
+   * page happened to load with.
+   */
+  protected readonly narrowLayout = mediaQuerySignal(BELOW_MD_QUERY);
 
   readonly spaceName = input('Home');
   /** Whether a space (not Home) is selected — gates the header space actions. */
@@ -128,6 +143,20 @@ export class ChannelSidebarComponent {
   readonly hasAnyUnread = computed(() => this.rooms().some((r) => r.hasUnread));
 
   /** The account badge for a room row (mixed view), or null when not badged. */
+  /**
+   * Show the account picker as a dialog (narrow layout only — see {@link narrowLayout}).
+   *
+   * The dialog writes through AccountScopeService itself rather than routing back out via
+   * `toggleAccountShown`, so these ticks do not pass through RoomsPage the way the submenu's
+   * do. Both end in the same service call.
+   */
+  protected onOpenAccountPicker(): void {
+    void this.accountPicker.open({
+      accounts: this.accounts(),
+      activeUserId: this.activeUserId(),
+    });
+  }
+
   badgeFor(accountId: string): AccountBadge | null {
     return this.accountBadges().get(accountId) ?? null;
   }
