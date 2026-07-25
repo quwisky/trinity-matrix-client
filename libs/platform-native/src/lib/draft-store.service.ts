@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, type OnDestroy } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 
 const DRAFTS_KEY = 'trinity.composer.drafts';
@@ -18,9 +18,24 @@ const MAX_DRAFTS = 200;
  * saved map before any composer mounts, and writes are debounced.
  */
 @Injectable({ providedIn: 'root' })
-export class DraftStoreService {
+export class DraftStoreService implements OnDestroy {
   private drafts = new Map<string, string>();
-  private persistScheduled = false;
+  private pending: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Drop a pending write when the injector goes away.
+   *
+   * A debounced write must not outlive its owner: the timer previously had no handle at all,
+   * so a draft touched in the last 400ms of a lifetime still fired afterwards. Under test that
+   * lands after the module is torn down, where `Preferences.set` is no longer a promise — and
+   * the run fails on an uncaught TypeError with every test passing.
+   *
+   * `ngOnDestroy` rather than `inject(DestroyRef)` deliberately: it needs no injection context,
+   * so a test can still build a standalone instance with `new` to pre-seed it.
+   */
+  ngOnDestroy(): void {
+    this.cancelPending();
+  }
 
   /** Load persisted drafts. Call once at app startup, before the composer renders. */
   async init(): Promise<void> {
@@ -62,26 +77,33 @@ export class DraftStoreService {
   }
 
   private schedulePersist(): void {
-    if (this.persistScheduled) {
+    if (this.pending !== null) {
       return;
     }
-    this.persistScheduled = true;
-    setTimeout(() => {
-      this.persistScheduled = false;
+    this.pending = setTimeout(() => {
+      this.pending = null;
       this.persist();
     }, PERSIST_DEBOUNCE_MS);
   }
 
+  private cancelPending(): void {
+    if (this.pending !== null) {
+      clearTimeout(this.pending);
+      this.pending = null;
+    }
+  }
+
   private persist(): void {
-    // Keep only the most recently inserted MAX_DRAFTS to bound storage. Build the
-    // record with a loop (not Object.fromEntries) — the lib targets es2018.
+    // Keep only the most recently inserted MAX_DRAFTS to bound storage.
     const record: Record<string, string> = {};
     for (const [key, text] of [...this.drafts.entries()].slice(-MAX_DRAFTS)) {
       record[key] = text;
     }
-    void Preferences.set({
-      key: DRAFTS_KEY,
-      value: JSON.stringify(record),
-    }).catch(() => undefined);
+    // Promise.resolve wraps the call rather than chaining off it directly: this is an SDK
+    // boundary we do not control, and a `.catch` straight onto a non-promise throws
+    // synchronously — out of a timer callback, where nothing can catch it.
+    void Promise.resolve(
+      Preferences.set({ key: DRAFTS_KEY, value: JSON.stringify(record) }),
+    ).catch(() => undefined);
   }
 }

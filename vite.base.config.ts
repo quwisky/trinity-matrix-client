@@ -40,6 +40,16 @@ export function createVitestConfig(
       ],
       test: {
         globals: true,
+        // Set explicitly, and load-bearing: @analogjs/vite-plugin-angular defaults the pool to
+        // `vmThreads` (`pool: userConfig.test?.pool ?? 'vmThreads'`), which reuses long-lived
+        // workers and is the one pool that sets no `isolateWorkers` — so jsdom windows, TestBed
+        // state and module graphs pile up in a single V8 isolate for the whole run. That put
+        // feature-rooms at a 4.3 GB peak and got it OOM-killed on roughly half of all
+        // `nx run-many -t test` runs. `forks` isolates per test file, so the OS reclaims memory
+        // after each one: measured 4.27 GB -> 0.91 GB peak for +19% wall time. It is also
+        // vitest's own default, which the plugin overrides. Naming it here wins cleanly via the
+        // plugin's own `userConfig` escape hatch — no patching.
+        pool: 'forks',
         environment: 'jsdom',
         setupFiles: ['src/test-setup.ts'],
         include: ['src/**/*.spec.ts'],

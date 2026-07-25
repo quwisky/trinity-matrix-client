@@ -163,7 +163,10 @@ the architecture changes — find out before building UI on top.
   `verify-sas`, and the encrypted `send-media`, `threads`, `reply`, `spaces`, `rooms`, `search`,
   and `emoji` round-trips (disposable Synapse harness, env-gated; full
   round-trips run to PASS 2026-06-27). See [e2e/README.md](../e2e/README.md).
-- Vitest shares the Vite config and runs in parallel by default.
+- Vitest shares the Vite config and runs in the **`forks`** pool — one isolated process
+  per test file, so memory is reclaimed as the run proceeds. That is vitest's own default,
+  but the Analog Angular plugin overrides it to `vmThreads`, which reuses long-lived
+  workers and OOM-killed the largest project; `vite.base.config.ts` names the pool back.
 
 ## Open setup decisions / reminders
 

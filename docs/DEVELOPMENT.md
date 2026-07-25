@@ -134,6 +134,30 @@ pnpm test                                 # nx run-many -t test (once)
 pnpm exec nx test trinity --configuration=watch
 ```
 
+Nx runs three projects at a time, and each project's Vitest runs in the **`forks`** pool —
+one isolated process per test file, so memory is reclaimed between files. The pool is set
+explicitly in `vite.base.config.ts` and the comment there explains why: the Analog Angular
+plugin defaults it to `vmThreads`, which reuses long-lived workers and pushed `feature-rooms`
+to a 4.3 GB peak, getting it OOM-killed on about half of all full runs.
+
+**Reading a failed run.** The two ways this suite fails look nothing alike, and neither
+announces itself:
+
+| Symptom                                                      | What it is                                                                                                                  |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| A `Killed` line and a **missing** project summary — 21 of 22 | The process was OOM-killed. Tests did not fail; they never finished reporting.                                              |
+| All 22 summaries present, plus an `Unhandled Errors` block   | Something escaped a test's lifetime — usually a timer firing after teardown. Exit code is non-zero with every test passing. |
+
+Two traps worth knowing:
+
+- **Check the exit code, not the output.** Nx and esbuild print `✘ [ERROR]` and `Failed tasks`;
+  a grep for `error` matches neither, so a failing run and a silent one look identical.
+- **`nx reset --onlyCache` does not clear flaky history.** Nx keeps task history in SQLite under
+  `.nx/workspace-data/`, keyed by task _hash_, so one historical failure makes "Nx detected a
+  flaky task" reappear on later runs that passed. `pnpm exec nx reset` (or
+  `--onlyWorkspaceData`) clears it. And because `test` is cached, reproducing anything
+  intermittent needs `--skip-nx-cache` or a pass may just be a replay.
+
 **App journeys (`@nx/playwright`)** — `@playwright/test` specs in
 [`e2e/playwright/`](../e2e/playwright/) covering the app shell/login guard, navigation, notifications, pinned
 messages, favourite and room lists, unread badges, timeline virtualization, and settings

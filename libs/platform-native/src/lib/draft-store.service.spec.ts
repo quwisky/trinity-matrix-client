@@ -93,4 +93,43 @@ describe('DraftStoreService', () => {
       value: JSON.stringify({ '!a:hs': 'ab', '!b:hs': 'c' }),
     });
   });
+
+  // Issue #31. Both of these are about a debounced write outliving whatever asked for it.
+  // Together they turned a green suite into a non-zero exit: the timer fired after the test
+  // file's module was torn down, `Preferences.set` was no longer a promise, and `.catch` on
+  // undefined threw out of a timer callback where nothing could catch it.
+  describe('a pending write that outlives its caller', () => {
+    it('does not fire after the injector is destroyed', () => {
+      const svc = service();
+      svc.set('!a:hs', 'half a message');
+
+      TestBed.resetTestingModule(); // destroys the injector -> ngOnDestroy
+      vi.advanceTimersByTime(1000);
+
+      expect(set).not.toHaveBeenCalled();
+    });
+
+    it('survives a Preferences.set that does not return a promise', () => {
+      // Exactly what a torn-down module hands back — and what used to crash the run.
+      set.mockReturnValue(undefined);
+      const svc = service();
+      svc.set('!a:hs', 'half a message');
+
+      expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
+      expect(set).toHaveBeenCalled();
+    });
+
+    it('still coalesces and writes normally when nothing is torn down', () => {
+      const svc = service();
+      svc.set('!a:hs', 'one');
+      svc.set('!b:hs', 'two');
+      vi.advanceTimersByTime(1000);
+
+      expect(set).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(set.mock.calls[0][0].value)).toEqual({
+        '!a:hs': 'one',
+        '!b:hs': 'two',
+      });
+    });
+  });
 });
