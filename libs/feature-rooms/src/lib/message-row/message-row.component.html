@@ -46,7 +46,7 @@
       <div class="msg__body">
         <div class="msg__head">
           <span class="msg__author">{{ r.senderName }}</span>
-          <span class="msg__time">{{ r.timestamp | date: 'short' }}</span>
+          <span class="msg__time">{{ fmt.dateTime(r.timestamp) }}</span>
           @if (showEditedMarker()) {
             <button
               type="button"
@@ -136,7 +136,7 @@
         }
       </div>
     } @else {
-      <span class="msg__gutter">{{ r.timestamp | date: 'shortTime' }}</span>
+      <span class="msg__gutter">{{ fmt.time(r.timestamp) }}</span>
       <div class="msg__body">
         @if (r.poll; as poll) {
           <trn-poll
@@ -270,7 +270,7 @@
         @if (thread.latestReplyTs) {
           <span class="msg__thread-sep" aria-hidden="true">·</span>
           <span class="msg__thread-time"
-            >last reply {{ thread.latestReplyTs | date: 'short' }}</span
+            >last reply {{ fmt.dateTime(thread.latestReplyTs) }}</span
           >
         }
         @if (thread.unreadCount > 0) {

@@ -48,7 +48,7 @@
               t.rootPreview || 'Thread'
             }}</span>
             <span class="thread-item__time">{{
-              t.latestActivityTs | date: 'short'
+              fmt.dateTime(t.latestActivityTs)
             }}</span>
           </div>
           <div class="thread-item__meta">

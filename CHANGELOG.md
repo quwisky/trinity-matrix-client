@@ -16,6 +16,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Write dates and times your way.** Settings → Appearance gains **Time format** and **Date
+  format** pickers: a 12- or 24-hour clock, and day-first, month-first or ISO dates — each
+  option previewing exactly how it will look. Both default to **Match system**, which now
+  genuinely means your device's language rather than US formatting, so most people get the
+  right thing without touching anything. The choice applies everywhere at once and takes
+  effect immediately: message timestamps, the hover time on a grouped message, day
+  separators, pinned messages, threads, edit history and search results all move together.
+  Previously every timestamp rendered as `7/24/26, 3:45 PM` for everyone on the planet, while
+  search results and day separators followed your browser — so the same screen could show two
+  or three different conventions at once. It is saved on the device.
+
 - **See where the days begin.** The timeline now draws a labelled divider wherever the
   calendar day changes, reading **Today**, **Yesterday**, or the date further back — so
   scrolling through a room tells you _when_ something was said without reading the small

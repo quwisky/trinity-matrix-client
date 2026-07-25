@@ -1,11 +1,12 @@
 /**
  * Local calendar-day helpers for the timeline's day separators.
  *
- * Pure and DI-free: "now" is always a parameter, so the caller (a signal-driven computed)
- * decides when labels re-derive, and a test can pin the clock without fake timers. Days are
- * *local* calendar days — that is what a reader means by "today", and what every other
- * client separates on.
+ * Pure and DI-free: "now" and the format preference are always parameters, so the caller (a
+ * signal-driven computed) decides when labels re-derive, and a test can pin the clock without
+ * fake timers. Days are *local* calendar days — that is what a reader means by "today", and
+ * what every other client separates on.
  */
+import { formatDaySeparator, type DateTimePrefs } from './date-format';
 
 /**
  * Smallest timestamp treated as a real event time. `safeBuildMessageView`'s unsupported
@@ -70,58 +71,31 @@ export function startOfNextLocalDay(ts: number): number {
   return day.getTime();
 }
 
-// Building an Intl.DateTimeFormat is comparatively expensive (~25µs) and the timeline
-// re-derives labels on every incoming event, so the two shapes are built once and reused.
-//
-// The cache is keyed, not unconditional: a DateTimeFormat captures the time zone at
-// construction and never re-resolves it, while `startOfLocalDay` goes through `Date`, which
-// does. Held forever, the two would disagree after the OS zone moves under a long-lived
-// session — a laptop opened in another country — and the separator would render a date a day
-// off from the messages beneath it.
-//
-// The key is the current UTC offset rather than the resolved zone name because it is what
-// actually decides the rendered date, and reading it is ~430x cheaper (0.06µs vs 25µs) —
-// probing the zone name per call would cost as much as the construction the cache exists to
-// avoid. The blind spot is a zone swap that preserves the current offset (London ->
-// Abidjan in winter), where the label is identical anyway.
-let formatOffset: number | undefined;
-let sameYearFormat: Intl.DateTimeFormat | undefined;
-let earlierYearFormat: Intl.DateTimeFormat | undefined;
-
-/** The two label formatters, rebuilt whenever the local UTC offset has moved under us. */
-function formatters(): {
-  sameYear: Intl.DateTimeFormat;
-  earlierYear: Intl.DateTimeFormat;
-} {
-  const offset = new Date().getTimezoneOffset();
-  if (offset !== formatOffset || !sameYearFormat || !earlierYearFormat) {
-    formatOffset = offset;
-    sameYearFormat = new Intl.DateTimeFormat(undefined, {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-    });
-    earlierYearFormat = new Intl.DateTimeFormat(undefined, {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  }
-  return { sameYear: sameYearFormat, earlierYear: earlierYearFormat };
-}
-
 /**
  * Human label for the calendar day starting at `dayStart`, read from the day starting at
  * `todayStart`: "Today", "Yesterday", or the date.
  *
- * The weekday is included within the current year (it is how people locate a recent day)
- * and dropped for older ones, where the year replaces it — "23 July" is ambiguous once a
- * room has a year of scrollback, and repeating the current year on every separator is noise.
+ * `prefs` is a parameter rather than something read from a service, so this stays DI-free;
+ * the timeline's `rows()` computed reads the signal and passes it in, which is also what makes
+ * a format change re-derive every label. Formatting itself — and the `Intl` cache — lives in
+ * `date-format.ts`, shared with every other timestamp in the app.
+ *
+ * Within the current year the date carries its weekday (it is how people locate a recent day);
+ * further back the year replaces it, since "23 July" is ambiguous once a room has a year of
+ * scrollback and repeating the current year on every separator is noise. Under an explicitly
+ * chosen date order the reader gets that order, year and all.
+ *
+ * "Today" and "Yesterday" are prose rather than timestamps, so no format preference touches
+ * them; translating them belongs to the i18n work, not to formatting.
  *
  * There is deliberately no "Tomorrow": a future-dated event is clock skew or a hostile
  * `origin_server_ts`, and showing its literal date is more honest than dressing it up.
  */
-export function dayLabel(dayStart: number, todayStart: number): string {
+export function dayLabel(
+  dayStart: number,
+  todayStart: number,
+  prefs: DateTimePrefs,
+): string {
   if (dayStart === todayStart) {
     return 'Today';
   }
@@ -132,8 +106,7 @@ export function dayLabel(dayStart: number, todayStart: number): string {
   if (dayStart === startOfLocalDay(todayStart - 1)) {
     return 'Yesterday';
   }
-  const { sameYear, earlierYear } = formatters();
-  return new Date(dayStart).getFullYear() === new Date(todayStart).getFullYear()
-    ? sameYear.format(dayStart)
-    : earlierYear.format(dayStart);
+  const earlierYear =
+    new Date(dayStart).getFullYear() !== new Date(todayStart).getFullYear();
+  return formatDaySeparator(dayStart, prefs, earlierYear);
 }

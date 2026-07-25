@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -6,6 +5,7 @@ import {
   input,
 } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
+import { DateTimeFormatService } from '@trinity/platform-native';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideX } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
@@ -35,12 +35,15 @@ const MAX_AVATARS = 4;
 @Component({
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, DatePipe, AvatarComponent, HlmButton, HlmTooltip],
+  imports: [NgIcon, AvatarComponent, HlmButton, HlmTooltip],
   viewProviders: [provideIcons({ lucideX })],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',
 })
 export class ThreadsListComponent {
+  /** Timestamps go through the app-wide format preference, never a DatePipe. */
+  readonly fmt = inject(DateTimeFormatService);
+
   private readonly threadsSvc = inject(ThreadsService);
   private readonly dialogRef =
     inject<DialogRef<string | undefined, ThreadsListComponent>>(DialogRef);

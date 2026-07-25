@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -9,6 +8,7 @@ import {
   input,
   signal,
 } from '@angular/core';
+import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   DialogRef,
   TrnAlertService,
@@ -51,15 +51,12 @@ const REFRESH_DELAY_MS = 600;
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './edit-history.component.html',
   styleUrl: './edit-history.component.scss',
-  imports: [
-    DatePipe,
-    HlmButton,
-    HlmSpinner,
-    SpoilerRevealDirective,
-    MatrixLinkDirective,
-  ],
+  imports: [HlmButton, HlmSpinner, SpoilerRevealDirective, MatrixLinkDirective],
 })
 export class EditHistoryComponent {
+  /** Timestamps go through the app-wide format preference, never a DatePipe. */
+  readonly fmt = inject(DateTimeFormatService);
+
   readonly roomId = input.required<string>();
   readonly eventId = input.required<string>();
 

@@ -1,12 +1,13 @@
-import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   output,
   signal,
 } from '@angular/core';
+import { DateTimeFormatService } from '@trinity/platform-native';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideMessagesSquare,
@@ -95,7 +96,6 @@ export type MessageRowAction =
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarComponent,
-    DatePipe,
     NgIcon,
     MediaAttachmentComponent,
     MessageReactionsComponent,
@@ -119,6 +119,9 @@ export type MessageRowAction =
   styleUrl: './message-row.component.scss',
 })
 export class MessageRowComponent {
+  /** Timestamps go through the app-wide format preference, never a DatePipe. */
+  readonly fmt = inject(DateTimeFormatService);
+
   readonly row = input.required<MessageRow>();
   /** Thread summary for this row's event (main timeline only), else null. */
   readonly threadSummary = input<ThreadSummary | null>(null);

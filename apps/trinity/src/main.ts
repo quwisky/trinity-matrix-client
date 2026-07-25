@@ -22,6 +22,7 @@ import {
 } from '@trinity/data-access-notifications';
 import {
   BUILD_INFO,
+  DateTimeFormatService,
   DraftStoreService,
   FeatureFlagsService,
   KeyboardShortcutsService,
@@ -81,6 +82,10 @@ bootstrapApplication(AppComponent, {
     // before the first room is projected — otherwise a user who hid them would see the
     // churn flash in on every cold start.
     provideAppInitializer(() => inject(SystemLineSettingsService).init()),
+    // Load the saved date/time formats before the first timeline paints — every message
+    // header carries a timestamp, so hydrating late would render the whole room in the
+    // default format and then reflow it.
+    provideAppInitializer(() => inject(DateTimeFormatService).init()),
     // Load any custom keyboard-shortcut bindings before the rooms page mounts, so a
     // rebound chord is in effect from the first keydown.
     provideAppInitializer(() => inject(KeyboardShortcutsService).init()),
