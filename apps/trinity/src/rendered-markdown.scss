@@ -39,19 +39,136 @@
     font-size: 85%;
   }
 
+  // Inline code keeps its literal spacing under the container's `white-space: normal`.
+  // Scoped away from `pre > code`, which must stay `pre` so `overflow-x: auto` works.
+  :not(pre) > code {
+    white-space: pre-wrap;
+  }
+
   pre {
+    position: relative;
     margin: 4px 0;
     padding: 8px 10px;
     border-radius: var(--trinity-radius-sm);
     background: var(--trinity-rail);
     overflow-x: auto;
 
+    // The fenced block's declared language, captioned on hover the way GitHub does it.
+    // Generated content from the `language` attribute the sanitizer writes: that keeps the
+    // caption out of the element's text, so it cannot be selected, copied, or picked up by
+    // the edit-history diff (which compares the text of two rendered revisions).
+    // BOTTOM-right, not top-right, because the message's hover toolbar is anchored across
+    // the row's top edge (`.msg__toolbar` sits at `top: -16px`, so it spans roughly the
+    // first 16px of the message) and is right-aligned. Hovering the block necessarily
+    // hovers the message, so the two are always shown together — and on a continuation
+    // row, which has no author header to push the block down, a top-right caption lands
+    // underneath the toolbar. The shortest possible block still puts its bottom edge
+    // clear of that band.
+    &[language]::after {
+      content: attr(language);
+      position: absolute;
+      right: 8px;
+      bottom: 6px;
+      color: var(--trinity-text-muted);
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.1s ease;
+    }
+
+    &[language]:hover::after {
+      opacity: 1;
+    }
+
+    // No hover on a touchscreen, so there is no way to reveal it — show it outright.
+    @media (hover: none) {
+      &[language]::after {
+        opacity: 1;
+      }
+    }
+
     code {
       padding: 0;
       background: none;
       font-size: 100%;
+      color: var(--trinity-syntax-plain);
+    }
+
+    // Syntax tokens, emitted by the sanitizer's highlighter (message-view.ts ->
+    // code-highlight.ts) AFTER DOMPurify — which is why these names are absent from
+    // ALLOWED_CLASS: they are ours, not the sender's.
+    .tok-keyword {
+      color: var(--trinity-syntax-keyword);
+    }
+
+    .tok-string {
+      color: var(--trinity-syntax-string);
+    }
+
+    .tok-number {
+      color: var(--trinity-syntax-number);
+    }
+
+    .tok-comment {
+      color: var(--trinity-syntax-comment);
+    }
+
+    .tok-function {
+      color: var(--trinity-syntax-function);
+    }
+
+    .tok-type {
+      color: var(--trinity-syntax-type);
+    }
+
+    .tok-variable {
+      color: var(--trinity-syntax-variable);
+    }
+
+    .tok-punctuation {
+      color: var(--trinity-syntax-punctuation);
+    }
+
+    .tok-italic {
+      font-style: italic;
     }
   }
+
+  // Reachable now that `gfm` is pinned on and outgoing HTML carries these: the file
+  // had no rules for them even though the Matrix allowlist has always permitted them.
+  table {
+    display: block;
+    margin: 4px 0;
+    border-collapse: collapse;
+
+    // A wide table scrolls itself rather than stretching the message row.
+    overflow-x: auto;
+  }
+
+  th,
+  td {
+    padding: 3px 8px;
+    border: 1px solid var(--trinity-divider);
+    text-align: left;
+  }
+
+  th {
+    background: var(--trinity-rail);
+    font-weight: 600;
+  }
+
+  details {
+    margin: 4px 0;
+  }
+
+  summary {
+    cursor: pointer;
+  }
+
+  // No rules for del/strike/sub/sup: Tailwind's preflight already positions sub/sup, and
+  // line-through is the UA default for del/strike. Adding them back would be a no-op that
+  // reads as deliberate styling.
 
   blockquote {
     margin: 4px 0;

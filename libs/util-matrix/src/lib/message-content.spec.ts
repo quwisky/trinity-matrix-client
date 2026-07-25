@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { DomSanitizer } from '@angular/platform-browser';
 import type { MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   editMessageContent,
@@ -29,12 +28,6 @@ describe('locationMessageContent', () => {
     });
   });
 });
-
-// mediaCaptionFields only uses the sanitizer via renderMarkdown (marked → sanitize);
-// a passthrough stub is enough to exercise the markdown branch without a DOM.
-const sanitizer = {
-  sanitize: (_ctx: unknown, html: string | null) => html,
-} as unknown as DomSanitizer;
 
 describe('parseSlashCommand', () => {
   it('parses a known command and its trimmed argument', () => {
@@ -100,6 +93,19 @@ describe('slashCommandContent', () => {
     });
   });
 
+  it('keeps line breaks inside a multi-line /spoiler', () => {
+    // A spoiler always sets format: html, so it renders under `white-space: normal` and
+    // cannot fall back to the plain-text branch that preserves newlines.
+    const content = slashCommandContent(
+      '/spoiler line one\nline two',
+      renderMarkdown,
+    ) as { formatted_body: string };
+
+    expect(content.formatted_body).toBe(
+      '<span data-mx-spoiler>line one<br>line two</span>',
+    );
+  });
+
   it('wraps /spoiler text in a spoiler span', () => {
     const content = slashCommandContent(
       '/spoiler the butler did it',
@@ -122,37 +128,163 @@ describe('slashCommandContent', () => {
   });
 });
 
+// `formatted` decides whether a message goes on the wire as plain `body` or gains a
+// `formatted_body`. It is a round-trip test — render, strip the tags, compare — so
+// turning on `breaks` (a single newline becomes <br>) put it at risk: <br> contributes
+// nothing to textContent, and without restoring it every multi-line plain message would
+// have been promoted to HTML.
+describe('renderMarkdown — plain vs formatted', () => {
+  it.each([
+    ['a single line', 'hello there'],
+    ['a soft line break', 'line one\nline two'],
+    ['a paragraph break', 'a\n\nb'],
+    ['several blank lines', 'a\n\n\nb'],
+    ['a two-space hard break', 'x  \ny'],
+    ['a Windows line ending', 'a\r\nb'],
+    ['trailing whitespace', 'hello   '],
+    ['a bare URL', 'https://a.test/x'],
+    ['characters that merely escape', '5 < 3 & 4 > 2'],
+    ['an underscore inside a word', 'snake_case_word'],
+    ['asterisks used as multiplication', '2 * 3 * 4'],
+    ['a Windows path', 'C:\\path\\to'],
+    ['a hash that is not a heading', '#hashtag'],
+    ['nothing at all', ''],
+  ])('sends %s as plain text', (_label, text) => {
+    expect(renderMarkdown(text).formatted).toBe(false);
+  });
+
+  it.each([
+    ['emphasis', '**bold**'],
+    ['emphasis beside a line break', '**bold**\nline two'],
+    ['a heading', '# H'],
+    ['a quote', '> q'],
+    ['a bullet list', '- a\n- b'],
+    ['inline code', '`code`'],
+    ['a fenced block', '```js\nlet a = 1;\n```'],
+    ['a task list', '- [x] done'],
+    ['strikethrough', '~~gone~~'],
+  ])('sends %s as HTML', (_label, text) => {
+    expect(renderMarkdown(text).formatted).toBe(true);
+  });
+
+  it('keeps a soft line break as a <br> rather than losing it', () => {
+    // The bug this whole change exists for: the plain branch renders under
+    // `white-space: pre-wrap` and kept the newline, but the formatted branch emitted a
+    // bare \n under `white-space: normal`, which collapsed it to a space — so bolding
+    // one word silently deleted every line break in the message.
+    expect(renderMarkdown('**bold**\nline two').html).toContain('<br>');
+  });
+
+  it('leaves an indented single line as plain text (documented false negative)', () => {
+    // "    code" is a code block to marked, but both sides normalise to "code" so it
+    // compares equal. Unreachable from the composer, which trims first, and harmless
+    // under pre-wrap — pinned so it cannot silently widen.
+    expect(renderMarkdown('    code').formatted).toBe(false);
+    expect(renderMarkdown('x\n\n    code').formatted).toBe(true);
+  });
+
+  it('treats input that sanitizes away to nothing as plain text', () => {
+    // Sending an empty formatted_body is worse than sending the text.
+    expect(renderMarkdown('<!-- just a comment -->')).toEqual({
+      formatted: false,
+      html: '',
+    });
+  });
+});
+
+describe('renderMarkdown — outgoing sanitization', () => {
+  it('renders GFM task lists as ballot glyphs, not checkboxes', () => {
+    // `input` is in neither allowlist, so marked's <input type="checkbox"> was stripped
+    // on the way out and the done/not-done state was lost before the event was sent.
+    const { html } = renderMarkdown('- [x] done\n- [ ] todo');
+
+    expect(html).toContain('☑ done');
+    expect(html).toContain('☐ todo');
+    expect(html).not.toContain('<input');
+    expect(html).not.toContain('checked');
+    expect(html).not.toContain('type=');
+  });
+
+  it('sends a remote image as a link rather than a broken one', () => {
+    // Matrix requires an mxc: source, so the <img> would sanitize to an empty box — and
+    // because every client prefers formatted_body over body, the URL would vanish with it.
+    const { html } = renderMarkdown('![pic](https://x.test/a.png)');
+
+    expect(html).toContain('<a href="https://x.test/a.png">pic</a>');
+    expect(html).not.toContain('<img');
+  });
+
+  it('keeps an image whose source Matrix does carry', () => {
+    const { html } = renderMarkdown('![pic](mxc://hs/abc)');
+
+    expect(html).toContain('<img src="mxc://hs/abc"');
+    expect(html).toContain('alt="pic"');
+  });
+
+  it('drops tags Angular allowed but Matrix does not', () => {
+    // The point of routing sends through the Matrix allowlist: the client can no longer
+    // emit a formatted_body its own renderer would strip.
+    for (const raw of [
+      '<audio src="x"></audio>',
+      '<mark>x</mark>',
+      '<ins>x</ins>',
+    ]) {
+      const { html } = renderMarkdown(raw);
+      expect(html, raw).not.toMatch(/<(audio|mark|ins)\b/);
+    }
+  });
+
+  it('drops the href from a relative or fragment link', () => {
+    // The Matrix allowlist requires an absolute scheme on href, so a relative link keeps
+    // its text and loses its target. It always rendered that way on arrival too — this
+    // just stops us sending one that only ever looked like a link.
+    for (const raw of ['[docs](/help/start)', '[top](#intro)']) {
+      const { html } = renderMarkdown(raw);
+      expect(html, raw).not.toContain('href');
+      expect(html, raw).toContain('</a>');
+    }
+    expect(renderMarkdown('[ok](https://a.test/x)').html).toContain(
+      'href="https://a.test/x"',
+    );
+  });
+
+  it('still strips script and event handlers', () => {
+    const { html } = renderMarkdown(
+      '<img src=x onerror=alert(1)><script>bad()</script>',
+    );
+
+    expect(html).not.toContain('onerror');
+    expect(html).not.toContain('<script');
+  });
+});
+
 describe('mediaCaptionFields', () => {
   it('uses the filename as the body when there is no caption', () => {
-    expect(mediaCaptionFields(sanitizer, 'pic.png', '')).toEqual({
+    expect(mediaCaptionFields('pic.png', '')).toEqual({
       body: 'pic.png',
     });
     // Whitespace-only is treated as no caption.
-    expect(mediaCaptionFields(sanitizer, 'pic.png', '   ')).toEqual({
+    expect(mediaCaptionFields('pic.png', '   ')).toEqual({
       body: 'pic.png',
     });
   });
 
   it('sets body=caption + filename for a plain caption (MSC2530)', () => {
-    expect(mediaCaptionFields(sanitizer, 'pic.png', 'a caption')).toEqual({
+    expect(mediaCaptionFields('pic.png', 'a caption')).toEqual({
       body: 'a caption',
       filename: 'pic.png',
     });
   });
 
   it('trims the caption', () => {
-    expect(mediaCaptionFields(sanitizer, 'pic.png', '  hi  ')).toEqual({
+    expect(mediaCaptionFields('pic.png', '  hi  ')).toEqual({
       body: 'hi',
       filename: 'pic.png',
     });
   });
 
   it('adds a formatted_body for a markdown caption', () => {
-    const fields = mediaCaptionFields(
-      sanitizer,
-      'pic.png',
-      'a **bold** caption',
-    );
+    const fields = mediaCaptionFields('pic.png', 'a **bold** caption');
     expect(fields['body']).toBe('a **bold** caption');
     expect(fields['filename']).toBe('pic.png');
     expect(fields['format']).toBe('org.matrix.custom.html');
@@ -160,7 +292,7 @@ describe('mediaCaptionFields', () => {
   });
 
   it('omits format for a caption with no markdown formatting', () => {
-    const fields = mediaCaptionFields(sanitizer, 'pic.png', 'just text');
+    const fields = mediaCaptionFields('pic.png', 'just text');
     expect(fields['format']).toBeUndefined();
     expect(fields['formatted_body']).toBeUndefined();
   });
@@ -179,9 +311,7 @@ const ALICE: Mention = { userId: '@alice:hs', display: '@Alice' };
 describe('mentions in content builders', () => {
   it('adds m.mentions and a matrix.to pill for a plain-text mention', () => {
     const text = 'hey @Alice';
-    const content = textMessageContent(text, renderMarkdown(sanitizer, text), [
-      ALICE,
-    ]);
+    const content = textMessageContent(text, renderMarkdown(text), [ALICE]);
 
     expect(content.body).toBe('hey @Alice'); // plain body keeps the readable @name
     expect(content.format).toBe('org.matrix.custom.html');
@@ -193,7 +323,7 @@ describe('mentions in content builders', () => {
 
   it('stays plain text with no mention and no markdown', () => {
     const text = 'just text';
-    expect(textMessageContent(text, renderMarkdown(sanitizer, text))).toEqual({
+    expect(textMessageContent(text, renderMarkdown(text))).toEqual({
       msgtype: 'm.text',
       body: 'just text',
     });
@@ -201,12 +331,9 @@ describe('mentions in content builders', () => {
 
   it("keeps an edit's mentions in m.new_content, off the top-level replace", () => {
     const text = 'fixed @Alice';
-    const content = editMessageContent(
-      '$m',
-      text,
-      renderMarkdown(sanitizer, text),
-      [ALICE],
-    ) as Record<string, unknown>;
+    const content = editMessageContent('$m', text, renderMarkdown(text), [
+      ALICE,
+    ]) as Record<string, unknown>;
 
     // No top-level m.mentions → editing keeps existing pings from re-notifying.
     expect(mentionIds(content)).toEqual([]);
@@ -223,9 +350,8 @@ describe('mentions in content builders', () => {
       display: '@X',
     };
     const text = 'hi @X';
-    const html = textMessageContent(text, renderMarkdown(sanitizer, text), [
-      evil,
-    ]).formatted_body as string;
+    const html = textMessageContent(text, renderMarkdown(text), [evil])
+      .formatted_body as string;
 
     expect(html).not.toContain('"><img'); // no raw attribute breakout
     expect(html).toContain('&quot;'); // the quote was escaped in the href
@@ -244,12 +370,32 @@ describe('mentions in content builders', () => {
       room,
       '$t',
       'hello',
-      renderMarkdown(sanitizer, 'hello'),
+      renderMarkdown('hello'),
       [],
     ).formatted_body as string;
 
     expect(html).not.toContain('"><img');
     expect(html).toContain('&quot;');
+  });
+
+  it('keeps line breaks in a multi-line reply', () => {
+    // A reply always sets format: html, so an unformatted one still renders under
+    // `white-space: normal` — the plain-text branch that preserves newlines is not
+    // available to it, and a raw \n would arrive as a space.
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => ({
+        getSender: () => '@bob:hs',
+        getContent: () => ({ body: 'original' }),
+      }),
+    } as unknown as Room;
+    const text = 'line one\nline two';
+
+    const html = replyMessageContent(room, '$t', text, renderMarkdown(text), [])
+      .formatted_body as string;
+
+    expect(html).toContain('line one<br>line two');
+    expect(html).not.toContain('line one\nline two');
   });
 
   it('a reply pings the replied-to author plus any reply mentions', () => {
@@ -265,7 +411,7 @@ describe('mentions in content builders', () => {
       room,
       '$t',
       text,
-      renderMarkdown(sanitizer, text),
+      renderMarkdown(text),
       [ALICE],
     );
 
@@ -277,7 +423,7 @@ describe('mentions in content builders', () => {
 
   it('pills and lists every mention in a multi-mention message', () => {
     const text = 'hi @Alice and @Bob';
-    const content = textMessageContent(text, renderMarkdown(sanitizer, text), [
+    const content = textMessageContent(text, renderMarkdown(text), [
       ALICE,
       { userId: '@bob:hs', display: '@Bob' },
     ]);
@@ -289,7 +435,7 @@ describe('mentions in content builders', () => {
 
   it('HTML-escapes a mention display in the pill', () => {
     const text = 'hi @A&B';
-    const content = textMessageContent(text, renderMarkdown(sanitizer, text), [
+    const content = textMessageContent(text, renderMarkdown(text), [
       { userId: '@ab:hs', display: '@A&B' },
     ]);
 
@@ -297,6 +443,41 @@ describe('mentions in content builders', () => {
     expect(content.formatted_body).toContain(
       '<a href="https://matrix.to/#/@ab:hs">@A&amp;B</a>',
     );
+  });
+
+  it.each([
+    ['an apostrophe', "@O'Brien", '@ob:hs'],
+    ['a quote', '@say "hi"', '@sh:hs'],
+    ['a less-than', '@a<b', '@ab:hs'],
+  ])('pills a display name containing %s', (_label, display, userId) => {
+    // The pill is placed by finding the display in the sanitized HTML, so the needle has
+    // to be escaped the way the SANITIZER writes text — not the way escapeHtml does.
+    // DOMPurify re-serializes `&#39;`/`&quot;` back to raw characters, so matching on the
+    // fully-escaped form silently found nothing and the mention rendered as inert text.
+    const text = `hi ${display}`;
+    const content = textMessageContent(text, renderMarkdown(text), [
+      { userId, display },
+    ]);
+
+    expect(content.formatted_body).toContain(
+      `<a href="https://matrix.to/#/${userId}">`,
+    );
+    expect(content['m.mentions']).toEqual({ user_ids: [userId] });
+  });
+
+  it('never sends an empty formatted_body, even with a mention', () => {
+    // A mention takes the rich branch regardless of `formatted`, so input that sanitizes
+    // away to nothing would have produced `formatted_body: ''` — and every client prefers
+    // formatted_body over body, rendering a blank message.
+    const content = textMessageContent(
+      '<!-- x -->',
+      renderMarkdown('<!-- x -->'),
+      [{ userId: '@a:hs', display: '@A' }],
+    );
+
+    expect(content.formatted_body).toBeUndefined();
+    expect(content.format).toBeUndefined();
+    expect(content.body).toBe('<!-- x -->');
   });
 });
 

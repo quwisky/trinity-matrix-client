@@ -26,8 +26,8 @@ the single source of truth for anything that re-themes. There are two families:
    `--trinity-hover`, …), text (`--trinity-text`, `--trinity-text-muted`,
    `--trinity-text-bright`), brand + status (`--trinity-accent`, `--trinity-green`,
    `--trinity-danger` + `--trinity-danger-solid`/`--trinity-danger-solid-foreground`),
-   the on-fill pairs (`--trinity-accent-foreground`, `--trinity-green-foreground`), and
-   radii (`--trinity-radius*`).
+   the on-fill pairs (`--trinity-accent-foreground`, `--trinity-green-foreground`), syntax
+   highlighting (`--trinity-syntax-*`, see below), and radii (`--trinity-radius*`).
 2. **Helm/shadcn tokens** (`--background`, `--card`, `--primary`, `--muted-foreground`,
    `--border`, …) — consumed by the generated Helm components through Tailwind colour
    utilities (`bg-card`, `text-muted-foreground`, `border-border`, …).
@@ -138,6 +138,28 @@ of the six surface/palette combinations. The per-pair ratios are recorded in the
 comments in `variables.scss`. Re-measure against the hover tones if you change a surface: no
 palette overrides the danger reds today, so every palette inherits these three values.
 
+### Syntax colours are measured against the code background
+
+`--trinity-syntax-*` (eight roles: keyword, string, number, comment, function, type,
+variable, punctuation) colour the tokens inside a fenced code block. They are consumed from
+exactly one place — `apps/trinity/src/rendered-markdown.scss`, on the `tok-*` classes the
+sanitizer's highlighter emits — and the role names are kept in step with `TOKEN_ROLES` in
+`libs/util-matrix/src/lib/code-highlight.ts`.
+
+Two things a palette author needs to know:
+
+- **The backdrop is `--trinity-rail`**, not the chat canvas: that is the `pre` background.
+  Every value is measured against it, at **4.5:1 or better** — these are body text, not
+  decoration. The shipped light set is One Light's palette _darkened until it passed_; the
+  published values sit at 2.5–3.8:1 on our rail and are not usable as-is. One Dark's pass
+  unchanged.
+- **A new palette inherits them.** The default and Amethyst rails are close enough in tone
+  (`#e3e5e8`/`#e7e2f0` light, `#1e1f22`/`#1c1826` dark) that one light set and one dark set
+  clear the bar on all four combinations. **If your palette's `--trinity-rail` departs from
+  those tones, re-measure all eight and override the ones that fail** — nothing checks this
+  automatically. `--trinity-syntax-plain` and `-punctuation` are `var()` references to
+  `--trinity-text`/`--trinity-text-muted`, so they follow whatever you set there.
+
 ## Cascade & specificity
 
 The selectors are deliberate — they out-rank a bare `:root` so the intended block always
@@ -233,5 +255,9 @@ Tailwind utilities + component SCSS pick up the new values with no further chang
   drops its declaration when `--trinity-x` is undefined, so check that each `--trinity-*`
   referenced without a fallback across `libs`/`apps` exists in `variables.scss`.
   References that supply a fallback (`var(--x, …)`) are safe — they render the fallback.
+- **Syntax colours are re-measured if the rail moved:** the eight `--trinity-syntax-*` are
+  measured against `--trinity-rail` and inherited by every palette. If yours changes that
+  surface materially, check all eight still clear 4.5:1 on it and override the ones that
+  do not — no test catches this.
 - Run `pnpm build`, `pnpm lint`, `pnpm stylelint`, and the `platform-native` /
   `feature-settings` unit tests after changes.

@@ -1,5 +1,3 @@
-import { SecurityContext } from '@angular/core';
-import type { DomSanitizer } from '@angular/platform-browser';
 import {
   EventType,
   MsgType,
@@ -8,8 +6,12 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
-import { marked } from 'marked';
-import { escapeHtml, stripReplyFallbackText } from './message-view';
+import { Marked, type Tokens } from 'marked';
+import {
+  escapeHtml,
+  sanitizeOutgoingHtml,
+  stripReplyFallbackText,
+} from './message-view';
 
 /**
  * Send-side content builders shared by the main timeline ({@link TimelineService})
@@ -45,38 +47,149 @@ function mentionsBlock(userIds: string[]): Record<string, unknown> {
 }
 
 /**
- * Turn each mention's plain `@display` in the already-sanitized HTML into a
- * matrix.to pill link — once per mention (first not-yet-replaced occurrence). The
- * display is matched in its HTML-escaped form since it appears as text in the markup,
- * and the id is HTML-escaped in the href (a legacy/federated id can carry `"`/`<`).
+ * Turn each mention's plain `@display` in the already-sanitized HTML into a matrix.to pill
+ * link — once per mention, at its first occurrence in the message's *text*.
+ *
+ * Done over the parsed DOM rather than by searching the serialized string. A string search
+ * has no idea what is text and what is markup, so a display name could match inside an
+ * attribute — `@bob` inside an autolinked `https://x.test/@bob` href, or inside a pill this
+ * function had just inserted — and splicing an `<a>` in there produces malformed markup on
+ * the wire. Walking text nodes makes that unrepresentable, and sidesteps having to predict
+ * how the serializer escapes a display name (DOMPurify leaves `'` and `"` raw in text, which
+ * an `escapeHtml`-based needle silently failed to match).
+ *
+ * Existing links are skipped: a pill inside an anchor is invalid nesting, and a display name
+ * that happens to appear in link text should stay link text.
  */
 function applyMentionPills(html: string, mentions: Mention[]): string {
-  let out = html;
-  for (const mention of mentions) {
-    const needle = escapeHtml(mention.display);
-    const at = out.indexOf(needle);
-    if (at === -1) {
-      continue;
-    }
-    // Escape the id in the href too: a historical/federated user id can contain
-    // HTML-significant characters that would otherwise break out of the attribute.
-    const pill = `<a href="https://matrix.to/#/${escapeHtml(mention.userId)}">${needle}</a>`;
-    out = out.slice(0, at) + pill + out.slice(at + needle.length);
+  if (mentions.length === 0) {
+    return html;
   }
-  return out;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  for (const mention of mentions) {
+    placeMentionPill(doc, mention);
+  }
+  return doc.body.innerHTML;
 }
+
+/** Replace the first text occurrence of `mention.display` with a matrix.to link. */
+function placeMentionPill(doc: Document, mention: Mention): void {
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    const at = (node.nodeValue ?? '').indexOf(mention.display);
+    if (at !== -1 && !(node.parentElement?.closest('a') ?? null)) {
+      const target = node as Text;
+      const rest = target.splitText(at);
+      rest.splitText(mention.display.length);
+      const pill = doc.createElement('a');
+      // No manual escaping: setting the attribute and letting the serializer write it is
+      // what makes an id carrying `"` or `<` unable to break out.
+      pill.setAttribute('href', `https://matrix.to/#/${mention.userId}`);
+      pill.textContent = mention.display;
+      rest.replaceWith(pill);
+      return;
+    }
+    node = walker.nextNode();
+  }
+}
+
+/**
+ * GFM task-list markers as text.
+ *
+ * marked renders `- [x] done` as `<input checked disabled type="checkbox">`, and `input`
+ * is in neither the Matrix allowlist nor Angular's — so the checkbox was silently deleted
+ * on the way out and the list arrived as bare items, losing the done/not-done state
+ * entirely. A ballot-box glyph carries that state through every client, screen reader and
+ * plain-text fallback without widening the allowlist.
+ *
+ * Deliberately not an `<input>`: making one interactive would mean editing and re-sending
+ * the source event on each click, which is a feature rather than a render concern.
+ */
+function checkbox({ checked }: Tokens.Checkbox): string {
+  return checked ? '☑ ' : '☐ ';
+}
+
+/**
+ * A markdown image whose source the Matrix allowlist will not carry, rendered as a link.
+ *
+ * Matrix requires an `mxc:` source, so `![pic](https://x/y.png)` sanitizes down to a
+ * src-less `<img>` — an empty box, with the URL nowhere to be seen, because every client
+ * prefers `formatted_body` over the `body` that still holds it. A link keeps the address
+ * usable and says what it was for. Local sources (`mxc:`, `blob:`, `data:`) are left as
+ * real images.
+ */
+function image({ href, title, text }: Tokens.Image): string {
+  if (/^(?:mxc|blob|data):/i.test(href)) {
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+    return `<img src="${escapeHtml(href)}" alt="${escapeHtml(text)}"${titleAttr}>`;
+  }
+  return `<a href="${escapeHtml(href)}">${escapeHtml(text || href)}</a>`;
+}
+
+/**
+ * Escape text for embedding inline in `formatted_body`, keeping its line breaks.
+ *
+ * `escapeHtml` alone leaves a raw newline, which renders as a space under the rendered-HTML
+ * container's `white-space: normal` — so a reply or a `/spoiler` written across two lines
+ * arrived as one. Those paths always set `format: org.matrix.custom.html`, so unlike a plain
+ * message they cannot fall back to the pre-wrap plain-text branch.
+ */
+function escapeInlineText(text: string): string {
+  return escapeHtml(text).replace(/\r\n?|\n/g, '<br>');
+}
+
+/**
+ * The composer's markdown engine.
+ *
+ * A module-local instance, NOT the global `marked` singleton: `marked.use()` and
+ * `marked.setOptions()` mutate process-wide state, so any transitive dependency calling
+ * either could silently change the HTML we put on the wire. Every option marked exposes is
+ * set explicitly — its defaults are not a contract we control.
+ */
+const markdown = new Marked({
+  // Tables, ~~strikethrough~~, task lists, autolinks — and a prerequisite for `breaks`.
+  gfm: true,
+  // A single newline is a line break. Chat convention (Enter sends, Shift+Enter inserts a
+  // newline), and it is what makes the plain and formatted render paths agree: the plain
+  // branch renders under `white-space: pre-wrap` and `linkifyText` already emits <br>,
+  // while markdown used to emit a bare \n that `white-space: normal` collapsed away.
+  breaks: true,
+  // Never emulate markdown.pl's original bugs.
+  pedantic: false,
+  // Surface a parse failure as a throw. With `silent: true` marked returns
+  // "<p>An error occurred:</p><pre>…</pre>" — which we would then SEND as the message.
+  silent: false,
+  // parse() returns a string, never a Promise: the whole send path is synchronous.
+  async: false,
+  renderer: { checkbox, image },
+});
 
 /**
  * Render composer markdown to sanitized HTML. `formatted` is false when the HTML
  * carries no formatting beyond the plain text, so the caller can send plain text.
  */
-export function renderMarkdown(
-  sanitizer: DomSanitizer,
-  text: string,
-): RenderedMarkdown {
-  const rendered = marked.parse(text, { async: false }) as string;
-  const html = sanitizer.sanitize(SecurityContext.HTML, rendered) ?? '';
-  return { formatted: htmlToText(html).trim() !== text, html };
+export function renderMarkdown(text: string): RenderedMarkdown {
+  let rendered: string;
+  try {
+    rendered = markdown.parse(text, { async: false });
+  } catch {
+    return { formatted: false, html: '' };
+  }
+  const html = sanitizeOutgoingHtml(rendered);
+  // Input whose every construct the allowlist strips (an HTML comment, a lone <script>)
+  // sanitizes to nothing; sending an empty formatted_body is worse than sending plain text.
+  // The callers check `html` as well as `formatted`, because a message with a mention
+  // takes the rich branch regardless and would otherwise send an empty formatted_body —
+  // which every client, Element included, prefers over `body`, rendering a blank message.
+  if (html.trim() === '') {
+    return { formatted: false, html: '' };
+  }
+  return {
+    formatted:
+      normaliseForCompare(htmlToText(html)) !== normaliseForCompare(text),
+    html,
+  };
 }
 
 /**
@@ -85,7 +198,6 @@ export function renderMarkdown(
  * file name; without one, `body` is the file name (the pre-caption behaviour).
  */
 export function mediaCaptionFields(
-  sanitizer: DomSanitizer,
   filename: string,
   caption: string,
 ): Record<string, string> {
@@ -93,7 +205,7 @@ export function mediaCaptionFields(
   if (!text) {
     return { body: filename };
   }
-  const md = renderMarkdown(sanitizer, text);
+  const md = renderMarkdown(text);
   return {
     body: text,
     filename,
@@ -113,7 +225,7 @@ export function textMessageContent(
   md: RenderedMarkdown,
   mentions: Mention[] = [],
 ) {
-  if (md.formatted || mentions.length > 0) {
+  if (md.html !== '' && (md.formatted || mentions.length > 0)) {
     return {
       msgtype: MsgType.Text,
       body: text,
@@ -155,7 +267,7 @@ export function emoteMessageContent(
   md: RenderedMarkdown,
   mentions: Mention[] = [],
 ) {
-  if (md.formatted || mentions.length > 0) {
+  if (md.html !== '' && (md.formatted || mentions.length > 0)) {
     return {
       msgtype: MsgType.Emote,
       body: text,
@@ -190,15 +302,19 @@ export function spoilerMessageContent(text: string) {
     msgtype: MsgType.Text,
     body: text,
     format: 'org.matrix.custom.html',
-    formatted_body: `<span data-mx-spoiler>${escapeHtml(text)}</span>`,
+    formatted_body: `<span data-mx-spoiler>${escapeInlineText(text)}</span>`,
   };
 }
 
 /**
  * Build the message content for a leading slash command, or null when the text isn't a
- * recognized command (send it as a normal message). `renderHtml` renders the argument's
- * markdown (injected so this stays DI-free). Empty-argument `/me`/`/plain`/`/spoiler` also
- * return null — nothing to send — so the raw text isn't swallowed.
+ * recognized command (send it as a normal message). Empty-argument `/me`/`/plain`/`/spoiler`
+ * also return null — nothing to send — so the raw text isn't swallowed.
+ *
+ * `renderHtml` renders the argument's markdown. It was a parameter because
+ * {@link renderMarkdown} needed a `DomSanitizer` injected; that is no longer true, and it
+ * survives only as the seam the spec substitutes to test command parsing without exercising
+ * the whole markdown pipeline. Both callers pass `renderMarkdown` itself.
  */
 export function slashCommandContent(
   text: string,
@@ -237,7 +353,7 @@ export function editMessageContent(
   md: RenderedMarkdown,
   mentions: Mention[] = [],
 ) {
-  const rich = md.formatted || mentions.length > 0;
+  const rich = md.html !== '' && (md.formatted || mentions.length > 0);
   return {
     msgtype: MsgType.Text,
     body: `* ${text}`,
@@ -275,7 +391,7 @@ export function replyMessageContent(
   );
   const firstLine = origBody.split('\n')[0] ?? '';
   const replyHtml = applyMentionPills(
-    md.formatted ? md.html : escapeHtml(text),
+    md.formatted ? md.html : escapeInlineText(text),
     mentions,
   );
   // Escape the ids interpolated into the href attributes — a hostile sender/room id
@@ -352,9 +468,36 @@ export function messagePreview(event: MatrixEvent): string {
   return body.replace(/\s+/g, ' ').trim() || '…';
 }
 
-/** Plain-text content of an HTML string (to detect whether markdown added formatting). */
+/**
+ * Plain-text content of an HTML string, with `<br>` restored as a newline (to detect
+ * whether markdown added formatting).
+ *
+ * Restoring `<br>` is load-bearing: `textContent` drops it entirely, so under
+ * `breaks: true` every multi-line plain message would compare as though markdown had
+ * rewritten it ("line one\nline two" against "line oneline two") and be sent as HTML.
+ */
 function htmlToText(html: string): string {
-  return (
-    new DOMParser().parseFromString(html, 'text/html').body.textContent ?? ''
-  );
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  for (const br of doc.body.querySelectorAll('br')) {
+    br.replaceWith(doc.createTextNode('\n'));
+  }
+  return doc.body.textContent ?? '';
+}
+
+/**
+ * The form both sides of the "did markdown add anything?" comparison are reduced to.
+ *
+ * The question is whether the rendered HTML says something the plain text doesn't — not
+ * whether it reproduces it byte for byte — so purely cosmetic whitespace is levelled out
+ * first: CRLF so a pasted Windows line ending isn't read as formatting; trailing spaces
+ * so markdown's two-space hard break (redundant now `breaks` is on) doesn't count; runs
+ * of blank lines so a paragraph break stays a plain-text message. `body` always carries
+ * the author's exact text, so nothing is lost by comparing loosely here.
+ */
+function normaliseForCompare(value: string): string {
+  return value
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
 }

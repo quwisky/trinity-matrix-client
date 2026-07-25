@@ -8,6 +8,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Line breaks no longer disappear when you format a message.** Writing a message across
+  several lines worked — until you also made a word bold, at which point every line break in
+  it silently collapsed and the message arrived as one run-on paragraph. Shift+Enter meant one
+  thing in a plain message and another in a formatted one, with nothing to tell you which you
+  were in. Line breaks are now kept either way.
+
+- **Task lists survive being sent.** Typing `- [x] done` produced a checkbox that was stripped
+  out before the message ever left your device, so recipients saw a list with the done and
+  not-done state simply missing. Task lists now arrive as ☑ and ☐, which every Matrix client
+  and screen reader can show.
+
 - **The test suite no longer fails at random.** `pnpm test` was being killed part-way through
   on roughly half of all runs — no failing test, just a dead process — because the Angular
   test plugin quietly ran every suite in a worker pool that never reclaims memory between
@@ -23,6 +34,15 @@ All notable changes to this project are documented here. The format is based on
   a menu for anything to open into, **Show accounts** now opens a dialog instead.
 
 ### Added
+
+- **Code blocks are syntax-highlighted, and say what language they are.** A fenced block
+  tagged with a language — ` ```ts `, ` ```py `, ` ```sh ` and ten others — is now coloured,
+  in both light and dark and in whichever palette you use. Trinity was already sending and
+  accepting the language tag; nothing had ever drawn it. Pointing at any tagged block also
+  shows its language in the corner, so you can tell Rust from Go at a glance even where the
+  colours look alike — and for a language Trinity cannot colour, the label is still there.
+  Tables and collapsible `<details>` sections also pick up proper styling, having previously
+  rendered unstyled.
 
 - **Order a space's rooms the way you want.** Rooms inside a space were always listed in the
   order the space's admins arranged them — in practice alphabetically, since almost no space
@@ -162,6 +182,16 @@ All notable changes to this project are documented here. The format is based on
   are unsigned until signing credentials are configured.
 
 ### Changed
+
+- **Messages you send are now filtered the same way messages you receive are.** Outgoing
+  formatted text was checked against a different, more permissive list than the one Trinity
+  applies to incoming messages, so it was possible to send markup that Trinity itself would
+  refuse to display. Both directions now use the same rule. Two visible consequences, both of
+  them things that only ever _looked_ like they worked: a markdown image pointing at a web
+  address keeps its caption but drops the address, because Matrix only permits images already
+  uploaded to a homeserver; and a link to a relative path or a page anchor keeps its text but
+  drops the target, because Matrix requires a full address. Both have always been treated that
+  way on arrival — the change is that Trinity no longer sends them.
 
 - **The supported browser list now matches Angular's own.** The build targets Chrome and Edge
   111+, Firefox 112+, and Safari and iOS 16.4+ — Angular 22's published support policy. The

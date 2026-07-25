@@ -1,3 +1,9 @@
+// Installs syntax highlighting for fenced code blocks, by side effect on module eval.
+// Imported HERE rather than from util-matrix's barrel on purpose: message-view.ts (which
+// consumes the highlighter) is in the eager bundle, so a barrel export would put every
+// grammar in the initial chunk. This route is lazily loaded, so the grammars land in the
+// rooms chunk — and it evaluates before any message view is projected.
+import '@trinity/util-matrix/code-highlight';
 import {
   ChangeDetectionStrategy,
   Component,

@@ -1,5 +1,4 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { DomSanitizer } from '@angular/platform-browser';
 import {
   Direction,
   EventType,
@@ -121,7 +120,6 @@ const THREAD_SCROLLBACK = 30;
 @Injectable({ providedIn: 'root' })
 export class ThreadsService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly sanitizer = inject(DomSanitizer);
   private readonly mediaSvc = inject(MediaService);
   private readonly privacy = inject(PrivacySettingsService);
 
@@ -534,16 +532,8 @@ export class ThreadsService {
       // just like the main composer; otherwise build the normal text content so
       // mentions carry `m.mentions` + matrix.to pills.
       const content =
-        slashCommandContent(
-          text,
-          (md) => renderMarkdown(this.sanitizer, md),
-          mentions,
-        ) ??
-        textMessageContent(
-          text,
-          renderMarkdown(this.sanitizer, text),
-          mentions,
-        );
+        slashCommandContent(text, renderMarkdown, mentions) ??
+        textMessageContent(text, renderMarkdown(text), mentions);
       // Ensure a local Thread exists (fetching the root if needed) *before*
       // sending, so the threaded echo has a home; a fetch failure aborts the send.
       return this.ensureThread(room, threadId).pipe(
@@ -581,7 +571,7 @@ export class ThreadsService {
             switchMap(() => {
               const content = {
                 msgtype: media.msgtype,
-                ...mediaCaptionFields(this.sanitizer, media.body, caption),
+                ...mediaCaptionFields(media.body, caption),
                 info: media.info,
                 ...(media.file ? { file: media.file } : { url: media.mxc }),
               };
@@ -612,7 +602,7 @@ export class ThreadsService {
       const content = editMessageContent(
         messageId,
         text,
-        renderMarkdown(this.sanitizer, text),
+        renderMarkdown(text),
         mentions,
       );
       return from(client.sendMessage(roomId, threadId, content as never));
@@ -640,7 +630,7 @@ export class ThreadsService {
         room,
         messageId,
         text,
-        renderMarkdown(this.sanitizer, text),
+        renderMarkdown(text),
         mentions,
       );
       return from(client.sendMessage(roomId, threadId, content as never));

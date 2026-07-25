@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   MAX_NAMED_REACTORS,
@@ -12,6 +12,8 @@ import {
   reactionsFor,
   safeBuildMessageView,
   sanitizeMatrixHtml,
+  sanitizeOutgoingHtml,
+  setCodeHighlighter,
   type MessageKind,
   type MessageView,
 } from './message-view';
@@ -271,6 +273,231 @@ describe('sanitizeMatrixHtml — spoilers', () => {
     );
     expect(clean).not.toContain('onclick');
     expect(clean).not.toContain('<script');
+  });
+});
+
+// The send path shares one DOMPurify config with the render path — same allowlist, so
+// the client can never emit a formatted_body its own renderer would strip — but none of
+// the render-only normalisation, which has no business on the wire.
+describe('sanitizeOutgoingHtml', () => {
+  it('does not add the renderer’s spoiler attributes', () => {
+    // `tabindex`/`role` are in neither allowlist. They survive on the render side only
+    // because they are set after DOMPurify's attribute filter — which is exactly why
+    // spoiler normalisation had to move out of the shared hook.
+    const clean = sanitizeOutgoingHtml('<span data-mx-spoiler>x</span>');
+
+    expect(clean).toContain('data-mx-spoiler');
+    expect(clean).not.toContain('tabindex');
+    expect(clean).not.toContain('role=');
+    expect(clean).not.toContain('mx-spoiler"');
+  });
+
+  it('still applies every security filter the render path does', () => {
+    const clean = sanitizeOutgoingHtml(
+      '<script>bad()</script>' +
+        '<img src="https://attacker.test/x.gif" alt="leak">' +
+        '<a href="javascript:steal()" target="_blank">x</a>' +
+        '<span class="ion-page">y</span>',
+    );
+
+    expect(clean).not.toContain('<script');
+    expect(clean).not.toContain('attacker.test');
+    expect(clean).toContain('alt="leak"'); // the element survives, only the src goes
+    expect(clean).not.toContain('javascript:');
+    expect(clean).not.toContain('target=');
+    expect(clean).not.toContain('ion-page');
+  });
+
+  it('keeps the class tokens Matrix sanctions', () => {
+    expect(
+      sanitizeOutgoingHtml('<code class="language-python">x</code>'),
+    ).toContain('language-python');
+  });
+});
+
+// A fenced block is captioned with the language it declares, shown on hover. The caption
+// is an ATTRIBUTE read back by CSS, not an element — see renderCodeBlocks for why.
+describe('sanitizeMatrixHtml — code language label', () => {
+  const langOf = (html: string) =>
+    parse(html).querySelector('pre')?.getAttribute('language') ?? null;
+
+  it('captions a fenced block with its language', () => {
+    expect(
+      langOf(
+        sanitizeMatrixHtml(
+          '<pre><code class="language-python">x = 1</code></pre>',
+        ),
+      ),
+    ).toBe('python');
+  });
+
+  it('keeps the caption out of the message text', () => {
+    // Load-bearing beyond tidiness: the edit-history diff compares the TEXT of two
+    // rendered revisions, so a caption node would make a fence-language-only edit read as
+    // a text change and would appear in every diff of a message containing code.
+    const clean = sanitizeMatrixHtml(
+      '<pre><code class="language-ts">let a = 1;</code></pre>',
+    );
+
+    expect(parse(clean).textContent).toBe('let a = 1;');
+  });
+
+  it('captions a language no grammar is loaded for', () => {
+    // Knowing a block is elixir is useful even when we cannot colour it.
+    expect(
+      langOf(
+        sanitizeMatrixHtml(
+          '<pre><code class="language-elixir">IO.puts 1</code></pre>',
+        ),
+      ),
+    ).toBe('elixir');
+  });
+
+  it('lowercases the declared language', () => {
+    expect(
+      langOf(
+        sanitizeMatrixHtml('<pre><code class="language-JS">a</code></pre>'),
+      ),
+    ).toBe('js');
+  });
+
+  it('captions nothing when the block declares no language', () => {
+    expect(
+      langOf(sanitizeMatrixHtml('<pre><code>plain</code></pre>')),
+    ).toBeNull();
+  });
+
+  it('does not caption an outgoing message', () => {
+    // The caption is presentation; the wire format stays the Matrix-sanctioned shape.
+    expect(
+      sanitizeOutgoingHtml('<pre><code class="language-python">x</code></pre>'),
+    ).not.toContain('language="python"');
+  });
+});
+
+describe('sanitizeMatrixHtml — code highlighting', () => {
+  afterEach(() => {
+    // The highlighter and the memo are module-scoped and live for the whole process;
+    // setCodeHighlighter(null) clears both, so a spec that installs one must call it.
+    setCodeHighlighter(null);
+  });
+
+  /** A highlighter that wraps the whole source in one token span. */
+  function fakeHighlighter(code: string, lang: string, doc: Document) {
+    const frag = doc.createDocumentFragment();
+    const span = doc.createElement('span');
+    span.className = `tok-keyword lang-${lang}`;
+    span.textContent = code;
+    frag.appendChild(span);
+    return frag;
+  }
+
+  const BLOCK = '<pre><code class="language-python">x = 1</code></pre>';
+
+  it('leaves the code itself untouched when no highlighter is installed', () => {
+    const clean = sanitizeMatrixHtml(BLOCK);
+
+    expect(clean).not.toContain('tok-');
+    expect(parse(clean).querySelector('code')?.textContent).toBe('x = 1');
+  });
+
+  it('keeps token classes the sender allowlist would have stripped', () => {
+    // The whole reason highlighting runs AFTER DOMPurify: ALLOWED_CLASS permits only
+    // `language-*` and `mx-spoiler`, so `tok-*` could not survive the scrub itself.
+    setCodeHighlighter(fakeHighlighter);
+
+    const clean = sanitizeMatrixHtml(BLOCK);
+
+    expect(clean).toContain('tok-keyword');
+    expect(clean).toContain('lang-python');
+    expect(parse(clean).querySelector('code')?.textContent).toBe('x = 1');
+  });
+
+  it('ignores a block with no language and one with no content', () => {
+    setCodeHighlighter(fakeHighlighter);
+
+    expect(sanitizeMatrixHtml('<pre><code>x = 1</code></pre>')).not.toContain(
+      'tok-',
+    );
+    expect(
+      sanitizeMatrixHtml('<pre><code class="language-py"></code></pre>'),
+    ).not.toContain('tok-');
+  });
+
+  it('leaves the block alone when the highlighter declines the language', () => {
+    setCodeHighlighter(() => null);
+
+    expect(sanitizeMatrixHtml(BLOCK)).not.toContain('tok-');
+  });
+
+  it('leaves a block containing markup alone', () => {
+    // The Matrix allowlist permits inline markup inside <code> — a link, bold, a spoiler.
+    // Replacing the children would delete it, and only for languages we have a grammar
+    // for, so the same body would render differently depending on its fence tag.
+    setCodeHighlighter(fakeHighlighter);
+
+    const clean = sanitizeMatrixHtml(
+      '<pre><code class="language-python"><b>x</b> = 1</code></pre>',
+    );
+
+    expect(clean).toContain('<b>x</b>');
+    expect(clean).not.toContain('tok-');
+  });
+
+  describe('the per-message tokenization budget', () => {
+    /** Records what the highlighter was actually asked to tokenize. */
+    function recorder() {
+      const seen: number[] = [];
+      setCodeHighlighter((code, _lang, doc) => {
+        seen.push(code.length);
+        return doc.createDocumentFragment();
+      });
+      return seen;
+    }
+
+    const block = (chars: number) =>
+      `<pre><code class="language-python">${'x'.repeat(chars)}</code></pre>`;
+
+    it('stops tokenizing once a message has spent its budget', () => {
+      const seen = recorder();
+
+      // 20_000 of budget: the first two fit, the third does not.
+      sanitizeMatrixHtml(block(9_000) + block(9_000) + block(9_000));
+
+      expect(seen).toEqual([9_000, 9_000]);
+    });
+
+    it('still highlights a small block after one too large to fit', () => {
+      // `continue`, not `break`: one oversized listing must not un-colour everything
+      // below it.
+      const seen = recorder();
+
+      sanitizeMatrixHtml(block(19_000) + block(5_000) + block(500));
+
+      expect(seen).toEqual([19_000, 500]);
+    });
+
+    it('does not charge for a block the highlighter declines', () => {
+      // A declined block costs nothing to tokenize, so charging for it would starve
+      // blocks that could have been highlighted.
+      const seen: number[] = [];
+      setCodeHighlighter((code, _lang, doc) => {
+        seen.push(code.length);
+        return code.length > 15_000 ? null : doc.createDocumentFragment();
+      });
+
+      sanitizeMatrixHtml(block(16_000) + block(9_000) + block(9_000));
+
+      expect(seen).toEqual([16_000, 9_000, 9_000]);
+    });
+  });
+
+  it('re-sanitizes after the highlighter changes, rather than serving a stale memo', () => {
+    expect(sanitizeMatrixHtml(BLOCK)).not.toContain('tok-');
+
+    setCodeHighlighter(fakeHighlighter);
+
+    expect(sanitizeMatrixHtml(BLOCK)).toContain('tok-keyword');
   });
 });
 
