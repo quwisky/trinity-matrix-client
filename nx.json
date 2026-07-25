@@ -24,14 +24,10 @@
     "test": {
       "cache": true,
       "inputs": ["default", "^production"],
-      "//": "Cap each vitest's worker pool. Nx runs `parallel` projects at once and EVERY vitest independently scales its pool to the CPU count, unaware of the others — so the pools multiply (3 projects x 6 CPUs = 18 concurrent jsdom environments). That exhausts memory: tests crawl past the 5s timeout and the OS kills the worker, which surfaces as a passing-but-non-zero-exit task that Nx then labels FLAKY. Keep (nx parallel x maxThreads) at or under the core count.",
+      "//": "Memory is bounded by the vitest pool, not from here — see the `pool` comment in vite.base.config.ts. This used to set VITEST_MAX_THREADS=2 to cap each worker pool; that was aimed at the wrong thing (a CPU invariant for a memory-bound failure), it held while the suite still failed, and under the `forks` pool the variable is a no-op anyway since it only writes poolOptions.threads/vmThreads.",
       "options": {
         "command": "vitest run",
-        "cwd": "{projectRoot}",
-        "env": {
-          "VITEST_MAX_THREADS": "2",
-          "VITEST_MIN_THREADS": "1"
-        }
+        "cwd": "{projectRoot}"
       },
       "executor": "nx:run-commands",
       "configurations": {

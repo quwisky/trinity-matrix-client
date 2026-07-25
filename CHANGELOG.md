@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The test suite no longer fails at random.** `pnpm test` was being killed part-way through
+  on roughly half of all runs — no failing test, just a dead process — because the Angular
+  test plugin quietly ran every suite in a worker pool that never reclaims memory between
+  files. Naming the pool explicitly drops peak memory from 4.3 GB to 0.9 GB. A second,
+  hidden cause is fixed too: a debounced draft save could fire after the thing that asked
+  for it had gone away, failing a run in which every test passed. Developer-facing only —
+  nothing in the app behaves differently.
+
 - **Submenus no longer cover the menu they came from.** Opening **Show accounts** from the
   account menu drew the account list on top of that menu, hiding it — and the per-room
   **Notifications** submenu had the same flaw, just less visibly. Both now open alongside
