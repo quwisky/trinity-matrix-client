@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Submenus no longer cover the menu they came from.** Opening **Show accounts** from the
+  account menu drew the account list on top of that menu, hiding it — and the per-room
+  **Notifications** submenu had the same flaw, just less visibly. Both now open alongside
+  their menu, so you can see where you came from. On a phone, where there is no room beside
+  a menu for anything to open into, **Show accounts** now opens a dialog instead.
+
 ### Added
 
 - **See where the days begin.** The timeline now draws a labelled divider wherever the

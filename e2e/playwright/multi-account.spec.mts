@@ -132,6 +132,10 @@ async function installBadgeRecorder(page: Page): Promise<void> {
 /**
  * Tick another account into the mixed view via the user panel's "Show accounts" picker.
  * The active account is always included (its row is disabled), so this is only for others.
+ *
+ * **Desktop layout only.** Below the md breakpoint the picker is a dialog rather than a
+ * submenu, so the menu has already closed by the time the rows appear and the two Escape
+ * presses below do not apply — see the narrow-layout test at the end of this file.
  */
 async function mixInAccount(page: Page, localpart: string): Promise<void> {
   await page.getByTestId('user-menu-trigger').click();
@@ -820,6 +824,65 @@ test.describe('Multiple accounts', () => {
   });
   // The quick switcher shares the picker's scope, so it must find another account's rooms
   // and switch to that account on the jump — the same contract as clicking a sidebar row.
+  // Issue #28. Below the md breakpoint a submenu has nowhere to fly out to — it would land
+  // back on top of the account menu — so the picker is a dialog there instead. The suite runs
+  // a single desktop project, so this test resizes rather than adding a whole project.
+  test('narrow layout picks accounts in a dialog rather than a submenu', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}nrw`;
+    const userA = `narrow-a-${runId}`;
+    const passA = `narrow-a-pass-${runId}`;
+    const userB = `narrow-b-${runId}`;
+    const passB = `narrow-b-pass-${runId}`;
+    const roomA = `Narrow A ${runId}`;
+
+    await registerUser(request, userA, passA);
+    await registerUser(request, userB, passB);
+    const a = await apiLogin(request, hs, userA, passA);
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: a.headers,
+      data: { name: roomA, preset: 'private_chat' },
+    });
+
+    await login(page, { available: true, hs, user: userA, pass: passA });
+    await addAccountViaUi(page, hs, userB, passB);
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+
+    // A phone-sized viewport. With no room open the sidebar is the full-screen page, so the
+    // user panel is a bar across the bottom — the worst case for a flyout.
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('show-accounts').click();
+
+    // A dialog, not a submenu: the account menu is gone by now.
+    const picker = page.getByTestId('account-picker');
+    await expect(picker).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('user-menu-trigger')).toBeVisible();
+
+    // The same row contract the desktop submenu carries.
+    const activeRow = page.locator(`[data-testid^="show-account-@${userB}:"]`);
+    await expect(activeRow).toHaveAttribute('aria-checked', 'true');
+    await expect(activeRow).toHaveAttribute('data-disabled', '');
+
+    // Ticking applies immediately and does NOT close the picker — it is a multi-select.
+    const otherRow = page.locator(`[data-testid^="show-account-@${userA}:"]`);
+    await otherRow.click();
+    await expect(otherRow).toHaveAttribute('aria-checked', 'true');
+    await expect(picker).toBeVisible();
+
+    await page.getByTestId('account-picker-done').click();
+    await expect(picker).toHaveCount(0);
+
+    // The mix took effect: A's room is now listed alongside B's.
+    await expect(page.locator('.channel', { hasText: roomA })).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
   test('the quick switcher finds a mixed-in account’s room and switches to it', async ({
     page,
     request,

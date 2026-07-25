@@ -579,7 +579,35 @@ onto black, so `apple-touch-icon.png` ideally keeps a solid plate (`icon-plated.
 - Helm components under `libs/spartan/*` are generated/owned via `@spartan-ng/cli`
   (config in root `components.json`) — add or regenerate them with the CLI rather than
   hand-authoring, and they are intentionally exempt from the `trn`-prefix selector /
-  class-suffix ESLint rules.
+  class-suffix ESLint rules. Where upstream is wrong we do diverge, deliberately and on the
+  record — see **Vendored spartan overrides** below.
+
+### Vendored spartan overrides
+
+Local changes to generated Helm code. A regenerate silently drops all of these, so each is
+commented at its site, listed in a banner at the top of its file, and **pinned by a test** —
+a lost override fails the suite rather than shipping.
+
+| File                                                       | Override                                                                                                             | Guarded by                                                                                                 |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`              | Shadow CDK's `_handleClick` so a sub-trigger click opens the submenu instead of toggling it closed under zoneless CD | `libs/spartan/overlay/src/lib/dropdown-menu-submenu.spec.ts`, `e2e/playwright/room-notifications.spec.mts` |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`              | The same shadow re-does CDK's focus move, so keyboard Enter/Space lands inside the submenu                           | as above                                                                                                   |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`              | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it (#28)                         | `libs/spartan/overlay/src/lib/dropdown-menu-submenu.spec.ts`                                               |
+| `dropdown-menu` · `HlmDropdownMenu` / `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive (#28)                                                                              | `libs/spartan/overlay/src/lib/dropdown-menu-submenu.spec.ts`                                               |
+
+The last one is a consequence of the one above it. CDK closes an open submenu the moment the
+pointer enters any non-trigger sibling row, unless a `MENU_AIM` is provided — and upstream Helm
+provides none. While submenus opened _over_ their parent that was unreachable; opening them
+beside it means the pointer now travels across those rows. Measured in a browser: without
+`CdkTargetMenuAim` a diagonal move into the submenu closes it before you arrive.
+
+Note `libs/spartan/dropdown-menu` has no test target — `libs/spartan/overlay` is the only
+spartan lib that runs Vitest, which is why its specs import across the lib boundary.
+
+`hlm-dropdown-menu.ts` has also already diverged in _shape_: the generator emits ~16
+one-directive files where the repo keeps a single module. Reconciling a regenerate is manual
+work regardless of these overrides.
+
 - **State via signals** — services keep state in private signals exposed as
   `asReadonly()`. **Async service APIs return RxJS Observables** (`defer`/`from` +
   `switchMap`/`map`/`catchError`); components subscribe with `takeUntilDestroyed`.

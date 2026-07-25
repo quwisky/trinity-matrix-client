@@ -114,7 +114,9 @@ CDK's `toggle()` without depending on listener ordering. Guarded by two tests:
 `e2e/playwright/room-notifications.spec.mts` (live overlay) and a Docker-free unit regression,
 `libs/spartan/overlay/src/lib/dropdown-menu-submenu.spec.ts` (a second sub-trigger click must
 keep the submenu open). **NB:** `hlm-dropdown-menu.ts` is `@spartan-ng/cli`-generated — if it
-is ever regenerated, re-apply this override (the unit regression will flag its loss).
+is ever regenerated, re-apply this override (the unit regression will flag its loss). It is
+one of several; the full list is **Vendored spartan overrides** in
+[docs/DEVELOPMENT.md](DEVELOPMENT.md#vendored-spartan-overrides).
 
 ## Risk register — needs runtime/device verification (no signal write; Router/CDK self-schedules)
 

@@ -223,6 +223,8 @@
     [activeUserId]="activeUserId()"
     [reauthAccounts]="reauthAccounts()"
     [shownAccountIds]="shownAccountIds()"
+    [pickAccountsInDialog]="narrowLayout()"
+    (openAccountPicker)="onOpenAccountPicker()"
     (toggleAccountShown)="toggleAccountShown.emit($event)"
     (openSettings)="openSettings.emit()"
     (switchAccount)="switchAccount.emit($event)"

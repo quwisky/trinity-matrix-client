@@ -1,4 +1,4 @@
-import { CdkMenu, CdkMenuGroup, CdkMenuItem, CdkMenuItemCheckbox, CdkMenuItemRadio, CdkMenuItemSelectable, CdkMenuTrigger } from '@angular/cdk/menu';
+import { CdkMenu, CdkMenuGroup, CdkMenuItem, CdkMenuItemCheckbox, CdkMenuItemRadio, CdkMenuItemSelectable, CdkMenuTrigger, CdkTargetMenuAim } from '@angular/cdk/menu';
 import { ChangeDetectionStrategy, Component, Directive, ElementRef, HOST_TAG_NAME, InjectionToken, booleanAttribute, computed, effect, forwardRef, inject, input, numberAttribute, signal, type ValueProvider } from '@angular/core';
 import { InputModalityDetector } from '@angular/cdk/a11y';
 import { MENU_SIDE, createMenuPosition, deriveMenuSideFromTransformOrigin, type MenuAlign, type MenuSide } from '@spartan-ng/brain/core';
@@ -7,6 +7,28 @@ import { classes } from '@trinity/helm/utils';
 import { lucideCheck, lucideChevronRight } from '@ng-icons/lucide';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { type BooleanInput, type NumberInput } from '@angular/cdk/coercion';
+
+/**
+ * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ────────────────────────────┐
+ *
+ * Three deliberate local overrides live in this file. A regenerate drops all three; each is
+ * commented at its site and pinned by a test in libs/spartan/overlay (the only spartan lib
+ * with a Vitest target), so a lost override fails the suite rather than shipping.
+ *
+ *   1. HlmDropdownMenuSubTrigger — `_handleClick` shadowed so a sub-trigger click OPENS the
+ *      submenu instead of toggling it closed under zoneless CD. See docs/ZONELESS.md.
+ *   2. HlmDropdownMenuSubTrigger — the shadowed `_handleClick` also re-does CDK's focus move,
+ *      so keyboard Enter/Space lands in the submenu.
+ *   3. HlmDropdownMenuSubTrigger — `side` defaults to 'right' rather than the root-menu
+ *      config, so a submenu opens BESIDE its parent instead of over it.
+ *   4. HlmDropdownMenu / HlmDropdownMenuSub — CdkTargetMenuAim host directive, so travelling
+ *      diagonally into an open submenu doesn't close it on the way.
+ *
+ * The register lives in docs/DEVELOPMENT.md. Note this file is already a fork in shape as
+ * well as content: the generator emits ~16 one-directive files, this is one module.
+ *
+ * └───────────────────────────────────────────────────────────────────────────────────────┘
+ */
 
 /**
  * @internal
@@ -289,7 +311,25 @@ export class HlmDropdownMenuSubTrigger {
   private readonly _config = injectHlmDropdownMenuConfig();
 
   public readonly align = input<MenuAlign>(this._config.align);
-  public readonly side = input<MenuSide>(this._config.side);
+  /**
+   * LOCAL OVERRIDE (3 of 3 — see the banner at the top of this file).
+   *
+   * Upstream defaults this to `this._config.side`, i.e. the ROOT-menu default of 'bottom', so a
+   * submenu is positioned like a dropdown: `createMenuPosition('start','bottom')` yields only
+   * "below the trigger" and its mirror "above the trigger". Both sit inside the parent menu's
+   * rectangle whenever the sub-trigger has rows beneath it, so the submenu covers the menu that
+   * spawned it — the flip isn't even needed to reproduce it.
+   *
+   * 'right' yields "beside the trigger" and its mirror "beside it on the other side", neither of
+   * which can land on the parent. This restores CDK's own intent: `CdkMenuTrigger` defaults a
+   * trigger inside a vertical menu to STANDARD_DROPDOWN_ADJACENT_POSITIONS, and the effect below
+   * overwrites that unconditionally. `HlmDropdownMenuSub` already believes the same thing — its
+   * `_side` falls back to 'right' — so today the trigger and its content disagree.
+   *
+   * `align` is deliberately left on the config's 'start': it top-aligns the submenu's first row
+   * with the trigger row, which also minimises the pointer travel between them.
+   */
+  public readonly side = input<MenuSide>('right');
 
   private readonly _menuPosition = computed(() => createMenuPosition(this.align(), this.side()));
 
@@ -335,7 +375,7 @@ export class HlmDropdownMenuSubTrigger {
 
 @Directive({
   selector: '[hlmDropdownMenuSub],hlm-dropdown-menu-sub',
-  hostDirectives: [CdkMenu],
+  hostDirectives: [CdkMenu, CdkTargetMenuAim],
   host: {
     'data-slot': 'dropdown-menu-sub',
     '[attr.data-state]': '_state()',
@@ -424,7 +464,7 @@ export class HlmDropdownMenuTrigger {
 
 @Directive({
   selector: '[hlmDropdownMenu],hlm-dropdown-menu',
-  hostDirectives: [CdkMenu],
+  hostDirectives: [CdkMenu, CdkTargetMenuAim],
   host: {
     'data-slot': 'dropdown-menu',
     '[attr.data-state]': '_state()',

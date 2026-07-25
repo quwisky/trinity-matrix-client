@@ -1,0 +1,67 @@
+<div class="picker" data-testid="account-picker">
+  <h2 class="picker__title" id="account-picker-title">Show accounts</h2>
+  <p class="picker__hint">
+    Pick which accounts the room list, rail and spaces draw from.
+  </p>
+
+  <ul class="picker__list" role="group" aria-labelledby="account-picker-title">
+    @for (account of accounts(); track account.userId; let first = $first) {
+      @let locked = isLocked(account.userId);
+      <li>
+        <button
+          type="button"
+          class="account-pick"
+          role="checkbox"
+          [attr.aria-checked]="isShown(account.userId)"
+          [disabled]="locked"
+          [attr.data-disabled]="locked ? '' : null"
+          [attr.data-autofocus]="first ? '' : null"
+          [attr.data-testid]="'show-account-' + account.userId"
+          (click)="toggle(account.userId)"
+        >
+          <span class="account-pick__tick" aria-hidden="true">
+            @if (isShown(account.userId)) {
+              <svg viewBox="0 0 16 16" width="14" height="14">
+                <path
+                  d="M13.5 4.5 6.5 11.5 2.5 7.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            }
+          </span>
+          <trn-avatar
+            [mxc]="account.avatarMxc"
+            [accountId]="account.userId"
+            [initial]="initialOf(account)"
+            [name]="account.displayName"
+            [size]="24"
+          />
+          <span class="account-pick__id">
+            <span class="account-pick__name">{{ account.displayName }}</span>
+            <!-- The mxid, because two accounts can share a display name and the tick alone
+                 would not say which server you are blending in. -->
+            <span class="account-pick__handle">{{ account.userId }}</span>
+          </span>
+          @if (locked) {
+            <span class="account-pick__active">active</span>
+          }
+        </button>
+      </li>
+    }
+  </ul>
+
+  <div class="picker__actions">
+    <button
+      hlmBtn
+      type="button"
+      data-testid="account-picker-done"
+      (click)="close()"
+    >
+      Done
+    </button>
+  </div>
+</div>
