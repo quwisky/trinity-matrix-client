@@ -29,6 +29,9 @@ import {
   MixedRoomsService,
   MixedSpacesService,
   UnreadAggregatorService,
+  SpaceRoomOrderService,
+  TRINITY_ROOM_SORTS,
+  type RoomSortMode,
   type RoomSummary,
   type SpaceChildRoom,
   type SpaceSummary,
@@ -643,14 +646,17 @@ describe('RoomsPage space filtering', () => {
   }
 
   function build(): RoomsPage {
-    // Home recency order is c, a, b; the space orders its children a, b.
+    // Home recency order is c, a, b. The space orders its children b, a — deliberately NOT
+    // alphabetical, because every room here has activityTs 0: with a name tiebreak, a
+    // curated order of a, b would be indistinguishable from the default recency ordering,
+    // and the space-order assertion below would pass whether or not the mode was honoured.
     const rooms = [
       roomSummary('!c:hs', 'charlie', 2),
       roomSummary('!a:hs', 'alpha', 5),
       roomSummary('!b:hs', 'bravo', 3),
     ];
     const childRoomIds = vi.fn((id: string | null) =>
-      id === '!s:hs' ? ['!a:hs', '!b:hs'] : [],
+      id === '!s:hs' ? ['!b:hs', '!a:hs'] : [],
     );
     TestBed.configureTestingModule({
       providers: [
@@ -660,8 +666,14 @@ describe('RoomsPage space filtering', () => {
           directRoomIds: signal<ReadonlySet<string>>(new Set(['!a:hs'])), // '!a:hs' is a DM
         }),
         MockProvider(SpacesService, {
-          spaces: signal([spaceSummary('!s:hs', ['!a:hs', '!b:hs'])]),
+          spaces: signal([spaceSummary('!s:hs', ['!b:hs', '!a:hs'])]),
           childRoomIds,
+        }),
+        MockProvider(SpaceRoomOrderService, {
+          effectiveFor: () => 'space',
+          overrideFor: () => null,
+          defaultMode: signal<RoomSortMode>('recent').asReadonly(),
+          modes: TRINITY_ROOM_SORTS,
         }),
         MockProvider(TimelineService),
         MockProvider(MatrixClientService, {
@@ -723,8 +735,9 @@ describe('RoomsPage space filtering', () => {
     const page = build();
     page.onSelectSpace('!s:hs');
 
-    // '!c:hs' is excluded (not a child); a/b appear in the space's order.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
+    // '!c:hs' is excluded (not a child); b/a appear in the space's curated order, which is
+    // neither alphabetical nor the recency order the other views use.
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!b:hs', '!a:hs']);
     expect(page.activeSpaceName()).toBe('!s:hs');
   });
 
@@ -756,7 +769,7 @@ describe('RoomsPage space filtering', () => {
 
     page.onSelectSpace('!s:hs');
     expect(page.roomsView()).toBe(false);
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
+    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!b:hs', '!a:hs']);
     expect(page.sidebarTitle()).toBe('!s:hs');
   });
 
@@ -906,6 +919,220 @@ describe('RoomsPage space filtering', () => {
 
     expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // still hidden
     expect(page.roomsUnread()).toBe(2); // b's unread stays off the Rooms badge
+  });
+});
+
+// Inside a space the list is ordered by the mode that space resolves to. The fixture below
+// makes the three orderings disagree pairwise, so no assertion can pass under the wrong one.
+describe('RoomsPage space ordering', () => {
+  /** Curated order z, a, m; alphabetical a, m, z; recency m, z, a. */
+  const CHILD_IDS = ['!z:hs', '!a:hs', '!m:hs'];
+
+  function orderedRoom(
+    id: string,
+    name: string,
+    activityTs: number,
+    favourite = false,
+  ): RoomSummary {
+    return {
+      id,
+      accountId: '@me:hs',
+      accountIds: ['@me:hs'],
+      name,
+      initial: name[0].toUpperCase(),
+      avatarMxc: null,
+      topic: '',
+      memberCount: 0,
+      encrypted: false,
+      unreadCount: 0,
+      highlightCount: 0,
+      hasUnread: false,
+      lastMessage: '',
+      activityTs,
+      favourite,
+    };
+  }
+
+  function orderedSpace(id: string, childRoomIds: string[]): SpaceSummary {
+    return {
+      id,
+      accountId: '@me:hs',
+      name: id,
+      initial: 'S',
+      avatarMxc: null,
+      childRoomIds,
+    };
+  }
+
+  function build(order: Partial<SpaceRoomOrderService> = {}) {
+    const rooms = signal([
+      orderedRoom('!z:hs', 'zulu', 200),
+      orderedRoom('!a:hs', 'alpha', 100),
+      orderedRoom('!m:hs', 'mike', 300),
+    ]);
+    const setForSpace = vi.fn();
+    const clearForSpace = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        MockProvider(RoomsService, {
+          rooms,
+          directRoomIds: signal<ReadonlySet<string>>(new Set()),
+        }),
+        MockProvider(SpacesService, {
+          spaces: signal([orderedSpace('!s:hs', CHILD_IDS)]),
+          childRoomIds: (id: string | null) =>
+            id === '!s:hs' ? CHILD_IDS : [],
+        }),
+        MockProvider(SpaceRoomOrderService, {
+          effectiveFor: () => 'recent',
+          overrideFor: () => null,
+          defaultMode: signal<RoomSortMode>('recent').asReadonly(),
+          modes: TRINITY_ROOM_SORTS,
+          setForSpace,
+          clearForSpace,
+          ...order,
+        }),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => ({ getUser: () => null }) as never,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
+        }),
+        MockProvider(CryptoService),
+        MockProvider(ThreadsService),
+        MockProvider(ThreadPanelService),
+        MockProvider(PinnedMessagesService),
+        MockProvider(PinnedPanelService),
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(TrnActionSheetService),
+        MockProvider(AuthService),
+        MockProvider(Router),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    const page = TestBed.inject(RoomsPage);
+    page.onSelectSpace('!s:hs');
+    return { page, rooms, setForSpace, clearForSpace };
+  }
+
+  const names = (page: RoomsPage) => page.visibleRooms().map((r) => r.name);
+
+  it('orders by recent activity, ignoring the curated child order', () => {
+    const { page } = build({ effectiveFor: () => 'recent' });
+
+    expect(names(page)).toEqual(['mike', 'zulu', 'alpha']);
+  });
+
+  it('orders alphabetically, ignoring both activity and the curated order', () => {
+    const { page } = build({ effectiveFor: () => 'alphabetical' });
+
+    expect(names(page)).toEqual(['alpha', 'mike', 'zulu']);
+  });
+
+  it('preserves the curated order under space mode', () => {
+    const { page } = build({ effectiveFor: () => 'space' });
+
+    expect(names(page)).toEqual(['zulu', 'alpha', 'mike']);
+  });
+
+  it("uses a space's own override rather than the account default", () => {
+    const { page } = build({
+      effectiveFor: (spaceId: string | null) =>
+        spaceId === '!s:hs' ? 'alphabetical' : 'recent',
+    });
+
+    expect(names(page)).toEqual(['alpha', 'mike', 'zulu']);
+  });
+
+  it('re-sorts when a room becomes active, with nothing else called', () => {
+    // The acceptance criterion: a new message reorders the space without reopening it.
+    // No new listener is involved — `visibleRooms` already reads `rooms()`, which the
+    // service re-snapshots on every sync.
+    const { page, rooms } = build({ effectiveFor: () => 'recent' });
+    expect(names(page)).toEqual(['mike', 'zulu', 'alpha']);
+
+    rooms.update((list) =>
+      list.map((room) =>
+        room.id === '!a:hs' ? { ...room, activityTs: 999 } : room,
+      ),
+    );
+
+    expect(names(page)).toEqual(['alpha', 'mike', 'zulu']);
+  });
+
+  it('keeps favourites first in every mode', () => {
+    const { page, rooms } = build({ effectiveFor: () => 'space' });
+    rooms.update((list) =>
+      list.map((room) =>
+        room.id === '!a:hs' ? { ...room, favourite: true } : room,
+      ),
+    );
+
+    // 'alpha' is second in the curated order, but the array the keyboard walk and
+    // "mark all read" iterate must match what the sidebar renders — favourites first.
+    expect(names(page)).toEqual(['alpha', 'zulu', 'mike']);
+  });
+
+  it('sorts a copy, never the array the rooms service handed out', () => {
+    const { page, rooms } = build({ effectiveFor: () => 'alphabetical' });
+    const seeded = rooms();
+
+    expect(names(page)).toEqual(['alpha', 'mike', 'zulu']);
+
+    // `sort` mutates; reordering this array would corrupt every other consumer of the
+    // service's signal (unread totals, the rail badges, the quick switcher).
+    expect(rooms()).toBe(seeded);
+    expect(seeded.map((r) => r.name)).toEqual(['zulu', 'alpha', 'mike']);
+    expect(page.visibleRooms()).not.toBe(seeded);
+  });
+
+  it('leaves the Recent view returning the service array by identity', () => {
+    const { page, rooms } = build();
+    page.onShowRecent();
+
+    expect(page.visibleRooms()).toBe(rooms());
+  });
+
+  describe('changing the order from the sidebar', () => {
+    it('pins the open space to a mode', () => {
+      const { page, setForSpace } = build();
+
+      page.onSetSpaceSort('alphabetical');
+
+      expect(setForSpace).toHaveBeenCalledWith('!s:hs', 'alphabetical');
+    });
+
+    it('clears the override when asked to follow the default', () => {
+      const { page, clearForSpace, setForSpace } = build();
+
+      page.onSetSpaceSort(null);
+
+      expect(clearForSpace).toHaveBeenCalledWith('!s:hs');
+      expect(setForSpace).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when no space is open', () => {
+      const { page, setForSpace, clearForSpace } = build();
+      page.onSelectSpace(null);
+
+      page.onSetSpaceSort('space');
+      page.onSetSpaceSort(null);
+
+      expect(setForSpace).not.toHaveBeenCalled();
+      expect(clearForSpace).not.toHaveBeenCalled();
+    });
   });
 });
 

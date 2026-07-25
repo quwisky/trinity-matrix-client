@@ -38,6 +38,9 @@
         [reauthAccounts]="reauthAccounts()"
         [accountBadges]="accountBadges()"
         [shownAccountIds]="shownAccountIds()"
+        [sortMode]="spaceSortMode()"
+        [sortOverridden]="spaceSortOverridden()"
+        [defaultSortMode]="defaultSpaceSortMode()"
         (toggleAccountShown)="onToggleAccountShown($event)"
         (selectRoom)="onSelectRoomRow($event)"
         (switchAccount)="switchAccount($event)"
@@ -59,6 +62,7 @@
         (setNotifyMode)="onSetNotifyMode($event)"
         (markRead)="onMarkRead($event)"
         (markAllRead)="onMarkAllRead()"
+        (setSortMode)="onSetSpaceSort($event)"
       />
     </aside>
 

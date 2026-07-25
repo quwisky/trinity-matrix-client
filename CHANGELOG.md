@@ -24,6 +24,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Order a space's rooms the way you want.** Rooms inside a space were always listed in the
+  order the space's admins arranged them — in practice alphabetically, since almost no space
+  sets an order — while every other list in Trinity puts the most recent conversation at the
+  top. Opening a space therefore buried whichever room was actually busy. Spaces now use
+  **Recent activity** by default, and the new sort button in the space header offers **Space
+  order** and **Alphabetical** as well, per space. Settings → Appearance sets the default for
+  spaces you have not chosen individually; that default is kept per account on the device, so
+  two accounts on one machine can differ. Lists re-order as messages arrive, without
+  reopening the space. Favourites keep their own group at the top, as they do everywhere else.
+
 - **Write dates and times your way.** Settings → Appearance gains **Time format** and **Date
   format** pickers: a 12- or 24-hour clock, and day-first, month-first or ISO dates — each
   option previewing exactly how it will look. Both default to **Match system**, which now

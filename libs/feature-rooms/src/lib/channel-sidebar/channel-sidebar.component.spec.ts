@@ -16,6 +16,8 @@ import {
   AccountScopeService,
   RoomsService,
   SpacesService,
+  TRINITY_ROOM_SORTS,
+  type RoomSortMode,
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
@@ -104,6 +106,9 @@ async function renderSidebar(
       accounts?: AccountSummary[];
       activeUserId?: string | null;
       reauthAccounts?: string[];
+      sortMode?: RoomSortMode;
+      sortOverridden?: boolean;
+      defaultSortMode?: RoomSortMode;
     };
     joinableRooms?: SpaceChildRoom[];
     childSpaces?: SpaceChildRoom[];
@@ -1015,5 +1020,139 @@ describe('ChannelSidebarComponent', () => {
     expect(container.querySelector('.invite__name')?.textContent).toContain(
       'Mine',
     );
+  });
+});
+
+// The header sort menu picks how the open space's rooms are ordered. The sidebar itself does
+// no sorting — it only reports the pick; RoomsPage applies it.
+describe('ChannelSidebarComponent space sort menu', () => {
+  /** Open the header sort menu and return its rows, which render into a CDK overlay. */
+  async function openSortMenu(
+    inputs: {
+      sortMode?: RoomSortMode;
+      sortOverridden?: boolean;
+      defaultSortMode?: RoomSortMode;
+    } = {},
+  ) {
+    const rendered = await renderSidebar({
+      inputs: { spaceActive: true, ...inputs },
+    });
+    const trigger = rendered.container.querySelector<HTMLElement>(
+      '[data-testid="space-sort"]',
+    )!;
+    trigger.click();
+    rendered.fixture.detectChanges();
+    const row = (testid: string) =>
+      document.querySelector<HTMLElement>(`[data-testid="${testid}"]`);
+    return { ...rendered, trigger, row };
+  }
+
+  it('offers no sort menu on Home', async () => {
+    const { container } = await renderSidebar({
+      inputs: { spaceActive: false },
+    });
+
+    expect(container.querySelector('[data-testid="space-sort"]')).toBeNull();
+  });
+
+  it('offers the sort menu inside a space', async () => {
+    const { container } = await renderSidebar({
+      inputs: { spaceActive: true },
+    });
+
+    expect(
+      container.querySelector('[data-testid="space-sort"]'),
+    ).not.toBeNull();
+  });
+
+  it('names the effective ordering on the trigger, for screen readers', async () => {
+    const { trigger } = await openSortMenu({ sortMode: 'alphabetical' });
+
+    expect(trigger.getAttribute('aria-label')).toBe(
+      'Order rooms: Alphabetical',
+    );
+  });
+
+  it('offers "use my default" plus one row per ordering', async () => {
+    await openSortMenu();
+
+    const rows = [
+      ...document.querySelectorAll('[data-testid^="space-sort-"]'),
+    ].map((el) => el.getAttribute('data-testid'));
+    expect(rows).toEqual([
+      'space-sort-default',
+      'space-sort-recent',
+      'space-sort-space',
+      'space-sort-alphabetical',
+    ]);
+  });
+
+  it('explains what each ordering does', async () => {
+    const { row } = await openSortMenu();
+
+    for (const option of TRINITY_ROOM_SORTS) {
+      expect(row(`space-sort-${option.id}`)?.textContent, option.id).toContain(
+        option.description,
+      );
+    }
+  });
+
+  it('names the account default on the "use my default" row', async () => {
+    const { row } = await openSortMenu({ defaultSortMode: 'space' });
+
+    expect(row('space-sort-default')?.textContent).toContain(
+      'Use my default (Space order)',
+    );
+  });
+
+  it('checks "use my default" when the space has no override', async () => {
+    const { row } = await openSortMenu({
+      sortMode: 'recent',
+      sortOverridden: false,
+    });
+
+    // The effective mode is 'recent', but it is inherited — checking the Recent row instead
+    // would leave the user no way to tell an inherited order from a pinned one.
+    expect(row('space-sort-default')?.hasAttribute('data-checked')).toBe(true);
+    expect(row('space-sort-recent')?.hasAttribute('data-checked')).toBe(false);
+  });
+
+  it('checks the pinned ordering when the space overrides the default', async () => {
+    const { row } = await openSortMenu({
+      sortMode: 'alphabetical',
+      sortOverridden: true,
+    });
+
+    expect(row('space-sort-alphabetical')?.hasAttribute('data-checked')).toBe(
+      true,
+    );
+    expect(row('space-sort-default')?.hasAttribute('data-checked')).toBe(false);
+  });
+
+  it('emits the chosen ordering', async () => {
+    const { fixture, row } = await openSortMenu();
+    const emitted: (RoomSortMode | null)[] = [];
+    fixture.componentInstance.setSortMode.subscribe((mode) =>
+      emitted.push(mode),
+    );
+
+    row('space-sort-space')?.click();
+
+    expect(emitted).toEqual(['space']);
+  });
+
+  it('emits null for "use my default", so the override is dropped', async () => {
+    const { fixture, row } = await openSortMenu({
+      sortMode: 'space',
+      sortOverridden: true,
+    });
+    const emitted: (RoomSortMode | null)[] = [];
+    fixture.componentInstance.setSortMode.subscribe((mode) =>
+      emitted.push(mode),
+    );
+
+    row('space-sort-default')?.click();
+
+    expect(emitted).toEqual([null]);
   });
 });

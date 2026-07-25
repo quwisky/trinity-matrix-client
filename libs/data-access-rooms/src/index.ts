@@ -6,6 +6,7 @@ export * from './lib/public-rooms.service';
 export * from './lib/spaces.service';
 export * from './lib/room-projection';
 export * from './lib/account-scope.service';
+export * from './lib/space-room-order.service';
 export * from './lib/mixed-rooms.service';
 export * from './lib/mixed-spaces.service';
 export * from './lib/unread-aggregator.service';
