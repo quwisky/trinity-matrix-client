@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -7,6 +6,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DialogRef } from '@angular/cdk/dialog';
+import { DateTimeFormatService } from '@trinity/platform-native';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucidePinOff, lucideX } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
@@ -30,12 +30,15 @@ import { PinnedMessagesService } from '@trinity/data-access-pinned';
 @Component({
   selector: 'trn-pinned-messages-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, DatePipe, HlmButton, HlmTooltip],
+  imports: [NgIcon, HlmButton, HlmTooltip],
   viewProviders: [provideIcons({ lucideX, lucidePinOff })],
   templateUrl: './pinned-messages-panel.component.html',
   styleUrl: './pinned-messages-panel.component.scss',
 })
 export class PinnedMessagesPanelComponent {
+  /** Timestamps go through the app-wide format preference, never a DatePipe. */
+  readonly fmt = inject(DateTimeFormatService);
+
   private readonly pinnedSvc = inject(PinnedMessagesService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);

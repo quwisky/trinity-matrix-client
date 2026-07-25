@@ -13,6 +13,7 @@ import {
 } from '@trinity/platform-native';
 import { By } from '@angular/platform-browser';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { DateTimeFormatService } from '@trinity/platform-native';
 import { AppearanceSettingsComponent } from './appearance-settings.component';
 
 describe('AppearanceSettingsComponent', () => {
@@ -81,12 +82,14 @@ describe('AppearanceSettingsComponent', () => {
     );
   });
 
-  it('gives the mode group and palette select an accessible name via aria-labelledby', async () => {
+  it('gives every enumerated control an accessible name via aria-labelledby', async () => {
     const { container } = await renderPage();
 
     const labelled = [
       container.querySelector('hlm-radio-group'),
       container.querySelector('[data-testid=palette-select]'),
+      container.querySelector('[data-testid=time-format-select]'),
+      container.querySelector('[data-testid=date-format-select]'),
     ];
     for (const control of labelled) {
       const id = control?.getAttribute('aria-labelledby');
@@ -95,6 +98,66 @@ describe('AppearanceSettingsComponent', () => {
         container.querySelector(`#${id}`)?.textContent?.trim(),
       ).toBeTruthy();
     }
+  });
+
+  // The option lists render in a CDK overlay only once opened (jsdom has no
+  // ResizeObserver/scrollIntoView), so the open→select round-trip is covered in e2e — same as
+  // the palette dropdown above. Here: the controls exist, are bound, and validate what they
+  // are handed.
+  describe('date and time', () => {
+    it('renders both format dropdowns bound to the current preference', async () => {
+      const { container } = await renderPage();
+      const format = TestBed.inject(DateTimeFormatService);
+      format.setTimeFormat('h24');
+      format.setDateFormat('iso');
+
+      for (const testid of ['time-format-select', 'date-format-select']) {
+        const select = container.querySelector(`[data-testid=${testid}]`);
+        expect(select?.tagName.toLowerCase(), testid).toBe('hlm-select');
+        expect(select?.querySelector('button'), testid).not.toBeNull();
+      }
+    });
+
+    it('shows the current formats applied to a sample instant', async () => {
+      const { fixture, container } = await renderPage();
+      const format = TestBed.inject(DateTimeFormatService);
+
+      format.setTimeFormat('h24');
+      format.setDateFormat('iso');
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('[data-testid=date-time-showing]')?.textContent,
+      ).toContain('2026-07-24, 15:45');
+    });
+
+    // Each handler is a separate binding, so a copy-paste slip (date bound to setTimeFormat)
+    // would otherwise ship green — nothing else covers this wiring.
+    it('persists each axis independently', async () => {
+      const { fixture } = await renderPage();
+      const format = TestBed.inject(DateTimeFormatService);
+
+      fixture.componentInstance.onTimeFormatChange('h12');
+      expect(format.timeFormat()).toBe('h12');
+      expect(format.dateFormat()).toBe('system');
+
+      fixture.componentInstance.onDateFormatChange('dmy');
+      expect(format.dateFormat()).toBe('dmy');
+      expect(format.timeFormat()).toBe('h12');
+    });
+
+    // hlm-select's valueChange is typed `string | null | undefined`, so the handlers guard
+    // rather than cast — a stray value must not become the app-wide format.
+    it('ignores a value that is not one of the offered ids', async () => {
+      const { fixture } = await renderPage();
+      const format = TestBed.inject(DateTimeFormatService);
+      format.setTimeFormat('h24');
+
+      fixture.componentInstance.onTimeFormatChange(null);
+      fixture.componentInstance.onTimeFormatChange('nonsense');
+
+      expect(format.timeFormat()).toBe('h24');
+    });
   });
 
   it('renders the palette dropdown as a select control', async () => {

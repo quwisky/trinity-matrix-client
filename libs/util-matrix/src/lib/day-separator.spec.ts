@@ -1,10 +1,21 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   dayLabel,
   hasUsableTimestamp,
   startOfLocalDay,
   startOfNextLocalDay,
 } from './day-separator';
+import { type DateTimePrefs } from './date-format';
+
+/**
+ * "Match system" on both axes with the locale pinned, so these tests assert the day-bucketing
+ * logic rather than the runner's locale. The formatting itself is date-format.spec.ts's job.
+ */
+const SYSTEM: DateTimePrefs = {
+  locales: ['en-US'],
+  time: 'system',
+  date: 'system',
+};
 
 /**
  * Local noon on a Y/M/D. Every instant in these tests is built with the local-time `Date`
@@ -127,7 +138,7 @@ describe('hasUsableTimestamp', () => {
         continue;
       }
       expect(Number.isNaN(startOfLocalDay(ts))).toBe(false);
-      expect(() => dayLabel(startOfLocalDay(ts), today)).not.toThrow();
+      expect(() => dayLabel(startOfLocalDay(ts), today, SYSTEM)).not.toThrow();
     }
   });
 });
@@ -136,11 +147,11 @@ describe('dayLabel', () => {
   const today = startOfLocalDay(noon(2026, 6, 24));
 
   it('labels the current day "Today"', () => {
-    expect(dayLabel(today, today)).toBe('Today');
+    expect(dayLabel(today, today, SYSTEM)).toBe('Today');
   });
 
   it('labels the previous day "Yesterday"', () => {
-    expect(dayLabel(startOfLocalDay(noon(2026, 6, 23)), today)).toBe(
+    expect(dayLabel(startOfLocalDay(noon(2026, 6, 23)), today, SYSTEM)).toBe(
       'Yesterday',
     );
   });
@@ -152,35 +163,65 @@ describe('dayLabel', () => {
     const newYearsEve = startOfLocalDay(noon(2026, 11, 31));
 
     expect(newYearsEve).not.toBe(newYearsDay);
-    expect(dayLabel(newYearsEve, newYearsDay)).toBe('Yesterday');
+    expect(dayLabel(newYearsEve, newYearsDay, SYSTEM)).toBe('Yesterday');
   });
 
-  // Asserted against the same Intl call rather than a hardcoded string: the label follows the
-  // reader's browser locale, so a literal would only pass on an en-US runner.
+  // Asserted against the same Intl call rather than a hardcoded string, so this survives an
+  // ICU update reordering the parts.
   it('formats an older day in the current year without the year', () => {
     const older = startOfLocalDay(noon(2026, 6, 20));
-    const expected = new Intl.DateTimeFormat(undefined, {
+    const expected = new Intl.DateTimeFormat(SYSTEM.locales, {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
     }).format(older);
 
-    expect(dayLabel(older, today)).toBe(expected);
-    expect(dayLabel(older, today)).not.toContain('2026');
+    expect(dayLabel(older, today, SYSTEM)).toBe(expected);
+    expect(dayLabel(older, today, SYSTEM)).not.toContain('2026');
   });
 
   it('includes the year for a day in an earlier year', () => {
     const lastYear = startOfLocalDay(noon(2024, 2, 5));
 
     // Every locale renders `year: 'numeric'` as the four digits, whatever else it reorders.
-    expect(dayLabel(lastYear, today)).toContain('2024');
+    expect(dayLabel(lastYear, today, SYSTEM)).toContain('2024');
   });
+
+  // #22: the date preference governs separators too, so the setting does not half-apply. An
+  // explicit order always carries its year, so a same-year and an older day render alike.
+  it.each([
+    ['dmy' as const, '20/07/2026'],
+    ['mdy' as const, '07/20/2026'],
+    ['iso' as const, '2026-07-20'],
+  ])(
+    'renders an older day as %s under an explicit date order',
+    (date, expected) => {
+      const older = startOfLocalDay(noon(2026, 6, 20));
+
+      expect(dayLabel(older, today, { ...SYSTEM, date })).toBe(expected);
+    },
+  );
+
+  // The prose labels are not timestamps — no format preference touches them. Translating them
+  // is the i18n work's job, not this one's.
+  it.each([['dmy' as const], ['mdy' as const], ['iso' as const]])(
+    'keeps Today and Yesterday under %s',
+    (date) => {
+      const prefs = { ...SYSTEM, date };
+
+      expect(dayLabel(today, today, prefs)).toBe('Today');
+      expect(dayLabel(startOfLocalDay(noon(2026, 6, 23)), today, prefs)).toBe(
+        'Yesterday',
+      );
+    },
+  );
 
   it('never says "Today" or "Yesterday" for anything older', () => {
     for (let daysBack = 2; daysBack <= 10; daysBack++) {
       const label = dayLabel(
         startOfLocalDay(noon(2026, 6, 24 - daysBack)),
         today,
+        SYSTEM,
       );
       expect(label).not.toBe('Today');
       expect(label).not.toBe('Yesterday');
@@ -196,45 +237,15 @@ describe('dayLabel', () => {
     for (let dayOfYear = 1; dayOfYear <= 365; dayOfYear++) {
       const previous = startOfLocalDay(noon(2026, 0, dayOfYear));
       const current = startOfLocalDay(noon(2026, 0, dayOfYear + 1));
-      expect(dayLabel(previous, current)).toBe('Yesterday');
+      expect(dayLabel(previous, current, SYSTEM)).toBe('Yesterday');
     }
   });
 
   // Clock skew and hostile origin_server_ts both produce future events. Showing the literal
   // date is the honest answer; what matters is that it is not mislabelled "Today".
   it('shows a future day as a date', () => {
-    expect(dayLabel(startOfLocalDay(noon(2026, 6, 25)), today)).not.toBe(
-      'Today',
-    );
-  });
-
-  // An Intl.DateTimeFormat resolves the time zone once, at construction, and never again —
-  // but startOfLocalDay goes through Date, which does re-resolve. Cached forever, the two
-  // drift apart when the OS zone moves under a long-lived session and the separator renders
-  // a date that disagrees with the messages under it.
-  it('rebuilds its formatters when the local UTC offset moves', () => {
-    const older = startOfLocalDay(noon(2026, 6, 20));
-    dayLabel(older, today); // warm the cache at the runner's real offset
-
-    const construct = vi.spyOn(Intl, 'DateTimeFormat');
-    try {
-      dayLabel(older, today);
-      expect(construct).not.toHaveBeenCalled(); // still cached — the point of the cache
-
-      const real = new Date().getTimezoneOffset();
-      const moved = vi
-        .spyOn(Date.prototype, 'getTimezoneOffset')
-        .mockReturnValue(real + 60);
-      dayLabel(older, today);
-      expect(construct).toHaveBeenCalled();
-
-      // …and settles again once the new offset is the steady state.
-      construct.mockClear();
-      dayLabel(older, today);
-      expect(construct).not.toHaveBeenCalled();
-      moved.mockRestore();
-    } finally {
-      construct.mockRestore();
-    }
+    expect(
+      dayLabel(startOfLocalDay(noon(2026, 6, 25)), today, SYSTEM),
+    ).not.toBe('Today');
   });
 });

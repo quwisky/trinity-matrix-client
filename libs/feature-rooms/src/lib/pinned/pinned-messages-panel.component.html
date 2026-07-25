@@ -31,7 +31,7 @@
         >
           <div class="pin-item__head">
             <span class="pin-item__author">{{ p.senderName }}</span>
-            <span class="pin-item__time">{{ p.ts | date: 'short' }}</span>
+            <span class="pin-item__time">{{ fmt.dateTime(p.ts) }}</span>
           </div>
           <div class="pin-item__body">{{ p.body }}</div>
         </button>

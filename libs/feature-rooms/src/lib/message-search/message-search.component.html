@@ -99,7 +99,7 @@
               <span class="truncate text-sm font-medium">{{
                 hit.senderName
               }}</span>
-              <span class="ms-time shrink-0">{{ formatTime(hit.ts) }}</span>
+              <span class="ms-time shrink-0">{{ fmt.dateTime(hit.ts) }}</span>
             </span>
             <p class="ms-snippet text-sm">
               @for (part of highlight(hit.snippet); track $index) {

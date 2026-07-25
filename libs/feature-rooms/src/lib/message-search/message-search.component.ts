@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
+import { DateTimeFormatService } from '@trinity/platform-native';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideLock, lucideServer, lucideX } from '@ng-icons/lucide';
 import {
@@ -59,6 +60,8 @@ interface HighlightPart {
   styleUrl: './message-search.component.scss',
 })
 export class MessageSearchComponent {
+  /** Timestamps go through the app-wide format preference, never a DatePipe. */
+  readonly fmt = inject(DateTimeFormatService);
   private readonly search = inject(SearchService);
   private readonly timeline = inject(TimelineService);
   private readonly dialogRef =
@@ -204,16 +207,6 @@ export class MessageSearchComponent {
   initialOf(name: string): string {
     const stripped = name.replace(/^[#@!]+/, '').trim();
     return (stripped[0] ?? '?').toUpperCase();
-  }
-
-  formatTime(ts: number): string {
-    return new Date(ts).toLocaleString(undefined, {
-      year: '2-digit',
-      month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   }
 
   private resetServer(): void {

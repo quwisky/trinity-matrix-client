@@ -44,7 +44,7 @@
           <div class="revision__head">
             <span class="revision__label">{{ entry.label }}</span>
             <time class="revision__time">{{
-              entry.timestamp | date: 'medium'
+              fmt.longDateTime(entry.timestamp)
             }}</time>
             @if (entry.removable) {
               <button
@@ -56,7 +56,7 @@
                 data-testid="revision-remove"
                 [attr.aria-label]="
                   'Remove this version, sent ' +
-                  (entry.timestamp | date: 'medium')
+                  fmt.longDateTime(entry.timestamp)
                 "
                 [disabled]="removing() !== null"
                 (click)="remove(entry.id)"

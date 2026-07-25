@@ -67,6 +67,73 @@
 </div>
 
 <h2
+  id="appearance-time-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Time format
+</h2>
+<div class="px-4 py-2">
+  <hlm-select
+    class="block"
+    data-testid="time-format-select"
+    aria-labelledby="appearance-time-heading"
+    [value]="format.timeFormat()"
+    (valueChange)="onTimeFormatChange($event)"
+  >
+    <hlm-select-trigger class="w-full">
+      <hlm-select-value placeholder="Select a time format" />
+    </hlm-select-trigger>
+    <hlm-select-content *hlmSelectPortal>
+      @for (option of format.timeFormats; track option.id) {
+        <hlm-select-item
+          [value]="option.id"
+          [attr.data-testid]="'time-format-' + option.id"
+        >
+          {{ option.label }} ({{ format.sampleTime(sample, option.id) }})
+        </hlm-select-item>
+      }
+    </hlm-select-content>
+  </hlm-select>
+</div>
+
+<h2
+  id="appearance-date-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Date format
+</h2>
+<div class="px-4 py-2">
+  <hlm-select
+    class="block"
+    data-testid="date-format-select"
+    aria-labelledby="appearance-date-heading"
+    [value]="format.dateFormat()"
+    (valueChange)="onDateFormatChange($event)"
+  >
+    <hlm-select-trigger class="w-full">
+      <hlm-select-value placeholder="Select a date format" />
+    </hlm-select-trigger>
+    <hlm-select-content *hlmSelectPortal>
+      @for (option of format.dateFormats; track option.id) {
+        <hlm-select-item
+          [value]="option.id"
+          [attr.data-testid]="'date-format-' + option.id"
+        >
+          {{ option.label }} ({{ format.sampleDate(sample, option.id) }})
+        </hlm-select-item>
+      }
+    </hlm-select-content>
+  </hlm-select>
+</div>
+<p
+  class="block px-4 py-2 text-13 text-muted-foreground"
+  data-testid="date-time-showing"
+>
+  Showing {{ format.dateTime(sample) }}. Match system follows your device's
+  language.
+</p>
+
+<h2
   id="appearance-timeline-heading"
   class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 >

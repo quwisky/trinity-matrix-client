@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { fireEvent, render, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
@@ -8,7 +9,10 @@ import {
   UrlPreviewService,
   type ThreadSummary,
 } from '@trinity/data-access-timeline';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import {
+  DateTimeFormatService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
 import { type MediaPayload } from '@trinity/util-matrix';
 import { FileSaveService } from '../media-save/file-save.service';
 import {
@@ -112,6 +116,68 @@ describe('MessageRowComponent', () => {
       ],
     });
   }
+
+  // The load-bearing test for #22: the format preference must reach an already-rendered row.
+  //
+  // This is exactly what a pure pipe cannot do. `| date:` caches on its input, and a
+  // timestamp never changes — so `transform()` would be skipped, the preference signal never
+  // re-read, and (worse) the view's producer link trimmed on the next pass, leaving the row
+  // permanently deaf to the setting rather than merely stale once. Reading the signal through
+  // a method invoked from the template re-registers the dependency every pass.
+  describe('date and time format', () => {
+    /** Local wall-clock instant, so the assertions hold in any timezone. */
+    const AFTERNOON = new Date(2026, 6, 24, 15, 45).getTime();
+
+    it('re-renders a row when the format changes, with no input changing', async () => {
+      const only = row({ timestamp: AFTERNOON });
+      const { container, fixture } = await renderRow({ row: only });
+      const format = TestBed.inject(DateTimeFormatService);
+
+      format.setTimeFormat('h12');
+      fixture.detectChanges();
+      const before = container.querySelector('.msg__time')?.textContent?.trim();
+      expect(before).toContain('3:45');
+
+      format.setTimeFormat('h24');
+      fixture.detectChanges();
+
+      const after = container.querySelector('.msg__time')?.textContent?.trim();
+      expect(after).toContain('15:45');
+      expect(after).not.toBe(before);
+      // The row object is untouched — an OnPush view refreshed purely because its own
+      // template read a signal that changed.
+      expect(fixture.componentInstance.row()).toBe(only);
+    });
+
+    it('applies the date preference to the header timestamp', async () => {
+      const { container, fixture } = await renderRow({
+        row: row({ timestamp: AFTERNOON }),
+      });
+      const format = TestBed.inject(DateTimeFormatService);
+
+      format.setDateFormat('iso');
+      fixture.detectChanges();
+
+      expect(container.querySelector('.msg__time')?.textContent).toContain(
+        '2026-07-24',
+      );
+    });
+
+    // The hover gutter on a grouped continuation is the site the issue calls out by name.
+    it('applies the time preference to the continuation gutter', async () => {
+      const { container, fixture } = await renderRow({
+        row: row({ timestamp: AFTERNOON, showHeader: false }),
+      });
+      const format = TestBed.inject(DateTimeFormatService);
+
+      format.setTimeFormat('h24');
+      fixture.detectChanges();
+
+      expect(container.querySelector('.msg__gutter')?.textContent?.trim()).toBe(
+        '15:45',
+      );
+    });
+  });
 
   it('raises the who-reacted request from the reaction pills', async () => {
     const { fixture, container } = await renderRow({

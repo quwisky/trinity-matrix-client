@@ -29,6 +29,7 @@ import {
   type MessageView,
   type Mention,
 } from '@trinity/util-matrix';
+import { DateTimeFormatService } from '@trinity/platform-native';
 import { DayBoundaryService } from './day-boundary.service';
 import {
   type MessageRow,
@@ -174,6 +175,7 @@ export abstract class MessageListBase {
 
   protected readonly alert = inject(TrnAlertService);
   private readonly dayBoundary = inject(DayBoundaryService);
+  private readonly dateFormat = inject(DateTimeFormatService);
   private readonly reactionPicker = inject(ReactionPickerService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
@@ -200,6 +202,10 @@ export abstract class MessageListBase {
     const GAP_MS = 5 * 60 * 1000;
     const msgs = this.messages();
     const todayStart = this.dayBoundary.todayStart();
+    // Read unconditionally rather than inside the day-change branch below: a window that
+    // happens to span a single day must still re-derive when the format preference moves, or
+    // the first separator to appear after a backfill would carry the old one.
+    const dateFormat = this.dateFormat.prefs();
     const nextCache = new Map<string, RowCacheEntry>();
     // The calendar day the rows so far belong to, or null before the first row with a
     // usable timestamp. A row whose timestamp is missing or implausible (a malformed event
@@ -218,7 +224,7 @@ export abstract class MessageListBase {
         // we are actually showing. A separator at the top would also jump to a different
         // row on every page of backfilled history.
         if (currentDayStart !== null && dayStart !== currentDayStart) {
-          daySeparator = dayLabel(dayStart, todayStart);
+          daySeparator = dayLabel(dayStart, todayStart, dateFormat);
         }
         currentDayStart = dayStart;
       }

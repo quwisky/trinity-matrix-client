@@ -8,6 +8,7 @@ export * from './lib/voice-recorder.service';
 export * from './lib/draft-store.service';
 export * from './lib/system-line-settings.service';
 export * from './lib/theme.service';
+export * from './lib/date-time-format.service';
 export * from './lib/mobile-badge.service';
 export * from './lib/trinity-desktop-bridge';
 export * from './lib/shortcuts/chord';
