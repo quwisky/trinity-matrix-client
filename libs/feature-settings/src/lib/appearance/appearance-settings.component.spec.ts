@@ -14,6 +14,11 @@ import {
 import { By } from '@angular/platform-browser';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { DateTimeFormatService } from '@trinity/platform-native';
+import {
+  SpaceRoomOrderService,
+  TRINITY_ROOM_SORTS,
+  type RoomSortMode,
+} from '@trinity/data-access-rooms';
 import { AppearanceSettingsComponent } from './appearance-settings.component';
 
 describe('AppearanceSettingsComponent', () => {
@@ -26,6 +31,8 @@ describe('AppearanceSettingsComponent', () => {
   let setShowMembership: ReturnType<typeof vi.fn>;
   let setShowProfile: ReturnType<typeof vi.fn>;
   let setShowRoomChanges: ReturnType<typeof vi.fn>;
+  let spaceOrderDefault: ReturnType<typeof signal<RoomSortMode>>;
+  let setDefault: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     preference = signal<ThemePreference>('system');
@@ -37,6 +44,8 @@ describe('AppearanceSettingsComponent', () => {
     setShowMembership = vi.fn();
     setShowProfile = vi.fn();
     setShowRoomChanges = vi.fn();
+    spaceOrderDefault = signal<RoomSortMode>('recent');
+    setDefault = vi.fn();
   });
 
   function renderPage() {
@@ -55,6 +64,13 @@ describe('AppearanceSettingsComponent', () => {
           setShowMembership,
           setShowProfile,
           setShowRoomChanges,
+        }),
+        // Mocked rather than real: the service injects MatrixClientService (this page has
+        // no Matrix client) and hydrates from Capacitor Preferences on construction.
+        MockProvider(SpaceRoomOrderService, {
+          modes: TRINITY_ROOM_SORTS,
+          defaultMode: spaceOrderDefault.asReadonly(),
+          setDefault,
         }),
       ],
     });
@@ -90,6 +106,7 @@ describe('AppearanceSettingsComponent', () => {
       container.querySelector('[data-testid=palette-select]'),
       container.querySelector('[data-testid=time-format-select]'),
       container.querySelector('[data-testid=date-format-select]'),
+      container.querySelector('[data-testid=space-order-select]'),
     ];
     for (const control of labelled) {
       const id = control?.getAttribute('aria-labelledby');
@@ -157,6 +174,63 @@ describe('AppearanceSettingsComponent', () => {
       fixture.componentInstance.onTimeFormatChange('nonsense');
 
       expect(format.timeFormat()).toBe('h24');
+    });
+  });
+
+  // Same jsdom caveat as the palette dropdown: the option list lives in a CDK overlay that
+  // only renders once opened, so the open→select round-trip is covered in e2e.
+  describe('room order in spaces', () => {
+    it('renders a select bound to this account’s default', async () => {
+      spaceOrderDefault.set('alphabetical');
+      const { container } = await renderPage();
+
+      const select = container.querySelector(
+        '[data-testid=space-order-select]',
+      );
+      expect(select).not.toBeNull();
+      expect(select?.querySelector('button')).not.toBeNull();
+    });
+
+    it('shows the label on the collapsed trigger, not the stored id', async () => {
+      // hlm-select renders the trigger from the bound value rather than the chosen option's
+      // markup, so without itemToString this control would read "recent".
+      const { fixture } = await renderPage();
+
+      expect(fixture.componentInstance.spaceOrderLabel('recent')).toBe(
+        'Recent activity',
+      );
+      expect(fixture.componentInstance.spaceOrderLabel('space')).toBe(
+        'Space order',
+      );
+      // An id we no longer ship falls through rather than blanking the trigger.
+      expect(fixture.componentInstance.spaceOrderLabel('a-z')).toBe('a-z');
+    });
+
+    it('applies the chosen default', async () => {
+      const { fixture } = await renderPage();
+
+      fixture.componentInstance.onSpaceOrderChange('space');
+
+      expect(setDefault).toHaveBeenCalledWith('space');
+    });
+
+    it('ignores a value that is not one of the offered ids', async () => {
+      const { fixture } = await renderPage();
+
+      fixture.componentInstance.onSpaceOrderChange(null);
+      fixture.componentInstance.onSpaceOrderChange(undefined);
+      fixture.componentInstance.onSpaceOrderChange('a-z');
+
+      expect(setDefault).not.toHaveBeenCalled();
+    });
+
+    it('says the preference is per account and device-local', async () => {
+      // The page's other controls are device-wide, so the copy has to carry the difference.
+      const { container } = await renderPage();
+
+      expect(container.textContent).toContain(
+        'Saved per account on this device',
+      );
     });
   });
 

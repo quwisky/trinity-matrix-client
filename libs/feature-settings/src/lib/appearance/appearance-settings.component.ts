@@ -20,12 +20,17 @@ import {
   type Palette,
   type ThemePreference,
 } from '@trinity/platform-native';
+import {
+  SpaceRoomOrderService,
+  TRINITY_ROOM_SORTS,
+  isRoomSortMode,
+} from '@trinity/data-access-rooms';
 import { isDateFormat, isTimeFormat } from '@trinity/util-matrix';
 
 /**
  * Appearance settings sub-page: light/dark/system mode, colour palette, how dates and times
- * are written, and which system lines (joins, profile changes, room changes) the timeline
- * shows.
+ * are written, how rooms are ordered inside a space, and which system lines (joins, profile
+ * changes, room changes) the timeline shows.
  */
 @Component({
   selector: 'trn-appearance-settings',
@@ -48,6 +53,7 @@ export class AppearanceSettingsComponent {
   readonly theme = inject(ThemeService);
   readonly systemLines = inject(SystemLineSettingsService);
   readonly format = inject(DateTimeFormatService);
+  readonly spaceOrder = inject(SpaceRoomOrderService);
 
   /**
    * The instant every format option is previewed against.
@@ -81,6 +87,23 @@ export class AppearanceSettingsComponent {
   onDateFormatChange(value: string | null | undefined): void {
     if (isDateFormat(value)) {
       this.format.setDateFormat(value);
+    }
+  }
+
+  /**
+   * What the collapsed trigger shows for the stored id.
+   *
+   * `hlm-select` renders the trigger from the bound *value*, not from the chosen option's
+   * markup, so without this it would read `recent` rather than `Recent activity`. A stable
+   * field rather than an inline arrow, which would be a new reference every change detection.
+   */
+  readonly spaceOrderLabel = (mode: string): string =>
+    TRINITY_ROOM_SORTS.find((option) => option.id === mode)?.label ?? mode;
+
+  /** Apply + persist this account's default ordering for spaces with no override. */
+  onSpaceOrderChange(value: string | null | undefined): void {
+    if (isRoomSortMode(value)) {
+      this.spaceOrder.setDefault(value);
     }
   }
 }

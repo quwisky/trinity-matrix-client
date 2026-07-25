@@ -25,6 +25,16 @@
       @if (spaceActive()) {
         <button
           class="sidebar__action"
+          [hlmDropdownMenuTrigger]="sortMenu"
+          align="end"
+          [attr.aria-label]="'Order rooms: ' + sortModeLabel()"
+          [title]="'Order rooms: ' + sortModeLabel()"
+          data-testid="space-sort"
+        >
+          <ng-icon name="lucideArrowDownWideNarrow" aria-hidden="true" />
+        </button>
+        <button
+          class="sidebar__action"
           (click)="createRoom.emit()"
           aria-label="Create a channel"
           title="Create a channel"
@@ -232,6 +242,47 @@
     (addAccount)="addAccount.emit()"
     (logout)="logout.emit($event)"
   />
+
+  <ng-template #sortMenu>
+    <div hlmDropdownMenu>
+      <div hlmDropdownMenuLabel>Order rooms in {{ spaceName() }}</div>
+      <button
+        hlmDropdownMenuRadio
+        [checked]="!sortOverridden()"
+        [keepOpen]="false"
+        (triggered)="setSortMode.emit(null)"
+        data-testid="space-sort-default"
+      >
+        <hlm-dropdown-menu-radio-indicator />
+        Use my default ({{ labelFor(defaultSortMode()) }})
+      </button>
+      <div hlmDropdownMenuSeparator></div>
+      @for (option of sortModes; track option.id) {
+        <button
+          hlmDropdownMenuRadio
+          [checked]="sortOverridden() && sortMode() === option.id"
+          [keepOpen]="false"
+          (triggered)="setSortMode.emit(option.id)"
+          [attr.data-testid]="'space-sort-' + option.id"
+        >
+          <hlm-dropdown-menu-radio-indicator />
+          <span class="flex flex-col items-start gap-0.5">
+            <span>{{ option.label }}</span>
+            <span class="text-xs font-normal text-muted-foreground">
+              {{ option.description }}
+            </span>
+          </span>
+        </button>
+      }
+      <!-- Favourites are lifted into their own group before any of these orderings is
+           visible, so say so rather than letting "Space order" look broken. Trailing helper
+           text, NOT an hlmDropdownMenuLabel: that directive captions the group that follows
+           it, and there is nothing after this. -->
+      <p class="px-3 py-2.5 text-xs text-muted-foreground">
+        Favourites stay in their own group.
+      </p>
+    </div>
+  </ng-template>
 
   <ng-template #roomRow let-room>
     <div class="channel-row">

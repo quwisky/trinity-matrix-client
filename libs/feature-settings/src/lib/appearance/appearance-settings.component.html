@@ -134,6 +134,53 @@
 </p>
 
 <h2
+  id="appearance-space-order-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Room order in spaces
+</h2>
+<p class="block px-4 py-2 text-13 text-muted-foreground">
+  How rooms are listed inside a space — every other list is ordered by recent
+  activity. Saved per account on this device; a space you order individually
+  keeps its own choice.
+</p>
+<div class="px-4 py-2">
+  <hlm-select
+    class="block"
+    data-testid="space-order-select"
+    aria-labelledby="appearance-space-order-heading"
+    [value]="spaceOrder.defaultMode()"
+    [itemToString]="spaceOrderLabel"
+    (valueChange)="onSpaceOrderChange($event)"
+  >
+    <hlm-select-trigger class="w-full">
+      <hlm-select-value placeholder="Select an order" />
+    </hlm-select-trigger>
+    <hlm-select-content *hlmSelectPortal>
+      @for (option of spaceOrder.modes; track option.id) {
+        <hlm-select-item
+          [value]="option.id"
+          [attr.data-testid]="'space-order-' + option.id"
+        >
+          <!-- A div, not a span: hlm-select-item forces `flex items-center gap-2` onto its
+               last direct <span> child, which would lay these two lines out side by side. -->
+          <div class="flex flex-col items-start gap-0.5">
+            <span>{{ option.label }}</span>
+            <span class="text-xs text-muted-foreground">
+              {{ option.description }}
+            </span>
+          </div>
+        </hlm-select-item>
+      }
+    </hlm-select-content>
+  </hlm-select>
+</div>
+<p class="block px-4 pb-2 text-13 text-muted-foreground">
+  Favourites always sit in their own group, so “Space order” applies within each
+  group.
+</p>
+
+<h2
   id="appearance-timeline-heading"
   class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 >

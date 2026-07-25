@@ -72,7 +72,10 @@ import {
   MixedRoomsService,
   MixedSpacesService,
   UnreadAggregatorService,
+  SpaceRoomOrderService,
+  comparatorFor,
   type MemberSummary,
+  type RoomSortMode,
   type RoomSummary,
   type SpaceSummary,
   type SpaceChildRoom,
@@ -201,6 +204,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly mixedSpaces = inject(MixedSpacesService);
   private readonly accountScope = inject(AccountScopeService);
+  private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly mixedInvites = inject(MixedInvitesService);
   private readonly accountBadgesSvc = inject(AccountBadgesService);
   readonly invites = inject(InvitesService);
@@ -317,9 +321,10 @@ export class RoomsPage implements OnInit, OnDestroy {
    * Rooms shown in the channel sidebar. Home (`null`, the default) shows only direct
    * messages (`m.direct`) in recency order. The Rooms view shows every non-DM joined
    * room that does not belong to any space (space-owned rooms live under their space).
-   * A selected space shows only its joined child rooms, in the space's own order
-   * (`m.space.child` `order` then name). All read live signals, so the list reacts to
-   * sync, membership, and `m.space.child` changes.
+   * A selected space shows only its joined child rooms, in the ordering that space resolves
+   * to — its own override, else the active account's default (recent activity out of the
+   * box). All read live signals, so the list reacts to sync, membership, `m.space.child`
+   * changes, and to the ordering being changed from the sidebar or Settings.
    *
    * When the global "All accounts" scope is on ({@link mixedOn}), every list — Recent,
    * Home's DMs and the Rooms view — reads the cross-account {@link MixedRoomsService}
@@ -356,10 +361,35 @@ export class RoomsPage implements OnInit, OnDestroy {
       ? (this.mixedSpaces.spaces().find((s) => s.id === spaceId)
           ?.childRoomIds ?? [])
       : this.spaces.childRoomIds(spaceId);
-    return childIds
+    // `map().filter()` already allocates, so sorting in place here cannot reach the shared
+    // `rooms()` array these rows came from — `sort` mutates, and the Recent branch above
+    // hands that array out by identity.
+    const children = childIds
       .map((id) => byId.get(id))
       .filter((room): room is RoomSummary => room !== undefined);
+    return children.sort(
+      comparatorFor(this.spaceOrder.effectiveFor(spaceId), childIds),
+    );
   });
+
+  /**
+   * The ordering the open space's rooms are listed in — its own override, else the active
+   * account's default. Drives the sidebar header menu's radio checks.
+   */
+  readonly spaceSortMode = computed<RoomSortMode>(() =>
+    this.spaceOrder.effectiveFor(this.activeSpaceId()),
+  );
+
+  /**
+   * Whether that ordering is the space's own override rather than the account default —
+   * what separates a checked "Recent activity" from a checked "Use my default".
+   */
+  readonly spaceSortOverridden = computed(
+    () => this.spaceOrder.overrideFor(this.activeSpaceId()) !== null,
+  );
+
+  /** The active account's default ordering, named in the menu's "Use my default (…)" row. */
+  readonly defaultSpaceSortMode = this.spaceOrder.defaultMode;
 
   readonly activeSpaceName = computed(() => {
     const id = this.activeSpaceId();
@@ -1433,6 +1463,23 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe({
         error: () => void this.showError('Could not mark rooms read.'),
       });
+  }
+
+  /**
+   * Sidebar header sort menu: order the open space's rooms. `null` is "use my default", and
+   * *drops* the override rather than storing today's default — so the space keeps following
+   * that default if it is later changed in Settings.
+   */
+  onSetSpaceSort(mode: RoomSortMode | null): void {
+    const spaceId = this.activeSpaceId();
+    if (!spaceId) {
+      return; // the control is space-only, but the handler shouldn't assume it
+    }
+    if (mode) {
+      this.spaceOrder.setForSpace(spaceId, mode);
+    } else {
+      this.spaceOrder.clearForSpace(spaceId);
+    }
   }
 
   /** Header "Room settings": edit the active room's name and topic in a dialog. */

@@ -146,3 +146,122 @@ export function spaceChildIdsOf(client: MatrixClient, space: Room): string[] {
   );
   return children.map((entry) => entry.id);
 }
+
+/**
+ * The orderings a space's room list can be shown in, as `{ id, label, description }` for the
+ * UI. The descriptions are not decoration: "Space order" is meaningless without being told
+ * whose order it is, and both surfaces let you pick an ordering without seeing its effect.
+ */
+export const TRINITY_ROOM_SORTS = [
+  {
+    id: 'recent',
+    label: 'Recent activity',
+    description: 'Most recently active first, like every other list.',
+  },
+  {
+    id: 'space',
+    label: 'Space order',
+    description: 'The order the space itself arranges its rooms in.',
+  },
+  {
+    id: 'alphabetical',
+    label: 'Alphabetical',
+    description: 'By room name, A to Z.',
+  },
+] as const;
+
+/** One of the orderings above. */
+export type RoomSortMode = (typeof TRINITY_ROOM_SORTS)[number]['id'];
+
+/** Recent activity — the order every other room list in the app already uses. */
+export const DEFAULT_ROOM_SORT: RoomSortMode = 'recent';
+
+/**
+ * Whether a stored or bound string is one of the orderings we ship.
+ *
+ * `undefined` is in the parameter type deliberately: `hlm-select`'s `valueChange` is
+ * `string | null | undefined`, and guarding a massaged expression (`isRoomSortMode(v ?? null)`)
+ * narrows only that expression, leaving the original binding wide. That type-checks under
+ * Vitest and fails only in the Angular build.
+ */
+export function isRoomSortMode(
+  value: string | null | undefined,
+): value is RoomSortMode {
+  return TRINITY_ROOM_SORTS.some((option) => option.id === value);
+}
+
+/** Sorts after every ranked room, so an id missing from the rank map lands last. */
+const UNRANKED = Number.MAX_SAFE_INTEGER;
+
+/**
+ * Favourite-first, shared by every ordering.
+ *
+ * The sidebar renders favourites as their own group, so this term does not change what is on
+ * screen. It is not a no-op for the array itself, which is what the keyboard walk and "mark
+ * all read" iterate — without it those would walk a different order from the one rendered.
+ */
+function favouriteFirst(a: RoomSummary, b: RoomSummary): number {
+  return Number(b.favourite) - Number(a.favourite);
+}
+
+/**
+ * Position lookup for {@link comparatorFor}'s `'space'` mode: room id → index in the space's
+ * curated child order.
+ *
+ * Built from the id list the rows were mapped from, because a child's `m.space.child` `order`
+ * belongs to the *space*, not to a {@link RoomSummary} — there is nothing on the row itself to
+ * sort by. First occurrence wins, so the result is well defined for any input, though neither
+ * producer emits a repeat today (`spaceChildIdsOf` reads one state event per child, and
+ * `MixedSpacesService` dedupes as it concatenates).
+ *
+ * **Mixed accounts see an approximation.** `MixedSpacesService` builds its child list by
+ * concatenating each account's children in sorted-user-id order rather than merge-sorting by
+ * the `order` string, so a space spanning two accounts ranks the first account's curated
+ * children ahead of the second's extras. This reproduces that list verbatim; fixing it means
+ * fixing the projection.
+ */
+export function spaceRankOf(
+  childIds: readonly string[],
+): ReadonlyMap<string, number> {
+  const rank = new Map<string, number>();
+  for (let i = 0; i < childIds.length; i++) {
+    if (!rank.has(childIds[i])) {
+      rank.set(childIds[i], i);
+    }
+  }
+  return rank;
+}
+
+/**
+ * The comparator for one ordering. A factory rather than `compare(a, b, mode)` so the mode
+ * switch is resolved — and the rank map built — once per sort, not once per comparison.
+ *
+ * `childIds` is the space's curated order, read only by `'space'`; the other modes never walk
+ * it, which is why the rank map is built inside that branch rather than by the caller (this
+ * runs on every sync, and the shipped default is `'recent'`). An id the list does not hold
+ * sorts last rather than yielding `NaN`, which would make `sort` implementation-defined.
+ *
+ * NOTE: `Array.prototype.sort` mutates, and `RoomsService.rooms()` / `MixedRoomsService.rooms()`
+ * hand out their array by identity — sort a copy you own, never the signal's value.
+ */
+export function comparatorFor(
+  mode: RoomSortMode,
+  childIds: readonly string[] = [],
+): (a: RoomSummary, b: RoomSummary) => number {
+  switch (mode) {
+    case 'space': {
+      const rank = spaceRankOf(childIds);
+      return (a, b) =>
+        favouriteFirst(a, b) ||
+        (rank.get(a.id) ?? UNRANKED) - (rank.get(b.id) ?? UNRANKED) ||
+        a.name.localeCompare(b.name);
+    }
+    case 'alphabetical':
+      return (a, b) => favouriteFirst(a, b) || a.name.localeCompare(b.name);
+    case 'recent':
+    default:
+      // The app-wide comparator itself, so a space in this mode reads exactly like the
+      // Recent view filtered down to that space.
+      return compareRoomSummaries;
+  }
+}

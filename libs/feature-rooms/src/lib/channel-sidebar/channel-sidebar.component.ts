@@ -11,6 +11,7 @@ import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
   HlmDropdownMenuItemSubIndicator,
+  HlmDropdownMenuLabel,
   HlmDropdownMenuRadio,
   HlmDropdownMenuRadioIndicator,
   HlmDropdownMenuSeparator,
@@ -20,6 +21,7 @@ import {
 } from '@trinity/helm/dropdown-menu';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  lucideArrowDownWideNarrow,
   lucideBell,
   lucideCheck,
   lucideCheckCheck,
@@ -49,8 +51,11 @@ import {
 } from '@trinity/data-access-profile';
 import {
   AccountScopeService,
+  DEFAULT_ROOM_SORT,
   RoomsService,
   SpacesService,
+  TRINITY_ROOM_SORTS,
+  type RoomSortMode,
   type RoomSummary,
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
@@ -81,6 +86,7 @@ export type { AccountSummary };
     HlmDropdownMenu,
     HlmDropdownMenuItem,
     HlmDropdownMenuItemSubIndicator,
+    HlmDropdownMenuLabel,
     HlmDropdownMenuRadio,
     HlmDropdownMenuRadioIndicator,
     HlmDropdownMenuSeparator,
@@ -89,6 +95,7 @@ export type { AccountSummary };
   ],
   viewProviders: [
     provideIcons({
+      lucideArrowDownWideNarrow,
       lucideBell,
       lucideCheck,
       lucideCheckCheck,
@@ -247,6 +254,29 @@ export class ChannelSidebarComponent {
   }>();
   /** Mark every room read (header action). */
   readonly markAllRead = output<void>();
+
+  /** The ordering the open space's list is currently using (drives the radio checks). */
+  readonly sortMode = input<RoomSortMode>(DEFAULT_ROOM_SORT);
+  /** Whether that ordering is the space's own override rather than the account default. */
+  readonly sortOverridden = input(false);
+  /** The active account's default ordering, named in the "Use my default (…)" row. */
+  readonly defaultSortMode = input<RoomSortMode>(DEFAULT_ROOM_SORT);
+  /**
+   * Header sort menu: order this space's rooms this way. `null` means "follow my account
+   * default", which drops the override. One output because the rows are one radio group.
+   */
+  readonly setSortMode = output<RoomSortMode | null>();
+
+  /** The orderings offered in the header sort menu. */
+  readonly sortModes = TRINITY_ROOM_SORTS;
+
+  /** What the sort button announces — the effective order, override or not. */
+  readonly sortModeLabel = computed(() => this.labelFor(this.sortMode()));
+
+  /** An ordering's human label. */
+  labelFor(mode: RoomSortMode): string {
+    return TRINITY_ROOM_SORTS.find((option) => option.id === mode)?.label ?? '';
+  }
 
   /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
   readonly badgeLabel = unreadBadgeLabel;

@@ -14,7 +14,10 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
 import { AvatarService } from '@trinity/data-access-media';
 import { GifSettingsService } from '@trinity/data-access-gif';
-import { AccountScopeService } from '@trinity/data-access-rooms';
+import {
+  AccountScopeService,
+  SpaceRoomOrderService,
+} from '@trinity/data-access-rooms';
 import {
   AppBadgeService,
   PUSH_CONFIG,
@@ -98,6 +101,11 @@ bootstrapApplication(AppComponent, {
     // Load the saved GIF provider + API key so the composer knows whether to
     // offer the GIF picker on first paint.
     provideAppInitializer(() => inject(GifSettingsService).init()),
+    // Construct the per-space room ordering store so its hydrate effect is live for the
+    // whole session, and read whatever accounts are already known. At this point the
+    // persisted session usually has not been restored yet, so the effect — not this call —
+    // does most of the work; it fires again as each account signs in.
+    provideAppInitializer(() => inject(SpaceRoomOrderService).init()),
     // Restore which accounts the room list mixes, before the shell projects its
     // first room list — otherwise a multi-account user's chosen mix would flash
     // as single-account on every cold start.
