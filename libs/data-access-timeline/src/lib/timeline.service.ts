@@ -1,5 +1,4 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
-import { DomSanitizer } from '@angular/platform-browser';
 import {
   Direction,
   EventType,
@@ -103,7 +102,6 @@ export interface RoomTombstone {
 @Injectable({ providedIn: 'root' })
 export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly sanitizer = inject(DomSanitizer);
   private readonly mediaSvc = inject(MediaService);
   private readonly privacy = inject(PrivacySettingsService);
   private readonly systemLines = inject(SystemLineSettingsService);
@@ -536,16 +534,8 @@ export class TimelineService {
       // otherwise build the normal text content (rather than sendText/HtmlMessage) so
       // mentions carry `m.mentions` + matrix.to pills. The SDK creates the local echo.
       const content =
-        slashCommandContent(
-          text,
-          (md) => renderMarkdown(this.sanitizer, md),
-          mentions,
-        ) ??
-        textMessageContent(
-          text,
-          renderMarkdown(this.sanitizer, text),
-          mentions,
-        );
+        slashCommandContent(text, renderMarkdown, mentions) ??
+        textMessageContent(text, renderMarkdown(text), mentions);
       return from(client.sendMessage(room.roomId, content as never));
     }).pipe(map(() => void 0));
   }
@@ -727,7 +717,7 @@ export class TimelineService {
         switchMap((media) => {
           const content = {
             msgtype: media.msgtype,
-            ...mediaCaptionFields(this.sanitizer, media.body, caption),
+            ...mediaCaptionFields(media.body, caption),
             info: media.info,
             ...(media.file ? { file: media.file } : { url: media.mxc }),
           };
@@ -754,7 +744,7 @@ export class TimelineService {
       const content = editMessageContent(
         messageId,
         text,
-        renderMarkdown(this.sanitizer, text),
+        renderMarkdown(text),
         mentions,
       );
       // `content` is a valid m.replace payload; the SDK's content union doesn't
@@ -795,7 +785,7 @@ export class TimelineService {
         room,
         messageId,
         text,
-        renderMarkdown(this.sanitizer, text),
+        renderMarkdown(text),
         mentions,
       );
       return from(client.sendMessage(room.roomId, content as never));

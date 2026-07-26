@@ -3,6 +3,8 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -43,7 +45,9 @@ import {
   type EmojiEvent,
 } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import {
+  ComposerSettingsService,
   DraftStoreService,
+  KeyboardShortcutsService,
   ThemeService,
   VoiceRecorderService,
 } from '@trinity/platform-native';
@@ -53,7 +57,23 @@ import {
   type GifResult,
 } from '@trinity/data-access-gif';
 import { TimelineService } from '@trinity/data-access-timeline';
-import { type Mention } from '@trinity/util-matrix';
+import {
+  applyFormat,
+  continueList,
+  escapeHtml,
+  linkifyText,
+  renderMarkdown,
+  sanitizeMatrixHtml,
+  slashCommandContent,
+  textMessageContent,
+  type EditResult,
+  type FormatAction,
+  type Mention,
+} from '@trinity/util-matrix';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/ui';
+import { ComposerToolbarComponent } from './composer-toolbar/composer-toolbar.component';
+import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
+import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { MediaPickerService } from '../media-picker/media-picker.service';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { CreatePollService } from '../poll/create-poll.service';
@@ -93,6 +113,19 @@ const MENTION_TRIGGER = /(?:^|\s)@([^\s@]*)$/;
 const MENTION_SUGGESTION_LIMIT = 8;
 
 /**
+ * Which formatting action each shortcut applies. An explicit table rather than deriving the
+ * action from the id: a `format.*` id with no entry here is simply not a formatting shortcut,
+ * where slicing the prefix off would have produced a bogus action and applied nothing.
+ */
+const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
+  'format.bold': 'bold',
+  'format.italic': 'italic',
+  'format.strike': 'strike',
+  'format.code': 'code',
+  'format.link': 'link',
+};
+
+/**
  * Discord-style composer: Enter sends, Shift+Enter inserts a newline. In edit mode
  * it is prefilled with the message draft and Esc cancels. An emoji button opens a
  * picker that inserts at the cursor.
@@ -112,6 +145,9 @@ const MENTION_SUGGESTION_LIMIT = 8;
     HlmProgress,
     HlmProgressIndicator,
     HlmSpinner,
+    ComposerToolbarComponent,
+    SpoilerRevealDirective,
+    MatrixLinkDirective,
   ],
   viewProviders: [
     provideIcons({
@@ -180,6 +216,66 @@ export class MessageComposerComponent {
   readonly typing = output<boolean>();
 
   readonly text = signal('');
+
+  /**
+   * True on the narrow single-pane layout, where the toolbar keeps fewer buttons outside its
+   * overflow. Owned here rather than in the toolbar so that stays presentational, the same
+   * division the sidebar's user panel uses.
+   */
+  protected readonly narrowLayout = mediaQuerySignal(BELOW_MD_QUERY);
+
+  /** Whether the preview is showing in place of the input. */
+  readonly previewing = signal(false);
+
+  /**
+   * The message as it will arrive, rendered through the timeline's own path so the two cannot
+   * disagree — including the slash commands wherever the send path parses them, because
+   * `/spoiler x` sends a concealed span and previewing the literal text would be a lie in
+   * exactly the case a preview is most useful. Where it does not parse them (reply, edit,
+   * caption) the lie runs the other way, so the preview shows the text as typed.
+   *
+   * `sanitizeMatrixHtml` is what adds the render-only normalisation the send path deliberately
+   * omits: the spoiler class the reveal directive needs, the code-block language caption and
+   * syntax highlighting.
+   */
+  readonly preview = computed<{ html: string; rich: boolean }>(() => {
+    const text = this.text().trim();
+    if (!text) {
+      return { html: '', rich: false };
+    }
+    const mentions = untracked(() => this.activeMentions());
+    // Slash commands only where they are actually parsed on send: `TimelineService.send` and
+    // `ThreadsService.sendThreadMessage`. A reply, an edit and an attachment caption route
+    // through `replyMessageContent` / `editMessageContent` / `mediaCaptionFields`, none of
+    // which look at a leading slash — so previewing `/spoiler x` concealed while replying
+    // would promise a spoiler and send the literal text.
+    const parsesCommands =
+      !this.editing() && !this.replyingTo() && !this.pendingFile();
+    const content = ((parsesCommands
+      ? slashCommandContent(text, renderMarkdown, mentions)
+      : null) ?? textMessageContent(text, renderMarkdown(text), mentions)) as {
+      formatted_body?: string;
+      body?: string;
+    };
+    const html = content.formatted_body;
+    if (html) {
+      return { html: sanitizeMatrixHtml(html), rich: true };
+    }
+    // No formatted_body means it goes as plain text, which the timeline linkifies (falling
+    // back to the raw body when there is no URL) — mirror both, including which container it
+    // lands in. `linkifyText` replaces newlines with `<br>`, so its output belongs in the
+    // rendered-markdown container the timeline uses at `message-row.component.html:88`;
+    // without that class the link would render browser-blue instead of in the palette.
+    // The fallback keeps raw newlines and so needs `pre-wrap`, which is what `rich: false`
+    // selects — hence `escapeHtml` and NOT `escapeInlineText`, whose `<br>`s would double
+    // every line break under it.
+    const body = content.body ?? text;
+    const linkified = linkifyText(body);
+    return linkified !== null
+      ? { html: linkified, rich: true }
+      : { html: escapeHtml(body), rich: false };
+  });
+
   /** A picked/pasted attachment held for a caption, sent on the next submit
    * (Enter / send button) — not uploaded immediately. */
   readonly pendingFile = signal<File | null>(null);
@@ -280,6 +376,7 @@ export class MessageComposerComponent {
   private readonly timeline = inject(TimelineService);
   private readonly voiceRecorder = inject(VoiceRecorderService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
 
   /** Whether this device can record voice (mic + MediaRecorder present). */
   get voiceSupported(): boolean {
@@ -291,6 +388,15 @@ export class MessageComposerComponent {
   private readonly gifs = inject(GifService);
   private readonly gifSettings = inject(GifSettingsService);
   private readonly drafts = inject(DraftStoreService);
+  private readonly composerSettings = inject(ComposerSettingsService);
+  /**
+   * Whether the formatting toolbar is shown (Settings → Appearance). Hiding it is a screen
+   * space choice, so it takes away the ROW only: {@link onKeydown} still resolves the
+   * formatting chords, and Shift+Enter still continues a list.
+   */
+  readonly showToolbar = this.composerSettings.showFormattingToolbar;
+  /** Resolves the user's (rebindable) formatting chords — see {@link onKeydown}. */
+  private readonly shortcuts = inject(KeyboardShortcutsService);
   private wasEditing = false;
   private wasEditTargetId: string | null = null;
   private wasReplying = false;
@@ -326,6 +432,7 @@ export class MessageComposerComponent {
             this.cancelVoiceRecording();
           }
           this.mentions.set([]); // tracked mentions belong to the old conversation
+          this.previewing.set(false); // the new room opens ready to write, not to read
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!this.editing()) {
             if (prev != null) {
@@ -335,6 +442,15 @@ export class MessageComposerComponent {
             queueMicrotask(() => this.autoGrow());
           }
         });
+      }
+    });
+
+    // The preview toggle lives ON the toolbar, so taking the toolbar away mid-preview would
+    // leave the composer showing a preview with nothing left to switch back — the same trap
+    // `resetMenus` guards against, arriving from Settings rather than from a send.
+    effect(() => {
+      if (!this.showToolbar()) {
+        this.previewing.set(false);
       }
     });
 
@@ -351,6 +467,9 @@ export class MessageComposerComponent {
     effect(() => {
       const replying = !!this.replyingTo();
       if (replying && !this.wasReplying) {
+        // A preview hides the textarea, so the focus() below would land on nothing and
+        // leave the composer swallowing every keystroke of the reply being typed.
+        this.previewing.set(false);
         queueMicrotask(() => this.textarea()?.nativeElement.focus());
       }
       this.wasReplying = replying;
@@ -366,6 +485,10 @@ export class MessageComposerComponent {
       const targetId = this.editTargetId();
       if (editing && (!this.wasEditing || targetId !== this.wasEditTargetId)) {
         this.text.set(untracked(() => this.draft()));
+        // Both branches replace the text wholesale, so a preview left open would be showing
+        // content that is no longer there — and the focus() below cannot land on a hidden
+        // textarea, leaving edit mode apparently unresponsive.
+        this.previewing.set(false);
         queueMicrotask(() => {
           const el = this.textarea()?.nativeElement;
           el?.focus();
@@ -377,6 +500,7 @@ export class MessageComposerComponent {
         // none), so an edit interlude doesn't discard a half-typed message.
         const id = untracked(() => this.roomId());
         this.text.set(id != null ? this.drafts.get(id) : '');
+        this.previewing.set(false);
         queueMicrotask(() => this.autoGrow());
       }
       this.wasEditing = editing;
@@ -410,6 +534,114 @@ export class MessageComposerComponent {
     if (!(event as InputEvent).isComposing) {
       this.syncEmojiAutocomplete();
       this.syncMentionAutocomplete();
+    }
+  }
+
+  /**
+   * The keys the composer owns that Angular's per-key bindings cannot express.
+   *
+   * Two jobs. **Formatting chords** are user-rebindable, so they are data rather than a
+   * template string and have to be resolved through the registry. Only `format.` ids are
+   * claimed — everything else (the quick switcher, the room hops) is left to bubble to the
+   * page handler, so those still work while typing. `stopPropagation` is what keeps a claimed
+   * chord off that handler, and `preventDefault` is not optional: Chrome and Firefox bind
+   * Ctrl+B to the bookmarks bar.
+   *
+   * **Shift+Enter** continues a list. It cannot live in `onEnter`, which Angular only fires
+   * when no modifier is held — the newline today is the browser's own default.
+   */
+  onKeydown(event: Event): void {
+    const keyEvent = event as KeyboardEvent;
+    // Never rewrite the buffer mid-composition; the same reason onInput and onEnter guard.
+    if (keyEvent.isComposing) {
+      return;
+    }
+
+    if (keyEvent.key === 'Enter' && keyEvent.shiftKey) {
+      this.continueListAtCaret(keyEvent);
+      return;
+    }
+
+    const hit = this.shortcuts.resolve(keyEvent);
+    const action = hit ? SHORTCUT_ACTIONS[hit.id] : undefined;
+    if (!action) {
+      return; // not a formatting chord — let it reach the page-level handler
+    }
+    keyEvent.preventDefault();
+    keyEvent.stopPropagation();
+    this.onFormat(action);
+  }
+
+  /** Carry a list or quote marker onto the next line, or end the list on an empty item. */
+  private continueListAtCaret(event: KeyboardEvent): void {
+    const el = this.textarea()?.nativeElement;
+    const caret = el?.selectionStart ?? this.text().length;
+    // Only meaningful for a collapsed caret: with a selection, Shift+Enter replaces it, which
+    // is the browser's job.
+    if (el && el.selectionStart !== el.selectionEnd) {
+      return;
+    }
+    const result = continueList(this.text(), caret);
+    if (!result) {
+      return; // not in a list — let the browser insert its newline
+    }
+    event.preventDefault();
+    this.applyEdit(result);
+  }
+
+  /** Apply a formatting action to the current selection. */
+  onFormat(action: FormatAction): void {
+    const el = this.textarea()?.nativeElement;
+    const value = this.text();
+    const start = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? value.length;
+    this.applyEdit(applyFormat(value, start, end, action));
+  }
+
+  /**
+   * Adopt an edit's text and selection.
+   *
+   * The DOM is written synchronously as well as the signal. These edits replace a keystroke we
+   * cancelled — Shift+Enter's newline, a formatting chord — so the textarea has to show the
+   * result before the *next* keystroke arrives. Leaving it to change detection opens a window
+   * in which a fast typist's next character is read back off a stale value and the edit is
+   * silently undone. The selection is re-asserted in a microtask as well, because Angular's own
+   * `[value]` write lands somewhere in there and setting `value` resets the caret to the end.
+   */
+  private applyEdit(result: EditResult): void {
+    this.text.set(result.text);
+    const el = this.textarea()?.nativeElement;
+    if (el) {
+      el.value = result.text;
+      el.setSelectionRange(result.selectionStart, result.selectionEnd);
+    }
+    this.autoGrow();
+    // The same bookkeeping a keystroke would have done. Without it an open mention menu keeps
+    // a query anchored to a caret that has moved — accepting it then splices at a stale offset
+    // — and a message begun entirely from the toolbar never announces that anyone is typing.
+    this.syncEmojiAutocomplete();
+    this.syncMentionAutocomplete();
+    this.typing.emit(result.text.trim().length > 0);
+    queueMicrotask(() => {
+      const settled = this.textarea()?.nativeElement;
+      settled?.focus();
+      settled?.setSelectionRange(result.selectionStart, result.selectionEnd);
+      this.autoGrow();
+    });
+  }
+
+  /** Swap between writing and previewing, returning focus to the input on the way back. */
+  onTogglePreview(): void {
+    const next = !this.previewing();
+    this.previewing.set(next);
+    if (!next) {
+      // afterNextRender, NOT queueMicrotask: the app is zoneless, so setting the signal only
+      // schedules change detection (rAF). A microtask runs first, while the textarea is still
+      // `display: none` — and focus() on a hidden element is a no-op, so the caret would end
+      // up on <body> and the next keystroke would go nowhere.
+      afterNextRender(() => this.textarea()?.nativeElement?.focus(), {
+        injector: this.injector,
+      });
     }
   }
 
@@ -482,7 +714,7 @@ export class MessageComposerComponent {
       this.clearPending();
       this.text.set('');
       this.resetMenus();
-      queueMicrotask(() => this.autoGrow());
+      this.regrowAfterRender();
       return;
     }
     const value = this.text().trim();
@@ -495,8 +727,23 @@ export class MessageComposerComponent {
     if (!this.editing()) {
       // Edits clear via editing → false; new messages clear here.
       this.text.set('');
-      queueMicrotask(() => this.autoGrow());
+      this.regrowAfterRender();
     }
+  }
+
+  /**
+   * Re-measure the input once the DOM reflects the signals just written.
+   *
+   * `afterNextRender`, NOT `queueMicrotask`, for the reason {@link onTogglePreview} records:
+   * this runs in an event handler, where the app being zoneless means a signal write only
+   * schedules change detection (a rAF/timeout race) — a microtask beats it. `resetMenus`
+   * leaves the preview, so the microtask measured a textarea still `display: none`,
+   * `scrollHeight` read 0, and the input was pinned to `height: 0px` (it has `min-height: 0`
+   * and `box-sizing: border-box`) until the next keystroke grew it again. Not reachable by a
+   * unit test: jsdom reports `scrollHeight: 0` for everything.
+   */
+  private regrowAfterRender(): void {
+    afterNextRender(() => this.autoGrow(), { injector: this.injector });
   }
 
   /** Close both autocomplete menus and forget the tracked mentions. */
@@ -504,6 +751,10 @@ export class MessageComposerComponent {
     this.emojiQuery.set(null);
     this.mentionQuery.set(null);
     this.mentions.set([]);
+    // Leaving the preview on is a trap rather than a preference: it hides the textarea, so a
+    // composer that lands in preview mode after a send or a room switch looks broken — an
+    // empty box that swallows typing until you notice the eye button.
+    this.previewing.set(false);
   }
 
   /** Recompute the mention menu from the `@query` under the caret. */
@@ -656,6 +907,9 @@ export class MessageComposerComponent {
       return;
     }
     this.recordingVoice.set(true);
+    // Recording replaces the toolbar, and the preview toggle lives on it — leaving the
+    // preview up would strand it with no way back to the input.
+    this.previewing.set(false);
     this.voiceElapsed.set(0);
     this.voiceTimer = setInterval(
       () => this.voiceElapsed.update((s) => s + 1),

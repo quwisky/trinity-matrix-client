@@ -32,6 +32,7 @@ import {
   PrivacySettingsService,
   StoragePersistenceService,
   SystemLineSettingsService,
+  ComposerSettingsService,
   ThemeService,
   TrinityErrorHandler,
 } from '@trinity/platform-native';
@@ -85,6 +86,7 @@ bootstrapApplication(AppComponent, {
     // before the first room is projected — otherwise a user who hid them would see the
     // churn flash in on every cold start.
     provideAppInitializer(() => inject(SystemLineSettingsService).init()),
+    provideAppInitializer(() => inject(ComposerSettingsService).init()),
     // Load the saved date/time formats before the first timeline paints — every message
     // header carries a timestamp, so hydrating late would render the whole room in the
     // default format and then reflow it.

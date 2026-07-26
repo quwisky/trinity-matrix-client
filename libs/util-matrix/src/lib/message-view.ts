@@ -746,9 +746,14 @@ const ALLOWED_CLASS = /^(?:language-[\w-]+|mx-spoiler)$/;
 // as a read receipt. Inline mxc rendering isn't wired yet, so strip the `src`
 // of any non-local image: this blocks remote auto-loading outright while
 // leaving mxc/blob/data sources intact for when inline rendering lands. The hook
-// also filters the `class` attribute to the Matrix-sanctioned allowlist. Hook is
-// registered once at module load; it only affects `sanitizeMatrixHtml` (the
-// composer path uses Angular's DomSanitizer, not DOMPurify).
+// also filters the `class` attribute to the Matrix-sanctioned allowlist.
+//
+// Registered once at module load, and it applies to BOTH entry points — incoming
+// {@link sanitizeMatrixHtml} and outgoing {@link sanitizeOutgoingHtml}. Only
+// security belongs here for that reason: attributes set inside
+// `afterSanitizeAttributes` are not re-filtered against ALLOWED_ATTR, so anything
+// added here would ride out onto the wire too. Render-only normalisation lives in
+// {@link normaliseSpoilers} instead.
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.nodeName === 'IMG' && node.hasAttribute('src')) {
     const src = node.getAttribute('src') ?? '';
@@ -766,16 +771,6 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       node.removeAttribute('class');
     }
   }
-  // Normalise a spoiler for the renderer. `data-mx-spoiler` marks it in Matrix HTML,
-  // but Angular's `[innerHTML]` sanitizer (the defence-in-depth re-scrub at the render
-  // leaf) drops all `data-*` attributes — so tag it with the sanctioned `mx-spoiler`
-  // class instead (class/tabindex/role all survive that pass). Focusable + role=button
-  // so keyboard users can reveal it too (pointer users get click-to-reveal).
-  if (node.hasAttribute('data-mx-spoiler')) {
-    node.classList.add('mx-spoiler');
-    node.setAttribute('tabindex', '0');
-    node.setAttribute('role', 'button');
-  }
 });
 
 // Memoize sanitization by raw input: DOMPurify is a pure function of the html
@@ -787,25 +782,104 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 const SANITIZED_HTML_CACHE_MAX = 1000;
 const sanitizedHtmlCache = new Map<string, string>();
 
+const MATRIX_PURIFY_CONFIG = {
+  ALLOWED_TAGS: MATRIX_ALLOWED_TAGS,
+  ALLOWED_ATTR: MATRIX_ALLOWED_ATTR,
+  // Only safe URL schemes on href/src (DOMPurify also blocks javascript:).
+  ALLOWED_URI_REGEXP: /^(?:https?|ftp|mailto|magnet|mxc):/i,
+} as const;
+
 /**
- * Sanitize sender-provided HTML (`formatted_body`) against the Matrix allowlist.
- * Federated, end-to-end-encrypted content is untrusted and can't be scanned
- * server-side, so it is scrubbed here *explicitly* rather than relying on
- * Angular's implicit `[innerHTML]` sanitization at the render leaf. Never wrap
- * the result in `bypassSecurityTrust*`. The result is memoized by raw input (see
+ * The render-side config: the Matrix allowlist plus `input` and the two attributes needed to
+ * read a GFM checkbox other clients send. Nothing here reaches the output —
+ * {@link normaliseTaskItems} replaces every input with its glyph and sweeps both attributes
+ * off the tree before it is serialized. **Render only**: `sanitizeOutgoingHtml` keeps
+ * {@link MATRIX_PURIFY_CONFIG} untouched, so none of this can widen what we send.
+ */
+const RENDER_PURIFY_CONFIG = {
+  ...MATRIX_PURIFY_CONFIG,
+  ADD_TAGS: ['input'],
+  ADD_ATTR: ['type', 'checked'],
+  // `type` needs this and `checked` does not, which is not obvious: DOMPurify tests the VALUE
+  // of any attribute it does not consider URI-safe against ALLOWED_URI_REGEXP, and ours only
+  // admits Matrix's schemes — so `type="checkbox"` failed that test and was dropped while the
+  // valueless `checked` came through, leaving every incoming box indistinguishable and
+  // unchecked. Marking it URI-safe skips the scheme test; the attribute is swept off the tree
+  // either way before anything is serialized.
+  ADD_URI_SAFE_ATTR: ['type'],
+  // No `as const` here, unlike the config above: it would make these three readonly tuples,
+  // which do not satisfy DOMPurify's `string[]` config — the overload stops matching and the
+  // `HTMLElement` downcast at the call site fails to compile. Vitest does not typecheck, so
+  // this only surfaces in `nx build`.
+};
+
+/**
+ * Turns the source of a fenced code block into highlighted nodes, or null when the
+ * language is unknown and it should be left as plain text.
+ */
+export type CodeHighlighter = (
+  code: string,
+  lang: string,
+  doc: Document,
+) => DocumentFragment | null;
+
+let codeHighlighter: CodeHighlighter | null = null;
+
+/**
+ * Total characters of code one message may have highlighted. The highlighter caps a single
+ * block; this caps their sum, so a sender cannot spend the main thread by splitting a huge
+ * listing across many fenced blocks in one event.
+ */
+const MAX_HIGHLIGHT_CHARS_PER_MESSAGE = 20_000;
+
+/**
+ * Install (or clear) the syntax highlighter used by {@link sanitizeMatrixHtml}.
+ *
+ * A registration seam rather than a direct import: this module is in the app's EAGER
+ * bundle, so importing a highlighter here would put every grammar in the initial
+ * chunk. The implementation lives behind `@trinity/util-matrix/code-highlight`, which
+ * only the lazily-loaded rooms route pulls in.
+ *
+ * Clears the memo, because anything cached before installation was scrubbed without
+ * highlighting and would otherwise stay that way for the life of the process.
+ */
+export function setCodeHighlighter(highlighter: CodeHighlighter | null): void {
+  codeHighlighter = highlighter;
+  sanitizedHtmlCache.clear();
+}
+
+/**
+ * Sanitize sender-provided HTML (`formatted_body`) for RENDERING, against the Matrix
+ * allowlist. Federated, end-to-end-encrypted content is untrusted and can't be scanned
+ * server-side, so it is scrubbed here *explicitly* rather than relying on Angular's
+ * implicit `[innerHTML]` sanitization at the render leaf. Never wrap the result in
+ * `bypassSecurityTrust*`. The result is memoized by raw input (see
  * {@link sanitizedHtmlCache}); the scrubbed output is identical regardless.
+ *
+ * Also applies render-only normalisation — spoiler tagging and syntax highlighting —
+ * which is why {@link sanitizeOutgoingHtml} exists separately for the send path.
  */
 export function sanitizeMatrixHtml(html: string): string {
   const memoized = sanitizedHtmlCache.get(html);
   if (memoized !== undefined) {
     return memoized;
   }
-  const clean = DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: MATRIX_ALLOWED_TAGS,
-    ALLOWED_ATTR: MATRIX_ALLOWED_ATTR,
-    // Only safe URL schemes on href/src (DOMPurify also blocks javascript:).
-    ALLOWED_URI_REGEXP: /^(?:https?|ftp|mailto|magnet|mxc):/i,
-  });
+  // RETURN_DOM hands back the scrubbed <body> rather than a string, so the passes
+  // below run on the tree DOMPurify already built: one parse, one serialize, and no
+  // re-parsing of a fragment outside its original context.
+  // `as const` on RETURN_DOM keeps DOMPurify's typed overload: spread into a plain object it
+  // widens to `boolean` and the return type falls back to `string`. That matters because the
+  // downcast below is then a compile ERROR rather than a silent lie — without it, dropping
+  // RETURN_DOM in a later edit would still compile and leave `innerHTML` undefined at
+  // runtime, rendering every message body as the literal string "undefined".
+  const body = DOMPurify.sanitize(html, {
+    ...RENDER_PURIFY_CONFIG,
+    RETURN_DOM: true as const,
+  }) as HTMLElement;
+  normaliseSpoilers(body);
+  normaliseTaskItems(body);
+  renderCodeBlocks(body);
+  const clean = body.innerHTML;
   if (sanitizedHtmlCache.size >= SANITIZED_HTML_CACHE_MAX) {
     const oldest = sanitizedHtmlCache.keys().next().value;
     if (oldest !== undefined) {
@@ -814,6 +888,192 @@ export function sanitizeMatrixHtml(html: string): string {
   }
   sanitizedHtmlCache.set(html, clean);
   return clean;
+}
+
+/**
+ * Sanitize HTML we are about to SEND, against the same Matrix allowlist the incoming
+ * path uses — so the client can never emit a `formatted_body` its own renderer would
+ * strip.
+ *
+ * Deliberately applies none of {@link sanitizeMatrixHtml}'s render-only normalisation:
+ * spoiler `class`/`tabindex`/`role` and syntax-highlight spans are presentation, and
+ * putting them on the wire would bloat every event with markup other clients neither
+ * expect nor keep. Not memoized either — every composed message is a distinct string,
+ * so caching sends would only evict useful timeline entries.
+ */
+export function sanitizeOutgoingHtml(html: string): string {
+  const body = DOMPurify.sanitize(html, {
+    ...MATRIX_PURIFY_CONFIG,
+    RETURN_DOM: true as const,
+  }) as HTMLElement;
+  enforceMxcImages(body);
+  return body.innerHTML;
+}
+
+/**
+ * Reduce every `<img>` we would send whose source is not `mxc:` to its alt text.
+ *
+ * Matrix accepts no other source, so anything else is an empty box on arrival. The markdown
+ * renderer already turns such an image into a link or its caption (see `image()` in
+ * message-content.ts) — but it only sees markdown image *tokens*, and marked hands raw HTML
+ * straight through. So `<img src="data:image/png;base64,…">` typed into the composer walked
+ * out the other door with its whole payload, and `<img src="https://…">` shipped as the
+ * src-less box the renderer exists to avoid. Enforcing it here catches both, on the one path
+ * everything outgoing shares.
+ */
+function enforceMxcImages(root: ParentNode): void {
+  for (const img of root.querySelectorAll('img')) {
+    if (!/^mxc:/i.test(img.getAttribute('src') ?? '')) {
+      img.replaceWith(img.getAttribute('alt') ?? '');
+    }
+  }
+}
+
+/**
+ * Tag spoilers for the renderer. `data-mx-spoiler` marks one in Matrix HTML, but
+ * Angular's `[innerHTML]` sanitizer (the defence-in-depth re-scrub at the render leaf)
+ * drops all `data-*` attributes — so mirror it onto the sanctioned `mx-spoiler` class
+ * instead (class/tabindex/role all survive that pass). Focusable + role=button so
+ * keyboard users can reveal it too (pointer users get click-to-reveal).
+ *
+ * Render-side only, and deliberately not in the DOMPurify hook: the hook runs on the
+ * send path as well, and attributes it sets are not re-filtered against ALLOWED_ATTR —
+ * so from there `tabindex`/`role` (in neither allowlist) would end up in outgoing
+ * `formatted_body`.
+ */
+function normaliseSpoilers(root: ParentNode): void {
+  for (const node of root.querySelectorAll('[data-mx-spoiler]')) {
+    node.classList.add('mx-spoiler');
+    node.setAttribute('tabindex', '0');
+    node.setAttribute('role', 'button');
+  }
+}
+
+/** The ballot glyphs a task item opens with, as written by the markdown checkbox renderer. */
+const TASK_GLYPH = /^[☑☐]\s/;
+
+/**
+ * A GFM checkbox as text, done or not. The single definition of what a task item looks like:
+ * the markdown renderer writes it on the way out, {@link normaliseTaskItems} writes it for
+ * checkboxes arriving from other clients, and {@link TASK_GLYPH} matches it. The trailing
+ * space separates it from the item's text and is what that pattern keys on.
+ */
+export function taskGlyph(checked: boolean): string {
+  return checked ? '☑ ' : '☐ ';
+}
+
+/**
+ * Turn every GFM checkbox into its glyph, and mark the items that carry one.
+ *
+ * Two sources, one result. Our own sends already carry ☑/☐ as text (the `checkbox` renderer
+ * in message-content.ts — `input` is in neither allowlist, and a glyph is what survives into
+ * every client, screen reader and plain-text fallback). **Everyone else sends the `<input>`**,
+ * which the allowlist dropped on arrival — so an Element checklist rendered as bare items with
+ * the done/not-done state simply gone. Converting it here makes both render identically.
+ *
+ * That is why {@link RENDER_PURIFY_CONFIG} lets `input` (and the two attributes needed to read
+ * it) past DOMPurify: this pass is what removes them again. Every input is replaced or deleted
+ * and both attributes are swept off the whole tree before anything is serialized, so neither
+ * can reach the output — pinned by tests. The widening is render-only; `sanitizeOutgoingHtml`
+ * keeps the untouched allowlist and still drops the tag outright.
+ *
+ * The `mx-task` class is keyed on the glyph OPENING the item: anywhere else it is a character
+ * someone typed, and that item is a normal one that keeps its bullet. Presentational and
+ * render-side only, exactly as {@link normaliseSpoilers} is — putting it in outgoing
+ * `formatted_body` would be markup no other client asked for.
+ */
+function normaliseTaskItems(root: ParentNode): void {
+  for (const box of root.querySelectorAll('input')) {
+    const isCheckbox = box.getAttribute('type')?.toLowerCase() === 'checkbox';
+    box.replaceWith(
+      isCheckbox
+        ? box.ownerDocument.createTextNode(
+            taskGlyph(box.hasAttribute('checked')),
+          )
+        : // Anything else was never renderable here; drop it rather than leave a control.
+          '',
+    );
+  }
+  // `type`/`checked` are in neither Matrix allowlist. ADD_ATTR is per-call, not per-tag, so
+  // they could otherwise ride out on an unrelated element that happened to carry one.
+  for (const node of root.querySelectorAll('[type], [checked]')) {
+    node.removeAttribute('type');
+    node.removeAttribute('checked');
+  }
+  for (const item of root.querySelectorAll('li')) {
+    if (TASK_GLYPH.test(item.textContent ?? '')) {
+      item.classList.add('mx-task');
+    }
+  }
+}
+
+/** The language a fenced block declares, lowercased, or null when it declares none. */
+function fencedLanguage(code: Element): string | null {
+  return (
+    /(?:^|\s)language-([\w-]+)(?:\s|$)/
+      .exec(code.className)?.[1]
+      ?.toLowerCase() ?? null
+  );
+}
+
+/**
+ * Prepare every fenced code block for rendering: caption it with the language it declares,
+ * and syntax-highlight it when a grammar is loaded. One pass, because both need the same
+ * elements and the same parsed language.
+ *
+ * **The caption is an attribute, not an element.** `language` is read back by CSS
+ * (`pre[language]::after`, see rendered-markdown.scss). Generated content is not part of
+ * `textContent`, which matters well beyond tidiness: the edit-history diff compares the text
+ * of two rendered revisions, so an inserted caption node would make a fence-language-only
+ * edit read as a text change, and would show up in every diff of a message containing code.
+ * `data-lang` would have been the obvious attribute, but Angular's `[innerHTML]` sanitizer
+ * strips all `data-*` — `language` is on its allowlist and carries no semantics of its own
+ * (unlike `lang`, which declares a *natural* language to screen readers and translators).
+ *
+ * Captioning runs for EVERY block that declares a language, including ones no grammar is
+ * loaded for: knowing a block is `elixir` is useful even when we cannot colour it.
+ *
+ * Highlighting runs AFTER DOMPurify on purpose: {@link ALLOWED_CLASS} restricts class tokens
+ * to `language-*`/`mx-spoiler`, so token classes could not survive the scrub — and doing it
+ * here means the memo above covers the cost. The highlighter returns DOM nodes, so nothing
+ * it produces can be re-parsed as markup.
+ */
+function renderCodeBlocks(root: ParentNode): void {
+  // A per-block cap alone is defeated by splitting: forty blocks just under the limit are
+  // still a quarter-megabyte of synchronous tokenization. This bounds their sum within one
+  // message. It does NOT bound a whole back-pagination, where each event is sanitized
+  // separately — see the note on MAX_HIGHLIGHT_CHARS_PER_MESSAGE.
+  let budget = MAX_HIGHLIGHT_CHARS_PER_MESSAGE;
+  for (const code of root.querySelectorAll('pre > code[class]')) {
+    const lang = fencedLanguage(code);
+    const pre = code.parentElement;
+    if (!lang || !pre) {
+      continue;
+    }
+    pre.setAttribute('language', lang);
+
+    // Only ever tokenize plain text. The Matrix allowlist permits inline markup inside
+    // <code> (a link, bold, a spoiler), and replacing the children would silently delete
+    // it — worse, only for languages we happen to have a grammar for, so the same body
+    // would render differently depending on its fence tag.
+    const source = code.textContent ?? '';
+    if (!codeHighlighter || !source || code.children.length > 0) {
+      continue;
+    }
+    // `continue`, not `break`: a later block small enough to fit should still be coloured
+    // rather than being starved by one oversized listing earlier in the message.
+    if (source.length > budget) {
+      continue;
+    }
+    const highlighted = codeHighlighter(source, lang, code.ownerDocument);
+    if (highlighted) {
+      // Charged only when tokenization actually happened. The highlighter declines
+      // oversized blocks and unknown languages without doing the work, and charging for
+      // those would starve blocks that could have been highlighted.
+      budget -= source.length;
+      code.replaceChildren(highlighted);
+    }
+  }
 }
 
 /**

@@ -231,3 +231,25 @@
   creation and encryption being turned on. The lock in the room header still
   shows whether a room is encrypted.
 </p>
+
+<h2
+  id="appearance-composer-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Composer
+</h2>
+<label
+  class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+  data-testid="composer-show-toolbar"
+>
+  <hlm-checkbox
+    [checked]="composer.showFormattingToolbar()"
+    (checkedChange)="composer.setShowFormattingToolbar($event)"
+  />
+  Show the formatting toolbar
+</label>
+<p class="block px-4 pb-4 text-13 text-muted-foreground">
+  The row of bold, italic and link buttons above the message box. Hiding it only
+  takes away the buttons — the keyboard shortcuts still work, and Shift+Enter
+  still continues a list.
+</p>

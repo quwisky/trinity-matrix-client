@@ -116,5 +116,17 @@ export function isBrowserReserved(chord: Chord): boolean {
     return true;
   }
   // Ctrl/Cmd + these open a new tab/window/location or close one — never reaches the page.
-  return !chord.shift && ['w', 't', 'n', 'l'].includes(key);
+  const window = ['w', 't', 'n', 'l'];
+  if (!chord.shift) {
+    return window.includes(key);
+  }
+  // Shift does not make a chord ordinary. Ctrl+Shift+T reopens a closed tab, Ctrl+Shift+N
+  // opens an incognito window and Ctrl+Shift+W closes the window — all as unreachable as
+  // their unshifted cousins, so binding one on the web deserves the same warning. `l` is the
+  // exception: Ctrl+L is the address bar, Ctrl+Shift+L is claimed by neither browser.
+  //
+  // Ctrl/Cmd+Shift+these open developer tools in Firefox (and most in Chrome), which the
+  // browser likewise consumes before the page sees them.
+  const devtools = ['i', 'j', 'k', 'c', 'e', 'm'];
+  return [...window.filter((k) => k !== 'l'), ...devtools].includes(key);
 }

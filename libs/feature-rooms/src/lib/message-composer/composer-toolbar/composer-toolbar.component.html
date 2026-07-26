@@ -1,0 +1,65 @@
+<div class="toolbar" role="group" aria-label="Formatting">
+  @for (entry of primary(); track entry.action) {
+    <button
+      type="button"
+      class="toolbar__button"
+      [disabled]="formatDisabled()"
+      [hlmTooltip]="entry.label"
+      [attr.aria-label]="entry.label"
+      [attr.data-testid]="'format-' + entry.action"
+      (click)="format.emit(entry.action)"
+    >
+      <ng-icon [name]="entry.icon" aria-hidden="true" />
+    </button>
+  }
+
+  <!-- side="top": the composer is pinned to the bottom of the viewport, so a menu opening
+       downward from it would be off-screen. (The insert tray next door omits this and takes
+       the config default, which is why it opens the way it does.) -->
+  <button
+    type="button"
+    class="toolbar__button"
+    [hlmDropdownMenuTrigger]="moreMenu"
+    side="top"
+    align="start"
+    [disabled]="formatDisabled()"
+    hlmTooltip="More formatting"
+    aria-label="More formatting"
+    data-testid="format-more"
+  >
+    <ng-icon name="lucideEllipsis" aria-hidden="true" />
+  </button>
+
+  <ng-template #moreMenu>
+    <div hlmDropdownMenu aria-label="More formatting">
+      @for (entry of overflow(); track entry.action) {
+        <button
+          hlmDropdownMenuItem
+          class="toolbar__menu-item"
+          (triggered)="format.emit(entry.action)"
+          [attr.data-testid]="'format-' + entry.action"
+        >
+          <ng-icon [name]="entry.icon" aria-hidden="true" />
+          {{ entry.label }}
+        </button>
+      }
+    </div>
+  </ng-template>
+
+  <span class="toolbar__spacer"></span>
+
+  <!-- aria-pressed rather than a toggle component: there is no Helm toggle, and this is the
+       precedent the reaction pills already set. -->
+  <button
+    type="button"
+    class="toolbar__button"
+    [class.toolbar__button--on]="previewing()"
+    [attr.aria-pressed]="previewing()"
+    [hlmTooltip]="previewing() ? 'Back to writing' : 'Preview'"
+    [attr.aria-label]="previewing() ? 'Back to writing' : 'Preview'"
+    data-testid="composer-preview-toggle"
+    (click)="togglePreview.emit()"
+  >
+    <ng-icon name="lucideEye" aria-hidden="true" />
+  </button>
+</div>

@@ -53,17 +53,20 @@
 .revision__text {
   margin: 0;
   color: var(--trinity-text);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+// Only a plain-text revision preserves its own newlines; a rich one encodes them as
+// <br>, so pre-wrap would double every gap. Scoped with :not() rather than overridden
+// afterwards, because both selectors land on the same element at equal specificity and
+// the winner was decided by source order alone. Mirrors message-row.component.scss.
+.revision__text:not(.msg__text--html) {
+  white-space: pre-wrap;
 }
 
 .revision__text--muted {
   color: var(--trinity-text-muted);
   font-style: italic;
-}
-
-.msg__text--html {
-  white-space: normal;
 }
 
 // Pushed to the trailing edge of the row's head, away from the label and time.

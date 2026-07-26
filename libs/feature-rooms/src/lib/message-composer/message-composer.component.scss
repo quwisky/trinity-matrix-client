@@ -97,20 +97,67 @@
 .composer {
   position: relative;
 
-  // Lay the attach button, input and emoji/send buttons out as a single row.
-  // `flex-end` keeps the buttons pinned to the last line as the textarea grows
-  // (Discord-style), and on a single row their matched height centres them on the
-  // text — no hand-measured offsets. The floating picker/suggestion overlays are
-  // `position: absolute`, so they stay out of this flow.
+  // A column of [formatting toolbar, input row]. The toolbar lives INSIDE this element on
+  // purpose: the floating pickers and suggestion menus are `position: absolute` children
+  // anchored `bottom: calc(100% + 4px)` against it, so they clear whatever it contains —
+  // a toolbar placed outside would be covered by them. It also inherits the 16px horizontal
+  // padding the menus' own `left/right: 16px` align to.
   display: flex;
-  align-items: flex-end;
-  gap: 4px;
+  flex-direction: column;
+
+  // How far the input sits in from the composer's edges, so the toolbar above can line up
+  // with it. Asymmetric because the row is: [+] input [emoji] [send] — one leading button,
+  // two trailing. Published as custom properties because the toolbar is a CHILD COMPONENT
+  // and indents itself by them; custom properties inherit through the DOM, which is what
+  // lets this cross the style-encapsulation boundary a shared class could not.
+  --trn-composer-gutter-start: 44px; // 40px button + 4px gap
+  --trn-composer-gutter-end: 88px; //  2 × (40px button + 4px gap)
 
   // Bottom padding clears the home indicator (safe-area-inset-bottom). env() is 0
   // off notched devices and, with the keyboard's native resize mode, while the soft
   // keyboard is up (the WebView shrinks, hiding the indicator) — so the input sits
   // flush above the keyboard when typing and above the indicator otherwise.
   padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+// Lay the attach button, input and emoji/send buttons out as a single row.
+// `flex-end` keeps the buttons pinned to the last line as the textarea grows
+// (Discord-style), and on a single row their matched height centres them on the
+// text — no hand-measured offsets.
+.composer__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+// The preview stands in for the textarea, so it carries the same box: the row's flex child,
+// with a matching minimum height so toggling does not resize the composer.
+.composer__preview {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--trinity-divider);
+  border-radius: var(--trinity-radius-md);
+  overflow-y: auto;
+  max-height: 200px;
+  color: var(--trinity-text);
+}
+
+// A plain message keeps its line breaks; rendered markdown carries its own block structure and
+// must stay `normal`. Written as `:not()` rather than a later overriding rule for the reason
+// message-row.component.scss:271 records — two single-class selectors on the same element are
+// decided purely by source order.
+.composer__preview:not(.msg__text--html) {
+  white-space: pre-wrap;
+}
+
+// Kept in the DOM rather than removed so its value, caret and draft survive the round trip.
+// Doubled class on purpose: `.composer__input` sets `display: block`, and at equal specificity
+// the winner would be whichever rule came later in the file — the same order-dependence the
+// timeline's white-space rules had.
+.composer__input.composer__input--hidden {
+  display: none;
 }
 
 .composer__picker,
@@ -332,6 +379,13 @@
 // Touch targets: enlarge the composer action buttons to the 44px minimum on touch
 // devices only (inert on a mouse, so desktop keeps its 36/40px buttons).
 @media (pointer: coarse) {
+  // The buttons grow to the 44px touch minimum, so the indent has to grow with them or the
+  // toolbar stops lining up on exactly the devices where the row is widest.
+  .composer {
+    --trn-composer-gutter-start: 48px; // 44px button + 4px gap
+    --trn-composer-gutter-end: 96px; //  2 × (44px button + 4px gap)
+  }
+
   .composer__attach,
   .composer__emoji,
   .composer__send,

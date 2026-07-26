@@ -4,6 +4,7 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  ComposerSettingsService,
   SystemLineSettingsService,
   ThemeService,
   TRINITY_PALETTES,
@@ -33,6 +34,8 @@ describe('AppearanceSettingsComponent', () => {
   let setShowRoomChanges: ReturnType<typeof vi.fn>;
   let spaceOrderDefault: ReturnType<typeof signal<RoomSortMode>>;
   let setDefault: ReturnType<typeof vi.fn>;
+  let showFormattingToolbar: ReturnType<typeof signal<boolean>>;
+  let setShowFormattingToolbar: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     preference = signal<ThemePreference>('system');
@@ -46,6 +49,8 @@ describe('AppearanceSettingsComponent', () => {
     setShowRoomChanges = vi.fn();
     spaceOrderDefault = signal<RoomSortMode>('recent');
     setDefault = vi.fn();
+    showFormattingToolbar = signal(true);
+    setShowFormattingToolbar = vi.fn();
   });
 
   function renderPage() {
@@ -56,6 +61,10 @@ describe('AppearanceSettingsComponent', () => {
           resolved,
           palette,
           palettes: TRINITY_PALETTES,
+        }),
+        MockProvider(ComposerSettingsService, {
+          showFormattingToolbar,
+          setShowFormattingToolbar,
         }),
         MockProvider(SystemLineSettingsService, {
           showMembership,
@@ -326,5 +335,15 @@ describe('AppearanceSettingsComponent', () => {
       'timeline-show-room-changes',
     )!.componentInstance.checkedChange.emit(false);
     expect(setShowRoomChanges).toHaveBeenCalledWith(false);
+  });
+  it('reflects and sets the formatting-toolbar preference', async () => {
+    showFormattingToolbar.set(false);
+    const { fixture } = await renderPage();
+
+    const toggle = checkboxFor(fixture, 'composer-show-toolbar')!;
+    expect(toggle.componentInstance.checked()).toBe(false);
+
+    toggle.componentInstance.checkedChange.emit(true);
+    expect(setShowFormattingToolbar).toHaveBeenCalledWith(true);
   });
 });

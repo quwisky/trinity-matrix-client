@@ -108,13 +108,35 @@ describe('KeyboardShortcutsService', () => {
       chord({ accel: true, key: "'" }),
     );
 
-    expect(result.displaced).toBe('room.hop.back');
+    expect(result.ok && result.displaced).toBe('room.hop.back');
     expect(svc.resolve(keydown({ key: "'", ctrlKey: true }))).toEqual({
       id: 'switcher.open',
     });
     const hop = svc.list().find((s) => s.id === 'room.hop.back');
     expect(hop?.isUnset).toBe(true);
     expect(hop?.chord).toBeNull();
+  });
+
+  it('refuses a chord the fixed digit family already claims', () => {
+    // `resolve` is first-hit-wins and the digit family sits ahead of the formatting
+    // shortcuts, so accepting this would show new key-caps for a chord that jumps rooms
+    // instead. The family matches accel + any digit and ignores shift.
+    const svc = build();
+
+    for (const attempt of [
+      chord({ accel: true, key: '1' }),
+      chord({ accel: true, shift: true, key: '7' }),
+    ]) {
+      const result = svc.rebind('format.bold', attempt);
+
+      expect(result.ok, JSON.stringify(attempt)).toBe(false);
+      expect(result.ok ? null : result.conflict).toBe('room.jump');
+    }
+    // The old binding survives a refusal.
+    expect(svc.resolve(keydown({ key: 'b', ctrlKey: true }))).toEqual({
+      id: 'format.bold',
+    });
+    expect(set).not.toHaveBeenCalled();
   });
 
   it('resets one shortcut and all shortcuts to their defaults', () => {

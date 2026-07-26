@@ -260,8 +260,20 @@
 .msg__text {
   margin: 2px 0 0;
   color: var(--trinity-text);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+// Plain-text bodies carry their own newlines and runs of spaces — there is no
+// formatted_body to encode them — so they must be preserved literally. Rendered
+// markdown must NOT be: its line breaks arrive as <br> (marked's `breaks: true`), and
+// `linkifyText` emits <br> too, so pre-wrap there would double every gap and honour
+// the insignificant newlines marked leaves between block elements.
+// Scoped with :not() rather than overridden by a later `.msg__text--html` rule: both
+// are single-class selectors landing on the SAME element, so that version was decided
+// purely by source order — a file reorder would have silently flipped every formatted
+// message.
+.msg__text:not(.msg__text--html) {
+  white-space: pre-wrap;
 }
 
 .msg__text--cont {
@@ -279,11 +291,6 @@
   background: var(--trinity-sidebar);
   color: var(--trinity-text);
   font-style: italic;
-}
-
-// Rendered markdown (formatted_body) container.
-.msg__text--html {
-  white-space: normal;
 }
 
 // Compact "💬 N replies · last reply <time>" affordance under a thread root,

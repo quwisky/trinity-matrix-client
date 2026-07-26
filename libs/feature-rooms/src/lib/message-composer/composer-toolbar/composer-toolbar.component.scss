@@ -1,0 +1,79 @@
+// Formatting affordances, laid out as a row above the composer input.
+// The button rules mirror `.composer__attach`/`.composer__emoji`/`.composer__send` rather than
+// sharing them: those are a comma group in the composer's own stylesheet, and there is no
+// icon-button mixin in the repo. Kept smaller than that group (32px vs 40px) because this row
+// is secondary to the input it sits above.
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-bottom: 2px;
+
+  // Line the row up with the INPUT, not with the composer's edge: the first button sits over
+  // the first character it would format, and the preview toggle over the input's right edge.
+  // The two gutters are published by `.composer` (see its stylesheet) so they track the
+  // button size across the touch breakpoint instead of being hard-coded here; they differ
+  // because the input row has one button before it and two after. Both fall back to 0 if the
+  // toolbar is ever hosted outside that container.
+  padding-left: var(--trn-composer-gutter-start, 0);
+  padding-right: var(--trn-composer-gutter-end, 0);
+}
+
+.toolbar__spacer {
+  flex: 1;
+}
+
+.toolbar__button {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--trinity-radius-sm);
+  background: none;
+  color: var(--trinity-text-muted);
+  font-size: 16px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--trinity-hover);
+    color: var(--trinity-text-bright);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--trinity-accent);
+    outline-offset: -2px;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+// The pressed state of the preview toggle.
+.toolbar__button--on {
+  background: var(--trinity-active);
+  color: var(--trinity-text-bright);
+}
+
+// The tray's items render through a CDK overlay at the document root, so they are not nested
+// under `.toolbar` — the same reason the composer's own insert items are declared standalone.
+.toolbar__menu-item {
+  gap: 8px;
+}
+
+// Touch targets. Not inherited from the composer's block: these are different elements in a
+// different stylesheet, and 32px is under the 44px this project holds itself to on touch.
+@media (pointer: coarse) {
+  .toolbar__button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .toolbar__menu-item {
+    min-height: 44px;
+  }
+}

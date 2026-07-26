@@ -23,83 +23,94 @@
     this device.
   </p>
 
-  <ul class="px-2">
-    @for (row of rows(); track row.id) {
-      <li
-        class="flex items-center gap-3 border-b border-solid border-border px-2 py-3"
-        [attr.data-testid]="'shortcut-' + row.id"
-      >
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium">{{ row.description }}</p>
-          @if (row.desktopOnly) {
-            <p class="text-xs text-muted-foreground">Desktop app only</p>
-          } @else if (row.desktopAlias) {
-            <p class="text-xs text-muted-foreground">
-              Also Ctrl+Tab in the desktop app
-            </p>
-          }
-        </div>
-
-        @if (capturingId() === row.id) {
-          <span
-            class="text-sm text-muted-foreground"
-            data-testid="capture-hint"
-          >
-            Press a combination… (Esc to cancel)
-          </span>
-          <button hlmBtn variant="ghost" size="sm" (click)="cancelCapture()">
-            Cancel
-          </button>
-        } @else {
-          <span class="flex items-center gap-1" data-testid="shortcut-binding">
-            @if (row.rebindable) {
-              @if (row.isUnset) {
-                <span class="text-sm text-muted-foreground">Unset</span>
-              } @else {
-                @for (cap of row.caps; track $index) {
-                  <kbd
-                    class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
-                    >{{ cap }}</kbd
-                  >
-                }
-              }
-            } @else {
-              <!-- Fixed family (e.g. the numbered jump): shown for discovery, not editable. -->
-              <kbd
-                class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
-                >Ctrl/Cmd</kbd
-              >
-              <kbd
-                class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
-                >1–9</kbd
-              >
+  @for (group of groups(); track group.category) {
+    <h3
+      class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+      [attr.data-testid]="'shortcut-group-' + group.category.toLowerCase()"
+    >
+      {{ group.category }}
+    </h3>
+    <ul class="px-2">
+      @for (row of group.rows; track row.id) {
+        <li
+          class="flex items-center gap-3 border-b border-solid border-border px-2 py-3"
+          [attr.data-testid]="'shortcut-' + row.id"
+        >
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-medium">{{ row.description }}</p>
+            @if (row.desktopOnly) {
+              <p class="text-xs text-muted-foreground">Desktop app only</p>
+            } @else if (row.desktopAlias) {
+              <p class="text-xs text-muted-foreground">
+                Also Ctrl+Tab in the desktop app
+              </p>
             }
-          </span>
+          </div>
 
-          @if (row.rebindable) {
-            <button
-              hlmBtn
-              variant="outline"
-              size="sm"
-              (click)="edit(row)"
-              [attr.data-testid]="'shortcut-edit-' + row.id"
+          @if (capturingId() === row.id) {
+            <span
+              class="text-sm text-muted-foreground"
+              data-testid="capture-hint"
             >
-              Edit
+              Press a combination… (Esc to cancel)
+            </span>
+            <button hlmBtn variant="ghost" size="sm" (click)="cancelCapture()">
+              Cancel
             </button>
-            @if (!row.isDefault) {
+          } @else {
+            <span
+              class="flex items-center gap-1"
+              data-testid="shortcut-binding"
+            >
+              @if (row.rebindable) {
+                @if (row.isUnset) {
+                  <span class="text-sm text-muted-foreground">Unset</span>
+                } @else {
+                  @for (cap of row.caps; track $index) {
+                    <kbd
+                      class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
+                      >{{ cap }}</kbd
+                    >
+                  }
+                }
+              } @else {
+                <!-- Fixed family (e.g. the numbered jump): shown for discovery, not editable. -->
+                <kbd
+                  class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
+                  >Ctrl/Cmd</kbd
+                >
+                <kbd
+                  class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
+                  >1–9</kbd
+                >
+              }
+            </span>
+
+            @if (row.rebindable) {
               <button
                 hlmBtn
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                (click)="reset(row.id)"
-                [attr.data-testid]="'shortcut-reset-' + row.id"
+                (click)="edit(row)"
+                [attr.data-testid]="'shortcut-edit-' + row.id"
               >
-                Reset
+                Edit
               </button>
+              @if (!row.isDefault) {
+                <button
+                  hlmBtn
+                  variant="ghost"
+                  size="sm"
+                  (click)="reset(row.id)"
+                  [attr.data-testid]="'shortcut-reset-' + row.id"
+                >
+                  Reset
+                </button>
+              }
             }
           }
-        }
-      </li>
-    }
-  </ul>
+        </li>
+      }
+    </ul>
+  }
 </div>

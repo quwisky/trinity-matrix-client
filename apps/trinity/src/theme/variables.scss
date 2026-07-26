@@ -101,6 +101,26 @@
   --trinity-danger-solid: #d92b31;
   --trinity-danger-solid-foreground: #fff;
 
+  // --- Syntax highlighting ------------------------------------------------------
+  // Consumed only by rendered-markdown.scss, on the `tok-*` classes the sanitizer's
+  // highlighter emits inside `pre > code`. Eight roles, matching TOKEN_ROLES in
+  // libs/util-matrix/src/lib/code-highlight.ts — keep the two lists in step.
+  // Measured against --trinity-rail, which is the `pre` background in BOTH palettes:
+  // #e3e5e8 (default light) and #e7e2f0 (amethyst light). Every value below clears
+  // 4.5:1 on both — worst case 4.61:1 — so a palette inherits these rather than
+  // restating them. Re-measure before adding a palette whose rail departs from these
+  // tones. One Light hues, darkened until they passed: the published values sit
+  // around 2.5–3.8:1 here and are not usable as body text.
+  --trinity-syntax-plain: var(--trinity-text);
+  --trinity-syntax-keyword: #a626a4; // 4.81:1
+  --trinity-syntax-string: #387137; // 4.61:1
+  --trinity-syntax-number: #935601; // 4.63:1
+  --trinity-syntax-comment: #5d656e; // 4.65:1
+  --trinity-syntax-function: #1055ec; // 4.68:1
+  --trinity-syntax-type: #875c01; // 4.64:1
+  --trinity-syntax-variable: #bf2a1c; // 4.64:1
+  --trinity-syntax-punctuation: var(--trinity-text-muted);
+
   // --- Trinity surfaces (lightest → most-recessed) ------------------------------
   --trinity-rail: #e3e5e8; // server rail
   --trinity-sidebar: #f2f3f5; // channel + member columns
@@ -140,6 +160,18 @@
 // Default palette — dark
 // -----------------------------------------------------------------------------
 :root.dark {
+  // Syntax highlighting. Measured against the dark rails — #1e1f22 (default) and
+  // #1c1826 (amethyst) — where One Dark's published values clear 4.5:1 unchanged;
+  // worst case 5.16:1. `-plain`/`-punctuation` are var() references and follow the
+  // mode automatically, so they are not restated here.
+  --trinity-syntax-keyword: #c678dd; // 5.60:1
+  --trinity-syntax-string: #98c379; // 8.17:1
+  --trinity-syntax-number: #d19a66; // 6.69:1
+  --trinity-syntax-comment: #8b949e; // 5.36:1
+  --trinity-syntax-function: #61afef; // 6.97:1
+  --trinity-syntax-type: #e5c07b; // 9.54:1
+  --trinity-syntax-variable: #e06c75; // 5.16:1
+
   // Trinity surfaces
   --trinity-rail: #1e1f22;
   --trinity-sidebar: #2b2d31;

@@ -22,6 +22,12 @@ interface ShortcutRow extends ShortcutView {
   caps: string[];
 }
 
+/** One `category` heading and the shortcuts filed under it. */
+interface ShortcutGroup {
+  category: string;
+  rows: ShortcutRow[];
+}
+
 /**
  * Keyboard-shortcuts settings: lists every shortcut with its binding (the discoverability
  * surface), lets the user rebind one by capturing a chord, and resets — per row or all at
@@ -53,6 +59,27 @@ export class ShortcutsSectionComponent {
       caps: view.chord ? formatChord(view.chord) : [],
     })),
   );
+
+  /**
+   * The rows grouped under their category heading, in catalogue order — which is the order
+   * `SHORTCUTS` documents itself as rendering in, so a group appears where its first shortcut
+   * does and the rows inside it keep their relative order.
+   *
+   * The list is otherwise flat, which was fine while every shortcut was navigation; it stops
+   * being fine once the composer's formatting chords sit in the same catalogue.
+   */
+  readonly groups = computed<ShortcutGroup[]>(() => {
+    const byCategory = new Map<string, ShortcutRow[]>();
+    for (const row of this.rows()) {
+      const rows = byCategory.get(row.category);
+      if (rows) {
+        rows.push(row);
+      } else {
+        byCategory.set(row.category, [row]);
+      }
+    }
+    return [...byCategory].map(([category, rows]) => ({ category, rows }));
+  });
 
   /** Whether any shortcut carries a custom binding (enables "Reset all"). */
   readonly hasCustomBindings = computed(() =>
@@ -111,9 +138,19 @@ export class ShortcutsSectionComponent {
       });
       return;
     }
-    const { displaced } = this.shortcuts.rebind(id, chord);
+    const result = this.shortcuts.rebind(id, chord);
+    if (!result.ok) {
+      // Keep capturing: the chord was refused, so the row is still waiting for a usable one.
+      const holder = this.shortcuts
+        .list()
+        .find((s) => s.id === result.conflict)?.description;
+      this.toast.show(`That chord is taken by “${holder}”, which is fixed.`, {
+        variant: 'destructive',
+      });
+      return;
+    }
     this.capturingId.set(null);
-    this.announce(chord, displaced);
+    this.announce(chord, result.displaced);
   }
 
   private announce(
