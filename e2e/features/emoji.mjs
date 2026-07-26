@@ -91,7 +91,10 @@ async function csPost(token, path, body) {
 
 /** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
 async function fillLabeledInput(page, label, value) {
-  const input = page.getByLabel(label);
+  // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
+  // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
+  // e2e/playwright/support/app.mts:34 and verify-sas.mjs:45.
+  const input = page.getByLabel(label, { exact: true });
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
   await input.fill(value);

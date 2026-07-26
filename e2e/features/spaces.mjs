@@ -124,7 +124,10 @@ async function findRoomIdByName(token, name, isSpace) {
 
 /** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
 async function fillLabeledInput(page, label, value) {
-  const input = page.getByLabel(label);
+  // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
+  // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
+  // e2e/playwright/support/app.mts:34.
+  const input = page.getByLabel(label, { exact: true });
   await input.waitFor({ state: 'visible', timeout: 15_000 });
   await input.click();
   await input.fill(value);
@@ -336,16 +339,23 @@ async function main() {
     // Leave alert has no text input — just Cancel and Leave buttons.
     await fillAlertAndConfirm(page, null, null, 'Leave');
 
-    // applyLeaveSpace calls spaces.leaveSpace() and on completion sets
-    // activeSpaceId(null) → activeSpaceName() = "Home", spaceActive() = false.
+    // applyLeaveSpace calls spaces.leaveSpace() and on completion sets activeSpaceId(null)
+    // → spaceActive() = false. The title is then "Direct Messages", NOT "Home":
+    // `sidebarTitle()` (rooms.page.ts) reads
+    //   recentView() ? 'Recent activity' : roomsView() ? 'Rooms'
+    //     : activeSpaceId() ? activeSpaceName() : 'Direct Messages'
+    // and onSelectSpace(null) clears both views on the way past. "Home" survives only as
+    // activeSpaceName()'s fallback, which is not what renders here — it stopped being this
+    // title in bd16dc25 (2026-07-04, the DM/Rooms rail split), and this assertion has been
+    // unreachable ever since. See #54.
     await page.waitForFunction(
       () =>
         document.querySelector('span.sidebar__title')?.textContent?.trim() ===
-        'Home',
+        'Direct Messages',
       undefined,
       { timeout: STEP_TIMEOUT, polling: 500 },
     );
-    log('sidebar title = "Home" ✓');
+    log('sidebar title = "Direct Messages" ✓');
 
     // The space pill disappears once the RoomEvent.MyMembership event syncs
     // and SpacesService drops it from the spaces() read model.

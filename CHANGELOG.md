@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Accepting a room invite no longer hides the room you just joined.** Saying yes to an
+  invite dropped you on the direct-message list — which, by definition, does not show rooms —
+  so the room opened in the timeline but vanished from the sidebar until you clicked
+  **Recent activity** or **Rooms**. Accepting a room now leaves you where you were, and
+  accepting a DM still takes you to your direct messages.
+
+- **Destructive menu rows are readable in dark mode again.** "Leave room" and "Remove from
+  space" were drawn in a near-black maroon on the dark menu surface — a contrast of 1.38:1,
+  which reads as an empty strip rather than as text. They now use the same red the rest of the
+  app uses for alert text. Every destructive dropdown row is affected, including the new
+  **Leave space**.
+
 - **Line breaks no longer disappear when you format a message.** Writing a message across
   several lines worked — until you also made a word bold, at which point every line break in
   it silently collapsed and the message arrived as one run-on paragraph. Shift+Enter meant one
