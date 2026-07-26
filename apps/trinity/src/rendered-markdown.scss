@@ -177,10 +177,22 @@
     color: var(--trinity-text-muted);
   }
 
+  // `revert`, not an explicit `disc`/`decimal`: Tailwind's preflight resets every list to
+  // `list-style: none`, and this rule restored the indent but not the marker — so a bulleted
+  // list arrived as unmarked indented lines. Reverting to the user-agent value brings back
+  // the nesting sequence too (disc → circle → square), which naming one type would flatten.
   ul,
   ol {
     margin: 4px 0;
     padding-left: 22px;
+    list-style: revert;
+  }
+
+  // A task item carries its own ☑/☐, so a bullet beside it reads as "• ☑ done". The class is
+  // put on by `normaliseTaskItems` at render time; the indent stays, which is how every other
+  // client draws a checklist.
+  li.mx-task {
+    list-style: none;
   }
 
   h1,

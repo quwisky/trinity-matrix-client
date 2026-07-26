@@ -70,6 +70,7 @@ describe('ComposerToolbarComponent', () => {
       'format-codeblock',
       'format-quote',
       'format-list',
+      'format-tasklist',
     ]);
   });
 

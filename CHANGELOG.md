@@ -14,6 +14,19 @@ All notable changes to this project are documented here. The format is based on
   thing in a plain message and another in a formatted one, with nothing to tell you which you
   were in. Line breaks are now kept either way.
 
+- **Lists in messages have their bullets back.** Every bulleted and numbered list — in the
+  timeline, in a message's edit history, and in the composer preview — rendered as indented
+  lines with no bullet or number at all, because the CSS reset that clears list markers was
+  never undone for message content. Nested lists step through the usual •, ◦, ▪ again, and
+  numbered lists count.
+
+- **Task lists survive being sent — and now arrive from other apps too.** Typing `- [x] done`
+  produced a checkbox that was stripped out before the message ever left your device, so
+  recipients saw a list with the done and not-done state simply missing. Task lists now arrive
+  as ☑ and ☐, which every Matrix client and screen reader can show. A checklist sent to you
+  _by_ another app used to lose its boxes the same way on arrival, and now shows the same
+  ticks — and a task item no longer draws a bullet beside its box.
+
 - **Binding a shortcut a browser keeps for itself now says so in more cases.** Settings →
   Keyboard shortcuts warns when the chord you pick only works in the desktop app, but the
   check ignored anything with Shift — so Ctrl+Shift+T, Ctrl+Shift+N and Ctrl+Shift+W were
@@ -38,13 +51,14 @@ All notable changes to this project are documented here. The format is based on
 
 - **Formatting buttons, shortcuts and a preview in the composer.** Writing a formatted message
   meant typing markdown from memory and hoping. There is now a small toolbar above the message
-  box — bold, italic, link and code, with strikethrough, code blocks, quotes and lists behind an
-  overflow button. Each one wraps whatever you have selected, or drops you between the markers
+  box — bold, italic, link and code, with strikethrough, code blocks, quotes, bulleted lists and
+  task lists behind an overflow button. Each one wraps whatever you have selected, or drops you between the markers
   when you have selected nothing, and pressing it again takes the formatting back off.
   The same actions have keyboard shortcuts, and every one of them can be changed in
   Settings → Keyboard shortcuts — which now groups its list under headings instead of running
-  everything together. Shift+Enter inside a list carries the bullet or number onto the next
-  line, and a second one on an empty item ends the list. The eye button swaps the box for a
+  everything together. Shift+Enter inside a list carries the bullet, number or task box onto
+  the next line — a new task box always starts unticked — and a second one on an empty item
+  ends the list. The eye button swaps the box for a
   preview of the message exactly as it will arrive, slash commands included, so a spoiler
   previews concealed the way the person reading it will first see it. Your draft survives all
   of it untouched.

@@ -790,6 +790,30 @@ const MATRIX_PURIFY_CONFIG = {
 } as const;
 
 /**
+ * The render-side config: the Matrix allowlist plus `input` and the two attributes needed to
+ * read a GFM checkbox other clients send. Nothing here reaches the output —
+ * {@link normaliseTaskItems} replaces every input with its glyph and sweeps both attributes
+ * off the tree before it is serialized. **Render only**: `sanitizeOutgoingHtml` keeps
+ * {@link MATRIX_PURIFY_CONFIG} untouched, so none of this can widen what we send.
+ */
+const RENDER_PURIFY_CONFIG = {
+  ...MATRIX_PURIFY_CONFIG,
+  ADD_TAGS: ['input'],
+  ADD_ATTR: ['type', 'checked'],
+  // `type` needs this and `checked` does not, which is not obvious: DOMPurify tests the VALUE
+  // of any attribute it does not consider URI-safe against ALLOWED_URI_REGEXP, and ours only
+  // admits Matrix's schemes — so `type="checkbox"` failed that test and was dropped while the
+  // valueless `checked` came through, leaving every incoming box indistinguishable and
+  // unchecked. Marking it URI-safe skips the scheme test; the attribute is swept off the tree
+  // either way before anything is serialized.
+  ADD_URI_SAFE_ATTR: ['type'],
+  // No `as const` here, unlike the config above: it would make these three readonly tuples,
+  // which do not satisfy DOMPurify's `string[]` config — the overload stops matching and the
+  // `HTMLElement` downcast at the call site fails to compile. Vitest does not typecheck, so
+  // this only surfaces in `nx build`.
+};
+
+/**
  * Turns the source of a fenced code block into highlighted nodes, or null when the
  * language is unknown and it should be left as plain text.
  */
@@ -849,10 +873,11 @@ export function sanitizeMatrixHtml(html: string): string {
   // RETURN_DOM in a later edit would still compile and leave `innerHTML` undefined at
   // runtime, rendering every message body as the literal string "undefined".
   const body = DOMPurify.sanitize(html, {
-    ...MATRIX_PURIFY_CONFIG,
+    ...RENDER_PURIFY_CONFIG,
     RETURN_DOM: true as const,
   }) as HTMLElement;
   normaliseSpoilers(body);
+  normaliseTaskItems(body);
   renderCodeBlocks(body);
   const clean = body.innerHTML;
   if (sanitizedHtmlCache.size >= SANITIZED_HTML_CACHE_MAX) {
@@ -921,6 +946,64 @@ function normaliseSpoilers(root: ParentNode): void {
     node.classList.add('mx-spoiler');
     node.setAttribute('tabindex', '0');
     node.setAttribute('role', 'button');
+  }
+}
+
+/** The ballot glyphs a task item opens with, as written by the markdown checkbox renderer. */
+const TASK_GLYPH = /^[☑☐]\s/;
+
+/**
+ * A GFM checkbox as text, done or not. The single definition of what a task item looks like:
+ * the markdown renderer writes it on the way out, {@link normaliseTaskItems} writes it for
+ * checkboxes arriving from other clients, and {@link TASK_GLYPH} matches it. The trailing
+ * space separates it from the item's text and is what that pattern keys on.
+ */
+export function taskGlyph(checked: boolean): string {
+  return checked ? '☑ ' : '☐ ';
+}
+
+/**
+ * Turn every GFM checkbox into its glyph, and mark the items that carry one.
+ *
+ * Two sources, one result. Our own sends already carry ☑/☐ as text (the `checkbox` renderer
+ * in message-content.ts — `input` is in neither allowlist, and a glyph is what survives into
+ * every client, screen reader and plain-text fallback). **Everyone else sends the `<input>`**,
+ * which the allowlist dropped on arrival — so an Element checklist rendered as bare items with
+ * the done/not-done state simply gone. Converting it here makes both render identically.
+ *
+ * That is why {@link RENDER_PURIFY_CONFIG} lets `input` (and the two attributes needed to read
+ * it) past DOMPurify: this pass is what removes them again. Every input is replaced or deleted
+ * and both attributes are swept off the whole tree before anything is serialized, so neither
+ * can reach the output — pinned by tests. The widening is render-only; `sanitizeOutgoingHtml`
+ * keeps the untouched allowlist and still drops the tag outright.
+ *
+ * The `mx-task` class is keyed on the glyph OPENING the item: anywhere else it is a character
+ * someone typed, and that item is a normal one that keeps its bullet. Presentational and
+ * render-side only, exactly as {@link normaliseSpoilers} is — putting it in outgoing
+ * `formatted_body` would be markup no other client asked for.
+ */
+function normaliseTaskItems(root: ParentNode): void {
+  for (const box of root.querySelectorAll('input')) {
+    const isCheckbox = box.getAttribute('type')?.toLowerCase() === 'checkbox';
+    box.replaceWith(
+      isCheckbox
+        ? box.ownerDocument.createTextNode(
+            taskGlyph(box.hasAttribute('checked')),
+          )
+        : // Anything else was never renderable here; drop it rather than leave a control.
+          '',
+    );
+  }
+  // `type`/`checked` are in neither Matrix allowlist. ADD_ATTR is per-call, not per-tag, so
+  // they could otherwise ride out on an unrelated element that happened to carry one.
+  for (const node of root.querySelectorAll('[type], [checked]')) {
+    node.removeAttribute('type');
+    node.removeAttribute('checked');
+  }
+  for (const item of root.querySelectorAll('li')) {
+    if (TASK_GLYPH.test(item.textContent ?? '')) {
+      item.classList.add('mx-task');
+    }
   }
 }
 

@@ -198,9 +198,11 @@ test.describe('Message markdown', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openRoom(page, roomName);
 
-    // Only the first marker is typed: Shift+Enter now carries the bullet onto the next line
-    // itself, so a user types what follows it — typing '- ' again would nest a second list.
-    await sendLines(page, ['- [x] shipped', '[ ] pending']);
+    // Only the first marker is typed. Shift+Enter carries the whole marker onto the next
+    // line — bullet AND task box, always unticked — so the second line is just its text.
+    // Typing `- ` again would nest a second list; typing `[ ] ` again would put a literal
+    // `[ ]` inside the item, which is what this spec caught when the box started carrying.
+    await sendLines(page, ['- [x] shipped', 'pending']);
 
     const list = page.locator('.msg__text--html', { hasText: 'shipped' });
     await expect(list).toBeVisible({ timeout: 20_000 });

@@ -17,6 +17,7 @@ export type FormatAction =
   | 'codeblock'
   | 'quote'
   | 'list'
+  | 'tasklist'
   | 'link';
 
 /** The text and selection a composer should adopt after an edit. */
@@ -34,10 +35,14 @@ const INLINE_MARKER: Partial<Record<FormatAction, string>> = {
   code: '`',
 };
 
-/** The line prefix for each block action. */
-const LINE_PREFIX: Partial<Record<FormatAction, string>> = {
+/** The actions that rewrite whole lines rather than wrapping a selection. */
+type BlockAction = 'quote' | 'list' | 'tasklist';
+
+/** The marker each block action puts on a line. */
+const BLOCK_MARKER: Record<BlockAction, string> = {
   quote: '> ',
   list: '- ',
+  tasklist: '- [ ] ',
 };
 
 /**
@@ -45,6 +50,17 @@ const LINE_PREFIX: Partial<Record<FormatAction, string>> = {
  * an ordered marker (`1.`/`1)`) or a quote (`>`), then at least one space.
  */
 const LINE_MARKER = /^(\s*)(?:([-*+])|(\d+)([.)])|(>))\s+/;
+
+/** A GFM task box directly after a bullet marker: `[ ]`, `[x]` or `[X]`, then a space. */
+const TASK_BOX = /^\[[ xX]\]\s+/;
+
+/**
+ * A whole list-item marker: indent, a bullet (`-`/`*`/`+`) or an ordered marker (`1.`/`1)`),
+ * and the task box when there is one. The bullet and the box get their own groups because
+ * the three kinds of item are what the block actions toggle between: group 2 is set only for
+ * a bullet (not `1.`), group 3 only for a task item.
+ */
+const LIST_MARKER = /^(\s*)(?:([-*+])|\d+[.)])\s+(\[[ xX]\]\s+)?/;
 
 /**
  * Where the line containing `index` starts.
@@ -93,9 +109,8 @@ export function applyFormat(
   if (action === 'codeblock') {
     return applyCodeBlock(text, from, to);
   }
-  const prefix = LINE_PREFIX[action];
-  if (prefix) {
-    return applyLinePrefix(text, from, to, prefix);
+  if (action === 'quote' || action === 'list' || action === 'tasklist') {
+    return applyLinePrefix(text, from, to, action);
   }
   return applyInline(text, from, to, INLINE_MARKER[action] ?? '');
 }
@@ -174,45 +189,108 @@ function applyLinePrefix(
   text: string,
   start: number,
   end: number,
-  prefix: string,
+  action: BlockAction,
 ): EditResult {
   const lineStart = lineStartAt(text, start);
   const nextBreak = text.indexOf('\n', end);
   const lineEnd = nextBreak === -1 ? text.length : nextBreak;
 
   const lines = text.slice(lineStart, lineEnd).split('\n');
-  // Blank lines are neither prefixed nor counted. Without this a paragraph break inside the
-  // selection makes `allPrefixed` false forever, so an already-quoted passage can be quoted
-  // again but never unquoted.
-  const marked = lines.filter((line) => line.trim() !== '');
-  // …unless EVERY touched line is blank, which is the empty composer and the blank line in
-  // the middle of a draft. There is nothing to toggle off there, and skipping them would
-  // make the button do nothing at all — so the blank lines take the prefix themselves.
-  const blankBlock = marked.length === 0;
-  const allPrefixed =
-    !blankBlock && marked.every((line) => line.startsWith(prefix));
-  const changes = (line: string) => blankBlock || line.trim() !== '';
-  const next = lines
-    .map((line) => {
-      if (!changes(line)) {
-        return line;
-      }
-      return allPrefixed ? line.slice(prefix.length) : prefix + line;
-    })
-    .join('\n');
-
-  const step = allPrefixed ? -prefix.length : prefix.length;
-  const changed = lines.filter(changes).length;
-  // The caret only moves if the line it sits on actually gained or lost a prefix. Shifting
-  // it unconditionally put it mid-prefix (on the `>` of `> `) when the first touched line
-  // was blank, and ran `selectionStart` past `selectionEnd` when nothing changed at all.
-  const firstDelta = changes(lines[0]) ? step : 0;
-  const selectionStart = Math.max(lineStart, start + firstDelta);
+  const rewritten = rewriteBlock(lines, action);
+  // Per-line deltas rather than one width times a count: a rewrite can now SHORTEN a line
+  // (`1. a` → `- a`) or change it by something other than the marker's own width
+  // (`- a` → `- [ ] a` adds four, not six), so a single step no longer describes the move.
+  const deltas = rewritten.map((line, i) => line.length - lines[i].length);
+  const selectionStart = Math.max(lineStart, start + deltas[0]);
   return {
-    text: text.slice(0, lineStart) + next + text.slice(lineEnd),
+    text: text.slice(0, lineStart) + rewritten.join('\n') + text.slice(lineEnd),
     selectionStart,
-    selectionEnd: Math.max(selectionStart, end + step * changed),
+    selectionEnd: Math.max(
+      selectionStart,
+      end + deltas.reduce((sum, delta) => sum + delta, 0),
+    ),
   };
+}
+
+/**
+ * Apply `action` to a block of lines: strip its marker when every line already carries that
+ * exact one, else bring every line to it.
+ *
+ * "Bring to it", not "prefix with it". A line already carrying a *different* list marker has
+ * that marker replaced, because `- a` and `- [ ] a` are the same thing said two ways and
+ * stacking them (`- [ ] - a`) renders as a nested bullet rather than a checked item.
+ * Quoting is the exception and stays additive: `> - item` is a list inside a quote, a
+ * separate axis rather than a competing marker, so quoting a list must keep the list.
+ */
+function rewriteBlock(lines: string[], action: BlockAction): string[] {
+  // Blank lines are neither marked nor counted. Without this a paragraph break inside the
+  // selection makes `allMarked` false forever, so an already-quoted passage can be quoted
+  // again but never unquoted. …unless EVERY touched line is blank, which is the empty
+  // composer and the blank line mid-draft: there is nothing to toggle off there, and
+  // skipping them would make the button do nothing at all.
+  const marked = lines.filter((line) => line.trim() !== '');
+  const blankBlock = marked.length === 0;
+  const allMarked =
+    !blankBlock && marked.every((line) => carries(line, action));
+
+  return lines.map((line) => {
+    if (!blankBlock && line.trim() === '') {
+      return line;
+    }
+    const { indent, marker, body } = splitBlockLine(line, action);
+    if (allMarked) {
+      return indent + body;
+    }
+    // `marker` is dropped rather than kept: for the list family that is the swap, and for a
+    // quote it is empty unless the line is already quoted (in which case `allMarked` held).
+    return (
+      indent +
+      BLOCK_MARKER[action] +
+      (action === 'quote' ? marker + body : body)
+    );
+  });
+}
+
+/** Whether `line` already carries exactly the marker `action` applies. */
+function carries(line: string, action: BlockAction): boolean {
+  if (action === 'quote') {
+    return line.startsWith(BLOCK_MARKER.quote);
+  }
+  const match = LIST_MARKER.exec(line);
+  if (match === null) {
+    return false;
+  }
+  // Each button toggles off only its OWN kind. A task item is not a plain bullet, and an
+  // ordered item is not a bulleted one — pressing Bulleted list on `1. a` means "make this a
+  // bulleted list", so it converts rather than clearing the line.
+  return action === 'tasklist'
+    ? match[3] !== undefined
+    : match[2] !== undefined && match[3] === undefined;
+}
+
+/** Split `line` into its indent, the marker `action` would replace, and the rest. */
+function splitBlockLine(
+  line: string,
+  action: BlockAction,
+): { indent: string; marker: string; body: string } {
+  const indent = /^\s*/.exec(line)?.[0] ?? '';
+  if (action === 'quote') {
+    const rest = line.slice(indent.length);
+    const quoted = rest.startsWith(BLOCK_MARKER.quote);
+    return {
+      indent,
+      marker: '',
+      body: quoted ? rest.slice(BLOCK_MARKER.quote.length) : rest,
+    };
+  }
+  const match = LIST_MARKER.exec(line);
+  return match === null
+    ? { indent, marker: '', body: line.slice(indent.length) }
+    : {
+        indent: match[1],
+        marker: match[0].slice(match[1].length),
+        body: line.slice(match[0].length),
+      };
 }
 
 /**
@@ -278,7 +356,14 @@ export function continueList(text: string, caret: number): EditResult | null {
   }
 
   const [marker, indent, bullet, ordinal, delimiter, quote] = match;
-  if (line.slice(marker.length).trim() === '') {
+  // A task item's marker is the bullet AND its box: `- [x] ` is what has to be carried,
+  // measured and stepped over, or `[x] ` reads as the item's content and an empty task item
+  // never looks empty.
+  const taskBox = bullet
+    ? (TASK_BOX.exec(line.slice(marker.length))?.[0] ?? '')
+    : '';
+  const fullMarker = marker + taskBox;
+  if (line.slice(fullMarker.length).trim() === '') {
     // An empty item: end the list rather than adding another one. Tested before the caret
     // position, because an item with nothing in it has no marker left to tear — wherever
     // the caret sits in `- `, the second Shift+Enter means "stop".
@@ -289,14 +374,15 @@ export function continueList(text: string, caret: number): EditResult | null {
       selectionEnd: lineStart,
     };
   }
-  if (at < lineStart + marker.length) {
+  if (at < lineStart + fullMarker.length) {
     // The caret is inside the marker of an item that HAS content, where a split would tear
     // the marker in half. An ordinary newline is the safe reading, so leave it to the caller.
     return null;
   }
 
+  // Always an UNCHECKED box: carrying `[x]` across would tick the new item before it exists.
   const next = bullet
-    ? `${indent}${bullet} `
+    ? `${indent}${bullet} ${taskBox ? '[ ] ' : ''}`
     : quote
       ? `${indent}${quote} `
       : `${indent}${Number(ordinal) + 1}${delimiter} `;

@@ -237,6 +237,69 @@ describe('linkifyText', () => {
   });
 });
 
+describe('sanitizeMatrixHtml — task items', () => {
+  it('marks a task item so the renderer can drop its bullet', () => {
+    // The checkbox is already a ☑/☐ glyph in the item's text, so a list marker beside it
+    // reads as "• ☑ done". The class is what the stylesheet keys off, and it survives
+    // Angular's [innerHTML] sanitizer.
+    const clean = sanitizeMatrixHtml('<ul><li>☑ done</li><li>☐ todo</li></ul>');
+    const items = parse(clean).querySelectorAll('li');
+
+    expect(items[0].classList.contains('mx-task')).toBe(true);
+    expect(items[1].classList.contains('mx-task')).toBe(true);
+  });
+
+  it('renders an incoming checkbox as the glyph our own task lists use', () => {
+    // What Element and every other GFM client puts on the wire. `input` is in neither
+    // allowlist, so this used to arrive as bare text with the done state simply gone.
+    const clean = sanitizeMatrixHtml(
+      '<ul><li><input type="checkbox" checked disabled> done</li>' +
+        '<li><input type="checkbox" disabled> todo</li></ul>',
+    );
+    const items = parse(clean).querySelectorAll('li');
+
+    expect(clean).not.toContain('<input');
+    expect(items[0].textContent?.trimStart().startsWith('☑')).toBe(true);
+    expect(items[1].textContent?.trimStart().startsWith('☐')).toBe(true);
+    expect(items[0].classList.contains('mx-task')).toBe(true);
+    expect(items[1].classList.contains('mx-task')).toBe(true);
+  });
+
+  it('drops a non-checkbox input, and leaks neither it nor its attributes', () => {
+    // `input` is only let past DOMPurify so the checkbox above can be read; nothing of it
+    // may survive the pass, and the attributes it needed must not ride out on anything else.
+    const clean = sanitizeMatrixHtml(
+      '<p><input type="text" value="pwned"></p><span type="text">hi</span>',
+    );
+
+    expect(clean).not.toContain('<input');
+    expect(clean).not.toContain('type=');
+    expect(clean).not.toContain('pwned');
+  });
+
+  it('leaves an incoming checkbox out of what we send', () => {
+    // The send path keeps the untouched allowlist, so the tag is simply dropped there.
+    const outgoing = sanitizeOutgoingHtml(
+      '<ul><li><input type="checkbox" checked> done</li></ul>',
+    );
+
+    expect(outgoing).not.toContain('<input');
+    expect(outgoing).not.toContain('☑');
+  });
+
+  it('leaves an ordinary list item alone', () => {
+    // The glyph has to OPEN the item. Anywhere else it is just a character someone typed,
+    // and the item is a normal one that should keep its bullet.
+    const clean = sanitizeMatrixHtml(
+      '<ul><li>milk</li><li>ticked it ☑</li></ul>',
+    );
+    const items = parse(clean).querySelectorAll('li');
+
+    expect(items[0].classList.contains('mx-task')).toBe(false);
+    expect(items[1].classList.contains('mx-task')).toBe(false);
+  });
+});
+
 describe('sanitizeMatrixHtml — spoilers', () => {
   it('tags a spoiler with the mx-spoiler class and makes it keyboard-activatable', () => {
     const clean = sanitizeMatrixHtml(

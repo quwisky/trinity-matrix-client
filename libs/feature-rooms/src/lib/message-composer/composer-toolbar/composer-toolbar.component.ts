@@ -14,6 +14,7 @@ import {
   lucideItalic,
   lucideLink,
   lucideList,
+  lucideListTodo,
   lucideSquareCode,
   lucideStrikethrough,
   lucideTextQuote,
@@ -51,6 +52,7 @@ const SECONDARY: readonly ToolbarAction[] = [
   { action: 'codeblock', icon: 'lucideSquareCode', label: 'Code block' },
   { action: 'quote', icon: 'lucideTextQuote', label: 'Quote' },
   { action: 'list', icon: 'lucideList', label: 'Bulleted list' },
+  { action: 'tasklist', icon: 'lucideListTodo', label: 'Task list' },
 ];
 
 /**
@@ -79,6 +81,7 @@ const SECONDARY: readonly ToolbarAction[] = [
       lucideItalic,
       lucideLink,
       lucideList,
+      lucideListTodo,
       lucideSquareCode,
       lucideStrikethrough,
       lucideTextQuote,

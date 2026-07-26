@@ -11,6 +11,7 @@ import {
   escapeHtml,
   sanitizeOutgoingHtml,
   stripReplyFallbackText,
+  taskGlyph,
 } from './message-view';
 
 /**
@@ -110,7 +111,7 @@ function placeMentionPill(doc: Document, mention: Mention): void {
  * the source event on each click, which is a feature rather than a render concern.
  */
 function checkbox({ checked }: Tokens.Checkbox): string {
-  return checked ? '☑ ' : '☐ ';
+  return taskGlyph(checked);
 }
 
 /**

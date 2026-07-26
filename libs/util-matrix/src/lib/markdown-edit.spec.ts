@@ -100,13 +100,41 @@ describe('applyFormat — block', () => {
     expect(applyFormat('- one\n- two', 0, 11, 'list').text).toBe('one\ntwo');
   });
 
-  it('adds the prefix when only some lines carry it', () => {
-    expect(applyFormat('- one\ntwo', 0, 9, 'list').text).toBe('- - one\n- two');
+  it('brings every line to the marker when only some carry it', () => {
+    // Not "prefix everything again": the line that already is a bullet stays one.
+    expect(applyFormat('- one\ntwo', 0, 9, 'list').text).toBe('- one\n- two');
+  });
+
+  it('swaps one list marker for another instead of stacking them', () => {
+    // Turning a bullet list into a checklist is the obvious flow, and prefixing blindly
+    // produced `- [ ] - a`, which renders as a nested bullet.
+    expect(applyFormat('- a', 0, 3, 'tasklist').text).toBe('- [ ] a');
+    expect(applyFormat('1. a', 0, 4, 'tasklist').text).toBe('- [ ] a');
+    expect(applyFormat('1. a', 0, 4, 'list').text).toBe('- a');
+    expect(applyFormat('- [ ] a', 0, 7, 'list').text).toBe('- a');
+    expect(applyFormat('  - a', 0, 5, 'tasklist').text).toBe('  - [ ] a');
+  });
+
+  it('toggles a marker off when every line already has that exact one', () => {
+    expect(applyFormat('- [x] done', 0, 10, 'tasklist').text).toBe('done');
+    expect(applyFormat('- a\n- b', 0, 7, 'list').text).toBe('a\nb');
+  });
+
+  it('keeps a quote separate from the list marker, as markdown does', () => {
+    // `> - item` is a list inside a quote, not a competing marker — quoting must not eat it.
+    expect(applyFormat('- a', 0, 3, 'quote').text).toBe('> - a');
+    expect(applyFormat('> - a', 0, 5, 'quote').text).toBe('- a');
+  });
+
+  it('prefixes a task item, and strips it again', () => {
+    expect(at('milk|', 'tasklist')).toBe('- [ ] milk|');
+    expect(applyFormat('- [ ] milk', 6, 10, 'tasklist').text).toBe('milk');
   });
 
   it.each([
     ['quote', '> '],
     ['list', '- '],
+    ['tasklist', '- [ ] '],
   ] as const)('starts a %s on an empty composer', (action, prefix) => {
     // There is nothing to toggle off, so the blank line takes the prefix — clicking the
     // button on an empty composer has to start the block, not do nothing.
@@ -226,6 +254,17 @@ describe('continueList', () => {
 
   it('is not fooled by a hyphen mid-line', () => {
     expect(continueList('well-known|'.replace('|', ''), 10)).toBeNull();
+  });
+
+  it('continues a task item as a fresh unchecked one', () => {
+    // Carrying `[x]` across would tick the new item before it exists.
+    expect(after('- [ ] milk|')).toBe('- [ ] milk\n- [ ] |');
+    expect(after('- [x] milk|')).toBe('- [x] milk\n- [ ] |');
+    expect(after('  - [X] nested|')).toBe('  - [X] nested\n  - [ ] |');
+  });
+
+  it('ends the list on an empty task item', () => {
+    expect(after('- [ ] milk\n- [ ] |')).toBe('- [ ] milk\n|');
   });
 
   it('splits the item when the caret sits inside it', () => {
