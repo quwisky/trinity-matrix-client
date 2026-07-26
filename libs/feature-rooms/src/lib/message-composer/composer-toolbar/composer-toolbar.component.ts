@@ -24,6 +24,7 @@ import {
   HlmDropdownMenuItem,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import { type FormatAction } from '@trinity/util-matrix';
 
 /** One toolbar button: the action it applies, its icon and its label. */
@@ -71,6 +72,7 @@ const SECONDARY: readonly ToolbarAction[] = [
     HlmDropdownMenu,
     HlmDropdownMenuItem,
     HlmDropdownMenuTrigger,
+    HlmTooltip,
   ],
   viewProviders: [
     provideIcons({

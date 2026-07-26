@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import { render } from '@trinity/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type FormatAction } from '@trinity/util-matrix';
@@ -121,6 +123,28 @@ describe('ComposerToolbarComponent', () => {
         '[data-testid=composer-preview-toggle]',
       )?.disabled,
     ).toBe(false);
+  });
+
+  it('gives every button a design-system tooltip, not a browser one', async () => {
+    // The buttons are icon-only, so the label has to be reachable on hover — and through
+    // HlmTooltip like the rest of the composer's controls, rather than a native `title`,
+    // which renders unstyled and on the browser's own delay.
+    const { fixture, container } = await renderToolbar();
+
+    const tooltips = fixture.debugElement.queryAll(By.directive(HlmTooltip));
+    expect(tooltips.length).toBe(container.querySelectorAll('button').length);
+    for (const button of container.querySelectorAll('button')) {
+      expect(button.hasAttribute('title'), button.outerHTML).toBe(false);
+    }
+  });
+
+  it('labels the preview toggle for the state it will move to', async () => {
+    const { container } = await renderToolbar({ previewing: true });
+    const toggle = container.querySelector(
+      '[data-testid=composer-preview-toggle]',
+    );
+
+    expect(toggle?.getAttribute('aria-label')).toBe('Back to writing');
   });
 
   it('names every control for screen readers', async () => {
