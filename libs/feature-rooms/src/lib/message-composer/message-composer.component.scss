@@ -105,6 +105,14 @@
   display: flex;
   flex-direction: column;
 
+  // How far the input sits in from the composer's edges, so the toolbar above can line up
+  // with it. Asymmetric because the row is: [+] input [emoji] [send] — one leading button,
+  // two trailing. Published as custom properties because the toolbar is a CHILD COMPONENT
+  // and indents itself by them; custom properties inherit through the DOM, which is what
+  // lets this cross the style-encapsulation boundary a shared class could not.
+  --trn-composer-gutter-start: 44px; // 40px button + 4px gap
+  --trn-composer-gutter-end: 88px; //  2 × (40px button + 4px gap)
+
   // Bottom padding clears the home indicator (safe-area-inset-bottom). env() is 0
   // off notched devices and, with the keyboard's native resize mode, while the soft
   // keyboard is up (the WebView shrinks, hiding the indicator) — so the input sits
@@ -371,6 +379,13 @@
 // Touch targets: enlarge the composer action buttons to the 44px minimum on touch
 // devices only (inert on a mouse, so desktop keeps its 36/40px buttons).
 @media (pointer: coarse) {
+  // The buttons grow to the 44px touch minimum, so the indent has to grow with them or the
+  // toolbar stops lining up on exactly the devices where the row is widest.
+  .composer {
+    --trn-composer-gutter-start: 48px; // 44px button + 4px gap
+    --trn-composer-gutter-end: 96px; //  2 × (44px button + 4px gap)
+  }
+
   .composer__attach,
   .composer__emoji,
   .composer__send,

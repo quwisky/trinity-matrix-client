@@ -307,4 +307,27 @@ test.describe('Composer formatting', () => {
     await expect(page.getByTestId('format-bold')).toBeVisible();
     await expect(page.getByTestId('composer-preview-toggle')).toBeVisible();
   });
+
+  test('the toolbar lines up with the text it formats', async ({
+    page,
+    request,
+  }) => {
+    // The toolbar sits above the input row, which is led by the `+` button — so laid out
+    // naively its first button starts a whole button-width left of the first character.
+    const { composer } = await openComposer(page, request, 'al');
+
+    const input = await composer.boundingBox();
+    const firstButton = await page.getByTestId('format-bold').boundingBox();
+    const previewToggle = await page
+      .getByTestId('composer-preview-toggle')
+      .boundingBox();
+    if (!input || !firstButton || !previewToggle) {
+      throw new Error('composer, first button or preview toggle not laid out');
+    }
+
+    expect(Math.abs(firstButton.x - input.x)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(previewToggle.x + previewToggle.width - (input.x + input.width)),
+    ).toBeLessThanOrEqual(1);
+  });
 });

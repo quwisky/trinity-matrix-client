@@ -8,6 +8,15 @@
   align-items: center;
   gap: 2px;
   padding-bottom: 2px;
+
+  // Line the row up with the INPUT, not with the composer's edge: the first button sits over
+  // the first character it would format, and the preview toggle over the input's right edge.
+  // The two gutters are published by `.composer` (see its stylesheet) so they track the
+  // button size across the touch breakpoint instead of being hard-coded here; they differ
+  // because the input row has one button before it and two after. Both fall back to 0 if the
+  // toolbar is ever hosted outside that container.
+  padding-left: var(--trn-composer-gutter-start, 0);
+  padding-right: var(--trn-composer-gutter-end, 0);
 }
 
 .toolbar__spacer {
