@@ -1832,8 +1832,34 @@ describe('RoomsPage room / DM / invite actions', () => {
     page.onAcceptInvite({ roomId: '!i:hs' });
 
     expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
-    expect(page.activeSpaceId()).toBeNull();
     expect(page.activeRoomId()).toBe('!i:hs');
+  });
+
+  it('leaves a room invite on a view that can actually show the room', () => {
+    // Accepting used to force the Home view, which lists DIRECT MESSAGES ONLY since the
+    // rail split — so the room you had just joined was invisible in the sidebar, and the
+    // row count went DOWN. Recent activity is the default and lists everything; accepting
+    // a non-DM room must not navigate away from it.
+    const page = build();
+    pending.set([pendingInvite({ roomId: '!i:hs', isDirect: false })]);
+    expect(page.recentView()).toBe(true);
+
+    page.onAcceptInvite({ roomId: '!i:hs' });
+
+    expect(page.recentView()).toBe(true);
+    expect(page.activeRoomId()).toBe('!i:hs');
+  });
+
+  it('still lands a DM invite on the direct-message view', () => {
+    // A DM is exactly what that view shows, so switching to it is right here.
+    const page = build();
+    pending.set([pendingInvite({ roomId: '!d:hs', isDirect: true })]);
+
+    page.onAcceptInvite({ roomId: '!d:hs' });
+
+    expect(page.recentView()).toBe(false);
+    expect(page.activeSpaceId()).toBeNull();
+    expect(page.activeRoomId()).toBe('!d:hs');
   });
 
   it('accepts a space invite without auto-selecting a room', () => {

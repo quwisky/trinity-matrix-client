@@ -1113,12 +1113,21 @@ export class RoomsPage implements OnInit, OnDestroy {
       error: this.spaceError,
       destroyRef: this.destroyRef,
     }).subscribe(() => {
-      // A joined room/DM lives under Home; surface it by switching there and
-      // opening it. A joined space just appears in the rail (no auto-select).
-      if (invite && !invite.isSpace) {
-        this.onSelectSpace(null);
-        this.onSelectRoomRow(roomId);
+      // Open what was just joined. A joined space needs nothing — it appears in the rail.
+      //
+      // Only a DM switches view. `onSelectSpace(null)` lands on the Home view, which lists
+      // DIRECT MESSAGES ONLY (see `visibleRooms`) — right for a DM, and wrong for anything
+      // else: a joined ROOM would be opened in the timeline while vanishing from the sidebar,
+      // measurably so (the row count dropped from 2 to 1). That was correct before the rail
+      // split in bd16dc25, when Home listed everything. A room is instead left on whatever
+      // view the user was already on — Recent activity by default, which lists everything.
+      if (!invite || invite.isSpace) {
+        return;
       }
+      if (invite.isDirect) {
+        this.onSelectSpace(null);
+      }
+      this.onSelectRoomRow(roomId);
     });
   }
 
