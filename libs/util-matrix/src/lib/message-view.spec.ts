@@ -302,7 +302,11 @@ describe('sanitizeOutgoingHtml', () => {
 
     expect(clean).not.toContain('<script');
     expect(clean).not.toContain('attacker.test');
-    expect(clean).toContain('alt="leak"'); // the element survives, only the src goes
+    // The image reduces to its alt text. It used to keep the element and lose only the src,
+    // which is the src-less empty box the markdown renderer goes out of its way to avoid —
+    // and every client prefers formatted_body, so the address was gone for good.
+    expect(clean).not.toContain('<img');
+    expect(clean).toContain('leak');
     expect(clean).not.toContain('javascript:');
     expect(clean).not.toContain('target=');
     expect(clean).not.toContain('ion-page');

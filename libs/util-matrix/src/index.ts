@@ -9,6 +9,7 @@ export * from './lib/session.model';
 export * from './lib/rust-crypto-store';
 export * from './lib/presence';
 export * from './lib/message-content';
+export * from './lib/markdown-edit';
 export * from './lib/voice';
 export * from './lib/typing';
 export * from './lib/matrix-to';

@@ -131,9 +131,31 @@ describe('isBrowserReserved', () => {
     expect(isBrowserReserved(chord({ alt: true, key: 'ArrowDown' }))).toBe(
       false,
     );
-    // Shift changes it — Ctrl+Shift+T (reopen tab) is out of our small set on purpose.
+    // Shift does not make an ordinary chord reserved.
     expect(
-      isBrowserReserved(chord({ accel: true, shift: true, key: 't' })),
+      isBrowserReserved(chord({ accel: true, shift: true, key: 'x' })),
     ).toBe(false);
+    // Ctrl+Shift+L is not claimed by either browser, unlike Ctrl+L.
+    expect(
+      isBrowserReserved(chord({ accel: true, shift: true, key: 'l' })),
+    ).toBe(false);
+  });
+
+  it('flags the shift chords a browser eats as well', () => {
+    // Reopen-closed-tab, incognito window and close-window are as unreachable as their
+    // unshifted cousins, so binding one on the web deserves the same warning.
+    for (const key of ['t', 'n', 'w']) {
+      expect(
+        isBrowserReserved(chord({ accel: true, shift: true, key })),
+        key,
+      ).toBe(true);
+    }
+    // …as are the developer-tools chords.
+    for (const key of ['i', 'j', 'c']) {
+      expect(
+        isBrowserReserved(chord({ accel: true, shift: true, key })),
+        key,
+      ).toBe(true);
+    }
   });
 });

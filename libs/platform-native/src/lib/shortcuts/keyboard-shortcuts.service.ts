@@ -25,6 +25,13 @@ export interface ShortcutDef {
   family?: 'digit';
 }
 
+/**
+ * The outcome of a rebind: either it took (naming whichever rebindable shortcut lost the
+ * chord), or a fixed shortcut already claims it and nothing changed.
+ */
+export type RebindResult =
+  { ok: true; displaced: string | null } | { ok: false; conflict: string };
+
 /** A shortcut resolved from a keydown: its id, plus the digit for the numbered-jump family. */
 export interface ShortcutHit {
   id: string;
@@ -112,6 +119,51 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     rebindable: false,
     desktopOnly: true,
     family: 'digit',
+  },
+  // Formatting — handled by the message composer, which resolves them itself and stops the
+  // event before it reaches the page-level handler. They only do anything while the composer
+  // has focus; everywhere else they fall through to the browser.
+  {
+    id: 'format.bold',
+    category: 'Formatting',
+    description: 'Bold the selected text',
+    defaultChord: A({ accel: true, key: 'b' }),
+    rebindable: true,
+  },
+  {
+    id: 'format.italic',
+    category: 'Formatting',
+    description: 'Italicise the selected text',
+    defaultChord: A({ accel: true, key: 'i' }),
+    rebindable: true,
+  },
+  {
+    id: 'format.strike',
+    category: 'Formatting',
+    description: 'Strike through the selected text',
+    defaultChord: A({ accel: true, shift: true, key: 'x' }),
+    rebindable: true,
+  },
+  {
+    id: 'format.code',
+    category: 'Formatting',
+    description: 'Format the selected text as inline code',
+    defaultChord: A({ accel: true, key: '`' }),
+    rebindable: true,
+  },
+  {
+    // Accel+K would be the conventional chord, but it is already the quick switcher and
+    // `resolve` is first-hit-wins — so the default cannot start there. A user who wants it
+    // can rebind: `rebind` unsets whichever shortcut currently holds the chord.
+    //
+    // Accel+Shift+K is the other obvious candidate and is worse: it is Firefox's Web Console
+    // on every platform, which the browser eats before the page sees it. Accel+Shift+U is
+    // Slack's chord for the same action and is not reserved anywhere we know of.
+    id: 'format.link',
+    category: 'Formatting',
+    description: 'Turn the selected text into a link',
+    defaultChord: A({ accel: true, shift: true, key: 'u' }),
+    rebindable: true,
   },
 ];
 
@@ -208,10 +260,21 @@ export class KeyboardShortcutsService {
   }
 
   /**
-   * Rebind `id` to `chord`, stealing it from any shortcut that currently holds it (that one
-   * becomes unset). Returns the id it was stolen from, or null. Persists.
+   * Rebind `id` to `chord`, stealing it from any *rebindable* shortcut that currently holds
+   * it (that one becomes unset). Persists.
+   *
+   * Refused when a fixed shortcut already claims the chord. `resolve` is first-hit-wins and
+   * the fixed ones sit ahead of the rebindable ones, so the new binding would never fire —
+   * settings would show key-caps for a chord that does something else entirely.
    */
-  rebind(id: string, chord: Chord): { displaced: string | null } {
+  rebind(id: string, chord: Chord): RebindResult {
+    const conflict = SHORTCUTS.find(
+      (def) =>
+        def.id !== id && !def.rebindable && claimsChord(this, def, chord),
+    );
+    if (conflict) {
+      return { ok: false, conflict: conflict.id };
+    }
     const displaced =
       SHORTCUTS.find(
         (def) =>
@@ -225,7 +288,7 @@ export class KeyboardShortcutsService {
       return next;
     });
     this.persist();
-    return { displaced };
+    return { ok: true, displaced };
   }
 
   /** Restore a shortcut's default binding (drop its override). Persists. */
@@ -250,6 +313,28 @@ export class KeyboardShortcutsService {
       value: JSON.stringify(this.overrides()),
     });
   }
+}
+
+/**
+ * Whether a fixed shortcut would swallow `chord`, by any of the routes `resolve` matches on:
+ * its binding, its desktop alias, or — for the digit family — accel + any digit 1…9.
+ *
+ * The family check mirrors `resolve`'s, which tests only accel and `!alt`: Ctrl+Shift+3 hits
+ * it just as Ctrl+3 does. Deliberately not gated on `isDesktop`, unlike `resolve`: a binding
+ * persisted on the web would still be dead the moment the same person opens the desktop app.
+ */
+function claimsChord(
+  svc: KeyboardShortcutsService,
+  def: ShortcutDef,
+  chord: Chord,
+): boolean {
+  if (def.family === 'digit') {
+    return chord.accel && !chord.alt && /^[1-9]$/.test(chord.key);
+  }
+  return (
+    sameEffective(svc, def.id, chord) ||
+    (def.desktopAlias !== undefined && sameChord(def.desktopAlias, chord))
+  );
 }
 
 /** Whether shortcut `id`'s effective binding equals `chord` (helper for steal detection). */

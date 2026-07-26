@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   editMessageContent,
+  emoteMessageContent,
   locationMessageContent,
   mediaCaptionFields,
   messagePreview,
@@ -212,6 +213,54 @@ describe('renderMarkdown — outgoing sanitization', () => {
 
     expect(html).toContain('<a href="https://x.test/a.png">pic</a>');
     expect(html).not.toContain('<img');
+  });
+
+  it('points a linked remote image at the target, not at the image', () => {
+    // `[![badge](img)](target)` — the badge-linking shape. Rendering the image as an <a>
+    // inside the link's <a> is not representable: the parser splits the nested anchors and
+    // the message goes out as an empty link plus a link to the IMAGE, losing the target.
+    const { html } = renderMarkdown(
+      '[![badge](https://img.test/b.svg)](https://target.test/x)',
+    );
+
+    expect(html).toContain('<a href="https://target.test/x">badge</a>');
+    expect(html).not.toContain('img.test');
+    expect(html).not.toMatch(/<a[^>]*><\/a>/);
+  });
+
+  it('never puts a data: image on the wire', () => {
+    // Matrix requires an mxc: source, so a base64 payload arrives as the empty box this
+    // renderer exists to prevent — after shipping the whole blob, which on a real image
+    // would blow the 65 KiB event limit on its own.
+    const { html } = renderMarkdown('![diagram](data:image/png;base64,AAAA)');
+
+    expect(html).not.toContain('base64');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('diagram');
+  });
+
+  it('applies the mxc-only image rule to raw HTML too', () => {
+    // `image()` only sees markdown image tokens — marked hands raw HTML straight through, so
+    // the same payload walked out the other door. Both are settled on the way out now.
+    const data = renderMarkdown(
+      '<img src="data:image/png;base64,AAAA" alt="diagram">',
+    );
+    expect(data.html).not.toContain('base64');
+    expect(data.html).not.toContain('<img');
+    expect(data.html).toContain('diagram');
+
+    // A remote source keeps its src stripped by the allowlist, which left a src-less <img> —
+    // the empty box the markdown renderer exists to avoid.
+    const remote = renderMarkdown('<img src="https://x.test/a.png" alt="pic">');
+    expect(remote.html).not.toContain('<img');
+    expect(remote.html).toContain('pic');
+  });
+
+  it('does not fall back to a data: URI as the link text', () => {
+    // `text || href` would otherwise put the payload on the wire as the caption instead.
+    const { html } = renderMarkdown('![](data:image/png;base64,AAAA)');
+
+    expect(html).not.toContain('base64');
   });
 
   it('keeps an image whose source Matrix does carry', () => {
@@ -478,6 +527,28 @@ describe('mentions in content builders', () => {
     expect(content.formatted_body).toBeUndefined();
     expect(content.format).toBeUndefined();
     expect(content.body).toBe('<!-- x -->');
+  });
+
+  it('still notifies the people mentioned when the markup sanitizes away', () => {
+    // `m.mentions` is what makes a modern homeserver notify them. Dropping it along with the
+    // empty formatted_body means the message arrives and the person named never hears of it.
+    const content = textMessageContent(
+      '<!-- x -->',
+      renderMarkdown('<!-- x -->'),
+      [{ userId: '@a:hs', display: '@A' }],
+    );
+
+    expect(content['m.mentions']).toEqual({ user_ids: ['@a:hs'] });
+  });
+
+  it('still notifies the people mentioned in an emote that sanitizes away', () => {
+    const content = emoteMessageContent(
+      '<!-- x -->',
+      renderMarkdown('<!-- x -->'),
+      [{ userId: '@a:hs', display: '@A' }],
+    );
+
+    expect(content['m.mentions']).toEqual({ user_ids: ['@a:hs'] });
   });
 });
 

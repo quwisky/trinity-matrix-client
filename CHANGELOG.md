@@ -14,10 +14,11 @@ All notable changes to this project are documented here. The format is based on
   thing in a plain message and another in a formatted one, with nothing to tell you which you
   were in. Line breaks are now kept either way.
 
-- **Task lists survive being sent.** Typing `- [x] done` produced a checkbox that was stripped
-  out before the message ever left your device, so recipients saw a list with the done and
-  not-done state simply missing. Task lists now arrive as ☑ and ☐, which every Matrix client
-  and screen reader can show.
+- **Binding a shortcut a browser keeps for itself now says so in more cases.** Settings →
+  Keyboard shortcuts warns when the chord you pick only works in the desktop app, but the
+  check ignored anything with Shift — so Ctrl+Shift+T, Ctrl+Shift+N and Ctrl+Shift+W were
+  accepted with no warning and then silently did nothing on the web, where the browser
+  reopens a tab or opens a window instead.
 
 - **The test suite no longer fails at random.** `pnpm test` was being killed part-way through
   on roughly half of all runs — no failing test, just a dead process — because the Angular
@@ -34,6 +35,19 @@ All notable changes to this project are documented here. The format is based on
   a menu for anything to open into, **Show accounts** now opens a dialog instead.
 
 ### Added
+
+- **Formatting buttons, shortcuts and a preview in the composer.** Writing a formatted message
+  meant typing markdown from memory and hoping. There is now a small toolbar above the message
+  box — bold, italic, link and code, with strikethrough, code blocks, quotes and lists behind an
+  overflow button. Each one wraps whatever you have selected, or drops you between the markers
+  when you have selected nothing, and pressing it again takes the formatting back off.
+  The same actions have keyboard shortcuts, and every one of them can be changed in
+  Settings → Keyboard shortcuts — which now groups its list under headings instead of running
+  everything together. Shift+Enter inside a list carries the bullet or number onto the next
+  line, and a second one on an empty item ends the list. The eye button swaps the box for a
+  preview of the message exactly as it will arrive, slash commands included, so a spoiler
+  previews concealed the way the person reading it will first see it. Your draft survives all
+  of it untouched.
 
 - **Code blocks are syntax-highlighted, and say what language they are.** A fenced block
   tagged with a language — ` ```ts `, ` ```py `, ` ```sh ` and ten others — is now coloured,
@@ -188,10 +202,11 @@ All notable changes to this project are documented here. The format is based on
   applies to incoming messages, so it was possible to send markup that Trinity itself would
   refuse to display. Both directions now use the same rule. Two visible consequences, both of
   them things that only ever _looked_ like they worked: a markdown image pointing at a web
-  address keeps its caption but drops the address, because Matrix only permits images already
-  uploaded to a homeserver; and a link to a relative path or a page anchor keeps its text but
-  drops the target, because Matrix requires a full address. Both have always been treated that
-  way on arrival — the change is that Trinity no longer sends them.
+  address is sent as a link to that address instead, because Matrix only permits images
+  already uploaded to a homeserver and the picture would otherwise arrive as an empty box
+  with the address nowhere to be seen; and a link to a relative path or a page anchor keeps
+  its text but drops the target, because Matrix requires a full address. Both have always
+  been treated that way on arrival — the change is that Trinity no longer sends them.
 
 - **The supported browser list now matches Angular's own.** The build targets Chrome and Edge
   111+, Firefox 112+, and Safari and iOS 16.4+ — Angular 22's published support policy. The

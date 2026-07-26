@@ -877,7 +877,31 @@ export function sanitizeMatrixHtml(html: string): string {
  * so caching sends would only evict useful timeline entries.
  */
 export function sanitizeOutgoingHtml(html: string): string {
-  return DOMPurify.sanitize(html, MATRIX_PURIFY_CONFIG);
+  const body = DOMPurify.sanitize(html, {
+    ...MATRIX_PURIFY_CONFIG,
+    RETURN_DOM: true as const,
+  }) as HTMLElement;
+  enforceMxcImages(body);
+  return body.innerHTML;
+}
+
+/**
+ * Reduce every `<img>` we would send whose source is not `mxc:` to its alt text.
+ *
+ * Matrix accepts no other source, so anything else is an empty box on arrival. The markdown
+ * renderer already turns such an image into a link or its caption (see `image()` in
+ * message-content.ts) — but it only sees markdown image *tokens*, and marked hands raw HTML
+ * straight through. So `<img src="data:image/png;base64,…">` typed into the composer walked
+ * out the other door with its whole payload, and `<img src="https://…">` shipped as the
+ * src-less box the renderer exists to avoid. Enforcing it here catches both, on the one path
+ * everything outgoing shares.
+ */
+function enforceMxcImages(root: ParentNode): void {
+  for (const img of root.querySelectorAll('img')) {
+    if (!/^mxc:/i.test(img.getAttribute('src') ?? '')) {
+      img.replaceWith(img.getAttribute('alt') ?? '');
+    }
+  }
 }
 
 /**

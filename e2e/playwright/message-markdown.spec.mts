@@ -198,7 +198,9 @@ test.describe('Message markdown', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openRoom(page, roomName);
 
-    await sendLines(page, ['- [x] shipped', '- [ ] pending']);
+    // Only the first marker is typed: Shift+Enter now carries the bullet onto the next line
+    // itself, so a user types what follows it — typing '- ' again would nest a second list.
+    await sendLines(page, ['- [x] shipped', '[ ] pending']);
 
     const list = page.locator('.msg__text--html', { hasText: 'shipped' });
     await expect(list).toBeVisible({ timeout: 20_000 });

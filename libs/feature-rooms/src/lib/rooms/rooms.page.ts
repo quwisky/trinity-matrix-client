@@ -645,31 +645,42 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (!hit) {
       return;
     }
-    e.preventDefault();
+    // preventDefault belongs to the branches that act, NOT to "the catalogue matched". The
+    // catalogue also holds the composer's formatting shortcuts, which this handler knows
+    // nothing about — blocking those here would swallow Ctrl+B app-wide and do nothing with
+    // it. An id we do not handle must fall through to the browser untouched.
     switch (hit.id) {
       case 'switcher.open':
+        e.preventDefault();
         void this.openSwitcher();
         break;
       case 'room.hop.back':
+        e.preventDefault();
         this.hopRoom('back');
         break;
       case 'room.hop.forward':
+        e.preventDefault();
         this.hopRoom('forward');
         break;
       case 'room.walk.down':
+        e.preventDefault();
         this.walkList('next');
         break;
       case 'room.walk.up':
+        e.preventDefault();
         this.walkList('previous');
         break;
       case 'room.walk.unread.down':
+        e.preventDefault();
         this.walkUnread('next');
         break;
       case 'room.walk.unread.up':
+        e.preventDefault();
         this.walkUnread('previous');
         break;
       case 'room.jump':
         if (hit.digit) {
+          e.preventDefault();
           this.openShortcutTarget(
             this.mru.nth(hit.digit, this.activeRoomId()),
             'user',

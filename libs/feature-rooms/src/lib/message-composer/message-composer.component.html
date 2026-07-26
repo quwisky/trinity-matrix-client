@@ -58,6 +58,15 @@
 }
 
 <div class="composer">
+  @if (!recordingVoice()) {
+    <trn-composer-toolbar
+      [narrow]="narrowLayout()"
+      [previewing]="previewing()"
+      [disabled]="uploadProgress() !== null"
+      (format)="onFormat($event)"
+      (togglePreview)="onTogglePreview()"
+    />
+  }
   @if (pickerOpen()) {
     <emoji-mart
       class="composer__picker"
@@ -175,164 +184,189 @@
     hidden
     (change)="onFilePicked($event)"
   />
-  <!-- Every compose action lives behind one `+` at all widths: a dropdown tray when
+  <!-- The input row. A child of `.composer` rather than `.composer` itself, so the toolbar
+       above can share the container the floating pickers and autocompletes anchor to — they
+       are positioned `bottom: calc(100% + 4px)` against `.composer`, so anything outside it
+       would be covered by them. -->
+  <div class="composer__row">
+    <!-- Every compose action lives behind one `+` at all widths: a dropdown tray when
        there is more than one to offer, a plain attach button when there is not. Keeps
        the row to +, input, emoji and send. -->
-  @if (hasInsertMenu()) {
-    <button
-      type="button"
-      class="composer__attach"
-      [hlmDropdownMenuTrigger]="insertMenu"
-      hlmTooltip="Add to message"
-      aria-label="Add to message"
-      data-testid="composer-insert"
-      [disabled]="editing()"
-    >
-      @if (locationSharing() || gifDownloading()) {
-        <hlm-spinner class="text-base" />
-      } @else {
-        <ng-icon name="lucidePlus" aria-hidden="true" />
-      }
-    </button>
-    <ng-template #insertMenu>
-      <!-- Each item repeats its inline twin's [disabled] rather than the trigger
+    @if (hasInsertMenu()) {
+      <button
+        type="button"
+        class="composer__attach"
+        [hlmDropdownMenuTrigger]="insertMenu"
+        hlmTooltip="Add to message"
+        aria-label="Add to message"
+        data-testid="composer-insert"
+        [disabled]="editing()"
+      >
+        @if (locationSharing() || gifDownloading()) {
+          <hlm-spinner class="text-base" />
+        } @else {
+          <ng-icon name="lucidePlus" aria-hidden="true" />
+        }
+      </button>
+      <ng-template #insertMenu>
+        <!-- Each item repeats its inline twin's [disabled] rather than the trigger
            carrying the union: an upload in flight blocks another *attachment*, it is
            no reason to stop someone starting a poll. Only editing() is whole-tray. -->
-      <div hlmDropdownMenu aria-label="Add to message">
-        <button
-          hlmDropdownMenuItem
-          class="composer__insert-item"
-          [disabled]="uploadProgress() !== null"
-          (triggered)="onAttach()"
-          data-testid="insert-attach"
-        >
-          <ng-icon name="lucidePaperclip" />
-          Attach a file
-        </button>
-        @if (gifEnabled()) {
+        <div hlmDropdownMenu aria-label="Add to message">
           <button
             hlmDropdownMenuItem
             class="composer__insert-item"
-            [disabled]="uploadProgress() !== null || gifDownloading()"
-            (triggered)="toggleGifPicker()"
-            data-testid="insert-gif"
+            [disabled]="uploadProgress() !== null"
+            (triggered)="onAttach()"
+            data-testid="insert-attach"
           >
-            <ng-icon name="lucideImagePlay" />
-            GIF
+            <ng-icon name="lucidePaperclip" />
+            Attach a file
           </button>
-        }
-        @if (richActions()) {
-          <button
-            hlmDropdownMenuItem
-            class="composer__insert-item"
-            (triggered)="openPollDialog()"
-            data-testid="insert-poll"
-          >
-            <ng-icon name="lucideVote" />
-            Poll
-          </button>
-          <button
-            hlmDropdownMenuItem
-            class="composer__insert-item"
-            [disabled]="locationSharing()"
-            (triggered)="shareLocation()"
-            data-testid="insert-location"
-          >
-            <ng-icon name="lucideMapPin" />
-            Location
-          </button>
-          @if (voiceSupported && !recordingVoice()) {
+          @if (gifEnabled()) {
             <button
               hlmDropdownMenuItem
               class="composer__insert-item"
-              [disabled]="uploadProgress() !== null"
-              (triggered)="startVoiceRecording()"
-              data-testid="insert-voice"
+              [disabled]="uploadProgress() !== null || gifDownloading()"
+              (triggered)="toggleGifPicker()"
+              data-testid="insert-gif"
             >
-              <ng-icon name="lucideMic" />
-              Voice message
+              <ng-icon name="lucideImagePlay" />
+              GIF
             </button>
           }
-        }
-      </div>
-    </ng-template>
-  } @else {
-    <!-- Nothing to collect in a tray (thread composer, no GIF provider), so the `+`
+          @if (richActions()) {
+            <button
+              hlmDropdownMenuItem
+              class="composer__insert-item"
+              (triggered)="openPollDialog()"
+              data-testid="insert-poll"
+            >
+              <ng-icon name="lucideVote" />
+              Poll
+            </button>
+            <button
+              hlmDropdownMenuItem
+              class="composer__insert-item"
+              [disabled]="locationSharing()"
+              (triggered)="shareLocation()"
+              data-testid="insert-location"
+            >
+              <ng-icon name="lucideMapPin" />
+              Location
+            </button>
+            @if (voiceSupported && !recordingVoice()) {
+              <button
+                hlmDropdownMenuItem
+                class="composer__insert-item"
+                [disabled]="uploadProgress() !== null"
+                (triggered)="startVoiceRecording()"
+                data-testid="insert-voice"
+              >
+                <ng-icon name="lucideMic" />
+                Voice message
+              </button>
+            }
+          }
+        </div>
+      </ng-template>
+    } @else {
+      <!-- Nothing to collect in a tray (thread composer, no GIF provider), so the `+`
          stays a plain attach button. -->
+      <button
+        type="button"
+        class="composer__attach"
+        hlmTooltip="Attach"
+        aria-label="Attach a file"
+        data-testid="composer-insert-attach"
+        [disabled]="uploadProgress() !== null || editing()"
+        (click)="onAttach()"
+      >
+        <ng-icon name="lucidePlus" aria-hidden="true" />
+      </button>
+    }
+    <!-- The preview replaces the input rather than sitting beside it, so the composer keeps its
+       height and nothing below it moves. The textarea stays in the DOM (hidden) so its value,
+       caret and draft survive the round trip untouched. -->
+    @if (previewing()) {
+      <!-- `msg__text--html` only for rendered markdown, mirroring the timeline and edit history:
+         without it the container stays `pre-wrap`, which is what keeps a plain message's line
+         breaks. Following a mention pill would navigate away from a half-written message, so
+         `(matrixLink)` is deliberately unhandled — external links still open via the directive. -->
+      <div
+        class="composer__preview"
+        [class.msg__text--html]="preview().rich"
+        data-testid="composer-preview"
+        trnSpoilerReveal
+        trnMatrixLink
+        [innerHTML]="preview().html"
+      ></div>
+    }
+    <textarea
+      #ta
+      hlmTextarea
+      class="composer__input"
+      [class.composer__input--hidden]="previewing()"
+      data-testid="composer-input"
+      rows="1"
+      [value]="text()"
+      [placeholder]="
+        pendingFile()
+          ? 'Add a caption…'
+          : editing()
+            ? 'Edit message…'
+            : placeholder() || 'Message #' + roomName()
+      "
+      aria-autocomplete="list"
+      [attr.aria-controls]="
+        mentionOpen()
+          ? 'mention-suggestions'
+          : emojiOpen()
+            ? 'emoji-suggestions'
+            : null
+      "
+      [attr.aria-activedescendant]="
+        mentionOpen()
+          ? 'mention-suggestion-' + mentionActiveIndex()
+          : emojiOpen()
+            ? 'emoji-suggestion-' + emojiActiveIndex()
+            : null
+      "
+      (input)="onInput($event)"
+      (keydown)="onKeydown($event)"
+      (keydown.enter)="onEnter($event)"
+      (keydown.arrowUp)="onArrowUp($event)"
+      (keydown.arrowDown)="onArrowDown($event)"
+      (keydown.tab)="onTab($event)"
+      (blur)="onBlur()"
+      (paste)="onPaste($event)"
+    ></textarea>
     <button
       type="button"
-      class="composer__attach"
-      hlmTooltip="Attach"
-      aria-label="Attach a file"
-      data-testid="composer-insert-attach"
-      [disabled]="uploadProgress() !== null || editing()"
-      (click)="onAttach()"
+      class="composer__emoji"
+      hlmTooltip="Emoji"
+      aria-label="Insert emoji"
+      [attr.aria-expanded]="pickerOpen()"
+      (click)="toggleEmojiPicker()"
     >
-      <ng-icon name="lucidePlus" aria-hidden="true" />
+      <ng-icon name="lucideSmile" aria-hidden="true" />
     </button>
-  }
-  <textarea
-    #ta
-    hlmTextarea
-    class="composer__input"
-    data-testid="composer-input"
-    rows="1"
-    [value]="text()"
-    [placeholder]="
-      pendingFile()
-        ? 'Add a caption…'
-        : editing()
-          ? 'Edit message…'
-          : placeholder() || 'Message #' + roomName()
-    "
-    aria-autocomplete="list"
-    [attr.aria-controls]="
-      mentionOpen()
-        ? 'mention-suggestions'
-        : emojiOpen()
-          ? 'emoji-suggestions'
-          : null
-    "
-    [attr.aria-activedescendant]="
-      mentionOpen()
-        ? 'mention-suggestion-' + mentionActiveIndex()
-        : emojiOpen()
-          ? 'emoji-suggestion-' + emojiActiveIndex()
-          : null
-    "
-    (input)="onInput($event)"
-    (keydown.enter)="onEnter($event)"
-    (keydown.arrowUp)="onArrowUp($event)"
-    (keydown.arrowDown)="onArrowDown($event)"
-    (keydown.tab)="onTab($event)"
-    (blur)="onBlur()"
-    (paste)="onPaste($event)"
-  ></textarea>
-  <button
-    type="button"
-    class="composer__emoji"
-    hlmTooltip="Emoji"
-    aria-label="Insert emoji"
-    [attr.aria-expanded]="pickerOpen()"
-    (click)="toggleEmojiPicker()"
-  >
-    <ng-icon name="lucideSmile" aria-hidden="true" />
-  </button>
-  <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on
+    <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on
        a pointer device it is still the discoverable way to send when Enter is ambiguous
        (a draft holding newlines, IME composition). Withheld only while recording, where
        the recording bar owns the send plane and two identical ones would be a coin-flip. -->
-  @if (!recordingVoice()) {
-    <button
-      type="button"
-      class="composer__send"
-      hlmTooltip="Send"
-      aria-label="Send message"
-      data-testid="composer-send"
-      [disabled]="!text().trim() && !pendingFile()"
-      (click)="submit()"
-    >
-      <ng-icon name="lucideSend" aria-hidden="true" />
-    </button>
-  }
+    @if (!recordingVoice()) {
+      <button
+        type="button"
+        class="composer__send"
+        hlmTooltip="Send"
+        aria-label="Send message"
+        data-testid="composer-send"
+        [disabled]="!text().trim() && !pendingFile()"
+        (click)="submit()"
+      >
+        <ng-icon name="lucideSend" aria-hidden="true" />
+      </button>
+    }
+  </div>
 </div>

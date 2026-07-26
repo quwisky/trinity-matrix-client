@@ -6,7 +6,7 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
-import { Marked, type Tokens } from 'marked';
+import { Marked, Renderer, type Tokens } from 'marked';
 import {
   escapeHtml,
   sanitizeOutgoingHtml,
@@ -58,8 +58,11 @@ function mentionsBlock(userIds: string[]): Record<string, unknown> {
  * how the serializer escapes a display name (DOMPurify leaves `'` and `"` raw in text, which
  * an `escapeHtml`-based needle silently failed to match).
  *
- * Existing links are skipped: a pill inside an anchor is invalid nesting, and a display name
- * that happens to appear in link text should stay link text.
+ * Code and existing links are skipped. A pill inside an anchor is invalid nesting, and a
+ * display name that happens to appear in link text should stay link text — but the sharper
+ * case is code: `const a = "@Bob"` in a fenced block is a string literal, not a mention, and
+ * splicing an anchor into it corrupts the listing on the wire and costs the real mention
+ * later in the message its pill.
  */
 function applyMentionPills(html: string, mentions: Mention[]): string {
   if (mentions.length === 0) {
@@ -78,7 +81,7 @@ function placeMentionPill(doc: Document, mention: Mention): void {
   let node = walker.nextNode();
   while (node) {
     const at = (node.nodeValue ?? '').indexOf(mention.display);
-    if (at !== -1 && !(node.parentElement?.closest('a') ?? null)) {
+    if (at !== -1 && !node.parentElement?.closest('a, code, pre')) {
       const target = node as Text;
       const rest = target.splitText(at);
       rest.splitText(mention.display.length);
@@ -116,15 +119,52 @@ function checkbox({ checked }: Tokens.Checkbox): string {
  * Matrix requires an `mxc:` source, so `![pic](https://x/y.png)` sanitizes down to a
  * src-less `<img>` — an empty box, with the URL nowhere to be seen, because every client
  * prefers `formatted_body` over the `body` that still holds it. A link keeps the address
- * usable and says what it was for. Local sources (`mxc:`, `blob:`, `data:`) are left as
- * real images.
+ * usable and says what it was for.
+ *
+ * **`mxc:` only.** `ALLOWED_URI_REGEXP` lists no other scheme an `<img>` could survive with,
+ * and Matrix accepts no other: anything else loses its `src` and becomes the empty box this
+ * exists to avoid. `blob:` is the obvious case. `data:` is the deceptive one — DOMPurify has a
+ * built-in `DATA_URI_TAGS` exception that lets it through `<img>` regardless of our regexp, so
+ * it *looked* carried while being just as unrenderable on arrival, after putting the whole
+ * base64 payload on the wire. (The render path does allow `blob:`/`data:` on an INCOMING
+ * `<img>`; the send path does not, and this follows the send path because that is where it
+ * runs.)
  */
 function image({ href, title, text }: Tokens.Image): string {
-  if (/^(?:mxc|blob|data):/i.test(href)) {
+  if (/^mxc:/i.test(href)) {
     const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
     return `<img src="${escapeHtml(href)}" alt="${escapeHtml(text)}"${titleAttr}>`;
   }
+  // A data: URI is its own payload, so it can be neither shown nor usefully linked — and it
+  // must not stand in as the link text either, or the blob goes out as the caption instead.
+  if (/^data:/i.test(href)) {
+    return escapeHtml(text || 'image');
+  }
   return `<a href="${escapeHtml(href)}">${escapeHtml(text || href)}</a>`;
+}
+
+/**
+ * A link, with any anchor {@link image} produced inside it unwrapped.
+ *
+ * `[![badge](https://img/b.svg)](https://target)` — a badge linking somewhere, the common
+ * shape for this — makes the image renderer above emit an `<a>` *inside* the link's own
+ * `<a>`. Nested anchors are not representable in HTML: the parser's adoption-agency step
+ * splits them, so `sanitizeOutgoingHtml` returned an empty `<a>` followed by a link to the
+ * IMAGE, and the target the user actually linked to was gone. Keeping the inner text and
+ * dropping the inner wrapper leaves the one link that was meant.
+ *
+ * Delegates to marked's own renderer for everything else, so URL cleaning (and its
+ * bare-text fallback for a URL that will not encode) stays exactly as marked defines it —
+ * only the nesting is repaired.
+ */
+function link(this: Renderer, token: Tokens.Link): string {
+  const rendered = Renderer.prototype.link.call(this, token);
+  const match = /^(<a\b[^>]*>)([\s\S]*)(<\/a>)$/.exec(rendered);
+  if (!match) {
+    return rendered;
+  }
+  const [, open, inner, close] = match;
+  return open + inner.replace(/<\/?a\b[^>]*>/g, '') + close;
 }
 
 /**
@@ -162,7 +202,7 @@ const markdown = new Marked({
   silent: false,
   // parse() returns a string, never a Promise: the whole send path is synchronous.
   async: false,
-  renderer: { checkbox, image },
+  renderer: { checkbox, image, link },
 });
 
 /**
@@ -225,16 +265,21 @@ export function textMessageContent(
   md: RenderedMarkdown,
   mentions: Mention[] = [],
 ) {
+  // `m.mentions` does not depend on the HTML: it is what makes a modern homeserver notify
+  // the people named, and it has to outlive a message whose markup sanitized away to nothing
+  // (or whose parse threw — `renderMarkdown` returns `html: ''` for both). Dropping it with
+  // the empty `formatted_body` sent the message and quietly notified nobody.
+  const notified = mentionsBlock(mentions.map((m) => m.userId));
   if (md.html !== '' && (md.formatted || mentions.length > 0)) {
     return {
       msgtype: MsgType.Text,
       body: text,
       format: 'org.matrix.custom.html',
       formatted_body: applyMentionPills(md.html, mentions),
-      ...mentionsBlock(mentions.map((m) => m.userId)),
+      ...notified,
     };
   }
-  return { msgtype: MsgType.Text, body: text };
+  return { msgtype: MsgType.Text, body: text, ...notified };
 }
 
 /** The classic shrug the `/shrug` command appends. */
@@ -267,16 +312,18 @@ export function emoteMessageContent(
   md: RenderedMarkdown,
   mentions: Mention[] = [],
 ) {
+  // As in `textMessageContent`: the notification outlives the markup.
+  const notified = mentionsBlock(mentions.map((m) => m.userId));
   if (md.html !== '' && (md.formatted || mentions.length > 0)) {
     return {
       msgtype: MsgType.Emote,
       body: text,
       format: 'org.matrix.custom.html',
       formatted_body: applyMentionPills(md.html, mentions),
-      ...mentionsBlock(mentions.map((m) => m.userId)),
+      ...notified,
     };
   }
-  return { msgtype: MsgType.Emote, body: text };
+  return { msgtype: MsgType.Emote, body: text, ...notified };
 }
 
 /** `m.location` content for a shared point, with the `geo:` URI + MSC3488 fields. */
