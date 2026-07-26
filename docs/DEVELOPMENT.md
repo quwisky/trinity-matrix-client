@@ -618,6 +618,14 @@ a lost override fails the suite rather than shipping.
 | `dropdown-menu` · `HlmDropdownMenuSubTrigger`              | The same shadow re-does CDK's focus move, so keyboard Enter/Space lands inside the submenu                           | as above                                                                                                   |
 | `dropdown-menu` · `HlmDropdownMenuSubTrigger`              | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it (#28)                         | `libs/spartan/overlay/src/lib/dropdown-menu-submenu.spec.ts`                                               |
 | `dropdown-menu` · `HlmDropdownMenu` / `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive (#28)                                                                              | `libs/spartan/overlay/src/lib/dropdown-menu-submenu.spec.ts`                                               |
+| `dropdown-menu` · `HlmDropdownMenuItem`                    | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive` (#38)                        | `libs/spartan/overlay/src/lib/dropdown-menu-submenu.spec.ts`                                               |
+
+The destructive one is a theming rule, not a behaviour fix. Helm's `--destructive` is a
+fill/tint token whose dark value is a near-black maroon (`hsl(0 62.8% 30.6%)`); used as a
+foreground on the dark popover surface it measures **1.38:1**, so a "Leave room" row read as an
+empty strip. `--trinity-danger` is the token for alert text and icons — see the rule in
+`CLAUDE.md` and the token table in [THEMING.md](THEMING.md). The `bg-destructive/10` hover
+tints are left as upstream wrote them: a tint is exactly what that token is for.
 
 The last one is a consequence of the one above it. CDK closes an open submenu the moment the
 pointer enters any non-trigger sibling row, unless a `MENU_AIM` is provided — and upstream Helm

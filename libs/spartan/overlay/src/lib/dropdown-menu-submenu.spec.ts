@@ -210,3 +210,43 @@ describe('HlmDropdownMenu — menu aim', () => {
     expect(menu.injector.get(MENU_AIM, null)).not.toBeNull();
   });
 });
+
+// Regression guard for override 5: a destructive item's text and icon must use `text-danger`,
+// not upstream's `text-destructive`.
+//
+// Helm's `--destructive` is a fill/tint token. Its dark value is hsl(0 62.8% 30.6%), a
+// near-black maroon, which on the dark popover surface measures 1.38:1 — so "Leave room" read
+// as an empty strip. CLAUDE.md states the rule ("never use Helm's --destructive as a
+// foreground"); this pins it, because a regenerate would silently put the maroon back and
+// nothing else in the suite would fail.
+@Component({
+  selector: 'trn-destructive-host',
+  imports: [HlmDropdownMenuTrigger, HlmDropdownMenu, HlmDropdownMenuItem],
+  template: `
+    <button [hlmDropdownMenuTrigger]="menu" data-testid="root-trigger">
+      Open
+    </button>
+    <ng-template #menu>
+      <div hlmDropdownMenu>
+        <button hlmDropdownMenuItem variant="destructive" data-testid="danger">
+          Leave room
+        </button>
+      </div>
+    </ng-template>
+  `,
+})
+class DestructiveHost {}
+
+describe('HlmDropdownMenuItem — destructive colouring', () => {
+  it('colours a destructive row with the danger token, never Helm’s fill-only destructive', async () => {
+    await render(DestructiveHost);
+    byTestId('root-trigger')!.click();
+    flush();
+
+    const item = byTestId('danger')!;
+
+    expect(item.className).toContain('data-[variant=destructive]:text-danger');
+    // The hover/focus TINTS legitimately use --destructive; only the foreground must not.
+    expect(item.className).not.toContain('text-destructive');
+  });
+});

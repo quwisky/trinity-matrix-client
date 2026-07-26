@@ -11,7 +11,7 @@ import { type BooleanInput, type NumberInput } from '@angular/cdk/coercion';
 /**
  * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ────────────────────────────┐
  *
- * Three deliberate local overrides live in this file. A regenerate drops all three; each is
+ * Five deliberate local overrides live in this file. A regenerate drops all five; each is
  * commented at its site and pinned by a test in libs/spartan/overlay (the only spartan lib
  * with a Vitest target), so a lost override fails the suite rather than shipping.
  *
@@ -23,6 +23,12 @@ import { type BooleanInput, type NumberInput } from '@angular/cdk/coercion';
  *      config, so a submenu opens BESIDE its parent instead of over it.
  *   4. HlmDropdownMenu / HlmDropdownMenuSub — CdkTargetMenuAim host directive, so travelling
  *      diagonally into an open submenu doesn't close it on the way.
+ *   5. HlmDropdownMenuItem — a destructive item's TEXT and ICON use `text-danger`, not
+ *      upstream's `text-destructive`. Helm's `--destructive` is a fill/tint token whose dark
+ *      value is a near-black maroon (hsl(0 62.8% 30.6%)); on the dark popover surface that
+ *      measured 1.38:1, so "Leave room" read as an empty strip. The `bg-destructive/10`
+ *      hover tints are left alone — that IS the sanctioned use of the token. See CLAUDE.md
+ *      ("never use Helm's --destructive as a foreground") and docs/THEMING.md.
  *
  * The register lives in docs/DEVELOPMENT.md. Note this file is already a fork in shape as
  * well as content: the generator emits ~16 one-directive files, this is one module.
@@ -180,6 +186,10 @@ export class HlmDropdownMenuItem {
 
   public readonly disabled = input<boolean, BooleanInput>(false, { transform: booleanAttribute });
 
+  /**
+   * `destructive` colours the row for an irreversible action. Note the class string below
+   * says `text-danger`, NOT upstream's `text-destructive` — see override 5 in the banner.
+   */
   public readonly variant = input<'default' | 'destructive'>('default');
 
   public readonly inset = input<boolean, BooleanInput>(false, {
@@ -189,7 +199,7 @@ export class HlmDropdownMenuItem {
   constructor() {
     classes(
       () =>
-        'hover:bg-accent focus:bg-accent hover:text-accent-foreground focus:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:hover:bg-destructive/10 data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:hover:bg-destructive/20 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:hover:text-destructive data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[ng-icon]:text-destructive not-data-[variant=destructive]:hover:**:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground gap-2.5 rounded-lg px-3 py-2 text-sm font-medium data-inset:ps-9.5 [&_ng-icon:not([class*=\'text-\'])]:text-[length:--spacing(4)] group/dropdown-menu-item relative flex w-full cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_ng-icon]:pointer-events-none [&_ng-icon]:shrink-0',
+        'hover:bg-accent focus:bg-accent hover:text-accent-foreground focus:text-accent-foreground data-[variant=destructive]:text-danger data-[variant=destructive]:hover:bg-destructive/10 data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:hover:bg-destructive/20 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:hover:text-danger data-[variant=destructive]:focus:text-danger data-[variant=destructive]:*:[ng-icon]:text-danger not-data-[variant=destructive]:hover:**:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground gap-2.5 rounded-lg px-3 py-2 text-sm font-medium data-inset:ps-9.5 [&_ng-icon:not([class*=\'text-\'])]:text-[length:--spacing(4)] group/dropdown-menu-item relative flex w-full cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_ng-icon]:pointer-events-none [&_ng-icon]:shrink-0',
     );
   }
 }
