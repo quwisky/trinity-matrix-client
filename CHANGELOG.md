@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **The space header makes room for the space's name.** A space's sidebar header carried up to
+  six icon buttons on one row, which left the name itself about six characters before it was
+  cut off — and on a touchscreen, where the buttons grow to a thumb-sized minimum, they needed
+  more width than the sidebar has. Search and **+** stay where they were; ordering, inviting,
+  marking everything read and leaving now sit behind a **⋮** menu, where they get readable
+  labels instead of unlabelled glyphs and **Leave space** is no longer one mis-tap from
+  **Invite people**. Home is unchanged — it has room.
+
 ### Fixed
 
 - **Accepting a room invite no longer hides the room you just joined.** Saying yes to an

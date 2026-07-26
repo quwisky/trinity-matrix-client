@@ -291,13 +291,74 @@ describe('ChannelSidebarComponent', () => {
     expect(
       container.querySelector('[aria-label="Create a channel"]'),
     ).toBeNull();
+    // Invite and Leave live in the space overflow, which Home does not render at all.
     expect(
-      container.querySelector('[aria-label="Invite people to space"]'),
+      container.querySelector('[data-testid="space-actions-overflow"]'),
     ).toBeNull();
-    expect(container.querySelector('[aria-label="Leave space"]')).toBeNull();
     expect(
       container.querySelector('[aria-label="New room or direct message"]'),
     ).not.toBeNull();
+  });
+
+  it('keeps the space header to three buttons, whatever the unread state', async () => {
+    // The whole point of the overflow: six buttons left the 280px sidebar's title about six
+    // characters, and on touch (44px targets) they were wider than the sidebar itself. Both
+    // unread states are rendered, because mark-all-read is the one conditional button and a
+    // re-added header copy of it would only show up in one of them.
+    const unread = await renderSidebar({
+      inputs: {
+        spaceActive: true,
+        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+      },
+    });
+    expect(
+      unread.container.querySelectorAll('.sidebar__actions button'),
+    ).toHaveLength(3);
+
+    TestBed.resetTestingModule();
+    const read = await renderSidebar({ inputs: { spaceActive: true } });
+    expect(
+      read.container.querySelectorAll('.sidebar__actions button'),
+    ).toHaveLength(3);
+  });
+
+  it('offers mark-all-read in the overflow, and emits it', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        spaceActive: true,
+        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+      },
+    });
+    let marked = false;
+    fixture.componentInstance.markAllRead.subscribe(() => (marked = true));
+
+    container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    fixture.detectChanges();
+
+    const row = document.querySelector<HTMLElement>(
+      '[data-testid="mark-all-read"]',
+    );
+    expect(row).not.toBeNull();
+    row!.click();
+    expect(marked).toBe(true);
+  });
+
+  // Its own test, not a second half of the one above: the assertion is a GLOBAL document
+  // query, so sharing a test with an already-opened menu would let it read the first
+  // render's leftover overlay instead of this one's.
+  it('leaves mark-all-read out of the overflow when nothing is unread', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { spaceActive: true },
+    });
+
+    container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    fixture.detectChanges();
+
+    expect(document.querySelector('[data-testid="mark-all-read"]')).toBeNull();
   });
 
   it('emits newChat from the Home "+" affordance', async () => {
@@ -324,13 +385,23 @@ describe('ChannelSidebarComponent', () => {
     fixture.componentInstance.inviteToSpace.subscribe(() => (invited = true));
     fixture.componentInstance.leaveSpace.subscribe(() => (left = true));
 
+    // Create stays out on the header; invite and leave moved into the overflow.
     container
       .querySelector<HTMLElement>('[aria-label="Create a channel"]')!
       .click();
     container
-      .querySelector<HTMLElement>('[aria-label="Invite people to space"]')!
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
       .click();
-    container.querySelector<HTMLElement>('[aria-label="Leave space"]')!.click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="space-invite"]')!
+      .click();
+    fixture.detectChanges();
+    container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    fixture.detectChanges();
+    document.querySelector<HTMLElement>('[data-testid="space-leave"]')!.click();
 
     expect(created).toBe(true);
     expect(invited).toBe(true);
@@ -1037,7 +1108,12 @@ describe('ChannelSidebarComponent space sort menu', () => {
     const rendered = await renderSidebar({
       inputs: { spaceActive: true, ...inputs },
     });
-    const trigger = rendered.container.querySelector<HTMLElement>(
+    // The sort menu is a SUBMENU now: open the header overflow first, then its row.
+    rendered.container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    rendered.fixture.detectChanges();
+    const trigger = document.querySelector<HTMLElement>(
       '[data-testid="space-sort"]',
     )!;
     trigger.click();
@@ -1055,14 +1131,20 @@ describe('ChannelSidebarComponent space sort menu', () => {
     expect(container.querySelector('[data-testid="space-sort"]')).toBeNull();
   });
 
-  it('offers the sort menu inside a space', async () => {
-    const { container } = await renderSidebar({
+  it('offers the sort menu inside a space, from the overflow', async () => {
+    const { container, fixture } = await renderSidebar({
       inputs: { spaceActive: true },
     });
 
-    expect(
-      container.querySelector('[data-testid="space-sort"]'),
-    ).not.toBeNull();
+    // Not on the header itself any more — it is a row in the overflow menu.
+    expect(container.querySelector('[data-testid="space-sort"]')).toBeNull();
+
+    container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    fixture.detectChanges();
+
+    expect(document.querySelector('[data-testid="space-sort"]')).not.toBeNull();
   });
 
   it('names the effective ordering on the trigger, for screen readers', async () => {
