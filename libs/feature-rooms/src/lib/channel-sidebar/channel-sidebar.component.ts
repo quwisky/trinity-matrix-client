@@ -146,7 +146,7 @@ export class ChannelSidebarComponent {
   readonly otherRooms = computed(() =>
     this.rooms().filter((r) => !r.favourite),
   );
-  /** Whether any room has unread messages — gates the header "Mark all as read". */
+  /** Whether any room has unread messages — gates the "Mark all as read" affordance. */
   readonly hasAnyUnread = computed(() => this.rooms().some((r) => r.hasUnread));
 
   /** The account badge for a room row (mixed view), or null when not badged. */
@@ -212,9 +212,9 @@ export class ChannelSidebarComponent {
   readonly newChat = output<void>();
   /** Header "+" in a space — raise the create-a-channel flow. */
   readonly createRoom = output<void>();
-  /** Header person-add in a space — raise the invite-to-space flow. */
+  /** "Invite people", from the space overflow menu — raise the invite-to-space flow. */
   readonly inviteToSpace = output<void>();
-  /** Header exit icon — raise the leave-this-space confirmation. */
+  /** "Leave space", from the space overflow menu — raise the leave confirmation. */
   readonly leaveSpace = output<void>();
   /** Join a not-yet-joined child room or sub-space of the active space. */
   readonly joinRoom = output<SpaceChildRoom>();
@@ -252,7 +252,7 @@ export class ChannelSidebarComponent {
     roomId: string;
     accountIds: readonly string[];
   }>();
-  /** Mark every room read (header action). */
+  /** Mark every room read. Inline on Home; a row in the overflow menu inside a space. */
   readonly markAllRead = output<void>();
 
   /** The ordering the open space's list is currently using (drives the radio checks). */
@@ -262,15 +262,16 @@ export class ChannelSidebarComponent {
   /** The active account's default ordering, named in the "Use my default (…)" row. */
   readonly defaultSortMode = input<RoomSortMode>(DEFAULT_ROOM_SORT);
   /**
-   * Header sort menu: order this space's rooms this way. `null` means "follow my account
-   * default", which drops the override. One output because the rows are one radio group.
+   * Order this space's rooms this way, from the "Order rooms" submenu of the space overflow.
+   * `null` means "follow my account default", which drops the override. One output because
+   * the rows are one radio group.
    */
   readonly setSortMode = output<RoomSortMode | null>();
 
-  /** The orderings offered in the header sort menu. */
+  /** The orderings offered in the "Order rooms" submenu. */
   readonly sortModes = TRINITY_ROOM_SORTS;
 
-  /** What the sort button announces — the effective order, override or not. */
+  /** What the "Order rooms" row announces — the effective order, override or not. */
   readonly sortModeLabel = computed(() => this.labelFor(this.sortMode()));
 
   /** An ordering's human label. */

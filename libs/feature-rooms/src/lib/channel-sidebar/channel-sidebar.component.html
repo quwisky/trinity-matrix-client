@@ -11,28 +11,12 @@
       >
         <ng-icon name="lucideCommand" aria-hidden="true" />
       </button>
-      @if (hasAnyUnread()) {
-        <button
-          class="sidebar__action"
-          (click)="markAllRead.emit()"
-          aria-label="Mark all as read"
-          title="Mark all as read"
-          data-testid="mark-all-read"
-        >
-          <ng-icon name="lucideCheckCheck" aria-hidden="true" />
-        </button>
-      }
+      <!-- A space keeps only its two most-reached-for actions out here; the rest live in the
+           overflow. The sidebar is a fixed 280px at EVERY breakpoint, so this is not a
+           narrow-layout concern the way the room header's `md:hidden` demotion is: six
+           buttons left the space name about six characters of room on a desktop, and on
+           touch (44px targets) they were wider than the sidebar itself. -->
       @if (spaceActive()) {
-        <button
-          class="sidebar__action"
-          [hlmDropdownMenuTrigger]="sortMenu"
-          align="end"
-          [attr.aria-label]="'Order rooms: ' + sortModeLabel()"
-          [title]="'Order rooms: ' + sortModeLabel()"
-          data-testid="space-sort"
-        >
-          <ng-icon name="lucideArrowDownWideNarrow" aria-hidden="true" />
-        </button>
         <button
           class="sidebar__action"
           (click)="createRoom.emit()"
@@ -43,21 +27,28 @@
         </button>
         <button
           class="sidebar__action"
-          (click)="inviteToSpace.emit()"
-          aria-label="Invite people to space"
-          title="Invite people to space"
+          [hlmDropdownMenuTrigger]="spaceMenu"
+          align="end"
+          [attr.aria-label]="'More actions in ' + spaceName()"
+          title="More actions"
+          data-testid="space-actions-overflow"
         >
-          <ng-icon name="lucideUserPlus" aria-hidden="true" />
-        </button>
-        <button
-          class="sidebar__action"
-          (click)="leaveSpace.emit()"
-          aria-label="Leave space"
-          title="Leave space"
-        >
-          <ng-icon name="lucideLogOut" aria-hidden="true" />
+          <ng-icon name="lucideEllipsisVertical" aria-hidden="true" />
         </button>
       } @else {
+        <!-- Home has three buttons and already fits, so it keeps the flat row: an overflow
+             holding a single conditional item would be worse than the row it replaced. -->
+        @if (hasAnyUnread()) {
+          <button
+            class="sidebar__action"
+            (click)="markAllRead.emit()"
+            aria-label="Mark all as read"
+            title="Mark all as read"
+            data-testid="mark-all-read"
+          >
+            <ng-icon name="lucideCheckCheck" aria-hidden="true" />
+          </button>
+        }
         <button
           class="sidebar__action"
           (click)="newChat.emit()"
@@ -243,45 +234,101 @@
     (logout)="logout.emit($event)"
   />
 
-  <ng-template #sortMenu>
-    <div hlmDropdownMenu>
-      <div hlmDropdownMenuLabel>Order rooms in {{ spaceName() }}</div>
-      <button
-        hlmDropdownMenuRadio
-        [checked]="!sortOverridden()"
-        [keepOpen]="false"
-        (triggered)="setSortMode.emit(null)"
-        data-testid="space-sort-default"
-      >
-        <hlm-dropdown-menu-radio-indicator />
-        Use my default ({{ labelFor(defaultSortMode()) }})
-      </button>
-      <div hlmDropdownMenuSeparator></div>
-      @for (option of sortModes; track option.id) {
+  <!-- The space's own actions. Ordered by how often they are reached for, with the two
+       destructive-adjacent ones last and separated: Leave sat one 30px target from Invite in
+       the old row, on exactly the platform where targets are hardest to hit. #40 adds Space
+       settings here. -->
+  <ng-template #spaceMenu>
+    <div hlmDropdownMenu aria-label="Space actions">
+      @if (hasAnyUnread()) {
         <button
-          hlmDropdownMenuRadio
-          [checked]="sortOverridden() && sortMode() === option.id"
-          [keepOpen]="false"
-          (triggered)="setSortMode.emit(option.id)"
-          [attr.data-testid]="'space-sort-' + option.id"
+          hlmDropdownMenuItem
+          (triggered)="markAllRead.emit()"
+          data-testid="mark-all-read"
         >
-          <hlm-dropdown-menu-radio-indicator />
-          <span class="flex flex-col items-start gap-0.5">
-            <span>{{ option.label }}</span>
-            <span class="text-xs font-normal text-muted-foreground">
-              {{ option.description }}
-            </span>
-          </span>
+          <ng-icon name="lucideCheckCheck" />
+          Mark all as read
         </button>
       }
-      <!-- Favourites are lifted into their own group before any of these orderings is
+      <!-- The effective ordering is named on the row rather than left to be discovered by
+           opening the submenu — it was on the old trigger's aria-label, and a screen-reader
+           user should not have to walk into a radio group to learn the current value. -->
+      <button
+        hlmDropdownMenuItem
+        [hlmDropdownMenuSubTrigger]="sortMenu"
+        [attr.aria-label]="'Order rooms: ' + sortModeLabel()"
+        data-testid="space-sort"
+      >
+        <ng-icon name="lucideArrowDownWideNarrow" />
+        Order rooms
+        <!-- No auto margin here: the sub-indicator already carries `ms-auto`, and a second
+             one splits the free space between the two rather than pinning either. `ps-3`
+             (logical, like every Helm class around it) just spaces the value off the label. -->
+        <span class="ps-3 text-xs font-normal text-muted-foreground">
+          {{ sortModeLabel() }}
+        </span>
+        <hlm-dropdown-menu-item-sub-indicator />
+      </button>
+      <button
+        hlmDropdownMenuItem
+        (triggered)="inviteToSpace.emit()"
+        data-testid="space-invite"
+      >
+        <ng-icon name="lucideUserPlus" />
+        Invite people
+      </button>
+      <div hlmDropdownMenuSeparator></div>
+      <button
+        hlmDropdownMenuItem
+        variant="destructive"
+        (triggered)="leaveSpace.emit()"
+        data-testid="space-leave"
+      >
+        <ng-icon name="lucideLogOut" />
+        Leave space
+      </button>
+    </div>
+
+    <ng-template #sortMenu>
+      <div hlmDropdownMenuSub>
+        <div hlmDropdownMenuLabel>Order rooms in {{ spaceName() }}</div>
+        <button
+          hlmDropdownMenuRadio
+          [checked]="!sortOverridden()"
+          [keepOpen]="false"
+          (triggered)="setSortMode.emit(null)"
+          data-testid="space-sort-default"
+        >
+          <hlm-dropdown-menu-radio-indicator />
+          Use my default ({{ labelFor(defaultSortMode()) }})
+        </button>
+        <div hlmDropdownMenuSeparator></div>
+        @for (option of sortModes; track option.id) {
+          <button
+            hlmDropdownMenuRadio
+            [checked]="sortOverridden() && sortMode() === option.id"
+            [keepOpen]="false"
+            (triggered)="setSortMode.emit(option.id)"
+            [attr.data-testid]="'space-sort-' + option.id"
+          >
+            <hlm-dropdown-menu-radio-indicator />
+            <span class="flex flex-col items-start gap-0.5">
+              <span>{{ option.label }}</span>
+              <span class="text-xs font-normal text-muted-foreground">
+                {{ option.description }}
+              </span>
+            </span>
+          </button>
+        }
+        <!-- Favourites are lifted into their own group before any of these orderings is
            visible, so say so rather than letting "Space order" look broken. Trailing helper
            text, NOT an hlmDropdownMenuLabel: that directive captions the group that follows
            it, and there is nothing after this. -->
-      <p class="px-3 py-2.5 text-xs text-muted-foreground">
-        Favourites stay in their own group.
-      </p>
-    </div>
+        <p class="px-3 py-2.5 text-xs text-muted-foreground">
+          Favourites stay in their own group.
+        </p>
+      </div>
+    </ng-template>
   </ng-template>
 
   <ng-template #roomRow let-room>

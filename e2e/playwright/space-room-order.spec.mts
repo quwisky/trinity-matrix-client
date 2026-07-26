@@ -190,8 +190,9 @@ async function sendMessage(
   }
 }
 
-/** Open the space's sort menu and pick one of its rows. */
+/** Open the space's sort menu — a submenu of the header overflow — and pick one of its rows. */
 async function chooseSort(page: Page, option: string): Promise<void> {
+  await page.getByTestId('space-actions-overflow').click();
   await page.getByTestId('space-sort').click();
   const item = page.getByTestId(option);
   await item.waitFor({ state: 'visible', timeout: 15_000 });
@@ -217,7 +218,11 @@ async function openSpace(page: Page, spaceName: string): Promise<void> {
   const pill = page.getByRole('button', { name: spaceName, exact: true });
   await pill.waitFor({ state: 'visible', timeout: 30_000 });
   await pill.click();
-  await expect(page.getByTestId('space-sort')).toBeVisible({ timeout: 15_000 });
+  // The sort entry lives in the header overflow now, so the overflow trigger is what says
+  // the space's sidebar is up.
+  await expect(page.getByTestId('space-actions-overflow')).toBeVisible({
+    timeout: 15_000,
+  });
 }
 
 /** The room names currently listed in the sidebar, top to bottom. */
@@ -274,6 +279,85 @@ test.describe('Room order inside a space', () => {
     //    default" tracks the setting rather than freezing whatever it was.
     await chooseSort(page, 'space-sort-default');
     await expect(roomNames(page)).toHaveText(alphabetical);
+  });
+
+  /**
+   * Seed one EMPTY space and open it. Deliberately not `seedOrderedSpace`: the header
+   * assertions care about nothing but the space existing, and every Synapse-backed spec
+   * shares one disposable homeserver (the config caps workers at 2 for that reason).
+   */
+  async function openSeededSpace(
+    page: Page,
+    request: APIRequestContext,
+    tag: string,
+  ): Promise<void> {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}${tag}`;
+    const user = `hdr-${runId}`;
+    const pass = `hdr-pass-${runId}`;
+    const spaceName = `Header ${runId}`;
+
+    await registerUser(request, user, pass);
+    const api = await apiLogin(request, hs, user, pass);
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: api.headers,
+      data: {
+        name: spaceName,
+        preset: 'private_chat',
+        creation_content: { type: 'm.space' },
+      },
+    });
+
+    await login(page, { available: true, hs, user, pass });
+    await openSpace(page, spaceName);
+  }
+
+  /** Three buttons, and a title with room to actually read — see #38. */
+  async function expectHeaderFits(page: Page): Promise<void> {
+    await expect(page.locator('.sidebar__actions button')).toHaveCount(3);
+
+    const title = await page.locator('.sidebar__title').boundingBox();
+    if (!title) {
+      throw new Error('sidebar title not laid out');
+    }
+    expect(title.width).toBeGreaterThan(100);
+  }
+
+  test('collapsing the actions gives the space name its room back', async ({
+    page,
+    request,
+  }) => {
+    // The regression guard for #38's premise, measured rather than eyeballed. The sidebar is
+    // a fixed 280px (256px content box). Six 30px buttons plus gaps took 198px and left the
+    // title about 58px — roughly six characters. Three buttons take 94px, so the title
+    // measures 154px: the 100px floor sits clear of both the old value and the new one.
+    await openSeededSpace(page, request, 'hdr');
+
+    await expectHeaderFits(page);
+  });
+
+  // The touch case is the one the change was actually made for: `@media (pointer: coarse)`
+  // lifts `.sidebar__action` to the 44px touch minimum, where the old six buttons needed
+  // 274px — more than the 256px the sidebar has. A fine-pointer measurement alone would let
+  // a fourth button through: 4 × 30 + gaps = 126px still leaves the title 122px on desktop,
+  // while 4 × 44 + gaps = 182px drops it to 66px on touch.
+  test.describe('with a coarse pointer', () => {
+    test.use({ hasTouch: true });
+
+    test('still fits once the buttons grow to touch size', async ({
+      page,
+      request,
+    }) => {
+      await openSeededSpace(page, request, 'tch');
+
+      // Guard the guard: if this emulation ever stopped setting the media query, every
+      // assertion below would silently re-measure the desktop case.
+      expect(
+        await page.evaluate(() => matchMedia('(pointer: coarse)').matches),
+      ).toBe(true);
+
+      await expectHeaderFits(page);
+    });
   });
 
   test('re-orders as a message arrives, without reopening the space', async ({
