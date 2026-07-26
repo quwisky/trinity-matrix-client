@@ -86,12 +86,6 @@ async function build(
 }
 
 /** A synthetic file-input change event carrying `file` (or none). */
-function pickEvent(file?: File): Event {
-  return {
-    target: { files: file ? [file] : [], value: '' },
-  } as unknown as Event;
-}
-
 describe('RoomSettingsComponent', () => {
   it('seeds the form from the current name and topic', async () => {
     const { cmp } = await build({ name: 'General', topic: 'The topic' });
@@ -251,45 +245,5 @@ describe('RoomSettingsComponent', () => {
     expect(message).toContain('topic');
     expect(options).toMatchObject({ variant: 'destructive' });
     expect(close).not.toHaveBeenCalledWith(true);
-  });
-
-  it('uploads a picked image as the room avatar', async () => {
-    const { cmp, setAvatar, toastShow } = await build();
-    const file = new File(['x'], 'photo.png', { type: 'image/png' });
-
-    cmp.onAvatarPicked(pickEvent(file));
-
-    expect(setAvatar).toHaveBeenCalledWith('!r:hs', file);
-    expect(toastShow).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ variant: 'success' }),
-    );
-  });
-
-  it('rejects a non-image file without uploading', async () => {
-    const { cmp, setAvatar, toastShow } = await build();
-    const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
-
-    cmp.onAvatarPicked(pickEvent(file));
-
-    expect(setAvatar).not.toHaveBeenCalled();
-    expect(toastShow).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
-    );
-  });
-
-  it('rejects an image larger than 8 MB without uploading', async () => {
-    const { cmp, setAvatar, toastShow } = await build();
-    const file = new File(['x'], 'big.png', { type: 'image/png' });
-    Object.defineProperty(file, 'size', { value: 8 * 1024 * 1024 + 1 });
-
-    cmp.onAvatarPicked(pickEvent(file));
-
-    expect(setAvatar).not.toHaveBeenCalled();
-    expect(toastShow).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
-    );
   });
 });

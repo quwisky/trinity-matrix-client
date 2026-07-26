@@ -2,17 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
   OnInit,
   computed,
   inject,
   input,
   signal,
-  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { type Observable, catchError, forkJoin, map, of } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
@@ -21,13 +18,11 @@ import {
   JoinRule,
   RoomSettingsService,
 } from '@trinity/data-access-rooms';
-import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util-matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
-
-/** Reject avatar uploads larger than this (before hitting a server 413). */
-const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
+import { AvatarFieldComponent } from '../shared/avatar-field/avatar-field.component';
+import { saveFields, type FieldWrite } from '../shared/save-fields';
 
 /** The join-rule choices offered (a practical subset of the spec's options). */
 const JOIN_RULE_OPTIONS = [
@@ -65,7 +60,7 @@ const HISTORY_OPTIONS = [
     ReactiveFormsModule,
     HlmButton,
     HlmInput,
-    AvatarComponent,
+    AvatarFieldComponent,
     BannedMembersComponent,
     RoomAliasesComponent,
   ],
@@ -97,13 +92,8 @@ export class RoomSettingsComponent implements OnInit {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  private readonly avatarInput =
-    viewChild<ElementRef<HTMLInputElement>>('avatarInput');
-
   /** True while the save writes are in flight (disables the form + Save). */
   readonly saving = signal(false);
-  /** True while an avatar upload is in flight. */
-  readonly savingAvatar = signal(false);
   /** First letter of the room name, for the avatar fallback. */
   readonly avatarInitial = computed(() => initialOf(this.name()));
 
@@ -160,7 +150,7 @@ export class RoomSettingsComponent implements OnInit {
     const roomId = this.roomId();
     const name = this.form.controls.name.value.trim();
     const topic = this.form.controls.topic.value.trim();
-    const writes: { field: string; op: Observable<void> }[] = [];
+    const writes: FieldWrite[] = [];
     // A room name shouldn't be blanked from here — only write a non-empty change.
     if (this.canEditName() && name && name !== this.name().trim()) {
       writes.push({ field: 'name', op: this.settings.setName(roomId, name) });
@@ -193,22 +183,13 @@ export class RoomSettingsComponent implements OnInit {
       return;
     }
     this.saving.set(true);
-    forkJoin(
-      writes.map(({ field, op }) =>
-        op.pipe(
-          map(() => ({ field, ok: true })),
-          catchError(() => of({ field, ok: false })),
-        ),
-      ),
-    )
+    saveFields(writes)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((results) => {
-        const failed = results.filter((r) => !r.ok).map((r) => r.field);
+      .subscribe(({ saved, failed }) => {
         if (failed.length === 0) {
           this.dialogRef.close(true);
           return;
         }
-        const saved = results.filter((r) => r.ok).map((r) => r.field);
         this.saving.set(false);
         this.toast.show(
           saved.length
@@ -216,47 +197,6 @@ export class RoomSettingsComponent implements OnInit {
             : 'Could not save room settings.',
           { duration: 4000, variant: 'destructive' },
         );
-      });
-  }
-
-  /** Open the hidden file input to choose a new room photo. */
-  pickAvatar(): void {
-    this.avatarInput()?.nativeElement.click();
-  }
-
-  /** Validate + upload the picked image as the room avatar; toast the outcome. */
-  onAvatarPicked(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = ''; // allow re-picking the same file
-    if (!file) {
-      return;
-    }
-    // accept="image/*" is only a picker hint — validate before uploading.
-    if (!file.type.startsWith('image/')) {
-      this.showError('Please choose an image file.');
-      return;
-    }
-    if (file.size > MAX_AVATAR_BYTES) {
-      this.showError('That image is too large (max 8 MB).');
-      return;
-    }
-    this.savingAvatar.set(true);
-    this.settings
-      .setAvatar(this.roomId(), file)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => {
-          this.savingAvatar.set(false);
-          this.toast.show('Room photo updated.', {
-            duration: 3000,
-            variant: 'success',
-          });
-        },
-        error: () => {
-          this.savingAvatar.set(false);
-          this.showError('Could not update the room photo.');
-        },
       });
   }
 
