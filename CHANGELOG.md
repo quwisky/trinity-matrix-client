@@ -63,6 +63,13 @@ All notable changes to this project are documented here. The format is based on
   previews concealed the way the person reading it will first see it. Your draft survives all
   of it untouched.
 
+- **Hide the formatting toolbar if you don't want it.** Settings → Appearance gains **Show
+  the formatting toolbar**, which takes the row of bold/italic/link buttons off the top of
+  every message box once you know the markdown by heart — useful on a phone, where it
+  competes with the on-screen keyboard for space. Only the buttons go: Ctrl/Cmd+B and the
+  rest of the shortcuts still work, and Shift+Enter still continues a list. Shown by
+  default, and the setting is kept per device.
+
 - **Code blocks are syntax-highlighted, and say what language they are.** A fenced block
   tagged with a language — ` ```ts `, ` ```py `, ` ```sh ` and ten others — is now coloured,
   in both light and dark and in whichever palette you use. Trinity was already sending and

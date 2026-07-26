@@ -58,7 +58,7 @@
 }
 
 <div class="composer">
-  @if (!recordingVoice()) {
+  @if (!recordingVoice() && showToolbar()) {
     <trn-composer-toolbar
       [narrow]="narrowLayout()"
       [previewing]="previewing()"

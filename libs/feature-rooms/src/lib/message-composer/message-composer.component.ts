@@ -45,6 +45,7 @@ import {
   type EmojiEvent,
 } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import {
+  ComposerSettingsService,
   DraftStoreService,
   KeyboardShortcutsService,
   ThemeService,
@@ -387,6 +388,13 @@ export class MessageComposerComponent {
   private readonly gifs = inject(GifService);
   private readonly gifSettings = inject(GifSettingsService);
   private readonly drafts = inject(DraftStoreService);
+  private readonly composerSettings = inject(ComposerSettingsService);
+  /**
+   * Whether the formatting toolbar is shown (Settings → Appearance). Hiding it is a screen
+   * space choice, so it takes away the ROW only: {@link onKeydown} still resolves the
+   * formatting chords, and Shift+Enter still continues a list.
+   */
+  readonly showToolbar = this.composerSettings.showFormattingToolbar;
   /** Resolves the user's (rebindable) formatting chords — see {@link onKeydown}. */
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private wasEditing = false;
@@ -434,6 +442,15 @@ export class MessageComposerComponent {
             queueMicrotask(() => this.autoGrow());
           }
         });
+      }
+    });
+
+    // The preview toggle lives ON the toolbar, so taking the toolbar away mid-preview would
+    // leave the composer showing a preview with nothing left to switch back — the same trap
+    // `resetMenus` guards against, arriving from Settings rather than from a send.
+    effect(() => {
+      if (!this.showToolbar()) {
+        this.previewing.set(false);
       }
     });
 

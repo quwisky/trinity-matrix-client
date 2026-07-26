@@ -15,6 +15,7 @@ import {
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import {
   DateTimeFormatService,
+  ComposerSettingsService,
   SystemLineSettingsService,
   ThemeService,
   type Palette,
@@ -52,6 +53,7 @@ import { isDateFormat, isTimeFormat } from '@trinity/util-matrix';
 export class AppearanceSettingsComponent {
   readonly theme = inject(ThemeService);
   readonly systemLines = inject(SystemLineSettingsService);
+  readonly composer = inject(ComposerSettingsService);
   readonly format = inject(DateTimeFormatService);
   readonly spaceOrder = inject(SpaceRoomOrderService);
 

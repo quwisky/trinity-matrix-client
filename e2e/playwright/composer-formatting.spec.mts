@@ -248,4 +248,63 @@ test.describe('Composer formatting', () => {
     await composer.fill('still typing');
     await expect(composer).toHaveValue('still typing');
   });
+
+  test('hiding the toolbar in settings keeps the shortcuts working', async ({
+    page,
+    request,
+  }) => {
+    // The setting takes away the ROW, not the capability — so the assertion that matters is
+    // that Ctrl+B still formats once the buttons are gone.
+    const { composer, openRoom } = await openComposer(page, request, 'ht');
+
+    await expect(page.getByTestId('format-bold')).toBeVisible();
+
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-appearance').click();
+    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    const toolbarToggle = page
+      .getByTestId('composer-show-toolbar')
+      .locator('hlm-checkbox');
+    await expect(toolbarToggle).toBeVisible({ timeout: 15_000 });
+    await toolbarToggle.click();
+
+    // Settings is a full-page route, so leave it before looking for the rail.
+    await page.goto('/rooms');
+    const back = await openRoom();
+
+    await expect(page.getByTestId('format-bold')).toHaveCount(0);
+    await expect(page.getByTestId('format-more')).toHaveCount(0);
+    // The preview toggle lives on the toolbar and goes with it.
+    await expect(page.getByTestId('composer-preview-toggle')).toHaveCount(0);
+
+    await back.fill('say hello there');
+    await selectWord(page, 'hello');
+    await page.keyboard.press('Control+b');
+    await expect(back).toHaveValue('say **hello** there');
+
+    // Shift+Enter still continues a list, which was never on the toolbar to begin with.
+    await back.fill('');
+    await back.click();
+    await back.pressSequentially('- one');
+    await back.press('Shift+Enter');
+    await expect(back).toHaveValue('- one\n- ');
+
+    // And the choice is persisted, not session state.
+    await page.reload();
+    const reopened = await openRoom();
+    await expect(reopened).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('format-bold')).toHaveCount(0);
+  });
+
+  test('the toolbar is there until you turn it off', async ({
+    page,
+    request,
+  }) => {
+    // The default is what almost every install sees, so it gets its own check rather than
+    // riding on the setup of the test above.
+    await openComposer(page, request, 'dt');
+
+    await expect(page.getByTestId('format-bold')).toBeVisible();
+    await expect(page.getByTestId('composer-preview-toggle')).toBeVisible();
+  });
 });

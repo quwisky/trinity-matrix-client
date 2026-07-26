@@ -6,6 +6,7 @@ import { render, type ComponentInput } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import {
+  ComposerSettingsService,
   DraftStoreService,
   ThemeService,
   VoiceRecorderService,
@@ -1823,6 +1824,77 @@ describe('MessageComposerComponent', () => {
         fixture.detectChanges();
 
         expect(fixture.componentInstance.preview().rich).toBe(false);
+      });
+
+      it('shows the toolbar unless the setting says otherwise', async () => {
+        // The default matters as much as the switch: an install that never opens Settings
+        // must still get the toolbar.
+        const { container } = await renderComposer();
+
+        expect(container.querySelector('trn-composer-toolbar')).not.toBeNull();
+      });
+
+      it('keeps markdown-aware Enter working with the toolbar hidden', async () => {
+        // The other half of "the row goes, the capability stays" — list continuation is not
+        // on the toolbar at all, so it must be untouched by the setting.
+        const { fixture } = await renderComposer({}, [
+          MockProvider(ComposerSettingsService, {
+            showFormattingToolbar: signal(false).asReadonly(),
+          }),
+        ]);
+        const cmp = fixture.componentInstance;
+        cmp.text.set('- one');
+        const textarea = fixture.nativeElement.querySelector('textarea');
+        textarea.value = '- one';
+        textarea.setSelectionRange(5, 5);
+
+        // onKeydown, not onEnter: Angular only fires (keydown.enter) with no modifier held,
+        // which is why list continuation lives in the general handler.
+        cmp.onKeydown(
+          new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true }),
+        );
+
+        expect(cmp.text()).toBe('- one\n- ');
+      });
+
+      it('hides the toolbar when the setting is off, keeping the shortcuts', async () => {
+        // Hiding it is about screen space, not about giving up formatting — Ctrl+B has to
+        // keep working, or the setting quietly removes a capability instead of a row.
+        const { fixture, container } = await renderComposer({}, [
+          MockProvider(ComposerSettingsService, {
+            showFormattingToolbar: signal(false).asReadonly(),
+          }),
+        ]);
+        fixture.detectChanges();
+
+        expect(container.querySelector('trn-composer-toolbar')).toBeNull();
+
+        fixture.componentInstance.text.set('hello');
+        fixture.componentInstance.onFormat('bold');
+
+        expect(fixture.componentInstance.text()).toContain('**');
+      });
+
+      it('leaves the preview when the toolbar is taken away', async () => {
+        // The preview toggle lives on the toolbar, so hiding it mid-preview would strand the
+        // composer showing a preview with nothing left to switch back.
+        const showToolbar = signal(true);
+        const { fixture, container } = await renderComposer({}, [
+          MockProvider(ComposerSettingsService, {
+            showFormattingToolbar: showToolbar.asReadonly(),
+          }),
+        ]);
+        fixture.componentInstance.onTogglePreview();
+        fixture.detectChanges();
+        expect(fixture.componentInstance.previewing()).toBe(true);
+
+        showToolbar.set(false);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.previewing()).toBe(false);
+        expect(
+          container.querySelector('[data-testid=composer-preview]'),
+        ).toBeNull();
       });
 
       it('leaves the preview when a reply starts', async () => {
