@@ -29,7 +29,7 @@
           class="sidebar__action"
           [hlmDropdownMenuTrigger]="spaceMenu"
           align="end"
-          aria-label="More actions"
+          [attr.aria-label]="'More actions in ' + spaceName()"
           title="More actions"
           data-testid="space-actions-overflow"
         >
@@ -261,7 +261,10 @@
       >
         <ng-icon name="lucideArrowDownWideNarrow" />
         Order rooms
-        <span class="ml-auto pl-3 text-xs font-normal text-muted-foreground">
+        <!-- No auto margin here: the sub-indicator already carries `ms-auto`, and a second
+             one splits the free space between the two rather than pinning either. `ps-3`
+             (logical, like every Helm class around it) just spaces the value off the label. -->
+        <span class="ps-3 text-xs font-normal text-muted-foreground">
           {{ sortModeLabel() }}
         </span>
         <hlm-dropdown-menu-item-sub-indicator />
