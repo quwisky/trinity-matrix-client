@@ -306,16 +306,17 @@ for trying config changes without opening anything). The repo config is
 [`.github/renovate.json`](../.github/renovate.json), and it only ever targets **`develop`**
 (`baseBranches`) — no update PR is opened against `master`.
 
-| Setting                        | Why                                                                                                                                                                            |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `build(deps): …` commits       | Matches the repo's existing convention and passes the commitlint hook                                                                                                          |
-| Grouped families               | angular · nx · matrix-js-sdk (+ crypto WASM) · capacitor · spartan-ng · playwright · vitest · eslint · tailwind — each is version-locked, so a partial bump breaks the build   |
-| `electron/` on its own         | Separate package and lockfile; it pins TypeScript 5.9 against the workspace's 6.x, and must never be merged into a root group                                                  |
-| `automerge: false`             | Nothing Renovate opens ever merges itself — every update is reviewed and merged by a human, including patches and lock-file maintenance                                        |
-| Everything opens a PR          | No rule uses `dependencyDashboardApproval`, so **every** update reaches a PR eventually, framework majors included — the limits below throttle the rate, they never cancel one |
-| 5 open / 2 per hour            | `prConcurrentLimit` / `prHourlyLimit` keep the queue reviewable and stop a burst saturating the runners; the rest follow as slots free up                                      |
-| `minimumReleaseAge: 3 days`    | Skips a release that gets yanked hours after publishing — the one thing that delays a PR (by three days), waived for `vulnerabilityAlerts`                                     |
-| `android/**`, `ios/**` ignored | Capacitor owns those native projects                                                                                                                                           |
+| Setting                        | Why                                                                                                                                                                               |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `build(deps): …` commits       | Matches the repo's existing convention and passes the commitlint hook                                                                                                             |
+| Grouped families               | angular · nx · matrix-js-sdk (+ crypto WASM) · capacitor · spartan-ng · playwright · vitest · eslint · tailwind — each is version-locked, so a partial bump breaks the build      |
+| `electron/` on its own         | Separate package and lockfile; it pins TypeScript 5.9 against the workspace's 6.x, and must never be merged into a root group                                                     |
+| TypeScript capped by Angular   | `allowedVersions` holds the root TypeScript inside the window `@angular/compiler-cli` peer-depends on (`>=6.0 <6.1` on Angular 22) — **raise it by hand with each Angular major** |
+| Patches automerge              | A **patch** needs no human at any point: no dashboard tick, and Renovate merges it once CI is green. See below for what gates the merge                                           |
+| Everything else is opt-in      | `dependencyDashboardApproval` is on by default, so minor, major, digest and lock-file updates open **no PR** until ticked on the dashboard issue — security fixes are exempt      |
+| No PR limits                   | `prConcurrentLimit` / `prHourlyLimit` are `0` — unlimited. Everything ticked opens at once; the dashboard gate is what decides how many that is. **`0`, not deleted** — see below |
+| `minimumReleaseAge: 3 days`    | Skips a release that gets yanked hours after publishing — the one thing that delays a PR (by three days), waived for `vulnerabilityAlerts`                                        |
+| `android/**`, `ios/**` ignored | Capacitor owns those native projects                                                                                                                                              |
 
 One operational note before the credentials: the cron **is** the schedule. Renovate's own
 `schedule` is deliberately left open, because setting both is the classic way to get a bot
@@ -344,7 +345,11 @@ Setting one up, once:
 
    `Workflows: write` is what lets it update the pinned action digests in
    `.github/workflows/`; without it those PRs fail to push. `Dependabot alerts: read` is what
-   `vulnerabilityAlerts` reads.
+   `vulnerabilityAlerts` reads — and that permission only grants access to alerts that exist,
+   so **Dependabot alerts must also be switched on for the repository** (Settings → Advanced
+   Security). With them off there is nothing to read, Renovate flags no update as a
+   vulnerability, and the `vulnerabilityAlerts` carve-out never fires — with nothing anywhere
+   reporting that it is dead.
 
 3. Generate a private key and **install the App on this repository**.
 4. Add the credentials under **Settings → Secrets and variables → Actions**. They go on
@@ -381,18 +386,89 @@ secret is no longer read by anything and can be deleted — and the PAT behind i
 There is no Dependabot config; Renovate covers the same ground including the GitHub Actions
 digests, and running both would open duplicate PRs for the same updates.
 
-Nothing is ever withheld and nothing ever self-merges: the limits decide only **when** a PR
-appears, so a backlog drains a few at a time (five open, two an hour) instead of arriving as
-one burst that saturates the runners — each PR triggers the full CI matrix, including the
-45-minute e2e job.
+**The dependency dashboard is the queue; a PR is what you get after asking for one.**
+`dependencyDashboardApproval` is on at the top level, so an available update is listed on the
+dashboard issue and nothing else happens until its checkbox is ticked. Two carve-outs, both
+deliberate:
 
-A framework **major** opens a PR like anything else, but it will usually fail CI until the
-corresponding migration is run (`nx migrate`, Angular update schematics, an SDK deep-import
-change): treat that PR as the notification, not as something to merge.
+- **Patches** are exempt and automerge, so for the most part they never appear as work at all.
+  Not universally, though, and the exception is worth knowing: Renovate decides these flags
+  for a whole branch, requiring approval if _any_ member of a group needs it and automerging
+  only if _every_ member may. So a `@angular/core` patch is held behind a tick whenever
+  anything else in the `angular` group has a pending minor. Patch flow is least predictable
+  for exactly the grouped families that matter most.
+- **`vulnerabilityAlerts`** is exempt. A security fix sitting behind a tick nobody has read is
+  the one case where the delay is the risk rather than the safeguard — that category already
+  waives the three-day soak for the same reason. This depends on **Dependabot alerts being
+  enabled on the repository**: granting the App `Dependabot alerts: read` is necessary but not
+  sufficient, and with alerts off Renovate flags nothing as a vulnerability, so the whole
+  carve-out silently never fires and security fixes fall back to the gate and the soak.
+- **GitHub Actions are explicitly _not_ exempt**, even though a `v7.0.1` → `v7.0.2` bump is
+  technically a patch. That bump repoints a SHA at new third-party code which runs inside CI —
+  including `release.yml`, whose environment holds the signing certificates — so it is the one
+  "patch" that must not merge unattended. The rule opts back out of automerge and back into
+  the gate. Merging these unreviewed would invert the reason the digests are pinned at all.
 
-`automerge: false` binds Renovate only. What stops _anything_ — a bot or a person — merging
-into `develop` unreviewed is a **branch protection rule** requiring a pull request and an
-approving review; that lives in repo settings, not in this file.
+Nothing is _cancelled_ by this: an un-ticked update stays on the dashboard indefinitely and
+opens the moment it is approved.
+
+**There are no PR limits any more** — `prConcurrentLimit` and `prHourlyLimit` are both `0`,
+Renovate's spelling of _unlimited_. The gate replaced them: a limit that throttles PRs you
+have already deliberately asked for is friction without a purpose. Ticking ten boxes opens ten
+PRs at once, each triggering the full CI matrix including the 45-minute e2e job, so a large
+approval batch will occupy the runners for a while. Approve in batches if that matters on a
+given day.
+
+For **patches** that control does not exist, because they are exempt from the gate as well as
+from the limits — they are the one unbounded category, arriving in whatever quantity the day's
+releases produce. In a workspace this size a quiet week is a handful; a busy one after a
+lock-file refresh could be a dozen at once. If that ever costs more in runner time than the
+automation saves, restoring `prConcurrentLimit` alone (leave `prHourlyLimit` at `0`) bounds it
+without putting a human back in front of every patch.
+
+Those two zeroes are **not** redundant lines to tidy away. Deleting them does not mean "no
+limit" — it restores Renovate's defaults of **10 concurrent and 2 per hour**, and the throttle
+comes back with nothing in the diff saying so. The config repeats this warning in its own
+top-level `description` for whoever reaches the file before this page.
+
+A framework **major** now waits for a tick before it opens anything, and when it does open it
+will usually fail CI until the corresponding migration is run (`nx migrate`, Angular update
+schematics, an SDK deep-import change): ticking it is how you ask for the migration branch,
+not how you ask to merge one.
+
+**TypeScript is capped at whatever Angular accepts.** `@angular/compiler-cli` peer-depends on
+one minor window of TypeScript at a time — `>=6.0 <6.1` on Angular 22 — and pnpm only _warns_
+about an unmet peer instead of refusing to install. So a TypeScript minor taken on its own
+installs cleanly and then fails inside `ngtsc`, where it reads as an Angular bug rather than a
+dependency one. An `allowedVersions` rule holds the root manifest below the ceiling.
+
+That ceiling is a **hand-maintained number**: raise it when an Angular major lands, reading
+the new window off `pnpm view @angular/compiler-cli@<version> peerDependencies`. Doing it late
+is visible rather than silent — an Angular major that needs a TypeScript this rule still
+forbids fails on the Angular PR, not by quietly skipping the TypeScript one. The rule is
+scoped to the root `package.json`, so `electron/`'s deliberate TypeScript 5.9 pin is not
+affected; that package has no Angular in it.
+
+**What automerge does and does not cover.** A `matchUpdateTypes: ["patch"]` rule sets
+`automerge: true`; everything else — minor, major, digests, lock-file maintenance — still
+opens a PR that waits for a human. Note that with `separateMinorPatch` left at its default,
+a dependency offering both a patch and a minor produces one **minor** PR and no patch PR, so
+automerge covers the packages whose newest release happens to be a patch, not every patch
+ever published.
+
+`platformAutomerge` is deliberately **off**. GitHub's native auto-merge waits only for the
+checks a branch protection rule marks _required_, and `develop` currently has **no protection
+rule at all** — so nothing is required, and handing the decision to the platform would let a
+red CI run merge. With it off, Renovate does the merge itself and checks the branch is green
+first. The cost is latency: a PR that passes at midday is merged on the next scheduled run
+rather than the moment CI finishes.
+
+That `develop` is unprotected is worth stating plainly, because it is what the rest of this
+section rests on: today nothing at the repo level stops _anything_ — a bot or a person —
+pushing or merging into `develop` unreviewed. The durable fix is a branch protection rule (or
+ruleset) requiring a pull request and the CI checks; that lives in repo settings, not in this
+file. Once it exists, `platformAutomerge` can be turned back on and patches will merge the
+moment they go green.
 
 Two things worth knowing about the jobs that are new to CI:
 
