@@ -87,6 +87,7 @@ import {
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
+import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import {
   RoomDirectoryComponent,
   type DirectoryJoin,
@@ -559,6 +560,20 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly railSpaces = computed<SpaceSummary[]>(() =>
     this.mixedOn() ? this.mixedSpaces.spaces() : this.spaces.spaces(),
   );
+
+  /**
+   * Whether "Space settings" is offered for the active space. False for another account's
+   * space in mixed mode: `RoomSettingsService` resolves the ACTIVE client, so the dialog
+   * would seed blank and every write would land on the wrong account — or nowhere.
+   */
+  readonly canConfigureSpace = computed(() => {
+    const spaceId = this.activeSpaceId();
+    if (!spaceId) {
+      return false;
+    }
+    const space = this.railSpaces().find((s) => s.id === spaceId);
+    return !!space && space.accountId === this.matrix.activeUserId();
+  });
 
   /**
    * Account-badge lookup for the sidebar rows + rail pills, shared with the quick switcher
@@ -1516,15 +1531,28 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
     const editable = this.roomSettings.editableFields(room.id);
     const access = this.roomSettings.currentAccess(room.id);
+    // Seeded from raw state, NOT from RoomSummary: its `name` is `room.name || roomId`,
+    // and the SDK's `room.name` invents a display name out of the member list for a
+    // nameless room. Pre-filling the Name field with "Alice, Bob" (or a raw !id) shows a
+    // value nobody typed, and invites the user to "correct" a fabrication into a real
+    // m.room.name. Same reasoning as the space dialog, which is why currentIdentity exists.
+    const identity = this.roomSettings.currentIdentity(room.id);
+    // "Members of this space can join" needs the spaces the room actually sits in — read
+    // from the space children, never from the room's own m.space.parent, which
+    // removeRoomFromSpace leaves behind on purpose.
+    const parentSpaces = this.spaces.parentSpaceIds(room.id).map((id) => ({
+      id,
+      name: this.railSpaces().find((s) => s.id === id)?.name ?? id,
+    }));
     // The dialog writes on save; the name/topic/access update live via the rooms
     // sync listeners, so nothing to do with the resolved result here.
     void this.dialog.openAndWait(RoomSettingsComponent, {
       ariaLabel: 'Room settings',
       inputs: {
         roomId: room.id,
-        name: room.name,
-        topic: room.topic,
-        avatarMxc: room.avatarMxc,
+        name: identity.name,
+        topic: identity.topic,
+        avatarMxc: identity.avatarMxc,
         joinRule: access.joinRule,
         historyVisibility: access.historyVisibility,
         canEditName: editable.name,
@@ -1532,8 +1560,43 @@ export class RoomsPage implements OnInit, OnDestroy {
         canEditAvatar: editable.avatar,
         canEditJoinRule: editable.joinRule,
         canEditHistory: editable.history,
+        allowedSpaceIds: access.allowedSpaceIds,
+        parentSpaces,
+        supportsRestricted: this.roomSettings.supportsRestricted(room.id),
         canManageBans: this.moderation.canManageBans(room.id),
         canManageAliases: this.aliases.canManageAliases(room.id),
+      },
+    });
+  }
+
+  /**
+   * Space overflow "Space settings": edit the active space's name, topic, avatar and join
+   * rule. Seeds from raw state rather than the rail summary — `SpaceSummary` carries no
+   * topic, and its `name` is the pill's display name rather than the `m.room.name` a save
+   * has to compare against.
+   */
+  onOpenSpaceSettings(): void {
+    const spaceId = this.activeSpaceId();
+    if (!spaceId || !this.canConfigureSpace()) {
+      return;
+    }
+    const identity = this.roomSettings.currentIdentity(spaceId);
+    const editable = this.roomSettings.editableFields(spaceId);
+    const access = this.roomSettings.currentAccess(spaceId);
+    void this.dialog.openAndWait(SpaceSettingsComponent, {
+      ariaLabel: 'Space settings',
+      inputs: {
+        spaceId,
+        name: identity.name,
+        topic: identity.topic,
+        avatarMxc: identity.avatarMxc,
+        joinRule: access.joinRule,
+        canEditName: editable.name,
+        canEditTopic: editable.topic,
+        canEditAvatar: editable.avatar,
+        canEditJoinRule: editable.joinRule,
+        canManageBans: this.moderation.canManageBans(spaceId),
+        canManageAliases: this.aliases.canManageAliases(spaceId),
       },
     });
   }

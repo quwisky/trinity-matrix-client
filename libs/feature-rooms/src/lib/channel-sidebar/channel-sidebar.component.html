@@ -277,6 +277,16 @@
         <ng-icon name="lucideUserPlus" />
         Invite people
       </button>
+      @if (canConfigureSpace()) {
+        <button
+          hlmDropdownMenuItem
+          (triggered)="openSpaceSettings.emit()"
+          data-testid="open-space-settings"
+        >
+          <ng-icon name="lucideSettings" />
+          Space settings
+        </button>
+      }
       <div hlmDropdownMenuSeparator></div>
       <button
         hlmDropdownMenuItem

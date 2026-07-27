@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **A space's members can be let into a room.** Room settings gains **Space members can join**
+  beside "Invite only" and "Anyone can join", so a room inside a space no longer has to be
+  either invite-by-invite or open to the whole internet. Picking it lists the room's spaces
+  with a tickbox each, so you can see exactly who is let in and change it — and a space you
+  are not a member of stays allowed rather than being quietly dropped. The option appears only
+  for rooms that sit in a space and are new enough to enforce the rule; anywhere else it would
+  be a promise the server would not keep.
+
+- **Spaces can be configured after they are created.** A space was set up once, at creation, and
+  never again — its name, topic and who could join it were fixed from then on, and it could
+  never be given a photo at all. **Space settings** in the space **⋮** menu now edits all four,
+  alongside the space's published addresses and its banned members. Fields you lack the power
+  level to change are shown but disabled, and each one saves independently, so a rejected topic
+  no longer discards a rename that the server accepted.
+
 ### Changed
 
 - **The space header makes room for the space's name.** A space's sidebar header carried up to

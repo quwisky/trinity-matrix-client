@@ -30,6 +30,7 @@
         [spaceActive]="
           !recentView() && !roomsView() && activeSpaceId() !== null
         "
+        [canConfigureSpace]="canConfigureSpace()"
         [rooms]="visibleRooms()"
         [activeRoomId]="activeRoomId()"
         [user]="userProfile()"
@@ -50,6 +51,7 @@
         (newChat)="onNewChat()"
         (createRoom)="onCreateChannel()"
         (inviteToSpace)="onInviteToSpace()"
+        (openSpaceSettings)="onOpenSpaceSettings()"
         (leaveSpace)="onLeaveSpace()"
         (joinRoom)="onJoinChild($event)"
         (removeRoom)="onRemoveFromSpace($event)"

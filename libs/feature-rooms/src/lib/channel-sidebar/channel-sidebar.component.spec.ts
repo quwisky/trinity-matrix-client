@@ -412,6 +412,47 @@ describe('ChannelSidebarComponent', () => {
     ).toBeNull();
   });
 
+  it('emits openSpaceSettings from the overflow menu', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { spaceActive: true, canConfigureSpace: true },
+    });
+
+    let opened = false;
+    fixture.componentInstance.openSpaceSettings.subscribe(
+      () => (opened = true),
+    );
+    container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="open-space-settings"]')!
+      .click();
+
+    expect(opened).toBe(true);
+  });
+
+  it('hides space settings for another account\u2019s space', async () => {
+    // Mixed mode: RoomSettingsService writes on the ACTIVE client, so the dialog would seed
+    // blank and save to the wrong account. Leave and invite still show — those are the
+    // pre-existing rows, unguarded today.
+    const { fixture, container } = await renderSidebar({
+      inputs: { spaceActive: true, canConfigureSpace: false },
+    });
+
+    container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    fixture.detectChanges();
+
+    expect(
+      document.querySelector('[data-testid="open-space-settings"]'),
+    ).toBeNull();
+    expect(
+      document.querySelector('[data-testid="space-leave"]'),
+    ).not.toBeNull();
+  });
+
   it('renders pending invites and emits accept / decline with the room id', async () => {
     const { fixture, container } = await renderSidebar({
       invites: [

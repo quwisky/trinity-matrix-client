@@ -42,11 +42,34 @@
         formControlName="joinRule"
         data-testid="room-settings-join-rule"
       >
-        @for (option of joinRuleOptions; track option.value) {
+        @for (option of joinRuleOptions(); track option.value) {
           <option [value]="option.value">{{ option.label }}</option>
         }
       </select>
     </label>
+
+    @if (showSpaceChoices()) {
+      <fieldset class="room-settings__spaces">
+        <legend class="room-settings__label">
+          Spaces whose members can join
+        </legend>
+        @for (space of parentSpaces(); track space.id) {
+          <label class="room-settings__space">
+            <hlm-checkbox
+              [checked]="isSpaceChecked(space.id)"
+              (checkedChange)="toggleSpace(space.id, $event)"
+              [attr.data-testid]="'room-settings-space-' + space.id"
+            />
+            {{ space.name }}
+          </label>
+        }
+        @if (noSpaceChosen()) {
+          <p class="room-settings__hint text-danger">
+            Choose at least one space, or nobody will be able to join.
+          </p>
+        }
+      </fieldset>
+    }
 
     <label class="room-settings__field">
       <span class="room-settings__label">Who can read history</span>
@@ -89,7 +112,7 @@
       <button
         hlmBtn
         type="submit"
-        [disabled]="saving() || !canSave()"
+        [disabled]="saving() || !canSave() || noSpaceChosen()"
         data-testid="room-settings-save"
       >
         {{ saving() ? 'Saving…' : 'Save' }}

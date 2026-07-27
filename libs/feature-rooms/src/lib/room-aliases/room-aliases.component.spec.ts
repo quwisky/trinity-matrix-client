@@ -49,6 +49,20 @@ async function build(
 }
 
 describe('RoomAliasesComponent', () => {
+  it('adds the alias on Enter and swallows the event', async () => {
+    // This component sits inside the settings <form>, which has a submit button, so a bare
+    // Enter would implicitly submit it — saving and CLOSING the dialog without ever adding
+    // the address the user just typed.
+    const { cmp, addAlias } = await build();
+    cmp.newLocalpart.setValue('team');
+    const event = { preventDefault: vi.fn() } as unknown as Event;
+
+    cmp.onEnter(event);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(addAlias).toHaveBeenCalledWith('!r:hs', '#team:hs.example');
+  });
+
   it('loads and lists the room’s local aliases on init', async () => {
     const { cmp, container } = await build({ aliases: ['#a:hs.example'] });
     expect(cmp.aliases()).toEqual(['#a:hs.example']);

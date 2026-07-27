@@ -175,6 +175,83 @@ describe('SpacesService', () => {
     expect(svc.childRoomIds('!nope:hs')).toEqual([]);
   });
 
+  it('finds the spaces that directly contain a room', () => {
+    const { svc } = setup([
+      fakeRoom({
+        roomId: '!s1:hs',
+        name: 'One',
+        space: true,
+        children: [{ childId: '!a:hs' }],
+      }),
+      fakeRoom({
+        roomId: '!s2:hs',
+        name: 'Two',
+        space: true,
+        children: [{ childId: '!a:hs' }],
+      }),
+      fakeRoom({
+        roomId: '!s3:hs',
+        name: 'Three',
+        space: true,
+        children: [{ childId: '!b:hs' }],
+      }),
+      fakeRoom({ roomId: '!a:hs', name: 'alpha' }),
+      fakeRoom({ roomId: '!b:hs', name: 'bravo' }),
+    ]);
+
+    expect(svc.parentSpaceIds('!a:hs')).toEqual(['!s1:hs', '!s2:hs']);
+    expect(svc.parentSpaceIds('!b:hs')).toEqual(['!s3:hs']);
+  });
+
+  it('reports no parents for a spaceless room or an empty id', () => {
+    const { svc } = setup([
+      fakeRoom({ roomId: '!s:hs', name: 'Space', space: true }),
+      fakeRoom({ roomId: '!free:hs', name: 'Freestanding' }),
+    ]);
+
+    expect(svc.parentSpaceIds('!free:hs')).toEqual([]);
+    expect(svc.parentSpaceIds('')).toEqual([]);
+  });
+
+  it('does not treat a grandparent as a parent', () => {
+    // MSC3083 membership does not transit the hierarchy: allowing the parent does not admit
+    // the grandparent's members, so offering it would promise access it cannot grant.
+    const { svc } = setup([
+      fakeRoom({
+        roomId: '!top:hs',
+        name: 'Top',
+        space: true,
+        children: [{ childId: '!mid:hs' }],
+      }),
+      fakeRoom({
+        roomId: '!mid:hs',
+        name: 'Mid',
+        space: true,
+        children: [{ childId: '!room:hs' }],
+      }),
+      fakeRoom({ roomId: '!room:hs', name: 'Room' }),
+    ]);
+
+    expect(svc.parentSpaceIds('!room:hs')).toEqual(['!mid:hs']);
+  });
+
+  it('drops a parent whose link was removed, unlike m.space.parent', () => {
+    // removeRoomFromSpace tombstones the child link (empty via) but deliberately leaves
+    // m.space.parent on the room, so reading the room's own state would still name a space
+    // that no longer contains it — and grant its members join rights.
+    const { svc } = setup([
+      fakeRoom({
+        roomId: '!s:hs',
+        name: 'Space',
+        space: true,
+        children: [{ childId: '!a:hs', via: [] }],
+      }),
+      fakeRoom({ roomId: '!a:hs', name: 'alpha' }),
+    ]);
+
+    expect(svc.parentSpaceIds('!a:hs')).toEqual([]);
+  });
+
   it('refreshes live when a child link arrives (RoomState.events)', async () => {
     const space = fakeRoom({
       roomId: '!s:hs',

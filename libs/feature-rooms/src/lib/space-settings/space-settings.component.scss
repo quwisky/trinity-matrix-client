@@ -1,4 +1,7 @@
-.room-settings {
+// Deliberately parallel to room-settings.component.scss rather than sharing it: the two are
+// sibling dialogs with their own BEM blocks, so each can be restyled without disturbing the
+// other. The shared parts live in the child components (see shared/avatar-field).
+.space-settings {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -10,62 +13,37 @@
   background: var(--trinity-sidebar);
 }
 
-.room-settings__title {
+.space-settings__title {
   font-size: 16px;
   font-weight: 600;
   color: var(--trinity-text-bright);
 }
 
-.room-settings__form {
+.space-settings__form {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.room-settings__field {
+.space-settings__field {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.room-settings__label {
+.space-settings__label {
   font-size: 13px;
   font-weight: 500;
   color: var(--trinity-text-muted);
 }
 
-.room-settings__spaces {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  border: 0;
-  padding: 0;
-  margin: 0;
-}
-
-.room-settings__space {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.room-settings__hint {
-  font-size: 13px;
-}
-
-.room-settings__topic {
-  resize: vertical;
-  min-height: 64px;
-}
-
-.room-settings__note {
+.space-settings__hint,
+.space-settings__note {
   font-size: 13px;
   color: var(--trinity-text-muted);
 }
 
-.room-settings__actions {
+.space-settings__actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;

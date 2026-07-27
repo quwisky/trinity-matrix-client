@@ -22,12 +22,18 @@ export interface FieldWriteResult {
  * bare `forkJoin` would, and the caller gets both lists instead of a single boolean it would have
  * to translate into "nothing saved".
  *
- * Emits once. Callers own the messaging: the wording differs per surface ("room settings" vs
+ * Emits exactly once, including for an empty list. Callers own the messaging: the wording differs per surface ("room settings" vs
  * "space settings"), which is exactly why that stays out here.
  */
 export function saveFields(
   writes: readonly FieldWrite[],
 ): Observable<FieldWriteResult> {
+  // `forkJoin([])` completes without ever emitting, which would leave a caller's `saving`
+  // flag stuck on and its dialog showing "Saving…" forever. "Nothing to write" is a real
+  // result, not the absence of one.
+  if (writes.length === 0) {
+    return of({ saved: [], failed: [] });
+  }
   return forkJoin(
     writes.map(({ field, op }) =>
       op.pipe(

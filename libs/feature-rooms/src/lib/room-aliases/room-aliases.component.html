@@ -61,6 +61,7 @@
       [formControl]="newLocalpart"
       placeholder="new-address"
       autocomplete="off"
+      (keydown.enter)="onEnter($event)"
       data-testid="room-alias-input"
     />
     @if (serverName) {

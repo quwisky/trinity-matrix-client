@@ -318,6 +318,27 @@ export class SpacesService {
   }
 
   /**
+   * The spaces that directly contain `roomId`, from the live {@link spaces} signal — the
+   * inverse of {@link childRoomIds}, and reactive for the same reason.
+   *
+   * Deliberately NOT read off the room's own `m.space.parent`: `removeRoomFromSpace`
+   * leaves that event in place on purpose, so an unlinked room still advertises its former
+   * parent. Granting a `restricted` join rule on the strength of it would hand join rights
+   * to a space that no longer contains the room.
+   *
+   * Direct parents only. MSC3083 membership does not transit the hierarchy, so a
+   * grandparent's members are not admitted by allowing the parent.
+   */
+  parentSpaceIds(roomId: string): string[] {
+    if (!roomId) {
+      return [];
+    }
+    return this.spaces()
+      .filter((space) => space.childRoomIds.includes(roomId))
+      .map((space) => space.id);
+  }
+
+  /**
    * Load `spaceId`'s full child set (rooms + sub-spaces, joined or not) into
    * {@link openSpaceChildren} via `getRoomHierarchy`, replacing any previously open
    * space. Pass `null` (Home) to clear it. Idempotent enough to call on every space

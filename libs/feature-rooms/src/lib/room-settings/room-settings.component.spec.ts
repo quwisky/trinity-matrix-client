@@ -24,6 +24,9 @@ async function build(
     canEditHistory: boolean;
     canManageBans: boolean;
     canManageAliases: boolean;
+    allowedSpaceIds: string[];
+    parentSpaces: { id: string; name: string }[];
+    supportsRestricted: boolean;
   }> = {},
   over: {
     setName?: ReturnType<typeof vi.fn>;
@@ -87,6 +90,262 @@ async function build(
 
 /** A synthetic file-input change event carrying `file` (or none). */
 describe('RoomSettingsComponent', () => {
+  it('offers restricted only when the room sits in a space', async () => {
+    const withSpace = await build({
+      parentSpaces: [{ id: '!s:hs', name: 'Design' }],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+
+    expect(withSpace.cmp.joinRuleOptions().map((o) => o.value)).toContain(
+      JoinRule.Restricted,
+    );
+  });
+
+  it('hides restricted for a spaceless room — nobody could join it', async () => {
+    const { cmp } = await build({
+      parentSpaces: [],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+
+    expect(cmp.joinRuleOptions().map((o) => o.value)).not.toContain(
+      JoinRule.Restricted,
+    );
+  });
+
+  it('hides restricted in a room too old to enforce it', async () => {
+    // Room version < 8 accepts the rule and enforces nothing, leaving the room as open as
+    // it was — a silent no-op is worse than not offering the choice.
+    const { cmp } = await build({
+      parentSpaces: [{ id: '!s:hs', name: 'Design' }],
+      supportsRestricted: false,
+      canEditJoinRule: true,
+    });
+
+    expect(cmp.joinRuleOptions().map((o) => o.value)).not.toContain(
+      JoinRule.Restricted,
+    );
+  });
+
+  it('does not name the spaces in the restricted label', async () => {
+    // The label is fixed text; the allow list is editable state. Naming spaces here would
+    // state access the server may not grant the moment the two diverge.
+    const { cmp } = await build({
+      parentSpaces: [
+        { id: '!a:hs', name: 'Design' },
+        { id: '!b:hs', name: 'Eng' },
+      ],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+
+    const restricted = cmp
+      .joinRuleOptions()
+      .find((o) => o.value === JoinRule.Restricted);
+    expect(restricted?.label).toBe('Space members can join');
+  });
+
+  it('ticks every parent space when switching into restricted', async () => {
+    // Selecting "Space members can join" has to be immediately valid — an empty allow list
+    // is a room nobody can join, and the service refuses to write it.
+    const { cmp } = await build({
+      joinRule: JoinRule.Invite,
+      parentSpaces: [
+        { id: '!a:hs', name: 'Design' },
+        { id: '!b:hs', name: 'Eng' },
+      ],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+
+    expect(cmp.isSpaceChecked('!a:hs')).toBe(true);
+    expect(cmp.isSpaceChecked('!b:hs')).toBe(true);
+  });
+
+  it('ticks only the already-allowed spaces for a restricted room', async () => {
+    // The room is in two spaces but only A can join. The dialog has to show that, not the
+    // access it could have.
+    const { cmp } = await build({
+      joinRule: JoinRule.Restricted,
+      allowedSpaceIds: ['!a:hs'],
+      parentSpaces: [
+        { id: '!a:hs', name: 'Design' },
+        { id: '!b:hs', name: 'Eng' },
+      ],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+
+    expect(cmp.isSpaceChecked('!a:hs')).toBe(true);
+    expect(cmp.isSpaceChecked('!b:hs')).toBe(false);
+  });
+
+  it('sends the allow list when restricting the room', async () => {
+    const { cmp, setJoinRule } = await build({
+      parentSpaces: [{ id: '!s:hs', name: 'Design' }],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+      joinRule: JoinRule.Invite,
+    });
+    cmp.form.controls.joinRule.setValue(JoinRule.Restricted);
+
+    cmp.save();
+
+    // A restricted write that dropped `allow` is exactly the failure that locks a room.
+    expect(setJoinRule).toHaveBeenCalledWith('!r:hs', JoinRule.Restricted, [
+      '!s:hs',
+    ]);
+  });
+
+  it('keeps allow entries it did not add', async () => {
+    // An existing entry may name a space this viewer cannot see; dropping it would revoke
+    // its members' access as a side effect of an unrelated save.
+    const { cmp, setJoinRule } = await build({
+      allowedSpaceIds: ['!unknown:hs'],
+      parentSpaces: [{ id: '!s:hs', name: 'Design' }],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+      joinRule: JoinRule.Invite,
+    });
+    cmp.form.controls.joinRule.setValue(JoinRule.Restricted);
+
+    cmp.save();
+
+    expect(setJoinRule).toHaveBeenCalledWith('!r:hs', JoinRule.Restricted, [
+      '!unknown:hs',
+      '!s:hs',
+    ]);
+  });
+
+  it('lets a newly-linked space in when its box is ticked', async () => {
+    // The room was already restricted to A and has since been linked into B. This is the
+    // action that had no reachable path before: re-picking an already-selected <select>
+    // option fires no change event, so nothing was ever written.
+    const { cmp, setJoinRule } = await build({
+      joinRule: JoinRule.Restricted,
+      allowedSpaceIds: ['!a:hs'],
+      parentSpaces: [
+        { id: '!a:hs', name: 'Design' },
+        { id: '!b:hs', name: 'Eng' },
+      ],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+    cmp.toggleSpace('!b:hs', true);
+
+    cmp.save();
+
+    expect(setJoinRule).toHaveBeenCalledWith('!r:hs', JoinRule.Restricted, [
+      '!a:hs',
+      '!b:hs',
+    ]);
+  });
+
+  it('revokes a space when its box is unticked', async () => {
+    const { cmp, setJoinRule } = await build({
+      joinRule: JoinRule.Restricted,
+      allowedSpaceIds: ['!a:hs', '!b:hs'],
+      parentSpaces: [
+        { id: '!a:hs', name: 'Design' },
+        { id: '!b:hs', name: 'Eng' },
+      ],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+    cmp.toggleSpace('!b:hs', false);
+
+    cmp.save();
+
+    expect(setJoinRule).toHaveBeenCalledWith('!r:hs', JoinRule.Restricted, [
+      '!a:hs',
+    ]);
+  });
+
+  it('blocks Save when a restricted room has no space ticked', async () => {
+    // Writing this would be a room nobody can join and only an admin could reopen.
+    const { cmp } = await build({
+      joinRule: JoinRule.Restricted,
+      allowedSpaceIds: ['!a:hs'],
+      parentSpaces: [{ id: '!a:hs', name: 'Design' }],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+    expect(cmp.noSpaceChosen()).toBe(false);
+
+    cmp.toggleSpace('!a:hs', false);
+
+    expect(cmp.noSpaceChosen()).toBe(true);
+  });
+
+  it('hides the space choices unless restricted is the selected rule', async () => {
+    const { cmp } = await build({
+      joinRule: JoinRule.Invite,
+      parentSpaces: [{ id: '!a:hs', name: 'Design' }],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+
+    expect(cmp.showSpaceChoices()).toBe(false);
+
+    cmp.form.controls.joinRule.setValue(JoinRule.Restricted);
+    expect(cmp.showSpaceChoices()).toBe(true);
+  });
+
+  it('does not widen who can join when only an unrelated field was edited', async () => {
+    // The room is restricted to space A and has since been linked into space B. Editing
+    // the TOPIC must not hand every member of B the right to join a room they were never
+    // allowed into — an access change has to be one the user actually made.
+    const { cmp, setJoinRule, setTopic } = await build({
+      topic: 'old',
+      joinRule: JoinRule.Restricted,
+      allowedSpaceIds: ['!a:hs'],
+      parentSpaces: [
+        { id: '!a:hs', name: 'Design' },
+        { id: '!b:hs', name: 'Eng' },
+      ],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+    cmp.form.controls.topic.setValue('new');
+
+    cmp.save();
+
+    expect(setTopic).toHaveBeenCalledWith('!r:hs', 'new');
+    expect(setJoinRule).not.toHaveBeenCalled();
+  });
+
+  it('keeps a rule it would not otherwise offer, rather than rendering blank', async () => {
+    // parentSpaceIds only sees spaces this user has JOINED, so an admin who is not in the
+    // allowed space gets no restricted option — and a <select> seeded with a value it has
+    // no option for shows nothing at all, misrepresenting the room's access.
+    const { cmp } = await build({
+      joinRule: JoinRule.Restricted,
+      parentSpaces: [],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+
+    expect(cmp.joinRuleOptions().map((o) => o.value)).toContain(
+      JoinRule.Restricted,
+    );
+  });
+
+  it('does not re-write an unchanged restricted rule', async () => {
+    const { cmp, setJoinRule, close } = await build({
+      joinRule: JoinRule.Restricted,
+      allowedSpaceIds: ['!a:hs'],
+      parentSpaces: [{ id: '!a:hs', name: 'Design' }],
+      supportsRestricted: true,
+      canEditJoinRule: true,
+    });
+
+    cmp.save();
+
+    expect(setJoinRule).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledWith(false);
+  });
+
   it('seeds the form from the current name and topic', async () => {
     const { cmp } = await build({ name: 'General', topic: 'The topic' });
     expect(cmp.form.controls.name.value).toBe('General');
@@ -171,7 +430,7 @@ describe('RoomSettingsComponent', () => {
 
     cmp.save();
 
-    expect(setJoinRule).toHaveBeenCalledWith('!r:hs', JoinRule.Public);
+    expect(setJoinRule).toHaveBeenCalledWith('!r:hs', JoinRule.Public, []);
     expect(setHistoryVisibility).toHaveBeenCalledWith(
       '!r:hs',
       HistoryVisibility.Joined,
