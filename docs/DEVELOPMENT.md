@@ -317,12 +317,66 @@ for trying config changes without opening anything). The repo config is
 | `minimumReleaseAge: 3 days`    | Skips a release that gets yanked hours after publishing — the one thing that delays a PR (by three days), waived for `vulnerabilityAlerts`                                     |
 | `android/**`, `ios/**` ignored | Capacitor owns those native projects                                                                                                                                           |
 
-Two operational notes. It needs a **`RENOVATE_TOKEN` secret** — a PAT with repo scope, or a
-GitHub App token, **not** the default `GITHUB_TOKEN`: pull requests opened with the latter do
-not trigger other workflows, so every Renovate PR would sit there with no CI run against it.
-And the cron **is** the schedule: Renovate's own `schedule` is deliberately left open, because
-setting both is the classic way to get a bot that never runs — the job fires outside
-Renovate's window, Renovate declines, nothing happens.
+One operational note before the credentials: the cron **is** the schedule. Renovate's own
+`schedule` is deliberately left open, because setting both is the classic way to get a bot
+that never runs — the job fires outside Renovate's window, Renovate declines, nothing happens.
+
+**Renovate authenticates as a GitHub App**, not as a person. The workflow mints a fresh
+installation token each run with
+[`actions/create-github-app-token`](https://github.com/actions/create-github-app-token) and
+passes that to Renovate.
+
+It cannot use the default `GITHUB_TOKEN`: pull requests opened with that token **do not
+trigger other workflows**, so every Renovate PR would sit there with no CI run against it.
+An App token does trigger them, which is the property that makes this work at all.
+
+Setting one up, once:
+
+1. Create a GitHub App (owner-level → **Developer settings → GitHub Apps**). Homepage URL,
+   callback URL and webhooks can be dummy values or disabled — Renovate polls, it does not
+   listen.
+2. Give it exactly these permissions — Renovate's own list for self-hosted Apps:
+
+   | Permission                                                               | Access           |
+   | ------------------------------------------------------------------------ | ---------------- |
+   | Contents · Pull requests · Issues · Checks · Commit statuses · Workflows | read **+ write** |
+   | Administration · Dependabot alerts · Members · Metadata                  | read             |
+
+   `Workflows: write` is what lets it update the pinned action digests in
+   `.github/workflows/`; without it those PRs fail to push. `Dependabot alerts: read` is what
+   `vulnerabilityAlerts` reads.
+
+3. Generate a private key and **install the App on this repository**.
+4. Add the credentials under **Settings → Secrets and variables → Actions**. They go on
+   two different tabs, and this is the easiest thing to get wrong:
+
+   | Tab           | Name                       | Value                                                                 |
+   | ------------- | -------------------------- | --------------------------------------------------------------------- |
+   | **Variables** | `RENOVATE_APP_CLIENT_ID`   | the App's **Client ID** (the `Iv…` string) — _not_ its numeric App ID |
+   | **Secrets**   | `RENOVATE_APP_PRIVATE_KEY` | the whole generated `.pem`, including the BEGIN/END lines             |
+
+   A Client ID is public by design in OAuth flows, so it is a variable; the private key is
+   the only thing that must be a secret. Put either on the wrong tab and it reads back as
+   empty — which surfaces as `The 'client-id' … input must be set to a non-empty string`,
+   not as anything that mentions the tab.
+
+   The App ID and the Client ID are **different values** on the same settings page. The
+   action's `app-id` input is deprecated in favour of `client-id`, and feeding the numeric
+   one to `client-id` authenticates as nothing.
+
+The token is scoped to where the App is installed, expires after **one hour**, and is revoked
+by the action's post step when the job ends. That hour is why the job's `timeout-minutes` is
+55 and not 60: a job that outlived its own credential would die mid-run on a burst of 401s,
+having pushed branches whose pull requests were never opened.
+
+Renovate autodetects the bot's `username` and `gitAuthor` from the installation token, so
+neither is set in the workflow. The alternative is hardcoding the bot's numeric user ID,
+which silently misattributes every commit if the App is ever recreated. If autodetection
+ever stops working, the action reports the App's slug as an output, so `RENOVATE_USERNAME`
+can be derived rather than pinned — see the comment in the workflow.
+
+The previous setup used a **`RENOVATE_TOKEN`** secret holding a personal access token. That
+secret is no longer read by anything and can be deleted — and the PAT behind it revoked.
 
 There is no Dependabot config; Renovate covers the same ground including the GitHub Actions
 digests, and running both would open duplicate PRs for the same updates.
