@@ -342,4 +342,97 @@ test.describe('Space settings', () => {
       )
       .toBe(spaceId);
   });
+
+  test('the space members dialog names the space creator the owner', async ({
+    page,
+    request,
+  }) => {
+    // The space members dialog had no end-to-end coverage at all until now. A space IS a
+    // room, so it has a creator, and the same Owner/Admin distinction applies — which is
+    // only visible once two people share the top power level.
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}som`;
+    const owner = `space-owner-${runId}`;
+    const ownerPass = `${owner}-pass`;
+    const other = `space-admin-${runId}`;
+    const otherPass = `${other}-pass`;
+    const spaceName = `Owned ${runId}`;
+
+    await registerUser(request, owner, ownerPass);
+    await registerUser(request, other, otherPass);
+    const ownerToken = await apiLogin(request, hs, owner, ownerPass);
+    const otherLogin = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: other },
+          password: otherPass,
+        },
+      })
+      .then((r) => r.json());
+    const otherId = otherLogin.user_id as string;
+    const spaceId = await createSpace(request, hs, ownerToken, spaceName);
+    await joinAsMember(
+      request,
+      hs,
+      ownerToken,
+      spaceId,
+      otherLogin.access_token as string,
+      otherId,
+    );
+    // Promote them to the SAME power the creator holds — the case a power level alone
+    // cannot tell apart. Read the CURRENT power levels and merge, rather than PUTting a
+    // bare `users` map: this event also carries `events`, `state_default` and friends,
+    // and replacing it wholesale would silently drop them.
+    const ownerId = (
+      await request
+        .get(`${hs}/_matrix/client/v3/account/whoami`, {
+          headers: { Authorization: `Bearer ${ownerToken}` },
+        })
+        .then((r) => r.json())
+    ).user_id as string;
+    const currentPowers = await request
+      .get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.power_levels/`,
+        { headers: { Authorization: `Bearer ${ownerToken}` } },
+      )
+      .then((r) => r.json());
+    const powersRes = await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.power_levels/`,
+      {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+        data: {
+          ...currentPowers,
+          users: { ...currentPowers.users, [ownerId]: 100, [otherId]: 100 },
+        },
+      },
+    );
+    // Checked like every other request here: a 403 must fail loudly rather than surface
+    // later as a confusing assertion timeout.
+    if (!powersRes.ok()) {
+      throw new Error(
+        `set power levels → ${powersRes.status()} ${await powersRes.text()}`,
+      );
+    }
+
+    await login(page, {
+      available: true,
+      hs,
+      user: owner,
+      pass: ownerPass,
+    } as SynapseSession);
+    await openSpaceMenu(page, spaceName);
+    // Trigger and dialog are named apart, so this cannot resolve two nodes while the
+    // menu is still on screen.
+    await page.getByTestId('open-space-members').click();
+    await expect(page.getByTestId('space-members')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    const ownerRow = page.getByTestId(`space-member-${ownerId}`);
+    const otherRow = page.getByTestId(`space-member-${otherId}`);
+    await expect(ownerRow).toContainText('Owner', { timeout: 20_000 });
+    await expect(otherRow).toContainText('Admin');
+  });
 });

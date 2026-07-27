@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **The member list shows who owns the room.** Everyone at the top power level shared one
+  **Admin** heading, so the person who created the room looked identical to everyone they
+  had since promoted — in a room with four admins there was no way to tell whose room it
+  was. The creator now gets their own **Owner** section above the admins, in rooms and in
+  spaces. Being the creator is a fact about the room, so it is never something you assign —
+  it does not appear among the roles you can give someone. A creator who is demoted below
+  admin is listed by the power they now hold, so the section always reflects who actually
+  runs the room. Direct messages have no owner: both people there are equals.
+
 - **Spaces can hold spaces.** **Create a space inside** in the space menu nests a new space
   under the current one, and an existing space can be moved in from **Add existing rooms** —
   so a large space can be broken into sections instead of one flat list of rooms.

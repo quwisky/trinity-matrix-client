@@ -412,6 +412,27 @@ describe('ChannelSidebarComponent', () => {
     ).toBeNull();
   });
 
+  it('emits openSpaceMembers, under a testid distinct from the dialog', async () => {
+    // The trigger and the dialog root must not share a testid: while the menu is still
+    // on screen a shared one resolves two nodes, which is a strict-mode failure waiting
+    // for a slower machine.
+    const { fixture, container } = await renderSidebar({
+      inputs: { spaceActive: true },
+    });
+
+    let opened = false;
+    fixture.componentInstance.openSpaceMembers.subscribe(() => (opened = true));
+    container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="open-space-members"]')!
+      .click();
+
+    expect(opened).toBe(true);
+  });
+
   it('emits the curation actions from the overflow menu', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: { spaceActive: true, canCurateSpace: true },

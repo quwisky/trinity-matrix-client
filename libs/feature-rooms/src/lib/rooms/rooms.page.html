@@ -359,6 +359,7 @@
             <trn-member-list
               class="chat-members"
               [members]="members()"
+              [direct]="activeRoomIsDirect()"
               (selectMember)="onSelectMember($event)"
             />
           }

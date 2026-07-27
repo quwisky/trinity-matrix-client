@@ -9,7 +9,8 @@ import {
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
 // End-to-end for member role sections: the room member list groups joined members
-// under "Admin" / "Moderator" / "Member" headers derived from each member's power
+// under "Owner" / "Admin" / "Moderator" / "Member" headers — the first from the room's
+// creator (`m.room.create`), the rest derived from each member's power
 // level (100 = admin, 50 = moderator, the Element convention), each header showing
 // its count, and re-partitions live when a member is promoted. This drives a real
 // Synapse room whose members carry distinct power levels, so it proves the whole
@@ -215,7 +216,7 @@ function sectionFor(page: Page, roleWord: string): Locator {
 test.describe('Member role sections', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('groups members under Admin / Moderator / Member headers', async ({
+  test('groups members under Owner / Moderator / Member headers', async ({
     page,
     request,
   }) => {
@@ -237,9 +238,11 @@ test.describe('Member role sections', () => {
       timeout: 20_000,
     });
 
-    // Three sections, highest role first, each showing its count.
+    // Three sections, highest role first, each showing its count. The reader CREATED
+    // this room, so they are the owner rather than merely an admin — the distinction
+    // this list exists to make, and one a power level alone cannot express.
     await expect(page.locator('.members__section-label')).toHaveText([
-      'Admin — 1',
+      'Owner — 1',
       'Moderator — 1',
       'Member — 1',
     ]);
@@ -249,13 +252,13 @@ test.describe('Member role sections', () => {
       .locator('.members__section')
       .evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
     expect(groupLabels).toEqual([
-      'Admin, 1 member',
+      'Owner, 1 member',
       'Moderator, 1 member',
       'Member, 1 member',
     ]);
 
     // The right member sits under the right header (matched by user id via [title]).
-    await expect(sectionFor(page, 'Admin').locator('.member')).toHaveAttribute(
+    await expect(sectionFor(page, 'Owner').locator('.member')).toHaveAttribute(
       'title',
       admin.userId,
     );
@@ -269,6 +272,154 @@ test.describe('Member role sections', () => {
     await expect(
       sectionFor(page, 'Moderator').locator('.member__name'),
     ).toHaveText(moderator.name);
+  });
+
+  test('a direct message has no owner — both people are equals', async ({
+    page,
+    request,
+  }) => {
+    // The regression this guards against shipped green past unit tests, three targeted
+    // e2e specs and a full suite run, because nothing opened a DM and looked at its
+    // members. The preset below is the point: `createDirectMessage` uses
+    // trusted_private_chat, which puts BOTH participants at power level 100 — seeding
+    // with plain private_chat would leave the peer at 0 and the bug would not reproduce.
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}dm`;
+    const meUser = `dm-me-${runId}`;
+    const mePass = `${meUser}-pass`;
+    const themUser = `dm-them-${runId}`;
+    const themPass = `${themUser}-pass`;
+    const themName = `Them ${runId}`;
+
+    await registerUser(request, meUser, mePass);
+    await registerUser(request, themUser, themPass);
+    const me = await apiLogin(request, hs, meUser, mePass);
+    const them = await apiLogin(request, hs, themUser, themPass);
+    await setDisplayName(request, hs, them, themName);
+
+    const roomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: me.headers,
+        data: {
+          preset: 'trusted_private_chat',
+          invite: [them.userId],
+          is_direct: true,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.room_id as string);
+    const joined = await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+      { headers: them.headers },
+    );
+    if (!joined.ok()) {
+      throw new Error(`join → ${joined.status()} ${await joined.text()}`);
+    }
+    await request.put(
+      `${hs}/_matrix/client/v3/user/${encodeURIComponent(me.userId)}/account_data/m.direct`,
+      { headers: me.headers, data: { [them.userId]: [roomId] } },
+    );
+
+    await login(page, {
+      available: true,
+      hs,
+      user: meUser,
+      pass: mePass,
+    } as SynapseSession);
+
+    // The DM is listed by the counterpart's display name in the default view.
+    const row = page.locator('.channel', { hasText: themName });
+    await row.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await row.first().click();
+    await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
+    const members = page.locator('.members');
+    if (!(await members.isVisible().catch(() => false))) {
+      await page.getByTestId('toggle-members').click();
+    }
+    await expect(members).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.members .member')).toHaveCount(2, {
+      timeout: 20_000,
+    });
+
+    // Both at 100, one flat section, and nobody hoisted above the other.
+    await expect(page.locator('.members__section-label')).toHaveText([
+      'Admin — 2',
+    ]);
+    await expect(sectionFor(page, 'Owner')).toHaveCount(0);
+
+    // And the panel agrees — it reads the same classification as the list.
+    await page.locator(`.member[title="${me.userId}"]`).click();
+    await expect(page.getByTestId('member-info')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId('member-info-role')).toHaveText('Admin');
+  });
+
+  test('the member info panel calls the creator the owner', async ({
+    page,
+    request,
+  }) => {
+    // The list groups; the panel labels. Both read the same classification, and a change
+    // that updated one without the other would leave the two disagreeing about the same
+    // person on the same screen.
+    const runId = `${Date.now().toString(36)}pan`;
+    const { reader, roomName, admin } = await seedRoleRoom(
+      request,
+      session.hs as string,
+      runId,
+      [0],
+    );
+
+    await login(page, reader);
+    await openRoomWithMembers(page, roomName);
+    await expect(page.locator('.members .member')).toHaveCount(2, {
+      timeout: 20_000,
+    });
+
+    await page.locator(`.member[title="${admin.userId}"]`).click();
+
+    await expect(page.getByTestId('member-info')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId('member-info-role')).toHaveText('Owner');
+  });
+
+  test('separates the creator from an admin they promoted', async ({
+    page,
+    request,
+  }) => {
+    // The case the Owner section exists for, and the one the other tests cannot show:
+    // both of these sit at power level 100, so before the creator flag they rendered
+    // under one header and "whose room is this?" was unanswerable.
+    const runId = `${Date.now().toString(36)}own`;
+    const { reader, roomName, admin, extras } = await seedRoleRoom(
+      request,
+      session.hs as string,
+      runId,
+      [100],
+    );
+    const [promoted] = extras;
+
+    await login(page, reader);
+    await openRoomWithMembers(page, roomName);
+
+    await expect(page.locator('.members .member')).toHaveCount(2, {
+      timeout: 20_000,
+    });
+    await expect(page.locator('.members__section-label')).toHaveText([
+      'Owner — 1',
+      'Admin — 1',
+    ]);
+
+    // And the right person is in each — the creator above, the promotee below.
+    await expect(sectionFor(page, 'Owner').locator('.member')).toHaveAttribute(
+      'title',
+      admin.userId,
+    );
+    await expect(sectionFor(page, 'Admin').locator('.member')).toHaveAttribute(
+      'title',
+      promoted.userId,
+    );
   });
 
   test('re-partitions live when a member is promoted to moderator', async ({
@@ -292,7 +443,7 @@ test.describe('Member role sections', () => {
       timeout: 20_000,
     });
     await expect(page.locator('.members__section-label')).toHaveText([
-      'Admin — 1',
+      'Owner — 1',
       'Member — 1',
     ]);
 
@@ -308,7 +459,7 @@ test.describe('Member role sections', () => {
     );
 
     await expect(page.locator('.members__section-label')).toHaveText(
-      ['Admin — 1', 'Moderator — 1'],
+      ['Owner — 1', 'Moderator — 1'],
       { timeout: 20_000 },
     );
     await expect(

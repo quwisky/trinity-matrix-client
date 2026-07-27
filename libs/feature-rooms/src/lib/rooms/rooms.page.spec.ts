@@ -343,6 +343,7 @@ describe('RoomsPage action error feedback', () => {
       initial: 'A',
       avatarMxc: null,
       powerLevel: 0,
+      isCreator: false,
     };
     (
       TestBed.inject(TrnDialogService).openAndWait as ReturnType<typeof vi.fn>
@@ -1886,6 +1887,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   let toastShow: ReturnType<typeof vi.fn>;
   let pick: ReturnType<typeof vi.fn>;
   let createRoom: ReturnType<typeof vi.fn>;
+  let directIds: ReturnType<typeof signal<ReadonlySet<string>>>;
   let createDirectMessage: ReturnType<typeof vi.fn>;
   let inviteUser: ReturnType<typeof vi.fn>;
   let acceptInvite: ReturnType<typeof vi.fn>;
@@ -1913,6 +1915,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     toastShow = vi.fn();
     pick = vi.fn();
     createRoom = vi.fn(() => of('!room:hs'));
+    directIds = signal<ReadonlySet<string>>(new Set());
     createDirectMessage = vi.fn(() => of('!dm:hs'));
     inviteUser = vi.fn(() => of(undefined));
     acceptInvite = vi.fn(() => of(undefined));
@@ -1934,6 +1937,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           createRoom,
           createDirectMessage,
           inviteUser,
+          directRoomIds: directIds,
         }),
         MockProvider(SpacesService, { spaces: signal<SpaceSummary[]>([]) }),
         invitesProvider({
@@ -2049,6 +2053,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       initial: 'B',
       avatarMxc: null,
       powerLevel: 0,
+      isCreator: false,
     };
     memberInfoOpen.mockResolvedValue('@bob:hs'); // the viewer chose "Message"
 
@@ -2057,14 +2062,42 @@ describe('RoomsPage room / DM / invite actions', () => {
     await Promise.resolve();
 
     expect(canModerate).toHaveBeenCalledWith('!r:hs', '@bob:hs');
-    expect(memberInfoOpen).toHaveBeenCalledWith(bob, '!r:hs', {
-      kick: false,
-      ban: false,
-      setPower: false,
-      myPower: 0,
-    });
+    // The trailing flag says whether this room is a DM — the panel must not name an
+    // owner in a 1:1 chat, where both people sit at power level 100.
+    expect(memberInfoOpen).toHaveBeenCalledWith(
+      bob,
+      '!r:hs',
+      { kick: false, ban: false, setPower: false, myPower: 0 },
+      false,
+    );
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
     expect(page.activeRoomId()).toBe('!dm:hs');
+  });
+
+  it('tells the member panel when the room is a direct message', async () => {
+    // Both participants of a DM sit at 100 (trusted_private_chat), so without this the
+    // person who started the chat is labelled Owner and their friend Admin.
+    const bob = {
+      userId: '@bob:hs',
+      name: 'Bob',
+      initial: 'B',
+      avatarMxc: null,
+      powerLevel: 0,
+      isCreator: false,
+    };
+    const page = build();
+    page.activeRoomId.set('!dm:hs');
+    directIds.set(new Set(['!dm:hs']));
+
+    page.onSelectMember(bob);
+    await Promise.resolve();
+
+    expect(memberInfoOpen).toHaveBeenCalledWith(
+      bob,
+      '!dm:hs',
+      expect.anything(),
+      true,
+    );
   });
 
   it('opens no member info panel without an active room', () => {
@@ -2077,6 +2110,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       initial: 'B',
       avatarMxc: null,
       powerLevel: 0,
+      isCreator: false,
     });
 
     expect(memberInfoOpen).not.toHaveBeenCalled();
@@ -2098,6 +2132,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         initial: 'B',
         avatarMxc: null,
         powerLevel: 0,
+        isCreator: false,
       });
 
       expect(page.membersOpen()).toBe(false);
@@ -2120,6 +2155,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       initial: 'B',
       avatarMxc: null,
       powerLevel: 0,
+      isCreator: false,
     });
 
     expect(page.membersOpen()).toBe(true);
@@ -2137,6 +2173,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       initial: 'B',
       avatarMxc: null,
       powerLevel: 0,
+      isCreator: false,
     });
     await Promise.resolve();
     await Promise.resolve();

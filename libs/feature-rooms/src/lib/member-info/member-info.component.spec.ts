@@ -28,6 +28,7 @@ function member(over: Partial<MemberSummary> = {}): MemberSummary {
     initial: 'B',
     avatarMxc: null,
     powerLevel: 0,
+    isCreator: false,
     ...over,
   };
 }
@@ -172,6 +173,57 @@ describe('MemberInfoComponent', () => {
   ] as const)('derives power %i → role %s', async (power, label) => {
     const { cmp } = await build(member({ powerLevel: power }));
     expect(cmp.role()).toBe(label);
+  });
+
+  it('exposes the role under a stable testid for the e2e harness', async () => {
+    const { container } = await build(
+      member({ powerLevel: 100, isCreator: true }),
+    );
+
+    expect(
+      container.querySelector('[data-testid="member-info-role"]')?.textContent,
+    ).toContain('Owner');
+  });
+
+  it('names the room creator the owner', async () => {
+    const { cmp } = await build(member({ powerLevel: 100, isCreator: true }));
+
+    expect(cmp.role()).toBe('Owner');
+  });
+
+  it('names a demoted creator by the power they now hold', async () => {
+    // Consistent with the member list, which is a ranking: the panel must not call
+    // someone the owner while the list files them under Member.
+    const { cmp } = await build(member({ powerLevel: 0, isCreator: true }));
+
+    expect(cmp.role()).toBe('Member');
+  });
+
+  it('never offers Owner as a role you can assign', async () => {
+    // The invariant this whole feature turns on. Owner is the room's CREATOR, and no
+    // power level makes someone that — so offering it would be an action the server
+    // cannot perform. The displayed role and the assignable roles deliberately come
+    // from two different places, and this is what keeps them apart.
+    //
+    // The viewer's power is deliberately absurd. `roleOptions` hides presets ABOVE the
+    // viewer's level, so asserting this as a mere admin would pass for the wrong reason:
+    // an Owner preset added at 101 would be filtered out by rank rather than excluded by
+    // design, and the test would keep passing while the invariant broke.
+    const { cmp } = await build(member({ powerLevel: 0 }), { myPower: 10_000 });
+
+    const labels = cmp.roleOptions().map((option) => option.label);
+    expect(labels).not.toContain('Owner');
+    expect(labels).toEqual(['Moderator', 'Admin']);
+  });
+
+  it('offers no way to assign Owner even to the creator themselves', async () => {
+    const { cmp } = await build(member({ powerLevel: 100, isCreator: true }), {
+      myPower: 10_000,
+    });
+
+    expect(cmp.roleOptions().map((option) => option.label)).not.toContain(
+      'Owner',
+    );
   });
 
   it('closes resolving the user id when Message is picked', async () => {

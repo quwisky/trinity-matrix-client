@@ -9,6 +9,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { DialogRef } from '@trinity/helm/overlay';
 import { RoomsService, type MemberSummary } from '@trinity/data-access-rooms';
 import { AvatarComponent } from '@trinity/ui';
+import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
 
 /**
  * Dialog listing a space's members, so they can be inspected and moderated the way a
@@ -46,18 +47,15 @@ export class SpaceMembersComponent {
   });
 
   /**
-   * The member's standing, from their power level. Named rather than numeric because the
-   * number means nothing to anyone who has not read the spec, and these three are the
-   * levels the moderation UI actually acts on.
+   * The member's standing, named rather than numeric because the number means nothing to
+   * anyone who has not read the spec. Empty for a plain member, whose row needs no badge.
+   *
+   * A space is a room, so it has a creator too — the same shared classification applies
+   * unchanged, and the space's founder is distinguished from anyone they promoted.
    */
   roleOf(member: MemberSummary): string {
-    if (member.powerLevel >= 100) {
-      return 'Admin';
-    }
-    if (member.powerLevel >= 50) {
-      return 'Moderator';
-    }
-    return '';
+    const role = memberRole(member);
+    return role === 'member' ? '' : MEMBER_ROLE_LABEL[role];
   }
 
   /** Pick a member: close resolving them so the host can open member info. */

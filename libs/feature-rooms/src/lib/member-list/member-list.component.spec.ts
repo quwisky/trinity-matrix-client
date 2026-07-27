@@ -25,6 +25,7 @@ function member(over: Partial<MemberSummaryLike> & { userId: string }) {
     initial: over.userId[1]?.toUpperCase() ?? '?',
     avatarMxc: null,
     powerLevel: 0,
+    isCreator: false,
     ...over,
   };
 }
@@ -129,6 +130,91 @@ describe('MemberListComponent', () => {
       'Moderator — 1': ['Bo'],
       'Member — 2': ['Alice', 'Cy'],
     });
+  });
+
+  it('gives the room creator their own section above the admins', async () => {
+    // The gap this section exists for: both of these sit at 100, and before the creator
+    // flag there was no way to tell whose room it is.
+    const members = [
+      member({
+        userId: '@founder:hs',
+        name: 'Founder',
+        powerLevel: 100,
+        isCreator: true,
+      }),
+      member({ userId: '@promoted:hs', name: 'Promoted', powerLevel: 100 }),
+      member({ userId: '@reg:hs', name: 'Reg', powerLevel: 0 }),
+    ];
+    const { container } = await render(MemberListComponent, {
+      inputs: { members },
+      ...opts,
+    });
+
+    expect(sectionLabels(container)).toEqual([
+      'Owner — 1',
+      'Admin — 1',
+      'Member — 1',
+    ]);
+    expect(sectionMap(container)).toEqual({
+      'Owner — 1': ['Founder'],
+      'Admin — 1': ['Promoted'],
+      'Member — 1': ['Reg'],
+    });
+  });
+
+  it('shows no Owner section in a direct message', async () => {
+    // A DM is created with the trusted_private_chat preset, which puts BOTH people at
+    // 100 — so without the `direct` flag whoever started the chat is hoisted above their
+    // friend, asserting a hierarchy that does not exist in a 1:1 conversation.
+    const members = [
+      member({
+        userId: '@me:hs',
+        name: 'Me',
+        powerLevel: 100,
+        isCreator: true,
+      }),
+      member({ userId: '@them:hs', name: 'Them', powerLevel: 100 }),
+    ];
+    const { container } = await render(MemberListComponent, {
+      inputs: { members, direct: true },
+      ...opts,
+    });
+
+    expect(sectionLabels(container)).toEqual(['Admin — 2']);
+    expect(sectionMap(container)['Admin — 2']).toEqual(['Me', 'Them']);
+  });
+
+  it('shows no Owner section when the creator has left the room', async () => {
+    // getJoinedMembers() drops them, so nothing carries the flag — the list must not
+    // render an empty section for an absent founder.
+    const members = [member({ userId: '@a:hs', name: 'Ada', powerLevel: 100 })];
+    const { container } = await render(MemberListComponent, {
+      inputs: { members },
+      ...opts,
+    });
+
+    expect(sectionLabels(container)).toEqual(['Admin — 1']);
+  });
+
+  it('lists a demoted creator by the power they now hold', async () => {
+    // The sections are a ranking. A founder who dropped themselves to 0 rendered above
+    // the admins who actually run the room would misrepresent it.
+    const members = [
+      member({ userId: '@admin:hs', name: 'Admin', powerLevel: 100 }),
+      member({
+        userId: '@founder:hs',
+        name: 'Founder',
+        powerLevel: 0,
+        isCreator: true,
+      }),
+    ];
+    const { container } = await render(MemberListComponent, {
+      inputs: { members },
+      ...opts,
+    });
+
+    expect(sectionLabels(container)).toEqual(['Admin — 1', 'Member — 1']);
+    expect(sectionMap(container)['Member — 1']).toEqual(['Founder']);
   });
 
   it('keeps online-first ordering within a role section', async () => {

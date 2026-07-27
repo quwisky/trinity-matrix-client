@@ -503,6 +503,15 @@ export class RoomsPage implements OnInit, OnDestroy {
     return this.rooms.membersOf(this.activeRoomId());
   });
 
+  /**
+   * Whether the open room is a direct message. Drives the member surfaces, which must not
+   * name an owner in a 1:1 chat — both participants are at power level 100 there.
+   */
+  readonly activeRoomIsDirect = computed(() => {
+    const roomId = this.activeRoomId();
+    return !!roomId && this.rooms.directRoomIds().has(roomId);
+  });
+
   /** The active account's user id — recomputes when the account is switched. */
   readonly userId = computed(() => this.matrix.activeUserId() ?? '');
 
@@ -1409,7 +1418,12 @@ export class RoomsPage implements OnInit, OnDestroy {
     // Kick/ban actions are gated by the viewer's power over this member; the panel
     // resolves a user id only for "Message" (kick/ban close it themselves via sync).
     const caps = this.moderation.canModerate(roomId, member.userId);
-    const messageUserId = await this.memberInfo.open(member, roomId, caps);
+    const messageUserId = await this.memberInfo.open(
+      member,
+      roomId,
+      caps,
+      this.rooms.directRoomIds().has(roomId),
+    );
     if (messageUserId) {
       this.startDirectMessage(messageUserId);
     }

@@ -6,8 +6,20 @@ import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { SpaceMembersComponent } from './space-members.component';
 
-function member(userId: string, name: string, powerLevel = 0): MemberSummary {
-  return { userId, name, initial: name[0], avatarMxc: null, powerLevel };
+function member(
+  userId: string,
+  name: string,
+  powerLevel = 0,
+  isCreator = false,
+): MemberSummary {
+  return {
+    userId,
+    name,
+    initial: name[0],
+    avatarMxc: null,
+    powerLevel,
+    isCreator,
+  };
 }
 
 async function build(members: MemberSummary[] = []) {
@@ -55,6 +67,21 @@ describe('SpaceMembersComponent', () => {
     expect(cmp.roleOf(member('@a:hs', 'Ada', 75))).toBe('Moderator');
     expect(cmp.roleOf(member('@b:hs', 'Bo', 101))).toBe('Admin');
     expect(cmp.roleOf(member('@c:hs', 'Cy', 49))).toBe('');
+  });
+
+  it('names the space creator the owner', async () => {
+    // A space IS a room, so it has a creator too — the same distinction applies, and the
+    // space's founder is separated from anyone they promoted to the same power.
+    const { cmp } = await build();
+
+    expect(cmp.roleOf(member('@f:hs', 'Founder', 100, true))).toBe('Owner');
+    expect(cmp.roleOf(member('@p:hs', 'Promoted', 100))).toBe('Admin');
+  });
+
+  it('names a demoted space creator by the power they now hold', async () => {
+    const { cmp } = await build();
+
+    expect(cmp.roleOf(member('@f:hs', 'Founder', 0, true))).toBe('');
   });
 
   it('resolves the picked member so the host can open member info', async () => {
