@@ -35,9 +35,40 @@ jobs:
   renovate:
     name: Renovate
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # An App installation token lives for exactly one hour, so this has to stay under
+    # that. At 60 the job could outlive its own credential and die partway through a
+    # run as a burst of 401s — with branches pushed and their pull requests not yet
+    # opened. Failing on the job timeout instead says what actually went wrong.
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Mints a short-lived installation token for the repo's Renovate GitHub App.
+      #
+      # This replaces a PAT, which had to be a *person's* credential: scoped to every
+      # repository that person can reach rather than to this one, valid until someone
+      # remembers to rotate it, and attributing every update PR to a human who did not
+      # open it. An installation token is scoped to where the App is installed, expires
+      # after an hour, and is revoked by this action's post step when the job ends — so
+      # the long-lived secret at rest is the App's private key, which never leaves the
+      # secret store and is never sent to the API.
+      #
+      # `client-id`, NOT the deprecated `app-id` — and they are different values: the
+      # Client ID is the `Iv…` string on the App's settings page, not its numeric App ID.
+      # Passing the number to `client-id` authenticates as nothing.
+      #
+      # A Client ID is not sensitive (it is public by design in OAuth flows, and is in
+      # the bot's public identity), hence a repository *variable*; the private key is the
+      # thing that must be a secret. Note these live on two different settings pages —
+      # Settings → Secrets and variables → Actions, then the **Variables** tab for the
+      # first and the **Secrets** tab for the second. A value put on the wrong tab reads
+      # back as empty here, which is what an "input must be set to a non-empty string"
+      # failure means.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
 
       # NOTE: no `configurationFile:` input here, deliberately. That input supplies
       # Renovate's *global* (self-hosted) config; the repo's own config is
@@ -46,13 +77,22 @@ jobs:
       # baseBranches behave in confusing ways.
       - uses: renovatebot/github-action@3064367f740a1a91cca218698a63902689cce200 # v46.1.20
         with:
-          # A PAT (repo scope) or GitHub App token — NOT the default GITHUB_TOKEN.
-          # Pull requests opened with GITHUB_TOKEN do not trigger other workflows, so
-          # every Renovate PR would sit there with no CI run against it, which defeats
-          # the point of having the pipeline.
-          token: ${{ secrets.RENOVATE_TOKEN }}
+          # The App installation token — NOT the default GITHUB_TOKEN. Pull requests
+          # opened with GITHUB_TOKEN do not trigger other workflows, so every Renovate
+          # PR would sit there with no CI run against it, which defeats the point of
+          # having the pipeline. An App token does trigger them, which is why this
+          # swap is safe where using GITHUB_TOKEN would not be.
+          token: ${{ steps.app-token.outputs.token }}
         env:
           RENOVATE_REPOSITORIES: ${{ github.repository }}
+          # `username` and `gitAuthor` are deliberately unset: Renovate autodetects both
+          # from an App installation token, and the alternative is hardcoding the bot's
+          # numeric user id, which is a magic number that silently misattributes every
+          # commit if the App is ever recreated. If autodetection ever fails, the fix is
+          # RENOVATE_USERNAME: ${{ steps.app-token.outputs.app-slug }}[bot] — the action
+          # reports the slug, so it still needs no hardcoding — plus RENOVATE_GIT_AUTHOR
+          # of the form `<Name> <id+<app-slug>[bot]@users.noreply.github.com>`.
+
           # The config file is committed, so there is nothing to onboard; without this a
           # fresh install can still open an onboarding PR.
           RENOVATE_ONBOARDING: 'false'
