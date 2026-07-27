@@ -12,7 +12,9 @@
       member().name
     }}</span>
     <span class="member-info__handle">{{ member().userId }}</span>
-    <span class="member-info__role">{{ role() }}</span>
+    <span class="member-info__role" data-testid="member-info-role">{{
+      role()
+    }}</span>
   </div>
 
   <div class="member-info__actions">

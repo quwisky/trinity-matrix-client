@@ -94,6 +94,15 @@ export interface MemberSummary {
    * 50 a moderator; the member list groups members into role sections from this.
    */
   powerLevel: number;
+  /**
+   * Whether this member created the room (`m.room.create`'s sender).
+   *
+   * A fact about the room, not a rank: it can never be granted, transferred or revoked,
+   * which is why it is a separate flag rather than another power level. Surfaces use it
+   * to answer "whose room is this?", which a power level alone cannot — every admin the
+   * creator has since promoted sits at the same 100.
+   */
+  isCreator: boolean;
 }
 
 /**
@@ -294,8 +303,11 @@ export class RoomsService {
     if (cached && cached.sig === sig) {
       return cached.list;
     }
+    // Deliberately NOT part of the fingerprint above: `m.room.create` is immutable, so
+    // the creator cannot change while the room exists and can never invalidate the cache.
+    const creatorId = room.getCreator();
     const list = joined
-      .map((m) => this.toMember(m))
+      .map((m) => this.toMember(m, creatorId))
       .sort((a, b) => this.memberCollator.compare(a.name, b.name));
     this.memberCache.set(roomId, { sig, list });
     return list;
@@ -590,7 +602,13 @@ export class RoomsService {
     this._revision.update((n) => n + 1);
   }
 
-  private toMember(member: RoomMember): MemberSummary {
+  // `creatorId` is deliberately required rather than defaulted: a second caller that
+  // forgot it would compile and silently report `isCreator: false` for everyone, quietly
+  // removing the Owner section with no type error to catch it.
+  private toMember(
+    member: RoomMember,
+    creatorId: string | null,
+  ): MemberSummary {
     const name = member.name || member.userId;
     return {
       userId: member.userId,
@@ -598,6 +616,7 @@ export class RoomsService {
       initial: initialOf(name),
       avatarMxc: member.getMxcAvatarUrl() ?? null,
       powerLevel: member.powerLevel,
+      isCreator: !!creatorId && member.userId === creatorId,
     };
   }
 }

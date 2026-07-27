@@ -27,8 +27,16 @@ import {
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 import { VerificationService } from '@trinity/data-access-crypto';
 import { AvatarComponent } from '@trinity/ui';
+import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
 
-/** Preset roles the panel can assign, by the standard power-level convention. */
+/**
+ * Preset roles the panel can ASSIGN, by the standard power-level convention.
+ *
+ * Owner is deliberately absent and must stay absent: it is the room's creator, and no
+ * power level makes someone that. Offering it here would be an action the server cannot
+ * perform — which is why the displayed role and the assignable roles come from two
+ * different places rather than one list.
+ */
 const ROLE_PRESETS = [
   { label: 'Member', level: 0 },
   { label: 'Moderator', level: 50 },
@@ -90,13 +98,13 @@ export class MemberInfoComponent {
   );
 
   /** The member's role in the room, by the standard power-level convention. */
-  readonly role = computed(() => {
-    const power = this.member().powerLevel;
-    if (power >= 100) {
-      return 'Admin';
-    }
-    return power >= 50 ? 'Moderator' : 'Member';
-  });
+  /** Whether the room is a direct message — a DM has no owner. See {@link memberRole}. */
+  readonly direct = input(false);
+
+  readonly role = computed(
+    () =>
+      MEMBER_ROLE_LABEL[memberRole(this.member(), { direct: this.direct() })],
+  );
 
   /** Roles the viewer may assign: presets at or below their own level, minus the current one. */
   readonly roleOptions = computed(() => {

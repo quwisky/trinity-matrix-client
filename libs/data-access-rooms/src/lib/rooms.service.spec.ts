@@ -59,6 +59,7 @@ function fakeRoom(opts: {
   favourite?: boolean;
   events?: ReturnType<typeof timelineEvent>[];
   members?: ReturnType<typeof fakeMember>[];
+  creator?: string | null;
 }) {
   return {
     roomId: opts.roomId,
@@ -70,6 +71,7 @@ function fakeRoom(opts: {
     getMxcAvatarUrl: () => null,
     getJoinedMemberCount: () => opts.members?.length ?? 0,
     getJoinedMembers: () => opts.members ?? [],
+    getCreator: () => opts.creator ?? null,
     hasEncryptionStateEvent: () => opts.encrypted ?? false,
     getUnreadNotificationCount: (type?: string) =>
       type === 'highlight' ? (opts.highlight ?? 0) : (opts.unread ?? 0),
@@ -900,6 +902,69 @@ describe('RoomsService membersOf', () => {
     svc.connect();
     return svc;
   }
+
+  it('flags the room creator, and only them', () => {
+    // The one thing a power level cannot express: every admin the creator promoted also
+    // sits at 100, so "whose room is this?" is unanswerable without this.
+    const svc = setup(
+      fakeRoom({
+        roomId: '!a:hs',
+        name: 'general',
+        creator: '@founder:hs',
+        members: [
+          fakeMember({
+            userId: '@founder:hs',
+            name: 'Founder',
+            powerLevel: 100,
+          }),
+          fakeMember({
+            userId: '@promoted:hs',
+            name: 'Promoted',
+            powerLevel: 100,
+          }),
+        ],
+      }),
+    );
+
+    const list = svc.membersOf('!a:hs');
+    expect(list.filter((m) => m.isCreator).map((m) => m.userId)).toEqual([
+      '@founder:hs',
+    ]);
+  });
+
+  it('flags nobody when the room reports no creator', () => {
+    // getCreator() is nullable, and a null must not make every member look like one.
+    const svc = setup(
+      fakeRoom({
+        roomId: '!a:hs',
+        name: 'general',
+        creator: null,
+        members: [
+          fakeMember({ userId: '@a:hs', name: 'Ada', powerLevel: 100 }),
+        ],
+      }),
+    );
+
+    expect(svc.membersOf('!a:hs').every((m) => !m.isCreator)).toBe(true);
+  });
+
+  it('still flags a creator who has since been demoted', () => {
+    // m.room.create is immutable, so the fact survives any power change. Whether a
+    // demoted creator should be PRESENTED as an owner is a separate, presentational
+    // decision — the data layer reports what is true.
+    const svc = setup(
+      fakeRoom({
+        roomId: '!a:hs',
+        name: 'general',
+        creator: '@founder:hs',
+        members: [
+          fakeMember({ userId: '@founder:hs', name: 'Founder', powerLevel: 0 }),
+        ],
+      }),
+    );
+
+    expect(svc.membersOf('!a:hs')[0].isCreator).toBe(true);
+  });
 
   it('returns joined members name-sorted, each carrying its power level and avatar', () => {
     const svc = setup(

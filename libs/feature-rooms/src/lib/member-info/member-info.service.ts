@@ -29,6 +29,8 @@ export class MemberInfoService {
       setPower: false,
       myPower: 0,
     },
+    /** True for a direct message, where nobody is the owner. */
+    direct = false,
   ): Promise<string | null> {
     return this.dialog.openAndWait<string, MemberInfoComponent>(
       MemberInfoComponent,
@@ -41,6 +43,7 @@ export class MemberInfoService {
           canBan: caps.ban,
           canSetPower: caps.setPower,
           myPower: caps.myPower,
+          direct,
         },
       },
     );
