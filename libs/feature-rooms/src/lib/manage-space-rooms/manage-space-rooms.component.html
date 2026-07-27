@@ -1,0 +1,75 @@
+<div class="manage-rooms" data-testid="manage-space-rooms">
+  <h2 class="manage-rooms__title">Organise {{ spaceName() }}</h2>
+  <p class="manage-rooms__hint">
+    The order here is what everyone in the space sees. Suggested rooms are
+    highlighted to new members.
+  </p>
+
+  <ul class="manage-rooms__list">
+    @for (child of childList(); track child.childId) {
+      <li
+        class="manage-rooms__row"
+        [attr.data-testid]="'managed-' + child.childId"
+      >
+        <trn-avatar
+          [mxc]="child.avatarMxc"
+          [initial]="child.initial"
+          [name]="child.name"
+          [size]="24"
+          [square]="true"
+        />
+        <span class="manage-rooms__name" [title]="child.name">{{
+          child.name
+        }}</span>
+
+        <label class="manage-rooms__suggested">
+          <hlm-checkbox
+            [checked]="child.suggested"
+            [disabled]="busyChildId() === child.childId"
+            (checkedChange)="toggleSuggested(child.childId, $event)"
+            [attr.data-testid]="'suggest-' + child.childId"
+          />
+          Suggested
+        </label>
+
+        <button
+          hlmBtn
+          type="button"
+          variant="ghost"
+          size="icon"
+          [disabled]="isFirst(child.childId) || busyChildId() === child.childId"
+          (click)="move(child.childId, 'up')"
+          [attr.aria-label]="'Move ' + child.name + ' up'"
+          [attr.data-testid]="'move-up-' + child.childId"
+        >
+          <ng-icon name="lucideChevronUp" />
+        </button>
+        <button
+          hlmBtn
+          type="button"
+          variant="ghost"
+          size="icon"
+          [disabled]="isLast(child.childId) || busyChildId() === child.childId"
+          (click)="move(child.childId, 'down')"
+          [attr.aria-label]="'Move ' + child.name + ' down'"
+          [attr.data-testid]="'move-down-' + child.childId"
+        >
+          <ng-icon name="lucideChevronDown" />
+        </button>
+      </li>
+    } @empty {
+      <li class="manage-rooms__empty">This space has no rooms in it yet.</li>
+    }
+  </ul>
+
+  <div class="manage-rooms__actions">
+    <button
+      hlmBtn
+      type="button"
+      (click)="close()"
+      data-testid="manage-space-rooms-done"
+    >
+      Done
+    </button>
+  </div>
+</div>

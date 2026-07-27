@@ -30,8 +30,13 @@ import {
   lucideEllipsisVertical,
   lucideLogOut,
   lucidePlus,
+  lucideFolderPlus,
+  lucideLayers,
+  lucideListOrdered,
+  lucideSettings,
   lucideStar,
   lucideUserPlus,
+  lucideUsers,
   lucideX,
 } from '@ng-icons/lucide';
 import {
@@ -104,8 +109,13 @@ export type { AccountSummary };
       lucideEllipsisVertical,
       lucideLogOut,
       lucidePlus,
+      lucideFolderPlus,
+      lucideLayers,
+      lucideListOrdered,
+      lucideSettings,
       lucideStar,
       lucideUserPlus,
+      lucideUsers,
       lucideX,
     }),
   ],
@@ -133,6 +143,18 @@ export class ChannelSidebarComponent {
   readonly spaceName = input('Home');
   /** Whether a space (not Home) is selected — gates the header space actions. */
   readonly spaceActive = input(false);
+  /**
+   * Whether the active space belongs to the signed-in account. Writes always go through the
+   * ACTIVE client, so in the mixed-account view another account's space would open a dialog
+   * that is read-only and blank — hide the row instead of offering that.
+   */
+  readonly canConfigureSpace = input(false);
+  /**
+   * Whether the viewer may curate this space's child list (`m.space.child`). Separate
+   * from {@link canConfigureSpace}: curating is its own power level, so a moderator can
+   * hold it without being able to rename the space, and vice versa.
+   */
+  readonly canCurateSpace = input(false);
   readonly rooms = input<RoomSummary[]>([]);
   /**
    * Favourite rooms (`m.favourite`), rendered under a "Favourite" header. The service
@@ -214,6 +236,16 @@ export class ChannelSidebarComponent {
   readonly createRoom = output<void>();
   /** "Invite people", from the space overflow menu — raise the invite-to-space flow. */
   readonly inviteToSpace = output<void>();
+  /** "Members", from the space overflow menu — list and moderate the space's members. */
+  readonly openSpaceMembers = output<void>();
+  /** "Add existing rooms", from the space overflow menu. */
+  readonly addToSpace = output<void>();
+  /** "Create a space inside", from the space overflow menu — nest a new space. */
+  readonly createSubspace = output<void>();
+  /** "Organise rooms", from the space overflow menu — open child curation. */
+  readonly manageSpaceRooms = output<void>();
+  /** "Space settings", from the space overflow menu — open the settings dialog. */
+  readonly openSpaceSettings = output<void>();
   /** "Leave space", from the space overflow menu — raise the leave confirmation. */
   readonly leaveSpace = output<void>();
   /** Join a not-yet-joined child room or sub-space of the active space. */

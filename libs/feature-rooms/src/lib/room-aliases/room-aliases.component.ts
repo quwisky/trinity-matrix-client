@@ -68,6 +68,19 @@ export class RoomAliasesComponent implements OnInit {
     return this.removing().has(alias);
   }
 
+  /**
+   * Enter in the address field adds the alias, and MUST swallow the event.
+   *
+   * This component is rendered inside the room/space settings `<form>`, which has a
+   * `type="submit"` button — so a bare Enter in a text input implicitly submits that
+   * form. Without this, typing an address and pressing Enter saves and CLOSES the
+   * settings dialog without ever adding the alias, the opposite of what was asked.
+   */
+  onEnter(event: Event): void {
+    event.preventDefault();
+    this.add();
+  }
+
   /** Publish `#<localpart>:<server>` as a new local alias. */
   add(): void {
     const localpart = this.newLocalpart.value.trim().replace(/^#/, '');

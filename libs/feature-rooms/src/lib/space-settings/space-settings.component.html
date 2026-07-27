@@ -1,0 +1,89 @@
+<div class="space-settings" data-testid="space-settings">
+  <h2 class="space-settings__title">Space settings</h2>
+
+  <form [formGroup]="form" class="space-settings__form" (ngSubmit)="save()">
+    <trn-avatar-field
+      [roomId]="spaceId()"
+      [name]="name()"
+      [avatarMxc]="avatarMxc()"
+      [initial]="avatarInitial()"
+      [editable]="canEditAvatar()"
+      noun="space"
+      testid="space-settings-avatar"
+    />
+
+    <label class="space-settings__field">
+      <span class="space-settings__label">Name</span>
+      <input
+        hlmInput
+        class="w-full"
+        formControlName="name"
+        autocomplete="off"
+        data-testid="space-settings-name"
+      />
+    </label>
+
+    <label class="space-settings__field">
+      <span class="space-settings__label">Topic</span>
+      <textarea
+        hlmInput
+        class="w-full"
+        rows="3"
+        formControlName="topic"
+        data-testid="space-settings-topic"
+      ></textarea>
+    </label>
+
+    <label class="space-settings__field">
+      <span class="space-settings__label">Who can join</span>
+      <select
+        hlmInput
+        class="w-full"
+        formControlName="joinRule"
+        data-testid="space-settings-join-rule"
+      >
+        @for (option of joinRuleOptions(); track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+      <!-- Rooms inside a space keep their own join rules; this governs the space itself. -->
+      <span class="space-settings__hint">
+        This controls the space. The rooms inside it keep their own settings.
+      </span>
+    </label>
+
+    @if (!canSave() && !canEditAvatar()) {
+      <p class="space-settings__note">
+        You don’t have permission to change this space’s settings.
+      </p>
+    }
+
+    @if (canManageAliases()) {
+      <trn-room-aliases [roomId]="spaceId()" />
+    }
+
+    @if (canManageBans()) {
+      <trn-banned-members [roomId]="spaceId()" />
+    }
+
+    <div class="space-settings__actions">
+      <button
+        hlmBtn
+        type="button"
+        variant="ghost"
+        (click)="close()"
+        data-testid="space-settings-cancel"
+      >
+        Cancel
+      </button>
+      <button
+        hlmBtn
+        type="submit"
+        [disabled]="saving() || !canSave()"
+        data-testid="space-settings-save"
+      >
+        {{ saving() ? 'Saving…' : 'Save' }}
+      </button>
+    </div>
+  </form>
+</div>

@@ -1,0 +1,56 @@
+@use '../styles/mixins' as *;
+
+.add-to-space {
+  @include dialog-surface(420px);
+}
+
+.add-to-space__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--trinity-text-bright);
+}
+
+.add-to-space__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.add-to-space__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.add-to-space__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-to-space__kind {
+  font-size: 12px;
+  color: var(--trinity-text-muted);
+}
+
+.add-to-space__empty {
+  padding: 12px 4px;
+  font-size: 14px;
+  color: var(--trinity-text-muted);
+}
+
+.add-to-space__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

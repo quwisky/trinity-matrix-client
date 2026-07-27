@@ -2,27 +2,15 @@
   <h2 class="room-settings__title">Room settings</h2>
 
   <form [formGroup]="form" class="room-settings__form" (ngSubmit)="save()">
-    <div class="room-settings__avatar">
-      <trn-avatar
-        [mxc]="avatarMxc()"
-        [name]="name()"
-        [initial]="avatarInitial()"
-        [size]="64"
-      />
-      @if (canEditAvatar()) {
-        <button
-          hlmBtn
-          type="button"
-          variant="outline"
-          size="sm"
-          (click)="pickAvatar()"
-          [disabled]="savingAvatar()"
-          data-testid="room-settings-avatar"
-        >
-          {{ savingAvatar() ? 'Uploading…' : 'Change photo' }}
-        </button>
-      }
-    </div>
+    <trn-avatar-field
+      [roomId]="roomId()"
+      [name]="name()"
+      [avatarMxc]="avatarMxc()"
+      [initial]="avatarInitial()"
+      [editable]="canEditAvatar()"
+      noun="room"
+      testid="room-settings-avatar"
+    />
 
     <label class="room-settings__field">
       <span class="room-settings__label">Name</span>
@@ -54,11 +42,34 @@
         formControlName="joinRule"
         data-testid="room-settings-join-rule"
       >
-        @for (option of joinRuleOptions; track option.value) {
+        @for (option of joinRuleOptions(); track option.value) {
           <option [value]="option.value">{{ option.label }}</option>
         }
       </select>
     </label>
+
+    @if (showSpaceChoices()) {
+      <fieldset class="room-settings__spaces">
+        <legend class="room-settings__label">
+          Spaces whose members can join
+        </legend>
+        @for (space of parentSpaces(); track space.id) {
+          <label class="room-settings__space">
+            <hlm-checkbox
+              [checked]="isSpaceChecked(space.id)"
+              (checkedChange)="toggleSpace(space.id, $event)"
+              [attr.data-testid]="'room-settings-space-' + space.id"
+            />
+            {{ space.name }}
+          </label>
+        }
+        @if (noSpaceChosen()) {
+          <p class="room-settings__hint text-danger">
+            Choose at least one space, or nobody will be able to join.
+          </p>
+        }
+      </fieldset>
+    }
 
     <label class="room-settings__field">
       <span class="room-settings__label">Who can read history</span>
@@ -101,19 +112,11 @@
       <button
         hlmBtn
         type="submit"
-        [disabled]="saving() || !canSave()"
+        [disabled]="saving() || !canSave() || noSpaceChosen()"
         data-testid="room-settings-save"
       >
         {{ saving() ? 'Saving…' : 'Save' }}
       </button>
     </div>
-
-    <input
-      #avatarInput
-      type="file"
-      accept="image/*"
-      hidden
-      (change)="onAvatarPicked($event)"
-    />
   </form>
 </div>

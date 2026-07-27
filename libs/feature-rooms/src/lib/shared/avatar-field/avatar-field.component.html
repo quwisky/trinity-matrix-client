@@ -1,0 +1,30 @@
+<div class="avatar-field">
+  <trn-avatar
+    [mxc]="avatarMxc()"
+    [name]="name()"
+    [initial]="initial()"
+    [size]="64"
+  />
+  @if (editable()) {
+    <button
+      hlmBtn
+      type="button"
+      variant="outline"
+      size="sm"
+      (click)="pickAvatar()"
+      [disabled]="savingAvatar()"
+      [attr.data-testid]="testid()"
+    >
+      {{ savingAvatar() ? 'Uploading…' : 'Change photo' }}
+    </button>
+  }
+</div>
+
+<!-- Outside the row so a `display: flex` on it never lays out a hidden input. -->
+<input
+  #avatarInput
+  type="file"
+  accept="image/*"
+  hidden
+  (change)="onAvatarPicked($event)"
+/>

@@ -2,18 +2,16 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
   OnInit,
   computed,
   inject,
   input,
   signal,
-  viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { type Observable, catchError, forkJoin, map, of } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmInput } from '@trinity/helm/input';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
@@ -21,15 +19,19 @@ import {
   JoinRule,
   RoomSettingsService,
 } from '@trinity/data-access-rooms';
-import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util-matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
+import { AvatarFieldComponent } from '../shared/avatar-field/avatar-field.component';
+import { saveFields, type FieldWrite } from '../shared/save-fields';
 
-/** Reject avatar uploads larger than this (before hitting a server 413). */
-const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
+/** A space this room sits in, offered as a `restricted` join-rule target. */
+export interface ParentSpace {
+  id: string;
+  name: string;
+}
 
-/** The join-rule choices offered (a practical subset of the spec's options). */
+/** The join-rule choices always offered (a practical subset of the spec's options). */
 const JOIN_RULE_OPTIONS = [
   { value: JoinRule.Invite, label: 'Invite only' },
   { value: JoinRule.Public, label: 'Anyone can join' },
@@ -64,8 +66,9 @@ const HISTORY_OPTIONS = [
   imports: [
     ReactiveFormsModule,
     HlmButton,
+    HlmCheckbox,
     HlmInput,
-    AvatarComponent,
+    AvatarFieldComponent,
     BannedMembersComponent,
     RoomAliasesComponent,
   ],
@@ -86,6 +89,16 @@ export class RoomSettingsComponent implements OnInit {
   readonly canEditAvatar = input(false);
   readonly canEditJoinRule = input(false);
   readonly canEditHistory = input(false);
+  /**
+   * The spaces already in this room's `allow` list. Carried through a save untouched, so
+   * re-saving never silently revokes an entry naming a space the viewer has left or that
+   * another client added.
+   */
+  readonly allowedSpaceIds = input<readonly string[]>([]);
+  /** The spaces that directly contain this room — the `restricted` option's targets. */
+  readonly parentSpaces = input<readonly ParentSpace[]>([]);
+  /** Whether this room's version can enforce a `restricted` rule at all (v8+). */
+  readonly supportsRestricted = input(false);
   /** Whether the viewer may manage (view + lift) this room's bans. */
   readonly canManageBans = input(false);
   /** Whether the viewer may manage this room's published addresses. */
@@ -97,13 +110,8 @@ export class RoomSettingsComponent implements OnInit {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  private readonly avatarInput =
-    viewChild<ElementRef<HTMLInputElement>>('avatarInput');
-
   /** True while the save writes are in flight (disables the form + Save). */
   readonly saving = signal(false);
-  /** True while an avatar upload is in flight. */
-  readonly savingAvatar = signal(false);
   /** First letter of the room name, for the avatar fallback. */
   readonly avatarInitial = computed(() => initialOf(this.name()));
 
@@ -116,8 +124,87 @@ export class RoomSettingsComponent implements OnInit {
       this.canEditHistory(),
   );
 
-  readonly joinRuleOptions = JOIN_RULE_OPTIONS;
+  /**
+   * `restricted` is offered ONLY when it can actually work: the room must sit in at least
+   * one space, and its version must enforce the rule. Restricting a room with nothing
+   * allowed is a room nobody can join, and an older room takes the rule and enforces
+   * nothing — so in both cases the option would promise access it cannot deliver.
+   */
+  readonly joinRuleOptions = computed(() => {
+    const spaces = this.parentSpaces();
+    const options: { value: JoinRule; label: string }[] = [
+      ...JOIN_RULE_OPTIONS,
+    ];
+    if (spaces.length > 0 && this.supportsRestricted()) {
+      options.push({
+        value: JoinRule.Restricted,
+        // Deliberately does NOT name the spaces. The label is fixed text while the allow
+        // list is editable state, so naming them here would state access the server may
+        // not grant. The checkboxes below say which spaces, and they cannot drift.
+        label: 'Space members can join',
+      });
+    }
+    return withCurrentRule(options, this.joinRule());
+  });
+
   readonly historyOptions = HISTORY_OPTIONS;
+
+  /**
+   * Which parent spaces are ticked. Seeded in `ngOnInit`: the spaces already in `allow`
+   * when the room is restricted, otherwise all of them, so picking "Space members can
+   * join" is immediately valid rather than an empty list the service would refuse.
+   */
+  private readonly checkedSpaces = signal<ReadonlySet<string>>(new Set());
+
+  /** Show the per-space choices only where they mean something. */
+  readonly showSpaceChoices = computed(
+    () =>
+      this.selectedRule() === JoinRule.Restricted &&
+      this.parentSpaces().length > 0,
+  );
+
+  /**
+   * Restricted with nothing ticked is a room nobody can join. The service refuses to write
+   * it; Save is disabled before the user can get there.
+   */
+  readonly noSpaceChosen = computed(
+    () => this.showSpaceChoices() && this.allowToWrite().length === 0,
+  );
+
+  isSpaceChecked(spaceId: string): boolean {
+    return this.checkedSpaces().has(spaceId);
+  }
+
+  toggleSpace(spaceId: string, checked: boolean): void {
+    this.checkedSpaces.update((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(spaceId);
+      } else {
+        next.delete(spaceId);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * The allow list a restricted save would write: the ticked parent spaces, plus every
+   * seeded entry that is NOT a parent space we can see.
+   *
+   * Those extras are carried through untouched and are not offered as checkboxes, because
+   * `parentSpaceIds` only sees spaces this user has JOINED — an entry we cannot name may
+   * still be a space the room legitimately belongs to, and dropping it would revoke its
+   * members' access as a side effect of an unrelated edit.
+   */
+  private allowToWrite(): string[] {
+    const parents = this.parentSpaces();
+    const parentIds = new Set(parents.map((space) => space.id));
+    const preserved = this.allowedSpaceIds().filter((id) => !parentIds.has(id));
+    const ticked = parents
+      .filter((space) => this.checkedSpaces().has(space.id))
+      .map((space) => space.id);
+    return [...preserved, ...ticked];
+  }
 
   readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true }),
@@ -128,6 +215,12 @@ export class RoomSettingsComponent implements OnInit {
       { nonNullable: true },
     ),
   });
+
+  // Declared AFTER `form`: field initializers run in order, and this one reads it.
+  private readonly selectedRule = toSignal(
+    this.form.controls.joinRule.valueChanges,
+    { initialValue: this.form.controls.joinRule.value },
+  );
 
   ngOnInit(): void {
     this.form.setValue({
@@ -148,6 +241,12 @@ export class RoomSettingsComponent implements OnInit {
     if (!this.canEditHistory()) {
       this.form.controls.historyVisibility.disable();
     }
+    const parentIds = this.parentSpaces().map((space) => space.id);
+    this.checkedSpaces.set(
+      this.joinRule() === JoinRule.Restricted
+        ? new Set(this.allowedSpaceIds().filter((id) => parentIds.includes(id)))
+        : new Set(parentIds),
+    );
   }
 
   /**
@@ -160,7 +259,7 @@ export class RoomSettingsComponent implements OnInit {
     const roomId = this.roomId();
     const name = this.form.controls.name.value.trim();
     const topic = this.form.controls.topic.value.trim();
-    const writes: { field: string; op: Observable<void> }[] = [];
+    const writes: FieldWrite[] = [];
     // A room name shouldn't be blanked from here — only write a non-empty change.
     if (this.canEditName() && name && name !== this.name().trim()) {
       writes.push({ field: 'name', op: this.settings.setName(roomId, name) });
@@ -172,10 +271,18 @@ export class RoomSettingsComponent implements OnInit {
       });
     }
     const joinRule = this.form.controls.joinRule.value;
-    if (this.canEditJoinRule() && joinRule !== this.joinRule()) {
+    const allow = joinRule === JoinRule.Restricted ? this.allowToWrite() : [];
+    // Restricted → restricted with a changed allow list is a real change, so this cannot
+    // be `joinRule !== seeded` alone or ticking a space would silently do nothing. It also
+    // cannot widen on its own: with nothing touched, the ticks reproduce the seeded list
+    // exactly, so an unrelated topic edit writes no join rule at all.
+    const accessChanged =
+      joinRule !== this.joinRule() ||
+      !sameMembers(allow, this.allowedSpaceIds());
+    if (this.canEditJoinRule() && accessChanged) {
       writes.push({
         field: 'join rule',
-        op: this.settings.setJoinRule(roomId, joinRule),
+        op: this.settings.setJoinRule(roomId, joinRule, allow),
       });
     }
     const historyVisibility = this.form.controls.historyVisibility.value;
@@ -193,22 +300,13 @@ export class RoomSettingsComponent implements OnInit {
       return;
     }
     this.saving.set(true);
-    forkJoin(
-      writes.map(({ field, op }) =>
-        op.pipe(
-          map(() => ({ field, ok: true })),
-          catchError(() => of({ field, ok: false })),
-        ),
-      ),
-    )
+    saveFields(writes)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((results) => {
-        const failed = results.filter((r) => !r.ok).map((r) => r.field);
+      .subscribe(({ saved, failed }) => {
         if (failed.length === 0) {
           this.dialogRef.close(true);
           return;
         }
-        const saved = results.filter((r) => r.ok).map((r) => r.field);
         this.saving.set(false);
         this.toast.show(
           saved.length
@@ -219,52 +317,50 @@ export class RoomSettingsComponent implements OnInit {
       });
   }
 
-  /** Open the hidden file input to choose a new room photo. */
-  pickAvatar(): void {
-    this.avatarInput()?.nativeElement.click();
-  }
-
-  /** Validate + upload the picked image as the room avatar; toast the outcome. */
-  onAvatarPicked(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = ''; // allow re-picking the same file
-    if (!file) {
-      return;
-    }
-    // accept="image/*" is only a picker hint — validate before uploading.
-    if (!file.type.startsWith('image/')) {
-      this.showError('Please choose an image file.');
-      return;
-    }
-    if (file.size > MAX_AVATAR_BYTES) {
-      this.showError('That image is too large (max 8 MB).');
-      return;
-    }
-    this.savingAvatar.set(true);
-    this.settings
-      .setAvatar(this.roomId(), file)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => {
-          this.savingAvatar.set(false);
-          this.toast.show('Room photo updated.', {
-            duration: 3000,
-            variant: 'success',
-          });
-        },
-        error: () => {
-          this.savingAvatar.set(false);
-          this.showError('Could not update the room photo.');
-        },
-      });
-  }
-
   close(): void {
     this.dialogRef.close(false);
   }
+}
 
-  private showError(message: string): void {
-    this.toast.show(message, { duration: 4000, variant: 'destructive' });
+/**
+ * Whether two id lists hold the same set. Compared as sets, not by length: the written
+ * list is rebuilt from the ticks and the seeded one comes from arbitrary room state, so
+ * neither is a superset of the other and equal sizes prove nothing.
+ */
+function sameMembers(a: readonly string[], b: readonly string[]): boolean {
+  const set = new Set(b);
+  return a.length === set.size && a.every((id) => set.has(id));
+}
+
+/** How a join rule this dialog does not otherwise offer is described if a room has one. */
+// Deliberately not exhaustive: JoinRule.Private is deprecated in the SDK, and an
+// unrecognised rule from a future spec has no label we could invent. Both fall through to
+// the raw value, which at least shows the room's real setting instead of nothing.
+const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
+  [JoinRule.Restricted]: 'Space members',
+  [JoinRule.Knock]: 'Anyone can ask to join',
+};
+
+/**
+ * Guarantee the room's CURRENT rule is among the choices, even when this dialog would not
+ * otherwise offer it.
+ *
+ * Without this, a `<select>` seeded with an absent value renders blank — the control shows
+ * no setting at all, which misrepresents the room, and any pick silently changes access.
+ * It happens for real: `restricted` is dropped when the room has no parent space, and
+ * `parentSpaceIds` only sees spaces this user has JOINED, so an admin who is not in the
+ * allowed space sees a restricted room as blank. `knock` and `private` can arrive from any
+ * other client. Shown, and never silently rewritten — but the user can still move off it.
+ */
+function withCurrentRule(
+  options: { value: JoinRule; label: string }[],
+  current: JoinRule,
+): { value: JoinRule; label: string }[] {
+  if (options.some((option) => option.value === current)) {
+    return options;
   }
+  return [
+    ...options,
+    { value: current, label: OTHER_RULE_LABELS[current] ?? current },
+  ];
 }

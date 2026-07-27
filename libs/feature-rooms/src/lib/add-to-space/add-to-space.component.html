@@ -1,0 +1,70 @@
+<div class="add-to-space" data-testid="add-to-space">
+  <h2 class="add-to-space__title">Add rooms to {{ spaceName() }}</h2>
+
+  <input
+    hlmInput
+    class="w-full"
+    [formControl]="query"
+    type="search"
+    placeholder="Search your rooms"
+    autocomplete="off"
+    aria-label="Search your rooms"
+    data-testid="add-to-space-search"
+  />
+
+  <ul class="add-to-space__list">
+    @for (candidate of visible(); track candidate.id) {
+      <li class="add-to-space__row">
+        <label class="add-to-space__label">
+          <hlm-checkbox
+            [checked]="isSelected(candidate.id)"
+            (checkedChange)="toggle(candidate.id, $event)"
+            [attr.data-testid]="'add-to-space-pick-' + candidate.id"
+          />
+          <trn-avatar
+            [mxc]="candidate.avatarMxc"
+            [initial]="candidate.initial"
+            [name]="candidate.name"
+            [size]="24"
+            [square]="candidate.isSpace"
+          />
+          <span class="add-to-space__name" [title]="candidate.name">{{
+            candidate.name
+          }}</span>
+          @if (candidate.isSpace) {
+            <span class="add-to-space__kind">Space</span>
+          }
+        </label>
+      </li>
+    } @empty {
+      <li class="add-to-space__empty">
+        @if (candidates().length) {
+          No rooms match that search.
+        } @else {
+          Every room you are in is already here.
+        }
+      </li>
+    }
+  </ul>
+
+  <div class="add-to-space__actions">
+    <button
+      hlmBtn
+      type="button"
+      variant="ghost"
+      (click)="close()"
+      data-testid="add-to-space-cancel"
+    >
+      Cancel
+    </button>
+    <button
+      hlmBtn
+      type="button"
+      [disabled]="adding() || selectedCount() === 0"
+      (click)="add()"
+      data-testid="add-to-space-add"
+    >
+      {{ adding() ? 'Adding…' : 'Add' }}
+    </button>
+  </div>
+</div>

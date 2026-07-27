@@ -69,6 +69,44 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   });
 }
 
+const HS_SERVER_NAME = 'localhost';
+
+/**
+ * Create a space and link `roomId` into it as a child (`m.space.child` with a non-empty
+ * `via`, the shape SpacesService.orderedChildIds requires), so the room has a parent space
+ * for the `restricted` join rule to point at.
+ */
+async function linkIntoSpace(
+  request: APIRequestContext,
+  hs: string,
+  token: string,
+  spaceName: string,
+  roomId: string,
+): Promise<string> {
+  const spaceId = await request
+    .post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        name: spaceName,
+        preset: 'private_chat',
+        creation_content: { type: 'm.space' },
+      },
+    })
+    .then((r) => r.json())
+    .then((j) => j.room_id as string);
+  const res = await request.put(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(roomId)}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { via: [HS_SERVER_NAME], suggested: true },
+    },
+  );
+  if (!res.ok()) {
+    throw new Error(`m.space.child → ${res.status()} ${await res.text()}`);
+  }
+  return spaceId;
+}
+
 test.describe('Room settings', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
@@ -189,6 +227,172 @@ test.describe('Room settings', () => {
         },
       )
       .toBe('world_readable');
+  });
+
+  test('an admin lets a space’s members join the room', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}rs`;
+    const user = `restrict-user-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Restricted ${runId}`;
+    const spaceName = `Owner ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await tokenFor(request, hs, user, pass);
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: { Authorization: `Bearer ${token}` },
+        // Room version 9 so the server will actually enforce MSC3083.
+        data: { name: roomName, preset: 'private_chat', room_version: '9' },
+      })
+      .then((r) => r.json());
+    const spaceId = await linkIntoSpace(
+      request,
+      hs,
+      token,
+      spaceName,
+      room_id as string,
+    );
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    // Via the space pill, NOT openRoom's flat Rooms view: linking the room into a space
+    // takes it out of that list by design (room-filter-spaceless.spec.mts covers exactly
+    // that), so the room the whole test is about is only reachable under its space.
+    const pill = page.getByRole('button', { name: spaceName, exact: true });
+    await pill.waitFor({ state: 'visible', timeout: 30_000 });
+    await pill.click();
+    const channel = page.locator('.channel', { hasText: roomName });
+    await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await channel.first().click();
+    await expect(page.getByTestId('composer-input')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page.getByTestId('open-room-settings').click();
+    await expect(page.getByTestId('room-settings')).toBeVisible({
+      timeout: 10_000,
+    });
+    // The option only exists because the room sits in a space AND its version can enforce
+    // the rule — selecting by value proves both held.
+    await page
+      .getByTestId('room-settings-join-rule')
+      .selectOption('restricted');
+    // Selecting the rule reveals a tickbox per parent space, pre-ticked — the allow list
+    // is editable state, so the dialog shows it rather than deriving it out of sight.
+    await expect(
+      page.getByTestId(`room-settings-space-${spaceId}`),
+    ).toBeVisible();
+    await page.getByTestId('room-settings-save').click();
+
+    // Both halves, deliberately: a write that set the rule and dropped `allow` is the
+    // failure that locks everyone out, and it looks identical from the UI.
+    const joinRules = async (): Promise<
+      Record<string, unknown> | undefined
+    > => {
+      const res = await request.get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/m.room.join_rules/`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      return res.ok() ? await res.json() : undefined;
+    };
+    await expect
+      .poll(async () => (await joinRules())?.['join_rule'], { timeout: 30_000 })
+      .toBe('restricted');
+    expect((await joinRules())?.['allow']).toEqual([
+      { type: 'm.room_membership', room_id: spaceId },
+    ]);
+  });
+
+  test('an admin revokes a space’s access by unticking it', async ({
+    page,
+    request,
+  }) => {
+    // The counterpart of the test above, and the more dangerous direction: this is the
+    // path that takes access AWAY, so it has to be both reachable and exact. Before the
+    // tickboxes there was no way to reach it at all — the allow list was derived from the
+    // room's parent spaces, so it could only ever grow.
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}rv`;
+    const user = `revoke-user-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Revoke ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await tokenFor(request, hs, user, pass);
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { name: roomName, preset: 'private_chat', room_version: '9' },
+      })
+      .then((r) => r.json());
+    const keptId = await linkIntoSpace(
+      request,
+      hs,
+      token,
+      `Kept ${runId}`,
+      room_id as string,
+    );
+    const droppedId = await linkIntoSpace(
+      request,
+      hs,
+      token,
+      `Dropped ${runId}`,
+      room_id as string,
+    );
+    // Start restricted to BOTH, so the dialog has something to take away.
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/m.room.join_rules/`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          join_rule: 'restricted',
+          allow: [keptId, droppedId].map((id) => ({
+            type: 'm.room_membership',
+            room_id: id,
+          })),
+        },
+      },
+    );
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    const pill = page.getByRole('button', {
+      name: `Kept ${runId}`,
+      exact: true,
+    });
+    await pill.waitFor({ state: 'visible', timeout: 30_000 });
+    await pill.click();
+    const channel = page.locator('.channel', { hasText: roomName });
+    await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await channel.first().click();
+    await expect(page.getByTestId('composer-input')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page.getByTestId('open-room-settings').click();
+    // Both boxes start ticked because both are in `allow` — the dialog reports the
+    // server's state, not the room's parentage.
+    const dropped = page.getByTestId(`room-settings-space-${droppedId}`);
+    await expect(dropped).toBeVisible({ timeout: 10_000 });
+    await dropped.click();
+    await page.getByTestId('room-settings-save').click();
+
+    await expect
+      .poll(
+        async () => {
+          const res = await request.get(
+            `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/m.room.join_rules/`,
+            { headers: { Authorization: `Bearer ${token}` } },
+          );
+          return res.ok() ? (await res.json())['allow'] : undefined;
+        },
+        { timeout: 30_000 },
+      )
+      .toEqual([{ type: 'm.room_membership', room_id: keptId }]);
   });
 
   test('an admin unbans a member from the banned list', async ({
