@@ -21,7 +21,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { Observable, finalize, forkJoin } from 'rxjs';
+import { Observable, finalize, forkJoin, map, switchMap } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
@@ -73,6 +73,7 @@ import {
   RoomModerationService,
   RoomAliasesService,
   PublicRoomsService,
+  SpaceChildrenService,
   SpacesService,
   AccountScopeService,
   MixedRoomsService,
@@ -87,6 +88,9 @@ import {
   type SpaceChildRoom,
 } from '@trinity/data-access-rooms';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
+import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
+import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
+import { SpaceMembersComponent } from '../space-members/space-members.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import {
   RoomDirectoryComponent,
@@ -208,6 +212,7 @@ function isMobileMasterDetail(): boolean {
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);
   readonly spaces = inject(SpacesService);
+  private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly mixedSpaces = inject(MixedSpacesService);
   private readonly accountScope = inject(AccountScopeService);
@@ -566,7 +571,23 @@ export class RoomsPage implements OnInit, OnDestroy {
    * space in mixed mode: `RoomSettingsService` resolves the ACTIVE client, so the dialog
    * would seed blank and every write would land on the wrong account — or nowhere.
    */
-  readonly canConfigureSpace = computed(() => {
+  /**
+   * Whether the active space's child list may be curated. A separate power level from
+   * renaming the space, so this is not {@link canConfigureSpace} — a moderator can hold
+   * one without the other — but it carries the same mixed-account guard, since the write
+   * still goes through the ACTIVE client.
+   */
+  readonly canCurateSpace = computed(() => {
+    const spaceId = this.activeSpaceId();
+    return (
+      !!spaceId &&
+      this.ownsActiveSpace() &&
+      this.spaceChildren.canCurate(spaceId)
+    );
+  });
+
+  /** Whether the active space belongs to the signed-in account. */
+  private readonly ownsActiveSpace = computed(() => {
     const spaceId = this.activeSpaceId();
     if (!spaceId) {
       return false;
@@ -574,6 +595,10 @@ export class RoomsPage implements OnInit, OnDestroy {
     const space = this.railSpaces().find((s) => s.id === spaceId);
     return !!space && space.accountId === this.matrix.activeUserId();
   });
+
+  readonly canConfigureSpace = computed(
+    () => !!this.activeSpaceId() && this.ownsActiveSpace(),
+  );
 
   /**
    * Account-badge lookup for the sidebar rows + rail pills, shared with the quick switcher
@@ -858,6 +883,28 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Space overflow "Create a space inside": make a new space and link it as a child of
+   * the active one, so a space can hold sub-spaces as well as rooms.
+   */
+  async onCreateSubspace(): Promise<void> {
+    const parentId = this.activeSpaceId();
+    if (!parentId || !this.canCurateSpace()) {
+      return;
+    }
+    this.spaceError.set(null);
+    const name = await this.alert.prompt({
+      header: 'Create a space inside',
+      message: `The new space will sit inside “${this.activeSpaceName()}”.`,
+      placeholder: 'Space name',
+      confirmText: 'Create',
+      maxLength: 100,
+    });
+    if (name !== null) {
+      this.applyCreateSubspace(parentId, name);
+    }
+  }
+
   /** Sidebar "+": prompt for a name and create a room inside the active space. */
   async onCreateChannel(): Promise<void> {
     const spaceId = this.activeSpaceId();
@@ -905,6 +952,36 @@ export class RoomsPage implements OnInit, OnDestroy {
       error: this.spaceError,
       destroyRef: this.destroyRef,
     }).subscribe((spaceId) => this.onSelectSpace(spaceId));
+  }
+
+  /**
+   * Create the space first, then link it into its parent — two writes, in that order,
+   * because the child link needs an id that does not exist until the room does.
+   *
+   * A failure of the second leaves a real, usable space that is simply not nested, which
+   * is why the error is surfaced rather than swallowed: the user can add it to the parent
+   * from "Add existing rooms" without having lost anything.
+   */
+  private applyCreateSubspace(parentId: string, name: string): void {
+    if (!name.trim()) {
+      return;
+    }
+    runWithBusy(
+      this.spaces
+        .createSpace({ name })
+        .pipe(
+          switchMap((spaceId) =>
+            this.spaceChildren
+              .addExistingRoom(parentId, spaceId)
+              .pipe(map(() => spaceId)),
+          ),
+        ),
+      {
+        busy: this.spaceBusy,
+        error: this.spaceError,
+        destroyRef: this.destroyRef,
+      },
+    ).subscribe((spaceId) => this.onSelectSpace(spaceId));
   }
 
   private applyCreateChannel(spaceId: string, name: string): void {
@@ -1599,6 +1676,58 @@ export class RoomsPage implements OnInit, OnDestroy {
         canManageAliases: this.aliases.canManageAliases(spaceId),
       },
     });
+  }
+
+  /** Space overflow "Add existing rooms": link rooms the user is already in. */
+  onAddToSpace(): void {
+    const spaceId = this.activeSpaceId();
+    if (!spaceId || !this.canCurateSpace()) {
+      return;
+    }
+    void this.dialog.openAndWait(AddToSpaceComponent, {
+      ariaLabel: 'Add rooms to this space',
+      inputs: { spaceId, spaceName: this.activeSpaceName() },
+    });
+  }
+
+  /** Space overflow "Organise rooms": curate the child order and suggestions. */
+  onManageSpaceRooms(): void {
+    const spaceId = this.activeSpaceId();
+    if (!spaceId || !this.canCurateSpace()) {
+      return;
+    }
+    void this.dialog.openAndWait(ManageSpaceRoomsComponent, {
+      ariaLabel: 'Organise this space',
+      inputs: { spaceId, spaceName: this.activeSpaceName() },
+    });
+  }
+
+  /**
+   * Space overflow "Members": list the space's members, with the same moderation the room
+   * member list offers.
+   *
+   * Picking someone opens the SHARED member-info panel against the space id — a space is a
+   * room, so `canModerate` and every kick/ban/power-level action already answer correctly
+   * for it. One moderation surface rather than a space-shaped copy of it.
+   */
+  onOpenSpaceMembers(): void {
+    const spaceId = this.activeSpaceId();
+    if (!spaceId) {
+      return;
+    }
+    void this.dialog
+      .openAndWait<MemberSummary | null, SpaceMembersComponent>(
+        SpaceMembersComponent,
+        {
+          ariaLabel: 'Space members',
+          inputs: { spaceId, spaceName: this.activeSpaceName() },
+        },
+      )
+      .then((member) => {
+        if (member) {
+          void this.openMemberInfo(member, spaceId);
+        }
+      });
   }
 
   /** Open the threads-list panel for the active room (header "Threads" button). */

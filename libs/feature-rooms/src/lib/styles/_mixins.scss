@@ -33,6 +33,24 @@
   text-align: center;
 }
 
+/// The opaque panel a dialog paints for itself.
+///
+/// The CDK dialog panel is transparent — every dialog component is responsible for its
+/// own surface, and one that forgets renders as floating text over the timeline. That is
+/// easy to miss, because the layout looks correct in isolation and only the background is
+/// wrong. Matches the block room-settings and space-settings already spell out inline.
+@mixin dialog-surface($width: 340px) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: $width;
+  max-width: 92vw;
+  padding: 20px 18px 16px;
+  border: 1px solid var(--trinity-divider);
+  border-radius: var(--trinity-radius-xl);
+  background: var(--trinity-sidebar);
+}
+
 /// Full-height vertical column surface.
 @mixin column($background) {
   height: 100%;

@@ -1,0 +1,43 @@
+<div class="space-members" data-testid="space-members">
+  <h2 class="space-members__title">Members of {{ spaceName() }}</h2>
+
+  <ul class="space-members__list">
+    @for (member of members(); track member.userId) {
+      <li class="space-members__row">
+        <button
+          class="space-members__pick"
+          type="button"
+          (click)="pick(member)"
+          [attr.aria-label]="'Show ' + member.name"
+          [attr.data-testid]="'space-member-' + member.userId"
+        >
+          <trn-avatar
+            [mxc]="member.avatarMxc"
+            [initial]="member.initial"
+            [name]="member.name"
+            [size]="28"
+          />
+          <span class="space-members__name" [title]="member.userId">{{
+            member.name
+          }}</span>
+          @if (roleOf(member)) {
+            <span class="space-members__role">{{ roleOf(member) }}</span>
+          }
+        </button>
+      </li>
+    } @empty {
+      <li class="space-members__empty">Nobody else is in this space yet.</li>
+    }
+  </ul>
+
+  <div class="space-members__actions">
+    <button
+      hlmBtn
+      type="button"
+      (click)="close()"
+      data-testid="space-members-done"
+    >
+      Done
+    </button>
+  </div>
+</div>

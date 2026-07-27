@@ -29,6 +29,7 @@ import {
   MixedRoomsService,
   MixedSpacesService,
   UnreadAggregatorService,
+  SpaceChildrenService,
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
   type RoomSortMode,
@@ -53,6 +54,9 @@ import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
+import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
+import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
+import { SpaceMembersComponent } from '../space-members/space-members.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
@@ -102,6 +106,11 @@ describe('RoomsPage action error feedback', () => {
   let parentSpaceIds: ReturnType<typeof vi.fn>;
   let railSpacesSignal: ReturnType<typeof signal<SpaceSummary[]>>;
   let supportsRestricted: ReturnType<typeof vi.fn>;
+  let canCurate: ReturnType<typeof vi.fn>;
+  let spaceCanModerate: ReturnType<typeof vi.fn>;
+  let spaceMemberInfoOpen: ReturnType<typeof vi.fn>;
+  let createSpace: ReturnType<typeof vi.fn>;
+  let addExistingRoom: ReturnType<typeof vi.fn>;
   let currentIdentity: ReturnType<typeof vi.fn>;
   let joinPublicRoom: ReturnType<typeof vi.fn>;
   let markReadFn: ReturnType<typeof vi.fn>;
@@ -129,6 +138,11 @@ describe('RoomsPage action error feedback', () => {
     parentSpaceIds = vi.fn(() => [] as string[]);
     railSpacesSignal = signal<SpaceSummary[]>([]);
     supportsRestricted = vi.fn(() => false);
+    canCurate = vi.fn(() => true);
+    spaceCanModerate = vi.fn(() => ({}) as never);
+    spaceMemberInfoOpen = vi.fn().mockResolvedValue(null);
+    createSpace = vi.fn(() => of('!new-space:hs'));
+    addExistingRoom = vi.fn(() => of(undefined));
     currentIdentity = vi.fn(() => ({
       name: '',
       topic: '',
@@ -153,14 +167,20 @@ describe('RoomsPage action error feedback', () => {
           supportsRestricted,
           currentIdentity,
         }),
-        MockProvider(RoomModerationService, { canManageBans }),
+        MockProvider(RoomModerationService, {
+          canManageBans,
+          canModerate: spaceCanModerate,
+        }),
+        MockProvider(MemberInfoService, { open: spaceMemberInfoOpen }),
         MockProvider(RoomAliasesService, { canManageAliases }),
         MockProvider(PublicRoomsService, { join: joinPublicRoom }),
         MockProvider(SpacesService, {
           parentSpaceIds,
           spaces: railSpacesSignal,
+          createSpace,
         }),
         MockProvider(AccountScopeService, { mixing: signal(false) }),
+        MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TimelineService, { edit, sendMedia }),
         MockProvider(MediaService),
@@ -312,6 +332,143 @@ describe('RoomsPage action error feedback', () => {
       childRoomIds: [],
     };
   }
+
+  it('opens the space members dialog and routes a pick to member info', async () => {
+    const page = build();
+    page.activeSpaceId.set('!s:hs');
+    railSpacesSignal.set([railSpace('!s:hs')]);
+    const picked = {
+      userId: '@a:hs',
+      name: 'Ada',
+      initial: 'A',
+      avatarMxc: null,
+      powerLevel: 0,
+    };
+    (
+      TestBed.inject(TrnDialogService).openAndWait as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(picked);
+
+    page.onOpenSpaceMembers();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
+      SpaceMembersComponent,
+      expect.objectContaining({
+        inputs: expect.objectContaining({ spaceId: '!s:hs' }),
+      }),
+    );
+    // Moderation caps are resolved against the SPACE, so kick/ban act where the user is.
+    expect(spaceCanModerate).toHaveBeenCalledWith('!s:hs', '@a:hs');
+  });
+
+  it('does not open member info when the members dialog is dismissed', async () => {
+    const page = build();
+    page.activeSpaceId.set('!s:hs');
+    railSpacesSignal.set([railSpace('!s:hs')]);
+    (
+      TestBed.inject(TrnDialogService).openAndWait as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(null);
+
+    page.onOpenSpaceMembers();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(spaceCanModerate).not.toHaveBeenCalled();
+  });
+
+  it('creates a subspace and links it into the active space', async () => {
+    const page = build();
+    page.activeSpaceId.set('!parent:hs');
+    railSpacesSignal.set([railSpace('!parent:hs')]);
+    alertConfirm.mockResolvedValue(true);
+    const prompt = TestBed.inject(TrnAlertService).prompt as ReturnType<
+      typeof vi.fn
+    >;
+    prompt.mockResolvedValue('Sub');
+
+    await page.onCreateSubspace();
+
+    expect(createSpace).toHaveBeenCalledWith({ name: 'Sub' });
+    // The link is the whole point — a space created and not nested is just a space.
+    expect(addExistingRoom).toHaveBeenCalledWith('!parent:hs', '!new-space:hs');
+  });
+
+  it('does not create a subspace without power to curate', async () => {
+    const page = build();
+    page.activeSpaceId.set('!parent:hs');
+    railSpacesSignal.set([railSpace('!parent:hs')]);
+    canCurate.mockReturnValue(false);
+
+    await page.onCreateSubspace();
+
+    expect(createSpace).not.toHaveBeenCalled();
+  });
+
+  it('opens the add-rooms picker for the active space', () => {
+    const page = build();
+    page.activeSpaceId.set('!s:hs');
+    railSpacesSignal.set([railSpace('!s:hs')]);
+
+    page.onAddToSpace();
+
+    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
+      AddToSpaceComponent,
+      expect.objectContaining({
+        inputs: expect.objectContaining({ spaceId: '!s:hs' }),
+      }),
+    );
+  });
+
+  it('opens the curation dialog for the active space', () => {
+    const page = build();
+    page.activeSpaceId.set('!s:hs');
+    railSpacesSignal.set([railSpace('!s:hs')]);
+
+    page.onManageSpaceRooms();
+
+    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
+      ManageSpaceRoomsComponent,
+      expect.objectContaining({
+        inputs: expect.objectContaining({ spaceId: '!s:hs' }),
+      }),
+    );
+  });
+
+  it('refuses both curation dialogs without power to curate', () => {
+    const page = build();
+    page.activeSpaceId.set('!s:hs');
+    railSpacesSignal.set([railSpace('!s:hs')]);
+    canCurate.mockReturnValue(false);
+
+    expect(page.canCurateSpace()).toBe(false);
+    page.onAddToSpace();
+    page.onManageSpaceRooms();
+
+    expect(TestBed.inject(TrnDialogService).openAndWait).not.toHaveBeenCalled();
+  });
+
+  it('refuses to curate another account’s space', () => {
+    // Same reasoning as Space settings: the write goes through the ACTIVE client, so it
+    // would land on the wrong account or nowhere.
+    const page = build();
+    page.activeSpaceId.set('!theirs:hs');
+    railSpacesSignal.set([railSpace('!theirs:hs', '@other:hs')]);
+    canCurate.mockReturnValue(true);
+
+    expect(page.canCurateSpace()).toBe(false);
+  });
+
+  it('separates curating from configuring, which are different power levels', () => {
+    // A moderator can curate the child list without being able to rename the space.
+    const page = build();
+    page.activeSpaceId.set('!s:hs');
+    railSpacesSignal.set([railSpace('!s:hs')]);
+    canCurate.mockReturnValue(false);
+
+    expect(page.canConfigureSpace()).toBe(true);
+    expect(page.canCurateSpace()).toBe(false);
+  });
 
   it('opens space settings seeded from raw state and the viewer’s permissions', () => {
     const page = build();

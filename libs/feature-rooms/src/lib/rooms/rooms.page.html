@@ -31,6 +31,7 @@
           !recentView() && !roomsView() && activeSpaceId() !== null
         "
         [canConfigureSpace]="canConfigureSpace()"
+        [canCurateSpace]="canCurateSpace()"
         [rooms]="visibleRooms()"
         [activeRoomId]="activeRoomId()"
         [user]="userProfile()"
@@ -51,6 +52,10 @@
         (newChat)="onNewChat()"
         (createRoom)="onCreateChannel()"
         (inviteToSpace)="onInviteToSpace()"
+        (addToSpace)="onAddToSpace()"
+        (manageSpaceRooms)="onManageSpaceRooms()"
+        (createSubspace)="onCreateSubspace()"
+        (openSpaceMembers)="onOpenSpaceMembers()"
         (openSpaceSettings)="onOpenSpaceSettings()"
         (leaveSpace)="onLeaveSpace()"
         (joinRoom)="onJoinChild($event)"

@@ -8,6 +8,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Spaces can hold spaces.** **Create a space inside** in the space menu nests a new space
+  under the current one, and an existing space can be moved in from **Add existing rooms** —
+  so a large space can be broken into sections instead of one flat list of rooms.
+
+- **A space's members are visible, and can be moderated.** **Members** in the space menu lists
+  everyone in the space with their role, and picking someone opens the same panel you get from
+  a room — so kicking, banning and changing someone's power level work in a space too.
+
+- **Rooms you are already in can be added to a space.** Until now a room could only join a
+  space by being _created_ in it, so an existing conversation could never be organised into
+  one — you had to make a new room and start over. **Add existing rooms** in the space menu
+  lists everything you are in, filters as you type, and adds as many as you tick at once.
+  Spaces appear in the same list, so an existing space can be nested inside another.
+
+- **A space's rooms can be arranged for everyone.** Ordering a space's rooms only ever
+  changed _your own_ view. **Organise rooms** in the space menu sets the arrangement the
+  whole space sees, and marks rooms as **suggested** so new members know where to start.
+
 - **A space's members can be let into a room.** Room settings gains **Space members can join**
   beside "Invite only" and "Anyone can join", so a room inside a space no longer has to be
   either invite-by-invite or open to the whole internet. Picking it lists the room's spaces

@@ -277,6 +277,40 @@
         <ng-icon name="lucideUserPlus" />
         Invite people
       </button>
+      <button
+        hlmDropdownMenuItem
+        (triggered)="openSpaceMembers.emit()"
+        data-testid="space-members"
+      >
+        <ng-icon name="lucideUsers" />
+        Members
+      </button>
+      @if (canCurateSpace()) {
+        <button
+          hlmDropdownMenuItem
+          (triggered)="addToSpace.emit()"
+          data-testid="space-add-rooms"
+        >
+          <ng-icon name="lucideFolderPlus" />
+          Add existing rooms
+        </button>
+        <button
+          hlmDropdownMenuItem
+          (triggered)="manageSpaceRooms.emit()"
+          data-testid="space-manage-rooms"
+        >
+          <ng-icon name="lucideListOrdered" />
+          Organise rooms
+        </button>
+        <button
+          hlmDropdownMenuItem
+          (triggered)="createSubspace.emit()"
+          data-testid="space-create-subspace"
+        >
+          <ng-icon name="lucideLayers" />
+          Create a space inside
+        </button>
+      }
       @if (canConfigureSpace()) {
         <button
           hlmDropdownMenuItem

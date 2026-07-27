@@ -412,6 +412,66 @@ describe('ChannelSidebarComponent', () => {
     ).toBeNull();
   });
 
+  it('emits the curation actions from the overflow menu', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { spaceActive: true, canCurateSpace: true },
+    });
+
+    let added = false;
+    let organised = false;
+    fixture.componentInstance.addToSpace.subscribe(() => (added = true));
+    fixture.componentInstance.manageSpaceRooms.subscribe(
+      () => (organised = true),
+    );
+
+    container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="space-add-rooms"]')!
+      .click();
+    fixture.detectChanges();
+    container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="space-manage-rooms"]')!
+      .click();
+
+    expect(added).toBe(true);
+    expect(organised).toBe(true);
+  });
+
+  it('hides the curation actions without power to curate', async () => {
+    // Curating is its own power level, so this is gated separately from Space settings —
+    // a row that always failed on click would read as a broken feature.
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        spaceActive: true,
+        canCurateSpace: false,
+        canConfigureSpace: true,
+      },
+    });
+
+    container
+      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .click();
+    fixture.detectChanges();
+
+    expect(
+      document.querySelector('[data-testid="space-add-rooms"]'),
+    ).toBeNull();
+    expect(
+      document.querySelector('[data-testid="space-manage-rooms"]'),
+    ).toBeNull();
+    // The settings row is governed by a different permission and stays.
+    expect(
+      document.querySelector('[data-testid="open-space-settings"]'),
+    ).not.toBeNull();
+  });
+
   it('emits openSpaceSettings from the overflow menu', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: { spaceActive: true, canConfigureSpace: true },
