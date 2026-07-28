@@ -62,12 +62,10 @@ interface AccountNotifier {
  * mentions are missed). Those live events are deferred and re-evaluated on
  * `MatrixEventEvent.Decrypted` with `getPushActionsForEvent(event, true)`; a
  * dedupe set guarantees each event notifies at most once per account.
- */
-/**
- * Not a single-client projection, so it does not use `projectFromClient`: this service is
- * MULTI-ACCOUNT, reconciling a notifier per signed-in account over `matrix.accountIds()`
- * and binding listeners to each account's own client. That primitive models one active
- * client; the account-set effect in the constructor is this service's equivalent.
+ *
+ * That multi-account shape is also why this is not a `projectFromClient` projection: the
+ * primitive models one active client, whereas this binds per account. The account-set
+ * effect in the constructor is this service's equivalent.
  */
 @Injectable({ providedIn: 'root' })
 export class NotificationService {

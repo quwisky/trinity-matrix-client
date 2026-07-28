@@ -136,6 +136,14 @@ export class VerificationService {
   /** Detach listeners and clear any active verification. */
   disconnect(): void {
     this.projection.disconnect();
+    // Cleared again, unconditionally, and NOT only via the projection's `reset`. That
+    // reset runs only when listeners were actually attached, but a verification can be
+    // active without this service ever having connected: startSelfVerification and
+    // startUserVerification call adopt() directly. Without this, disconnecting after one
+    // of those leaves `active` populated and the host keeps presenting a dead request.
+    // Idempotent, so the connected path clearing twice is harmless.
+    this.clearRequest();
+    this._active.set(null);
   }
 
   /** Send a verification request to our other devices (emoji SAS). */

@@ -1,6 +1,9 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
 import { ClientEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  coalesce,
+  MatrixClientService,
+} from '@trinity/data-access-matrix-client';
 import { sameAccountSet } from './account-scope.service';
 import { initialOf, spaceChildIdsOf } from './room-projection';
 import { type SpaceSummary } from './spaces.service';
@@ -33,7 +36,6 @@ export class MixedSpacesService {
 
   private accounts: ReadonlySet<string> = new Set();
   private readonly listeners = new Map<string, AccountListener>();
-  private flushScheduled = false;
 
   /** Aggregate exactly these accounts; fewer than two is not a mix (see MixedRoomsService). */
   setAccounts(ids: ReadonlySet<string>): void {
@@ -98,18 +100,19 @@ export class MixedSpacesService {
     }
   }
 
-  private scheduleFlush(): void {
-    if (this.flushScheduled) {
-      return;
+  /**
+   * Coalesced through the shared primitive. Keyed on the account set, not one active
+   * client, so it takes the batching alone rather than `projectFromClient`.
+   */
+  private readonly flusher = coalesce(() => {
+    if (this.accounts.size > 1) {
+      this.syncListeners();
+      this.flush();
     }
-    this.flushScheduled = true;
-    queueMicrotask(() => {
-      this.flushScheduled = false;
-      if (this.accounts.size > 1) {
-        this.syncListeners();
-        this.flush();
-      }
-    });
+  });
+
+  private scheduleFlush(): void {
+    this.flusher.schedule();
   }
 
   private flush(): void {

@@ -101,12 +101,12 @@ export interface RoomTombstone {
  * SDK routes threaded replies into per-thread timelines, so they are absent from
  * the room's live timeline here — only thread *roots* remain in the main view. The
  * thread roots and their replies are projected separately by `ThreadsService`.
- */
-/**
- * Not a `projectFromClient` projection, deliberately: this service is scoped to the OPEN
+ *
+ * Deliberately not a `projectFromClient` projection: this service is scoped to the OPEN
  * ROOM, binding to a `Room` as well as to the client, so its lifetime is open()/close()
  * rather than the client's. That is also why it needs no account-switch re-projection —
- * a switch closes the open room first (`rooms.page.ts`, `runOnAccount`).
+ * a switch closes the open room first (`rooms.page.ts`, `runOnAccount`). It does take the
+ * shared `coalesce`, which is the half that applies.
  */
 @Injectable({ providedIn: 'root' })
 export class TimelineService {

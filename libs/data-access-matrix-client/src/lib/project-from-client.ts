@@ -38,6 +38,13 @@ export interface ProjectFromClientConfig {
    * only forwards events (and does no initial read) still wants the client-keyed listeners
    * and the account-switch re-projection. Omitting it with {@link events} set would mean an
    * event list that triggers nothing, so pass one or neither.
+   *
+   * Prefer the `client` argument over re-reading `matrix.instance`. Most services here
+   * still do the latter inside their own `refresh()`, which is what they did before this
+   * primitive existed and is benign — a rebuild coalesced from account A's events can
+   * drain after the active client is already B, and it then rebuilds from B, which the
+   * re-projection effect was about to do anyway. New code should take the argument and
+   * avoid the window entirely.
    */
   rebuild?: (client: MatrixClient) => void;
 

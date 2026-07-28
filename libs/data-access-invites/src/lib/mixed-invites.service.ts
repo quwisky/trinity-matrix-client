@@ -1,6 +1,9 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
 import { ClientEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  coalesce,
+  MatrixClientService,
+} from '@trinity/data-access-matrix-client';
 import { buildInvite, type PendingInvite } from './invites.service';
 
 /** A no-arg listener reused across every invite-affecting event of one account. */
@@ -49,7 +52,6 @@ export class MixedInvitesService {
 
   private accounts: ReadonlySet<string> = new Set();
   private readonly listeners = new Map<string, AccountListener>();
-  private flushScheduled = false;
 
   constructor() {
     // An invite can arrive on an account while a different one is active, and the active
@@ -114,18 +116,19 @@ export class MixedInvitesService {
     }
   }
 
-  private scheduleFlush(): void {
-    if (this.flushScheduled) {
-      return;
+  /**
+   * Coalesced through the shared primitive. Keyed on the account set, not one active
+   * client, so it takes the batching alone rather than `projectFromClient`.
+   */
+  private readonly flusher = coalesce(() => {
+    if (this.accounts.size > 1) {
+      this.syncListeners();
+      this.flush();
     }
-    this.flushScheduled = true;
-    queueMicrotask(() => {
-      this.flushScheduled = false;
-      if (this.accounts.size > 1) {
-        this.syncListeners();
-        this.flush();
-      }
-    });
+  });
+
+  private scheduleFlush(): void {
+    this.flusher.schedule();
   }
 
   private flush(): void {

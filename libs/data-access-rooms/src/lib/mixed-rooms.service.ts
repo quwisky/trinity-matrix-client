@@ -6,7 +6,10 @@ import {
   RoomStateEvent,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  coalesce,
+  MatrixClientService,
+} from '@trinity/data-access-matrix-client';
 import { sameAccountSet } from './account-scope.service';
 import {
   buildRoomSummary,
@@ -45,7 +48,6 @@ export class MixedRoomsService {
 
   private accounts: ReadonlySet<string> = new Set();
   private readonly listeners = new Map<string, AccountListener>();
-  private flushScheduled = false;
 
   /**
    * Aggregate exactly these accounts (the user's mixed-account selection). Fewer than two is
@@ -118,21 +120,23 @@ export class MixedRoomsService {
     }
   }
 
-  /** Coalesce a burst of events into one rebuild on the next microtask. */
-  private scheduleFlush(): void {
-    if (this.flushScheduled) {
-      return;
+  /**
+   * Coalesce a burst of events into one rebuild on the next microtask, via the shared
+   * primitive. This service is keyed on the ACCOUNT SET rather than one active client, so
+   * it takes the batching alone and not `projectFromClient` — the same split
+   * {@link TimelineService} and `PinnedMessagesService` use.
+   */
+  private readonly flusher = coalesce(() => {
+    if (this.accounts.size > 1) {
+      // An account can be added/removed between flushes; keep the listener set current,
+      // then flush() writes the signal (which schedules change detection).
+      this.syncListeners();
+      this.flush();
     }
-    this.flushScheduled = true;
-    queueMicrotask(() => {
-      this.flushScheduled = false;
-      if (this.accounts.size > 1) {
-        // An account can be added/removed between flushes; keep the listener set current,
-        // then flush() writes the signal (which schedules change detection).
-        this.syncListeners();
-        this.flush();
-      }
-    });
+  });
+
+  private scheduleFlush(): void {
+    this.flusher.schedule();
   }
 
   private flush(): void {

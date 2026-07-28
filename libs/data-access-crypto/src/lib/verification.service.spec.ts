@@ -199,6 +199,25 @@ describe('VerificationService', () => {
     expect(svc.active()?.isSelfVerification).toBe(false);
   });
 
+  it('clears an active verification on disconnect even if connect never ran', async () => {
+    // A verification can be started without connect(): startSelfVerification adopts the
+    // request directly. The projection's reset only runs when listeners were attached,
+    // so disconnect() has to clear unconditionally or the host keeps presenting a dead
+    // request.
+    const { svc, crypto } = setup();
+    const req = fakeRequest({
+      phase: VerificationPhase.Requested,
+      initiatedByMe: true,
+    });
+    crypto.requestOwnUserVerification.mockResolvedValue(req);
+    await firstValueFrom(svc.startSelfVerification());
+    expect(svc.active()).not.toBeNull();
+
+    svc.disconnect();
+
+    expect(svc.active()).toBeNull();
+  });
+
   it('drives the SAS flow: start → waiting → emoji shown', async () => {
     const { svc, crypto } = setup();
     svc.connect();
