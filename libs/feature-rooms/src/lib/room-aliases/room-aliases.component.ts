@@ -108,7 +108,7 @@ export class RoomAliasesComponent implements OnInit {
         next: () => {
           this.adding.set(false);
           this.aliases.update((list) => [...list, alias]);
-          this.aliasModel.set({ localpart: '' });
+          this.aliasForm().reset({ localpart: '' });
           this.toast.show(`Added ${alias}.`, {
             duration: 3000,
             variant: 'success',

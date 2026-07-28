@@ -170,7 +170,11 @@ export class AccountSectionComponent {
       error: this.error,
       destroyRef: this.destroyRef,
     }).subscribe(() => {
-      this.passwords.set({ ...EMPTY_PASSWORDS });
+      // reset(value), not a bare model set: it clears touched/dirty across the tree as
+      // well as the values, which is what FormControl.reset() used to do. Nothing reads
+      // those flags today, but leaving three required fields empty-and-touched is a
+      // primed error state waiting for the first thing that does.
+      this.form().reset({ ...EMPTY_PASSWORDS });
       this.toast.show('Password changed.', {
         duration: 3000,
         variant: 'success',

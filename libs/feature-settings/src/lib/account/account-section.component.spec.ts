@@ -102,10 +102,19 @@ describe('AccountSectionComponent', () => {
       confirmPassword: 'new-secret-pw',
     });
 
+    // Typing into a field and leaving it is what marks it touched in the browser;
+    // value.set() alone never does, so without this the assertion below cannot fail.
+    cmp.form().markAsTouched();
+
     cmp.submit();
 
     expect(auth.changePassword).toHaveBeenCalledWith('old-pw', 'new-secret-pw');
     expect(cmp.form.newPassword().value()).toBe(''); // reset()
+    // Cleared AND untouched. Emptying the values alone leaves three now-invalid
+    // required fields marked touched, which is a primed error state — the reason
+    // this asserts the flag and not just the value.
+    expect(cmp.form.newPassword().touched()).toBe(false);
+    expect(cmp.form.currentPassword().touched()).toBe(false);
     expect(cmp.error()).toBeNull();
     expect(toast.show).toHaveBeenCalledWith(
       'Password changed.',
