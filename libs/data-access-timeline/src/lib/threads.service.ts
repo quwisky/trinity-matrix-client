@@ -756,7 +756,7 @@ export class ThreadsService {
     const relevant = new Set<string>();
     const seenIds = new Set<string>();
     for (const e of ordered) {
-      collectMessageSenders(room, e, relevant);
+      collectMessageSenders(client, room, e, relevant);
       seenIds.add(e.getId() ?? '');
     }
     this.threadRelevantSenders = relevant;

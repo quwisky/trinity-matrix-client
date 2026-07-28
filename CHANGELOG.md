@@ -69,6 +69,12 @@ All notable changes to this project are documented here. The format is based on
   invite to the inviter's. Group rooms with no picture still show their initial, which is
   correct.
 
+- **A "seen by" avatar catches up when the reader's profile arrives.** The small avatars under
+  a message showed a coloured initial for anyone who had read it but not written in it — a
+  lurker, typically — and kept showing it even after their picture loaded, while the same
+  person appeared correctly everywhere else. It only corrected itself once they read a newer
+  message.
+
 - **A brief network hiccup no longer costs you avatars for the rest of the session.** When a
   picture failed to load, Trinity was meant to wait a moment and try again — but the retry
   had never once re-sent the request it was added for, so the very first failure was final.

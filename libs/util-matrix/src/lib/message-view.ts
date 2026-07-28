@@ -527,6 +527,7 @@ export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
  * the target is loaded, which is exactly when a (possibly stale) preview renders.
  */
 export function collectMessageSenders(
+  client: MatrixClient,
   room: Room,
   event: MatrixEvent,
   into: Set<string>,
@@ -551,6 +552,13 @@ export function collectMessageSenders(
         into.add(reactor);
       }
     }
+  }
+  // The "seen by" readers, who render as avatars just like the sender does. A reader
+  // who has never posted in the loaded window is reachable ONLY here — they are
+  // nobody's sender, reply target or reactor — so without this their member event is
+  // discarded at the gate and their avatar never arrives.
+  for (const reader of readReceiptUserIds(client, room, event)) {
+    into.add(reader);
   }
 }
 

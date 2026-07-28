@@ -54,7 +54,7 @@ import {
   myReactionId,
   reactionDetailsFor,
   reactionsFor,
-  readReceiptUserIds,
+  readReceiptsFor,
   locationMessageContent,
   renderMarkdown,
   replyMessageContent,
@@ -886,7 +886,7 @@ export class TimelineService {
           }
           const summary = line.text;
           seen.add(id);
-          collectMessageSenders(room, e, relevant);
+          collectMessageSenders(client, room, e, relevant);
           // A membership line names the TARGET (state_key), whose display name can
           // load late — register them too so a RoomStateEvent.Members for that member
           // re-projects the line (same late-member fix as reply previews).
@@ -903,7 +903,7 @@ export class TimelineService {
           return view;
         }
         seen.add(id);
-        collectMessageSenders(room, e, relevant);
+        collectMessageSenders(client, room, e, relevant);
         // A system line is not an unread *message*, so only real messages from someone else
         // can anchor the divider.
         if (
@@ -1108,10 +1108,32 @@ export function eventRevision(
     member?.name ?? senderId,
     member?.getMxcAvatarUrl() ?? '',
     // Re-project when the "seen by" receipts on this event change.
-    readReceiptUserIds(client, room, event).join(','),
+    receiptSignature(client, room, event),
     // Re-project a poll when its votes or end state change.
     isPollStart(event) ? pollSignature(room, event) : '',
   ].join('\x1f');
+}
+
+/**
+ * Signature of the "seen by" receipts for {@link eventRevision}: who has read up to
+ * this event, and — like the sender and the quoted reply target — each reader's
+ * resolved name and avatar.
+ *
+ * The ids alone are not enough. A reader whose profile arrives late (or who sets an
+ * avatar for the first time) produces an identical id list, so the memoised view is
+ * returned verbatim and their receipt keeps showing a coloured initial while the same
+ * person renders correctly everywhere else.
+ */
+function receiptSignature(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+): string {
+  return readReceiptsFor(client, room, event)
+    .map((receipt) =>
+      [receipt.userId, receipt.name, receipt.avatarMxc ?? ''].join('\x03'),
+    )
+    .join(',');
 }
 
 /**
