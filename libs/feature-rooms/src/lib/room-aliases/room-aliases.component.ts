@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { FormField, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { TrnToastService } from '@trinity/helm/overlay';
@@ -28,7 +28,7 @@ const INVALID_LOCALPART = /[\s:#]/;
   selector: 'trn-room-aliases',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './room-aliases.component.html',
-  imports: [ReactiveFormsModule, HlmButton, HlmInput],
+  imports: [FormField, HlmButton, HlmInput],
 })
 export class RoomAliasesComponent implements OnInit {
   readonly roomId = input.required<string>();
@@ -50,7 +50,8 @@ export class RoomAliasesComponent implements OnInit {
   readonly isEmpty = computed(() => this.aliases().length === 0);
 
   /** The new-alias localpart (the app prepends `#` and appends `:server`). */
-  readonly newLocalpart = new FormControl('', { nonNullable: true });
+  private readonly aliasModel = signal({ localpart: '' });
+  readonly aliasForm = form(this.aliasModel);
 
   ngOnInit(): void {
     this.canonical.set(this.aliasesSvc.currentCanonical(this.roomId()));
@@ -83,7 +84,7 @@ export class RoomAliasesComponent implements OnInit {
 
   /** Publish `#<localpart>:<server>` as a new local alias. */
   add(): void {
-    const localpart = this.newLocalpart.value.trim().replace(/^#/, '');
+    const localpart = this.aliasModel().localpart.trim().replace(/^#/, '');
     if (!this.serverName || !localpart || INVALID_LOCALPART.test(localpart)) {
       this.toast.show('Enter a valid address (letters, digits, no spaces).', {
         duration: 4000,
@@ -107,7 +108,7 @@ export class RoomAliasesComponent implements OnInit {
         next: () => {
           this.adding.set(false);
           this.aliases.update((list) => [...list, alias]);
-          this.newLocalpart.reset();
+          this.aliasModel.set({ localpart: '' });
           this.toast.show(`Added ${alias}.`, {
             duration: 3000,
             variant: 'success',
