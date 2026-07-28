@@ -62,7 +62,15 @@ the HTML template in the `.html` file (unless the component is trivial and alrea
 - Do NOT use `@HostBinding` and `@HostListener` decorators; instead use the `host` object inside the `@Component` (or
   `@Directive`) decorator.
 - Keep components small and focused on a single responsibility.
-- Prefer reactive forms (`FormControl`, `FormGroup`, `FormArray`) over template‑driven forms.
+- Use **Signal Forms** (`@angular/forms/signals`) for new forms — not reactive forms, and not template‑driven.
+  The form is a signal over a model object, which is the same reactive model as the rest of the app: build it with
+  `form(model, schema)`, bind native controls with `[formField]="f.name"`, and put `<form>` elements under
+  `[formRoot]="f"` (it sets `novalidate` and calls `preventDefault()` on submit for you — a bare `<form>` whose only
+  binding is a control otherwise triggers a native submit and a full page reload). Express gating and rules in the
+  schema: `required()`, `minLength()`, `validate()`, `validateTree()` for cross‑field rules, and
+  `disabled(path, { when: … })` — note the `{ when }` object, since passing a function or string directly is
+  deprecated and the type‑aware `@typescript-eslint/no-deprecated` rule fails the build on it.
+  Reactive forms (`FormControl`/`FormGroup`) survive only where something has not been migrated yet; do not add more.
 - Do NOT use `ngClass`; use `[class.foo]="…"`.
 - Do NOT use `ngStyle`; use `[style.prop]="…"`.
 - Avoid heavy logic in templates: keep templates simple, delegate to component class or service.
