@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
@@ -37,7 +37,7 @@ export interface DirectoryJoin {
   selector: 'trn-room-directory',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './room-directory.component.html',
-  imports: [ReactiveFormsModule, HlmButton, HlmInput, AvatarComponent],
+  imports: [FormField, FormRoot, HlmButton, HlmInput, AvatarComponent],
 })
 export class RoomDirectoryComponent implements OnInit {
   private readonly dialogRef =
@@ -48,7 +48,8 @@ export class RoomDirectoryComponent implements OnInit {
   /** The in-flight directory request, so a reset can supersede it. */
   private searchSub?: Subscription;
 
-  readonly query = new FormControl('', { nonNullable: true });
+  private readonly searchModel = signal({ query: '' });
+  readonly searchForm = form(this.searchModel);
 
   /** Browse normal rooms or Spaces. */
   readonly mode = signal<'rooms' | 'spaces'>('rooms');
@@ -71,16 +72,6 @@ export class RoomDirectoryComponent implements OnInit {
 
   ngOnInit(): void {
     this.runSearch(true);
-  }
-
-  /**
-   * Handle the search form's native submit. The `<form>` has no Angular form
-   * directive (a lone `[formControl]`, no `[formGroup]`), so `ngSubmit` never binds
-   * and the browser would otherwise navigate away — prevent that and run the search.
-   */
-  onSubmit(event: Event): void {
-    event.preventDefault();
-    this.search();
   }
 
   /** Run a fresh search from the current query term. */
@@ -146,7 +137,7 @@ export class RoomDirectoryComponent implements OnInit {
     const since = reset ? undefined : (this.nextBatch() ?? undefined);
     this.searchSub = this.directory
       .search({
-        term: this.query.value,
+        term: this.searchModel().query,
         since,
         spaces: this.mode() === 'spaces',
       })
