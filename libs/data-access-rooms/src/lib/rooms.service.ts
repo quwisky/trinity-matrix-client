@@ -13,7 +13,7 @@ import {
 import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import {
   MatrixClientService,
-  reprojectOnAccountSwitch,
+  projectFromClient,
 } from '@trinity/data-access-matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import {
@@ -119,26 +119,6 @@ export class RoomsService {
   private readonly privacy = inject(PrivacySettingsService);
 
   /**
-   * The client we currently have listeners on. The client is recreated on every
-   * (re-)login, so connection is keyed to the instance, not a boolean — otherwise
-   * a logout→login would leave the listeners on the discarded client and the read
-   * model frozen.
-   */
-  private connectedClient: MatrixClient | null = null;
-
-  /**
-   * Stable listener ref so {@link connect}/{@link disconnect} can add and remove it.
-   * Listener-driven refreshes are coalesced ({@link scheduleRefresh}): one completed
-   * /sync fires a burst of Sync/Room/Receipt events, and rebuilding the whole read
-   * model (O(rooms) + a full re-sort) once per event is wasteful — collapse them
-   * into a single rebuild.
-   */
-  private readonly onClientEvent = (): void => this.scheduleRefresh();
-
-  /** Whether a coalesced refresh is already queued for this microtask turn. */
-  private refreshScheduled = false;
-
-  /**
    * Bumped only on membership changes (`RoomState.members`/`MyMembership`) so a
    * member-list projection can stay reactive *without* re-running on every sync
    * tick or read receipt — those bump {@link revision} (which drives the room list)
@@ -148,7 +128,7 @@ export class RoomsService {
   readonly memberRevision = this._memberRevision.asReadonly();
   private readonly onMembershipEvent = (): void =>
     // The SDK membership event writes this signal, which schedules change
-    // detection (mirrors scheduleRefresh below).
+    // detection (mirrors the coalesced rebuild).
     this._memberRevision.update((n) => n + 1);
 
   // Memoized member projection: a cached, sorted list per room keyed by a cheap
@@ -185,93 +165,64 @@ export class RoomsService {
   private readonly _revision = signal(0);
   readonly revision = this._revision.asReadonly();
 
-  constructor() {
-    // On an account switch, re-project this service onto the newly-active account's
-    // client — but only while it is already wired to one.
-    reprojectOnAccountSwitch(
-      this.matrix,
-      () => this.connectedClient !== null,
-      () => this.connect(),
-    );
-  }
+  /**
+   * The sync projection: listeners keyed to the client instance, rebuilds coalesced into
+   * one per turn, and re-projection onto the newly-active account on a switch. All three
+   * are {@link projectFromClient}'s; what stays here is the event list and the rebuild.
+   */
+  private readonly projection = projectFromClient({
+    matrix: this.matrix,
+    events: [
+      ClientEvent.Sync,
+      ClientEvent.Room,
+      RoomEvent.Name,
+      RoomEvent.MyMembership,
+      // Keep unread badges live. In an encrypted room the notification count is
+      // only recomputed once the message DECRYPTS (async), which lands after the
+      // Sync that carried the ciphertext — so relying on Sync alone drops those
+      // increments. Decrypted (re-emitted at the client) fires when that happens,
+      // so we re-read the now-updated count. Receipt fires when a room is read and
+      // its count clears. (UnreadNotifications is Room-only, not re-emitted here.)
+      MatrixEventEvent.Decrypted,
+      RoomEvent.Receipt,
+      // Room tags (e.g. `m.favourite`, the favourite flag) can change from another device;
+      // rebuild so a remote favourite/unfavourite re-partitions and re-sorts the list live.
+      RoomEvent.Tags,
+    ],
+    // refresh() writes signals, which schedule change detection, so the room list and
+    // unread badges surface immediately.
+    rebuild: () => this.refresh(),
+    // Bound by hand rather than added to `events` because these must NOT be coalesced
+    // into the rebuild: they drive `memberRevision` alone, which exists precisely so a
+    // member-list projection can stay reactive without re-running on every sync tick.
+    // RoomState.members and MyMembership are what change who is in a room (or their
+    // profile).
+    bind: (client) => {
+      client.on(RoomStateEvent.Members, this.onMembershipEvent);
+      client.on(RoomEvent.MyMembership, this.onMembershipEvent);
+    },
+    unbind: (client) => {
+      client.off(RoomStateEvent.Members, this.onMembershipEvent);
+      client.off(RoomEvent.MyMembership, this.onMembershipEvent);
+    },
+    reset: () => {
+      this.memberCache.clear();
+      this._rooms.set([]);
+      this._directRoomIds.set(new Set());
+    },
+  });
 
   /**
    * Attach sync listeners and do the first read. Idempotent per client (e.g. the
    * shell's `ngOnInit`); re-running after a re-login rewires onto the new client.
    */
   connect(): void {
-    if (!this.matrix.isInitialized) {
-      return;
-    }
-    const client = this.matrix.instance;
-    if (this.connectedClient === client) {
-      return; // already wired to this client
-    }
-    this.disconnect(); // drop listeners from any previous client
-    this.connectedClient = client;
-    client.on(ClientEvent.Sync, this.onClientEvent);
-    client.on(ClientEvent.Room, this.onClientEvent);
-    client.on(RoomEvent.Name, this.onClientEvent);
-    client.on(RoomEvent.MyMembership, this.onClientEvent);
-    // Keep unread badges live. In an encrypted room the notification count is
-    // only recomputed once the message DECRYPTS (async), which lands after the
-    // Sync that carried the ciphertext — so relying on Sync alone drops those
-    // increments. Decrypted (re-emitted at the client) fires when that happens,
-    // so we re-read the now-updated count. Receipt fires when a room is read and
-    // its count clears. (UnreadNotifications is Room-only, not re-emitted here.)
-    client.on(MatrixEventEvent.Decrypted, this.onClientEvent);
-    client.on(RoomEvent.Receipt, this.onClientEvent);
-    // Room tags (e.g. `m.favourite`, the favourite flag) can change from another device;
-    // rebuild so a remote favourite/unfavourite re-partitions and re-sorts the list live.
-    client.on(RoomEvent.Tags, this.onClientEvent);
-    // Membership-only revision (drives the member list); RoomState.members and
-    // MyMembership are the events that change who is in a room (or their profile).
-    client.on(RoomStateEvent.Members, this.onMembershipEvent);
-    client.on(RoomEvent.MyMembership, this.onMembershipEvent);
-    this.refresh();
+    this.projection.connect();
   }
 
   /** Detach listeners from the current client and reset the read model. */
   disconnect(): void {
-    const client = this.connectedClient;
-    if (!client) {
-      return;
-    }
-    client.off(ClientEvent.Sync, this.onClientEvent);
-    client.off(ClientEvent.Room, this.onClientEvent);
-    client.off(RoomEvent.Name, this.onClientEvent);
-    client.off(RoomEvent.MyMembership, this.onClientEvent);
-    client.off(MatrixEventEvent.Decrypted, this.onClientEvent);
-    client.off(RoomEvent.Receipt, this.onClientEvent);
-    client.off(RoomEvent.Tags, this.onClientEvent);
-    client.off(RoomStateEvent.Members, this.onMembershipEvent);
-    client.off(RoomEvent.MyMembership, this.onMembershipEvent);
-    this.connectedClient = null;
-    this.refreshScheduled = false;
-    this.memberCache.clear();
-    this._rooms.set([]);
-    this._directRoomIds.set(new Set());
-  }
-
-  /**
-   * Coalesce a burst of sync events into a single rebuild: queue {@link refresh} on
-   * the microtask after the current task drains, deduped by {@link refreshScheduled}.
-   * The pending run is dropped if {@link disconnect} ran meanwhile. (The first read
-   * is done synchronously by {@link connect}, so consumers see the model immediately.)
-   */
-  private scheduleRefresh(): void {
-    if (this.refreshScheduled) {
-      return;
-    }
-    this.refreshScheduled = true;
-    queueMicrotask(() => {
-      this.refreshScheduled = false;
-      if (this.connectedClient) {
-        // refresh() writes signals, which schedule change detection, so the room
-        // list and unread badges surface immediately.
-        this.refresh();
-      }
-    });
+    this.projection.disconnect();
   }
 
   /**
