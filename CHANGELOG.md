@@ -62,6 +62,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A brief network hiccup no longer costs you avatars for the rest of the session.** When a
+  picture failed to load, Trinity was meant to wait a moment and try again — but the retry
+  had never once re-sent the request it was added for, so the very first failure was final.
+  Worse, any stumble at all made Trinity retry against the older, unauthenticated way of
+  fetching media, which most homeservers now refuse outright; a server saying "busy, try
+  again" was turned into "no such picture". A momentary drop in connectivity — walking out of
+  wifi range, waking a laptop, a VPN reconnecting — could leave a scattering of people and
+  rooms showing coloured initials until you reloaded the page. Trinity now genuinely retries,
+  backs off between attempts, and only falls back to the old method when the homeserver
+  really does not support the new one.
+
 - **Accepting a room invite no longer hides the room you just joined.** Saying yes to an
   invite dropped you on the direct-message list — which, by definition, does not show rooms —
   so the room opened in the timeline but vanished from the sidebar until you clicked
