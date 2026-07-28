@@ -11,6 +11,13 @@ export interface ClientProjection {
   disconnect(): void;
   /** Whether listeners are currently attached to a client. */
   isConnected(): boolean;
+  /**
+   * Trigger the (coalesced) rebuild. For a service whose own handler decides whether an
+   * event is interesting — a state event filtered by type, say — and which is declared as
+   * a class field, so it cannot close over the argument {@link ProjectFromClientConfig.bind}
+   * receives.
+   */
+  schedule(): void;
 }
 
 export interface ProjectFromClientConfig {
@@ -32,11 +39,12 @@ export interface ProjectFromClientConfig {
   events?: readonly EmittedEvents[];
 
   /**
-   * Bind bespoke listeners. Given the client and the coalesced scheduler, so a service can
-   * mix its own typed handlers with rebuild-triggering events. Whatever this binds, {@link
-   * unbind} must remove — the projection cannot know what was attached.
+   * Bind bespoke listeners — a handler that needs the event's arguments, or a second group
+   * that must not be coalesced. Whatever this binds, {@link unbind} must remove: the
+   * projection cannot know what was attached. Use {@link ClientProjection.schedule} from
+   * such a handler to trigger the rebuild.
    */
-  bind?: (client: MatrixClient, scheduleRebuild: () => void) => void;
+  bind?: (client: MatrixClient) => void;
   /** Remove whatever {@link bind} attached. */
   unbind?: (client: MatrixClient) => void;
 
@@ -116,7 +124,7 @@ export function projectFromClient(
       for (const event of events) {
         client.on(event, onEvent);
       }
-      bind?.(client, scheduleRebuild);
+      bind?.(client);
       rebuild(client);
     },
 
@@ -135,6 +143,8 @@ export function projectFromClient(
     },
 
     isConnected: () => connectedClient !== null,
+
+    schedule: () => scheduleRebuild(),
   };
 
   if (reprojectOnSwitch) {

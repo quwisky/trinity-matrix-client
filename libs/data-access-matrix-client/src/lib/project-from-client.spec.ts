@@ -160,15 +160,15 @@ describe('projectFromClient', () => {
     expect(projection.isConnected()).toBe(false);
   });
 
-  it('gives bind the client and the scheduler, and unbinds what it attached', async () => {
+  it('binds bespoke listeners, and unbinds exactly what they attached', async () => {
     // The escape hatch for handlers that need the event's arguments, or a second listener
     // group that must not be coalesced. Whatever bind attaches, unbind must remove.
     let attached: (() => void) | null = null;
     let boundTo: MatrixClient | null = null;
-    const bind = (client: MatrixClient, scheduleRebuild: () => void): void => {
+    const bind = (client: MatrixClient): void => {
       boundTo = client;
-      attached = scheduleRebuild;
-      asFake(client).on(RoomEvent.Receipt, scheduleRebuild);
+      attached = () => projection.schedule();
+      asFake(client).on(RoomEvent.Receipt, attached);
     };
     const unbind = (client: MatrixClient): void => {
       if (attached) {
@@ -183,7 +183,7 @@ describe('projectFromClient', () => {
     await flush();
 
     expect(boundTo).toBe(client); // handed the client it actually bound to
-    expect(rebuild).toHaveBeenCalledOnce(); // the scheduler it was handed works
+    expect(rebuild).toHaveBeenCalledOnce(); // schedule() from a bespoke handler works
     projection.disconnect();
     expect(client.count(RoomEvent.Receipt)).toBe(0); // genuinely detached
   });
