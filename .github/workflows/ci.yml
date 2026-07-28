@@ -2,7 +2,18 @@ name: CI
 
 on:
   push:
-    branches: [develop, master]
+    # renovate/patch-** is load-bearing, not housekeeping. Patch updates are automerged as
+    # a branch with no pull request (.github/renovate.json), so the `pull_request` trigger
+    # below — which is what gives every other branch its CI — never fires for them. Without
+    # this line those branches carry no status checks at all, Renovate refuses to merge an
+    # untested branch, and after its 24h pending window it opens a PR instead: the automerge
+    # rule stops working quietly rather than failing. Renovate pushes with a GitHub App
+    # token, which does trigger workflows; the default GITHUB_TOKEN would not (renovate.yml).
+    #
+    # Matched on the patch- prefix, NOT on renovate/** — the pattern has to select exactly
+    # the branches that never get a PR. Every other Renovate branch does get one, and would
+    # otherwise run all five jobs twice per rebase: once here, once for the pull request.
+    branches: [develop, master, 'renovate/patch-**']
   pull_request:
 
 # A newer push to the same branch makes the run in flight obsolete.
