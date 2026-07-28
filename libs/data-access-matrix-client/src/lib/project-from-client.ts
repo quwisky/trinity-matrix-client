@@ -12,6 +12,12 @@ export interface ClientProjection {
   /** Whether listeners are currently attached to a client. */
   isConnected(): boolean;
   /**
+   * The client the listeners are attached to, or null. For a bespoke handler that needs
+   * to ask something of the client it is bound to — rather than of `matrix.instance`,
+   * which during an account switch may already be the next one.
+   */
+  client(): MatrixClient | null;
+  /**
    * Trigger the (coalesced) rebuild. For a service whose own handler decides whether an
    * event is interesting — a state event filtered by type, say — and which is declared as
    * a class field, so it cannot close over the argument {@link ProjectFromClientConfig.bind}
@@ -148,6 +154,8 @@ export function projectFromClient(
     },
 
     isConnected: () => connectedClient !== null,
+
+    client: () => connectedClient,
 
     schedule: () => scheduleRebuild(),
   };

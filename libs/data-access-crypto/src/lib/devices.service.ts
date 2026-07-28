@@ -1,10 +1,9 @@
 import { Injectable, inject, signal } from '@angular/core';
-import type { MatrixClient } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { Observable, defer, from, map, tap } from 'rxjs';
 import {
   MatrixClientService,
-  reprojectOnAccountSwitch,
+  projectFromClient,
 } from '@trinity/data-access-matrix-client';
 import {
   UiaCancelledError,
@@ -40,7 +39,6 @@ export class DevicesService {
   readonly devices = this._devices.asReadonly();
 
   /** The client the listener is attached to, so disconnect() targets the same one. */
-  private connectedClient: MatrixClient | null = null;
   /** Increments per load (and per mutation) so a stale reload can't clobber. */
   private loadGen = 0;
 
@@ -59,36 +57,28 @@ export class DevicesService {
     }
   };
 
-  constructor() {
-    // On an account switch, re-project the device list onto the newly-active
-    // account's client — but only while it is already wired to one.
-    reprojectOnAccountSwitch(
-      this.matrix,
-      () => this.connectedClient !== null,
-      () => this.connect(),
-    );
-  }
+  /**
+   * The projection. No `rebuild`: this service has no read model to seed — the device
+   * list is fetched on demand by {@link list} — so what it takes from the primitive is
+   * the client-keyed binding and the account-switch re-projection. `onDevicesUpdated` is
+   * bound by hand because it reads the event's arguments to decide whether OUR session
+   * list changed; there is nothing to coalesce.
+   */
+  private readonly projection = projectFromClient({
+    matrix: this.matrix,
+    bind: (client) =>
+      client.on(CryptoEvent.DevicesUpdated, this.onDevicesUpdated),
+    unbind: (client) =>
+      client.off(CryptoEvent.DevicesUpdated, this.onDevicesUpdated),
+  });
 
   /** Subscribe to live device-list changes; pair with {@link disconnect}. */
   connect(): void {
-    if (!this.matrix.isInitialized) {
-      return;
-    }
-    const client = this.matrix.instance;
-    if (this.connectedClient === client) {
-      return;
-    }
-    this.disconnect();
-    this.connectedClient = client;
-    client.on(CryptoEvent.DevicesUpdated, this.onDevicesUpdated);
+    this.projection.connect();
   }
 
   disconnect(): void {
-    this.connectedClient?.off(
-      CryptoEvent.DevicesUpdated,
-      this.onDevicesUpdated,
-    );
-    this.connectedClient = null;
+    this.projection.disconnect();
   }
 
   /** Fetch all devices with their verification status (current device first). */
