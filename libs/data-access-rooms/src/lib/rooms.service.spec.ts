@@ -5,6 +5,7 @@ import {
   MatrixEventEvent,
   ReceiptType,
   RoomEvent,
+  RoomStateEvent,
 } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
@@ -220,6 +221,53 @@ describe('RoomsService', () => {
     const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
     expect(byId.get('!dm:hs')?.avatarMxc).toBe('mxc://hs/bob');
     expect(byId.get('!pair:hs')?.avatarMxc).toBeNull();
+  });
+
+  it("rebuilds the room list when a DM peer's avatar arrives late", async () => {
+    // The DM row's picture IS the peer's member, so the room list depends on member
+    // state now. Those listeners are deliberately kept out of the coalesced rebuild —
+    // they drive `memberRevision` alone — which left a DM peer's late-arriving profile
+    // (a member-list load, say) invisible until the next sync happened along.
+    // Mutable so the peer's profile can "arrive" mid-test, the way lazy member loading
+    // delivers it after the room list has already been built.
+    const peer: { avatarMxc?: string } = {};
+    let getRoomsCalls = 0;
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => {
+        getRoomsCalls++;
+        return [
+          fakeRoom({
+            roomId: '!dm:hs',
+            name: 'Bob',
+            peerAvatarMxc: peer.avatarMxc,
+          }),
+        ];
+      },
+      getAccountData: (type: string) =>
+        type === 'm.direct'
+          ? { getContent: () => ({ '@bob:hs': ['!dm:hs'] }) }
+          : undefined,
+      on: (event: string, handler: (...args: unknown[]) => void) => {
+        handlers.set(event, handler);
+      },
+    };
+    const { svc } = provideRooms(client);
+    svc.connect();
+    expect(svc.rooms()[0].avatarMxc).toBeNull();
+
+    // A member event for someone we have no DM with must NOT rebuild the whole list.
+    const callsBefore = getRoomsCalls;
+    handlers.get(RoomStateEvent.Members)?.({}, {}, { userId: '@stranger:hs' });
+    await Promise.resolve();
+    expect(getRoomsCalls).toBe(callsBefore);
+
+    peer.avatarMxc = 'mxc://hs/bob';
+    handlers.get(RoomStateEvent.Members)?.({}, {}, { userId: '@bob:hs' });
+    await Promise.resolve(); // the rebuild is coalesced into a microtask
+
+    expect(svc.rooms()[0].avatarMxc).toBe('mxc://hs/bob');
   });
 
   it('orders rooms by recent activity and maps unread counts', () => {

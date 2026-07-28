@@ -886,7 +886,9 @@ export class TimelineService {
           }
           const summary = line.text;
           seen.add(id);
-          collectMessageSenders(client, room, e, relevant);
+          // A system line renders no "seen by" avatars (buildTimelineEventView sets
+          // `readReceipts: []`), so its readers are nobody this row depends on.
+          collectMessageSenders(client, room, e, relevant, { receipts: false });
           // A membership line names the TARGET (state_key), whose display name can
           // load late — register them too so a RoomStateEvent.Members for that member
           // re-projects the line (same late-member fix as reply previews).

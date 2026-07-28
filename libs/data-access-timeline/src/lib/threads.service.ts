@@ -372,6 +372,11 @@ export class ThreadsService {
     room.on(ThreadEvent.New, this.onThreadCreated);
     room.on(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
     room.on(RoomStateEvent.Members, this.onThreadMember);
+    // A reply's "seen by" avatars follow the read markers, and a receipt is none of the
+    // thread-level events above — the summaries projection binds this for the same
+    // reason, and the main timeline does too (timeline.service.ts). Without it a
+    // receipt only surfaced when some unrelated event happened to re-refresh.
+    room.on(RoomEvent.Receipt, this.onThreadChanged);
     client.on(MatrixEventEvent.Decrypted, this.onThreadDecrypted);
     client.on(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
     client.on(CryptoEvent.DevicesUpdated, this.onThreadTrust);
@@ -392,6 +397,7 @@ export class ThreadsService {
       room.off(ThreadEvent.New, this.onThreadCreated);
       room.off(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
       room.off(RoomStateEvent.Members, this.onThreadMember);
+      room.off(RoomEvent.Receipt, this.onThreadChanged);
     }
     // Detach from the client openThread() attached to, not `matrix.instance`.
     const client = this.threadClient;

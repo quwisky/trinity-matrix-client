@@ -69,6 +69,13 @@ All notable changes to this project are documented here. The format is based on
   invite to the inviter's. Group rooms with no picture still show their initial, which is
   correct.
 
+- **A direct message's picture appears as soon as the other person's profile does.** It used
+  to wait for whatever synced next, so a DM could sit on a coloured initial for a while after
+  opening the app.
+
+- **Thread "seen by" avatars follow the read markers.** In an open thread they stayed put
+  when somebody read your reply, and only caught up when an unrelated event happened along.
+
 - **A "seen by" avatar catches up when the reader's profile arrives.** The small avatars under
   a message showed a coloured initial for anyone who had read it but not written in it — a
   lurker, typically — and kept showing it even after their picture loaded, while the same

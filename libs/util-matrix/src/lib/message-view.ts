@@ -535,6 +535,12 @@ export function collectMessageSenders(
   room: Room,
   event: MatrixEvent,
   into: Set<string>,
+  /**
+   * Pass `{ receipts: false }` for a row that renders no "seen by" avatars — a system
+   * line, whose view is built with `readReceipts: []`. Collecting its readers would
+   * admit members nothing on screen depends on, widening the very gate this feeds.
+   */
+  options: { receipts?: boolean } = {},
 ): void {
   const sender = event.getSender();
   if (sender) {
@@ -561,8 +567,10 @@ export function collectMessageSenders(
   // who has never posted in the loaded window is reachable ONLY here — they are
   // nobody's sender, reply target or reactor — so without this their member event is
   // discarded at the gate and their avatar never arrives.
-  for (const reader of readReceiptUserIds(client, room, event)) {
-    into.add(reader);
+  if (options.receipts !== false) {
+    for (const reader of readReceiptUserIds(client, room, event)) {
+      into.add(reader);
+    }
   }
 }
 
