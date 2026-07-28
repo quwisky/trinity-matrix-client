@@ -2,13 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  computed,
   inject,
   input,
   output,
   signal,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
 import { Observable } from 'rxjs';
@@ -35,7 +36,7 @@ import { HlmSpinner } from '@trinity/helm/spinner';
   templateUrl: 'encryption-unlock.page.html',
   styleUrls: ['encryption-unlock.page.scss'],
   imports: [
-    FormsModule,
+    FormField,
     NgTemplateOutlet,
     PageHeaderComponent,
     HlmButton,
@@ -55,8 +56,19 @@ export class EncryptionUnlockPage {
   );
   private readonly destroyRef = inject(DestroyRef);
 
-  readonly recoveryKey = signal('');
   readonly busy = signal(false);
+
+  private readonly keyModel = signal({ recoveryKey: '' });
+  // Disabled belongs to the schema, not to a [disabled] binding on the input: Signal
+  // Forms owns the field's disabled state and rejects the binding at compile time
+  // (NG8022). Declared after `busy` because the schema reads it.
+  readonly unlockForm = form(this.keyModel, (path) => {
+    disabled(path.recoveryKey, { when: () => this.busy() });
+  });
+  /** Whether there is a key to try — keeps the trim out of the template. */
+  readonly hasKey = computed(
+    () => this.keyModel().recoveryKey.trim().length > 0,
+  );
   readonly error = signal<string | null>(null);
 
   /** When true the page is modal content (desktop); else a routed page. */
@@ -66,20 +78,29 @@ export class EncryptionUnlockPage {
 
   /** Unlock this device from the entered recovery key. */
   unlock(): void {
-    const key = this.recoveryKey().trim();
+    const key = this.keyModel().recoveryKey.trim();
     if (!key) {
       return;
     }
     this.withBusy(this.crypto.recoverWithKey(key)).subscribe(() => {
-      this.recoveryKey.set(''); // drop the key from memory once it's been used
+      this.clearKey(); // drop the key from memory once it's been used
       this.leave();
     });
   }
 
   /** Close without unlocking (modal Close / return on the routed page). */
   close(): void {
-    this.recoveryKey.set('');
+    this.clearKey();
     this.leave();
+  }
+
+  /**
+   * Wipe the entered key. `reset` rather than a bare model write so the field's
+   * touched/dirty state goes with it — this runs on the security-relevant path where
+   * the key must not outlive its use.
+   */
+  private clearKey(): void {
+    this.unlockForm().reset({ recoveryKey: '' });
   }
 
   /** Close the dialog, or (routed) return to the launch route / /rooms. */

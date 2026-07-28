@@ -47,9 +47,7 @@
               autocapitalize="off"
               autocorrect="off"
               placeholder="matrix.org"
-              [disabled]="busy()"
-              [ngModel]="homeserverInput()"
-              (ngModelChange)="homeserverInput.set($event)"
+              [formField]="homeserverForm.homeserver"
               (keyup.enter)="discover()"
             />
           </div>
@@ -76,9 +74,7 @@
                 autofocus
                 autocapitalize="off"
                 autocorrect="off"
-                [disabled]="busy() || !!reauthUserId()"
-                [ngModel]="username()"
-                (ngModelChange)="username.set($event)"
+                [formField]="credentialsForm.username"
                 (keyup.enter)="loginPassword()"
               />
             </div>
@@ -93,9 +89,7 @@
                   id="password"
                   [type]="passwordVisible() ? 'text' : 'password'"
                   class="pr-10"
-                  [disabled]="busy()"
-                  [ngModel]="password()"
-                  (ngModelChange)="password.set($event)"
+                  [formField]="credentialsForm.password"
                   (keyup.enter)="loginPassword()"
                 />
                 <button
