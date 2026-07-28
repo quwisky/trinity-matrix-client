@@ -1,7 +1,7 @@
-import { signal } from '@angular/core';
+import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { MatrixClient } from 'matrix-js-sdk';
-import { MockProvider } from 'ng-mocks';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -100,6 +100,8 @@ function fakeRequest(
   return req;
 }
 
+const activeUserId = signal<string | null>(null);
+
 function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
   const crypto = {
     requestOwnUserVerification: vi.fn(),
@@ -123,11 +125,13 @@ function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as unknown as MatrixClient,
-        activeUserId: signal<string | null>(null).asReadonly(),
+        // Writable so a test can drive an account switch; the projection re-wires off it.
+        activeUserId: activeUserId.asReadonly(),
       }),
     ],
   });
-  return { svc: TestBed.inject(VerificationService), crypto, client };
+  const matrix = TestBed.inject(MatrixClientService);
+  return { svc: TestBed.inject(VerificationService), crypto, client, matrix };
 }
 
 describe('VerificationService', () => {
@@ -391,5 +395,43 @@ describe('VerificationService', () => {
     await expect(firstValueFrom(svc.accept())).rejects.toThrow(
       /no verification/i,
     );
+  });
+
+  it('rebinds the incoming-request listener onto the newly-active account on a switch', () => {
+    // Asserted by behaviour rather than by spying on on/off: after the switch, a request
+    // arriving on the OLD client must be ignored and one on the new client adopted.
+    const { svc, client, matrix } = setup();
+    activeUserId.set('@a:hs');
+    svc.connect();
+    TestBed.inject(ApplicationRef).tick(); // effect's first run: still A
+
+    const clientB = {
+      ...emitter(),
+      getCrypto: () => ({
+        getVerificationRequestsToDeviceInProgress: vi.fn(() => []),
+      }),
+      getUserId: () => '@b:hs',
+    };
+    ngMocks.stubMember(matrix, 'instance', clientB as unknown as MatrixClient);
+    activeUserId.set('@b:hs');
+    TestBed.inject(ApplicationRef).tick();
+
+    client.emit(
+      CryptoEvent.VerificationRequestReceived,
+      fakeRequest({
+        phase: VerificationPhase.Requested,
+        otherUserId: '@old:hs',
+      }),
+    );
+    expect(svc.active()).toBeNull(); // the old client no longer reaches us
+
+    clientB.emit(
+      CryptoEvent.VerificationRequestReceived,
+      fakeRequest({
+        phase: VerificationPhase.Requested,
+        otherUserId: '@new:hs',
+      }),
+    );
+    expect(svc.active()?.otherUserId).toBe('@new:hs');
   });
 });

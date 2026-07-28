@@ -366,4 +366,31 @@ describe('MixedRoomsService', () => {
     expect(svc.rooms().map((r) => r.id)).toEqual(['!b:hs']);
     expect(gone.listenerCount()).toBe(0);
   });
+
+  it('coalesces a burst of events into one rebuild', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const a = fakeClient([fakeRoom('!a:hs')]);
+    const getRooms = vi.fn(() => a.getRooms());
+    clients.set('@a:hs', { ...a, getRooms });
+    clients.set('@b:hs', fakeClient([fakeRoom('!b:hs')]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+    getRooms.mockClear();
+
+    // A sync burst: without coalescing this rebuilds — and re-reads every account's
+    // rooms — once per event.
+    clients.get('@a:hs')!.emit('Room');
+    clients.get('@a:hs')!.emit('Room');
+    clients.get('@a:hs')!.emit('Room');
+    await flush();
+
+    expect(getRooms).toHaveBeenCalledTimes(1);
+    expect(
+      svc
+        .rooms()
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(['!a:hs', '!b:hs']);
+  });
 });

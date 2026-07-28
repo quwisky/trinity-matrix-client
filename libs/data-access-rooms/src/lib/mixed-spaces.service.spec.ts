@@ -225,4 +225,33 @@ describe('MixedSpacesService', () => {
     expect(svc.spaces()).toEqual([]);
     expect(clients.get('@a:hs')!.listenerCount()).toBe(0);
   });
+
+  it('coalesces a burst of events into one rebuild', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const a = fakeClient([fakeSpace('!s1:hs', { name: 'Work' })]);
+    const getRooms = vi.fn(() => a.getRooms());
+    // This fake has no emit(), so capture the handler the service registers and call it.
+    let fire: Listener | undefined;
+    clients.set('@a:hs', {
+      ...a,
+      getRooms,
+      on(evt: string, handler: Listener) {
+        fire ??= handler;
+        a.on(evt, handler);
+      },
+    });
+    clients.set('@b:hs', fakeClient([fakeSpace('!s2:hs', { name: 'Play' })]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+    getRooms.mockClear();
+
+    // Without batching this re-reads every account's rooms once per event.
+    fire?.();
+    fire?.();
+    fire?.();
+    await flush();
+
+    expect(getRooms).toHaveBeenCalledTimes(1);
+  });
 });
