@@ -49,12 +49,6 @@ export type CryptoStatus =
 export class CryptoService {
   private readonly matrix = inject(MatrixClientService);
 
-  /**
-   * The client we currently have crypto listeners on. Keyed to the instance (not
-   * a boolean) so a logout→login rewires onto the new client instead of leaving
-   * the status signals frozen on the discarded one.
-   */
-  /** Stable listener ref so {@link connect}/{@link disconnect} can add and remove it. */
   private readonly _status = signal<CryptoStatus>('unknown');
   /** Primary signal that drives the encryption banner / setup vs unlock UI. */
   readonly status = this._status.asReadonly();

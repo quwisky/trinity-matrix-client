@@ -57,6 +57,11 @@ export interface PinnedMessageView {
  * loaded yet, or that resolves to a redacted event, is dropped from
  * {@link pinnedMessages} rather than fetched — the `Timeline`/`Decrypted` listeners
  * bump a revision so a pin resolves as its event later loads or decrypts.
+ *
+ * Room-scoped, like {@link TimelineService} and unlike the client projections: it binds to
+ * a `Room`, lives for one open room, and so takes the batching primitive (`coalesce`)
+ * alone rather than `projectFromClient`. An account switch closes the open room before
+ * switching, so there is nothing here to re-project.
  */
 @Injectable({ providedIn: 'root' })
 export class PinnedMessagesService {
@@ -104,12 +109,6 @@ export class PinnedMessagesService {
     return views;
   });
 
-  /**
-   * Room-scoped, like {@link TimelineService} and not like the client projections: it
-   * binds to a `Room`, lives for one open room, and takes the batching primitive alone
-   * (see {@link bumpRevision}). An account switch closes the open room before switching,
-   * so there is nothing here to re-project.
-   */
   private roomId: string | null = null;
   private room: Room | null = null;
 
@@ -188,8 +187,8 @@ export class PinnedMessagesService {
     // Detach from the client open() attached to, not `matrix.instance` — that follows
     // the active account and would leak this listener on the old client after a switch.
     this.connectedClient?.off(MatrixEventEvent.Decrypted, this.onDecrypted);
-    // Before the reset below, so a queued bump cannot land after it and tick the
-    // revision back up on a closed room.
+    // Drop any bump queued for this turn: it would otherwise fire after close() has
+    // returned and tick the revision back up on a closed room.
     this.bumpRevision.cancel();
     this.connectedClient = null;
     this.room = null;

@@ -21,7 +21,6 @@ import {
 export class PresenceService {
   private readonly matrix = inject(MatrixClientService);
 
-  /** The client we currently have the presence listener on (null when detached). */
   /** One writable signal per tracked user id, updated in place as presence changes. */
   private readonly states = new Map<
     string,

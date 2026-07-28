@@ -38,7 +38,6 @@ export class DevicesService {
   private readonly _devices = signal<DeviceInfo[]>([]);
   readonly devices = this._devices.asReadonly();
 
-  /** The client the listener is attached to, so disconnect() targets the same one. */
   /** Increments per load (and per mutation) so a stale reload can't clobber. */
   private loadGen = 0;
 
@@ -58,11 +57,16 @@ export class DevicesService {
   };
 
   /**
-   * The projection. No `rebuild`: this service has no read model to seed — the device
-   * list is fetched on demand by {@link list} — so what it takes from the primitive is
-   * the client-keyed binding and the account-switch re-projection. `onDevicesUpdated` is
-   * bound by hand because it reads the event's arguments to decide whether OUR session
-   * list changed; there is nothing to coalesce.
+   * The projection. `onDevicesUpdated` is bound by hand because it reads the event's
+   * arguments to decide whether OUR session list changed, so there is nothing to coalesce.
+   *
+   * No `rebuild` or `reset`, which is a deliberate carry-over of existing behaviour and
+   * NOT a claim that this service has no read model — {@link devices} is one. It is
+   * populated only by {@link list}, on demand, and neither `connect()` nor `disconnect()`
+   * ever touched it. The consequence is that an account switch rebinds the listener to the
+   * new client while `devices()` still holds the previous account's sessions until
+   * something calls `list()` again. That predates this refactor and is left alone here
+   * rather than fixed silently inside one; it wants its own change.
    */
   private readonly projection = projectFromClient({
     matrix: this.matrix,
