@@ -20,11 +20,21 @@ const DPR = 2;
  *
  * Avatars are small and reused across the app (sidebar, members, every timeline
  * sender), so successful resolutions are cached for the session keyed by mxc+size;
- * the cache is revoked on logout/login ({@link releaseAll}). Failures are NOT cached
- * (the entry is dropped) so a transient blip doesn't pin an avatar to initials for
- * the whole session. The cache is unbounded within a session, which is fine for
- * small decorative thumbnails cleared on every session change.
+ * the cache is revoked on logout/login ({@link releaseAll}). The cache is unbounded
+ * within a session, which is fine for small decorative thumbnails cleared on every
+ * session change.
+ *
+ * A failure is remembered only for {@link FAILURE_COOLDOWN_MS}. Never remembering it
+ * pins nothing to initials for the session — the original reason — but it also means a
+ * list that recreates its rows as you scroll starts a fresh attempt per row per
+ * recreation, and each attempt is now several requests with backoff behind it. While a
+ * device is offline that is a stampede against a network that is not there. Retrying
+ * after a short pause keeps both properties: the avatar recovers on its own, and it
+ * costs one attempt per avatar per cooldown rather than one per render.
  */
+/** How long a failed avatar resolution is remembered before it may be retried. */
+const FAILURE_COOLDOWN_MS = 30_000;
+
 @Injectable({ providedIn: 'root' })
 export class AvatarService {
   private readonly matrix = inject(MatrixClientService);
@@ -33,6 +43,8 @@ export class AvatarService {
   private readonly cache = new Map<string, Observable<string | null>>();
   /** Object URLs created, revoked together on {@link releaseAll}. */
   private readonly urls = new Set<string>();
+  /** Keys that failed, and the moment (ms epoch) they may be attempted again. */
+  private readonly retryAfter = new Map<string, number>();
 
   /** Resolve an `mxc://` avatar to a cached `blob:` URL, or null when unset/failed. */
   resolve(
@@ -51,6 +63,13 @@ export class AvatarService {
     if (hit) {
       return hit;
     }
+    const coolingUntil = this.retryAfter.get(key);
+    if (coolingUntil !== undefined) {
+      if (Date.now() < coolingUntil) {
+        return of(null); // still cooling off — show the initial without another attempt
+      }
+      this.retryAfter.delete(key);
+    }
     const edge = Math.ceil(sizePx * DPR);
     const client =
       (accountId ? this.matrix.clientFor(accountId) : null) ??
@@ -62,10 +81,11 @@ export class AvatarService {
       true,
     ).pipe(
       map((bytes) => this.store(new Blob([bytes]))),
-      // An avatar is decorative — on failure fall back to initials (null), and
-      // drop the cache entry so a transient failure can be retried later.
+      // An avatar is decorative — on failure fall back to initials (null), and drop the
+      // cache entry so a transient failure can be retried, but not before the cooldown.
       catchError(() => {
         this.cache.delete(key);
+        this.retryAfter.set(key, Date.now() + FAILURE_COOLDOWN_MS);
         return of<string | null>(null);
       }),
       shareReplay(1),
@@ -81,6 +101,9 @@ export class AvatarService {
     }
     this.urls.clear();
     this.cache.clear();
+    // A new session may be a different account on a different homeserver, so nothing
+    // that failed under the old one should still be serving initials from a cooldown.
+    this.retryAfter.clear();
   }
 
   private store(blob: Blob): string {

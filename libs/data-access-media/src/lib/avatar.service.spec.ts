@@ -131,14 +131,12 @@ describe('AvatarService', () => {
     expect(fetchMock.mock.calls[1][1].headers).toBeUndefined(); // legacy, no bearer
   });
 
-  it('does not cache a transient failure — a later resolve retries', async () => {
-    // A 502 is transient, so fetchMediaBytes now retries with backoff before the
-    // service falls back to null. Drive the timers so the test doesn't wait on
-    // real backoff delays.
+  it('does not cache a transient failure for good — a later resolve retries', async () => {
+    // A 502 is transient, so fetchMediaBytes retries with backoff before the service
+    // falls back to null. Drive the timers so the test doesn't wait on real delays.
     vi.useFakeTimers();
     try {
       const { svc } = setup();
-      // Both attempts fail this time (offline blip).
       fetchMock.mockResolvedValue({
         ok: false,
         status: 502,
@@ -148,11 +146,43 @@ describe('AvatarService', () => {
       await vi.runAllTimersAsync(); // exhaust the retry backoff
       await expect(pending).resolves.toBeNull();
 
-      // Network recovers; resolving the same avatar must refetch, not replay null.
+      // Network recovers. Past the cooldown the avatar must refetch, not replay null —
+      // a failure is never allowed to pin someone to initials for the whole session.
       fetchMock.mockResolvedValue(okResponse());
+      await vi.advanceTimersByTimeAsync(30_000);
       const recovered = firstValueFrom(svc.resolve('mxc://hs/blip'));
       await vi.runAllTimersAsync();
       await expect(recovered).resolves.toBe('blob:av-1');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not re-attempt a failed avatar until its cooldown expires', async () => {
+    // Rows are recreated constantly as a list scrolls, and each recreation re-resolves.
+    // Without a cooldown every one of those starts a fresh multi-request retry — which,
+    // offline, is a stampede against a network that is not there.
+    vi.useFakeTimers();
+    try {
+      const { svc } = setup();
+      fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+      const first = firstValueFrom(svc.resolve('mxc://hs/offline'));
+      await vi.runAllTimersAsync();
+      await expect(first).resolves.toBeNull();
+      const afterFirst = fetchMock.mock.calls.length;
+      expect(afterFirst).toBe(4); // 1 initial + 3 retries
+
+      // Five more rows ask for the same avatar while still offline. Subscribed rather
+      // than awaited: a cooled-down key answers synchronously, while a regression would
+      // start a fetch on subscribe — so this asserts in both directions without hanging
+      // on a promise that a regression would never settle.
+      const seen: (string | null)[] = [];
+      for (let i = 0; i < 5; i++) {
+        svc.resolve('mxc://hs/offline').subscribe((url) => seen.push(url));
+      }
+
+      expect(fetchMock.mock.calls.length).toBe(afterFirst); // not one extra request
+      expect(seen).toEqual([null, null, null, null, null]); // and each got its initial
     } finally {
       vi.useRealTimers();
     }

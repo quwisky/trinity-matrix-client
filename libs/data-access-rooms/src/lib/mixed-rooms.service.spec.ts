@@ -26,6 +26,7 @@ function fakeRoom(
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,
+    getAvatarFallbackMember: () => undefined,
     getJoinedMemberCount: () => 1,
     hasEncryptionStateEvent: () => false,
     getUnreadNotificationCount: (type?: unknown) =>

@@ -4,7 +4,11 @@ import {
   type MatrixClient,
   type Room,
 } from 'matrix-js-sdk';
-import { liveRoomState, messagePreview } from '@trinity/util-matrix';
+import {
+  liveRoomState,
+  messagePreview,
+  roomAvatarMxc,
+} from '@trinity/util-matrix';
 import { type RoomSummary } from './rooms.service';
 
 /** State event type linking a space to a child room. */
@@ -91,7 +95,10 @@ export function buildRoomSummary(
     accountIds: [accountId],
     name,
     initial: initialOf(name),
-    avatarMxc: room.getMxcAvatarUrl(),
+    // `m.direct` is the authoritative answer to "is this a DM", and it is already in
+    // hand — the SDK's own member-count heuristic would also claim a two-person named
+    // group room, and dress it in that member's face until a third person joined.
+    avatarMxc: roomAvatarMxc(room, directUserId !== undefined),
     topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
     memberCount: room.getJoinedMemberCount(),
     encrypted: room.hasEncryptionStateEvent(),

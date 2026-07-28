@@ -168,7 +168,9 @@ function setup(
       name: MEMBERS[id] ?? id,
       getMxcAvatarUrl: () => null,
     }),
-    getUsersReadUpTo: () => [],
+    // Typed with its parameter (rather than `() => []`) so a test can re-point it at a
+    // per-event reader list without fighting the inferred signature.
+    getUsersReadUpTo: (_event: { getId: () => string }): string[] => [],
     relations: {
       getChildEventsForEvent: (
         id: string,
@@ -395,6 +397,31 @@ describe('ThreadsService', () => {
     expect(msgs.map((m) => m.id)).toEqual(['$root', '$r1']);
     expect(msgs[0].body).toBe('root msg');
     expect(svc.openThreadRootId()).toBe('$root');
+  });
+
+  it('follows a read receipt onto an open thread’s replies', async () => {
+    // A receipt is none of the thread-level events openThread listens to, so without a
+    // room-level Receipt listener the "seen by" avatars under a reply sat unchanged
+    // until some unrelated event happened to re-refresh the thread. The summaries
+    // projection has bound this all along; the open thread had not.
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
+    const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'a reply' });
+    const { svc, room } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
+    ]);
+    svc.openThread('!r:hs', '$root');
+    expect(svc.threadMessages()[1].readReceipts).toEqual([]);
+
+    let readers: string[] = [];
+    room.getUsersReadUpTo = (event: { getId: () => string }) =>
+      event.getId() === '$r1' ? readers : [];
+    readers = ['@c:hs'];
+    room.emit(RoomEvent.Receipt);
+    await Promise.resolve(); // the re-projection is coalesced into a microtask
+
+    expect(svc.threadMessages()[1].readReceipts.map((r) => r.userId)).toEqual([
+      '@c:hs',
+    ]);
   });
 
   it('reuses reply views whose inputs are unchanged across a refresh', () => {

@@ -2108,6 +2108,71 @@ describe('TimelineService', () => {
       expect(first.readReceipts[0].name).toBe('Alice'); // resolved from room state
       expect(second.readReceipts).toEqual([]);
     });
+
+    it("refreshes a receipt avatar when the reader's member loads late", async () => {
+      // A reader who has posted nothing in the window is nobody's sender, reply target
+      // or reactor. Both defences used to miss them: the revision folded in receipt
+      // *ids* only, so an avatar-only change produced an identical fingerprint, and the
+      // member-listener gate never had them in `relevantSenders` to begin with.
+      const events = [fakeEvent({ id: '$1', sender: '@a:hs', body: 'hello' })];
+      let readerLoaded = false;
+      let memberHandler: ((...a: unknown[]) => void) | undefined;
+      const room = {
+        roomId: '!r:hs',
+        getLiveTimeline: () => ({
+          getEvents: () => events,
+          getPaginationToken: () => null,
+          getState: () => undefined,
+        }),
+        findEventById: (id: string) => events.find((e) => e.getId() === id),
+        getMember: (id: string) => {
+          if (id === '@reader:hs') {
+            return readerLoaded
+              ? { name: 'Reader', getMxcAvatarUrl: () => 'mxc://hs/reader' }
+              : null;
+          }
+          return { name: 'A', getMxcAvatarUrl: () => null };
+        },
+        getUsersReadUpTo: () => ['@reader:hs'],
+        relations: { getChildEventsForEvent: () => undefined },
+        hasEncryptionStateEvent: () => false,
+        on: (ev: string, cb: (...a: unknown[]) => void) => {
+          if (ev === RoomStateEvent.Members) {
+            memberHandler = cb;
+          }
+        },
+        off: () => {},
+      };
+      const client = {
+        baseUrl: 'https://hs',
+        getRoom: () => room,
+        getUserId: () => '@me:hs',
+        on: () => {},
+        off: () => {},
+        sendReadReceipt: () => Promise.resolve({}),
+        scrollback: () => Promise.resolve(room),
+      };
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(client)],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+
+      // Not in room state yet: the receipt shows the raw mxid and no avatar.
+      expect(svc.messages()[0].readReceipts[0]).toMatchObject({
+        name: '@reader:hs',
+        avatarMxc: null,
+      });
+
+      readerLoaded = true;
+      memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@reader:hs' });
+      await Promise.resolve(); // re-projection is coalesced into a microtask
+
+      expect(svc.messages()[0].readReceipts[0]).toMatchObject({
+        name: 'Reader',
+        avatarMxc: 'mxc://hs/reader',
+      });
+    });
   });
 
   describe('linkify', () => {

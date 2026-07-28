@@ -62,6 +62,37 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Direct messages show the other person's face.** A one-to-one conversation is never given
+  a picture of its own, and Trinity only ever looked for one — so every DM in the sidebar, the
+  quick switcher and the invite list showed a coloured letter, right next to the person's name,
+  which had resolved perfectly well. DMs now fall back to the other person's avatar, and a DM
+  invite to the inviter's. Group rooms with no picture still show their initial, which is
+  correct.
+
+- **A direct message's picture appears as soon as the other person's profile does.** It used
+  to wait for whatever synced next, so a DM could sit on a coloured initial for a while after
+  opening the app.
+
+- **Thread "seen by" avatars follow the read markers.** In an open thread they stayed put
+  when somebody read your reply, and only caught up when an unrelated event happened along.
+
+- **A "seen by" avatar catches up when the reader's profile arrives.** The small avatars under
+  a message showed a coloured initial for anyone who had read it but not written in it — a
+  lurker, typically — and kept showing it even after their picture loaded, while the same
+  person appeared correctly everywhere else. It only corrected itself once they read a newer
+  message.
+
+- **A brief network hiccup no longer costs you avatars for the rest of the session.** When a
+  picture failed to load, Trinity was meant to wait a moment and try again — but the retry
+  had never once re-sent the request it was added for, so the very first failure was final.
+  Worse, any stumble at all made Trinity retry against the older, unauthenticated way of
+  fetching media, which most homeservers now refuse outright; a server saying "busy, try
+  again" was turned into "no such picture". A momentary drop in connectivity — walking out of
+  wifi range, waking a laptop, a VPN reconnecting — could leave a scattering of people and
+  rooms showing coloured initials until you reloaded the page. Trinity now genuinely retries,
+  backs off between attempts, and only falls back to the old method when the homeserver
+  really does not support the new one.
+
 - **Accepting a room invite no longer hides the room you just joined.** Saying yes to an
   invite dropped you on the direct-message list — which, by definition, does not show rooms —
   so the room opened in the timeline but vanished from the sidebar until you clicked

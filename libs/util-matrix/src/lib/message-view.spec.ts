@@ -721,7 +721,7 @@ describe('collectMessageSenders', () => {
     } as unknown as MatrixEvent;
     const senders = new Set<string>();
 
-    collectMessageSenders(room, message, senders);
+    collectMessageSenders(ME, room, message, senders);
 
     expect([...senders]).toEqual([
       '@author:hs',
@@ -729,5 +729,25 @@ describe('collectMessageSenders', () => {
       '@bob:hs',
       '@carol:hs',
     ]);
+  });
+
+  it('registers the readers whose "seen by" avatars the row shows', () => {
+    // A reader who has never posted in the loaded window is nobody's sender, reply
+    // target or reactor, so this is the only thing that can put them through the
+    // member-listener gate — and their receipt renders an avatar just like a sender.
+    const room = {
+      ...reactedRoom({}),
+      getUsersReadUpTo: () => ['@reader:hs', '@me:hs'],
+    } as unknown as Room;
+    const message = {
+      getId: () => '$m',
+      getSender: () => '@author:hs',
+    } as unknown as MatrixEvent;
+    const senders = new Set<string>();
+
+    collectMessageSenders(ME, room, message, senders);
+
+    // Not ourselves: our own receipt is never rendered, so nothing depends on it.
+    expect([...senders]).toEqual(['@author:hs', '@reader:hs']);
   });
 });

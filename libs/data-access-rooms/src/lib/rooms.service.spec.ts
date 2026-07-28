@@ -5,6 +5,7 @@ import {
   MatrixEventEvent,
   ReceiptType,
   RoomEvent,
+  RoomStateEvent,
 } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
@@ -60,6 +61,8 @@ function fakeRoom(opts: {
   events?: ReturnType<typeof timelineEvent>[];
   members?: ReturnType<typeof fakeMember>[];
   creator?: string | null;
+  /** Avatar of the member the SDK offers as a stand-in for a room with ≤2 members. */
+  peerAvatarMxc?: string;
 }) {
   return {
     roomId: opts.roomId,
@@ -69,6 +72,14 @@ function fakeRoom(opts: {
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,
+    // Modelled honestly: the SDK hands back a stand-in member for ANY room with two or
+    // fewer members, DM or not (room.js:761 bails out only above two). Returning
+    // `undefined` for group rooms here would make the guard untestable — the fake, not
+    // the code, would be producing the initial.
+    getAvatarFallbackMember: () =>
+      opts.peerAvatarMxc
+        ? { getMxcAvatarUrl: () => opts.peerAvatarMxc }
+        : undefined,
     getJoinedMemberCount: () => opts.members?.length ?? 0,
     getJoinedMembers: () => opts.members ?? [],
     getCreator: () => opts.creator ?? null,
@@ -173,6 +184,90 @@ describe('RoomsService', () => {
     const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
     expect(byId.get('!dm:hs')?.directUserId).toBe('@bob:hs');
     expect(byId.get('!room:hs')?.directUserId).toBeUndefined(); // plain room
+  });
+
+  it("shows the other person's avatar for a DM that has no room avatar", () => {
+    // A DM is never given an `m.room.avatar`, so reading only that state event left
+    // every 1:1 conversation showing a coloured initial beside a name that had
+    // resolved to the person perfectly well.
+    //
+    // BOTH rooms here offer a stand-in member, exactly as the SDK does for any room of
+    // two or fewer; only `m.direct` separates them. That is the point — a two-person
+    // named group room must keep its initial rather than wear that member's face and
+    // then lose it again the moment a third person joins.
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [
+        fakeRoom({
+          roomId: '!dm:hs',
+          name: 'Bob',
+          peerAvatarMxc: 'mxc://hs/bob',
+        }),
+        fakeRoom({
+          roomId: '!pair:hs',
+          name: 'planning',
+          peerAvatarMxc: 'mxc://hs/colleague',
+        }),
+      ],
+      getAccountData: (type: string) =>
+        type === 'm.direct'
+          ? { getContent: () => ({ '@bob:hs': ['!dm:hs'] }) }
+          : undefined,
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+    svc.connect();
+
+    const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
+    expect(byId.get('!dm:hs')?.avatarMxc).toBe('mxc://hs/bob');
+    expect(byId.get('!pair:hs')?.avatarMxc).toBeNull();
+  });
+
+  it("rebuilds the room list when a DM peer's avatar arrives late", async () => {
+    // The DM row's picture IS the peer's member, so the room list depends on member
+    // state now. Those listeners are deliberately kept out of the coalesced rebuild —
+    // they drive `memberRevision` alone — which left a DM peer's late-arriving profile
+    // (a member-list load, say) invisible until the next sync happened along.
+    // Mutable so the peer's profile can "arrive" mid-test, the way lazy member loading
+    // delivers it after the room list has already been built.
+    const peer: { avatarMxc?: string } = {};
+    let getRoomsCalls = 0;
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => {
+        getRoomsCalls++;
+        return [
+          fakeRoom({
+            roomId: '!dm:hs',
+            name: 'Bob',
+            peerAvatarMxc: peer.avatarMxc,
+          }),
+        ];
+      },
+      getAccountData: (type: string) =>
+        type === 'm.direct'
+          ? { getContent: () => ({ '@bob:hs': ['!dm:hs'] }) }
+          : undefined,
+      on: (event: string, handler: (...args: unknown[]) => void) => {
+        handlers.set(event, handler);
+      },
+    };
+    const { svc } = provideRooms(client);
+    svc.connect();
+    expect(svc.rooms()[0].avatarMxc).toBeNull();
+
+    // A member event for someone we have no DM with must NOT rebuild the whole list.
+    const callsBefore = getRoomsCalls;
+    handlers.get(RoomStateEvent.Members)?.({}, {}, { userId: '@stranger:hs' });
+    await Promise.resolve();
+    expect(getRoomsCalls).toBe(callsBefore);
+
+    peer.avatarMxc = 'mxc://hs/bob';
+    handlers.get(RoomStateEvent.Members)?.({}, {}, { userId: '@bob:hs' });
+    await Promise.resolve(); // the rebuild is coalesced into a microtask
+
+    expect(svc.rooms()[0].avatarMxc).toBe('mxc://hs/bob');
   });
 
   it('orders rooms by recent activity and maps unread counts', () => {

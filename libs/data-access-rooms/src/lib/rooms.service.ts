@@ -8,7 +8,9 @@ import {
   RoomEvent,
   RoomStateEvent,
   type MatrixClient,
+  type MatrixEvent,
   type RoomMember,
+  type RoomState,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import {
@@ -126,10 +128,39 @@ export class RoomsService {
    */
   private readonly _memberRevision = signal(0);
   readonly memberRevision = this._memberRevision.asReadonly();
-  private readonly onMembershipEvent = (): void =>
+  /**
+   * The other party in each of our DMs, refreshed by {@link refresh}. A DM has no
+   * `m.room.avatar`, so its row's picture comes from this member — which makes the room
+   * list depend on member state, where before it depended only on room state.
+   */
+  private dmPeers: ReadonlySet<string> = new Set();
+
+  /**
+   * Our OWN membership changed (joined/left a room). The rebuild is already covered —
+   * `RoomEvent.MyMembership` is in the projection's coalesced event list — so this only
+   * bumps the member revision. Kept separate from {@link onMemberChanged} because the
+   * two events carry entirely different arguments.
+   */
+  private readonly onMyMembership = (): void =>
     // The SDK membership event writes this signal, which schedules change
     // detection (mirrors the coalesced rebuild).
     this._memberRevision.update((n) => n + 1);
+
+  /** Someone in a room joined, left, or changed their profile. */
+  private readonly onMemberChanged = (
+    _event: MatrixEvent,
+    _state: RoomState,
+    member: RoomMember,
+  ): void => {
+    this._memberRevision.update((n) => n + 1);
+    // A DM peer's profile can arrive or change without a sync — `loadMembersIfNeeded`
+    // from opening a member list, say — and their avatar IS the room's picture. Gated
+    // on the DM map so a member event in a large room does not rebuild the whole room
+    // list, which is exactly why this listener was kept out of the coalesced rebuild.
+    if (this.dmPeers.has(member.userId)) {
+      this.projection.schedule();
+    }
+  };
 
   // Memoized member projection: a cached, sorted list per room keyed by a cheap
   // fingerprint of its joined members, plus one shared collator (avoids spinning up
@@ -198,17 +229,18 @@ export class RoomsService {
     // RoomState.members and MyMembership are what change who is in a room (or their
     // profile).
     bind: (client) => {
-      client.on(RoomStateEvent.Members, this.onMembershipEvent);
-      client.on(RoomEvent.MyMembership, this.onMembershipEvent);
+      client.on(RoomStateEvent.Members, this.onMemberChanged);
+      client.on(RoomEvent.MyMembership, this.onMyMembership);
     },
     unbind: (client) => {
-      client.off(RoomStateEvent.Members, this.onMembershipEvent);
-      client.off(RoomEvent.MyMembership, this.onMembershipEvent);
+      client.off(RoomStateEvent.Members, this.onMemberChanged);
+      client.off(RoomEvent.MyMembership, this.onMyMembership);
     },
     reset: () => {
       this.memberCache.clear();
       this._rooms.set([]);
       this._directRoomIds.set(new Set());
+      this.dmPeers = new Set();
     },
   });
 
@@ -550,6 +582,7 @@ export class RoomsService {
         .sort(compareRoomSummaries),
     );
     this._directRoomIds.set(direct);
+    this.dmPeers = new Set(userByRoom.values());
     this._revision.update((n) => n + 1);
   }
 

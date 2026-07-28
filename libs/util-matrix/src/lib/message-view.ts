@@ -519,17 +519,28 @@ export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
 }
 
 /**
- * Add the user ids whose room membership a rendered message depends on — the
- * sender (shown in the header) and, for a reply, the quoted sender shown in the
- * reply preview — into `into`. A projection uses this to re-map only when a member
- * it actually references loads or changes its name/avatar, rather than on every
- * member update in a large room. The reply target's sender is included only when
- * the target is loaded, which is exactly when a (possibly stale) preview renders.
+ * Add the user ids whose room membership a rendered message depends on into `into`:
+ * the sender shown in the header, the quoted sender in a reply preview, the reactors a
+ * pill names, and the readers whose "seen by" receipts sit on the event. A projection
+ * uses this to re-map only when a member it actually references loads or changes its
+ * name/avatar, rather than on every member update in a large room.
+ *
+ * Each group is bounded — the reply target's sender counts only while the target is
+ * loaded (exactly when a possibly-stale preview renders), reactors stop at
+ * `MAX_NAMED_REACTORS`, and readers at `MAX_RECEIPTS` — so the set stays proportional to
+ * what is on screen rather than to the room's membership.
  */
 export function collectMessageSenders(
+  client: MatrixClient,
   room: Room,
   event: MatrixEvent,
   into: Set<string>,
+  /**
+   * Pass `{ receipts: false }` for a row that renders no "seen by" avatars — a system
+   * line, whose view is built with `readReceipts: []`. Collecting its readers would
+   * admit members nothing on screen depends on, widening the very gate this feeds.
+   */
+  options: { receipts?: boolean } = {},
 ): void {
   const sender = event.getSender();
   if (sender) {
@@ -550,6 +561,15 @@ export function collectMessageSenders(
       if (reactor) {
         into.add(reactor);
       }
+    }
+  }
+  // The "seen by" readers, who render as avatars just like the sender does. A reader
+  // who has never posted in the loaded window is reachable ONLY here — they are
+  // nobody's sender, reply target or reactor — so without this their member event is
+  // discarded at the gate and their avatar never arrives.
+  if (options.receipts !== false) {
+    for (const reader of readReceiptUserIds(client, room, event)) {
+      into.add(reader);
     }
   }
 }

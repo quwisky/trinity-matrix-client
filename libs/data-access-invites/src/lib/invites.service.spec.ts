@@ -18,6 +18,8 @@ interface RoomOpts {
   inviterName?: string;
   /** `is_direct` on our own member (invite) event. */
   isDirect?: boolean;
+  /** The inviter's own avatar, which stands in for a DM invite's missing room avatar. */
+  inviterAvatarMxc?: string;
 }
 
 // Minimal fakes shaped like the bits of matrix-js-sdk that InvitesService reads.
@@ -43,6 +45,14 @@ function fakeRoom(opts: RoomOpts, myUserId: string) {
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'invite',
     getMxcAvatarUrl: () => null,
+    // Modelled honestly: an invite's stripped state holds just the inviter's and our own
+    // membership however large the room really is, so the SDK offers the inviter as the
+    // stand-in for EVERY invite — group room and space included. Only `is_direct` can
+    // tell them apart, which is what this lets the specs below prove.
+    getAvatarFallbackMember: () =>
+      opts.inviterAvatarMxc
+        ? { getMxcAvatarUrl: () => opts.inviterAvatarMxc }
+        : undefined,
     getMember: (id: string) => members[id] ?? null,
   };
 }
@@ -137,6 +147,55 @@ describe('InvitesService', () => {
       inviterName: 'Someone',
     });
     expect(byId['!d:hs']).toMatchObject({ isDirect: true, inviterName: 'Bob' });
+  });
+
+  it("shows the inviter's avatar on a DM invite, and only on a DM invite", () => {
+    // The DM row already names the inviter, which proves their member event — and so
+    // their avatar_url — is in the stripped state we read; it was simply ignored.
+    //
+    // All three invites below offer the same stand-in member, because that is what the
+    // SDK does with stripped state. Letting it decide would put the inviter's face on
+    // the group room and the space as their icon, which is worse than the initial it
+    // replaced: it claims a room looks like a person.
+    const { svc } = setup([
+      fakeRoom(
+        {
+          roomId: '!d:hs',
+          name: 'DM',
+          isDirect: true,
+          inviterId: '@bob:hs',
+          inviterName: 'Bob',
+          inviterAvatarMxc: 'mxc://hs/bob',
+        },
+        '@me:hs',
+      ),
+      fakeRoom(
+        {
+          roomId: '!g:hs',
+          name: 'Group',
+          inviterId: '@bob:hs',
+          inviterAvatarMxc: 'mxc://hs/bob',
+        },
+        '@me:hs',
+      ),
+      fakeRoom(
+        {
+          roomId: '!s:hs',
+          name: 'Space',
+          space: true,
+          inviterId: '@bob:hs',
+          inviterAvatarMxc: 'mxc://hs/bob',
+        },
+        '@me:hs',
+      ),
+    ]);
+
+    const byId = Object.fromEntries(
+      svc.pendingInvites().map((i) => [i.roomId, i]),
+    );
+    expect(byId['!d:hs'].avatarMxc).toBe('mxc://hs/bob');
+    expect(byId['!g:hs'].avatarMxc).toBeNull();
+    expect(byId['!s:hs'].avatarMxc).toBeNull();
   });
 
   it('acceptInvite joins the room', async () => {

@@ -18,6 +18,7 @@ function fakeInvite(
     isSpaceRoom: () => false,
     getMyMembership: () => opts.membership ?? 'invite',
     getMxcAvatarUrl: () => null,
+    getAvatarFallbackMember: () => undefined,
     getMember: (id: string) =>
       id === me
         ? {
