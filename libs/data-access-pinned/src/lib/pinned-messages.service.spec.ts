@@ -351,7 +351,7 @@ describe('PinnedMessagesService', () => {
     expect(currentState.listenerCount(RoomStateEvent.Events)).toBe(0);
   });
 
-  it('resolves a pinned message that loads later via RoomEvent.Timeline', () => {
+  it('resolves a pinned message that loads later via RoomEvent.Timeline', async () => {
     const { svc, room } = setup({ pinned: ['$late'] });
     svc.open('!r:hs');
     expect(svc.pinnedMessages()).toEqual([]);
@@ -364,11 +364,14 @@ describe('PinnedMessagesService', () => {
       }
     ).findEventById = (id: string) => (id === '$late' ? late : undefined);
     room.emit(RoomEvent.Timeline);
+    // The revision bump is coalesced, so it lands on the next microtask — Timeline
+    // fires for every event in the room and each bump re-resolves every preview.
+    await Promise.resolve();
 
     expect(svc.pinnedMessages().map((v) => v.id)).toEqual(['$late']);
   });
 
-  it('resolves a pinned message that decrypts later via MatrixEventEvent.Decrypted', () => {
+  it('resolves a pinned message that decrypts later via MatrixEventEvent.Decrypted', async () => {
     const { svc, room, client } = setup({ pinned: ['$enc'] });
     svc.open('!r:hs');
     expect(svc.pinnedMessages()).toEqual([]);
@@ -385,29 +388,42 @@ describe('PinnedMessagesService', () => {
       }
     ).findEventById = (id: string) => (id === '$enc' ? decrypted : undefined);
     client.emit(MatrixEventEvent.Decrypted, decrypted);
+    await Promise.resolve(); // coalesced bump
 
     expect(svc.pinnedMessages().map((v) => v.id)).toEqual(['$enc']);
   });
 
-  it('does not bump the revision for a Decrypted event from a different room', () => {
+  it('does not bump the revision for a Decrypted event from a different room', async () => {
     const enc = fakeEvent({
       id: '$enc',
       sender: '@a:hs',
       body: 'secret',
       roomId: '!other:hs',
     });
-    const { svc, client } = setup({ pinned: ['$enc'] });
+    const { svc, room, client } = setup({ pinned: ['$enc'] });
     svc.open('!r:hs');
-    // Not yet resolvable: the event was never added to the room's timeline.
     expect(svc.pinnedMessages()).toEqual([]);
 
-    client.emit(MatrixEventEvent.Decrypted, enc);
+    // Deliberately findable. If the id were unresolvable the assertion below would hold
+    // no matter what the handler did, and the test could not fail for its own reason —
+    // the room filter has to be the ONLY thing keeping the preview unresolved.
+    (
+      room as unknown as {
+        findEventById: (id: string) => FakeEvent | undefined;
+      }
+    ).findEventById = (id: string) => (id === '$enc' ? enc : undefined);
 
-    // Still unresolved — the decrypted event belongs to a different room.
+    client.emit(MatrixEventEvent.Decrypted, enc);
+    // Flushed before asserting: the bump is coalesced, so an unflushed negative
+    // assertion would pass against merely-queued work.
+    await Promise.resolve();
+
+    // The revision never moved, so the computed never re-ran — the decrypted event
+    // belongs to a different room.
     expect(svc.pinnedMessages()).toEqual([]);
   });
 
-  it('close() detaches listeners and clears state; a later emission does not mutate', () => {
+  it('close() detaches listeners and clears state; a later emission does not mutate', async () => {
     const { svc, room, liveState, client, setPinned } = setup({
       pinned: ['$a'],
       canPin: true,
@@ -432,6 +448,9 @@ describe('PinnedMessagesService', () => {
       MatrixEventEvent.Decrypted,
       fakeEvent({ id: '$a', sender: '@a:hs' }),
     );
+    // Flushed before asserting: close() cancels the queued bump, and that cancellation
+    // is the thing this would otherwise fail to notice.
+    await Promise.resolve();
 
     expect(svc.pinnedEventIds()).toEqual([]);
     expect(svc.canPin()).toBe(false);

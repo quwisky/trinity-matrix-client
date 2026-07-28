@@ -156,6 +156,12 @@ export class TimelineService {
    * switch would detach from the *new* client and leak every listener on the old one —
    * which is still signed in and syncing. Detach from what we attached to.
    */
+  /**
+   * Not a {@link projectFromClient} projection, deliberately: this service is scoped to
+   * the OPEN ROOM, binding to a `Room` as well as the client, so its lifetime is
+   * open()/close() rather than the client's. That is also why it needs no account-switch
+   * re-projection — a switch closes the open room first.
+   */
   private connectedClient: MatrixClient | null = null;
 
   /** Whether a coalesced re-projection is already queued for this microtask turn. */

@@ -70,6 +70,12 @@ export class NotificationService {
   private readonly timeline = inject(TimelineService);
   private readonly storage = inject(SessionStorageService);
 
+  /**
+   * Not a single-client projection: this service is MULTI-ACCOUNT, reconciling a notifier
+   * per signed-in account over `matrix.accountIds()` and binding listeners to each
+   * account's own client. {@link projectFromClient} models one active client, so it does
+   * not apply — the account-set effect below is this service's equivalent.
+   */
   /** Whether {@link connect} has enabled us (and thus reconcile may attach). */
   private enabled = false;
 
