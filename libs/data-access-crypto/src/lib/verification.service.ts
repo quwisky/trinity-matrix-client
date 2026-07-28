@@ -13,7 +13,7 @@ import {
 import { Observable, defer, from, of } from 'rxjs';
 import {
   MatrixClientService,
-  reprojectOnAccountSwitch,
+  projectFromClient,
 } from '@trinity/data-access-matrix-client';
 
 /** UI-facing stage of the active verification (maps the SDK's numeric phase). */
@@ -61,8 +61,6 @@ const SAS_METHOD = 'm.sas.v1';
 @Injectable({ providedIn: 'root' })
 export class VerificationService {
   private readonly matrix = inject(MatrixClientService);
-  private connectedClient: MatrixClient | null = null;
-
   private request: VerificationRequest | null = null;
   private verifier: Verifier | null = null;
   private sas: ShowSasCallbacks | null = null;
@@ -105,47 +103,46 @@ export class VerificationService {
 
   private readonly onVerifierCancel = (): void => this.recompute();
 
-  constructor() {
-    // On an account switch, re-project incoming-verification listening onto the
-    // newly-active account's client — but only while it is already wired to one.
-    reprojectOnAccountSwitch(
-      this.matrix,
-      () => this.connectedClient !== null,
-      () => this.connect(),
-    );
-  }
-
   /**
-   * Listen for incoming verification requests and adopt any already in flight.
-   * Idempotent per client; re-running after a re-login rewires onto the new one.
+   * The projection. There is no coalescing to configure because the one event is bound by
+   * hand below — it carries the incoming request, which a no-arg listener could not read —
+   * and an incoming verification is human-initiated, so bursts are not a thing.
    */
+  private readonly projection = projectFromClient({
+    matrix: this.matrix,
+    bind: (client) =>
+      client.on(CryptoEvent.VerificationRequestReceived, this.onIncoming),
+    unbind: (client) =>
+      client.off(CryptoEvent.VerificationRequestReceived, this.onIncoming),
+    // Adopt a request that predates the listener (e.g. started on another device during
+    // a reload). Runs on connect only, since nothing above schedules a rebuild.
+    rebuild: (client) => {
+      const inProgress = this.inProgressRequest(client);
+      if (inProgress) {
+        this.adopt(inProgress);
+      }
+    },
+    reset: () => {
+      this.clearRequest();
+      this._active.set(null);
+    },
+  });
+
+  /** Subscribe to incoming verification requests; pair with {@link disconnect}. */
   connect(): void {
-    if (!this.matrix.isInitialized) {
-      return;
-    }
-    const client = this.matrix.instance;
-    if (this.connectedClient === client) {
-      return;
-    }
-    this.disconnect();
-    this.connectedClient = client;
-    client.on(CryptoEvent.VerificationRequestReceived, this.onIncoming);
-    // Adopt a request that predates the listener (e.g. started on another device
-    // during a reload).
-    const inProgress = this.inProgressRequest(client);
-    if (inProgress) {
-      this.adopt(inProgress);
-    }
+    this.projection.connect();
   }
 
   /** Detach listeners and clear any active verification. */
   disconnect(): void {
-    this.connectedClient?.off(
-      CryptoEvent.VerificationRequestReceived,
-      this.onIncoming,
-    );
+    this.projection.disconnect();
+    // Cleared again, unconditionally, and NOT only via the projection's `reset`. That
+    // reset runs only when listeners were actually attached, but a verification can be
+    // active without this service ever having connected: startSelfVerification and
+    // startUserVerification call adopt() directly. Without this, disconnecting after one
+    // of those leaves `active` populated and the host keeps presenting a dead request.
+    // Idempotent, so the connected path clearing twice is harmless.
     this.clearRequest();
-    this.connectedClient = null;
     this._active.set(null);
   }
 

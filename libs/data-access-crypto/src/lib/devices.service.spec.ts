@@ -1,8 +1,8 @@
-import { signal } from '@angular/core';
+import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClient, MatrixError } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
-import { MockProvider } from 'ng-mocks';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevicesService } from './devices.service';
@@ -49,7 +49,11 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Writable so a test can drive an account switch; the projection re-wires off it. */
+const activeUserId = signal<string | null>(null);
+
 function setup(clientOverrides: Record<string, unknown> = {}) {
+  activeUserId.set(null);
   const client = fakeClient(clientOverrides);
   TestBed.configureTestingModule({
     providers: [
@@ -57,11 +61,12 @@ function setup(clientOverrides: Record<string, unknown> = {}) {
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as unknown as MatrixClient,
-        activeUserId: signal<string | null>(null).asReadonly(),
+        activeUserId: activeUserId.asReadonly(),
       }),
     ],
   });
-  return { svc: TestBed.inject(DevicesService), client };
+  const matrix = TestBed.inject(MatrixClientService);
+  return { svc: TestBed.inject(DevicesService), client, matrix };
 }
 
 describe('DevicesService', () => {
@@ -276,5 +281,24 @@ describe('DevicesService', () => {
     await new Promise((resolve) => setTimeout(resolve)); // flush the stale reload
 
     expect(svc.devices().some((d) => d.id === 'B')).toBe(false); // not resurrected
+  });
+
+  it('rebinds the device listener onto the newly-active account on a switch', () => {
+    // DevicesService takes no rebuild from the projection — it has no read model to
+    // re-seed — so the switch behaviour worth pinning is that the listener follows the
+    // active client rather than staying on the previous account's.
+    const { svc, client, matrix } = setup();
+    activeUserId.set('@a:hs');
+    svc.connect();
+    TestBed.inject(ApplicationRef).tick(); // effect's first run: still A
+    client.off.mockClear();
+
+    const clientB = fakeClient();
+    ngMocks.stubMember(matrix, 'instance', clientB as unknown as MatrixClient);
+    activeUserId.set('@b:hs');
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(client.off).toHaveBeenCalled(); // detached from A
+    expect(clientB.on).toHaveBeenCalled(); // attached to B
   });
 });

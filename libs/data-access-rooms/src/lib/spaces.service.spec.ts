@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
@@ -7,13 +7,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { SpacesService } from './spaces.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
-/** Wire a fake matrix-js-sdk client into a mocked {@link MatrixClientService}. */
+/**
+ * Wire a fake matrix-js-sdk client into a mocked {@link MatrixClientService}.
+ *
+ * `activeUserId` is writable so a test can drive an account switch — the projection
+ * re-wires off it, and a read-only signal here would make that untestable.
+ */
+const activeUserId = signal<string | null>(null);
+
 function provideMatrix(client: unknown): MatrixClientService {
+  activeUserId.set(null);
   TestBed.configureTestingModule({
     providers: [
       SpacesService,
       MockProvider(MatrixClientService, {
-        activeUserId: signal<string | null>(null).asReadonly(),
+        activeUserId: activeUserId.asReadonly(),
       }),
     ],
   });
@@ -706,5 +714,33 @@ describe('SpacesService hierarchy', () => {
     expect(svc.childrenError()).toBe('unsupported');
     expect(svc.childrenLoading()).toBe(false);
     expect(svc.openSpaceChildren()).toEqual([]);
+  });
+
+  it('re-projects onto the newly-active account when the active account switches', () => {
+    // The account-switch half of the projection: rooms.service.spec covers it for the
+    // sibling read model, and this service re-wires off the same signal.
+    const { svc, client, matrix } = setup([
+      fakeRoom({ roomId: '!a:hs', name: 'A space', space: true }),
+    ]);
+    activeUserId.set('@a:hs');
+    TestBed.inject(ApplicationRef).tick(); // effect's first run: still A
+    expect(svc.spaces().map((s) => s.id)).toEqual(['!a:hs']);
+    client.off.mockClear();
+
+    const clientB = {
+      getRooms: () => [
+        fakeRoom({ roomId: '!b:hs', name: 'B space', space: true }),
+      ],
+      getRoom: () => null,
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    ngMocks.stubMember(matrix, 'instance', clientB as unknown as MatrixClient);
+    activeUserId.set('@b:hs');
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(client.off).toHaveBeenCalled(); // detached from A
+    expect(clientB.on).toHaveBeenCalled(); // attached to B
+    expect(svc.spaces().map((s) => s.id)).toEqual(['!b:hs']);
   });
 });

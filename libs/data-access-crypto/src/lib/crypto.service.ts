@@ -1,5 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { type MatrixClient, type UIAuthCallback } from 'matrix-js-sdk';
+import { type UIAuthCallback } from 'matrix-js-sdk';
 import {
   CryptoEvent,
   decodeRecoveryKey,
@@ -11,7 +11,7 @@ import type { SecretStorageKeyDescriptionAesV1 } from 'matrix-js-sdk/lib/secret-
 import { Observable, defer, from } from 'rxjs';
 import {
   MatrixClientService,
-  reprojectOnAccountSwitch,
+  projectFromClient,
 } from '@trinity/data-access-matrix-client';
 import {
   decryptMegolmKeyFile,
@@ -49,16 +49,6 @@ export type CryptoStatus =
 export class CryptoService {
   private readonly matrix = inject(MatrixClientService);
 
-  /**
-   * The client we currently have crypto listeners on. Keyed to the instance (not
-   * a boolean) so a logout→login rewires onto the new client instead of leaving
-   * the status signals frozen on the discarded one.
-   */
-  private connectedClient: MatrixClient | null = null;
-
-  /** Stable listener ref so {@link connect}/{@link disconnect} can add and remove it. */
-  private readonly onCryptoEvent = (): void => void this.computeStatus();
-
   private readonly _status = signal<CryptoStatus>('unknown');
   /** Primary signal that drives the encryption banner / setup vs unlock UI. */
   readonly status = this._status.asReadonly();
@@ -71,51 +61,38 @@ export class CryptoService {
   /** Whether this device is cross-signing verified. */
   readonly thisDeviceVerified = this._thisDeviceVerified.asReadonly();
 
-  constructor() {
-    // On an account switch, re-project crypto status onto the newly-active account's
-    // client — but only while it is already wired to one.
-    reprojectOnAccountSwitch(
-      this.matrix,
-      () => this.connectedClient !== null,
-      () => this.connect(),
-    );
-  }
-
   /**
-   * Attach crypto listeners and compute the initial status. Idempotent; call once
-   * the client is live (alongside `RoomsService.connect()`).
+   * The sync projection: client-keyed listeners, coalesced recomputes, and re-projection
+   * onto the newly-active account on a switch.
    */
+  private readonly projection = projectFromClient({
+    matrix: this.matrix,
+    events: [
+      CryptoEvent.KeysChanged,
+      CryptoEvent.UserTrustStatusChanged,
+      CryptoEvent.KeyBackupStatus,
+      CryptoEvent.DevicesUpdated,
+    ],
+    // These four arrive together during initial sync and after a key query, and each one
+    // previously ran a full computeStatus() — several async crypto reads — on its own.
+    // Coalescing them is the behaviour change in this migration; the status signals it
+    // writes are unchanged.
+    rebuild: () => void this.computeStatus(),
+    reset: () => {
+      this._status.set('unknown');
+      this._keyBackupActive.set(false);
+      this._thisDeviceVerified.set(false);
+    },
+  });
+
+  /** Subscribe to crypto events and compute the initial status; pair with disconnect. */
   connect(): void {
-    if (!this.matrix.isInitialized) {
-      return;
-    }
-    const client = this.matrix.instance;
-    if (this.connectedClient === client) {
-      return; // already wired to this client
-    }
-    this.disconnect(); // drop listeners from any previous client
-    this.connectedClient = client;
-    client.on(CryptoEvent.KeysChanged, this.onCryptoEvent);
-    client.on(CryptoEvent.UserTrustStatusChanged, this.onCryptoEvent);
-    client.on(CryptoEvent.KeyBackupStatus, this.onCryptoEvent);
-    client.on(CryptoEvent.DevicesUpdated, this.onCryptoEvent);
-    void this.computeStatus();
+    this.projection.connect();
   }
 
   /** Detach crypto listeners from the current client and reset status signals. */
   disconnect(): void {
-    const client = this.connectedClient;
-    if (!client) {
-      return;
-    }
-    client.off(CryptoEvent.KeysChanged, this.onCryptoEvent);
-    client.off(CryptoEvent.UserTrustStatusChanged, this.onCryptoEvent);
-    client.off(CryptoEvent.KeyBackupStatus, this.onCryptoEvent);
-    client.off(CryptoEvent.DevicesUpdated, this.onCryptoEvent);
-    this.connectedClient = null;
-    this._status.set('unknown');
-    this._keyBackupActive.set(false);
-    this._thisDeviceVerified.set(false);
+    this.projection.disconnect();
   }
 
   /** Re-evaluate the status signals against the current crypto state. */

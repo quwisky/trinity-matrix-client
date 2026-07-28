@@ -1,10 +1,10 @@
 import { Injectable, Signal, inject, signal } from '@angular/core';
-import { MatrixClient, UserEvent, type User } from 'matrix-js-sdk';
+import { UserEvent, type User } from 'matrix-js-sdk';
 import { Observable, defer, from, tap, throwError } from 'rxjs';
 import { type PresenceState, toPresenceState } from '@trinity/util-matrix';
 import {
   MatrixClientService,
-  reprojectOnAccountSwitch,
+  projectFromClient,
 } from '@trinity/data-access-matrix-client';
 
 /**
@@ -20,9 +20,6 @@ import {
 @Injectable({ providedIn: 'root' })
 export class PresenceService {
   private readonly matrix = inject(MatrixClientService);
-
-  /** The client we currently have the presence listener on (null when detached). */
-  private connectedClient: MatrixClient | null = null;
 
   /** One writable signal per tracked user id, updated in place as presence changes. */
   private readonly states = new Map<
@@ -46,7 +43,7 @@ export class PresenceService {
     // The signed-in user is always shown online (see currentPresence); never let a self
     // presence event the server might send flip us offline.
     const next =
-      user.userId === this.connectedClient?.getUserId()
+      user.userId === this.projection.client()?.getUserId()
         ? 'online'
         : toPresenceState(user.presence);
     // Only write (→ a change-detection pass) on an actual coarse-state change: the client
@@ -56,16 +53,6 @@ export class PresenceService {
       state.set(next);
     }
   };
-
-  constructor() {
-    // On an account switch, re-bind onto the newly-active account's client — but only
-    // while already connected (a viewing surface is displaying presence).
-    reprojectOnAccountSwitch(
-      this.matrix,
-      () => this.connectedClient !== null,
-      () => this.connect(),
-    );
-  }
 
   /**
    * Reactive presence for a user; `offline` until a presence update is seen. Safe to call
@@ -81,31 +68,34 @@ export class PresenceService {
   }
 
   /**
-   * Attach the presence listener and re-seed tracked users from the current client.
+   * The projection. `onPresence` is bound by hand because it reads the event's `user`
+   * argument, and there is nothing to coalesce: the handler is a targeted O(1) write to
+   * one user's signal, not a rebuild of a read model.
+   */
+  private readonly projection = projectFromClient({
+    matrix: this.matrix,
+    bind: (client) => client.on(UserEvent.Presence, this.onPresence),
+    unbind: (client) => client.off(UserEvent.Presence, this.onPresence),
+    // Re-seed any already-tracked users from this client (a re-login brings a fresh
+    // client whose users may differ), so stale signals don't linger at the old value.
+    rebuild: () => {
+      for (const [userId, state] of this.states) {
+        state.set(this.currentPresence(userId));
+      }
+    },
+  });
+
+  /**
+   * Track presence changes for users this session displays; pair with {@link disconnect}.
    * Idempotent per client; re-running after a re-login rewires onto the new one.
    */
   connect(): void {
-    if (!this.matrix.isInitialized) {
-      return;
-    }
-    const client = this.matrix.instance;
-    if (this.connectedClient === client) {
-      return;
-    }
-    this.disconnect();
-    this.connectedClient = client;
-    client.on(UserEvent.Presence, this.onPresence);
-    // Re-seed any already-tracked users from this client (a re-login brings a fresh
-    // client whose users may differ), so stale signals don't linger at the old value.
-    for (const [userId, state] of this.states) {
-      state.set(this.currentPresence(userId));
-    }
+    this.projection.connect();
   }
 
   /** Detach the presence listener from the current client. */
   disconnect(): void {
-    this.connectedClient?.off(UserEvent.Presence, this.onPresence);
-    this.connectedClient = null;
+    this.projection.disconnect();
   }
 
   /**

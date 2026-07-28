@@ -25,7 +25,10 @@ import {
   tap,
   throwError,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  coalesce,
+  MatrixClientService,
+} from '@trinity/data-access-matrix-client';
 import { MediaService } from '@trinity/data-access-media';
 import {
   PrivacySettingsService,
@@ -98,6 +101,12 @@ export interface RoomTombstone {
  * SDK routes threaded replies into per-thread timelines, so they are absent from
  * the room's live timeline here — only thread *roots* remain in the main view. The
  * thread roots and their replies are projected separately by `ThreadsService`.
+ *
+ * Deliberately not a `projectFromClient` projection: this service is scoped to the OPEN
+ * ROOM, binding to a `Room` as well as to the client, so its lifetime is open()/close()
+ * rather than the client's. That is also why it needs no account-switch re-projection —
+ * a switch closes the open room first (`rooms.page.ts`, `runOnAccount`). It does take the
+ * shared `coalesce`, which is the half that applies.
  */
 @Injectable({ providedIn: 'root' })
 export class TimelineService {
@@ -158,9 +167,6 @@ export class TimelineService {
    */
   private connectedClient: MatrixClient | null = null;
 
-  /** Whether a coalesced re-projection is already queued for this microtask turn. */
-  private refreshScheduled = false;
-
   /**
    * Coalesce listener-driven re-projections into one per microtask.
    *
@@ -168,12 +174,27 @@ export class TimelineService {
    * messages, or decrypting a backfilled room — fires the handler once per event, and
    * {@link refresh} walks and fingerprints *every* loaded event each time. Refreshing
    * per event is therefore quadratic in the burst. Collapse the burst into a single
-   * pass, exactly as `RoomsService.scheduleRefresh` does.
+   * pass, exactly as the client projections do.
    *
    * refresh() writes the projection signals, and under zoneless a signal write
    * schedules change detection on its own — so typing indicators and shield changes
    * flush without waiting for an incidental tick.
+   *
+   * The batching itself is `coalesce`, shared with the client projections — this service
+   * is room-scoped so it takes that primitive alone, as {@link PinnedMessagesService}
+   * does. The `room` guard below is why it stays wrapped: a queued pass must not run
+   * against a closed room.
    */
+  private readonly refreshCoalescer = coalesce(() => {
+    if (this.room) {
+      this.refresh();
+    }
+  });
+
+  private scheduleRefresh(): void {
+    this.refreshCoalescer.schedule();
+  }
+
   constructor() {
     // Re-project the open room when a system-line category is toggled: the filter runs during
     // refresh, so without this the timeline would keep the lines until the next live event
@@ -202,19 +223,6 @@ export class TimelineService {
       case 'room':
         return this.systemLines.showRoomChanges();
     }
-  }
-
-  private scheduleRefresh(): void {
-    if (this.refreshScheduled) {
-      return;
-    }
-    this.refreshScheduled = true;
-    queueMicrotask(() => {
-      this.refreshScheduled = false;
-      if (this.room) {
-        this.refresh();
-      }
-    });
   }
 
   /** The room currently open in the timeline, or null when none is. Lets other

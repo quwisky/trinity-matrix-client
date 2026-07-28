@@ -13,7 +13,7 @@ import {
 import { Observable, Subscription, defer, from, map, switchMap } from 'rxjs';
 import {
   MatrixClientService,
-  reprojectOnAccountSwitch,
+  projectFromClient,
 } from '@trinity/data-access-matrix-client';
 import {
   roomEncryptionInitialState,
@@ -130,14 +130,6 @@ type SpaceChildBase = Omit<SpaceChildRoom, 'joined'>;
 export class SpacesService {
   private readonly matrix = inject(MatrixClientService);
 
-  /**
-   * The client we currently have listeners on. The client is recreated on every
-   * (re-)login, so connection is keyed to the instance, not a boolean — otherwise a
-   * logout→login would leave the listeners on the discarded client and freeze this
-   * read model.
-   */
-  private connectedClient: MatrixClient | null = null;
-
   private readonly _spaces = signal<SpaceSummary[]>([]);
   /** The user's joined spaces, sorted by name; live as the client syncs. */
   readonly spaces = this._spaces.asReadonly();
@@ -198,17 +190,6 @@ export class SpacesService {
   );
 
   /**
-   * Stable listener ref so {@link connect}/{@link disconnect} can add and remove it.
-   * Coalesced ({@link scheduleRefresh}): a completed /sync fires a burst of
-   * Sync/Room/Name/MyMembership events, and rebuilding + re-sorting the whole spaces
-   * read model once per event is wasteful — collapse them into a single rebuild.
-   */
-  private readonly onChange = (): void => this.scheduleRefresh();
-
-  /** Whether a coalesced refresh is already queued for this microtask turn. */
-  private refreshScheduled = false;
-
-  /**
    * State-event listener scoped to `m.space.child`: every state event flows through
    * here, so filter to the child links to avoid refreshing on unrelated state
    * (avatars, topics, membership of unrelated rooms, …). These are rare admin
@@ -216,83 +197,51 @@ export class SpacesService {
    */
   private readonly onStateEvent = (event: MatrixEvent): void => {
     if (event.getType() === SPACE_CHILD_EVENT) {
-      // Via scheduleRefresh so it coalesces with the sync burst that typically
-      // accompanies it.
-      this.scheduleRefresh();
+      // Via the projection's scheduler so it coalesces with the sync burst that
+      // typically accompanies it.
+      this.projection.schedule();
     }
   };
 
-  constructor() {
-    // On an account switch, re-project this service onto the newly-active account's
-    // client — but only while it is already wired to one.
-    reprojectOnAccountSwitch(
-      this.matrix,
-      () => this.connectedClient !== null,
-      () => this.connect(),
-    );
-  }
+  /**
+   * The sync projection: client-keyed listeners, coalesced rebuilds, re-projection on an
+   * account switch. Listens to the same events as {@link RoomsService} — which is the
+   * point of sharing {@link projectFromClient} rather than mirroring it by hand.
+   */
+  private readonly projection = projectFromClient({
+    matrix: this.matrix,
+    events: [
+      ClientEvent.Sync,
+      ClientEvent.Room,
+      // A space (or child) being (re)named affects sort order and labels.
+      RoomEvent.Name,
+      // Joining/leaving a space or a child room changes what is shown.
+      RoomEvent.MyMembership,
+    ],
+    // refresh() writes signals, which schedule change detection on their own.
+    rebuild: () => this.refresh(),
+    // `m.space.child` add/remove/reorder arrives as a room state event, and the handler
+    // has to read the event to tell it apart from every other state change — so it is
+    // bound by hand rather than listed above.
+    bind: (client) => client.on(RoomStateEvent.Events, this.onStateEvent),
+    unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),
+    reset: () => {
+      this._spaces.set([]);
+      this.resetHierarchy();
+    },
+  });
 
   /**
    * Attach sync listeners and do the first read. Idempotent per client (e.g. the
    * shell's `ngOnInit`); re-running after a re-login rewires onto the new client.
    */
   connect(): void {
-    if (!this.matrix.isInitialized) {
-      return;
-    }
-    const client = this.matrix.instance;
-    if (this.connectedClient === client) {
-      return; // already wired to this client
-    }
-    this.disconnect(); // drop listeners from any previous client
-    this.connectedClient = client;
-    client.on(ClientEvent.Sync, this.onChange);
-    client.on(ClientEvent.Room, this.onChange);
-    // A space (or child) being (re)named affects sort order and labels.
-    client.on(RoomEvent.Name, this.onChange);
-    // Joining/leaving a space or a child room changes what is shown.
-    client.on(RoomEvent.MyMembership, this.onChange);
-    // `m.space.child` add/remove/reorder arrives as a room state event.
-    client.on(RoomStateEvent.Events, this.onStateEvent);
-    this.refresh();
+    this.projection.connect();
   }
 
   /** Detach listeners from the current client and reset the read model. */
   disconnect(): void {
-    const client = this.connectedClient;
-    if (!client) {
-      return;
-    }
-    client.off(ClientEvent.Sync, this.onChange);
-    client.off(ClientEvent.Room, this.onChange);
-    client.off(RoomEvent.Name, this.onChange);
-    client.off(RoomEvent.MyMembership, this.onChange);
-    client.off(RoomStateEvent.Events, this.onStateEvent);
-    this.connectedClient = null;
-    this.refreshScheduled = false;
-    this._spaces.set([]);
-    this.resetHierarchy();
-  }
-
-  /**
-   * Coalesce a burst of sync events into a single rebuild: queue {@link refresh} on
-   * the microtask after the current task drains, deduped by {@link refreshScheduled},
-   * and dropped if {@link disconnect} ran meanwhile. ({@link connect} does the first
-   * read synchronously, so consumers see the model immediately.)
-   */
-  private scheduleRefresh(): void {
-    if (this.refreshScheduled) {
-      return;
-    }
-    this.refreshScheduled = true;
-    queueMicrotask(() => {
-      this.refreshScheduled = false;
-      if (this.connectedClient) {
-        // refresh() writes signals, which schedule change detection on their own.
-        // Mirrors RoomsService.scheduleRefresh, which listens to the very same events.
-        this.refresh();
-      }
-    });
+    this.projection.disconnect();
   }
 
   /** Cancel any in-flight hierarchy fetch and clear the open-space child model. */

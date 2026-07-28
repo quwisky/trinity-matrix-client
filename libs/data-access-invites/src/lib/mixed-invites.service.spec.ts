@@ -191,4 +191,24 @@ describe('MixedInvitesService', () => {
         .sort(),
     ).toEqual(['!ia2:hs', '!ib:hs']);
   });
+
+  it('coalesces a burst of events into one rebuild', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const a = fakeClient([fakeInvite('!ia:hs', { name: 'Alpha' })], '@a:hs');
+    const getRooms = vi.fn(() => a.getRooms());
+    clients.set('@a:hs', { ...a, getRooms });
+    clients.set('@b:hs', fakeClient([fakeInvite('!ib:hs')], '@b:hs'));
+    accountIds.set(['@a:hs', '@b:hs']);
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+    getRooms.mockClear();
+
+    // Without batching this re-reads every account's rooms once per event.
+    clients.get('@a:hs')!.emit('Room');
+    clients.get('@a:hs')!.emit('Room');
+    clients.get('@a:hs')!.emit('Room');
+    await flush();
+
+    expect(getRooms).toHaveBeenCalledTimes(1);
+  });
 });

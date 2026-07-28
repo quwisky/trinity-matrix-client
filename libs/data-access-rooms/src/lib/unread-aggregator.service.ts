@@ -5,7 +5,10 @@ import {
   RoomEvent,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  coalesce,
+  MatrixClientService,
+} from '@trinity/data-access-matrix-client';
 
 /** A no-arg listener reused across every unread-affecting client / room event. */
 type UnreadListener = () => void;
@@ -47,7 +50,6 @@ export class UnreadAggregatorService {
   });
 
   private readonly listeners = new Map<string, AccountListener>();
-  private flushScheduled = false;
 
   constructor() {
     // Reconcile per-account listeners against the live account set — runs at startup
@@ -80,18 +82,19 @@ export class UnreadAggregatorService {
 
   /**
    * Coalesce a burst of events into one rebuild: recompute the totals on the microtask
-   * after the current task drains, deduped by {@link flushScheduled}.
+   * after the current task drains, deduped by the shared coalescer.
    */
+  /**
+   * Coalesced through the shared primitive. Keyed on the account set, not one active
+   * client, so it takes the batching alone rather than `projectFromClient`.
+   */
+  private readonly flusher = coalesce(() => {
+    // flush() writes the per-account signal, which schedules change detection.
+    this.flush();
+  });
+
   private scheduleFlush(): void {
-    if (this.flushScheduled) {
-      return;
-    }
-    this.flushScheduled = true;
-    queueMicrotask(() => {
-      this.flushScheduled = false;
-      // flush() writes the per-account signal, which schedules change detection.
-      this.flush();
-    });
+    this.flusher.schedule();
   }
 
   private flush(): void {

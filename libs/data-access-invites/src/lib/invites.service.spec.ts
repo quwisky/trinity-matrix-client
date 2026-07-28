@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { RoomEvent } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
@@ -47,7 +47,10 @@ function fakeRoom(opts: RoomOpts, myUserId: string) {
   };
 }
 
+const activeUserId = signal<string | null>(null);
+
 function setup(rooms: ReturnType<typeof fakeRoom>[]) {
+  activeUserId.set(null);
   const client = {
     getUserId: () => '@me:hs',
     getRooms: () => rooms,
@@ -60,7 +63,9 @@ function setup(rooms: ReturnType<typeof fakeRoom>[]) {
     providers: [
       InvitesService,
       MockProvider(MatrixClientService, {
-        activeUserId: signal<string | null>(null).asReadonly(),
+        // Writable, so a test can drive an account switch — the projection re-wires off
+        // this signal, and a read-only one would make that untestable.
+        activeUserId: activeUserId.asReadonly(),
       }),
     ],
   });
@@ -200,6 +205,32 @@ describe('InvitesService', () => {
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!b:hs']);
     expect(clientA.off).toHaveBeenCalled();
     expect(clientB.on).toHaveBeenCalled();
+  });
+
+  it('re-projects onto the newly-active account when the active account switches', () => {
+    const { svc, client, matrix } = setup([
+      fakeRoom({ roomId: '!a:hs', name: 'A invite' }),
+    ]);
+    activeUserId.set('@a:hs');
+    TestBed.inject(ApplicationRef).tick(); // effect's first run: still A
+    expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!a:hs']);
+    client.off.mockClear();
+
+    const clientB = {
+      getUserId: () => '@b:hs',
+      getRooms: () => [fakeRoom({ roomId: '!b:hs', name: 'B invite' })],
+      joinRoom: vi.fn().mockResolvedValue({}),
+      leave: vi.fn().mockResolvedValue({}),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    ngMocks.stubMember(matrix, 'instance', clientB);
+    activeUserId.set('@b:hs');
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(client.off).toHaveBeenCalled(); // detached from A
+    expect(clientB.on).toHaveBeenCalled(); // attached to B
+    expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!b:hs']);
   });
 });
 

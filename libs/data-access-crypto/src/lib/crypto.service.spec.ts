@@ -14,6 +14,7 @@ import {
 } from 'vitest';
 import { MatrixError } from 'matrix-js-sdk';
 import {
+  CryptoEvent,
   deriveRecoveryKeyFromPassphrase,
   encodeRecoveryKey,
   type BootstrapCrossSigningOpts,
@@ -109,13 +110,26 @@ function setup(opts: CryptoOpts = {}) {
     checkKey: vi.fn().mockResolvedValue(opts.checkKey ?? true),
   };
 
+  // Dispatching rather than inert, so a test can drive the event path the service
+  // actually listens on — `on: vi.fn()` records a subscription but can never fire it.
+  const listeners = new Map<string, Set<() => void>>();
   const client = {
     getCrypto: () => (opts.hasCrypto === false ? undefined : crypto),
     secretStorage,
     getDeviceId: () => 'DEV',
     getUserId: () => '@me:hs',
-    on: vi.fn(),
-    off: vi.fn(),
+    on: vi.fn((event: string, fn: () => void) => {
+      const set = listeners.get(event) ?? new Set<() => void>();
+      listeners.set(event, set.add(fn));
+    }),
+    off: vi.fn((event: string, fn: () => void) => {
+      listeners.get(event)?.delete(fn);
+    }),
+    emit: (event: string) => {
+      for (const fn of listeners.get(event) ?? []) {
+        fn();
+      }
+    },
   };
 
   const holder = new SecretStorageKeyHolder();
@@ -391,6 +405,26 @@ describe('CryptoService', () => {
       svc.connect();
       svc.connect();
       expect(client.on).toHaveBeenCalledTimes(4);
+    });
+
+    it('coalesces a burst of crypto events into one status recompute', async () => {
+      const { svc, client, crypto } = setup({ defaultKeyId: 'k' });
+      svc.connect();
+      await Promise.resolve();
+      crypto.isCrossSigningReady.mockClear();
+
+      // These four arrive together after a key query; each used to run its own
+      // computeStatus, which is several async crypto reads.
+      client.emit(CryptoEvent.KeysChanged);
+      client.emit(CryptoEvent.DevicesUpdated);
+      client.emit(CryptoEvent.UserTrustStatusChanged);
+      client.emit(CryptoEvent.KeyBackupStatus);
+      // Flushed BEFORE asserting: the recompute is queued, so a count taken here
+      // without the flush would read zero whether or not coalescing works.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(crypto.isCrossSigningReady).toHaveBeenCalledTimes(1);
     });
 
     it('rewires onto a new client after re-login and recomputes status', async () => {

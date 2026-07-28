@@ -9,7 +9,10 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, map, of, tap } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import {
+  coalesce,
+  MatrixClientService,
+} from '@trinity/data-access-matrix-client';
 import { liveRoomState, messagePreview } from '@trinity/util-matrix';
 
 /**
@@ -54,6 +57,11 @@ export interface PinnedMessageView {
  * loaded yet, or that resolves to a redacted event, is dropped from
  * {@link pinnedMessages} rather than fetched — the `Timeline`/`Decrypted` listeners
  * bump a revision so a pin resolves as its event later loads or decrypts.
+ *
+ * Room-scoped, like {@link TimelineService} and unlike the client projections: it binds to
+ * a `Room`, lives for one open room, and so takes the batching primitive (`coalesce`)
+ * alone rather than `projectFromClient`. An account switch closes the open room before
+ * switching, so there is nothing here to re-project.
  */
 @Injectable({ providedIn: 'root' })
 export class PinnedMessagesService {
@@ -122,16 +130,28 @@ export class PinnedMessagesService {
       this.readRoomState();
     }
   };
+  /**
+   * Both bumps below go through one coalescer. `RoomEvent.Timeline` fires for EVERY
+   * event in the open room — every message, and every event of a backfill page — and
+   * each bump re-runs the computeds that resolve pinned previews. Batching them into one
+   * bump per turn is the difference between per-message and per-turn work in a busy room.
+   *
+   * This service is room-scoped (see {@link open}), so it takes the batching primitive
+   * alone rather than the client projection.
+   */
+  private readonly bumpRevision = coalesce(() =>
+    this._revision.update((n) => n + 1),
+  );
   // A pinned event may decrypt after its id is pinned; bump the revision so its
   // preview resolves once the plaintext is available.
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.roomId) {
-      this._revision.update((n) => n + 1);
+      this.bumpRevision.schedule();
     }
   };
   // A pinned event may load via pagination/backfill after it was pinned; bump so its
   // preview resolves once the event is in the timeline.
-  private readonly onTimeline = (): void => this._revision.update((n) => n + 1);
+  private readonly onTimeline = (): void => this.bumpRevision.schedule();
 
   /** Start projecting a room's pinned messages; attaches live listeners. */
   open(roomId: string): void {
@@ -167,6 +187,9 @@ export class PinnedMessagesService {
     // Detach from the client open() attached to, not `matrix.instance` — that follows
     // the active account and would leak this listener on the old client after a switch.
     this.connectedClient?.off(MatrixEventEvent.Decrypted, this.onDecrypted);
+    // Drop any bump queued for this turn: it would otherwise fire after close() has
+    // returned and tick the revision back up on a closed room.
+    this.bumpRevision.cancel();
     this.connectedClient = null;
     this.room = null;
     this.roomId = null;

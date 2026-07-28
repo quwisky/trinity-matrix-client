@@ -146,7 +146,7 @@ describe('UnreadAggregatorService', () => {
     client.emit(RoomEvent.Receipt);
     await flush();
 
-    // flushScheduled coalesces the burst: one rebuild, one getRooms read — not one per event.
+    // The coalescer collapses the burst: one rebuild, one getRooms read — not one per event.
     expect(getRoomsCalls).toBe(1);
     expect(svc.totalUnread()).toBe(9);
   });
