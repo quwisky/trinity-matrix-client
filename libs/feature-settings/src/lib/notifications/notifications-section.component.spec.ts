@@ -5,6 +5,7 @@ import { NEVER, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import {
+  KeywordRulesService,
   PushRulesService,
   type PushRuleToggle,
 } from '@trinity/data-access-notifications';
@@ -23,6 +24,9 @@ async function build(over: { setOn?: ReturnType<typeof vi.fn> } = {}) {
   const { fixture } = await render(NotificationsSectionComponent, {
     providers: [
       MockProvider(PushRulesService, { toggles: TOGGLES, isOn, setOn }),
+      // The section renders the keyword block, which would otherwise reach the real
+      // MatrixClientService — harmless today only because it reports uninitialised.
+      MockProvider(KeywordRulesService, { keywords: () => [] }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });

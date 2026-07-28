@@ -1,0 +1,81 @@
+<div data-testid="keyword-rules">
+  <h2
+    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+  >
+    Keywords
+  </h2>
+  <p class="px-4 py-1 text-13 text-muted-foreground">
+    Be notified whenever one of these words is said, in any room. A muted room
+    stays muted — keywords do not override it.
+  </p>
+
+  @if (isEmpty()) {
+    <p
+      class="px-4 py-2 text-13 text-muted-foreground"
+      data-testid="keyword-empty"
+    >
+      You have no keywords yet.
+    </p>
+  } @else {
+    <ul class="flex flex-col">
+      @for (keyword of keywords(); track keyword.pattern) {
+        <li
+          class="flex items-center justify-between gap-3 px-4 py-2"
+          data-testid="keyword-row"
+        >
+          <span class="min-w-0 truncate text-sm font-medium">{{
+            keyword.pattern
+          }}</span>
+          <span class="flex shrink-0 items-center gap-3">
+            <label
+              class="flex cursor-pointer items-center gap-2 text-13 text-muted-foreground"
+            >
+              <hlm-checkbox
+                [checked]="keyword.sound"
+                [disabled]="isBusy(keyword.pattern)"
+                (checkedChange)="toggleSound(keyword.pattern, $event)"
+                data-testid="keyword-sound"
+              />
+              Sound
+            </label>
+            <button
+              hlmBtn
+              type="button"
+              variant="outline"
+              size="sm"
+              [disabled]="isBusy(keyword.pattern)"
+              (click)="remove(keyword.pattern)"
+              data-testid="keyword-remove"
+            >
+              Remove
+            </button>
+          </span>
+        </li>
+      }
+    </ul>
+  }
+
+  <div class="flex items-center gap-2 px-4 py-2">
+    <input
+      hlmInput
+      class="min-w-0 flex-1"
+      [formField]="keywordForm.word"
+      placeholder="Add a word…"
+      autocomplete="off"
+      aria-label="Add a keyword"
+      (keydown.enter)="onEnter($event)"
+      data-testid="keyword-input"
+    />
+    <button
+      hlmBtn
+      type="button"
+      variant="outline"
+      size="sm"
+      [disabled]="adding()"
+      (click)="add()"
+      data-testid="keyword-add"
+    >
+      {{ adding() ? 'Adding…' : 'Add' }}
+    </button>
+  </div>
+</div>
