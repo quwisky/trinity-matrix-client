@@ -71,7 +71,7 @@ describe('RoomDirectoryComponent', () => {
 
   it('searches by the entered term', async () => {
     const { cmp, search } = await build();
-    cmp.query.setValue('chess');
+    cmp.searchForm.query().value.set('chess');
 
     cmp.search();
 
@@ -82,12 +82,17 @@ describe('RoomDirectoryComponent', () => {
     });
   });
 
+  // Dispatched on the real <form> rather than by calling a handler: preventDefault is
+  // the [formRoot] directive's job now, so a test that called a component method would
+  // pass with the binding removed — which is exactly the regression it guards against.
   it('runs the search and prevents the native form navigation on submit', async () => {
-    const { cmp, search } = await build();
-    const event = new Event('submit', { cancelable: true });
+    const { container, search } = await build();
+    const form = container.querySelector('form');
+    const event = new Event('submit', { cancelable: true, bubbles: true });
 
-    cmp.onSubmit(event);
+    form?.dispatchEvent(event);
 
+    expect(form).not.toBeNull();
     expect(event.defaultPrevented).toBe(true); // no page reload
     expect(search).toHaveBeenCalledTimes(2); // ngOnInit + submit
   });

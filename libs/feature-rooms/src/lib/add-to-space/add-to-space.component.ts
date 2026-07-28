@@ -8,8 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { FormField, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmInput } from '@trinity/helm/input';
@@ -51,13 +50,7 @@ export interface AddCandidate {
 @Component({
   selector: 'trn-add-to-space',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    ReactiveFormsModule,
-    HlmButton,
-    HlmCheckbox,
-    HlmInput,
-    AvatarComponent,
-  ],
+  imports: [FormField, HlmButton, HlmCheckbox, HlmInput, AvatarComponent],
   templateUrl: './add-to-space.component.html',
   styleUrl: './add-to-space.component.scss',
 })
@@ -74,10 +67,12 @@ export class AddToSpaceComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  readonly query = new FormControl('', { nonNullable: true });
-  private readonly term = toSignal(this.query.valueChanges, {
-    initialValue: '',
-  });
+  /**
+   * The search box. `form` treats the model signal as its source of truth rather than
+   * copying it, so `searchModel()` IS the live value — no `valueChanges` to project.
+   */
+  private readonly searchModel = signal({ query: '' });
+  readonly search = form(this.searchModel);
 
   /** True while the add writes are in flight. */
   readonly adding = signal(false);
@@ -123,7 +118,7 @@ export class AddToSpaceComponent {
 
   /** {@link candidates} narrowed by the search box. */
   readonly visible = computed(() => {
-    const term = this.term().trim().toLowerCase();
+    const term = this.searchModel().query.trim().toLowerCase();
     if (!term) {
       return this.candidates();
     }

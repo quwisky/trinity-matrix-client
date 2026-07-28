@@ -54,7 +54,7 @@ describe('RoomAliasesComponent', () => {
     // Enter would implicitly submit it — saving and CLOSING the dialog without ever adding
     // the address the user just typed.
     const { cmp, addAlias } = await build();
-    cmp.newLocalpart.setValue('team');
+    cmp.aliasForm.localpart().value.set('team');
     const event = { preventDefault: vi.fn() } as unknown as Event;
 
     cmp.onEnter(event);
@@ -78,13 +78,13 @@ describe('RoomAliasesComponent', () => {
 
   it('adds a `#localpart:server` alias, appends it, and toasts', async () => {
     const { cmp, addAlias, toastShow } = await build({ aliases: [] });
-    cmp.newLocalpart.setValue('lounge');
+    cmp.aliasForm.localpart().value.set('lounge');
 
     cmp.add();
 
     expect(addAlias).toHaveBeenCalledWith('!r:hs', '#lounge:hs.example');
     expect(cmp.aliases()).toEqual(['#lounge:hs.example']);
-    expect(cmp.newLocalpart.value).toBe('');
+    expect(cmp.aliasForm.localpart().value()).toBe('');
     expect(toastShow).toHaveBeenCalledWith(
       'Added #lounge:hs.example.',
       expect.objectContaining({ variant: 'success' }),
@@ -93,7 +93,7 @@ describe('RoomAliasesComponent', () => {
 
   it('rejects an invalid localpart without calling the service', async () => {
     const { cmp, addAlias, toastShow } = await build();
-    cmp.newLocalpart.setValue('has spaces');
+    cmp.aliasForm.localpart().value.set('has spaces');
 
     cmp.add();
 
@@ -108,7 +108,7 @@ describe('RoomAliasesComponent', () => {
     const { cmp, addAlias, toastShow } = await build({
       aliases: ['#dup:hs.example'],
     });
-    cmp.newLocalpart.setValue('dup');
+    cmp.aliasForm.localpart().value.set('dup');
 
     cmp.add();
 

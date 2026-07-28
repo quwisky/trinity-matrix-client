@@ -11,7 +11,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
@@ -49,7 +49,7 @@ import { OidcStateStore } from '../oidc-state.store';
   templateUrl: 'login.page.html',
   styleUrl: 'login.page.scss',
   imports: [
-    FormsModule,
+    FormField,
     HlmButton,
     HlmCardImports,
     HlmInput,
@@ -85,7 +85,7 @@ export class LoginPage {
     const reauth = this.reauthUserId();
     if (reauth) {
       // Skip the homeserver step: load the stored record and discover its flows.
-      this.username.set(reauth);
+      this.credentials.update((current) => ({ ...current, username: reauth }));
       this.withBusy(
         this.storage.record(reauth).pipe(
           switchMap((record) => {
@@ -119,10 +119,6 @@ export class LoginPage {
     return this.addMode || this.reauthUserId() ? 'add' : 'replace';
   }
 
-  // Form state.
-  readonly homeserverInput = signal('matrix.org');
-  readonly username = signal('');
-  readonly password = signal('');
   readonly passwordVisible = signal(false);
 
   // Resolved homeserver + capabilities after discovery.
@@ -141,11 +137,31 @@ export class LoginPage {
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
 
+  // Form state. Two forms, not one, because the page is two steps: the homeserver is
+  // resolved first, and the credentials step only exists once discovery reports a
+  // password flow. Declared after `busy` because the schemas below read it.
+  //
+  // The disabled rules live in the schema rather than as [disabled] on the inputs:
+  // Signal Forms owns a field's disabled state, and binding [disabled] on a [formField]
+  // node is a compile error (NG8022).
+  private readonly homeserverModel = signal({ homeserver: 'matrix.org' });
+  readonly homeserverForm = form(this.homeserverModel, (path) => {
+    disabled(path.homeserver, { when: () => this.busy() });
+  });
+  private readonly credentials = signal({ username: '', password: '' });
+  readonly credentialsForm = form(this.credentials, (path) => {
+    // In re-auth the account is fixed: the username is pre-filled and must stay put.
+    disabled(path.username, {
+      when: () => this.busy() || !!this.reauthUserId(),
+    });
+    disabled(path.password, { when: () => this.busy() });
+  });
+
   /** Step 1: resolve the homeserver and discover its login flows (+ OIDC, in parallel). */
   discover(): void {
     this.withBusy(
       this.auth
-        .discoverHomeserver(this.homeserverInput())
+        .discoverHomeserver(this.homeserverModel().homeserver)
         .pipe(
           switchMap((baseUrl) =>
             this.discoverCapabilities(baseUrl).pipe(
@@ -201,8 +217,8 @@ export class LoginPage {
     this.withBusy(
       this.auth.loginWithPassword(
         baseUrl,
-        this.username(),
-        this.password(),
+        this.credentials().username,
+        this.credentials().password,
         this.loginMode(),
         this.reauthDeviceId ?? undefined,
       ),

@@ -84,14 +84,14 @@ describe('SpaceSettingsComponent', () => {
       canEditJoinRule: true,
     });
 
-    expect(cmp.form.controls.name.value).toBe('Design');
-    expect(cmp.form.controls.topic.value).toBe('Where design happens');
-    expect(cmp.form.controls.joinRule.value).toBe(JoinRule.Public);
+    expect(cmp.form.name().value()).toBe('Design');
+    expect(cmp.form.topic().value()).toBe('Where design happens');
+    expect(cmp.form.joinRule().value()).toBe(JoinRule.Public);
   });
 
   it('renames the space and closes resolving true on save', async () => {
     const { cmp, setName, close } = await build({ name: 'Old', topic: 'T' });
-    cmp.form.controls.name.setValue('New name');
+    cmp.form.name().value.set('New name');
 
     cmp.save();
 
@@ -103,7 +103,7 @@ describe('SpaceSettingsComponent', () => {
     // The name guard below is deliberately not applied to the topic: a space with no topic
     // is ordinary, a space with no name is not.
     const { cmp, setTopic } = await build({ name: 'N', topic: 'old topic' });
-    cmp.form.controls.topic.setValue('');
+    cmp.form.topic().value.set('');
 
     cmp.save();
 
@@ -112,7 +112,7 @@ describe('SpaceSettingsComponent', () => {
 
   it('never blanks the name, even if the field is emptied', async () => {
     const { cmp, setName, close } = await build({ name: 'Design', topic: '' });
-    cmp.form.controls.name.setValue('   ');
+    cmp.form.name().value.set('   ');
 
     cmp.save();
 
@@ -127,7 +127,7 @@ describe('SpaceSettingsComponent', () => {
       joinRule: JoinRule.Invite,
       canEditJoinRule: true,
     });
-    cmp.form.controls.topic.setValue('T2');
+    cmp.form.topic().value.set('T2');
 
     cmp.save();
 
@@ -142,7 +142,7 @@ describe('SpaceSettingsComponent', () => {
       joinRule: JoinRule.Invite,
       canEditJoinRule: true,
     });
-    cmp.form.controls.joinRule.setValue(JoinRule.Public);
+    cmp.form.joinRule().value.set(JoinRule.Public);
 
     cmp.save();
 
@@ -167,8 +167,8 @@ describe('SpaceSettingsComponent', () => {
       { name: 'Design', topic: 'T' },
       { setTopic: vi.fn(() => throwError(() => new Error('forbidden'))) },
     );
-    cmp.form.controls.name.setValue('Design 2');
-    cmp.form.controls.topic.setValue('T2');
+    cmp.form.name().value.set('Design 2');
+    cmp.form.topic().value.set('T2');
 
     cmp.save();
 
@@ -188,9 +188,9 @@ describe('SpaceSettingsComponent', () => {
       canEditJoinRule: false,
     });
 
-    expect(cmp.form.controls.name.disabled).toBe(true);
-    expect(cmp.form.controls.topic.disabled).toBe(true);
-    expect(cmp.form.controls.joinRule.disabled).toBe(true);
+    expect(cmp.form.name().disabled()).toBe(true);
+    expect(cmp.form.topic().disabled()).toBe(true);
+    expect(cmp.form.joinRule().disabled()).toBe(true);
   });
 
   it('does not offer restricted as a space join rule', async () => {

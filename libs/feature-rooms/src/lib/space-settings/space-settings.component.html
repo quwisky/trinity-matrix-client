@@ -1,7 +1,7 @@
 <div class="space-settings" data-testid="space-settings">
   <h2 class="space-settings__title">Space settings</h2>
 
-  <form [formGroup]="form" class="space-settings__form" (ngSubmit)="save()">
+  <form [formRoot]="form" class="space-settings__form" (submit)="save()">
     <trn-avatar-field
       [roomId]="spaceId()"
       [name]="name()"
@@ -17,7 +17,7 @@
       <input
         hlmInput
         class="w-full"
-        formControlName="name"
+        [formField]="form.name"
         autocomplete="off"
         data-testid="space-settings-name"
       />
@@ -29,7 +29,7 @@
         hlmInput
         class="w-full"
         rows="3"
-        formControlName="topic"
+        [formField]="form.topic"
         data-testid="space-settings-topic"
       ></textarea>
     </label>
@@ -39,7 +39,7 @@
       <select
         hlmInput
         class="w-full"
-        formControlName="joinRule"
+        [formField]="form.joinRule"
         data-testid="space-settings-join-rule"
       >
         @for (option of joinRuleOptions(); track option.value) {

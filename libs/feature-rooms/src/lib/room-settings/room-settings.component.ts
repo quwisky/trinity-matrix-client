@@ -8,8 +8,8 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
-import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormField, FormRoot, disabled, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmInput } from '@trinity/helm/input';
@@ -24,6 +24,15 @@ import { BannedMembersComponent } from '../banned-members/banned-members.compone
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 import { AvatarFieldComponent } from '../shared/avatar-field/avatar-field.component';
 import { saveFields, type FieldWrite } from '../shared/save-fields';
+import {
+  applyRoomBasicsGates,
+  type RoomBasics,
+} from '../shared/room-basics-form';
+
+/** The room dialog's model: the shared three, plus the one only a room has. */
+interface RoomSettingsModel extends RoomBasics {
+  historyVisibility: HistoryVisibility;
+}
 
 /** A space this room sits in, offered as a `restricted` join-rule target. */
 export interface ParentSpace {
@@ -64,7 +73,8 @@ const HISTORY_OPTIONS = [
   selector: 'trn-room-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    ReactiveFormsModule,
+    FormField,
+    FormRoot,
     HlmButton,
     HlmCheckbox,
     HlmInput,
@@ -206,41 +216,35 @@ export class RoomSettingsComponent implements OnInit {
     return [...preserved, ...ticked];
   }
 
-  readonly form = new FormGroup({
-    name: new FormControl('', { nonNullable: true }),
-    topic: new FormControl('', { nonNullable: true }),
-    joinRule: new FormControl<JoinRule>(JoinRule.Invite, { nonNullable: true }),
-    historyVisibility: new FormControl<HistoryVisibility>(
-      HistoryVisibility.Shared,
-      { nonNullable: true },
-    ),
+  private readonly model = signal<RoomSettingsModel>({
+    name: '',
+    topic: '',
+    joinRule: JoinRule.Invite,
+    historyVisibility: HistoryVisibility.Shared,
   });
 
-  // Declared AFTER `form`: field initializers run in order, and this one reads it.
-  private readonly selectedRule = toSignal(
-    this.form.controls.joinRule.valueChanges,
-    { initialValue: this.form.controls.joinRule.value },
-  );
+  readonly form = form(this.model, (path) => {
+    applyRoomBasicsGates(path, {
+      canEditName: this.canEditName,
+      canEditTopic: this.canEditTopic,
+      canEditJoinRule: this.canEditJoinRule,
+    });
+    disabled(path.historyVisibility, { when: () => !this.canEditHistory() });
+  });
+
+  // Was a toSignal over joinRule.valueChanges. The model IS a signal, so the projection
+  // that existed only to make the control readable from a computed is gone.
+  private readonly selectedRule = computed(() => this.model().joinRule);
 
   ngOnInit(): void {
-    this.form.setValue({
+    // Seeded once, deliberately: a linkedSignal over the inputs would re-seed on any synced
+    // state change and wipe what the user is typing.
+    this.model.set({
       name: this.name(),
       topic: this.topic(),
       joinRule: this.joinRule(),
       historyVisibility: this.historyVisibility(),
     });
-    if (!this.canEditName()) {
-      this.form.controls.name.disable();
-    }
-    if (!this.canEditTopic()) {
-      this.form.controls.topic.disable();
-    }
-    if (!this.canEditJoinRule()) {
-      this.form.controls.joinRule.disable();
-    }
-    if (!this.canEditHistory()) {
-      this.form.controls.historyVisibility.disable();
-    }
     const parentIds = this.parentSpaces().map((space) => space.id);
     this.checkedSpaces.set(
       this.joinRule() === JoinRule.Restricted
@@ -257,8 +261,14 @@ export class RoomSettingsComponent implements OnInit {
    */
   save(): void {
     const roomId = this.roomId();
-    const name = this.form.controls.name.value.trim();
-    const topic = this.form.controls.topic.value.trim();
+    const {
+      name: rawName,
+      topic: rawTopic,
+      joinRule,
+      historyVisibility,
+    } = this.model();
+    const name = rawName.trim();
+    const topic = rawTopic.trim();
     const writes: FieldWrite[] = [];
     // A room name shouldn't be blanked from here — only write a non-empty change.
     if (this.canEditName() && name && name !== this.name().trim()) {
@@ -270,7 +280,6 @@ export class RoomSettingsComponent implements OnInit {
         op: this.settings.setTopic(roomId, topic),
       });
     }
-    const joinRule = this.form.controls.joinRule.value;
     const allow = joinRule === JoinRule.Restricted ? this.allowToWrite() : [];
     // Restricted → restricted with a changed allow list is a real change, so this cannot
     // be `joinRule !== seeded` alone or ticking a space would silently do nothing. It also
@@ -285,7 +294,6 @@ export class RoomSettingsComponent implements OnInit {
         op: this.settings.setJoinRule(roomId, joinRule, allow),
       });
     }
-    const historyVisibility = this.form.controls.historyVisibility.value;
     if (
       this.canEditHistory() &&
       historyVisibility !== this.historyVisibility()

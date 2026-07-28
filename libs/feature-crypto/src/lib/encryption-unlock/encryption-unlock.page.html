@@ -37,9 +37,7 @@
       autocorrect="off"
       autocomplete="off"
       placeholder="EsTx xxxx xxxx …"
-      [disabled]="busy()"
-      [ngModel]="recoveryKey()"
-      (ngModelChange)="recoveryKey.set($event)"
+      [formField]="unlockForm.recoveryKey"
       (keyup.enter)="unlock()"
     />
     <p class="mt-1 text-xs text-muted-foreground">
@@ -50,7 +48,7 @@
   <button
     hlmBtn
     class="mt-4 w-full"
-    [disabled]="busy() || !recoveryKey().trim()"
+    [disabled]="busy() || !hasKey()"
     (click)="unlock()"
   >
     Unlock

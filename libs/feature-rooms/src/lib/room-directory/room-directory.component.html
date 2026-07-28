@@ -31,11 +31,20 @@
     </button>
   </div>
 
-  <form class="flex items-center gap-2" (submit)="onSubmit($event)">
+  <!--
+    [formRoot] is what stops a bare <form> navigating away on submit: the directive
+    sets novalidate and calls preventDefault() itself, which is why this handler is a
+    plain search() and not a hand-rolled event.preventDefault().
+  -->
+  <form
+    class="flex items-center gap-2"
+    [formRoot]="searchForm"
+    (submit)="search()"
+  >
     <input
       hlmInput
       class="min-w-0 flex-1"
-      [formControl]="query"
+      [formField]="searchForm.query"
       placeholder="Search public rooms"
       autocomplete="off"
       data-testid="directory-search"

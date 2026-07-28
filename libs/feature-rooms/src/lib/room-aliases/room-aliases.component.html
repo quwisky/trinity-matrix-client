@@ -58,7 +58,7 @@
     <input
       hlmInput
       class="min-w-0 flex-1"
-      [formControl]="newLocalpart"
+      [formField]="aliasForm.localpart"
       placeholder="new-address"
       autocomplete="off"
       (keydown.enter)="onEnter($event)"

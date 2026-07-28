@@ -131,8 +131,8 @@ describe('LoginPage', () => {
       loginWithPassword,
     } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
-    cmp.username.set('alice');
-    cmp.password.set('hunter2');
+    cmp.credentialsForm.username().value.set('alice');
+    cmp.credentialsForm.password().value.set('hunter2');
 
     cmp.loginPassword();
 
@@ -155,8 +155,8 @@ describe('LoginPage', () => {
       { add: true },
     );
     cmp.baseUrl.set('https://hs.example');
-    cmp.username.set('bob');
-    cmp.password.set('hunter2');
+    cmp.credentialsForm.username().value.set('bob');
+    cmp.credentialsForm.password().value.set('hunter2');
 
     expect(cmp.addMode).toBe(true);
     cmp.loginPassword();
@@ -192,10 +192,10 @@ describe('LoginPage', () => {
     // The constructor loaded the record: homeserver known, username locked in.
     expect(cmp.reauthUserId()).toBe('@bob:hs');
     expect(cmp.baseUrl()).toBe('https://hs.example');
-    expect(cmp.username()).toBe('@bob:hs');
+    expect(cmp.credentialsForm.username().value()).toBe('@bob:hs');
     expect(getSupportedFlows).toHaveBeenCalledWith('https://hs.example');
 
-    cmp.password.set('hunter2');
+    cmp.credentialsForm.password().value.set('hunter2');
     cmp.loginPassword();
 
     // Re-auth logs in ADD mode, re-authenticating the EXISTING device.

@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
@@ -19,6 +19,10 @@ import { BannedMembersComponent } from '../banned-members/banned-members.compone
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 import { AvatarFieldComponent } from '../shared/avatar-field/avatar-field.component';
 import { saveFields, type FieldWrite } from '../shared/save-fields';
+import {
+  applyRoomBasicsGates,
+  type RoomBasics,
+} from '../shared/room-basics-form';
 
 /**
  * The join-rule choices offered for a SPACE. Deliberately not the room dialog's list: "Anyone
@@ -57,7 +61,8 @@ const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
   selector: 'trn-space-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    ReactiveFormsModule,
+    FormField,
+    FormRoot,
     HlmButton,
     HlmInput,
     AvatarFieldComponent,
@@ -125,27 +130,31 @@ export class SpaceSettingsComponent implements OnInit {
     },
   );
 
-  readonly form = new FormGroup({
-    name: new FormControl('', { nonNullable: true }),
-    topic: new FormControl('', { nonNullable: true }),
-    joinRule: new FormControl<JoinRule>(JoinRule.Invite, { nonNullable: true }),
+  private readonly model = signal<RoomBasics>({
+    name: '',
+    topic: '',
+    joinRule: JoinRule.Invite,
   });
 
+  readonly form = form(this.model, (path) =>
+    applyRoomBasicsGates(path, {
+      canEditName: this.canEditName,
+      canEditTopic: this.canEditTopic,
+      canEditJoinRule: this.canEditJoinRule,
+    }),
+  );
+
+  /**
+   * Seeded once, deliberately. A `linkedSignal` over the inputs would re-seed whenever the
+   * synced state changes — so a name edit arriving from another device while this dialog is
+   * open would wipe what the user is typing.
+   */
   ngOnInit(): void {
-    this.form.setValue({
+    this.model.set({
       name: this.name(),
       topic: this.topic(),
       joinRule: this.joinRule(),
     });
-    if (!this.canEditName()) {
-      this.form.controls.name.disable();
-    }
-    if (!this.canEditTopic()) {
-      this.form.controls.topic.disable();
-    }
-    if (!this.canEditJoinRule()) {
-      this.form.controls.joinRule.disable();
-    }
   }
 
   /**
@@ -154,8 +163,9 @@ export class SpaceSettingsComponent implements OnInit {
    */
   save(): void {
     const spaceId = this.spaceId();
-    const name = this.form.controls.name.value.trim();
-    const topic = this.form.controls.topic.value.trim();
+    const { name: rawName, topic: rawTopic, joinRule } = this.model();
+    const name = rawName.trim();
+    const topic = rawTopic.trim();
     const writes: FieldWrite[] = [];
     // A space shouldn't be blanked from here — only write a non-empty change.
     if (this.canEditName() && name && name !== this.name().trim()) {
@@ -167,7 +177,6 @@ export class SpaceSettingsComponent implements OnInit {
         op: this.settings.setTopic(spaceId, topic),
       });
     }
-    const joinRule = this.form.controls.joinRule.value;
     if (this.canEditJoinRule() && joinRule !== this.joinRule()) {
       writes.push({
         field: 'join rule',

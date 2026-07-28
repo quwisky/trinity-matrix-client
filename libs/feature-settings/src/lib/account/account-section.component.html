@@ -23,9 +23,9 @@
     </div>
   } @else {
     <form
-      [formGroup]="form"
+      [formRoot]="form"
       class="flex flex-col gap-4 px-4 py-3"
-      (ngSubmit)="submit()"
+      (submit)="submit()"
     >
       <p class="text-13 text-muted-foreground">Change your account password.</p>
 
@@ -38,7 +38,7 @@
             [type]="revealed().currentPassword ? 'text' : 'password'"
             class="pr-10"
             autocomplete="current-password"
-            formControlName="currentPassword"
+            [formField]="form.currentPassword"
             data-testid="current-password"
           />
           <button
@@ -67,7 +67,7 @@
             [type]="revealed().newPassword ? 'text' : 'password'"
             class="pr-10"
             autocomplete="new-password"
-            formControlName="newPassword"
+            [formField]="form.newPassword"
             data-testid="new-password"
           />
           <button
@@ -96,7 +96,7 @@
             [type]="revealed().confirmPassword ? 'text' : 'password'"
             class="pr-10"
             autocomplete="new-password"
-            formControlName="confirmPassword"
+            [formField]="form.confirmPassword"
             data-testid="confirm-password"
           />
           <button

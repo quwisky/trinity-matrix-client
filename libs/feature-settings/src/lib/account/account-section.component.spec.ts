@@ -12,6 +12,24 @@ vi.mock('@capacitor/browser', () => ({
 }));
 import { Browser } from '@capacitor/browser';
 
+/**
+ * Fill the three password boxes through the form's own fields — the same writable
+ * signals the inputs bind to, so a test drives the component the way a user would
+ * rather than through an accessor that exists only for tests.
+ */
+function fill(
+  cmp: AccountSectionComponent,
+  values: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  },
+): void {
+  cmp.form.currentPassword().value.set(values.currentPassword);
+  cmp.form.newPassword().value.set(values.newPassword);
+  cmp.form.confirmPassword().value.set(values.confirmPassword);
+}
+
 describe('AccountSectionComponent', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -78,16 +96,25 @@ describe('AccountSectionComponent', () => {
 
   it('changes the password, clears the form, and toasts on success', async () => {
     const { cmp, auth, toast } = await renderSection();
-    cmp.form.setValue({
+    fill(cmp, {
       currentPassword: 'old-pw',
       newPassword: 'new-secret-pw',
       confirmPassword: 'new-secret-pw',
     });
 
+    // Typing into a field and leaving it is what marks it touched in the browser;
+    // value.set() alone never does, so without this the assertion below cannot fail.
+    cmp.form().markAsTouched();
+
     cmp.submit();
 
     expect(auth.changePassword).toHaveBeenCalledWith('old-pw', 'new-secret-pw');
-    expect(cmp.form.getRawValue().newPassword).toBe(''); // reset()
+    expect(cmp.form.newPassword().value()).toBe(''); // reset()
+    // Cleared AND untouched. Emptying the values alone leaves three now-invalid
+    // required fields marked touched, which is a primed error state — the reason
+    // this asserts the flag and not just the value.
+    expect(cmp.form.newPassword().touched()).toBe(false);
+    expect(cmp.form.currentPassword().touched()).toBe(false);
     expect(cmp.error()).toBeNull();
     expect(toast.show).toHaveBeenCalledWith(
       'Password changed.',
@@ -97,7 +124,7 @@ describe('AccountSectionComponent', () => {
 
   it('refuses a mismatched confirmation without calling the service', async () => {
     const { cmp, auth } = await renderSection();
-    cmp.form.setValue({
+    fill(cmp, {
       currentPassword: 'old-pw',
       newPassword: 'new-secret-pw',
       confirmPassword: 'different-pw',
@@ -111,7 +138,7 @@ describe('AccountSectionComponent', () => {
 
   it('refuses reusing the current password', async () => {
     const { cmp, auth } = await renderSection();
-    cmp.form.setValue({
+    fill(cmp, {
       currentPassword: 'same-secret-pw',
       newPassword: 'same-secret-pw',
       confirmPassword: 'same-secret-pw',
@@ -125,7 +152,7 @@ describe('AccountSectionComponent', () => {
 
   it('blocks a too-short new password (form invalid)', async () => {
     const { cmp, auth } = await renderSection();
-    cmp.form.setValue({
+    fill(cmp, {
       currentPassword: 'old-pw',
       newPassword: 'short',
       confirmPassword: 'short',
@@ -142,7 +169,7 @@ describe('AccountSectionComponent', () => {
     vi.mocked(auth.changePassword).mockReturnValue(
       throwError(() => new Error('Your current password is incorrect.')),
     );
-    cmp.form.setValue({
+    fill(cmp, {
       currentPassword: 'wrong-pw',
       newPassword: 'new-secret-pw',
       confirmPassword: 'new-secret-pw',
@@ -151,7 +178,7 @@ describe('AccountSectionComponent', () => {
     cmp.submit();
 
     expect(cmp.error()).toBe('Your current password is incorrect.');
-    expect(cmp.form.getRawValue().newPassword).toBe('new-secret-pw'); // not reset
+    expect(cmp.form.newPassword().value()).toBe('new-secret-pw'); // not reset
     expect(toast.show).not.toHaveBeenCalled();
   });
 });

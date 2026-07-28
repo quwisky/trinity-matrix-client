@@ -56,14 +56,14 @@ describe('EncryptionUnlockPage', () => {
       recover: of(undefined),
     });
 
-    fixture.componentInstance.recoveryKey.set('  my-key  ');
+    fixture.componentInstance.unlockForm.recoveryKey().value.set('  my-key  ');
     fixture.componentInstance.unlock();
 
     expect(crypto.recoverWithKey).toHaveBeenCalledWith('my-key');
     expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
       replaceUrl: true,
     });
-    expect(fixture.componentInstance.recoveryKey()).toBe(''); // cleared from memory
+    expect(fixture.componentInstance.unlockForm.recoveryKey().value()).toBe(''); // cleared from memory
   });
 
   it('returns to the launch route (returnTo) on success when routed', async () => {
@@ -72,7 +72,7 @@ describe('EncryptionUnlockPage', () => {
       returnTo: '/settings',
     });
 
-    fixture.componentInstance.recoveryKey.set('my-key');
+    fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
     fixture.componentInstance.unlock();
 
     expect(router.navigateByUrl).toHaveBeenCalledWith('/settings', {
@@ -83,7 +83,7 @@ describe('EncryptionUnlockPage', () => {
   it('does nothing for a blank key', async () => {
     const { fixture, crypto } = await renderPage();
 
-    fixture.componentInstance.recoveryKey.set('   ');
+    fixture.componentInstance.unlockForm.recoveryKey().value.set('   ');
     fixture.componentInstance.unlock();
 
     expect(crypto.recoverWithKey).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe('EncryptionUnlockPage', () => {
       recover: throwError(() => new Error('That recovery key is incorrect.')),
     });
 
-    fixture.componentInstance.recoveryKey.set('bad-key');
+    fixture.componentInstance.unlockForm.recoveryKey().value.set('bad-key');
     fixture.componentInstance.unlock();
     fixture.detectChanges();
 
@@ -112,7 +112,7 @@ describe('EncryptionUnlockPage', () => {
     let closed = false;
     fixture.componentInstance.closed.subscribe(() => (closed = true));
 
-    fixture.componentInstance.recoveryKey.set('my-key');
+    fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
     fixture.componentInstance.unlock();
 
     expect(closed).toBe(true);
