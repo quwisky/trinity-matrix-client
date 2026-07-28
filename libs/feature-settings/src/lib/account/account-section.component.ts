@@ -7,11 +7,14 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  FormControl,
-  FormGroup,
-  ReactiveFormsModule,
-  Validators,
-} from '@angular/forms';
+  FormField,
+  FormRoot,
+  form,
+  minLength,
+  required,
+  schema,
+  validateTree,
+} from '@angular/forms/signals';
 import { Browser } from '@capacitor/browser';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideEye, lucideEyeOff } from '@ng-icons/lucide';
@@ -28,6 +31,55 @@ const MIN_PASSWORD = 8;
 /** The password fields, each with its own show/hide reveal toggle. */
 type PasswordField = 'currentPassword' | 'newPassword' | 'confirmPassword';
 
+/** The change-password form's model. */
+type PasswordModel = Record<PasswordField, string>;
+
+const EMPTY_PASSWORDS: PasswordModel = {
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+};
+
+/**
+ * One message covers every "you haven't filled this in properly yet" case, because the
+ * fields are masked — naming which of three hidden boxes is short tells the user little
+ * that re-reading the box would not.
+ */
+const INCOMPLETE = `Fill in every field (new password at least ${MIN_PASSWORD} characters).`;
+
+/**
+ * Every rule the change-password form has, including the two that compare fields.
+ *
+ * Those two used to live in `submit()`, which meant the form could report itself valid
+ * while the handler still refused to send it. Here validity is one answer: `submit()`
+ * asks the form and reports what it says.
+ */
+const passwordSchema = schema<PasswordModel>((path) => {
+  required(path.currentPassword, { message: INCOMPLETE });
+  required(path.newPassword, { message: INCOMPLETE });
+  minLength(path.newPassword, MIN_PASSWORD, { message: INCOMPLETE });
+  required(path.confirmPassword, { message: INCOMPLETE });
+
+  // Cross-field, so it belongs to the tree rather than to either field: neither password
+  // is wrong on its own, it is the pair that disagrees.
+  validateTree(path, ({ value }) => {
+    const { currentPassword, newPassword, confirmPassword } = value();
+    if (newPassword !== confirmPassword) {
+      return {
+        kind: 'passwordMismatch',
+        message: 'The new passwords don’t match.',
+      };
+    }
+    if (newPassword === currentPassword) {
+      return {
+        kind: 'passwordReused',
+        message: 'Choose a new password different from the current one.',
+      };
+    }
+    return undefined;
+  });
+});
+
 /**
  * Account settings sub-page. For a password account it changes the account's password;
  * for an OIDC-native account (whose provider owns credentials + device management) it
@@ -37,7 +89,7 @@ type PasswordField = 'currentPassword' | 'newPassword' | 'confirmPassword';
   selector: 'trn-account-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './account-section.component.html',
-  imports: [ReactiveFormsModule, NgIcon, HlmButton, HlmInput, HlmLabel],
+  imports: [FormField, FormRoot, NgIcon, HlmButton, HlmInput, HlmLabel],
   viewProviders: [provideIcons({ lucideEye, lucideEyeOff })],
 })
 export class AccountSectionComponent {
@@ -80,38 +132,37 @@ export class AccountSectionComponent {
     this.revealed.update((state) => ({ ...state, [field]: !state[field] }));
   }
 
-  readonly form = new FormGroup({
-    currentPassword: new FormControl('', {
-      nonNullable: true,
-      validators: [Validators.required],
-    }),
-    newPassword: new FormControl('', {
-      nonNullable: true,
-      validators: [Validators.required, Validators.minLength(MIN_PASSWORD)],
-    }),
-    confirmPassword: new FormControl('', {
-      nonNullable: true,
-      validators: [Validators.required],
-    }),
-  });
+  private readonly passwords = signal<PasswordModel>({ ...EMPTY_PASSWORDS });
+  readonly form = form(this.passwords, passwordSchema);
+
+  /**
+   * The message to show for whatever is currently wrong.
+   *
+   * Field errors before tree errors, which preserves the order the checks used to run
+   * in: a short password reads as "fill this in properly", not as a mismatch it also
+   * happens to have.
+   */
+  private firstError(): string | null {
+    const fields = [
+      this.form.currentPassword,
+      this.form.newPassword,
+      this.form.confirmPassword,
+    ];
+    for (const field of fields) {
+      const message = field().errors()[0]?.message;
+      if (message) {
+        return message;
+      }
+    }
+    return this.form().errors()[0]?.message ?? null;
+  }
 
   /** Validate, then change the password; on success clear the form and toast. */
   submit(): void {
     this.error.set(null);
-    const { currentPassword, newPassword, confirmPassword } =
-      this.form.getRawValue();
-    if (this.form.invalid) {
-      this.error.set(
-        `Fill in every field (new password at least ${MIN_PASSWORD} characters).`,
-      );
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      this.error.set('The new passwords don’t match.');
-      return;
-    }
-    if (newPassword === currentPassword) {
-      this.error.set('Choose a new password different from the current one.');
+    const { currentPassword, newPassword } = this.passwords();
+    if (this.form().invalid()) {
+      this.error.set(this.firstError() ?? INCOMPLETE);
       return;
     }
     runWithBusy(this.auth.changePassword(currentPassword, newPassword), {
@@ -119,7 +170,7 @@ export class AccountSectionComponent {
       error: this.error,
       destroyRef: this.destroyRef,
     }).subscribe(() => {
-      this.form.reset();
+      this.passwords.set({ ...EMPTY_PASSWORDS });
       this.toast.show('Password changed.', {
         duration: 3000,
         variant: 'success',
