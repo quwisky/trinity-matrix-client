@@ -188,7 +188,7 @@ describe('RoomSettingsComponent', () => {
       canEditJoinRule: true,
       joinRule: JoinRule.Invite,
     });
-    cmp.form.controls.joinRule.setValue(JoinRule.Restricted);
+    cmp.form.joinRule().value.set(JoinRule.Restricted);
 
     cmp.save();
 
@@ -208,7 +208,7 @@ describe('RoomSettingsComponent', () => {
       canEditJoinRule: true,
       joinRule: JoinRule.Invite,
     });
-    cmp.form.controls.joinRule.setValue(JoinRule.Restricted);
+    cmp.form.joinRule().value.set(JoinRule.Restricted);
 
     cmp.save();
 
@@ -288,7 +288,7 @@ describe('RoomSettingsComponent', () => {
 
     expect(cmp.showSpaceChoices()).toBe(false);
 
-    cmp.form.controls.joinRule.setValue(JoinRule.Restricted);
+    cmp.form.joinRule().value.set(JoinRule.Restricted);
     expect(cmp.showSpaceChoices()).toBe(true);
   });
 
@@ -307,7 +307,7 @@ describe('RoomSettingsComponent', () => {
       supportsRestricted: true,
       canEditJoinRule: true,
     });
-    cmp.form.controls.topic.setValue('new');
+    cmp.form.topic().value.set('new');
 
     cmp.save();
 
@@ -348,13 +348,13 @@ describe('RoomSettingsComponent', () => {
 
   it('seeds the form from the current name and topic', async () => {
     const { cmp } = await build({ name: 'General', topic: 'The topic' });
-    expect(cmp.form.controls.name.value).toBe('General');
-    expect(cmp.form.controls.topic.value).toBe('The topic');
+    expect(cmp.form.name().value()).toBe('General');
+    expect(cmp.form.topic().value()).toBe('The topic');
   });
 
   it('renames the room and closes resolving true on save', async () => {
     const { cmp, setName, close } = await build({ name: 'Old', topic: 'T' });
-    cmp.form.controls.name.setValue('New name');
+    cmp.form.name().value.set('New name');
 
     cmp.save();
 
@@ -364,7 +364,7 @@ describe('RoomSettingsComponent', () => {
 
   it('updates the topic on save', async () => {
     const { cmp, setTopic, close } = await build({ name: 'N', topic: 'old' });
-    cmp.form.controls.topic.setValue('new topic');
+    cmp.form.topic().value.set('new topic');
 
     cmp.save();
 
@@ -374,7 +374,7 @@ describe('RoomSettingsComponent', () => {
 
   it('clears the topic on save when emptied (unlike the name)', async () => {
     const { cmp, setTopic, close } = await build({ name: 'N', topic: 'old' });
-    cmp.form.controls.topic.setValue('');
+    cmp.form.topic().value.set('');
 
     cmp.save();
 
@@ -397,9 +397,9 @@ describe('RoomSettingsComponent', () => {
 
   it('disables a field the user cannot edit and never writes it', async () => {
     const { cmp, setName } = await build({ name: 'N', canEditName: false });
-    expect(cmp.form.controls.name.disabled).toBe(true);
+    expect(cmp.form.name().disabled()).toBe(true);
 
-    cmp.form.controls.name.setValue('Attempted');
+    cmp.form.name().value.set('Attempted');
     cmp.save();
 
     expect(setName).not.toHaveBeenCalled();
@@ -412,8 +412,8 @@ describe('RoomSettingsComponent', () => {
       canEditJoinRule: true,
       canEditHistory: true,
     });
-    expect(cmp.form.controls.joinRule.value).toBe(JoinRule.Public);
-    expect(cmp.form.controls.historyVisibility.value).toBe(
+    expect(cmp.form.joinRule().value()).toBe(JoinRule.Public);
+    expect(cmp.form.historyVisibility().value()).toBe(
       HistoryVisibility.WorldReadable,
     );
   });
@@ -425,8 +425,8 @@ describe('RoomSettingsComponent', () => {
       canEditJoinRule: true,
       canEditHistory: true,
     });
-    cmp.form.controls.joinRule.setValue(JoinRule.Public);
-    cmp.form.controls.historyVisibility.setValue(HistoryVisibility.Joined);
+    cmp.form.joinRule().value.set(JoinRule.Public);
+    cmp.form.historyVisibility().value.set(HistoryVisibility.Joined);
 
     cmp.save();
 
@@ -463,10 +463,10 @@ describe('RoomSettingsComponent', () => {
       canEditJoinRule: false,
       canEditHistory: false,
     });
-    expect(cmp.form.controls.joinRule.disabled).toBe(true);
-    expect(cmp.form.controls.historyVisibility.disabled).toBe(true);
+    expect(cmp.form.joinRule().disabled()).toBe(true);
+    expect(cmp.form.historyVisibility().disabled()).toBe(true);
 
-    cmp.form.controls.joinRule.setValue(JoinRule.Public);
+    cmp.form.joinRule().value.set(JoinRule.Public);
     cmp.save();
 
     expect(setJoinRule).not.toHaveBeenCalled();
@@ -476,7 +476,7 @@ describe('RoomSettingsComponent', () => {
   it('keeps the dialog open and toasts on a write failure', async () => {
     const setName = vi.fn(() => throwError(() => new Error('nope')));
     const { cmp, close, toastShow } = await build({ name: 'Old' }, { setName });
-    cmp.form.controls.name.setValue('New');
+    cmp.form.name().value.set('New');
 
     cmp.save();
 
@@ -493,8 +493,8 @@ describe('RoomSettingsComponent', () => {
       { name: 'Old', topic: 'oldT' },
       { setTopic },
     );
-    cmp.form.controls.name.setValue('New');
-    cmp.form.controls.topic.setValue('newT');
+    cmp.form.name().value.set('New');
+    cmp.form.topic().value.set('newT');
 
     cmp.save();
 
