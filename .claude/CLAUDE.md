@@ -70,9 +70,10 @@ the HTML template in the `.html` file (unless the component is trivial and alrea
   schema: `required()`, `minLength()`, `validate()`, `validateTree()` for cross‑field rules, and
   `disabled(path, { when: … })` — note the `{ when }` object, since passing a function or string directly is
   deprecated and the type‑aware `@typescript-eslint/no-deprecated` rule fails the build on it.
-  No reactive forms (`FormControl`/`FormGroup`/`ReactiveFormsModule`) remain in the workspace. What does survive is a
-  handful of one‑off `[ngModel]`/`(ngModelChange)` bindings over plain signals — the login page and the encryption
-  unlock page — which are not a form in any real sense. Leave them until they need to become one; add neither.
+  Nothing else remains: no `FormControl`/`FormGroup`/`ReactiveFormsModule`, and no `ngModel`, anywhere in the
+  workspace. Signal Forms is the only form idiom here, so there is no legacy pattern to copy from. Note a field's
+  disabled state belongs to the schema — binding `[disabled]` on a `[formField]` node is a compile error (NG8022),
+  which the unit tests will not catch and `pnpm build` will.
 - Do NOT use `ngClass`; use `[class.foo]="…"`.
 - Do NOT use `ngStyle`; use `[style.prop]="…"`.
 - Avoid heavy logic in templates: keep templates simple, delegate to component class or service.
