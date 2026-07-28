@@ -107,7 +107,7 @@ describe('AddToSpaceComponent', () => {
       rooms: [room('!a:hs', 'Design chat'), room('!b:hs', 'Random')],
     });
 
-    cmp.query.setValue('design');
+    cmp.search.query().value.set('design');
 
     expect(cmp.visible().map((c) => c.id)).toEqual(['!a:hs']);
   });
