@@ -8,7 +8,7 @@ import {
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import {
   MatrixClientService,
-  reprojectOnAccountSwitch,
+  projectFromClient,
 } from '@trinity/data-access-matrix-client';
 
 /** A room we have been invited to but not yet joined (shown in the Invites group). */
@@ -48,91 +48,40 @@ export interface PendingInvite {
 export class InvitesService {
   private readonly matrix = inject(MatrixClientService);
 
-  /**
-   * The client we currently have listeners on. The client is recreated on every
-   * (re-)login, so connection is keyed to the instance, not a boolean — otherwise a
-   * logout→login would leave the listeners on the discarded client and freeze this
-   * read model.
-   */
-  private connectedClient: MatrixClient | null = null;
-
   private readonly _pendingInvites = signal<PendingInvite[]>([]);
   /** Rooms/spaces we have been invited to; live as the client syncs. */
   readonly pendingInvites = this._pendingInvites.asReadonly();
 
-  /** Stable listener ref so {@link connect}/{@link disconnect} can add and remove it. */
-  private readonly onChange = (): void => this.scheduleRefresh();
-
-  /** Whether a coalesced refresh is already queued for this microtask turn. */
-  private refreshScheduled = false;
-
-  /**
-   * Coalesce listener-driven refreshes into one per microtask.
-   *
-   * `ClientEvent.Room` fires once PER ROOM during initial sync, and refresh() walks
-   * every joined room (filter + map + a localeCompare sort) — so refreshing per event
-   * was O(rooms²) on startup. refresh() writes the `_pendingInvites` signal, which
-   * schedules change detection on its own. Mirrors RoomsService.scheduleRefresh,
-   * which listens to the very same events.
-   */
-  private scheduleRefresh(): void {
-    if (this.refreshScheduled) {
-      return;
-    }
-    this.refreshScheduled = true;
-    queueMicrotask(() => {
-      this.refreshScheduled = false;
-      if (this.connectedClient) {
-        this.refresh();
-      }
-    });
-  }
-
-  constructor() {
-    // On an account switch, re-project this service onto the newly-active account's
-    // client — but only while it is already wired to one.
-    reprojectOnAccountSwitch(
-      this.matrix,
-      () => this.connectedClient !== null,
-      () => this.connect(),
-    );
-  }
+  /** The sync projection: client-keyed listeners, coalesced rebuilds, account switch. */
+  private readonly projection = projectFromClient({
+    matrix: this.matrix,
+    events: [
+      ClientEvent.Sync,
+      // A fresh invite arrives as a new Room; accepting/declining flips MyMembership.
+      ClientEvent.Room,
+      RoomEvent.MyMembership,
+      // The invited room being (re)named changes its label.
+      RoomEvent.Name,
+    ],
+    // Coalescing is not cosmetic here: `ClientEvent.Room` fires once PER ROOM during
+    // initial sync and refresh() walks every joined room (filter + map + a localeCompare
+    // sort), so rebuilding per event was O(rooms²) on startup. refresh() writes the
+    // `_pendingInvites` signal, which schedules change detection on its own.
+    rebuild: () => this.refresh(),
+    reset: () => this._pendingInvites.set([]),
+  });
 
   /**
    * Attach sync listeners and do the first read. Idempotent per client (e.g. the
    * shell's `ngOnInit`); re-running after a re-login rewires onto the new client.
    */
   connect(): void {
-    if (!this.matrix.isInitialized) {
-      return;
-    }
-    const client = this.matrix.instance;
-    if (this.connectedClient === client) {
-      return; // already wired to this client
-    }
-    this.disconnect(); // drop listeners from any previous client
-    this.connectedClient = client;
-    client.on(ClientEvent.Sync, this.onChange);
-    // A fresh invite arrives as a new Room; accepting/declining flips MyMembership.
-    client.on(ClientEvent.Room, this.onChange);
-    client.on(RoomEvent.MyMembership, this.onChange);
-    // The invited room being (re)named changes its label.
-    client.on(RoomEvent.Name, this.onChange);
-    this.refresh();
+    this.projection.connect();
   }
 
   /** Detach listeners from the current client and reset the read model. */
   disconnect(): void {
-    const client = this.connectedClient;
-    if (!client) {
-      return;
-    }
-    client.off(ClientEvent.Sync, this.onChange);
-    client.off(ClientEvent.Room, this.onChange);
-    client.off(RoomEvent.MyMembership, this.onChange);
-    client.off(RoomEvent.Name, this.onChange);
-    this.connectedClient = null;
-    this._pendingInvites.set([]);
+    this.projection.disconnect();
   }
 
   /** Accept an invite by joining the room/space, on the account it was sent to. Cold. */

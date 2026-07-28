@@ -27,8 +27,13 @@ export interface ProjectFromClientConfig {
    * Rebuild the read model from this client. Called synchronously by {@link
    * ClientProjection.connect} — so consumers see the model immediately — and again on each
    * coalesced flush.
+   *
+   * Optional, because a projection need not have a read model of its own: a service that
+   * only forwards events (and does no initial read) still wants the client-keyed listeners
+   * and the account-switch re-projection. Omitting it with {@link events} set would mean an
+   * event list that triggers nothing, so pass one or neither.
    */
-  rebuild: (client: MatrixClient) => void;
+  rebuild?: (client: MatrixClient) => void;
 
   /**
    * Events that mean "the model changed". Bound to a coalesced rebuild.
@@ -101,7 +106,7 @@ export function projectFromClient(
 
   const runRebuild = (): void => {
     if (connectedClient) {
-      rebuild(connectedClient);
+      rebuild?.(connectedClient);
     }
   };
   const coalescer = coalesce(runRebuild);
@@ -125,7 +130,7 @@ export function projectFromClient(
         client.on(event, onEvent);
       }
       bind?.(client);
-      rebuild(client);
+      rebuild?.(client);
     },
 
     disconnect(): void {

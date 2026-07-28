@@ -188,6 +188,22 @@ describe('projectFromClient', () => {
     expect(client.count(RoomEvent.Receipt)).toBe(0); // genuinely detached
   });
 
+  it('works with no rebuild, for a service that only forwards events', () => {
+    // Its whole benefit is the lifecycle: client-keyed listeners plus re-projection.
+    const bound: string[] = [];
+    const { projection, client } = harness({
+      rebuild: undefined,
+      events: [],
+      bind: (c) => bound.push(asFake(c).name),
+    });
+
+    projection.connect();
+
+    expect(bound).toEqual(['first']);
+    expect(projection.isConnected()).toBe(true);
+    expect(client.count(ClientEvent.Sync)).toBe(0); // nothing to trigger
+  });
+
   it('re-projects onto the new client when the active account changes', () => {
     const { projection, instance, activeUserId, rebuild, tick } = harness();
     projection.connect();
