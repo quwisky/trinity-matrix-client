@@ -58,7 +58,30 @@ export function mediaHttpUrl(
  * the caller rendered its placeholder.
  */
 function isUnsupportedEndpoint(status: number): boolean {
-  return status === 404 || status === 400;
+  return (
+    status === 404 || // M_UNRECOGNIZED, the spec'd answer for an unknown endpoint
+    status === 400 || // some servers answer M_UNRECOGNIZED as 400
+    status === 405 || // a reverse proxy that does not route the v1 media path
+    status === 501 // a gateway reporting the method as unimplemented
+  );
+}
+
+/**
+ * Re-tag a network-level failure as the SDK's own ConnectionError.
+ *
+ * A dropped connection surfaces as a bare TypeError carrying no status, which
+ * {@link isTransientMatrixError} cannot recognise and so treats as terminal. Tagging it
+ * here — rather than widening that predicate — keeps a plain TypeError non-transient
+ * everywhere else, which is what its spec pins and what the global error handler wants.
+ */
+function asConnectionError(cause: unknown): Observable<never> {
+  return throwError(
+    () =>
+      new ConnectionError(
+        'Media fetch failed',
+        cause instanceof Error ? cause : undefined,
+      ),
+  );
 }
 
 /**
@@ -93,19 +116,9 @@ export function fetchMediaBytes(
         ),
       ).pipe(
         // A rejected `fetch` is a network-level failure (offline, DNS/TLS, a CORS
-        // rejection) rather than an answer from the server, and it arrives as a bare
-        // TypeError that `retryTransient` cannot recognise — so re-tag it as the SDK's
-        // own ConnectionError, which it already treats as transient. Without this an
+        // rejection) rather than an answer from the server. Without the re-tag an
         // offline blip lasting a few hundred ms is terminal for every avatar in flight.
-        catchError((cause: unknown) =>
-          throwError(
-            () =>
-              new ConnectionError(
-                'Media fetch failed',
-                cause instanceof Error ? cause : undefined,
-              ),
-          ),
-        ),
+        catchError(asConnectionError),
       );
     });
 
@@ -117,7 +130,11 @@ export function fetchMediaBytes(
     ),
     switchMap((res) =>
       res.ok
-        ? from(res.arrayBuffer())
+        ? // Reading the body can fail on its own — the connection dropping after the
+          // headers arrived aborts the stream — and that rejection is a bare TypeError
+          // just like a rejected `fetch`. Re-tag it the same way, or the very blip this
+          // retries would still be terminal one line further down the pipeline.
+          from(res.arrayBuffer()).pipe(catchError(asConnectionError))
         : // Throw an HTTPError carrying the status so retryTransient recognises a
           // transient 503/5xx/429 and retries with backoff before the caller's
           // catchError falls back (a plain Error would be treated as terminal).

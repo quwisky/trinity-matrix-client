@@ -60,8 +60,8 @@ function fakeRoom(opts: {
   events?: ReturnType<typeof timelineEvent>[];
   members?: ReturnType<typeof fakeMember>[];
   creator?: string | null;
-  /** The other person in a DM, whose avatar stands in for the room's. */
-  dmPeerAvatarMxc?: string;
+  /** Avatar of the member the SDK offers as a stand-in for a room with ≤2 members. */
+  peerAvatarMxc?: string;
 }) {
   return {
     roomId: opts.roomId,
@@ -71,11 +71,13 @@ function fakeRoom(opts: {
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,
-    // The SDK offers a member to stand in for a missing room avatar only in a DM;
-    // `undefined` (a group room) is the common case.
+    // Modelled honestly: the SDK hands back a stand-in member for ANY room with two or
+    // fewer members, DM or not (room.js:761 bails out only above two). Returning
+    // `undefined` for group rooms here would make the guard untestable — the fake, not
+    // the code, would be producing the initial.
     getAvatarFallbackMember: () =>
-      opts.dmPeerAvatarMxc
-        ? { getMxcAvatarUrl: () => opts.dmPeerAvatarMxc }
+      opts.peerAvatarMxc
+        ? { getMxcAvatarUrl: () => opts.peerAvatarMxc }
         : undefined,
     getJoinedMemberCount: () => opts.members?.length ?? 0,
     getJoinedMembers: () => opts.members ?? [],
@@ -187,19 +189,37 @@ describe('RoomsService', () => {
     // A DM is never given an `m.room.avatar`, so reading only that state event left
     // every 1:1 conversation showing a coloured initial beside a name that had
     // resolved to the person perfectly well.
-    const svc = setup([
-      fakeRoom({
-        roomId: '!dm:hs',
-        name: 'Bob',
-        dmPeerAvatarMxc: 'mxc://hs/bob',
-      }),
-      fakeRoom({ roomId: '!room:hs', name: 'general' }),
-    ]);
+    //
+    // BOTH rooms here offer a stand-in member, exactly as the SDK does for any room of
+    // two or fewer; only `m.direct` separates them. That is the point — a two-person
+    // named group room must keep its initial rather than wear that member's face and
+    // then lose it again the moment a third person joins.
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [
+        fakeRoom({
+          roomId: '!dm:hs',
+          name: 'Bob',
+          peerAvatarMxc: 'mxc://hs/bob',
+        }),
+        fakeRoom({
+          roomId: '!pair:hs',
+          name: 'planning',
+          peerAvatarMxc: 'mxc://hs/colleague',
+        }),
+      ],
+      getAccountData: (type: string) =>
+        type === 'm.direct'
+          ? { getContent: () => ({ '@bob:hs': ['!dm:hs'] }) }
+          : undefined,
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+    svc.connect();
 
     const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
     expect(byId.get('!dm:hs')?.avatarMxc).toBe('mxc://hs/bob');
-    // A group room with no avatar has no stand-in and correctly keeps its initial.
-    expect(byId.get('!room:hs')?.avatarMxc).toBeNull();
+    expect(byId.get('!pair:hs')?.avatarMxc).toBeNull();
   });
 
   it('orders rooms by recent activity and maps unread counts', () => {

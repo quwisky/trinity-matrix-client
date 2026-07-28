@@ -519,12 +519,16 @@ export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
 }
 
 /**
- * Add the user ids whose room membership a rendered message depends on — the
- * sender (shown in the header) and, for a reply, the quoted sender shown in the
- * reply preview — into `into`. A projection uses this to re-map only when a member
- * it actually references loads or changes its name/avatar, rather than on every
- * member update in a large room. The reply target's sender is included only when
- * the target is loaded, which is exactly when a (possibly stale) preview renders.
+ * Add the user ids whose room membership a rendered message depends on into `into`:
+ * the sender shown in the header, the quoted sender in a reply preview, the reactors a
+ * pill names, and the readers whose "seen by" receipts sit on the event. A projection
+ * uses this to re-map only when a member it actually references loads or changes its
+ * name/avatar, rather than on every member update in a large room.
+ *
+ * Each group is bounded — the reply target's sender counts only while the target is
+ * loaded (exactly when a possibly-stale preview renders), reactors stop at
+ * `MAX_NAMED_REACTORS`, and readers at `MAX_RECEIPTS` — so the set stays proportional to
+ * what is on screen rather than to the room's membership.
  */
 export function collectMessageSenders(
   client: MatrixClient,

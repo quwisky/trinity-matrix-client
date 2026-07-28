@@ -92,9 +92,11 @@ async function setProfileAvatar(
 }
 
 /**
- * Seed a reader with two rooms: a DM whose partner has a profile picture but which has
- * no room avatar of its own, and a plain group room with no avatar at all — the control
- * that must keep showing its initial.
+ * Seed a reader with two rooms that differ ONLY in being a DM: a direct message with the
+ * partner, and a named group room the same partner also joined. Both have no room avatar
+ * and both therefore offer the SDK the same stand-in member — the two-person group room
+ * is the case that regresses if the DM fallback is left to the SDK's member-count
+ * heuristic, and a one-member room would not exercise that branch at all.
  */
 async function seedDmAndGroup(
   request: APIRequestContext,
@@ -138,10 +140,18 @@ async function seedDmAndGroup(
     { headers: reader.headers, data: { [partner.userId]: [dmId] } },
   );
 
-  await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: reader.headers,
-    data: { name: groupName },
-  });
+  const groupId = await request
+    .post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: reader.headers,
+      data: { name: groupName, invite: [partner.userId] },
+    })
+    .then((r) => r.json())
+    .then((j) => j.room_id as string);
+  // Two members, exactly like the DM — and deliberately NOT recorded in `m.direct`.
+  await request.post(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(groupId)}/join`,
+    { headers: partner.headers },
+  );
 
   return {
     reader: { available: true, hs, user: readerUser, pass: readerPass },
@@ -176,12 +186,20 @@ test.describe('Direct-message avatar', () => {
     await expect(dmImage).toBeVisible({ timeout: 30_000 });
     await expect(dmImage).toHaveAttribute('src', /^blob:/);
 
-    // The control: a group room with no avatar has no stand-in member and correctly
-    // keeps its coloured initial. Without it, a selector that matched anything at all
-    // would let this test pass while the fallback did nothing.
+    // The control: a two-member NAMED group room, same partner, same picture, differing
+    // only in not being in `m.direct`. It must keep its initial — dressing a room in a
+    // member's face is worse than the initial it replaces, and it would vanish again the
+    // moment a third person joined.
+    //
+    // Asserting an absence is only meaningful once the thing could have appeared, and
+    // `toHaveCount(0)` is satisfied by the very first poll. The ordering above is what
+    // makes it sound: the DM has already resolved this exact mxc at this exact size, so
+    // it sits in AvatarService's cache, and a regressed build would replay it into the
+    // group row synchronously rather than after a fetch.
     await page.getByTestId('rail-rooms').click();
     const groupRow = page.locator('.channel', { hasText: groupName });
     await groupRow.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await expect(groupRow.first().locator('trn-avatar')).toBeVisible();
     await expect(groupRow.first().locator('trn-avatar img')).toHaveCount(0);
   });
 });

@@ -167,6 +167,43 @@ describe('fetchMediaBytes', () => {
     expect(fetchMock).toHaveBeenCalledTimes(4); // 1 initial + 3 retries
   });
 
+  it('retries when the body read fails after the headers arrived', async () => {
+    // The connection dropping mid-stream rejects `arrayBuffer()`, not `fetch()`, so this
+    // failure enters the pipeline a step later than the one above — and as the same
+    // status-less TypeError.
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: () => Promise.reject(new TypeError('network error')),
+    } as unknown as Response);
+
+    const settled = firstValueFrom(
+      fetchMediaBytes(fakeClient(), 'mxc://hs/a', null, true),
+    ).catch((e: unknown) => e);
+    await vi.runAllTimersAsync();
+
+    expect(await settled).toBeInstanceOf(ConnectionError);
+    expect(fetchMock).toHaveBeenCalledTimes(4); // 1 initial + 3 retries
+  });
+
+  it.each([405, 501])(
+    'falls back to legacy when a proxy answers the v1 path with %i',
+    async (status) => {
+      // A gateway that does not route `/_matrix/client/v1/media/download` reports the
+      // endpoint as missing without using 404, and legacy serves the media perfectly.
+      fetchMock
+        .mockResolvedValueOnce(response(status))
+        .mockResolvedValueOnce(response(200));
+
+      await firstValueFrom(
+        fetchMediaBytes(fakeClient(), 'mxc://hs/a', null, true),
+      );
+
+      expect(endpointsOf(fetchMock)).toEqual(['authed', 'legacy']);
+    },
+  );
+
   it('gives up immediately on a genuine client error', async () => {
     fetchMock.mockResolvedValue(response(403));
 

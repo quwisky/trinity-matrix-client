@@ -156,17 +156,21 @@ export function buildInvite(
     : undefined;
   const inviterId = myMemberEvent?.getSender() ?? '';
   const inviter = inviterId ? room.getMember(inviterId) : null;
+  const isDirect = myMemberEvent?.getContent()?.['is_direct'] === true;
   return {
     roomId: room.roomId,
     accountId,
     name,
     initial: initialOf(name),
-    // An invite's stripped state carries the inviter's `m.room.member`, so a DM invite
-    // resolves to their avatar the same way a joined DM does.
-    avatarMxc: roomAvatarMxc(room),
+    // A DM invite's stripped state carries the inviter's `m.room.member`, so it resolves
+    // to their avatar the same way a joined DM does. `is_direct` has to be what decides:
+    // stripped state holds only the inviter's and our own membership no matter how big
+    // the room really is, so left to its own member-count heuristic the SDK would hand
+    // back the inviter for every group-room and space invite too.
+    avatarMxc: roomAvatarMxc(room, isDirect),
     inviterName: inviter?.name || inviterId || 'Someone',
     isSpace: room.isSpaceRoom(),
-    isDirect: myMemberEvent?.getContent()?.['is_direct'] === true,
+    isDirect,
   };
 }
 
