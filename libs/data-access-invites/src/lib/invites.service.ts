@@ -10,6 +10,7 @@ import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access-matrix-client';
+import { roomAvatarMxc } from '@trinity/util-matrix';
 
 /** A room we have been invited to but not yet joined (shown in the Invites group). */
 export interface PendingInvite {
@@ -160,7 +161,9 @@ export function buildInvite(
     accountId,
     name,
     initial: initialOf(name),
-    avatarMxc: room.getMxcAvatarUrl(),
+    // An invite's stripped state carries the inviter's `m.room.member`, so a DM invite
+    // resolves to their avatar the same way a joined DM does.
+    avatarMxc: roomAvatarMxc(room),
     inviterName: inviter?.name || inviterId || 'Someone',
     isSpace: room.isSpaceRoom(),
     isDirect: myMemberEvent?.getContent()?.['is_direct'] === true,

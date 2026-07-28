@@ -62,6 +62,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Direct messages show the other person's face.** A one-to-one conversation is never given
+  a picture of its own, and Trinity only ever looked for one — so every DM in the sidebar, the
+  quick switcher and the invite list showed a coloured letter, right next to the person's name,
+  which had resolved perfectly well. DMs now fall back to the other person's avatar, and a DM
+  invite to the inviter's. Group rooms with no picture still show their initial, which is
+  correct.
+
 - **A brief network hiccup no longer costs you avatars for the rest of the session.** When a
   picture failed to load, Trinity was meant to wait a moment and try again — but the retry
   had never once re-sent the request it was added for, so the very first failure was final.

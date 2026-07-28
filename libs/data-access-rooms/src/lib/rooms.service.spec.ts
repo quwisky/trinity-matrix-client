@@ -60,6 +60,8 @@ function fakeRoom(opts: {
   events?: ReturnType<typeof timelineEvent>[];
   members?: ReturnType<typeof fakeMember>[];
   creator?: string | null;
+  /** The other person in a DM, whose avatar stands in for the room's. */
+  dmPeerAvatarMxc?: string;
 }) {
   return {
     roomId: opts.roomId,
@@ -69,6 +71,12 @@ function fakeRoom(opts: {
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,
+    // The SDK offers a member to stand in for a missing room avatar only in a DM;
+    // `undefined` (a group room) is the common case.
+    getAvatarFallbackMember: () =>
+      opts.dmPeerAvatarMxc
+        ? { getMxcAvatarUrl: () => opts.dmPeerAvatarMxc }
+        : undefined,
     getJoinedMemberCount: () => opts.members?.length ?? 0,
     getJoinedMembers: () => opts.members ?? [],
     getCreator: () => opts.creator ?? null,
@@ -173,6 +181,25 @@ describe('RoomsService', () => {
     const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
     expect(byId.get('!dm:hs')?.directUserId).toBe('@bob:hs');
     expect(byId.get('!room:hs')?.directUserId).toBeUndefined(); // plain room
+  });
+
+  it("shows the other person's avatar for a DM that has no room avatar", () => {
+    // A DM is never given an `m.room.avatar`, so reading only that state event left
+    // every 1:1 conversation showing a coloured initial beside a name that had
+    // resolved to the person perfectly well.
+    const svc = setup([
+      fakeRoom({
+        roomId: '!dm:hs',
+        name: 'Bob',
+        dmPeerAvatarMxc: 'mxc://hs/bob',
+      }),
+      fakeRoom({ roomId: '!room:hs', name: 'general' }),
+    ]);
+
+    const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
+    expect(byId.get('!dm:hs')?.avatarMxc).toBe('mxc://hs/bob');
+    // A group room with no avatar has no stand-in and correctly keeps its initial.
+    expect(byId.get('!room:hs')?.avatarMxc).toBeNull();
   });
 
   it('orders rooms by recent activity and maps unread counts', () => {

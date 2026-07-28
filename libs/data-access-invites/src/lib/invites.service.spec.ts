@@ -18,6 +18,8 @@ interface RoomOpts {
   inviterName?: string;
   /** `is_direct` on our own member (invite) event. */
   isDirect?: boolean;
+  /** The inviter's own avatar, which stands in for a DM invite's missing room avatar. */
+  inviterAvatarMxc?: string;
 }
 
 // Minimal fakes shaped like the bits of matrix-js-sdk that InvitesService reads.
@@ -43,6 +45,12 @@ function fakeRoom(opts: RoomOpts, myUserId: string) {
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'invite',
     getMxcAvatarUrl: () => null,
+    // For a 1:1 invite the SDK offers the inviter as the avatar's stand-in; a group
+    // invite gets `undefined` and keeps its initial.
+    getAvatarFallbackMember: () =>
+      opts.inviterAvatarMxc
+        ? { getMxcAvatarUrl: () => opts.inviterAvatarMxc }
+        : undefined,
     getMember: (id: string) => members[id] ?? null,
   };
 }
@@ -137,6 +145,31 @@ describe('InvitesService', () => {
       inviterName: 'Someone',
     });
     expect(byId['!d:hs']).toMatchObject({ isDirect: true, inviterName: 'Bob' });
+  });
+
+  it("shows the inviter's avatar on a DM invite that has no room avatar", () => {
+    // The invite row already names the inviter, which proves their member event (and
+    // so their avatar_url) is in the stripped state we read — it was simply ignored.
+    const { svc } = setup([
+      fakeRoom(
+        {
+          roomId: '!d:hs',
+          name: 'DM',
+          isDirect: true,
+          inviterId: '@bob:hs',
+          inviterName: 'Bob',
+          inviterAvatarMxc: 'mxc://hs/bob',
+        },
+        '@me:hs',
+      ),
+      fakeRoom({ roomId: '!g:hs', name: 'Group' }, '@me:hs'),
+    ]);
+
+    const byId = Object.fromEntries(
+      svc.pendingInvites().map((i) => [i.roomId, i]),
+    );
+    expect(byId['!d:hs'].avatarMxc).toBe('mxc://hs/bob');
+    expect(byId['!g:hs'].avatarMxc).toBeNull(); // group invite keeps its initial
   });
 
   it('acceptInvite joins the room', async () => {

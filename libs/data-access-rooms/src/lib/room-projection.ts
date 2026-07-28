@@ -4,7 +4,11 @@ import {
   type MatrixClient,
   type Room,
 } from 'matrix-js-sdk';
-import { liveRoomState, messagePreview } from '@trinity/util-matrix';
+import {
+  liveRoomState,
+  messagePreview,
+  roomAvatarMxc,
+} from '@trinity/util-matrix';
 import { type RoomSummary } from './rooms.service';
 
 /** State event type linking a space to a child room. */
@@ -91,7 +95,7 @@ export function buildRoomSummary(
     accountIds: [accountId],
     name,
     initial: initialOf(name),
-    avatarMxc: room.getMxcAvatarUrl(),
+    avatarMxc: roomAvatarMxc(room),
     topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
     memberCount: room.getJoinedMemberCount(),
     encrypted: room.hasEncryptionStateEvent(),
