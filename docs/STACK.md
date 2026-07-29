@@ -96,6 +96,18 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 - Crypto bootstrap sequence: init rust crypto -> cross-signing setup
   (`bootstrapCrossSigning`) -> key backup (`bootstrapSecretStorage` / key backup APIs).
   **Implemented (M3)** in `@trinity/data-access-crypto` `CryptoService` + `@trinity/feature-crypto`.
+- **`CryptoApi.resetEncryption` is deliberately not used, and we own a copy of it.**
+  It deletes every key-backup version and all of secret storage _before_ the cross-signing
+  upload that needs user-interactive auth — and the password prompt lives inside that
+  upload, so a cancel, a wrong password, an SSO-only account or an OIDC-native homeserver
+  all destroyed the backup on the way to failing. Measured against Synapse v1.119.0:
+  `room_keys/version` went from 200 to `M_NOT_FOUND`. `CryptoService.resetRecovery` runs the
+  same steps authenticated-first instead (park the 4S pointer → `bootstrapCrossSigning`
+  → `bootstrapSecretStorage({ setupNewKeyBackup: true })`, which is the whole destructive
+  tail because `setupKeyBackup` opens with `deleteAllKeyBackupVersions()`).
+  **On every SDK bump, diff `rust-crypto.js`'s `resetEncryption` against that method** — a
+  step added upstream will not be inherited. The ordering unit test in
+  `crypto.service.spec.ts` is the guard, not a substitute for looking.
 - Device verification via the `VerificationRequest`/`Verifier` APIs. **Implemented (M7):**
   emoji-SAS self-verification (`requestOwnUserVerification`) in `VerificationService` +
   `@trinity/feature-crypto`. QR and cross-user verification are deferred.
