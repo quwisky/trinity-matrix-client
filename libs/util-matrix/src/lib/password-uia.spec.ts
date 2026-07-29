@@ -1,6 +1,11 @@
 import { MatrixError } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { UiaCancelledError, runPasswordUia } from './password-uia';
+import {
+  UiaCancelledError,
+  UiaUnsupportedError,
+  assertPasswordUiaAvailable,
+  runPasswordUia,
+} from './password-uia';
 
 const USER = '@me:hs';
 
@@ -106,5 +111,77 @@ describe('runPasswordUia', () => {
       runPasswordUia(makeRequest, prompt, USER),
     ).rejects.toBeInstanceOf(MatrixError);
     expect(prompt).not.toHaveBeenCalled();
+  });
+});
+
+describe('assertPasswordUiaAvailable', () => {
+  // The contract is deliberately narrow: refuse ONLY on a UIA challenge that offers no
+  // password stage. Everything else — including the probe failing outright — has to pass
+  // through, because this guards an action it must never be the reason for failing.
+  it('refuses when the server offers only a non-password stage', async () => {
+    const probe = vi.fn().mockRejectedValue(uia('s', ['m.login.sso']));
+
+    await expect(assertPasswordUiaAvailable(probe)).rejects.toBeInstanceOf(
+      UiaUnsupportedError,
+    );
+  });
+
+  it('refuses on the OIDC-native cross-signing-reset challenge', async () => {
+    // MSC3861 homeservers answer with this shape rather than a login stage.
+    const probe = vi
+      .fn()
+      .mockRejectedValue(uia('s', ['org.matrix.cross_signing_reset']));
+
+    await expect(assertPasswordUiaAvailable(probe)).rejects.toBeInstanceOf(
+      UiaUnsupportedError,
+    );
+  });
+
+  it('allows a password stage through', async () => {
+    const probe = vi.fn().mockRejectedValue(uia('s'));
+
+    await expect(assertPasswordUiaAvailable(probe)).resolves.toBeUndefined();
+  });
+
+  it('allows a probe that is not challenged at all', async () => {
+    const probe = vi.fn().mockResolvedValue({});
+
+    await expect(assertPasswordUiaAvailable(probe)).resolves.toBeUndefined();
+    expect(probe).toHaveBeenCalledOnce();
+  });
+
+  it('stays silent when the probe fails for an unrelated reason', async () => {
+    // A dropped connection, or a server that does not gate this endpoint, must leave the
+    // caller exactly where it was rather than becoming a new way to fail.
+    const probe = vi.fn().mockRejectedValue(new Error('network down'));
+
+    await expect(assertPasswordUiaAvailable(probe)).resolves.toBeUndefined();
+  });
+
+  it('stays silent on a non-UIA MatrixError', async () => {
+    const probe = vi
+      .fn()
+      .mockRejectedValue(new MatrixError({ errcode: 'M_UNKNOWN' }, 500));
+
+    await expect(assertPasswordUiaAvailable(probe)).resolves.toBeUndefined();
+  });
+
+  it('allows an empty flow set through rather than guessing', async () => {
+    const probe = vi
+      .fn()
+      .mockRejectedValue(new MatrixError({ flows: [], session: 's' }, 401));
+
+    await expect(assertPasswordUiaAvailable(probe)).resolves.toBeUndefined();
+  });
+
+  it('refuses when the only password stage is already completed', async () => {
+    // A multi-stage flow past the password is not something Trinity can finish here.
+    const probe = vi
+      .fn()
+      .mockRejectedValue(uia('s', ['m.login.password'], ['m.login.password']));
+
+    await expect(assertPasswordUiaAvailable(probe)).rejects.toBeInstanceOf(
+      UiaUnsupportedError,
+    );
   });
 });

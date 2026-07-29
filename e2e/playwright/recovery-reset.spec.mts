@@ -140,6 +140,18 @@ test.describe('Recovery reset', () => {
     const gate = page.locator('trn-alert-dialog');
     await expect(gate).toBeVisible({ timeout: 15_000 });
     await expect(gate).toContainText('backup on the server is deleted');
+
+    // The consequences must arrive as separate lines. HTML collapses newlines unless the
+    // paragraph says otherwise, and `innerText` reflects what actually rendered — so this
+    // fails if the three points run together into one sentence, which on the last screen
+    // before an irreversible deletion is the same as not being read at all.
+    const spelledOut = await gate.locator('p').first().innerText();
+    expect(
+      spelledOut.split('\n').filter((line) => line.trim().length > 0),
+    ).toHaveLength(4);
+    // …and it has to say which word, since the placeholder vanishes on the first keystroke.
+    expect(spelledOut).toContain('Type RESET to confirm');
+
     await gate.locator('input').fill('yes please');
     await gate.getByTestId('alert-confirm').click();
     // Not `expect(recovery-key).toHaveCount(0)` — that locator is already absent, so it
@@ -148,6 +160,8 @@ test.describe('Recovery reset', () => {
     await expect(gate).toBeHidden();
     await expect(resetButton).toBeEnabled();
     expect(await defaultKeyId()).toBe(keyIdBefore);
+    // Silence would be indistinguishable from a broken button.
+    await expect(page.getByTestId('unlock-error')).toContainText('RESET');
 
     // Now confirm properly.
     await resetButton.click();
@@ -274,5 +288,54 @@ test.describe('Recovery reset', () => {
     await expect(page.getByTestId('security-unlock')).toBeVisible({
       timeout: 30_000,
     });
+  });
+
+  test('Settings offers the escape hatch to someone who cannot unlock', async ({
+    page,
+    browser,
+    request,
+  }) => {
+    // The door the changelog promises. It only exists in the `needs-recovery` state — an
+    // account that HAS secret storage on a device that cannot open it — so this needs a
+    // second, unverified device rather than the one that just set encryption up.
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}d`;
+    const user = `reset-door-${runId}`;
+    const pass = `${user}-pass`;
+
+    await registerUser(request, user, pass);
+    const credentials = {
+      available: true,
+      hs,
+      user,
+      pass,
+    } as SynapseSession;
+
+    await login(page, credentials);
+    await setUpEncryption(page, pass);
+
+    // A second device: same account, no recovery key, so it lands on needs-recovery.
+    const second = await browser.newContext({ ignoreHTTPSErrors: true });
+    try {
+      const fresh = await second.newPage();
+      await login(fresh, credentials);
+      await fresh.goto('/settings/security', { waitUntil: 'domcontentloaded' });
+
+      const lost = fresh.getByTestId('security-reset-recovery');
+      await expect(lost).toBeVisible({ timeout: 30_000 });
+      // It sits beside "Enter recovery key" rather than replacing it: someone who still
+      // has their key must not be nudged towards the destructive path.
+      await expect(fresh.getByTestId('security-unlock')).toBeVisible();
+
+      await lost.click();
+
+      // One implementation of the irreversible flow, two doors — this one has to arrive
+      // at the surface that owns it, with the reset actually offered.
+      await expect(fresh.getByTestId('reset-recovery')).toBeVisible({
+        timeout: 30_000,
+      });
+    } finally {
+      await second.close();
+    }
   });
 });
