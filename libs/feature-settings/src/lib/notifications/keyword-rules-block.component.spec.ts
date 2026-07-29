@@ -1,44 +1,65 @@
+import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
 import {
   KeywordRulesService,
+  KeywordValidationError,
   type KeywordRule,
 } from '@trinity/data-access-notifications';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 
-const LOUD: KeywordRule = { pattern: 'oncall', enabled: true, sound: true };
-const QUIET: KeywordRule = { pattern: 'trinity', enabled: true, sound: false };
+const LOUD: KeywordRule = {
+  ruleId: 'oncall',
+  pattern: 'oncall',
+  enabled: true,
+  sound: true,
+};
+const QUIET: KeywordRule = {
+  ruleId: 'trinity',
+  pattern: 'trinity',
+  enabled: true,
+  sound: false,
+};
+const OFF: KeywordRule = {
+  ruleId: 'standby',
+  pattern: 'standby',
+  enabled: false,
+  sound: true,
+};
 
 async function build(
   over: {
     keywords?: KeywordRule[][];
+    hasLoaded?: boolean;
     add?: ReturnType<typeof vi.fn>;
     remove?: ReturnType<typeof vi.fn>;
     setSound?: ReturnType<typeof vi.fn>;
-    has?: ReturnType<typeof vi.fn>;
+    find?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   // `keywords` is a queue of successive reads, so a test can model the list changing
-  // after a write — which is how the real service behaves once it refreshes the cache.
+  // after a write — which is how the real service behaves once it re-reads the rules.
   const reads = over.keywords ?? [[LOUD, QUIET]];
   let read = 0;
   const keywords = vi.fn(() => reads[Math.min(read++, reads.length - 1)]);
   const add = over.add ?? vi.fn(() => of(undefined));
   const remove = over.remove ?? vi.fn(() => of(undefined));
   const setSound = over.setSound ?? vi.fn(() => of(undefined));
-  const has = over.has ?? vi.fn(() => false);
+  const find = over.find ?? vi.fn(() => undefined);
   const toastShow = vi.fn();
   const { fixture } = await render(KeywordRulesBlockComponent, {
     providers: [
       MockProvider(KeywordRulesService, {
         keywords,
+        hasLoaded: () => over.hasLoaded ?? true,
         add,
         remove,
         setSound,
-        has,
+        find,
       }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
@@ -60,6 +81,13 @@ const text = (fixture: { nativeElement: HTMLElement }) =>
 const rows = (fixture: { nativeElement: HTMLElement }) =>
   fixture.nativeElement.querySelectorAll('[data-testid="keyword-row"]');
 
+/** The rendered checkbox instances, so a test asserts pixels rather than the model. */
+const checkboxes = (fixture: {
+  debugElement: {
+    queryAll: (p: unknown) => { componentInstance: HlmCheckbox }[];
+  };
+}) => fixture.debugElement.queryAll(By.directive(HlmCheckbox));
+
 describe('KeywordRulesBlockComponent', () => {
   it('lists the account’s keywords', async () => {
     const { fixture } = await build();
@@ -77,11 +105,27 @@ describe('KeywordRulesBlockComponent', () => {
     expect(text(fixture)).toContain('muted room stays muted');
   });
 
-  it('shows an empty state rather than a bare heading', async () => {
-    const { fixture } = await build({ keywords: [[]] });
+  it('shows an empty state once the rules have actually loaded', async () => {
+    const { fixture } = await build({ keywords: [[]], hasLoaded: true });
 
     expect(text(fixture)).toContain('no keywords yet');
+  });
+
+  it('does not claim "no keywords" before the rules have synced', async () => {
+    // An empty list before the first sync is an absence of data, not a fact about
+    // the account — asserting it invites the user to re-add keywords they still have.
+    const { fixture } = await build({ keywords: [[]], hasLoaded: false });
+
+    expect(text(fixture)).not.toContain('no keywords yet');
     expect(rows(fixture)).toHaveLength(0);
+  });
+
+  it('marks a keyword another client switched off', async () => {
+    const { fixture } = await build({ keywords: [[OFF]] });
+
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="keyword-off"]'),
+    ).not.toBeNull();
   });
 
   it('adds the typed word and clears the field', async () => {
@@ -115,8 +159,8 @@ describe('KeywordRulesBlockComponent', () => {
     expect(toastShow).not.toHaveBeenCalled(); // nothing typed is not an error
   });
 
-  it('refuses a duplicate and says so', async () => {
-    const { cmp, add, toastShow } = await build({ has: vi.fn(() => true) });
+  it('refuses a duplicate that is actually active', async () => {
+    const { cmp, add, toastShow } = await build({ find: vi.fn(() => LOUD) });
 
     cmp.keywordForm.word().value.set('oncall');
     cmp.add();
@@ -128,8 +172,37 @@ describe('KeywordRulesBlockComponent', () => {
     );
   });
 
-  it('keeps the typed word when the add fails, so it is not lost', async () => {
-    const { cmp, toastShow } = await build({
+  it('lets a switched-off keyword be re-added, which is what switches it back on', async () => {
+    // Refusing this as a duplicate would leave the keyword permanently inert, with
+    // nothing in the UI to say why or how to fix it.
+    const { cmp, add, toastShow } = await build({ find: vi.fn(() => OFF) });
+
+    cmp.keywordForm.word().value.set('standby');
+    cmp.add();
+
+    expect(add).toHaveBeenCalledWith('standby');
+    expect(toastShow).not.toHaveBeenCalled();
+  });
+
+  it('ignores a second Enter while the first add is still in flight', async () => {
+    // Both writes would otherwise race the same rule id, and the service's own
+    // duplicate check cannot help — its cache is not refreshed until the first resolves.
+    const { cmp, add } = await build({
+      keywords: [[]],
+      add: vi.fn(() => new Subject<void>()),
+    });
+
+    cmp.keywordForm.word().value.set('oncall');
+    cmp.add();
+    cmp.add();
+
+    expect(add).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the typed word and re-reads when the add fails', async () => {
+    // The write may have half-applied — rule created, enable or re-read failed — so
+    // assuming the list is unchanged would show "no keywords" for one that is live.
+    const { cmp, keywords, toastShow } = await build({
       add: vi.fn(() => throwError(() => new Error('nope'))),
     });
 
@@ -137,18 +210,38 @@ describe('KeywordRulesBlockComponent', () => {
     cmp.add();
 
     expect(cmp.keywordForm.word().value()).toBe('oncall');
+    expect(keywords).toHaveBeenCalledTimes(2); // seed + error reload
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Could not add'),
       expect.objectContaining({ variant: 'destructive' }),
     );
   });
 
-  it('removes a keyword and re-reads the list', async () => {
+  it('surfaces the service’s own message, so a rejected glob explains itself', async () => {
+    const { cmp, toastShow } = await build({
+      add: vi.fn(() =>
+        throwError(
+          () =>
+            new KeywordValidationError('A keyword cannot contain “*” or “?”.'),
+        ),
+      ),
+    });
+
+    cmp.keywordForm.word().value.set('proj*');
+    cmp.add();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.stringContaining('cannot contain'),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('removes a keyword by its rule id and re-reads the list', async () => {
     const { cmp, fixture, remove } = await build({
       keywords: [[LOUD, QUIET], [QUIET]],
     });
 
-    cmp.remove('oncall');
+    cmp.remove(LOUD);
     fixture.detectChanges();
 
     expect(remove).toHaveBeenCalledWith('oncall');
@@ -160,7 +253,7 @@ describe('KeywordRulesBlockComponent', () => {
       remove: vi.fn(() => throwError(() => new Error('nope'))),
     });
 
-    cmp.remove('oncall');
+    cmp.remove(LOUD);
     fixture.detectChanges();
 
     expect(rows(fixture)).toHaveLength(2);
@@ -173,29 +266,63 @@ describe('KeywordRulesBlockComponent', () => {
   it('turns a keyword’s sound off without touching the keyword', async () => {
     const { cmp, setSound, remove } = await build();
 
-    cmp.toggleSound('oncall', false);
+    cmp.toggleSound(LOUD, false);
 
     expect(setSound).toHaveBeenCalledWith('oncall', false);
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it('puts the checkbox back where the server has it when the write fails', async () => {
-    // The checkbox is bound to the read model, so RE-READING is what un-flips it —
-    // otherwise it sits showing a state the account does not actually hold. Asserting
-    // the extra read is the only way to tell that apart from simply never flipping.
-    const { cmp, keywords, toastShow } = await build({
+  it('puts the RENDERED checkbox back when the write fails', async () => {
+    // The bug this exists for: HlmCheckbox flips itself on click and holds that in a
+    // linkedSignal over its `checked` INPUT, which only recomputes when the input
+    // changes. Re-reading the unchanged server value therefore cannot un-flip it — the
+    // binding has to genuinely transition. Asserting the component's model instead of
+    // the rendered control passes on exactly that broken behaviour.
+    const { cmp, fixture } = await build({
       keywords: [[LOUD, QUIET]],
       setSound: vi.fn(() => throwError(() => new Error('nope'))),
     });
-    expect(keywords).toHaveBeenCalledTimes(1); // the ngOnInit seed
+    expect(checkboxes(fixture)[0].componentInstance.checked()).toBe(true);
 
-    cmp.toggleSound('oncall', false);
+    // Model the real interaction: the checkbox flips itself, then tells us.
+    checkboxes(fixture)[0].componentInstance.checked.set(false);
+    cmp.toggleSound(LOUD, false);
+    fixture.detectChanges();
 
-    expect(keywords).toHaveBeenCalledTimes(2); // re-read on the error path
-    expect(cmp.keywords()).toEqual([LOUD, QUIET]);
-    expect(toastShow).toHaveBeenCalledWith(
-      expect.stringContaining('Could not update'),
-      expect.objectContaining({ variant: 'destructive' }),
-    );
+    // The same instance, deliberately: the fix puts THIS control back rather than
+    // replacing it, so a stale query would hide a failure.
+    expect(checkboxes(fixture)[0].componentInstance.checked()).toBe(true);
+  });
+
+  it('holds the new sound state while the write is in flight', async () => {
+    const { cmp, fixture } = await build({
+      keywords: [[LOUD, QUIET]],
+      setSound: vi.fn(() => new Subject<void>()),
+    });
+
+    checkboxes(fixture)[0].componentInstance.checked.set(false);
+    cmp.toggleSound(LOUD, false);
+    fixture.detectChanges();
+
+    // Still in flight, so the row must NOT be rebuilt out from under the click.
+    expect(checkboxes(fixture)[0].componentInstance.checked()).toBe(false);
+  });
+
+  it('labels each row’s controls with the keyword they act on', async () => {
+    // Five rows of "Sound, checkbox" and "Remove, button" are indistinguishable to a
+    // screen reader, and removing the wrong keyword is one keystroke with no undo.
+    const { fixture } = await build();
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(
+      el
+        .querySelector('[data-testid="keyword-remove"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Remove keyword oncall');
+    // HlmCheckbox nulls its own host aria-label by design and forwards an input to the
+    // inner control, so the label is asserted wherever it actually lands in the row.
+    expect(
+      el.querySelector('[aria-label="Play a sound for oncall"]'),
+    ).not.toBeNull();
   });
 });

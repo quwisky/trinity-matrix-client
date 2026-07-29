@@ -10,9 +10,24 @@ import {
 import { Observable, defer, from, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
+/**
+ * A keyword the user typed that cannot be stored, with a message written for them.
+ *
+ * Distinct from a network or server failure so the UI knows which errors are worth
+ * repeating verbatim: "a keyword cannot contain *" helps, and the raw text of a 429 does
+ * not.
+ */
+export class KeywordValidationError extends Error {}
+
 /** A word the account notifies on, as it currently stands on the server. */
 export interface KeywordRule {
-  /** The word itself. Also the rule id — see {@link KeywordRulesService}. */
+  /**
+   * The id every write addresses. Usually identical to {@link pattern} — Element keys
+   * keyword rules by the word — but the spec permits any id, so the two are kept apart
+   * rather than assumed equal. Addressing a rule by its pattern 404s whenever they differ.
+   */
+  readonly ruleId: string;
+  /** The word that matches, and what the list displays. */
   readonly pattern: string;
   /** False for a keyword some client has switched off without deleting. */
   readonly enabled: boolean;
@@ -30,6 +45,17 @@ function isServerRule(ruleId: string): boolean {
   return ruleId.startsWith('.');
 }
 
+/**
+ * Glob metacharacters, which a content rule's `pattern` honours.
+ *
+ * The field asks for a word, so a `*` typed into it would silently become "notify on every
+ * message in every room" — stored on the account, so on every device and in every other
+ * client, with nothing to say where it came from. Rejected rather than escaped: escaping
+ * would store something other than what was typed, and escape support across homeservers
+ * is not worth betting a runaway notification rule on.
+ */
+const GLOB_CHARACTERS = /[*?]/;
+
 /** Actions for a keyword match: always notify + highlight, optionally with a sound. */
 function actionsFor(sound: boolean): PushRuleAction[] {
   const actions: PushRuleAction[] = [PushRuleActionName.Notify];
@@ -42,11 +68,13 @@ function actionsFor(sound: boolean): PushRuleAction[] {
   return actions;
 }
 
-/** Whether a rule's actions ask for a sound tweak. */
+/** Whether a rule's actions ask for a sound tweak. Null-safe: `typeof null` is `object`. */
 function hasSound(rule: IPushRule): boolean {
   return rule.actions.some(
     (action) =>
-      typeof action === 'object' && action.set_tweak === TweakName.Sound,
+      !!action &&
+      typeof action === 'object' &&
+      action.set_tweak === TweakName.Sound,
   );
 }
 
@@ -60,42 +88,50 @@ function hasSound(rule: IPushRule): boolean {
  * separate service rather than more toggles: the set is unbounded, and every operation is
  * a create/delete rather than a flip.
  *
- * **The rule id is the keyword.** That is what Element does, and matching it is what lets a
- * keyword list round-trip between clients instead of each one accumulating its own
- * duplicates. It also means a keyword cannot be renamed — an edit is a delete plus an add —
- * though changing whether it plays a sound is an ordinary actions write.
+ * **Keywords are addressed by rule id, displayed by pattern.** Element keys a keyword rule
+ * by the word itself, and {@link add} matches that so a list round-trips between clients
+ * rather than each accumulating duplicates — but a rule written elsewhere may use any id,
+ * and one addressed by the wrong string simply 404s.
  *
  * **Precedence is deliberate and worth knowing.** Content rules are evaluated *below*
  * overrides, so a room muted through {@link RoomNotificationsService} stays muted even when
  * a keyword matches there. Users coming from apps where a keyword pierces a mute expect the
  * opposite, so the settings copy says it.
+ *
+ * Reads are synchronous snapshots off the synced client's cached `pushRules`, exactly as
+ * {@link PushRulesService} reads its toggles; {@link hasLoaded} separates "no keywords"
+ * from "not synced yet", which look identical and only one of which is a fact.
  */
 @Injectable({ providedIn: 'root' })
 export class KeywordRulesService {
   private readonly matrix = inject(MatrixClientService);
 
+  /** Whether the account's push rules have synced, so an empty list means something. */
+  hasLoaded(accountId?: string): boolean {
+    return !!this.clientOwning(accountId)?.pushRules?.global;
+  }
+
   /**
    * The account's keywords, in the order the server holds them.
    *
-   * A synchronous snapshot off the synced client's cached `pushRules`, like its sibling
-   * services. Tolerates a malformed rule rather than throwing: this is user data that has
-   * been round-tripped through a server and possibly another client, and it is read from
-   * inside a computed where a throw would blank the settings page.
+   * Tolerates a malformed rule rather than throwing: this is user data that has been
+   * round-tripped through a server and possibly another client, and it is read from inside
+   * a computed where a throw would blank the settings page.
    */
-  keywords(): KeywordRule[] {
-    if (!this.matrix.isInitialized) {
+  keywords(accountId?: string): KeywordRule[] {
+    const content = this.clientOwning(accountId)?.pushRules?.global?.content;
+    if (!Array.isArray(content)) {
       return [];
     }
-    const content = this.matrix.instance.pushRules?.global?.content ?? [];
     const keywords: KeywordRule[] = [];
     for (const rule of content) {
       const ruleId = typeof rule?.rule_id === 'string' ? rule.rule_id : '';
-      // The pattern is what matches, but the id is what a write addresses, and a rule
-      // whose id we cannot address is one we must not offer to remove.
+      // A rule whose id we cannot address is one we must not offer to remove.
       if (!ruleId || isServerRule(ruleId) || !Array.isArray(rule.actions)) {
         continue;
       }
       keywords.push({
+        ruleId,
         pattern: typeof rule.pattern === 'string' ? rule.pattern : ruleId,
         enabled: rule.enabled !== false,
         sound: hasSound(rule),
@@ -104,79 +140,92 @@ export class KeywordRulesService {
     return keywords;
   }
 
-  /** Whether `pattern` is already a keyword (matching is case-insensitive, so this is too). */
-  has(pattern: string): boolean {
+  /**
+   * The existing keyword matching `pattern`, if any. Matching is case-insensitive because
+   * the server's own content matching is — `OnCall` and `oncall` notify on the same
+   * messages, so treating them as two keywords would mean two notifications for one word.
+   */
+  find(pattern: string, accountId?: string): KeywordRule | undefined {
     const normalised = pattern.trim().toLowerCase();
-    return this.keywords().some(
+    return this.keywords(accountId).find(
       (keyword) => keyword.pattern.toLowerCase() === normalised,
     );
   }
 
   /**
-   * Add a keyword, or re-enable and re-point one that already exists.
+   * Add a keyword, or re-point and re-enable one that already exists.
    *
-   * `addPushRule` on an existing id overwrites it, which is what makes this idempotent:
-   * adding a keyword another client had disabled switches it back on rather than silently
-   * doing nothing.
+   * Writes against the EXISTING rule's id when one matches, rather than against the new
+   * spelling: adding `oncall` where `OnCall` is already stored must replace it, since both
+   * match the same messages and two rules would mean two notifications for one word.
    */
-  add(pattern: string, sound = true): Observable<void> {
+  add(pattern: string, sound = true, accountId?: string): Observable<void> {
     const trimmed = pattern.trim();
     return defer(() => {
       if (!trimmed) {
         return throwError(
-          () => new Error('Enter a word to be notified about.'),
+          () =>
+            new KeywordValidationError('Enter a word to be notified about.'),
         );
       }
-      const client = this.activeClient();
+      if (GLOB_CHARACTERS.test(trimmed)) {
+        return throwError(
+          () =>
+            new KeywordValidationError('A keyword cannot contain “*” or “?”.'),
+        );
+      }
+      const client = this.clientOwning(accountId);
       if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
+      const existing = this.find(trimmed, accountId);
+      const ruleId = existing?.ruleId ?? trimmed;
       return from(
         this.write(client, async () => {
           await client.addPushRule(
             'global',
             PushRuleKind.ContentSpecific,
-            trimmed,
-            {
-              actions: actionsFor(sound),
-              pattern: trimmed,
-            },
+            ruleId,
+            { actions: actionsFor(sound), pattern: trimmed },
           );
-          // A rule that exists but is switched off would otherwise be re-added still off.
-          await client.setPushRuleEnabled(
-            'global',
-            PushRuleKind.ContentSpecific,
-            trimmed,
-            true,
-          );
+          // Only when it needs it: a rule the server just created is already enabled, and
+          // the extra round trip is what tips a burst of adds into the rate limiter.
+          if (existing && !existing.enabled) {
+            await client.setPushRuleEnabled(
+              'global',
+              PushRuleKind.ContentSpecific,
+              ruleId,
+              true,
+            );
+          }
         }),
       );
     });
   }
 
-  /** Remove a keyword. */
-  remove(pattern: string): Observable<void> {
+  /** Remove a keyword, addressed by its rule id. */
+  remove(ruleId: string, accountId?: string): Observable<void> {
     return defer(() => {
-      const client = this.activeClient();
+      const client = this.clientOwning(accountId);
       if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
       return from(
         this.write(client, () =>
-          client.deletePushRule(
-            'global',
-            PushRuleKind.ContentSpecific,
-            pattern,
-          ),
+          client.deletePushRule('global', PushRuleKind.ContentSpecific, ruleId),
         ),
       );
     });
   }
 
   /** Turn a keyword's sound on or off, leaving the keyword itself alone. */
-  setSound(pattern: string, sound: boolean): Observable<void> {
+  setSound(
+    ruleId: string,
+    sound: boolean,
+    accountId?: string,
+  ): Observable<void> {
     return defer(() => {
-      const client = this.activeClient();
+      const client = this.clientOwning(accountId);
       if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
@@ -185,7 +234,7 @@ export class KeywordRulesService {
           client.setPushRuleActions(
             'global',
             PushRuleKind.ContentSpecific,
-            pattern,
+            ruleId,
             actionsFor(sound),
           ),
         ),
@@ -193,21 +242,32 @@ export class KeywordRulesService {
     });
   }
 
-  private activeClient(): MatrixClient | null {
+  /**
+   * The client owning these rules: the named account's, else the active one — the shape
+   * {@link RoomNotificationsService} uses, so a second signed-in account's keywords are
+   * reachable rather than silently those of whichever account happens to be active.
+   */
+  private clientOwning(accountId?: string): MatrixClient | null {
+    if (accountId) {
+      return this.matrix.clientFor(accountId);
+    }
     return this.matrix.isInitialized ? this.matrix.instance : null;
   }
 
   /**
-   * Run a write, then refresh the client's cached rules so the next {@link keywords} read
-   * is accurate at once — the same contract {@link RoomNotificationsService} keeps. Without
-   * it the list would not change until the `m.push_rules` account-data echo arrived on
-   * sync, and the row the user just added would appear to vanish.
+   * Run a write, then re-read the rules so the next {@link keywords} call is accurate at
+   * once — the same contract {@link RoomNotificationsService} keeps. Without it the list
+   * would not change until the `m.push_rules` account-data echo arrived on sync, and the
+   * row the user just added would appear to vanish.
+   *
+   * `getPushRules()` assigns `client.pushRules` itself, so the call is made for that
+   * effect rather than for its return value.
    */
   private async write(
     client: MatrixClient,
     operation: () => Promise<unknown>,
   ): Promise<void> {
     await operation();
-    client.pushRules = await client.getPushRules();
+    await client.getPushRules();
   }
 }

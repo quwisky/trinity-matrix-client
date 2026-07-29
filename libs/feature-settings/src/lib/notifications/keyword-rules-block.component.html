@@ -18,22 +18,32 @@
     </p>
   } @else {
     <ul class="flex flex-col">
-      @for (keyword of keywords(); track keyword.pattern) {
+      @for (keyword of keywords(); track keyword.ruleId) {
         <li
           class="flex items-center justify-between gap-3 px-4 py-2"
           data-testid="keyword-row"
         >
-          <span class="min-w-0 truncate text-sm font-medium">{{
-            keyword.pattern
-          }}</span>
+          <span class="flex min-w-0 items-center gap-2">
+            <span class="truncate text-sm font-medium">{{
+              keyword.pattern
+            }}</span>
+            @if (!keyword.enabled) {
+              <span
+                class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                data-testid="keyword-off"
+                >Off</span
+              >
+            }
+          </span>
           <span class="flex shrink-0 items-center gap-3">
             <label
               class="flex cursor-pointer items-center gap-2 text-13 text-muted-foreground"
             >
               <hlm-checkbox
                 [checked]="keyword.sound"
-                [disabled]="isBusy(keyword.pattern)"
-                (checkedChange)="toggleSound(keyword.pattern, $event)"
+                [disabled]="isBusy(keyword.ruleId)"
+                (checkedChange)="toggleSound(keyword, $event)"
+                [aria-label]="'Play a sound for ' + keyword.pattern"
                 data-testid="keyword-sound"
               />
               Sound
@@ -43,8 +53,9 @@
               type="button"
               variant="outline"
               size="sm"
-              [disabled]="isBusy(keyword.pattern)"
-              (click)="remove(keyword.pattern)"
+              [disabled]="isBusy(keyword.ruleId)"
+              (click)="remove(keyword)"
+              [attr.aria-label]="'Remove keyword ' + keyword.pattern"
               data-testid="keyword-remove"
             >
               Remove
@@ -71,7 +82,7 @@
       type="button"
       variant="outline"
       size="sm"
-      [disabled]="adding()"
+      [disabled]="adding() || nothingTyped()"
       (click)="add()"
       data-testid="keyword-add"
     >
