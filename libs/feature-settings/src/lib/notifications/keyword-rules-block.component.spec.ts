@@ -325,4 +325,142 @@ describe('KeywordRulesBlockComponent', () => {
       el.querySelector('[aria-label="Play a sound for oncall"]'),
     ).not.toBeNull();
   });
+
+  describe('the rendered controls, not just the methods', () => {
+    // Every test above calls the component's methods directly, so the template's
+    // bindings — the only thing a user can actually reach — were entirely unpinned.
+    const el = (fixture: { nativeElement: HTMLElement }) =>
+      fixture.nativeElement as HTMLElement;
+
+    /** BrnCheckbox renders the interactive control as a button inside the host. */
+    const soundControls = (fixture: { nativeElement: HTMLElement }) =>
+      el(fixture).querySelectorAll<HTMLButtonElement>(
+        '[data-testid="keyword-sound"] button',
+      );
+    const removeButtons = (fixture: { nativeElement: HTMLElement }) =>
+      el(fixture).querySelectorAll<HTMLButtonElement>(
+        '[data-testid="keyword-remove"]',
+      );
+    const addButton = (fixture: { nativeElement: HTMLElement }) =>
+      el(fixture).querySelector<HTMLButtonElement>(
+        '[data-testid="keyword-add"]',
+      );
+
+    it('clicking the SECOND row’s Sound turns that keyword’s sound on', async () => {
+      // The second row deliberately: its stored sound is false, so the assertion is
+      // sensitive to the [checked] binding as well as to the output wiring, and a
+      // hardcoded `false` or an inverted `$event` both fail.
+      const { fixture, setSound } = await build();
+
+      soundControls(fixture)[1].click();
+      fixture.detectChanges();
+
+      expect(setSound).toHaveBeenCalledWith('trinity', true);
+    });
+
+    it('clicking the SECOND row’s Remove removes that keyword', async () => {
+      const { fixture, remove } = await build();
+
+      removeButtons(fixture)[1].click();
+      fixture.detectChanges();
+
+      expect(remove).toHaveBeenCalledWith('trinity');
+    });
+
+    it('Enter in the field adds the word and swallows the submit', async () => {
+      // Enter is the primary way anyone adds a keyword, and the e2e clicks the button —
+      // so nothing exercised this path or the preventDefault its comment justifies.
+      const { cmp, fixture, add } = await build({ keywords: [[]] });
+      cmp.keywordForm.word().value.set('oncall');
+      fixture.detectChanges();
+      const event = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      });
+
+      el(fixture)
+        .querySelector('[data-testid="keyword-input"]')
+        ?.dispatchEvent(event);
+
+      expect(add).toHaveBeenCalledWith('oncall');
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('keeps Add disabled until something is typed', async () => {
+      const { cmp, fixture } = await build({ keywords: [[]] });
+
+      expect(addButton(fixture)?.disabled).toBe(true);
+
+      cmp.keywordForm.word().value.set('   '); // whitespace is nothing typed
+      fixture.detectChanges();
+      expect(addButton(fixture)?.disabled).toBe(true);
+
+      cmp.keywordForm.word().value.set('oncall');
+      fixture.detectChanges();
+      expect(addButton(fixture)?.disabled).toBe(false);
+    });
+
+    it('disables Add while the write is in flight, and frees it if that fails', async () => {
+      // Folding the two `adding.set(false)` calls into a `complete:` handler is a very
+      // plausible tidy-up, and `complete` never fires on an errored Observable — the
+      // button would sit on "Adding…" forever.
+      const failing = new Subject<void>();
+      const { cmp, fixture } = await build({
+        keywords: [[]],
+        add: vi.fn(() => failing),
+      });
+      cmp.keywordForm.word().value.set('oncall');
+      cmp.add();
+      fixture.detectChanges();
+      expect(addButton(fixture)?.disabled).toBe(true);
+      expect(addButton(fixture)?.textContent?.trim()).toBe('Adding…');
+
+      failing.error(new Error('nope'));
+      fixture.detectChanges();
+
+      expect(addButton(fixture)?.disabled).toBe(false);
+    });
+
+    it('disables only the row being written to, and re-enables it after', async () => {
+      const pending = new Subject<void>();
+      const { cmp, fixture } = await build({ remove: vi.fn(() => pending) });
+
+      cmp.remove(LOUD);
+      fixture.detectChanges();
+      expect(removeButtons(fixture)[0].disabled).toBe(true);
+      expect(soundControls(fixture)[0].disabled).toBe(true);
+      expect(removeButtons(fixture)[1].disabled).toBe(false); // the other row is untouched
+
+      pending.next();
+      pending.complete();
+      fixture.detectChanges();
+
+      expect(removeButtons(fixture)[0].disabled).toBe(false);
+    });
+
+    it('restores the row that failed, not simply the first row', async () => {
+      // Every other checkbox test uses row 0, where the index lookup and a hardcoded 0
+      // agree — so the lookup itself was unpinned.
+      const { cmp, fixture } = await build({
+        setSound: vi.fn(() => throwError(() => new Error('nope'))),
+      });
+      const boxes = checkboxes(fixture);
+      boxes[1].componentInstance.checked.set(true); // QUIET starts false; "click" it on
+
+      cmp.toggleSound(QUIET, true);
+      fixture.detectChanges();
+
+      expect(boxes[1].componentInstance.checked()).toBe(false); // back to the server's value
+      expect(boxes[0].componentInstance.checked()).toBe(true); // untouched
+    });
+
+    it('shows no Off badge on a keyword that is live', async () => {
+      const { fixture } = await build();
+
+      expect(
+        el(fixture).querySelector('[data-testid="keyword-off"]'),
+      ).toBeNull();
+    });
+  });
 });

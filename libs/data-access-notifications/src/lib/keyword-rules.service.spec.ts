@@ -3,7 +3,10 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { KeywordRulesService } from './keyword-rules.service';
+import {
+  KeywordRulesService,
+  KeywordValidationError,
+} from './keyword-rules.service';
 
 interface Rule {
   rule_id: string;
@@ -140,6 +143,16 @@ describe('KeywordRulesService', () => {
       ]);
     });
 
+    it('treats a rule that omits `enabled` as enabled', () => {
+      // Reading it as disabled would render a live keyword as "Off" and, worse, make the
+      // component's duplicate guard let a second rule be written for the same word.
+      const { svc } = setup([
+        { rule_id: 'oncall', actions: NOTIFY_LOUD, pattern: 'oncall' },
+      ]);
+
+      expect(svc.keywords()[0].enabled).toBe(true);
+    });
+
     it('falls back to the rule id when a rule carries no pattern', () => {
       const { svc } = setup([
         { rule_id: 'oncall', enabled: true, actions: NOTIFY_LOUD },
@@ -151,6 +164,13 @@ describe('KeywordRulesService', () => {
     it('is empty before sign-in', () => {
       expect(setup([], false).svc.keywords()).toEqual([]);
     });
+
+    it('is empty — not a crash — when signed in before the rules have synced', () => {
+      // The production ordering: the component's ngOnInit calls keywords() BEFORE
+      // hasLoaded(), so a throw on the unsynced path blanks the settings section
+      // instead of showing a list that fills in.
+      expect(setup(null).svc.keywords()).toEqual([]);
+    });
   });
 
   describe('find', () => {
@@ -160,6 +180,15 @@ describe('KeywordRulesService', () => {
       expect(svc.find('oncall')?.ruleId).toBe('OnCall');
       expect(svc.find('  ONCALL  ')?.ruleId).toBe('OnCall');
       expect(svc.find('other')).toBeUndefined();
+    });
+
+    it('matches a whole keyword, never a substring of one', () => {
+      // A "more forgiving" match would make add('call') resolve to the OnCall rule and
+      // overwrite it — typing one keyword silently destroys another.
+      const { svc } = setup([keyword('OnCall')]);
+
+      expect(svc.find('call')).toBeUndefined();
+      expect(svc.find('OnCallRota')).toBeUndefined();
     });
   });
 
@@ -250,6 +279,12 @@ describe('KeywordRulesService', () => {
         // account, so on every device and in every other client.
         const { svc, client } = setup();
 
+        // The TYPE is the contract: the component surfaces a service message verbatim
+        // only for a KeywordValidationError, so a plain Error here would leave the user
+        // with "Could not add" and no idea why.
+        await expect(firstValueFrom(svc.add(input))).rejects.toBeInstanceOf(
+          KeywordValidationError,
+        );
         await expect(firstValueFrom(svc.add(input))).rejects.toThrow(
           'cannot contain',
         );
@@ -299,6 +334,41 @@ describe('KeywordRulesService', () => {
     });
   });
 
+  describe('a rejected write', () => {
+    it.each([
+      ['add', (s: KeywordRulesService) => s.add('oncall')],
+      ['remove', (s: KeywordRulesService) => s.remove('oncall')],
+      ['setSound', (s: KeywordRulesService) => s.setSound('oncall', false)],
+    ])('reaches the caller from %s', async (method, call) => {
+      // A dropped `await` in write() — the classic — makes every failed write report
+      // success, so the component never toasts, never restores the checkbox and never
+      // re-reads. Nothing else on this branch pins it.
+      const { svc, client } = setup([keyword('oncall')]);
+      const boom = new Error('server said no');
+      client.addPushRule.mockRejectedValue(boom);
+      client.deletePushRule.mockRejectedValue(boom);
+      client.setPushRuleActions.mockRejectedValue(boom);
+
+      await expect(firstValueFrom(call(svc))).rejects.toBe(boom);
+      expect(method).toBeTruthy(); // name is for the test label
+    });
+  });
+
+  describe('not signed in', () => {
+    it.each([
+      ['remove', (s: KeywordRulesService) => s.remove('oncall')],
+      ['setSound', (s: KeywordRulesService) => s.setSound('oncall', false)],
+    ])('%s refuses to write', async (_method, call) => {
+      // Only add()'s copy of this guard was pinned; without the others the observable
+      // dies on a TypeError against a null client instead of saying what is wrong.
+      const { svc, client } = setup([], false);
+
+      await expect(firstValueFrom(call(svc))).rejects.toThrow('Not signed in.');
+      expect(client.deletePushRule).not.toHaveBeenCalled();
+      expect(client.setPushRuleActions).not.toHaveBeenCalled();
+    });
+  });
+
   describe('setSound', () => {
     it('rewrites only the actions, leaving the keyword in place', async () => {
       const { svc, client } = setup([keyword('oncall')]);
@@ -315,6 +385,32 @@ describe('KeywordRulesService', () => {
       expect(client.addPushRule).not.toHaveBeenCalled();
     });
 
+    it('turns a keyword’s sound ON, not only off', async () => {
+      // Both existing cases pass `false`, so a hardcoded `actionsFor(false)` would
+      // survive the whole suite — and the toggle would silently work one way only.
+      const { svc, client } = setup([keyword('trinity', NOTIFY_SILENT)]);
+
+      await firstValueFrom(svc.setSound('trinity', true));
+
+      expect(client.setPushRuleActions).toHaveBeenCalledWith(
+        'global',
+        'content',
+        'trinity',
+        NOTIFY_LOUD,
+      );
+    });
+
+    it('re-reads the rules, so the new setting is readable at once', async () => {
+      // add and remove both go through write(); setSound bypassing it would leave the
+      // component's post-write reload reading the stale value and flipping the checkbox
+      // back on a write that actually succeeded.
+      const { svc, client } = setup([keyword('oncall')]);
+
+      await firstValueFrom(svc.setSound('oncall', false));
+
+      expect(client.getPushRules).toHaveBeenCalled();
+    });
+
     it('keeps the highlight tweak when the sound is turned off', async () => {
       // A keyword that notifies without marking where it matched is a notification
       // the user cannot act on.
@@ -325,6 +421,78 @@ describe('KeywordRulesService', () => {
       expect(client.setPushRuleActions.mock.calls[0][3]).toContainEqual({
         set_tweak: 'highlight',
       });
+    });
+  });
+
+  describe('per-account keywords', () => {
+    /** Two signed-in accounts, each with its own keywords — the multi-account shape. */
+    function setupOwned() {
+      const activeClient = makeClient([keyword('active-word')]);
+      const ownerClient = makeClient([keyword('owner-word')]);
+      TestBed.configureTestingModule({
+        providers: [
+          KeywordRulesService,
+          MockProvider(MatrixClientService, {
+            isInitialized: true,
+            instance: activeClient as never,
+            clientFor: vi.fn((id: string) =>
+              id === '@owner:hs' ? (ownerClient as never) : null,
+            ),
+          }),
+        ],
+      });
+      return {
+        svc: TestBed.inject(KeywordRulesService),
+        activeClient,
+        ownerClient,
+      };
+    }
+
+    it('reads the named account’s keywords, not the active one’s', () => {
+      const { svc } = setupOwned();
+
+      expect(svc.keywords('@owner:hs').map((k) => k.pattern)).toEqual([
+        'owner-word',
+      ]);
+      expect(svc.keywords().map((k) => k.pattern)).toEqual(['active-word']);
+    });
+
+    it('writes to the named account’s client', async () => {
+      const { svc, activeClient, ownerClient } = setupOwned();
+
+      await firstValueFrom(svc.add('oncall', true, '@owner:hs'));
+
+      expect(ownerClient.addPushRule).toHaveBeenCalled();
+      expect(activeClient.addPushRule).not.toHaveBeenCalled();
+    });
+
+    it('resolves an existing keyword against the SAME account it writes to', async () => {
+      // `find` without the accountId would look the word up on the active account, miss,
+      // and write a second rule to the owner — two rules matching one word.
+      const { svc, ownerClient } = setupOwned();
+
+      await firstValueFrom(svc.add('OWNER-WORD', true, '@owner:hs'));
+
+      expect(ownerClient.addPushRule.mock.calls[0][2]).toBe('owner-word');
+    });
+
+    it('removes and re-sounds against the named account too', async () => {
+      const { svc, activeClient, ownerClient } = setupOwned();
+
+      await firstValueFrom(svc.remove('owner-word', '@owner:hs'));
+      await firstValueFrom(svc.setSound('owner-word', false, '@owner:hs'));
+
+      expect(ownerClient.deletePushRule).toHaveBeenCalled();
+      expect(ownerClient.setPushRuleActions).toHaveBeenCalled();
+      expect(activeClient.deletePushRule).not.toHaveBeenCalled();
+      expect(activeClient.setPushRuleActions).not.toHaveBeenCalled();
+    });
+
+    it('reports load state per account', () => {
+      const { svc } = setupOwned();
+
+      expect(svc.hasLoaded('@owner:hs')).toBe(true);
+      expect(svc.hasLoaded('@nobody:hs')).toBe(false); // no client for that account
     });
   });
 });

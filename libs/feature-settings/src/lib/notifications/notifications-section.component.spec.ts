@@ -84,4 +84,17 @@ describe('NotificationsSectionComponent', () => {
 
     expect(setOn).toHaveBeenCalledTimes(1);
   });
+
+  it('contains the keyword list', async () => {
+    // Deleting `<trn-keyword-rules />` from the section removes the whole feature from
+    // the app, and every other unit test still passes: the mocked service yields no
+    // keywords, so the block contributes no checkboxes either way.
+    const { fixture } = await build();
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="keyword-rules"]',
+      ),
+    ).not.toBeNull();
+  });
 });
