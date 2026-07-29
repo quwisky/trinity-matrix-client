@@ -127,4 +127,81 @@ test.describe('Mark as unread', () => {
       0,
     );
   });
+
+  test('a flag set elsewhere arrives, survives a reload, and Mark as read clears it', async ({
+    page,
+    request,
+  }) => {
+    // The flag is account data precisely so it follows the user between devices, and
+    // nothing proved that: this writes it the way another device would — straight to the
+    // server, with the app already open — and then reloads to prove it was never local.
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}s`;
+    const user = `unread2-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Mark Unread Sync ${runId}`;
+
+    await registerUser(request, user, pass);
+    const json = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json());
+    const auth = { Authorization: `Bearer ${json.access_token}` };
+    const roomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: auth,
+        data: { name: roomName },
+      })
+      .then((r) => r.json())
+      .then((j) => j.room_id as string);
+
+    const flagUrl = `${hs}/_matrix/client/v3/user/${encodeURIComponent(json.user_id)}/rooms/${encodeURIComponent(roomId)}/account_data/m.marked_unread`;
+    const flag = async (): Promise<boolean | undefined> => {
+      const res = await request.get(flagUrl, { headers: auth });
+      return res.ok() ? ((await res.json()).unread as boolean) : undefined;
+    };
+
+    await login(page, {
+      available: true,
+      hs,
+      user,
+      pass,
+    } as SynapseSession);
+    await page.getByTestId('rail-rooms').click();
+    const row = page.locator('.channel', { hasText: roomName }).first();
+    await row.waitFor({ state: 'visible', timeout: 30_000 });
+    await expect(row.locator('.channel__badge')).toHaveCount(0);
+
+    // Another device flags it. The running app must notice without being touched.
+    const written = await request.put(flagUrl, {
+      headers: auth,
+      data: { unread: true },
+    });
+    expect(written.ok()).toBe(true);
+    await expect(row.locator('[data-testid="room-unread-dot"]')).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // It is on the account, not in this tab: a reload finds it again.
+    await page.reload();
+    await page.getByTestId('rail-rooms').click();
+    const afterReload = page.locator('.channel', { hasText: roomName }).first();
+    await expect(
+      afterReload.locator('[data-testid="room-unread-dot"]'),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // The other way out: ⋮ → Mark as read, which must clear the flag as well as ack.
+    await openRoomMenu(page, roomName);
+    await page.getByTestId('room-mark-read').click();
+
+    await expect.poll(flag, { timeout: 20_000 }).toBe(false);
+    await expect(page.locator('[data-testid="room-unread-dot"]')).toHaveCount(
+      0,
+    );
+  });
 });

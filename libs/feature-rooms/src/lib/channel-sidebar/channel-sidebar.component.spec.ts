@@ -1001,6 +1001,73 @@ describe('ChannelSidebarComponent', () => {
     expect(container.textContent).not.toContain('0');
   });
 
+  it('announces the dot, which has no text of its own', async () => {
+    // The dot is an empty span: without role and label a screen-reader user cannot tell
+    // a flagged room from a read one at all.
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [room({ id: '!a:hs', hasUnread: true, markedUnread: true })],
+      },
+    });
+
+    const dot = container.querySelector('[data-testid="room-unread-dot"]');
+    expect(dot?.getAttribute('role')).toBe('img');
+    expect(dot?.getAttribute('aria-label')).toBe('Marked unread');
+    // …and it is a dot, not the full-size red mention pill the base class renders.
+    expect(dot?.classList.contains('channel__badge--dot')).toBe(true);
+  });
+
+  it('lets a mention badge win over the flag', async () => {
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({
+            id: '!a:hs',
+            hasUnread: true,
+            markedUnread: true,
+            unreadCount: 2,
+            highlightCount: 2,
+          }),
+        ],
+      },
+    });
+
+    expect(
+      container.querySelector('[data-testid="room-unread-dot"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('.channel__badge')?.getAttribute('aria-label'),
+    ).toContain('unread mentions');
+  });
+
+  it('emits every account that owns the row when flagging it', async () => {
+    // RoomsPage fans the write out over these; emitting only the winner would flag a
+    // merged row on one account and leave the other disagreeing.
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({
+            id: '!a:hs',
+            hasUnread: false,
+            accountIds: ['@me:hs', '@alt:hs'],
+          }),
+        ],
+      },
+    });
+    let emitted: readonly string[] | undefined;
+    fixture.componentInstance.markUnread.subscribe(
+      (e) => (emitted = e.accountIds),
+    );
+
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="room-mark-unread"]')!
+      .click();
+
+    expect(emitted).toEqual(['@me:hs', '@alt:hs']);
+  });
+
   it('still shows the count when a flagged room also has unread messages', async () => {
     const { container } = await renderSidebar({
       inputs: {

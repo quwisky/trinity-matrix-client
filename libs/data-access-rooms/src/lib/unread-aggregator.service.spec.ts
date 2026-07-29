@@ -205,4 +205,25 @@ describe('UnreadAggregatorService', () => {
       expect(svc.totalUnread()).toBe(3);
     });
   });
+
+  it('recomputes when a room’s account data changes', async () => {
+    // Both flag tests above set the flag BEFORE the first flush, so they pass with no
+    // listener at all. This is what proves the app-icon badge reacts to a flag set on
+    // another device rather than waiting for an unrelated event.
+    const { svc, accountIds, clients, flush } = harness();
+    const room = fakeRoom(0);
+    clients.set('@a:hs', fakeClient([room]));
+    accountIds.set(['@a:hs']);
+    await flush();
+    expect(svc.totalUnread()).toBe(0);
+
+    room.getAccountData = (type: string) =>
+      type === 'm.marked_unread'
+        ? { getContent: () => ({ unread: true }) }
+        : undefined;
+    clients.get('@a:hs')!.emit(RoomEvent.AccountData);
+    await flush();
+
+    expect(svc.totalUnread()).toBe(1);
+  });
 });

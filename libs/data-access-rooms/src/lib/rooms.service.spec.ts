@@ -410,6 +410,136 @@ describe('RoomsService', () => {
       expect(svc.rooms()[0].markedUnread).toBe(false);
     });
 
+    it('still clears the flag when the room has nothing to acknowledge', async () => {
+      // The clear runs BEFORE markRead's early return for a room with no ackable event.
+      // A flagged empty room marked read must stop being flagged; ordering it after the
+      // return would leave the only way out of the flag not working on an empty room.
+      const room = fakeRoom({
+        roomId: '!r:hs',
+        name: 'R',
+        markedUnread: { unread: true },
+      });
+      const setRoomAccountData = vi.fn(() => Promise.resolve({}));
+      const sendReadReceipt = vi.fn(() => Promise.resolve({}));
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => [room],
+        getRoom: () => room,
+        setRoomAccountData,
+        sendReadReceipt,
+        on: () => {},
+      };
+      const { svc } = provideRooms(client);
+      svc.connect();
+
+      await firstValueFrom(svc.markRead('!r:hs'));
+
+      expect(setRoomAccountData).toHaveBeenCalledWith(
+        '!r:hs',
+        'm.marked_unread',
+        { unread: false },
+      );
+      expect(sendReadReceipt).not.toHaveBeenCalled(); // nothing to ack
+    });
+
+    it('sweeps every account and writes only where the flag is set', async () => {
+      // A merged mixed-account row can be flagged on either side; clearing only the
+      // active account would leave it flagged with no way for the user to fix it. The
+      // guard is what keeps this cheap enough to call on every room open.
+      const mine = fakeRoom({ roomId: '!r:hs', name: 'R' });
+      const theirs = fakeRoom({
+        roomId: '!r:hs',
+        name: 'R',
+        markedUnread: { unread: true },
+      });
+      const write = { mine: vi.fn(), theirs: vi.fn() };
+      const clients: Record<string, unknown> = {
+        '@me:hs': {
+          getRooms: () => [mine],
+          getRoom: () => mine,
+          setRoomAccountData: write.mine.mockReturnValue(Promise.resolve({})),
+          on: () => {},
+        },
+        '@other:hs': {
+          getRooms: () => [theirs],
+          getRoom: () => theirs,
+          setRoomAccountData: write.theirs.mockReturnValue(Promise.resolve({})),
+          on: () => {},
+        },
+      };
+      const { svc, matrix } = provideRooms(clients['@me:hs']);
+      ngMocks.stubMember(
+        matrix,
+        'accountIds',
+        signal(['@me:hs', '@other:hs']).asReadonly(),
+      );
+      ngMocks.stubMember(
+        matrix,
+        'clientFor',
+        ((id: string) => clients[id]) as never,
+      );
+      svc.connect();
+
+      svc.clearMarkedUnread('!r:hs');
+
+      expect(write.theirs).toHaveBeenCalledWith('!r:hs', 'm.marked_unread', {
+        unread: false,
+      });
+      expect(write.mine).not.toHaveBeenCalled(); // it was never flagged there
+    });
+
+    it('does not erase a room’s real unread count while a write is in flight', async () => {
+      // Un-flagging a room that genuinely has unread messages must leave it unread —
+      // the overlay speaks only for the flag, not for the notification count.
+      const { svc } = setupWritable([
+        fakeRoom({
+          roomId: '!r:hs',
+          name: 'R',
+          unread: 3,
+          markedUnread: { unread: true },
+        }),
+      ]);
+
+      await firstValueFrom(svc.setMarkedUnread('!r:hs', false));
+
+      expect(svc.rooms()[0]).toMatchObject({
+        markedUnread: false,
+        unreadCount: 3,
+        hasUnread: true,
+      });
+    });
+
+    it('keeps two rooms’ pending writes apart', async () => {
+      const { svc } = setupWritable([
+        fakeRoom({ roomId: '!a:hs', name: 'A' }),
+        fakeRoom({ roomId: '!b:hs', name: 'B' }),
+      ]);
+
+      await firstValueFrom(svc.setMarkedUnread('!a:hs', true));
+      await firstValueFrom(svc.setMarkedUnread('!b:hs', true));
+
+      const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
+      expect(byId.get('!a:hs')?.markedUnread).toBe(true);
+      expect(byId.get('!b:hs')?.markedUnread).toBe(true);
+    });
+
+    it('refuses to flag when the owning account has no client', async () => {
+      // Reporting success for a write that never happened would leave the sidebar
+      // showing a flag the account does not hold.
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => [],
+        on: () => {},
+      };
+      const { svc, matrix } = provideRooms(client);
+      ngMocks.stubMember(matrix, 'clientFor', (() => null) as never);
+      svc.connect();
+
+      await expect(
+        firstValueFrom(svc.setMarkedUnread('!r:hs', true, '@nobody:hs')),
+      ).rejects.toThrow('Not signed in.');
+    });
+
     it('clears by writing false rather than redacting', () => {
       const { svc, setRoomAccountData } = setupWritable([
         fakeRoom({
