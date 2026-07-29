@@ -10,8 +10,8 @@ All notable changes to this project are documented here. The format is based on
 
 - **Be notified when someone says a word you care about.** Settings → Notifications gains a
   **Keywords** list: add a word — your team's name, a project, an on-call term, a nickname
-  you're known by — and any message containing it notifies you and marks the room, in every
-  room you're in. Each keyword can notify with or without a sound. Keywords are stored on
+  you're known by — and any message using it notifies you and marks the room, in every room
+  you're in. Matching is by whole word, so “call” will not fire on “oncall”. Each keyword can notify with or without a sound. Keywords are stored on
   your account, so they follow you to every device and to other Matrix apps: they use the
   same format Element does, so a list built in one shows up in the other. One deliberate
   limit, because people expect the opposite: a muted room stays muted, keywords included.

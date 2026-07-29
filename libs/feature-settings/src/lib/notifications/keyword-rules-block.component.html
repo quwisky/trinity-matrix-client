@@ -5,11 +5,19 @@
     Keywords
   </h2>
   <p class="px-4 py-1 text-13 text-muted-foreground">
-    Be notified whenever one of these words is said, in any room. A muted room
-    stays muted — keywords do not override it.
+    Be notified whenever one of these whole words is said, in any room — “call”
+    will not match “oncall”. A muted room stays muted: keywords do not override
+    it.
   </p>
 
-  @if (isEmpty()) {
+  @if (isLoading()) {
+    <p
+      class="px-4 py-2 text-13 text-muted-foreground"
+      data-testid="keyword-loading"
+    >
+      Loading your keywords…
+    </p>
+  } @else if (isEmpty()) {
     <p
       class="px-4 py-2 text-13 text-muted-foreground"
       data-testid="keyword-empty"
@@ -40,7 +48,7 @@
               class="flex cursor-pointer items-center gap-2 text-13 text-muted-foreground"
             >
               <hlm-checkbox
-                [checked]="keyword.sound"
+                [checked]="soundOf(keyword)"
                 [disabled]="isBusy(keyword.ruleId)"
                 (checkedChange)="toggleSound(keyword, $event)"
                 [aria-label]="'Play a sound for ' + keyword.pattern"
@@ -82,7 +90,7 @@
       type="button"
       variant="outline"
       size="sm"
-      [disabled]="adding() || nothingTyped()"
+      [disabled]="adding() || nothingTyped() || isLoading()"
       (click)="add()"
       data-testid="keyword-add"
     >

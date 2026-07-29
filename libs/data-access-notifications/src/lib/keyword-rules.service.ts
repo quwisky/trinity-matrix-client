@@ -33,6 +33,8 @@ export interface KeywordRule {
   readonly enabled: boolean;
   /** Whether a match plays a sound, as opposed to only badging the room. */
   readonly sound: boolean;
+  /** The sound another client chose, carried forward so a toggle cannot downgrade it. */
+  readonly soundValue: string;
 }
 
 /**
@@ -56,11 +58,36 @@ function isServerRule(ruleId: string): boolean {
  */
 const GLOB_CHARACTERS = /[*?]/;
 
-/** Actions for a keyword match: always notify + highlight, optionally with a sound. */
-function actionsFor(sound: boolean): PushRuleAction[] {
+/** The tone a keyword plays unless another client chose a different one. */
+const DEFAULT_SOUND = 'default';
+
+/**
+ * Characters that cannot appear in a keyword because the keyword IS the rule id.
+ *
+ * A leading dot is the sharp one: {@link isServerRule} filters those out of the list, so a
+ * keyword like `.net` would be created, would notify, and would be invisible and
+ * unremovable in the UI — worse than refusing it. A slash breaks the id's own path segment
+ * on the way to the server.
+ */
+function unusableAsRuleId(pattern: string): boolean {
+  return pattern.startsWith('.') || pattern.includes('/');
+}
+
+/**
+ * Actions for a keyword match: always notify + highlight, optionally with a sound.
+ *
+ * `soundValue` carries forward whatever sound another client chose, so toggling Sound off
+ * and back on does not quietly downgrade a custom tone to the default. The rest of the
+ * action list is regenerated rather than merged: an unknown action carried forward blindly
+ * could be a `dont_notify`, which would turn the keyword off while looking like it works.
+ */
+function actionsFor(
+  sound: boolean,
+  soundValue = DEFAULT_SOUND,
+): PushRuleAction[] {
   const actions: PushRuleAction[] = [PushRuleActionName.Notify];
   if (sound) {
-    actions.push({ set_tweak: TweakName.Sound, value: 'default' });
+    actions.push({ set_tweak: TweakName.Sound, value: soundValue });
   }
   // Highlight regardless: it is what colours the room in the list, and a keyword that
   // notifies without marking where it matched is a notification you cannot act on.
@@ -68,14 +95,24 @@ function actionsFor(sound: boolean): PushRuleAction[] {
   return actions;
 }
 
-/** Whether a rule's actions ask for a sound tweak. Null-safe: `typeof null` is `object`. */
-function hasSound(rule: IPushRule): boolean {
-  return rule.actions.some(
-    (action) =>
+/**
+ * The sound a rule plays, or undefined when it plays none.
+ *
+ * Null-safe, because `typeof null` is `'object'` — a single null in the actions array
+ * would otherwise throw inside a read the settings page cannot afford to lose.
+ */
+function soundValueOf(rule: IPushRule): string | undefined {
+  for (const action of rule.actions) {
+    if (
       !!action &&
       typeof action === 'object' &&
-      action.set_tweak === TweakName.Sound,
-  );
+      action.set_tweak === TweakName.Sound
+    ) {
+      const value: unknown = action.value;
+      return typeof value === 'string' ? value : DEFAULT_SOUND;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -134,7 +171,8 @@ export class KeywordRulesService {
         ruleId,
         pattern: typeof rule.pattern === 'string' ? rule.pattern : ruleId,
         enabled: rule.enabled !== false,
-        sound: hasSound(rule),
+        sound: soundValueOf(rule) !== undefined,
+        soundValue: soundValueOf(rule) ?? DEFAULT_SOUND,
       });
     }
     return keywords;
@@ -174,6 +212,14 @@ export class KeywordRulesService {
             new KeywordValidationError('A keyword cannot contain “*” or “?”.'),
         );
       }
+      if (unusableAsRuleId(trimmed)) {
+        return throwError(
+          () =>
+            new KeywordValidationError(
+              'A keyword cannot start with “.” or contain “/”.',
+            ),
+        );
+      }
       const client = this.clientOwning(accountId);
       if (!client) {
         return throwError(() => new Error('Not signed in.'));
@@ -186,7 +232,10 @@ export class KeywordRulesService {
             'global',
             PushRuleKind.ContentSpecific,
             ruleId,
-            { actions: actionsFor(sound), pattern: trimmed },
+            {
+              actions: actionsFor(sound, existing?.soundValue),
+              pattern: trimmed,
+            },
           );
           // Only when it needs it: a rule the server just created is already enabled, and
           // the extra round trip is what tips a burst of adds into the rate limiter.
@@ -225,6 +274,9 @@ export class KeywordRulesService {
     accountId?: string,
   ): Observable<void> {
     return defer(() => {
+      const existing = this.keywords(accountId).find(
+        (keyword) => keyword.ruleId === ruleId,
+      );
       const client = this.clientOwning(accountId);
       if (!client) {
         return throwError(() => new Error('Not signed in.'));
@@ -235,7 +287,7 @@ export class KeywordRulesService {
             'global',
             PushRuleKind.ContentSpecific,
             ruleId,
-            actionsFor(sound),
+            actionsFor(sound, existing?.soundValue),
           ),
         ),
       );
@@ -268,6 +320,9 @@ export class KeywordRulesService {
     operation: () => Promise<unknown>,
   ): Promise<void> {
     await operation();
-    await client.getPushRules();
+    // The write has already landed, so a failed refresh must not be reported as a failed
+    // write: doing so had the UI insisting a removal failed while the rule was gone, and
+    // every retry then 404ing. The list is merely stale until the next sync echo.
+    await client.getPushRules().catch(() => undefined);
   }
 }

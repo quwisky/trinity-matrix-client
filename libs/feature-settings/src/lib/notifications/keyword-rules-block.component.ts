@@ -6,7 +6,6 @@ import {
   computed,
   inject,
   signal,
-  viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
@@ -29,7 +28,7 @@ import {
  * than patched optimistically. A keyword write is a create or a delete against the server,
  * and showing a word that is not actually stored would be worse than a moment's latency.
  *
- * The one thing a refresh cannot fix is a rejected sound click: see {@link soundBoxes}.
+ * A pending sound change is held optimistically: see {@link optimisticSound}.
  */
 @Component({
   selector: 'trn-keyword-rules',
@@ -61,24 +60,27 @@ export class KeywordRulesBlockComponent implements OnInit {
   /** Keywords with a write in flight, so their row's controls disable. */
   private readonly busy = signal<ReadonlySet<string>>(new Set());
   /**
-   * The rows' sound checkboxes, in list order.
+   * Sound states shown ahead of the server, keyed by rule id — the same optimistic shape
+   * the section's own toggles use (see NotificationsSectionComponent).
    *
    * `HlmCheckbox` flips itself on click and holds that in a `linkedSignal` over its
-   * `checked` input, which only recomputes when the INPUT changes. So a rejected write
-   * leaves the box showing one thing and the account holding another, and re-reading the
-   * unchanged server value cannot fix it — the input never moved. Setting the control's
-   * own signal back is the plainest way to say "put it back"; it is public and writable
-   * for exactly this, being what a form's `writeValue` drives too.
+   * `checked` input, which only recomputes when the INPUT changes. Binding the input to
+   * this map means a rejected write moves it back to the server's value, which IS a
+   * transition, so the control resyncs — without reaching into Helm internals or relying
+   * on a row's position, which any extra checkbox in this template would shift.
    */
-  private readonly soundBoxes = viewChildren(HlmCheckbox);
+  private readonly optimisticSound = signal<ReadonlyMap<string, boolean>>(
+    new Map(),
+  );
 
   /** The word being added. Signal Forms, like every other form in the workspace. */
   private readonly keywordModel = signal({ word: '' });
   readonly keywordForm = form(this.keywordModel);
+  /** The trimmed word in the field. One accessor, so the button and the write agree. */
+  private readonly typedWord = (): string =>
+    this.keywordForm.word().value().trim();
   /** Nothing typed — the Add button has nothing to do. */
-  readonly nothingTyped = computed(
-    () => this.keywordForm.word().value().trim().length === 0,
-  );
+  readonly nothingTyped = computed(() => this.typedWord().length === 0);
 
   ngOnInit(): void {
     this.reload();
@@ -86,6 +88,11 @@ export class KeywordRulesBlockComponent implements OnInit {
 
   isBusy(ruleId: string): boolean {
     return this.busy().has(ruleId);
+  }
+
+  /** What the row's Sound box should show: the pending value, else the server's. */
+  soundOf(keyword: KeywordRule): boolean {
+    return this.optimisticSound().get(keyword.ruleId) ?? keyword.sound;
   }
 
   /**
@@ -103,14 +110,16 @@ export class KeywordRulesBlockComponent implements OnInit {
     if (this.adding()) {
       return; // Enter pressed twice would otherwise race two identical writes
     }
-    const word = this.keywordModel().word.trim();
+    const word = this.typedWord();
     if (!word) {
       return; // nothing typed; no need to scold
     }
     const existing = this.keywordsSvc.find(word);
-    // A keyword another client switched off is NOT a duplicate to refuse — re-adding it
-    // is the only way to switch it back on, and refusing would leave it permanently inert.
-    if (existing?.enabled) {
+    // Refuse only an exact repeat. A keyword another client switched off must be
+    // re-addable — that is the only way to switch it back on — and so must a different
+    // spelling of one, which the service re-points rather than duplicating; refusing that
+    // leaves someone unable to fix the casing of their own keyword except by removing it.
+    if (existing?.enabled && existing.pattern === word) {
       this.toast.show(`“${word}” is already in your keywords.`, {
         duration: 3000,
         variant: 'destructive',
@@ -165,6 +174,7 @@ export class KeywordRulesBlockComponent implements OnInit {
   /** Turn a keyword's sound on or off. */
   toggleSound(keyword: KeywordRule, sound: boolean): void {
     this.setBusy(keyword.ruleId, true);
+    this.setOptimisticSound(keyword.ruleId, sound);
     this.keywordsSvc
       .setSound(keyword.ruleId, sound)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -172,10 +182,14 @@ export class KeywordRulesBlockComponent implements OnInit {
         next: () => {
           this.setBusy(keyword.ruleId, false);
           this.reload();
+          this.clearOptimisticSound(keyword.ruleId);
         },
         error: () => {
           this.setBusy(keyword.ruleId, false);
-          this.restoreSound(keyword);
+          // Back to the server's value, and re-read: the write may have landed and only
+          // the response been lost, the same reasoning add and remove are written around.
+          this.setOptimisticSound(keyword.ruleId, keyword.sound);
+          this.reload();
           this.toast.show(`Could not update “${keyword.pattern}”.`, {
             duration: 4000,
             variant: 'destructive',
@@ -193,18 +207,22 @@ export class KeywordRulesBlockComponent implements OnInit {
   }
 
   private reload(): void {
-    // Copied so the signal always changes identity: `@for` only re-diffs — and so only
-    // re-evaluates the track keys — when the collection reference actually moves.
-    this.keywordList.set([...this.keywordsSvc.keywords()]);
+    this.keywordList.set(this.keywordsSvc.keywords());
     this.loaded.set(this.keywordsSvc.hasLoaded());
   }
 
-  /** Put a row's checkbox back to the sound setting the account actually holds. */
-  private restoreSound(keyword: KeywordRule): void {
-    const index = this.keywordList().findIndex(
-      (candidate) => candidate.ruleId === keyword.ruleId,
+  private setOptimisticSound(ruleId: string, sound: boolean): void {
+    this.optimisticSound.update((current) =>
+      new Map(current).set(ruleId, sound),
     );
-    this.soundBoxes()[index]?.checked.set(keyword.sound);
+  }
+
+  private clearOptimisticSound(ruleId: string): void {
+    this.optimisticSound.update((current) => {
+      const next = new Map(current);
+      next.delete(ruleId);
+      return next;
+    });
   }
 
   private setBusy(ruleId: string, on: boolean): void {

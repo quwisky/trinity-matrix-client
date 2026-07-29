@@ -82,8 +82,20 @@ describe('KeywordRulesService', () => {
       ]);
 
       expect(svc.keywords()).toEqual([
-        { ruleId: 'oncall', pattern: 'oncall', enabled: true, sound: true },
-        { ruleId: 'trinity', pattern: 'trinity', enabled: true, sound: false },
+        {
+          ruleId: 'oncall',
+          pattern: 'oncall',
+          enabled: true,
+          sound: true,
+          soundValue: 'default',
+        },
+        {
+          ruleId: 'trinity',
+          pattern: 'trinity',
+          enabled: true,
+          sound: false,
+          soundValue: 'default',
+        },
       ]);
     });
 
@@ -272,6 +284,20 @@ describe('KeywordRulesService', () => {
       expect(client.addPushRule).not.toHaveBeenCalled();
     });
 
+    it.each(['.net', 'a/b'])(
+      'refuses %s, which cannot serve as the rule id',
+      async (input) => {
+        // A leading dot is the sharp one: the list filters server rules out, so `.net`
+        // would be created, would notify, and would be invisible and unremovable.
+        const { svc, client } = setup();
+
+        await expect(firstValueFrom(svc.add(input))).rejects.toBeInstanceOf(
+          KeywordValidationError,
+        );
+        expect(client.addPushRule).not.toHaveBeenCalled();
+      },
+    );
+
     it.each(['*', 'proj*', 'c?ris'])(
       'refuses %s, because a pattern is a glob and the field asks for a word',
       async (input) => {
@@ -354,6 +380,22 @@ describe('KeywordRulesService', () => {
     });
   });
 
+  describe('a failed refresh after a successful write', () => {
+    it.each([
+      ['add', (s: KeywordRulesService) => s.add('oncall')],
+      ['remove', (s: KeywordRulesService) => s.remove('oncall')],
+      ['setSound', (s: KeywordRulesService) => s.setSound('oncall', false)],
+    ])('is not reported as a failed write by %s', async (_method, call) => {
+      // The write has already landed. Reporting the refresh's failure as the write's had
+      // the UI insisting a removal failed while the rule was gone — and every retry then
+      // 404ing, so the row could never be cleared. The list is merely stale until sync.
+      const { svc, client } = setup([keyword('oncall')]);
+      client.getPushRules.mockRejectedValue(new Error('offline'));
+
+      await expect(firstValueFrom(call(svc))).resolves.toBeUndefined();
+    });
+  });
+
   describe('not signed in', () => {
     it.each([
       ['remove', (s: KeywordRulesService) => s.remove('oncall')],
@@ -383,6 +425,25 @@ describe('KeywordRulesService', () => {
       );
       expect(client.deletePushRule).not.toHaveBeenCalled();
       expect(client.addPushRule).not.toHaveBeenCalled();
+    });
+
+    it('carries forward a sound another client chose', async () => {
+      // Toggling Sound off and back on must not quietly downgrade a custom tone to the
+      // default — the user did not ask for that and nothing would tell them.
+      const { svc, client } = setup([
+        keyword('oncall', [
+          'notify',
+          { set_tweak: 'sound', value: 'ring' },
+          { set_tweak: 'highlight' },
+        ]),
+      ]);
+
+      await firstValueFrom(svc.setSound('oncall', true));
+
+      expect(client.setPushRuleActions.mock.calls[0][3]).toContainEqual({
+        set_tweak: 'sound',
+        value: 'ring',
+      });
     });
 
     it('turns a keyword’s sound ON, not only off', async () => {

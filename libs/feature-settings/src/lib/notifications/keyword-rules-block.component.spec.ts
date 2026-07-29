@@ -105,6 +105,20 @@ describe('KeywordRulesBlockComponent', () => {
     expect(text(fixture)).toContain('muted room stays muted');
   });
 
+  it('says it is loading before the rules have synced', async () => {
+    // The gap this closes: with no loading branch the @else rendered an empty <ul>, so a
+    // cold load showed the heading, the blurb and the input with nothing between them and
+    // no explanation — and nothing re-reads, so it stayed that way.
+    const { fixture } = await build({ keywords: [[]], hasLoaded: false });
+
+    expect(text(fixture)).toContain('Loading your keywords');
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="keyword-add"]',
+      ),
+    ).toHaveProperty('disabled', true); // nothing may be written against an unread list
+  });
+
   it('shows an empty state once the rules have actually loaded', async () => {
     const { fixture } = await build({ keywords: [[]], hasLoaded: true });
 
@@ -159,7 +173,7 @@ describe('KeywordRulesBlockComponent', () => {
     expect(toastShow).not.toHaveBeenCalled(); // nothing typed is not an error
   });
 
-  it('refuses a duplicate that is actually active', async () => {
+  it('refuses an exact repeat of an active keyword', async () => {
     const { cmp, add, toastShow } = await build({ find: vi.fn(() => LOUD) });
 
     cmp.keywordForm.word().value.set('oncall');
@@ -170,6 +184,19 @@ describe('KeywordRulesBlockComponent', () => {
       expect.stringContaining('already in your keywords'),
       expect.objectContaining({ variant: 'destructive' }),
     );
+  });
+
+  it('lets a differently-cased keyword through, so casing can be fixed', async () => {
+    // The service re-points the existing rule rather than duplicating it; refusing this
+    // as a duplicate left someone unable to fix their own keyword's casing except by
+    // removing it and adding it again.
+    const { cmp, add, toastShow } = await build({ find: vi.fn(() => LOUD) });
+
+    cmp.keywordForm.word().value.set('OnCall');
+    cmp.add();
+
+    expect(add).toHaveBeenCalledWith('OnCall');
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('lets a switched-off keyword be re-added, which is what switches it back on', async () => {
@@ -278,20 +305,28 @@ describe('KeywordRulesBlockComponent', () => {
     // changes. Re-reading the unchanged server value therefore cannot un-flip it — the
     // binding has to genuinely transition. Asserting the component's model instead of
     // the rendered control passes on exactly that broken behaviour.
+    //
+    // The failure arrives asynchronously, as a rejected request does. That matters: a
+    // synchronous error would set the optimistic value and put it back within one turn,
+    // so Angular would never see the input move.
+    const pending = new Subject<void>();
     const { cmp, fixture } = await build({
       keywords: [[LOUD, QUIET]],
-      setSound: vi.fn(() => throwError(() => new Error('nope'))),
+      setSound: vi.fn(() => pending),
     });
-    expect(checkboxes(fixture)[0].componentInstance.checked()).toBe(true);
+    const box = () => checkboxes(fixture)[0].componentInstance;
+    expect(box().checked()).toBe(true);
 
     // Model the real interaction: the checkbox flips itself, then tells us.
-    checkboxes(fixture)[0].componentInstance.checked.set(false);
+    box().checked.set(false);
     cmp.toggleSound(LOUD, false);
     fixture.detectChanges();
+    expect(box().checked()).toBe(false); // held while the write is in flight
 
-    // The same instance, deliberately: the fix puts THIS control back rather than
-    // replacing it, so a stale query would hide a failure.
-    expect(checkboxes(fixture)[0].componentInstance.checked()).toBe(true);
+    pending.error(new Error('nope'));
+    fixture.detectChanges();
+
+    expect(box().checked()).toBe(true); // back to what the account actually holds
   });
 
   it('holds the new sound state while the write is in flight', async () => {
@@ -439,20 +474,21 @@ describe('KeywordRulesBlockComponent', () => {
       expect(removeButtons(fixture)[0].disabled).toBe(false);
     });
 
-    it('restores the row that failed, not simply the first row', async () => {
-      // Every other checkbox test uses row 0, where the index lookup and a hardcoded 0
-      // agree — so the lookup itself was unpinned.
-      const { cmp, fixture } = await build({
-        setSound: vi.fn(() => throwError(() => new Error('nope'))),
-      });
-      const boxes = checkboxes(fixture);
-      boxes[1].componentInstance.checked.set(true); // QUIET starts false; "click" it on
+    it('restores the row that failed and leaves the others alone', async () => {
+      // Every other checkbox test uses row 0, where a per-row lookup and a hardcoded
+      // first row agree — so the scoping itself would otherwise be unpinned.
+      const pending = new Subject<void>();
+      const { cmp, fixture } = await build({ setSound: vi.fn(() => pending) });
+      const boxes = () => checkboxes(fixture).map((b) => b.componentInstance);
+      boxes()[1].checked.set(true); // QUIET starts false; "click" it on
 
       cmp.toggleSound(QUIET, true);
       fixture.detectChanges();
+      pending.error(new Error('nope'));
+      fixture.detectChanges();
 
-      expect(boxes[1].componentInstance.checked()).toBe(false); // back to the server's value
-      expect(boxes[0].componentInstance.checked()).toBe(true); // untouched
+      expect(boxes()[1].checked()).toBe(false); // back to the server's value
+      expect(boxes()[0].checked()).toBe(true); // untouched
     });
 
     it('shows no Off badge on a keyword that is live', async () => {
