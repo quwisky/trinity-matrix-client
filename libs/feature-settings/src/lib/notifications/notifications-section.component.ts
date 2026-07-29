@@ -13,6 +13,7 @@ import {
   PushRulesService,
   type PushRuleToggle,
 } from '@trinity/data-access-notifications';
+import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 import { PushGatewayBlockComponent } from './push-gateway-block.component';
 
 /**
@@ -25,7 +26,7 @@ import { PushGatewayBlockComponent } from './push-gateway-block.component';
   selector: 'trn-notifications-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './notifications-section.component.html',
-  imports: [HlmCheckbox, PushGatewayBlockComponent],
+  imports: [HlmCheckbox, KeywordRulesBlockComponent, PushGatewayBlockComponent],
 })
 export class NotificationsSectionComponent implements OnInit {
   private readonly push = inject(PushRulesService);

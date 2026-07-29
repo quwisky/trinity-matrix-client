@@ -5,6 +5,7 @@ import { NEVER, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import {
+  KeywordRulesService,
   PushRulesService,
   type PushRuleToggle,
 } from '@trinity/data-access-notifications';
@@ -23,6 +24,9 @@ async function build(over: { setOn?: ReturnType<typeof vi.fn> } = {}) {
   const { fixture } = await render(NotificationsSectionComponent, {
     providers: [
       MockProvider(PushRulesService, { toggles: TOGGLES, isOn, setOn }),
+      // The section renders the keyword block, which would otherwise reach the real
+      // MatrixClientService — harmless today only because it reports uninitialised.
+      MockProvider(KeywordRulesService, { keywords: () => [] }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
@@ -79,5 +83,18 @@ describe('NotificationsSectionComponent', () => {
     cmp.toggle(TOGGLES[1], false);
 
     expect(setOn).toHaveBeenCalledTimes(1);
+  });
+
+  it('contains the keyword list', async () => {
+    // Deleting `<trn-keyword-rules />` from the section removes the whole feature from
+    // the app, and every other unit test still passes: the mocked service yields no
+    // keywords, so the block contributes no checkboxes either way.
+    const { fixture } = await build();
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="keyword-rules"]',
+      ),
+    ).not.toBeNull();
   });
 });
