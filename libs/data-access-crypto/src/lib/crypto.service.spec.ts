@@ -94,6 +94,7 @@ function setup(opts: CryptoOpts = {}) {
     checkKeyBackupAndEnable: vi.fn().mockResolvedValue(null),
     exportRoomKeysAsJson: vi.fn().mockResolvedValue(opts.exportedKeys ?? '[]'),
     importRoomKeysAsJson: vi.fn().mockResolvedValue(undefined),
+    resetEncryption: vi.fn().mockResolvedValue(undefined),
   };
 
   const secretStorage = {
@@ -235,6 +236,94 @@ describe('CryptoService', () => {
       await expect(ssOpts.createSecretStorageKey()).resolves.toMatchObject({
         encodedPrivateKey: 'EsTShown',
       });
+    });
+  });
+
+  describe('resetRecovery', () => {
+    it('resets, then re-bootstraps 4S and returns the NEW recovery key', async () => {
+      const { svc, crypto } = setup({
+        recoveryKey: {
+          encodedPrivateKey: 'EsTAfterReset',
+          privateKey: new Uint8Array(32),
+        },
+      });
+
+      const shown = await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(crypto.resetEncryption).toHaveBeenCalledOnce();
+      expect(shown).toBe('EsTAfterReset');
+      const ssOpts = crypto.bootstrapSecretStorage.mock.calls[0][0];
+      await expect(ssOpts.createSecretStorageKey()).resolves.toMatchObject({
+        encodedPrivateKey: 'EsTAfterReset',
+      });
+    });
+
+    it('bootstraps 4S WITHOUT asking for another key backup', async () => {
+      // resetEncryption already made one. Passing setupNewKeyBackup would reset the
+      // backup a second time and leave the account holding two versions — which is
+      // exactly why setUp(), which passes true, cannot be reused for this flow.
+      const { svc, crypto } = setup();
+
+      await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(
+        crypto.bootstrapSecretStorage.mock.calls[0][0].setupNewKeyBackup,
+      ).toBeUndefined();
+    });
+
+    it('bootstraps 4S AFTER the reset, or the new key would be wiped', async () => {
+      // resetEncryption deletes secret storage. Bootstrapping first would hand the user
+      // a recovery key that the reset then destroyed.
+      const order: string[] = [];
+      const { svc, crypto } = setup();
+      crypto.resetEncryption.mockImplementation(async () => {
+        order.push('reset');
+      });
+      crypto.bootstrapSecretStorage.mockImplementation(async () => {
+        order.push('bootstrap');
+      });
+
+      await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(order).toEqual(['reset', 'bootstrap']);
+    });
+
+    it('drives the reset through the password UIA callback', async () => {
+      const { svc, crypto } = setup();
+
+      await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(crypto.resetEncryption.mock.calls[0][0]).toBeTypeOf('function');
+    });
+
+    it('does not touch cross-signing itself — the reset owns that', async () => {
+      const { svc, crypto } = setup();
+
+      await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+    });
+
+    it('recomputes status, so the UI stops reporting the old posture', async () => {
+      const { svc } = setup({
+        crossSigningReady: true,
+        secretStorageReady: true,
+        defaultKeyId: 'k',
+      });
+
+      await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(svc.status()).toBe('ready');
+    });
+
+    it('propagates a failed reset rather than reporting a new key', async () => {
+      const { svc, crypto } = setup();
+      crypto.resetEncryption.mockRejectedValue(new Error('server said no'));
+
+      await expect(
+        firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      ).rejects.toThrow('server said no');
+      expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
     });
   });
 

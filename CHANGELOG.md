@@ -8,6 +8,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A way back in when you have lost your recovery key.** If you lost your recovery key and
+  had no other signed-in device to verify from, Trinity had no way forward — the unlock
+  screen offered your key or nothing. Settings → Security, and the unlock screen itself, now
+  offer **I've lost my recovery key**, which builds your account a new encryption identity
+  and gives you a new key to save. It is a last resort and it is spelled out before you
+  confirm: your message backup on the server is deleted, so anything your devices cannot
+  already read stays unreadable, and your other devices have to be verified again — they are
+  not signed out. You have to type the word RESET to go ahead. If your account signs in
+  through an identity provider, Trinity sends you there to do it, since only the provider can
+  authorise it.
+
 - **Be notified when someone says a word you care about.** Settings → Notifications gains a
   **Keywords** list: add a word — your team's name, a project, an on-call term, a nickname
   you're known by — and any message using it notifies you and marks the room, in every room

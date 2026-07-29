@@ -11,6 +11,23 @@ export class UiaCancelledError extends Error {
   }
 }
 
+/**
+ * Thrown when the server will not accept a password for this action — an SSO-only or
+ * OIDC-native account, or a multi-stage flow past the password.
+ *
+ * A distinct type rather than a bare Error because callers act on it: encryption reset
+ * offers the identity provider's own page instead, which is only correct for THIS failure
+ * and not for a wrong password or a network error.
+ */
+export class UiaUnsupportedError extends Error {
+  constructor() {
+    super(
+      'This account needs additional verification that Trinity can’t complete here.',
+    );
+    this.name = 'UiaUnsupportedError';
+  }
+}
+
 /** Max password attempts before giving up on a UIA flow. */
 const MAX_ATTEMPTS = 3;
 
@@ -27,9 +44,10 @@ interface UiaData {
  * prompted and the request retried with an `m.login.password` auth dict,
  * re-prompting on a wrong password up to {@link MAX_ATTEMPTS} times.
  *
- * Throws {@link UiaCancelledError} if the prompt is cancelled, and a clear error
- * when the server requires a stage Trinity can't satisfy here (SSO-only or a
- * multi-stage flow past the password) rather than looping to the attempt cap.
+ * Throws {@link UiaCancelledError} if the prompt is cancelled, and
+ * {@link UiaUnsupportedError} when the server requires a stage Trinity can't satisfy
+ * here (SSO-only or a multi-stage flow past the password) rather than looping to the
+ * attempt cap.
  *
  * Shared by encryption setup (device-signing upload) and device sign-out.
  */
@@ -52,9 +70,7 @@ export async function runPasswordUia<T>(
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (!offersPassword(challenge)) {
-      throw new Error(
-        'This account needs additional verification that Trinity can’t complete here.',
-      );
+      throw new UiaUnsupportedError();
     }
     const session = challenge.session;
     if (!session) {

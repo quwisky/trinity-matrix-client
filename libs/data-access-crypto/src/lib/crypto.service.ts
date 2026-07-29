@@ -128,6 +128,45 @@ export class CryptoService {
     );
   }
 
+  /**
+   * Last resort (flow C): throw the account's encryption identity away and build a new
+   * one, for someone who has lost their recovery key and has no other verified device.
+   *
+   * Emits the new recovery key, exactly as {@link setUp} does, so the same
+   * shown-once display can present it.
+   *
+   * **This destroys data and cannot be undone.** `resetEncryption` deletes *every*
+   * key-backup version on the account, not just this device's view of it, so the user's
+   * other devices lose the shared backup too — they keep whatever message keys are
+   * already in their local stores, stay signed in, and lose only cross-signing trust.
+   * Anything not already decryptable somewhere is gone. Callers must say so before
+   * calling this.
+   *
+   * The second half is not optional and not a duplicate of {@link setUp}. `resetEncryption`
+   * ends by creating a fresh key backup, but only files that backup's key into 4S when 4S
+   * already exists — and it deleted 4S moments earlier. Left there, the account would hold
+   * a backup whose key is nowhere the user can reach. Bootstrapping secret storage
+   * afterwards stores it, and `setupNewKeyBackup` is deliberately OMITTED: that flag would
+   * reset the backup a *second* time and leave two versions behind, which is precisely why
+   * `setUp()` cannot be reused here.
+   */
+  resetRecovery(promptPassword: PasswordPrompt): Observable<string> {
+    return defer(() =>
+      from(
+        (async (): Promise<string> => {
+          const crypto = this.requireCrypto();
+          await crypto.resetEncryption(this.passwordUia(promptPassword));
+          const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
+          await crypto.bootstrapSecretStorage({
+            createSecretStorageKey: async () => recoveryKey,
+          });
+          await this.computeStatus();
+          return this.encoded(recoveryKey);
+        })(),
+      ),
+    );
+  }
+
   /** Unlock this device from the account's recovery key (flow B). */
   recoverWithKey(recoveryKey: string): Observable<void> {
     return this.recover(async () => ({ privateKey: this.decode(recoveryKey) }));

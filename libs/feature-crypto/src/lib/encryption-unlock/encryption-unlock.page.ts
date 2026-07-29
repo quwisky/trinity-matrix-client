@@ -12,8 +12,12 @@ import { NgTemplateOutlet } from '@angular/common';
 import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DialogRef } from '@angular/cdk/dialog';
-import { Observable } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Browser } from '@capacitor/browser';
+import { Observable, finalize, firstValueFrom } from 'rxjs';
 import { CryptoService } from '@trinity/data-access-crypto';
+import { AuthService } from '@trinity/data-access-auth';
+import { UiaUnsupportedError, type PasswordPrompt } from '@trinity/util-matrix';
 import {
   PageHeaderComponent,
   resolveInternalReturnTo,
@@ -22,7 +26,15 @@ import {
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnAlertService } from '@trinity/helm/overlay';
+import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
+import {
+  RESET_CONFIRMATION_WORD,
+  RESET_CONSEQUENCES,
+  crossSigningResetUrl,
+} from './recovery-reset';
 
 /**
  * New-device unlock (flow B). The account already has secret storage; the user
@@ -39,7 +51,9 @@ import { HlmSpinner } from '@trinity/helm/spinner';
     FormField,
     NgTemplateOutlet,
     PageHeaderComponent,
+    RecoveryKeyDisplayComponent,
     HlmButton,
+    HlmCheckbox,
     HlmInput,
     HlmLabel,
     HlmSpinner,
@@ -47,6 +61,8 @@ import { HlmSpinner } from '@trinity/helm/spinner';
 })
 export class EncryptionUnlockPage {
   private readonly crypto = inject(CryptoService);
+  private readonly auth = inject(AuthService);
+  private readonly alert = inject(TrnAlertService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   // Present only when opened as a dialog (desktop); null on the routed page.
@@ -71,6 +87,15 @@ export class EncryptionUnlockPage {
   );
   readonly error = signal<string | null>(null);
 
+  /**
+   * The recovery key minted by a reset, shown once. Non-null switches the page from
+   * "enter your key" to "save this key" — the reset leaves the account `ready`, so status
+   * cannot be what decides this.
+   */
+  readonly newRecoveryKey = signal<string | null>(null);
+  /** The user has ticked "I've saved it", which is what releases the Done button. */
+  readonly confirmedSaved = signal(false);
+
   /** When true the page is modal content (desktop); else a routed page. */
   readonly asModal = input(false);
   /** Asks an @Output-bound host modal to dismiss. */
@@ -87,6 +112,88 @@ export class EncryptionUnlockPage {
       this.leave();
     });
   }
+
+  /**
+   * Throw the account's encryption identity away and build a new one, for someone with no
+   * recovery key and no other verified device.
+   *
+   * Gated on typing the confirmation word: this destroys the account's server-side message
+   * backup, and a mis-tap is not an acceptable way to reach it. Cancelling and mistyping
+   * are the same answer — no.
+   */
+  async resetRecovery(): Promise<void> {
+    const typed = await this.alert.prompt({
+      header: 'Reset encryption',
+      message: RESET_CONSEQUENCES,
+      placeholder: RESET_CONFIRMATION_WORD,
+      confirmText: 'Reset',
+      cancelText: 'Cancel',
+      destructive: true,
+    });
+    if (typed?.trim().toUpperCase() !== RESET_CONFIRMATION_WORD) {
+      return;
+    }
+    // Deliberately NOT runWithBusy: it turns a failure into EMPTY, so an error handler
+    // never runs — and this is the one path that has to inspect WHY it failed.
+    this.busy.set(true);
+    this.error.set(null);
+    this.crypto
+      .resetRecovery(this.promptPassword)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.busy.set(false)),
+      )
+      .subscribe({
+        next: (key) => {
+          this.clearKey();
+          this.newRecoveryKey.set(key);
+        },
+        error: (err: unknown) => void this.onResetFailed(err),
+      });
+  }
+
+  /**
+   * An OIDC-native account cannot answer a password challenge in-app, so the reset has to
+   * happen at the identity provider. Only {@link UiaUnsupportedError} means that — a wrong
+   * password or a dropped connection must keep the message they already produced.
+   */
+  private async onResetFailed(err: unknown): Promise<void> {
+    if (!(err instanceof UiaUnsupportedError)) {
+      this.error.set(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    const management = await firstValueFrom(this.auth.getAccountManagement());
+    const url = management ? crossSigningResetUrl(management) : null;
+    if (!url) {
+      this.error.set(
+        'Your identity provider has to reset encryption for this account. Trinity cannot do it here.',
+      );
+      return;
+    }
+    this.error.set(
+      'Your identity provider handles this. Finish the reset there, then come back and sign in again.',
+    );
+    void Browser.open({ url });
+  }
+
+  /** Finish after a reset: the key has been shown and the user says it is saved. */
+  finishReset(): void {
+    this.newRecoveryKey.set(null);
+    this.leave();
+  }
+
+  /**
+   * Password prompt for the reset's device-signing-key upload. Same copy as encryption
+   * setup, which drives the identical UIA stage.
+   */
+  private readonly promptPassword: PasswordPrompt = () =>
+    this.alert.prompt({
+      header: 'Confirm your password',
+      message: 'Your homeserver needs your password to reset encryption.',
+      placeholder: 'Password',
+      confirmText: 'Confirm',
+      inputType: 'password',
+    });
 
   /** Close without unlocking (modal Close / return on the routed page). */
   close(): void {

@@ -21,46 +21,94 @@
 }
 
 <ng-template #body>
-  <h2 class="heading">Enter your recovery key</h2>
-  <p class="text-muted-foreground">
-    This device isn't trusted yet. Enter the recovery key you saved when you set
-    up encryption to unlock your encrypted messages here.
-  </p>
-
-  <div class="mt-4">
-    <label hlmLabel for="recovery-key">Recovery key</label>
-    <input
-      id="recovery-key"
-      hlmInput
-      class="mt-1"
-      autocapitalize="off"
-      autocorrect="off"
-      autocomplete="off"
-      placeholder="EsTx xxxx xxxx …"
-      [formField]="unlockForm.recoveryKey"
-      (keyup.enter)="unlock()"
-    />
-    <p class="mt-1 text-xs text-muted-foreground">
-      Paste the key you saved during setup. Spaces don't matter.
+  @if (newRecoveryKey(); as key) {
+    <!-- Post-reset: the account has a brand-new identity and this key is the only copy. -->
+    <h2 class="heading">Save your new recovery key</h2>
+    <p class="warning" role="note">
+      We'll only show this key once. Without it, you can't recover your message
+      history on another device.
     </p>
-  </div>
+    <trn-recovery-key-display [recoveryKey]="key" />
+    <label
+      class="mt-4 flex cursor-pointer items-center gap-2 text-sm"
+      data-testid="reset-saved"
+    >
+      <hlm-checkbox
+        [checked]="confirmedSaved()"
+        (checkedChange)="confirmedSaved.set($event)"
+        aria-label="I've saved my new recovery key"
+      />
+      I've saved my recovery key somewhere safe
+    </label>
+    <button
+      hlmBtn
+      class="mt-4 w-full"
+      [disabled]="!confirmedSaved()"
+      (click)="finishReset()"
+      data-testid="reset-done"
+    >
+      Done
+    </button>
+  } @else {
+    <h2 class="heading">Enter your recovery key</h2>
+    <p class="text-muted-foreground">
+      This device isn't trusted yet. Enter the recovery key you saved when you
+      set up encryption to unlock your encrypted messages here.
+    </p>
 
-  <button
-    hlmBtn
-    class="mt-4 w-full"
-    [disabled]="busy() || !hasKey()"
-    (click)="unlock()"
-  >
-    Unlock
-  </button>
-
-  @if (busy()) {
-    <div class="mt-4 text-center" role="status" aria-live="polite">
-      <hlm-spinner />
-      <p class="progress">Unlocking your encrypted messages…</p>
+    <div class="mt-4">
+      <label hlmLabel for="recovery-key">Recovery key</label>
+      <input
+        id="recovery-key"
+        hlmInput
+        class="mt-1"
+        autocapitalize="off"
+        autocorrect="off"
+        autocomplete="off"
+        placeholder="EsTx xxxx xxxx …"
+        data-testid="recovery-key-input"
+        [formField]="unlockForm.recoveryKey"
+        (keyup.enter)="unlock()"
+      />
+      <p class="mt-1 text-xs text-muted-foreground">
+        Paste the key you saved during setup. Spaces don't matter.
+      </p>
     </div>
-  }
-  @if (error(); as message) {
-    <p class="mt-2 text-danger" role="alert">{{ message }}</p>
+
+    <button
+      hlmBtn
+      class="mt-4 w-full"
+      [disabled]="busy() || !hasKey()"
+      (click)="unlock()"
+      data-testid="unlock-submit"
+    >
+      Unlock
+    </button>
+
+    @if (busy()) {
+      <div class="mt-4 text-center" role="status" aria-live="polite">
+        <hlm-spinner />
+        <p class="progress">Unlocking your encrypted messages…</p>
+      </div>
+    }
+    @if (error(); as message) {
+      <p class="mt-2 text-danger" role="alert" data-testid="unlock-error">
+        {{ message }}
+      </p>
+    }
+
+    <!-- Subordinate on purpose: this is the way out for someone who has no key, not an
+       alternative to entering one. -->
+    <button
+      hlmBtn
+      variant="ghost"
+      size="sm"
+      class="mt-4 w-full text-muted-foreground"
+      [disabled]="busy()"
+      (click)="resetRecovery()"
+      data-testid="reset-recovery"
+    >
+      I've lost my recovery key
+    </button>
   }
 </ng-template>

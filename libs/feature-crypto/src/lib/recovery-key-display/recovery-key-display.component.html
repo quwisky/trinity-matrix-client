@@ -1,6 +1,8 @@
 <!-- No aria-label: the key text itself must be the accessible content so a
          screen reader can read it. Copy/Download are the reliable capture path. -->
-<code class="key" tabindex="0">{{ recoveryKey() }}</code>
+<code class="key" tabindex="0" data-testid="recovery-key">{{
+  recoveryKey()
+}}</code>
 
 <div class="actions">
   <button hlmBtn variant="outline" size="sm" (click)="copy()">

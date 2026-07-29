@@ -55,8 +55,9 @@ const SAS_METHOD = 'm.sas.v1';
  * and cold Observables perform the actions. Mirrors {@link CryptoService}'s shape
  * (instance-keyed idempotent `connect()`/`disconnect()`).
  *
- * MVP scope: self-verification (verify your own other devices) over SAS. QR and
- * cross-user verification are deliberately out of scope (Milestone 7 plan).
+ * Scope: SAS (emoji) verification, both of your own other devices and — via
+ * {@link startUserVerification} — of another user over a DM. QR verification is not
+ * implemented (issue #42).
  */
 @Injectable({ providedIn: 'root' })
 export class VerificationService {
