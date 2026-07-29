@@ -12,7 +12,16 @@ import {
   type RoomMember,
   type RoomState,
 } from 'matrix-js-sdk';
-import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  defer,
+  from,
+  map,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import {
   MatrixClientService,
   projectFromClient,
@@ -28,6 +37,7 @@ import {
   compareRoomSummaries,
   directMapOf,
   initialOf,
+  isMarkedUnread,
 } from './room-projection';
 
 /** Fields a {@link RoomsService.createRoom} call accepts. */
@@ -70,8 +80,10 @@ export interface RoomSummary {
   unreadCount: number;
   /** Unread mentions/highlights (drives the red badge). */
   highlightCount: number;
-  /** Convenience flag: there are unread notifications. */
+  /** Convenience flag: there are unread notifications, or the room is flagged unread. */
   hasUnread: boolean;
+  /** The user flagged this room to come back to (`m.marked_unread`, MSC2867). */
+  markedUnread: boolean;
   /** Single-line preview of the room's most recent message (`''` when none). */
   lastMessage: string;
   /** Last-activity timestamp (ms), used to order the list by recency. */
@@ -134,6 +146,14 @@ export class RoomsService {
    * list depend on member state, where before it depended only on room state.
    */
   private dmPeers: ReadonlySet<string> = new Set();
+
+  /**
+   * Marked-unread writes shown before /sync confirms them, keyed by room id.
+   *
+   * An entry is dropped as soon as the synced room agrees with it, so this holds only
+   * genuinely in-flight state rather than shadowing the server indefinitely.
+   */
+  private readonly pendingUnread = new Map<string, boolean>();
 
   /**
    * Our OWN membership changed (joined/left a room). The rebuild is already covered —
@@ -219,6 +239,10 @@ export class RoomsService {
       // Room tags (e.g. `m.favourite`, the favourite flag) can change from another device;
       // rebuild so a remote favourite/unfavourite re-partitions and re-sorts the list live.
       RoomEvent.Tags,
+      // Room account data carries the marked-unread flag, and nothing in the app
+      // listened to it before — so a room flagged on another device would not have
+      // surfaced here until some unrelated event happened to rebuild the list.
+      RoomEvent.AccountData,
     ],
     // refresh() writes signals, which schedule change detection, so the room list and
     // unread badges surface immediately.
@@ -372,6 +396,10 @@ export class RoomsService {
           break;
         }
       }
+      // Clear the flag first, and unconditionally: an empty room returns early below,
+      // but a room flagged unread and then marked read must stop being flagged whether
+      // or not there is an event to acknowledge.
+      this.clearMarkedUnreadOn(roomId, accountId);
       const latestId = latest?.getId();
       if (!latest || !latestId) {
         return of(void 0);
@@ -386,6 +414,81 @@ export class RoomsService {
       return from(client.sendReadReceipt(latest, receiptType)).pipe(
         map(() => void 0),
       );
+    });
+  }
+
+  /**
+   * Flag a room to come back to, or clear that flag (`m.marked_unread`, MSC2867).
+   *
+   * Room account data, so it syncs to the user's other devices and interops with Element.
+   * The read receipt is deliberately untouched: the point is to say "I have seen this and
+   * still want it in front of me", which a receipt cannot express. Clearing writes
+   * `{unread: false}` rather than redacting, which is what other clients read back.
+   *
+   * Fire-and-forget like {@link setFavourite}: the post-write {@link refresh} makes the
+   * change land at once, and the `RoomEvent.AccountData` listener covers the echo.
+   */
+  setMarkedUnread(
+    roomId: string,
+    unread: boolean,
+    accountId?: string,
+  ): Observable<void> {
+    return defer(() => {
+      const client = this.clientOwning(accountId);
+      if (!client) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      // Shown before the server confirms, because there is nothing else to show:
+      // `setRoomAccountData` is a bare PUT with no local echo, and `Room.accountData` is
+      // only ever written from /sync — so a post-write refresh alone re-reads the OLD
+      // value and the row would not change until the sync echo landed.
+      this.pendingUnread.set(roomId, unread);
+      this.refresh();
+      return from(
+        client.setRoomAccountData(roomId, EventType.MarkedUnread, { unread }),
+      ).pipe(
+        map(() => void 0),
+        catchError((err: unknown) => {
+          this.pendingUnread.delete(roomId); // put the row back
+          this.refresh();
+          return throwError(() => err);
+        }),
+      );
+    });
+  }
+
+  /**
+   * Drop a room's marked-unread flag wherever it is actually set.
+   *
+   * Sweeps every signed-in account rather than taking one: a row merged from two mixed
+   * accounts can be flagged on either, and clearing only the active one would leave the
+   * row still reading as unread with no obvious way to fix it. Writes nothing for an
+   * account that does not hold the flag, so this is cheap to call on every room open.
+   */
+  clearMarkedUnread(roomId: string): void {
+    for (const accountId of this.matrix.accountIds()) {
+      this.clearMarkedUnreadOn(roomId, accountId);
+    }
+  }
+
+  /**
+   * Drop the flag on ONE account, and only if it is actually set.
+   *
+   * The single definition of "clear the flag", shared by {@link clearMarkedUnread} and by
+   * {@link markRead} — the two must not drift, and checking first is what keeps this cheap
+   * enough to call on every room open.
+   *
+   * Fire-and-forget: a failed clear leaves the row flagged, which the next open retries,
+   * and a toast on every room open would be noise.
+   */
+  private clearMarkedUnreadOn(roomId: string, accountId?: string): void {
+    const room = this.clientOwning(accountId)?.getRoom(roomId);
+    if (!room || !isMarkedUnread(room)) {
+      return;
+    }
+    this.setMarkedUnread(roomId, false, accountId).subscribe({
+      error: (err: unknown) =>
+        console.error('Could not clear the room’s unread flag', err),
     });
   }
 
@@ -578,12 +681,33 @@ export class RoomsService {
         .getRooms()
         // Spaces are rendered in the server rail, not as channels in the room list.
         .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
-        .map((r) => buildRoomSummary(r, accountId, userByRoom.get(r.roomId)))
+        .map((r) =>
+          this.applyPendingUnread(
+            buildRoomSummary(r, accountId, userByRoom.get(r.roomId)),
+          ),
+        )
         .sort(compareRoomSummaries),
     );
     this._directRoomIds.set(direct);
     this.dmPeers = new Set(userByRoom.values());
     this._revision.update((n) => n + 1);
+  }
+
+  /** Overlay an in-flight marked-unread write, and forget it once /sync agrees. */
+  private applyPendingUnread(summary: RoomSummary): RoomSummary {
+    const pending = this.pendingUnread.get(summary.id);
+    if (pending === undefined) {
+      return summary;
+    }
+    if (pending === summary.markedUnread) {
+      this.pendingUnread.delete(summary.id); // the echo landed; the server owns it again
+      return summary;
+    }
+    return {
+      ...summary,
+      markedUnread: pending,
+      hasUnread: summary.unreadCount > 0 || pending,
+    };
   }
 
   // `creatorId` is deliberately required rather than defaulted: a second caller that

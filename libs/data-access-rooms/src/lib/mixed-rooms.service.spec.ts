@@ -1,7 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
-import { NotificationCountType } from 'matrix-js-sdk';
+import { NotificationCountType, RoomEvent } from 'matrix-js-sdk';
 import { MixedRoomsService } from './mixed-rooms.service';
 import { MatrixClientService } from '@trinity/data-access-matrix-client';
 
@@ -18,6 +18,7 @@ function fakeRoom(
     favourite?: boolean;
     unread?: number;
     highlight?: number;
+    markedUnread?: boolean;
   } = {},
 ) {
   return {
@@ -29,6 +30,10 @@ function fakeRoom(
     getAvatarFallbackMember: () => undefined,
     getJoinedMemberCount: () => 1,
     hasEncryptionStateEvent: () => false,
+    getAccountData: (type: string) =>
+      opts.markedUnread && type === 'm.marked_unread'
+        ? { getContent: () => ({ unread: true }) }
+        : undefined,
     getUnreadNotificationCount: (type?: unknown) =>
       type === NotificationCountType.Highlight
         ? (opts.highlight ?? 0)
@@ -393,5 +398,66 @@ describe('MixedRoomsService', () => {
         .map((r) => r.id)
         .sort(),
     ).toEqual(['!a:hs', '!b:hs']);
+  });
+
+  it('keeps a merged row flagged when either account flagged it', async () => {
+    // hasUnread is OR'd for the same reason; taking markedUnread from the winning row
+    // alone would leave a row that reads unread while claiming it is not flagged —
+    // the wrong menu item, and a badge with no count behind it.
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom('!shared:hs')]));
+    clients.set(
+      '@b:hs',
+      fakeClient([fakeRoom('!shared:hs', { markedUnread: true })]),
+    );
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@a:hs'); // the UNflagged copy wins the merge identity
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+
+    await flush();
+
+    const row = svc.rooms().find((r) => r.id === '!shared:hs');
+    expect(row).toMatchObject({ markedUnread: true, hasUnread: true });
+  });
+
+  it('stays flagged when the WINNING copy is the flagged one', async () => {
+    // The shipped merge test flags the losing copy; taking the flag from the last copy
+    // visited would still pass that one, so both directions are pinned.
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set(
+      '@a:hs',
+      fakeClient([fakeRoom('!shared:hs', { markedUnread: true })]),
+    );
+    clients.set('@b:hs', fakeClient([fakeRoom('!shared:hs')]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@a:hs');
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+
+    await flush();
+
+    expect(svc.rooms()[0].markedUnread).toBe(true);
+  });
+
+  it('rebuilds when a room’s account data changes', async () => {
+    // Room account data is what carries the flag between devices. Without the listener
+    // the mixed list only picks it up when some unrelated event happens to fire.
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    const room = fakeRoom('!r:hs');
+    clients.set('@a:hs', fakeClient([room]));
+    clients.set('@b:hs', fakeClient([fakeRoom('!other:hs')]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@a:hs');
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+    await flush();
+    expect(svc.rooms().find((r) => r.id === '!r:hs')?.markedUnread).toBe(false);
+
+    room.getAccountData = (type: string) =>
+      type === 'm.marked_unread'
+        ? { getContent: () => ({ unread: true }) }
+        : undefined;
+    clients.get('@a:hs')!.emit(RoomEvent.AccountData);
+    await flush();
+
+    expect(svc.rooms().find((r) => r.id === '!r:hs')?.markedUnread).toBe(true);
   });
 });

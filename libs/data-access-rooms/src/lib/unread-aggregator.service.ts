@@ -9,6 +9,7 @@ import {
   coalesce,
   MatrixClientService,
 } from '@trinity/data-access-matrix-client';
+import { isMarkedUnread } from './room-projection';
 
 /** A no-arg listener reused across every unread-affecting client / room event. */
 type UnreadListener = () => void;
@@ -105,7 +106,14 @@ export class UnreadAggregatorService {
     this._unreadByAccount.set(counts);
   }
 
-  /** Sum an account's joined, non-space rooms' unread notification counts. */
+  /**
+   * Sum an account's joined, non-space rooms' unread notification counts.
+   *
+   * A room the user flagged to come back to counts as one, even though the server's count
+   * for it is zero — that flag is the only thing saying the room wants attention, and a
+   * badge that ignored it would leave "come back to this" visible nowhere but the one
+   * sidebar list that happens to show the room.
+   */
   private unreadFor(userId: string): number {
     const client = this.matrix.clientFor(userId);
     if (!client) {
@@ -116,11 +124,12 @@ export class UnreadAggregatorService {
       .filter(
         (room) => !room.isSpaceRoom() && room.getMyMembership() === 'join',
       )
-      .reduce(
-        (sum, room) =>
-          sum + room.getUnreadNotificationCount(NotificationCountType.Total),
-        0,
-      );
+      .reduce((sum, room) => {
+        const notifications = room.getUnreadNotificationCount(
+          NotificationCountType.Total,
+        );
+        return sum + (notifications || (isMarkedUnread(room) ? 1 : 0));
+      }, 0);
   }
 
   private attach(client: MatrixClient, handler: UnreadListener): void {
@@ -128,6 +137,7 @@ export class UnreadAggregatorService {
     client.on(ClientEvent.Room, handler);
     client.on(RoomEvent.MyMembership, handler);
     client.on(RoomEvent.Receipt, handler);
+    client.on(RoomEvent.AccountData, handler); // carries the marked-unread flag
   }
 
   private detach(client: MatrixClient, handler: UnreadListener): void {
@@ -135,5 +145,6 @@ export class UnreadAggregatorService {
     client.off(ClientEvent.Room, handler);
     client.off(RoomEvent.MyMembership, handler);
     client.off(RoomEvent.Receipt, handler);
+    client.off(RoomEvent.AccountData, handler);
   }
 }

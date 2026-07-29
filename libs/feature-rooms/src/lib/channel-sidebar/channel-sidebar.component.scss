@@ -229,6 +229,16 @@
     background: var(--trinity-text-muted);
     color: var(--trinity-sidebar);
   }
+
+  // A room flagged unread with nothing new in it has no number to show, so it gets a
+  // dot in the same neutral fill as an ordinary unread count rather than a "0".
+  &--dot {
+    min-width: 8px;
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    background: var(--trinity-text-muted);
+  }
 }
 
 .channel__menu {

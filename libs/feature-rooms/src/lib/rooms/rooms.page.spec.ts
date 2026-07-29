@@ -114,6 +114,8 @@ describe('RoomsPage action error feedback', () => {
   let currentIdentity: ReturnType<typeof vi.fn>;
   let joinPublicRoom: ReturnType<typeof vi.fn>;
   let markReadFn: ReturnType<typeof vi.fn>;
+  let setMarkedUnreadFn: ReturnType<typeof vi.fn>;
+  let clearMarkedUnreadFn: ReturnType<typeof vi.fn>;
 
   function build(): RoomsPage {
     toastShow = vi.fn();
@@ -152,6 +154,8 @@ describe('RoomsPage action error feedback', () => {
     canManageAliases = vi.fn(() => false);
     joinPublicRoom = vi.fn(() => of('!new:hs'));
     markReadFn = vi.fn(() => of(undefined));
+    setMarkedUnreadFn = vi.fn(() => of(undefined));
+    clearMarkedUnreadFn = vi.fn();
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -160,6 +164,8 @@ describe('RoomsPage action error feedback', () => {
           rooms: roomsSignal,
           directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
           markRead: markReadFn,
+          setMarkedUnread: setMarkedUnreadFn,
+          clearMarkedUnread: clearMarkedUnreadFn,
         }),
         MockProvider(RoomSettingsService, {
           editableFields,
@@ -598,6 +604,7 @@ describe('RoomsPage action error feedback', () => {
         unreadCount: 0,
         highlightCount: 0,
         hasUnread: false,
+        markedUnread: false,
         lastMessage: '',
         activityTs: 0,
         favourite: false,
@@ -654,6 +661,7 @@ describe('RoomsPage action error feedback', () => {
         unreadCount: 0,
         highlightCount: 0,
         hasUnread: false,
+        markedUnread: false,
         lastMessage: '',
         activityTs: 0,
         favourite: false,
@@ -779,6 +787,52 @@ describe('RoomsPage action error feedback', () => {
     expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@alt:hs');
   });
 
+  it('tells the user when flagging a room fails', () => {
+    // The service rolls its optimistic overlay back on failure, so without this the row
+    // simply un-flags itself and the user is left thinking the click missed.
+    const page = build();
+    setMarkedUnreadFn.mockReturnValue(throwError(() => new Error('nope')));
+
+    page.onMarkUnread({ roomId: '!r:hs', accountIds: ['@me:hs'] });
+
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.stringContaining('Could not mark the room unread.'),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
+  it('flags a room on every account joined to a merged row', () => {
+    const page = build();
+
+    page.onMarkUnread({ roomId: '!r:hs', accountIds: ['@me:hs', '@alt:hs'] });
+
+    expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, '@me:hs');
+    expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, '@alt:hs');
+  });
+
+  it('flags on the active account when the row names none', () => {
+    // The fallback matters: `forkJoin([])` completes without emitting, so dropping it
+    // would make the single-account ⋮ menu write nothing at all, silently.
+    const page = build();
+
+    page.onMarkUnread({ roomId: '!r:hs' });
+
+    expect(setMarkedUnreadFn).toHaveBeenCalledTimes(1);
+    expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, undefined);
+  });
+
+  it('clears the flag whenever a room is opened, however it was opened', () => {
+    // The clear is wired to selection rather than to the focus-gated ack, so every
+    // opener has to go through it — a permalink hop included.
+    const page = build();
+
+    page.onSelectRoom('!r:hs');
+    page.onSelectRoom('!h:hs', 'hop');
+
+    expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!r:hs');
+    expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!h:hs');
+  });
+
   it('applies a notification level on every account joined to a merged row', () => {
     const page = build();
 
@@ -814,6 +868,7 @@ describe('RoomsPage action error feedback', () => {
       unreadCount: hasUnread ? 3 : 0,
       highlightCount: 0,
       hasUnread,
+      markedUnread: false,
       lastMessage: '',
       activityTs: 0,
       favourite: false,
@@ -829,6 +884,65 @@ describe('RoomsPage action error feedback', () => {
     expect(markReadFn).toHaveBeenCalledWith('!a:hs', '@me:hs');
     expect(markReadFn).toHaveBeenCalledWith('!c:hs', '@alt:hs');
     expect(markReadFn).not.toHaveBeenCalledWith('!b:hs', expect.anything());
+  });
+
+  it('marks read a room that is flagged but has no unread count', () => {
+    // The header button selects on hasUnread, which now includes the flag. Narrowing it
+    // to a notification count would leave the button offering to clear a row it skips.
+    const page = build();
+    const flagged = (id: string): RoomSummary => ({
+      id,
+      accountId: '@me:hs',
+      accountIds: ['@me:hs'],
+      name: id,
+      initial: 'X',
+      avatarMxc: null,
+      topic: '',
+      memberCount: 2,
+      encrypted: false,
+      unreadCount: 0,
+      highlightCount: 0,
+      hasUnread: true,
+      markedUnread: true,
+      lastMessage: '',
+      activityTs: 0,
+      favourite: false,
+    });
+    roomsSignal.set([flagged('!f:hs')]);
+
+    page.onMarkAllRead();
+
+    expect(markReadFn).toHaveBeenCalledWith('!f:hs', '@me:hs');
+  });
+
+  it('marks read on every account of a merged row', () => {
+    // Mirrors the ⋮ path: acking only the winning account leaves a merged row unread
+    // with the header button still offering to clear it, forever.
+    const page = build();
+    const merged: RoomSummary = {
+      id: '!m:hs',
+      accountId: '@me:hs',
+      accountIds: ['@me:hs', '@alt:hs'],
+      name: 'merged',
+      initial: 'M',
+      avatarMxc: null,
+      topic: '',
+      memberCount: 2,
+      encrypted: false,
+      unreadCount: 0,
+      highlightCount: 0,
+      hasUnread: true,
+      markedUnread: true,
+      lastMessage: '',
+      activityTs: 0,
+      favourite: false,
+    };
+    roomsSignal.set([merged]);
+
+    page.onMarkAllRead();
+
+    expect(markReadFn).toHaveBeenCalledWith('!m:hs', '@me:hs');
+    expect(markReadFn).toHaveBeenCalledWith('!m:hs', '@alt:hs');
   });
 
   it('opens the threads-list panel for the active room', () => {
@@ -997,6 +1111,7 @@ describe('RoomsPage space filtering', () => {
       unreadCount: unread,
       highlightCount: 0,
       hasUnread: unread > 0,
+      markedUnread: false,
       lastMessage: '',
       activityTs: 0,
       favourite: false,
@@ -1316,6 +1431,7 @@ describe('RoomsPage space ordering', () => {
       unreadCount: 0,
       highlightCount: 0,
       hasUnread: false,
+      markedUnread: false,
       lastMessage: '',
       activityTs,
       favourite,
@@ -1508,7 +1624,12 @@ describe('RoomsPage space ordering', () => {
 // A mixed scenario exercising several distinct spaces (each with its own unread
 // total) alongside a DM/non-DM split in the same room set, all in one pass.
 describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
-  function roomSummary(id: string, name: string, unread = 0): RoomSummary {
+  function roomSummary(
+    id: string,
+    name: string,
+    unread = 0,
+    markedUnread = false,
+  ): RoomSummary {
     return {
       id,
       accountId: '@me:hs',
@@ -1521,7 +1642,8 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
       encrypted: false,
       unreadCount: unread,
       highlightCount: 0,
-      hasUnread: unread > 0,
+      hasUnread: unread > 0 || markedUnread,
+      markedUnread,
       lastMessage: '',
       activityTs: 0,
       favourite: false,
@@ -1539,17 +1661,22 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
     };
   }
 
-  function build(): RoomsPage {
+  /** `extra` adds a third space and its rooms, so the default fixture is unchanged. */
+  function build(
+    extra: { rooms?: RoomSummary[]; children?: string[] } = {},
+  ): RoomsPage {
     const rooms = [
       roomSummary('!dm:hs', 'dm-with-bob', 4), // a direct message
       roomSummary('!a:hs', 'alpha', 5), // space 1's only child
       roomSummary('!b:hs', 'bravo', 3), // space 2's child
       roomSummary('!c:hs', 'charlie', 7), // space 2's other child
       roomSummary('!free:hs', 'freestanding', 6), // non-DM, in no space
+      ...(extra.rooms ?? []),
     ];
     const childRoomIds = vi.fn((id: string | null) => {
       if (id === '!s1:hs') return ['!a:hs'];
       if (id === '!s2:hs') return ['!b:hs', '!c:hs'];
+      if (id === '!s3:hs') return extra.children ?? [];
       return [];
     });
     TestBed.configureTestingModule({
@@ -1563,6 +1690,7 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
           spaces: signal([
             spaceSummary('!s1:hs', ['!a:hs']),
             spaceSummary('!s2:hs', ['!b:hs', '!c:hs']),
+            ...(extra.children ? [spaceSummary('!s3:hs', extra.children)] : []),
           ]),
           childRoomIds,
         }),
@@ -1609,6 +1737,21 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
     // The Rooms view is spaceless non-DM rooms only: just freestanding(6).
     // a/b/c belong to spaces (counted on their pills) and the DM is excluded.
     expect(page.roomsUnread()).toBe(6);
+  });
+
+  it('counts a flagged child as one, without adding to a real count', () => {
+    // A flagged room has no notification count behind it, so without this the pill for
+    // the space holding it stays blank and the flag is invisible from everywhere but
+    // that space's own list — which is most of the point of the feature.
+    const page = build({
+      rooms: [
+        roomSummary('!flagged:hs', 'flagged', 0, true),
+        roomSummary('!loud:hs', 'loud', 4, true),
+      ],
+      children: ['!flagged:hs', '!loud:hs'],
+    });
+
+    expect(page.spaceUnread()['!s3:hs']).toBe(5); // 1 for the flag + 4 real, not 6
   });
 });
 
@@ -2351,6 +2494,7 @@ describe('RoomsPage space hierarchy actions', () => {
               unreadCount: 0,
               highlightCount: 0,
               hasUnread: false,
+              markedUnread: false,
               lastMessage: '',
               activityTs: 0,
               favourite: false,
@@ -2894,6 +3038,7 @@ describe('RoomsPage keyboard room switching', () => {
       unreadCount: unread,
       highlightCount: 0,
       hasUnread: unread > 0,
+      markedUnread: false,
       lastMessage: '',
       activityTs: 0,
       favourite: false,
@@ -3145,6 +3290,7 @@ describe('RoomsPage mixed-account view', () => {
       unreadCount: opts.unread ?? 0,
       highlightCount: 0,
       hasUnread: (opts.unread ?? 0) > 0,
+      markedUnread: false,
       lastMessage: '',
       activityTs: 0,
       favourite: false,

@@ -187,6 +187,10 @@ export class MixedRoomsService {
             summary.highlightCount,
           ),
           hasUnread: existing.hasUnread || summary.hasUnread,
+          // OR'd for the same reason as hasUnread: taking it from the winner alone would
+          // leave the row reading as unread while claiming it is not flagged, which is
+          // both the wrong menu item and a badge with no count behind it.
+          markedUnread: existing.markedUnread || summary.markedUnread,
         });
       }
     }
@@ -202,6 +206,9 @@ export class MixedRoomsService {
     client.on(RoomEvent.MyMembership, handler);
     client.on(RoomEvent.Receipt, handler);
     client.on(RoomEvent.Tags, handler);
+    // Room account data carries the marked-unread flag; without this the mixed list
+    // only picks it up when some unrelated event happens to fire.
+    client.on(RoomEvent.AccountData, handler);
     client.on(MatrixEventEvent.Decrypted, handler);
     client.on(RoomStateEvent.Members, handler);
   }
@@ -213,6 +220,7 @@ export class MixedRoomsService {
     client.off(RoomEvent.MyMembership, handler);
     client.off(RoomEvent.Receipt, handler);
     client.off(RoomEvent.Tags, handler);
+    client.off(RoomEvent.AccountData, handler);
     client.off(MatrixEventEvent.Decrypted, handler);
     client.off(RoomStateEvent.Members, handler);
   }

@@ -29,6 +29,7 @@ import {
   lucideCommand,
   lucideEllipsisVertical,
   lucideLogOut,
+  lucideMailOpen,
   lucidePlus,
   lucideFolderPlus,
   lucideLayers,
@@ -108,6 +109,7 @@ export type { AccountSummary };
       lucideCommand,
       lucideEllipsisVertical,
       lucideLogOut,
+      lucideMailOpen,
       lucidePlus,
       lucideFolderPlus,
       lucideLayers,
@@ -281,6 +283,12 @@ export class ChannelSidebarComponent {
   /** Mark a single room read (from its ⋮ menu); carries every owning account, since a row
    * merged from two mixed accounts only clears when both are acked. */
   readonly markRead = output<{
+    roomId: string;
+    accountIds: readonly string[];
+  }>();
+  /** Flag a read room to come back to. Carries every owning account for the same reason
+   * {@link markRead} does: a merged row is only flagged where the write actually lands. */
+  readonly markUnread = output<{
     roomId: string;
     accountIds: readonly string[];
   }>();

@@ -10,13 +10,17 @@ type Listener = (...args: unknown[]) => void;
 /** A room exposing just the bits the aggregator reads; `unread` is mutable per test. */
 function fakeRoom(
   unread: number,
-  opts: { space?: boolean; membership?: string } = {},
+  opts: { space?: boolean; membership?: string; markedUnread?: boolean } = {},
 ) {
   const room = {
     unread,
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getUnreadNotificationCount: () => room.unread,
+    getAccountData: (type: string) =>
+      opts.markedUnread && type === 'm.marked_unread'
+        ? { getContent: () => ({ unread: true }) }
+        : undefined,
   };
   return room;
 }
@@ -172,5 +176,54 @@ describe('UnreadAggregatorService', () => {
     expect(svc.totalUnread()).toBe(5);
     expect(svc.unreadByAccount().has('@a:hs')).toBe(false);
     expect(a.listenerCount()).toBe(0);
+  });
+
+  describe('rooms flagged to come back to', () => {
+    it('counts a flagged room even though the server counts it as zero', async () => {
+      // Without this the flag is visible nowhere but the one sidebar list that happens
+      // to show the room: the rail pills and the app-icon badge both sum server counts,
+      // which stay at zero because the read receipt never moved.
+      const { svc, accountIds, clients, flush } = harness();
+      clients.set(
+        '@a:hs',
+        fakeClient([fakeRoom(0, { markedUnread: true }), fakeRoom(0)]),
+      );
+      accountIds.set(['@a:hs']);
+
+      await flush();
+
+      expect(svc.totalUnread()).toBe(1);
+    });
+
+    it('does not double-count a flagged room that also has notifications', async () => {
+      const { svc, accountIds, clients, flush } = harness();
+      clients.set('@a:hs', fakeClient([fakeRoom(3, { markedUnread: true })]));
+      accountIds.set(['@a:hs']);
+
+      await flush();
+
+      expect(svc.totalUnread()).toBe(3);
+    });
+  });
+
+  it('recomputes when a room’s account data changes', async () => {
+    // Both flag tests above set the flag BEFORE the first flush, so they pass with no
+    // listener at all. This is what proves the app-icon badge reacts to a flag set on
+    // another device rather than waiting for an unrelated event.
+    const { svc, accountIds, clients, flush } = harness();
+    const room = fakeRoom(0);
+    clients.set('@a:hs', fakeClient([room]));
+    accountIds.set(['@a:hs']);
+    await flush();
+    expect(svc.totalUnread()).toBe(0);
+
+    room.getAccountData = (type: string) =>
+      type === 'm.marked_unread'
+        ? { getContent: () => ({ unread: true }) }
+        : undefined;
+    clients.get('@a:hs')!.emit(RoomEvent.AccountData);
+    await flush();
+
+    expect(svc.totalUnread()).toBe(1);
   });
 });
