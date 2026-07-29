@@ -475,10 +475,13 @@ export class RoomsPage implements OnInit, OnDestroy {
       const childIds = mixed
         ? space.childRoomIds
         : this.spaces.childRoomIds(space.id);
-      totals[space.id] = childIds.reduce(
-        (sum, id) => sum + (byId.get(id)?.unreadCount ?? 0),
-        0,
-      );
+      totals[space.id] = childIds.reduce((sum, id) => {
+        const room = byId.get(id);
+        // A flagged room has no notification count behind it, so it counts as one —
+        // otherwise the pill for the space holding it stays blank and the flag is
+        // invisible from everywhere except that space's own list.
+        return sum + (room?.unreadCount || (room?.markedUnread ? 1 : 0));
+      }, 0);
     }
     return totals;
   });
@@ -1554,6 +1557,20 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Mark a single room read (from its ⋮ menu); the badge clears via sync. Acked on the
    * row's own account, which in the mixed view need not be the active one. */
+  onMarkRead({
+    roomId,
+    accountIds,
+  }: {
+    roomId: string;
+    accountIds?: readonly string[];
+  }): void {
+    this.ackRead(roomId, accountIds)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => void this.showError('Could not mark the room read.'),
+      });
+  }
+
   /**
    * Flag a room to come back to. Written on every account joined to the row for the same
    * reason {@link onMarkRead} acks all of them: a merged mixed-account row would otherwise
@@ -1566,22 +1583,15 @@ export class RoomsPage implements OnInit, OnDestroy {
     roomId: string;
     accountIds?: readonly string[];
   }): void {
-    for (const accountId of accountIds?.length ? accountIds : [undefined]) {
-      this.rooms.setMarkedUnread(roomId, true, accountId);
-    }
-  }
-
-  onMarkRead({
-    roomId,
-    accountIds,
-  }: {
-    roomId: string;
-    accountIds?: readonly string[];
-  }): void {
-    this.ackRead(roomId, accountIds)
+    const targets = accountIds?.length ? accountIds : [undefined];
+    forkJoin(
+      targets.map((accountId) =>
+        this.rooms.setMarkedUnread(roomId, true, accountId),
+      ),
+    )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        error: () => void this.showError('Could not mark the room read.'),
+        error: () => void this.showError('Could not mark the room unread.'),
       });
   }
 
@@ -1612,7 +1622,11 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (unread.length === 0) {
       return;
     }
-    forkJoin(unread.map((room) => this.rooms.markRead(room.id, room.accountId)))
+    // Acked on every account joined to the row, exactly as the ⋮ path does: a merged
+    // mixed-account row can be flagged on the account that did NOT win the merge, and
+    // acking only the winner leaves the row unread with the button still offering to
+    // clear it.
+    forkJoin(unread.map((room) => this.ackRead(room.id, room.accountIds)))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => void this.showError('Could not mark rooms read.'),

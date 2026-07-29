@@ -21,6 +21,12 @@ const SPACE_CHILD_EVENT = 'm.space.child';
  */
 const LEGACY_MARKED_UNREAD = 'com.famedly.marked_unread';
 
+/** Both marked-unread event types, hoisted so the projection does not rebuild it per room. */
+const MARKED_UNREAD_TYPES = [
+  EventType.MarkedUnread,
+  LEGACY_MARKED_UNREAD,
+] as const;
+
 /**
  * Whether the user has explicitly flagged this room to come back to (MSC2867).
  *
@@ -30,7 +36,7 @@ const LEGACY_MARKED_UNREAD = 'com.famedly.marked_unread';
  * writes the latter to clear it rather than redacting the event.
  */
 export function isMarkedUnread(room: Room): boolean {
-  for (const type of [EventType.MarkedUnread, LEGACY_MARKED_UNREAD]) {
+  for (const type of MARKED_UNREAD_TYPES) {
     const content = room.getAccountData?.(type)?.getContent();
     if (content?.['unread'] === true) {
       return true;

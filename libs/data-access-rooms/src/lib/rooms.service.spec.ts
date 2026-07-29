@@ -58,7 +58,11 @@ function fakeRoom(opts: {
   activity?: number;
   encrypted?: boolean;
   favourite?: boolean;
-  events?: ReturnType<typeof timelineEvent>[];
+  /** Widened past `timelineEvent`: markRead also reads an event's id and send status. */
+  events?: (ReturnType<typeof timelineEvent> & {
+    getId?: () => string;
+    status?: string | null;
+  })[];
   members?: ReturnType<typeof fakeMember>[];
   creator?: string | null;
   /** Avatar of the member the SDK offers as a stand-in for a room with ≤2 members. */
@@ -331,20 +335,20 @@ describe('RoomsService', () => {
         on: () => {},
       };
       const { svc, matrix } = provideRooms(client);
-      ngMocks.stubMember(matrix, 'accountIds', () => ['@me:hs'] as never);
+      ngMocks.stubMember(matrix, 'accountIds', signal(['@me:hs']).asReadonly());
       ngMocks.stubMember(matrix, 'clientFor', (() => client) as never);
       svc.connect();
       return { svc, client, setRoomAccountData };
     }
 
-    it('writes the STABLE event type when flagging a room', () => {
+    it('writes the STABLE event type when flagging a room', async () => {
       // Both types are read, but only the stable one is written — writing the legacy
       // prefix would spread it further rather than letting it die out.
       const { svc, setRoomAccountData } = setupWritable([
         fakeRoom({ roomId: '!r:hs', name: 'R' }),
       ]);
 
-      svc.setMarkedUnread('!r:hs', true);
+      await firstValueFrom(svc.setMarkedUnread('!r:hs', true));
 
       expect(setRoomAccountData).toHaveBeenCalledWith(
         '!r:hs',
@@ -353,6 +357,57 @@ describe('RoomsService', () => {
           unread: true,
         },
       );
+    });
+
+    it('shows the flag before the server confirms it', async () => {
+      // `setRoomAccountData` is a bare PUT with no local echo and `Room.accountData` is
+      // only written from /sync, so a post-write refresh alone re-reads the OLD value —
+      // the row would not change until the sync echo arrived, and the click would look
+      // like it did nothing.
+      const { svc } = setupWritable([fakeRoom({ roomId: '!r:hs', name: 'R' })]);
+      expect(svc.rooms()[0].markedUnread).toBe(false);
+
+      await firstValueFrom(svc.setMarkedUnread('!r:hs', true));
+
+      expect(svc.rooms()[0]).toMatchObject({
+        markedUnread: true,
+        hasUnread: true,
+      });
+    });
+
+    it('puts the row back when the write is rejected', async () => {
+      const { svc, setRoomAccountData } = setupWritable([
+        fakeRoom({ roomId: '!r:hs', name: 'R' }),
+      ]);
+      setRoomAccountData.mockRejectedValue(new Error('offline'));
+
+      await expect(
+        firstValueFrom(svc.setMarkedUnread('!r:hs', true)),
+      ).rejects.toThrow('offline');
+
+      expect(svc.rooms()[0].markedUnread).toBe(false);
+    });
+
+    it('hands ownership back to the server once /sync agrees', async () => {
+      // The optimistic value must not shadow the account indefinitely: once the synced
+      // room says the same thing, the overlay is dropped so a change made on another
+      // device is not fought by a stale local guess.
+      const room = fakeRoom({ roomId: '!r:hs', name: 'R' });
+      const { svc } = setupWritable([room]);
+      await firstValueFrom(svc.setMarkedUnread('!r:hs', true));
+
+      // The sync echo lands: the room itself now says flagged, matching the overlay.
+      room.getAccountData = (type: string) =>
+        type === 'm.marked_unread'
+          ? { getContent: () => ({ unread: true }) }
+          : undefined;
+      await firstValueFrom(svc.setMarkedUnread('!r:hs', true)); // any rebuild
+      expect(svc.rooms()[0].markedUnread).toBe(true);
+
+      // Another device clears it. With the overlay dropped, the server wins.
+      room.getAccountData = () => undefined;
+      await firstValueFrom(svc.setMarkedUnread('!other:hs', true));
+      expect(svc.rooms()[0].markedUnread).toBe(false);
     });
 
     it('clears by writing false rather than redacting', () => {

@@ -454,7 +454,9 @@
             <ng-icon name="lucideCheckCheck" />
             Mark as read
           </button>
-        } @else {
+        } @else if (room.id !== activeRoomId()) {
+          <!-- Not offered for the room being read: the flag is cleared when a room is
+               opened, and this one already is, so it would stick until you left. -->
           <button
             hlmDropdownMenuItem
             (triggered)="

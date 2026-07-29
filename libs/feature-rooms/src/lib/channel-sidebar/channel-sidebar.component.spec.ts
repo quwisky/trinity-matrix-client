@@ -946,6 +946,24 @@ describe('ChannelSidebarComponent', () => {
     expect(flagged).toBe('!a:hs');
   });
 
+  it('does not offer Mark as unread for the room being read', async () => {
+    // The flag is cleared when a room is OPENED, and this one already is — flagging it
+    // here would leave a dot on the row the user is actively reading, with no way out
+    // but navigating away and back.
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: false })],
+        activeRoomId: '!a:hs',
+      },
+    });
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+
+    expect(
+      document.querySelector('[data-testid="room-mark-unread"]'),
+    ).toBeNull();
+  });
+
   it('does not offer Mark as unread for a room that is already unread', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
