@@ -14,6 +14,12 @@ export interface EncryptionDialogOptions {
    * mode, where dismissing the modal simply reveals the underlying view.
    */
   returnTo?: string;
+  /**
+   * Open the flow already offering the recovery-key reset, for a caller whose own label
+   * promised it. Without this a second entry point lands the user on "Enter your recovery
+   * key" and asks them to find an identically-labelled button and press it again.
+   */
+  offerReset?: boolean;
 }
 
 /** The rooms shell's md breakpoint: at/above this the sidebar is a static column
@@ -63,15 +69,24 @@ export class EncryptionDialogService {
       // Force the in-dialog Close control: a backdrop/escape tap must not leave an
       // in-flight verification dangling, so the page owns clean teardown.
       this.dialog.open(component, {
-        inputs: { asModal: true },
+        // Only when asked: `verify` has no such input, and setInput rejects one it
+        // does not declare.
+        inputs: {
+          asModal: true,
+          ...(opts?.offerReset ? { offerReset: true } : {}),
+        },
         disableClose: true,
         ariaLabel: 'Encryption',
       });
       return;
     }
+    const queryParams = {
+      ...(opts?.returnTo ? { returnTo: opts.returnTo } : {}),
+      ...(opts?.offerReset ? { reset: 1 } : {}),
+    };
     await this.router.navigate(
       [path],
-      opts?.returnTo ? { queryParams: { returnTo: opts.returnTo } } : {},
+      Object.keys(queryParams).length ? { queryParams } : {},
     );
   }
 

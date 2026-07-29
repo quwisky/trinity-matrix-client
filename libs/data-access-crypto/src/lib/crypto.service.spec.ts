@@ -423,6 +423,70 @@ describe('CryptoService', () => {
       ).rejects.toThrow(UiaCancelledError);
     });
 
+    it('still recomputes status when the destructive tail fails', async () => {
+      // Past the point of no return the account HAS changed; the one thing left that can
+      // still go wrong is the UI going on describing the account it used to be.
+      const { svc, crypto } = setup({ defaultKeyId: 'old-key' });
+      crypto.bootstrapSecretStorage.mockRejectedValue(
+        new Error('network down'),
+      );
+      crypto.isCrossSigningReady.mockResolvedValue(true);
+      crypto.isSecretStorageReady.mockResolvedValue(true);
+
+      await expect(
+        firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      ).rejects.toThrow('network down');
+
+      expect(svc.status()).toBe('ready'); // recomputed, not left stale at 'unknown'
+    });
+
+    it('repairs the account it started on, not whichever is active now', async () => {
+      // The password prompt is a long await. Switching accounts underneath it must not
+      // point the rollback at the new account's olm machine — the keys needing re-seating
+      // belong to the old one.
+      const { svc, crypto, matrix } = setup({ defaultKeyId: 'old-key' });
+      const otherCrypto = { userHasCrossSigningKeys: vi.fn() };
+      crypto.bootstrapCrossSigning.mockImplementation(async () => {
+        ngMocks.stubMember(matrix, 'instance', {
+          getCrypto: () => otherCrypto,
+          getUserId: () => '@other:hs',
+        } as unknown as MatrixClientService['instance']);
+        throw new UiaCancelledError();
+      });
+
+      await expect(
+        firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      ).rejects.toThrow(UiaCancelledError);
+
+      expect(crypto.userHasCrossSigningKeys).toHaveBeenCalledWith(
+        '@me:hs',
+        true,
+      );
+      expect(otherCrypto.userHasCrossSigningKeys).not.toHaveBeenCalled();
+    });
+
+    it('delivers the original error even if the rollback never settles', async () => {
+      // setDefaultKeyId resolves on the /sync echo, so a stalled sync leaves it pending —
+      // and an unbounded wait there would swallow the cancellation the user is waiting on.
+      vi.useFakeTimers();
+      try {
+        const { svc, crypto, secretStorage } = setup({
+          defaultKeyId: 'old-key',
+        });
+        crypto.bootstrapCrossSigning.mockRejectedValue(new UiaCancelledError());
+        secretStorage.setDefaultKeyId
+          .mockResolvedValueOnce(undefined)
+          .mockReturnValue(new Promise(() => undefined)); // never settles
+
+        const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+        const assertion = expect(failure).rejects.toThrow(UiaCancelledError);
+        await vi.advanceTimersByTimeAsync(15_000);
+        await assertion;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     // The probe is no longer what prevents data loss — the ordering above is — but it
     // still bails out before the LOCAL key rotation, which has no clean undo.
     it('refuses before the rotation when the server offers no password stage', async () => {

@@ -70,6 +70,15 @@ export class SecuritySectionComponent implements OnInit {
     void this.dialogs.openUnlock({ returnTo: RETURN_TO });
   }
 
+  /**
+   * The escape hatch for someone with no key. Same screen as {@link unlock} — there is
+   * one implementation of an irreversible flow — but it arrives with the reset offered,
+   * rather than asking the user to find the same words a second time.
+   */
+  resetRecovery(): void {
+    void this.dialogs.openUnlock({ returnTo: RETURN_TO, offerReset: true });
+  }
+
   /** Verify this session against another signed-in one (emoji SAS). */
   verifySession(): void {
     void this.dialogs.openVerify({ returnTo: RETURN_TO });

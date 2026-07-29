@@ -62,15 +62,21 @@ export class RecoveryKeySaveComponent {
 
   private readonly headingRef =
     viewChild<ElementRef<HTMLElement>>('savedHeading');
-  private focused = false;
+  /**
+   * Which key we have already moved focus for.
+   *
+   * Keyed off the key rather than latched by a boolean, for the same reason {@link saved}
+   * is: a second key shown by this instance is a second "save this now" moment, and a
+   * screen-reader user who is left where they were will not know it happened.
+   */
+  private focusedKey: string | null = null;
 
   constructor() {
-    // Land keyboard and screen-reader users on the "save this now" content when the key
-    // appears — once, so a later re-render doesn't yank focus back.
     effect(() => {
       const heading = this.headingRef();
-      if (heading && !this.focused) {
-        this.focused = true;
+      const key = this.recoveryKey();
+      if (heading && this.focusedKey !== key) {
+        this.focusedKey = key;
         heading.nativeElement.focus();
       }
     });

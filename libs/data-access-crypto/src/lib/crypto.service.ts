@@ -24,6 +24,40 @@ import {
   type PasswordPrompt,
 } from '@trinity/util-matrix';
 
+/** How long the reset's rollback may wait on the homeserver before giving up. */
+const ROLLBACK_TIMEOUT_MS = 10_000;
+
+/**
+ * Await `work`, but not forever.
+ *
+ * Account-data writes resolve only when their echo returns over /sync, so a stopped or
+ * stalled sync loop leaves them pending indefinitely. Survivable on the happy path;
+ * not survivable on the failure path, where the rollback sits between the user's
+ * cancellation and the error they are waiting to be told about.
+ */
+async function withTimeout<T>(
+  work: Promise<T>,
+  ms = ROLLBACK_TIMEOUT_MS,
+): Promise<T> {
+  // The loser of the race stays pending; without this its later rejection would surface
+  // as an unhandled one.
+  work.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Timed out waiting for the homeserver.')),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Where this device stands relative to the account's encryption setup:
  * - `unknown`       — not yet computed (crypto not ready).
@@ -209,19 +243,24 @@ export class CryptoService {
               ),
             });
           } catch (err) {
-            await this.abandonReset(storage, previousKeyId, userId);
+            await this.abandonReset(crypto, storage, previousKeyId, userId);
             throw err;
           }
 
-          // Past the point of no return: the new identity is published.
-          const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
-          await crypto.bootstrapSecretStorage({
-            setupNewKeyBackup: true,
-            createSecretStorageKey: async () => recoveryKey,
-          });
-          await this.dropStaleKeyDescription(storage, previousKeyId);
-          await this.computeStatus();
-          return this.encoded(recoveryKey);
+          // Past the point of no return: the new identity is published. Failing from here
+          // cannot be undone, but it must not also leave the UI describing an account
+          // that no longer exists — so the status is recomputed either way.
+          try {
+            const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
+            await crypto.bootstrapSecretStorage({
+              setupNewKeyBackup: true,
+              createSecretStorageKey: async () => recoveryKey,
+            });
+            await this.dropStaleKeyDescription(storage, previousKeyId);
+            return this.encoded(recoveryKey);
+          } finally {
+            await this.computeStatus();
+          }
         })(),
       ),
     );
@@ -236,15 +275,22 @@ export class CryptoService {
    * Best effort by construction: it must never replace the error that caused it.
    */
   private async abandonReset(
+    crypto: CryptoApi,
     storage: ServerSideSecretStorage,
     previousKeyId: string | null,
     userId: string,
   ): Promise<void> {
+    // `crypto` and `storage` are the caller's captures, not `this.matrix.instance` —
+    // an account switch mid-reset must not point the repair at the wrong account.
     try {
-      if (previousKeyId) {
-        await storage.setDefaultKeyId(previousKeyId);
-      }
-      await this.requireCrypto().userHasCrossSigningKeys(userId, true);
+      await withTimeout(
+        (async () => {
+          if (previousKeyId) {
+            await storage.setDefaultKeyId(previousKeyId);
+          }
+          await crypto.userHasCrossSigningKeys(userId, true);
+        })(),
+      );
     } catch {
       // Nothing better to do here; the caller's error is the one that matters.
     }

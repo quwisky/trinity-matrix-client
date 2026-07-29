@@ -49,7 +49,13 @@ async function answerUiaIfAsked(
   password: string,
   settled: () => Promise<unknown>,
 ): Promise<void> {
-  const uia = page.locator('trn-alert-dialog');
+  // Scoped by its own copy, not just the element: the confirmation gate is the same
+  // component and may still be detaching when this is called, which would either match
+  // the wrong dialog (and time out filling a text input as a password) or trip strict
+  // mode with two of them on screen.
+  const uia = page.locator('trn-alert-dialog', {
+    hasText: 'Confirm your password',
+  });
   const outcome = await Promise.race([
     uia
       .waitFor({ state: 'visible', timeout: 30_000 })
@@ -329,11 +335,16 @@ test.describe('Recovery reset', () => {
 
       await lost.click();
 
-      // One implementation of the irreversible flow, two doors — this one has to arrive
-      // at the surface that owns it, with the reset actually offered.
-      await expect(fresh.getByTestId('reset-recovery')).toBeVisible({
-        timeout: 30_000,
-      });
+      // One implementation of the irreversible flow, two doors — and this door has to
+      // arrive with the reset actually offered. Landing on "Enter your recovery key" and
+      // asking the user to find the same words a second time is not a second door.
+      const gate = fresh.locator('trn-alert-dialog');
+      await expect(gate).toBeVisible({ timeout: 30_000 });
+      await expect(gate).toContainText('Type RESET to confirm');
+
+      // …and backing out of it leaves them on the screen that owns the flow.
+      await gate.getByTestId('alert-cancel').click();
+      await expect(fresh.getByTestId('reset-recovery')).toBeVisible();
     } finally {
       await second.close();
     }

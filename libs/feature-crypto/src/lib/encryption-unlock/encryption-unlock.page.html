@@ -5,7 +5,7 @@
     <div
       class="flex items-center gap-2 border-b border-solid border-border p-3"
     >
-      <h2 class="flex-1 text-base font-semibold">Verify this device</h2>
+      <h2 class="flex-1 text-base font-semibold">{{ title() }}</h2>
       <button hlmBtn variant="ghost" size="sm" (click)="close()">Close</button>
     </div>
     <div class="overflow-y-auto p-4">
@@ -13,7 +13,7 @@
     </div>
   </div>
 } @else {
-  <trn-page-header title="Verify this device" />
+  <trn-page-header [title]="title()" />
 
   <main class="flex-1 overflow-y-auto p-4">
     <ng-container [ngTemplateOutlet]="body" />
@@ -70,13 +70,28 @@
     @if (busy()) {
       <div class="mt-4 text-center" role="status" aria-live="polite">
         <hlm-spinner />
-        <p class="progress">Unlocking your encrypted messages…</p>
+        <p class="progress">{{ progressMessage() }}</p>
       </div>
     }
     @if (error(); as message) {
       <p class="mt-2 text-danger" role="alert" data-testid="unlock-error">
         {{ message }}
       </p>
+    }
+    <!-- A link, not only Browser.open: by the time the provider's page is known the
+         click is long over, so the popup is blocked and the message alone is a dead end. -->
+    @if (providerResetUrl(); as providerUrl) {
+      <a
+        hlmBtn
+        variant="outline"
+        class="mt-2 w-full"
+        [href]="providerUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid="provider-reset-link"
+      >
+        Open my identity provider
+      </a>
     }
 
     <!-- Subordinate on purpose: this is the way out for someone who has no key, not an

@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  afterNextRender,
   computed,
   inject,
   input,
@@ -75,6 +76,11 @@ export class EncryptionUnlockPage {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly busy = signal(false);
+  /**
+   * A reset specifically is in flight. Distinct from {@link busy}, which the ordinary
+   * unlock also sets — the two need different copy, and one of them cannot be abandoned.
+   */
+  readonly resetting = signal(false);
 
   private readonly keyModel = signal({ recoveryKey: '' });
   // Disabled belongs to the schema, not to a [disabled] binding on the input: Signal
@@ -90,6 +96,28 @@ export class EncryptionUnlockPage {
   readonly error = signal<string | null>(null);
 
   /**
+   * The identity provider's own reset page, when a refused reset can point at one.
+   *
+   * Rendered as a link rather than only handed to `Browser.open`: by the time we know to
+   * open it, several awaits and a network round-trip have passed since the user's click,
+   * so the browser no longer counts it as user-initiated and blocks the popup. A link
+   * they can press is the difference between an explanation and a dead end.
+   */
+  readonly providerResetUrl = signal<string | null>(null);
+
+  /** What the busy spinner says — the two operations are not interchangeable. */
+  readonly progressMessage = computed(() =>
+    this.resetting()
+      ? 'Resetting your encryption…'
+      : 'Unlocking your encrypted messages…',
+  );
+
+  /** Page/modal title, which has to follow what the page is actually doing. */
+  readonly title = computed(() =>
+    this.newRecoveryKey() ? 'Encryption reset' : 'Verify this device',
+  );
+
+  /**
    * The recovery key minted by a reset, shown once. Non-null switches the page from
    * "enter your key" to "save this key" — the reset leaves the account `ready`, so status
    * cannot be what decides this.
@@ -100,6 +128,26 @@ export class EncryptionUnlockPage {
   readonly asModal = input(false);
   /** Asks an @Output-bound host modal to dismiss. */
   readonly closed = output<void>();
+
+  /**
+   * Arrive with the reset already offered, for an entry point whose own label promised
+   * it (Settings → Security's "I've lost my recovery key"). Set as an input by the modal
+   * presentation and as `?reset=1` by the routed one.
+   */
+  readonly offerReset = input(false);
+
+  constructor() {
+    // Honour the caller's intent once, after the view exists so the confirm dialog has
+    // something to sit over. A gate, not the action — the user still has to type the word.
+    afterNextRender(() => {
+      const asked =
+        this.offerReset() ||
+        this.route.snapshot.queryParamMap.get('reset') === '1';
+      if (asked) {
+        void this.resetRecovery();
+      }
+    });
+  }
 
   /** Unlock this device from the entered recovery key. */
   unlock(): void {
@@ -144,12 +192,17 @@ export class EncryptionUnlockPage {
     // Deliberately NOT runWithBusy: it turns a failure into EMPTY, so an error handler
     // never runs — and this is the one path that has to inspect WHY it failed.
     this.busy.set(true);
+    this.resetting.set(true);
     this.error.set(null);
+    this.providerResetUrl.set(null);
     this.crypto
       .resetRecovery(this.promptPassword)
       .pipe(
         takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.busy.set(false)),
+        finalize(() => {
+          this.busy.set(false);
+          this.resetting.set(false);
+        }),
       )
       .subscribe({
         next: (key) => {
@@ -188,6 +241,9 @@ export class EncryptionUnlockPage {
     this.error.set(
       'Your identity provider handles this. Finish the reset there, then come back and sign in again.',
     );
+    // Rendered as a link too — see providerResetUrl. Native has no popup blocker, so
+    // this still opens straight away there.
+    this.providerResetUrl.set(url);
     void Browser.open({ url });
   }
 
@@ -209,7 +265,41 @@ export class EncryptionUnlockPage {
     if (this.newRecoveryKey()) {
       return 'unsaved-key';
     }
-    return this.busy() ? 'in-flight' : null;
+    return this.resetting() ? 'in-flight' : null;
+  }
+
+  /**
+   * Whether it is safe to leave, asking the user when it is not.
+   *
+   * Shared by the modal's Close button and by the route guard, because the routed page
+   * is dismissed by the browser's own back button and would otherwise throw a shown-once
+   * key away without a word — which is the path most users are on.
+   *
+   * Fails towards staying: if the confirmation itself cannot be shown there is nothing
+   * to read, and refusing to leave loses nothing that cannot be retried.
+   */
+  async confirmLeave(): Promise<boolean> {
+    const risk = this.closeWouldDiscard();
+    if (!risk) {
+      return true;
+    }
+    try {
+      return await this.alert.confirm({
+        header:
+          risk === 'unsaved-key'
+            ? 'Leave without saving your key?'
+            : 'Encryption reset in progress',
+        message:
+          risk === 'unsaved-key'
+            ? "This key is shown once. Leave now and you won't be able to recover your messages on another device."
+            : "Leaving won't stop it, and the new recovery key it produces will be lost. Wait for it to finish.",
+        confirmText: 'Leave anyway',
+        cancelText: 'Stay',
+        destructive: true,
+      });
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -227,26 +317,13 @@ export class EncryptionUnlockPage {
 
   /** Close without unlocking (modal Close / return on the routed page). */
   async close(): Promise<void> {
-    const risk = this.closeWouldDiscard();
-    if (risk) {
-      const confirmed = await this.alert.confirm({
-        header:
-          risk === 'unsaved-key'
-            ? 'Leave without saving your key?'
-            : 'Encryption reset in progress',
-        message:
-          risk === 'unsaved-key'
-            ? "This key is shown once. Close now and you won't be able to recover your messages on another device."
-            : "Closing won't stop it, and the new recovery key it produces will be lost. Wait for it to finish.",
-        confirmText: risk === 'unsaved-key' ? 'Close anyway' : 'Close anyway',
-        cancelText: 'Stay',
-        destructive: true,
-      });
-      if (!confirmed) {
-        return;
-      }
+    if (!(await this.confirmLeave())) {
+      return;
     }
     this.clearKey();
+    // The shown-once key is the more sensitive of the two; dropping it here keeps this
+    // symmetrical with finishReset(), which has always cleared it.
+    this.newRecoveryKey.set(null);
     this.leave();
   }
 

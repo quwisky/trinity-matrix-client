@@ -99,9 +99,9 @@ describe('SecuritySectionComponent', () => {
     expect(openUnlock).toHaveBeenCalledWith({ returnTo: '/settings/security' });
   });
 
-  it('offers the lost-key escape hatch alongside it, to the same screen', async () => {
-    // The reset itself lives on the unlock screen. This is the door someone who has lost
-    // their key would actually look for; it must not become a second implementation.
+  it('offers the lost-key escape hatch, arriving with the reset offered', async () => {
+    // Same screen as "Enter recovery key" — one implementation of an irreversible flow —
+    // but it must not dump the user there to hunt for the same words a second time.
     const { container, openUnlock } = await build({ status: 'needs-recovery' });
     const lost = container.querySelector<HTMLButtonElement>(
       '[data-testid=security-reset-recovery]',
@@ -110,7 +110,10 @@ describe('SecuritySectionComponent', () => {
 
     lost?.click();
 
-    expect(openUnlock).toHaveBeenCalledWith({ returnTo: '/settings/security' });
+    expect(openUnlock).toHaveBeenCalledWith({
+      returnTo: '/settings/security',
+      offerReset: true,
+    });
   });
 
   it('shows the secured state when encryption is ready (no fix action)', async () => {

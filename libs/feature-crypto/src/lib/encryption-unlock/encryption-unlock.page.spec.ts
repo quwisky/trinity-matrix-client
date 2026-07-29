@@ -20,6 +20,8 @@ interface RenderOptions {
   /** `returnTo` query param on the routed page. */
   returnTo?: string | null;
   asModal?: boolean;
+  /** Arrive with the reset already offered (Settings' lost-key door). */
+  offerReset?: boolean;
   /** What `CryptoService.resetRecovery` returns. */
   reset?: Observable<string>;
   /** What the user types into the type-to-confirm prompt (null = cancelled). */
@@ -38,6 +40,7 @@ async function renderPage(options: RenderOptions = {}) {
     recover,
     returnTo = null,
     asModal,
+    offerReset,
     reset,
     typed,
     management = null,
@@ -50,7 +53,10 @@ async function renderPage(options: RenderOptions = {}) {
   prompt.mockResolvedValueOnce(typed ?? null).mockResolvedValue('pw');
   const confirm = vi.fn().mockResolvedValue(confirmClose);
   const result = await render(EncryptionUnlockPage, {
-    inputs: asModal === undefined ? {} : { asModal },
+    inputs: {
+      ...(asModal === undefined ? {} : { asModal }),
+      ...(offerReset === undefined ? {} : { offerReset }),
+    },
     providers: [
       MockProvider(CryptoService),
       MockProvider(Router),
@@ -296,6 +302,51 @@ describe('EncryptionUnlockPage', () => {
     });
   });
 
+  describe('when only the provider can do it', () => {
+    it('renders a link, not just an attempt to open a popup', async () => {
+      // Browser.open lands several awaits after the click, outside the gesture window,
+      // so on web it is blocked — the message alone would be a dead end.
+      const { fixture } = await renderPage({
+        typed: 'RESET',
+        reset: throwError(() => new UiaUnsupportedError()),
+        management: {
+          url: 'https://auth.example/account',
+          actionsSupported: ['org.matrix.cross_signing_reset'],
+        },
+      });
+
+      await fixture.componentInstance.resetRecovery();
+      await flush();
+      fixture.detectChanges();
+
+      const link = (
+        fixture.nativeElement as HTMLElement
+      ).querySelector<HTMLAnchorElement>('[data-testid="provider-reset-link"]');
+      expect(link?.href).toContain('action=org.matrix.cross_signing_reset');
+    });
+
+    it('offers no link when the provider advertises no reset action', async () => {
+      const { fixture } = await renderPage({
+        typed: 'RESET',
+        reset: throwError(() => new UiaUnsupportedError()),
+        management: {
+          url: 'https://auth.example/account',
+          actionsSupported: [],
+        },
+      });
+
+      await fixture.componentInstance.resetRecovery();
+      await flush();
+      fixture.detectChanges();
+
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="provider-reset-link"]',
+        ),
+      ).toBeNull();
+    });
+  });
+
   describe('closing without losing something', () => {
     it('asks before discarding a key that is only shown once', async () => {
       const { fixture, confirm, dialogRef } = await renderPage({
@@ -363,6 +414,24 @@ describe('EncryptionUnlockPage', () => {
       expect(closeButton()).toBeEnabled();
     });
 
+    it('stays put if the question itself cannot be asked', async () => {
+      // Failing towards staying loses nothing that cannot be retried; failing towards
+      // leaving loses a key that is shown once.
+      const { fixture } = await renderPage({
+        asModal: true,
+        typed: 'RESET',
+        reset: of('EsTBrandNew'),
+      });
+      await fixture.componentInstance.resetRecovery();
+      vi.mocked(TestBed.inject(TrnAlertService).confirm).mockRejectedValue(
+        new Error('no overlay container'),
+      );
+
+      await expect(fixture.componentInstance.confirmLeave()).resolves.toBe(
+        false,
+      );
+    });
+
     it('closes without asking when there is nothing to lose', async () => {
       const { fixture, confirm, dialogRef } = await renderPage({
         asModal: true,
@@ -372,6 +441,73 @@ describe('EncryptionUnlockPage', () => {
 
       expect(confirm).not.toHaveBeenCalled();
       expect(dialogRef.close).toHaveBeenCalled();
+    });
+  });
+
+  describe('telling the two operations apart', () => {
+    it('does not call an ordinary unlock a reset', async () => {
+      // `busy` is shared with unlock(), so a guard keyed off it tells someone who is
+      // simply entering their key that an encryption reset is in progress.
+      const { fixture, confirm, dialogRef } = await renderPage({
+        asModal: true,
+        recover: new Observable<void>(() => undefined), // never settles
+      });
+      fixture.componentInstance.unlockForm().value.set({ recoveryKey: 'EsTx' });
+      fixture.componentInstance.unlock();
+      await flush();
+      expect(fixture.componentInstance.busy()).toBe(true);
+
+      await fixture.componentInstance.close();
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(dialogRef.close).toHaveBeenCalled();
+    });
+
+    it('says which operation the spinner is for', async () => {
+      const { fixture } = await renderPage({
+        typed: 'RESET',
+        reset: new Observable<string>(() => undefined),
+      });
+      expect(fixture.componentInstance.progressMessage()).toContain(
+        'Unlocking',
+      );
+
+      void fixture.componentInstance.resetRecovery();
+      await flush();
+
+      expect(fixture.componentInstance.progressMessage()).toContain(
+        'Resetting',
+      );
+    });
+
+    it('titles the page for what it is showing', async () => {
+      const { fixture } = await renderPage({
+        typed: 'RESET',
+        reset: of('EsTBrandNew'),
+      });
+      expect(fixture.componentInstance.title()).toBe('Verify this device');
+
+      await fixture.componentInstance.resetRecovery();
+
+      expect(fixture.componentInstance.title()).toBe('Encryption reset');
+    });
+  });
+
+  describe('arriving from a door that promised the reset', () => {
+    it('opens the confirmation gate on arrival', async () => {
+      const { prompt } = await renderPage({ offerReset: true, typed: null });
+
+      await flush();
+
+      expect(prompt).toHaveBeenCalledOnce();
+    });
+
+    it('stays put when nobody asked', async () => {
+      const { prompt } = await renderPage({ typed: null });
+
+      await flush();
+
+      expect(prompt).not.toHaveBeenCalled();
     });
   });
 
