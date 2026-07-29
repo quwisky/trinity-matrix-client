@@ -78,8 +78,8 @@ jobs:
   e2e:
     name: E2E (Playwright + Synapse)
     runs-on: ubuntu-latest
-    # 104 specs, each doing a cold UI login (Rust-crypto init + first /sync), at
-    # workers: 2 with retries: 2 — plus the browser install, two Docker image pulls and
+    # 161 specs, each doing a cold UI login (Rust-crypto init + first /sync), at
+    # workers: 2 with retries: 2 — plus the browser install, three Docker image pulls and
     # a full dev build inside the same budget. Measure a real run before lowering this.
     timeout-minutes: 45
     steps:
@@ -110,7 +110,7 @@ jobs:
           pnpm exec nx run trinity:build:development
           # Per-pid, deliberately: `wait $pw $dk` returns only the LAST pid's status, so a
           # failed browser install would be swallowed and the job would then burn its
-          # 45-minute budget on 105 specs x 3 attempts of "Executable doesn't exist".
+          # 45-minute budget on 161 specs x 3 attempts of "Executable doesn't exist".
           wait "$pw"; pw_rc=$?
           wait "$dk"; dk_rc=$?
           echo '--- playwright install ---'; cat /tmp/pw.log

@@ -37,6 +37,15 @@ export const REGISTRATION_SHARED_SECRET = 'trinity-e2e-shared-secret';
 export const TEST_USER = process.env.TRINITY_USER ?? 'verify-e2e';
 export const TEST_PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
 
+// The Dex-backed SSO account. It has no Matrix password by construction — Synapse
+// creates it through `oidc_providers` — which is exactly what the specs need it for.
+// These must match e2e/synapse/dex.yaml.
+export const DEX_ISSUER = 'http://localhost:5556/dex';
+export const SSO_EMAIL = 'sso-e2e@trinity.test';
+export const SSO_PASS = 'sso-e2e-pass-123';
+/** Localpart Synapse derives from the Dex identity, via `localpart_template` below. */
+export const SSO_USER = 'sso-e2e';
+
 const log = (m) => console.log(`[synapse] ${m}`);
 
 async function exists(p) {
@@ -93,6 +102,59 @@ const containerUser =
   typeof process.getuid === 'function'
     ? ['-e', `UID=${process.getuid()}`, '-e', `GID=${process.getgid()}`]
     : [];
+
+const OIDC_START = '# === trinity-e2e-oidc (regenerated every start) ===';
+const OIDC_END = '# === end trinity-e2e-oidc ===';
+
+/**
+ * The Dex provider block, plus the SSO redirect whitelist that lets Synapse hand the
+ * login token back to the app's origin.
+ *
+ * Rewritten in full on every start rather than appended once, because one value in it —
+ * how *Synapse* addresses Dex — depends on how the stack was brought up, and a config
+ * left over from the other mode fails at the token exchange with nothing useful in the
+ * logs. The browser-facing `authorization_endpoint` is the published port either way;
+ * only the server-to-server endpoints move.
+ */
+function oidcBlock() {
+  // No compose network under the netns override, so no `dex` DNS name — but everything
+  // shares one loopback there, so the published port is reachable as localhost.
+  const internal = networkContainer ? 'localhost:5556' : 'dex:5556';
+  const appOrigin = process.env.BASE_URL ?? 'http://localhost:4200';
+  return [
+    OIDC_START,
+    // Synapse refuses to redirect a login token anywhere it was not told to.
+    'sso:',
+    '  client_whitelist:',
+    `    - "${appOrigin.replace(/\/$/, '')}/"`,
+    'oidc_providers:',
+    '  - idp_id: dex',
+    '    idp_name: "Dex"',
+    // `discover: false` + explicit endpoints is what lets the browser and Synapse reach
+    // the same provider under two different names; a discovery document can only carry
+    // one. `skip_verification` then allows the plain-http issuer.
+    '    discover: false',
+    `    issuer: "${DEX_ISSUER}"`,
+    '    skip_verification: true',
+    '    client_id: "trinity-e2e"',
+    '    client_secret: "trinity-e2e-secret"',
+    '    scopes: ["openid", "profile", "email"]',
+    // Browser-facing: the user's own navigation, so it must be the published port.
+    `    authorization_endpoint: "${DEX_ISSUER}/auth"`,
+    // Server-facing: Synapse calls these itself, from inside the network.
+    `    token_endpoint: "http://${internal}/dex/token"`,
+    `    jwks_uri: "http://${internal}/dex/keys"`,
+    `    userinfo_endpoint: "http://${internal}/dex/userinfo"`,
+    '    user_mapping_provider:',
+    '      config:',
+    '        subject_claim: "sub"',
+    // Dex puts the static user's `username` in `name`; mapping it straight through
+    // gives a deterministic localpart and skips Synapse's pick-a-username page.
+    '        localpart_template: "{{ user.name }}"',
+    '        display_name_template: "{{ user.name }}"',
+    OIDC_END,
+  ].join('\n');
+}
 
 /** Generate homeserver.yaml on first run, then patch in the e2e settings. */
 async function ensureConfig() {
@@ -170,9 +232,22 @@ async function ensureConfig() {
   if (additions.length) {
     yaml += `\n\n# === appended by e2e/synapse/start.mjs ===\n${additions.join('\n')}\n`;
   }
-  if (additions.length || replacedSecret) {
+
+  // Unlike the blocks above, the OIDC region is torn out and rewritten every time —
+  // see oidcBlock() for why it cannot simply be appended once.
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const region = new RegExp(
+    `\\n*${escape(OIDC_START)}[\\s\\S]*?${escape(OIDC_END)}\\n*`,
+  );
+  const patched = `${yaml.replace(region, '\n').replace(/\s+$/, '')}\n\n${oidcBlock()}\n`;
+  const oidcChanged = patched !== yaml;
+  yaml = patched;
+
+  if (additions.length || replacedSecret || oidcChanged) {
     await writeFile(CONFIG, yaml, 'utf8');
-    log('patched homeserver.yaml (shared secret, public_baseurl, rate limits)');
+    log(
+      'patched homeserver.yaml (shared secret, public_baseurl, rate limits, dex sso)',
+    );
   }
 }
 
@@ -237,6 +312,14 @@ export async function start() {
     return res.ok;
   });
 
+  // Discovery rather than /healthz: it also proves the issuer Dex serves is the one
+  // Synapse was configured with, which is the mismatch that would otherwise only
+  // surface as an opaque token-exchange failure mid-login.
+  await waitFor('dex discovery', async () => {
+    const res = await fetch(`${DEX_ISSUER}/.well-known/openid-configuration`);
+    return res.ok && (await res.json()).issuer === DEX_ISSUER;
+  });
+
   await registerUser();
 
   await waitFor('caddy well-known (https)', async () => {
@@ -254,6 +337,9 @@ export async function start() {
     user: TEST_USER,
     pass: TEST_PASS,
     serverName: SERVER_NAME,
+    // The SSO account is not registered here: Synapse creates it the first time someone
+    // completes the Dex round-trip, and it has no Matrix password to register with.
+    sso: { user: SSO_USER, email: SSO_EMAIL, pass: SSO_PASS },
   };
 }
 

@@ -2,11 +2,20 @@ import { readFileSync } from 'node:fs';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { SESSION_FILE } from './global-setup.mts';
 
+/** The Dex-backed account Synapse created via SSO, so it has no Matrix password. */
+export interface SsoAccount {
+  user: string;
+  email: string;
+  pass: string;
+}
+
 export interface SynapseSession {
   available: boolean;
   hs?: string;
   user?: string;
   pass?: string;
+  /** Absent when the harness predates the Dex provider, so specs can gate on it. */
+  sso?: SsoAccount;
 }
 
 /** Read the homeserver session recorded by global-setup (available:false if Docker

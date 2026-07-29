@@ -1,6 +1,6 @@
-// Tears the disposable Synapse + Caddy stack down and removes generated state.
+// Tears the disposable Synapse + Caddy + Dex stack down and removes generated state.
 //
-// `docker compose down -v` stops both containers and drops the named volumes
+// `docker compose down -v` stops every container and drops the named volumes
 // (Caddy CA/data). The generated ./data (homeserver.yaml, signing key, sqlite DB)
 // is removed too so the next run starts from a clean slate.
 import { execFile } from 'node:child_process';

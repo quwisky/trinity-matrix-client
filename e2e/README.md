@@ -36,7 +36,8 @@ e2e/
               support/ (global-setup/teardown, serve-www) — `nx e2e trinity`
   electron/   @nx/playwright Electron specs + support/launch — `pnpm electron:e2e`
   support/    shared helpers (e.g. serve.mjs — static file server for www/)
-  synapse/    the disposable Synapse + Caddy harness (docker-compose, start/stop)
+  synapse/    the disposable Synapse + Caddy + Dex harness (docker-compose, start/stop;
+              dex.yaml is the throwaway identity provider — see docs/DEVELOPMENT.md)
 ```
 
 A `features/` body can be run on its own against an already-running homeserver
@@ -53,7 +54,7 @@ disposable Synapse. Paths are relative to the repo root, so always invoke via th
 | `pnpm e2e:verify`                             | **Two-client device verification (emoji SAS)** — full live flow against a disposable Synapse.                                              |
 | `pnpm e2e:media`                              | **Note-to-self encrypted media send** — pick a file → encrypt → upload → decrypt own echo.                                                 |
 | `pnpm e2e:reply`                              | **Reply header + preview** — a reply keeps its own author/avatar even as a same-sender continuation, and renders the quoted reply preview. |
-| `pnpm e2e:verify:up` / `pnpm e2e:verify:down` | Bring the Synapse+Caddy harness up / tear it down by hand.                                                                                 |
+| `pnpm e2e:verify:up` / `pnpm e2e:verify:down` | Bring the Synapse+Caddy+Dex harness up / tear it down by hand.                                                                             |
 
 ## `e2e:media` — encrypted media send round-trip
 
@@ -97,7 +98,7 @@ no fixed sleeps.
 
 ### Run it (bundled Synapse harness)
 
-Requires **Docker** able to pull `matrixdotorg/synapse` and `caddy`.
+Requires **Docker** able to pull `matrixdotorg/synapse`, `caddy` and `ghcr.io/dexidp/dex`.
 
 ```bash
 pnpm e2e:verify
@@ -148,13 +149,19 @@ matrix.org discovery surfaces the password form), and the guarded
 
 Disposable, self-contained:
 
-- **`docker-compose.yml`** — Synapse (HTTP `:8008`) + Caddy (TLS `:8448`).
+- **`docker-compose.yml`** — Synapse (HTTP `:8008`) + Caddy (TLS `:8448`) + Dex
+  (OIDC, HTTP `:5556`).
 - **`Caddyfile`** — terminates TLS with Caddy's **internal self-signed CA**, serves
   `/.well-known/matrix/client` pointing `m.homeserver.base_url` at
   `https://localhost:8448`, and reverse-proxies the Matrix API to Synapse.
+- **`dex.yaml`** — a throwaway identity provider, wired into Synapse as an
+  `oidc_provider` so the suite can hold an account with **no Matrix password**. That is
+  the only way to drive the paths Trinity takes when a homeserver refuses a password for
+  a privileged action; see docs/DEVELOPMENT.md for why it is legacy SSO and not MSC3861.
 - **`start.mjs`** — generates + patches `homeserver.yaml` (registration shared
-  secret, `public_baseurl`, relaxed rate limits), brings the stack up, registers the
-  test user via `register_new_matrix_user`, waits for the TLS well-known.
+  secret, `public_baseurl`, relaxed rate limits, the Dex provider + SSO redirect
+  whitelist), brings the stack up, registers the test user via
+  `register_new_matrix_user`, waits for the TLS well-known and Dex's discovery document.
 - **`stop.mjs`** — `docker compose down -v` and removes generated `./data`.
 
 **Why TLS + well-known:** the shipped `apps/trinity/src/index.html` CSP allows only

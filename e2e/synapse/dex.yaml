@@ -1,0 +1,57 @@
+# Dex — a throwaway OpenID Connect provider for the e2e harness.
+#
+# It exists so the suite can hold a Matrix account that has NO password: Synapse
+# creates SSO accounts through its `oidc_providers` block, and such an account can
+# never satisfy password user-interactive auth. That is the whole point — it is the
+# only way to drive Trinity's "your identity provider has to do this" path against a
+# real homeserver instead of a mocked one.
+#
+# Note this is *legacy* SSO (Synapse owns the Matrix session and hands the app a
+# `loginToken`), not MSC3861 next-gen auth. Delegating authentication outright would
+# force password login and registration off for the whole homeserver, which the ~30
+# other specs on this stack depend on.
+#
+# Everything here is a fixed, public test credential on a container that is not
+# reachable from outside the loopback. There is nothing to keep secret.
+
+issuer: http://localhost:5556/dex
+
+# No volume, no migrations, no cleanup — the provider is as disposable as the
+# homeserver in front of it.
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  # Nothing to consent to: one client, one user, one purpose. Skipping the grant
+  # screen removes a page the specs would otherwise have to click through.
+  skipApprovalScreen: true
+  # With exactly one connector Dex still renders a chooser unless it is told which
+  # one backs password login. Naming it lands the browser straight on the form.
+  passwordConnector: local
+
+staticClients:
+  - id: trinity-e2e
+    name: Trinity E2E
+    secret: trinity-e2e-secret
+    # Synapse's own OIDC callback, on the Caddy TLS front — it must byte-match the
+    # `redirect_uri` Synapse derives from `public_baseurl`, or Dex rejects the code
+    # exchange. The browser reaches it over the self-signed cert, which the Playwright
+    # contexts are configured to accept.
+    redirectURIs:
+      - https://localhost:8448/_synapse/client/oidc/callback
+
+enablePasswordDB: true
+staticPasswords:
+  # `username` is what Synapse's user_mapping_provider turns into the Matrix
+  # localpart (see the oidc_providers block in start.mjs), so it must already be a
+  # legal one: lowercase, no spaces.
+  - email: sso-e2e@trinity.test
+    username: sso-e2e
+    userID: 5f1e6f4e-0f9a-4b3f-9a2f-9f0e5c7d1a20
+    # bcrypt of "sso-e2e-pass-123", generated with `caddy hash-password`. Cost 14 is
+    # what that tool emits and costs ~1s to verify — irrelevant beside the 15-40s
+    # Matrix login that follows, and not worth pulling a second image to lower.
+    hash: $2a$14$SkXgoBc7KBCrfGowk6vDBuMzNv53jHGoWiwkHeebA65PkSsjoKDte

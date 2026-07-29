@@ -124,13 +124,17 @@ export function composeFiles(networkContainer) {
 }
 
 /**
- * Make the state directory usable: create it, and put the Caddyfile where the compose
- * mount expects it. Caddy bind-mounts the file, so it has to live beside the state rather
- * than in the repo whenever the two are different places.
+ * Make the state directory usable: create it, and put the config files the compose
+ * mounts expect where they expect them. Caddy and Dex each bind-mount a single file, so
+ * those have to live beside the state rather than in the repo whenever the two are
+ * different places — and they must exist first, or the daemon helpfully creates a
+ * *directory* at the mount point and the container fails to parse its config.
  */
 export async function prepareStateDir() {
   await mkdir(DATA, { recursive: true });
   if (STATE_DIR !== HERE) {
-    await copyFile(join(HERE, 'Caddyfile'), join(STATE_DIR, 'Caddyfile'));
+    for (const file of ['Caddyfile', 'dex.yaml']) {
+      await copyFile(join(HERE, file), join(STATE_DIR, file));
+    }
   }
 }

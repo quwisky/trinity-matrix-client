@@ -1,6 +1,6 @@
-# Disposable Synapse + Caddy stack for the SAS verification e2e.
+# Disposable Synapse + Caddy + Dex stack for the e2e suites.
 #
-# Why two services:
+# Why Caddy:
 #  - Synapse speaks plain HTTP on :8008 (no TLS config needed inside the container).
 #  - The Trinity app's CSP only allows https:/wss: for connect-src, and matrix-js-sdk
 #    AutoDiscovery fetches https://<domain>/.well-known/matrix/client. So Caddy
@@ -32,6 +32,21 @@ services:
     # (run from stop/setup scripts on the host) can reach it directly.
     ports:
       - '127.0.0.1:8008:8008'
+    networks:
+      - trinity-e2e
+
+  # Throwaway OpenID Connect provider, so the suite can hold a Matrix account with no
+  # password (see dex.yaml). Synapse reaches it over the compose network; the browser
+  # reaches the published port. Memory storage, so there is nothing to clean up.
+  dex:
+    image: ghcr.io/dexidp/dex:v2.45.1-alpine
+    container_name: trinity-e2e-dex
+    restart: 'no'
+    command: ['dex', 'serve', '/etc/dex/trinity-e2e.yaml']
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/dex.yaml:/etc/dex/trinity-e2e.yaml:ro
+    ports:
+      - '127.0.0.1:5556:5556'
     networks:
       - trinity-e2e
 

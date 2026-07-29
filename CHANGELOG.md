@@ -78,6 +78,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The "your provider has to reset this" path is now tested against a real server.** When an
+  account signs in through an identity provider, Trinity cannot authorise an encryption reset
+  itself and says so — a claim that until now rested on a mocked homeserver reply. The
+  disposable test stack grew a throwaway identity provider, so the suite holds an account with
+  no password and drives that refusal end to end: a real sign-in, a real rejection, and a check
+  that nothing about the account's encryption was changed on the way past.
+
 - **The space header makes room for the space's name.** A space's sidebar header carried up to
   six icon buttons on one row, which left the name itself about six characters before it was
   cut off — and on a touchscreen, where the buttons grow to a thumb-sized minimum, they needed
