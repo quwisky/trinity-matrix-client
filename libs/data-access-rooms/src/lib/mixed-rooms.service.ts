@@ -187,6 +187,10 @@ export class MixedRoomsService {
             summary.highlightCount,
           ),
           hasUnread: existing.hasUnread || summary.hasUnread,
+          // OR'd for the same reason as hasUnread: taking it from the winner alone would
+          // leave the row reading as unread while claiming it is not flagged, which is
+          // both the wrong menu item and a badge with no count behind it.
+          markedUnread: existing.markedUnread || summary.markedUnread,
         });
       }
     }

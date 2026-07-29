@@ -63,6 +63,10 @@ function fakeRoom(opts: {
   creator?: string | null;
   /** Avatar of the member the SDK offers as a stand-in for a room with ≤2 members. */
   peerAvatarMxc?: string;
+  /** The room's `m.marked_unread` content, if it has any. */
+  markedUnread?: { unread: boolean };
+  /** The same flag under the legacy unstable type some clients still write. */
+  legacyMarkedUnread?: { unread: boolean };
 }) {
   return {
     roomId: opts.roomId,
@@ -72,6 +76,15 @@ function fakeRoom(opts: {
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,
+    getAccountData: (type: string) => {
+      const content =
+        type === 'm.marked_unread'
+          ? opts.markedUnread
+          : type === 'com.famedly.marked_unread'
+            ? opts.legacyMarkedUnread
+            : undefined;
+      return content ? { getContent: () => content } : undefined;
+    },
     // Modelled honestly: the SDK hands back a stand-in member for ANY room with two or
     // fewer members, DM or not (room.js:761 bails out only above two). Returning
     // `undefined` for group rooms here would make the guard untestable — the fake, not
@@ -268,6 +281,196 @@ describe('RoomsService', () => {
     await Promise.resolve(); // the rebuild is coalesced into a microtask
 
     expect(svc.rooms()[0].avatarMxc).toBe('mxc://hs/bob');
+  });
+
+  describe('marked unread', () => {
+    it('reads the flag as unread even with nothing new in the room', () => {
+      // The whole point: the read receipt does not move, so the server's counts stay at
+      // zero and this flag is the only thing saying the room still wants attention.
+      const svc = setup([
+        fakeRoom({
+          roomId: '!flagged:hs',
+          name: 'Flagged',
+          markedUnread: { unread: true },
+        }),
+        fakeRoom({ roomId: '!plain:hs', name: 'Plain' }),
+      ]);
+
+      const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
+      expect(byId.get('!flagged:hs')).toMatchObject({
+        markedUnread: true,
+        hasUnread: true,
+        unreadCount: 0,
+      });
+      expect(byId.get('!plain:hs')).toMatchObject({
+        markedUnread: false,
+        hasUnread: false,
+      });
+    });
+
+    it('reads the legacy unstable event type other clients still write', () => {
+      const svc = setup([
+        fakeRoom({
+          roomId: '!r:hs',
+          name: 'R',
+          legacyMarkedUnread: { unread: true },
+        }),
+      ]);
+
+      expect(svc.rooms()[0].markedUnread).toBe(true);
+    });
+
+    /** A client that records account-data writes and can hold rooms per account. */
+    function setupWritable(rooms: ReturnType<typeof fakeRoom>[]) {
+      const setRoomAccountData = vi.fn(() => Promise.resolve({}));
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => rooms,
+        getRoom: (id: string) => rooms.find((r) => r.roomId === id),
+        setRoomAccountData,
+        on: () => {},
+      };
+      const { svc, matrix } = provideRooms(client);
+      ngMocks.stubMember(matrix, 'accountIds', () => ['@me:hs'] as never);
+      ngMocks.stubMember(matrix, 'clientFor', (() => client) as never);
+      svc.connect();
+      return { svc, client, setRoomAccountData };
+    }
+
+    it('writes the STABLE event type when flagging a room', () => {
+      // Both types are read, but only the stable one is written — writing the legacy
+      // prefix would spread it further rather than letting it die out.
+      const { svc, setRoomAccountData } = setupWritable([
+        fakeRoom({ roomId: '!r:hs', name: 'R' }),
+      ]);
+
+      svc.setMarkedUnread('!r:hs', true);
+
+      expect(setRoomAccountData).toHaveBeenCalledWith(
+        '!r:hs',
+        'm.marked_unread',
+        {
+          unread: true,
+        },
+      );
+    });
+
+    it('clears by writing false rather than redacting', () => {
+      const { svc, setRoomAccountData } = setupWritable([
+        fakeRoom({
+          roomId: '!r:hs',
+          name: 'R',
+          markedUnread: { unread: true },
+        }),
+      ]);
+
+      svc.clearMarkedUnread('!r:hs');
+
+      expect(setRoomAccountData).toHaveBeenCalledWith(
+        '!r:hs',
+        'm.marked_unread',
+        {
+          unread: false,
+        },
+      );
+    });
+
+    it('spends no write clearing a room that is not flagged', () => {
+      // clearMarkedUnread runs on every room open, so an unconditional write would put
+      // an account-data round trip behind every click in the room list.
+      const { svc, setRoomAccountData } = setupWritable([
+        fakeRoom({ roomId: '!r:hs', name: 'R' }),
+      ]);
+
+      svc.clearMarkedUnread('!r:hs');
+
+      expect(setRoomAccountData).not.toHaveBeenCalled();
+    });
+
+    it('drops the flag when the room is marked read from its menu', async () => {
+      // Otherwise the two controls contradict each other: the row would be acked and
+      // still flagged, so it would keep reading as unread with no way out but opening it.
+      const room = {
+        ...fakeRoom({
+          roomId: '!r:hs',
+          name: 'R',
+          markedUnread: { unread: true },
+          // markRead walks back for the newest CONFIRMED event, so this one needs the
+          // id and status fields the shared timelineEvent helper does not carry.
+          events: [
+            {
+              ...timelineEvent({ body: 'hi' }),
+              getId: () => '$e1',
+              status: null,
+            },
+          ],
+        }),
+      };
+      const setRoomAccountData = vi.fn(() => Promise.resolve({}));
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => [room],
+        getRoom: () => room,
+        setRoomAccountData,
+        setRoomReadMarkers: vi.fn(() => Promise.resolve({})),
+        sendReadReceipt: vi.fn(() => Promise.resolve({})),
+        on: () => {},
+      };
+      const { svc } = provideRooms(client);
+      svc.connect();
+
+      await firstValueFrom(svc.markRead('!r:hs'));
+
+      expect(setRoomAccountData).toHaveBeenCalledWith(
+        '!r:hs',
+        'm.marked_unread',
+        { unread: false },
+      );
+    });
+
+    it('rebuilds when the flag changes on another device', async () => {
+      // Room account data is what carries the flag between devices, and nothing in the
+      // app listened to it before this — so a room flagged elsewhere would not have
+      // surfaced until some unrelated event happened to rebuild the list.
+      const room = fakeRoom({ roomId: '!r:hs', name: 'R' });
+      const handlers = new Map<string, () => void>();
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => [room],
+        on: (event: string, handler: () => void) => {
+          handlers.set(event, handler);
+        },
+      };
+      const { svc } = provideRooms(client);
+      svc.connect();
+      expect(svc.rooms()[0].markedUnread).toBe(false);
+
+      room.getAccountData = (type: string) =>
+        type === 'm.marked_unread'
+          ? { getContent: () => ({ unread: true }) }
+          : undefined;
+      handlers.get(RoomEvent.AccountData)?.();
+      await Promise.resolve(); // the rebuild is coalesced into a microtask
+
+      expect(svc.rooms()[0].markedUnread).toBe(true);
+    });
+
+    it('treats {unread: false} as cleared, which is how it is cleared', () => {
+      // Other clients clear the flag by writing false rather than redacting the event,
+      // so the presence of the event cannot be what counts.
+      const svc = setup([
+        fakeRoom({
+          roomId: '!r:hs',
+          name: 'R',
+          markedUnread: { unread: false },
+        }),
+      ]);
+
+      expect(svc.rooms()[0]).toMatchObject({
+        markedUnread: false,
+        hasUnread: false,
+      });
+    });
   });
 
   it('orders rooms by recent activity and maps unread counts', () => {

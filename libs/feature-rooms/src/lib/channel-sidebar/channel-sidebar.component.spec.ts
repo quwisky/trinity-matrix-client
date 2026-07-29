@@ -51,6 +51,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     unreadCount: 0,
     highlightCount: 0,
     hasUnread: false,
+    markedUnread: false,
     lastMessage: '',
     activityTs: 0,
     favourite: false,
@@ -925,6 +926,82 @@ describe('ChannelSidebarComponent', () => {
     container.querySelector<HTMLElement>('.channel__menu')!.click();
     fixture.detectChanges();
     expect(document.querySelector('[data-testid="room-mark-read"]')).toBeNull();
+  });
+
+  it('emits markUnread from the kebab menu for a read room', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: false })],
+      },
+    });
+    let flagged: string | undefined;
+    fixture.componentInstance.markUnread.subscribe((e) => (flagged = e.roomId));
+
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+    document
+      .querySelector<HTMLElement>('[data-testid="room-mark-unread"]')!
+      .click();
+
+    expect(flagged).toBe('!a:hs');
+  });
+
+  it('does not offer Mark as unread for a room that is already unread', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+      },
+    });
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+    expect(
+      document.querySelector('[data-testid="room-mark-unread"]'),
+    ).toBeNull();
+  });
+
+  it('shows a dot, not a "0", for a room flagged with nothing new in it', async () => {
+    // A flagged room has no notification count behind it, so the ordinary unread badge
+    // would render the number zero — which reads as "nothing here" and is worse than
+    // showing nothing at all.
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({
+            id: '!a:hs',
+            name: 'general',
+            hasUnread: true,
+            markedUnread: true,
+            unreadCount: 0,
+          }),
+        ],
+      },
+    });
+
+    const dot = container.querySelector('[data-testid="room-unread-dot"]');
+    expect(dot).not.toBeNull();
+    expect(dot?.textContent?.trim()).toBe('');
+    expect(container.textContent).not.toContain('0');
+  });
+
+  it('still shows the count when a flagged room also has unread messages', async () => {
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({
+            id: '!a:hs',
+            name: 'general',
+            hasUnread: true,
+            markedUnread: true,
+            unreadCount: 3,
+          }),
+        ],
+      },
+    });
+
+    expect(
+      container.querySelector('[data-testid="room-unread-dot"]'),
+    ).toBeNull();
+    expect(container.textContent).toContain('3');
   });
 
   it('emits markAllRead from the header when any room is unread', async () => {

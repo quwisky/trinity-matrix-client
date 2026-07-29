@@ -16,6 +16,13 @@ All notable changes to this project are documented here. The format is based on
   same format Element does, so a list built in one shows up in the other. One deliberate
   limit, because people expect the opposite: a muted room stays muted, keywords included.
 
+- **Mark a room as unread.** Glancing at a message on your phone and deciding it needs a
+  proper reply later used to lose it: opening a room marks it read whether or not you dealt
+  with it, and the room goes quiet in the list. **Mark as unread** in a room's ⋮ menu flags
+  it to come back to, and the room stays flagged until you open it again. The flag lives on
+  your account rather than the device, so it follows you everywhere you are signed in — and
+  it interoperates with Element, which reads and writes the same marker.
+
 - **The member list shows who owns the room.** Everyone at the top power level shared one
   **Admin** heading, so the person who created the room looked identical to everyone they
   had since promoted — in a room with four admins there was no way to tell whose room it

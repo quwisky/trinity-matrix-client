@@ -28,6 +28,7 @@ import {
   compareRoomSummaries,
   directMapOf,
   initialOf,
+  isMarkedUnread,
 } from './room-projection';
 
 /** Fields a {@link RoomsService.createRoom} call accepts. */
@@ -70,8 +71,10 @@ export interface RoomSummary {
   unreadCount: number;
   /** Unread mentions/highlights (drives the red badge). */
   highlightCount: number;
-  /** Convenience flag: there are unread notifications. */
+  /** Convenience flag: there are unread notifications, or the room is flagged unread. */
   hasUnread: boolean;
+  /** The user flagged this room to come back to (`m.marked_unread`, MSC2867). */
+  markedUnread: boolean;
   /** Single-line preview of the room's most recent message (`''` when none). */
   lastMessage: string;
   /** Last-activity timestamp (ms), used to order the list by recency. */
@@ -219,6 +222,10 @@ export class RoomsService {
       // Room tags (e.g. `m.favourite`, the favourite flag) can change from another device;
       // rebuild so a remote favourite/unfavourite re-partitions and re-sorts the list live.
       RoomEvent.Tags,
+      // Room account data carries the marked-unread flag, and nothing in the app
+      // listened to it before — so a room flagged on another device would not have
+      // surfaced here until some unrelated event happened to rebuild the list.
+      RoomEvent.AccountData,
     ],
     // refresh() writes signals, which schedule change detection, so the room list and
     // unread badges surface immediately.
@@ -372,6 +379,12 @@ export class RoomsService {
           break;
         }
       }
+      // Clear the flag first, and unconditionally: an empty room returns early below,
+      // but a room flagged unread and then marked read must stop being flagged whether
+      // or not there is an event to acknowledge.
+      if (room && isMarkedUnread(room)) {
+        this.setMarkedUnread(roomId, false, accountId);
+      }
       const latestId = latest?.getId();
       if (!latest || !latestId) {
         return of(void 0);
@@ -387,6 +400,47 @@ export class RoomsService {
         map(() => void 0),
       );
     });
+  }
+
+  /**
+   * Flag a room to come back to, or clear that flag (`m.marked_unread`, MSC2867).
+   *
+   * Room account data, so it syncs to the user's other devices and interops with Element.
+   * The read receipt is deliberately untouched: the point is to say "I have seen this and
+   * still want it in front of me", which a receipt cannot express. Clearing writes
+   * `{unread: false}` rather than redacting, which is what other clients read back.
+   *
+   * Fire-and-forget like {@link setFavourite}: the post-write {@link refresh} makes the
+   * change land at once, and the `RoomEvent.AccountData` listener covers the echo.
+   */
+  setMarkedUnread(roomId: string, unread: boolean, accountId?: string): void {
+    const client = this.clientOwning(accountId);
+    if (!client) {
+      return;
+    }
+    client
+      .setRoomAccountData(roomId, EventType.MarkedUnread, { unread })
+      .then(() => this.refresh())
+      .catch((err: unknown) =>
+        console.error('Could not change the room’s unread flag', err),
+      );
+  }
+
+  /**
+   * Drop a room's marked-unread flag wherever it is actually set.
+   *
+   * Sweeps every signed-in account rather than taking one: a row merged from two mixed
+   * accounts can be flagged on either, and clearing only the active one would leave the
+   * row still reading as unread with no obvious way to fix it. Writes nothing for an
+   * account that does not hold the flag, so this is cheap to call on every room open.
+   */
+  clearMarkedUnread(roomId: string): void {
+    for (const accountId of this.matrix.accountIds()) {
+      const room = this.matrix.clientFor(accountId)?.getRoom(roomId);
+      if (room && isMarkedUnread(room)) {
+        this.setMarkedUnread(roomId, false, accountId);
+      }
+    }
   }
 
   /**

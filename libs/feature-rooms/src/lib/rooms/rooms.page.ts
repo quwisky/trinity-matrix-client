@@ -1366,6 +1366,11 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (source === 'user') {
       this.mru.record(id);
     }
+    // Opening the room is the user dealing with it, so the come-back-to-it flag goes.
+    // Cleared HERE rather than on the auto-ack in TimelineService: that path is gated on
+    // the window having focus and dedupes repeat acks, so a room opened in a background
+    // window — or re-opened after being acked once — would stay flagged for good.
+    this.rooms.clearMarkedUnread(id);
     // On mobile, setting activeRoomId switches from the room-list page to the chat.
     this.focusActiveView();
   }
@@ -1549,6 +1554,23 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Mark a single room read (from its ⋮ menu); the badge clears via sync. Acked on the
    * row's own account, which in the mixed view need not be the active one. */
+  /**
+   * Flag a room to come back to. Written on every account joined to the row for the same
+   * reason {@link onMarkRead} acks all of them: a merged mixed-account row would otherwise
+   * be flagged on one account and not the other, and the two would disagree.
+   */
+  onMarkUnread({
+    roomId,
+    accountIds,
+  }: {
+    roomId: string;
+    accountIds?: readonly string[];
+  }): void {
+    for (const accountId of accountIds?.length ? accountIds : [undefined]) {
+      this.rooms.setMarkedUnread(roomId, true, accountId);
+    }
+  }
+
   onMarkRead({
     roomId,
     accountIds,

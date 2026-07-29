@@ -14,6 +14,31 @@ import { type RoomSummary } from './rooms.service';
 /** State event type linking a space to a child room. */
 const SPACE_CHILD_EVENT = 'm.space.child';
 
+/**
+ * The unstable prefix some clients still write for MSC2867's marked-unread flag. Read as
+ * well as the stable `m.marked_unread` so a room flagged in an older client shows here;
+ * only the stable one is ever written.
+ */
+const LEGACY_MARKED_UNREAD = 'com.famedly.marked_unread';
+
+/**
+ * Whether the user has explicitly flagged this room to come back to (MSC2867).
+ *
+ * Purely a client-side marker held in room account data: the read receipt does not move,
+ * so the server's notification counts stay at zero and this is the only thing that says
+ * the room wants attention. Absent, or `{unread: false}`, both mean not flagged — Element
+ * writes the latter to clear it rather than redacting the event.
+ */
+export function isMarkedUnread(room: Room): boolean {
+  for (const type of [EventType.MarkedUnread, LEGACY_MARKED_UNREAD]) {
+    const content = room.getAccountData?.(type)?.getContent();
+    if (content?.['unread'] === true) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Internal scratch shape used while sorting a space's children. */
 interface ChildEntry {
   id: string;
@@ -89,6 +114,7 @@ export function buildRoomSummary(
   const highlightCount = room.getUnreadNotificationCount(
     NotificationCountType.Highlight,
   );
+  const markedUnread = isMarkedUnread(room);
   return {
     id: room.roomId,
     accountId,
@@ -104,7 +130,10 @@ export function buildRoomSummary(
     encrypted: room.hasEncryptionStateEvent(),
     unreadCount,
     highlightCount,
-    hasUnread: unreadCount > 0,
+    markedUnread,
+    // A flagged room reads as unread even with nothing new in it — that is the whole
+    // point of flagging it — so the badge and the sidebar's unread filter both follow.
+    hasUnread: unreadCount > 0 || markedUnread,
     lastMessage: lastMessageOf(room),
     activityTs: room.getLastActiveTimestamp(),
     favourite: room.tags?.['m.favourite'] !== undefined,
