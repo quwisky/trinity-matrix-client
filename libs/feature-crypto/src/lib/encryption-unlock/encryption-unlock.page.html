@@ -23,32 +23,14 @@
 <ng-template #body>
   @if (newRecoveryKey(); as key) {
     <!-- Post-reset: the account has a brand-new identity and this key is the only copy. -->
-    <h2 class="heading">Save your new recovery key</h2>
-    <p class="warning" role="note">
-      We'll only show this key once. Without it, you can't recover your message
-      history on another device.
-    </p>
-    <trn-recovery-key-display [recoveryKey]="key" />
-    <label
-      class="mt-4 flex cursor-pointer items-center gap-2 text-sm"
-      data-testid="reset-saved"
-    >
-      <hlm-checkbox
-        [checked]="confirmedSaved()"
-        (checkedChange)="confirmedSaved.set($event)"
-        aria-label="I've saved my new recovery key"
-      />
-      I've saved my recovery key somewhere safe
-    </label>
-    <button
-      hlmBtn
-      class="mt-4 w-full"
-      [disabled]="!confirmedSaved()"
-      (click)="finishReset()"
-      data-testid="reset-done"
-    >
-      Done
-    </button>
+    <trn-recovery-key-save
+      [recoveryKey]="key"
+      heading="Save your new recovery key"
+      warning="We'll only show this key once. Without it, you can't recover your message history on another device."
+      confirmLabel="Done"
+      confirmTestId="reset-done"
+      (confirmed)="finishReset()"
+    />
   } @else {
     <h2 class="heading">Enter your recovery key</h2>
     <p class="text-muted-foreground">

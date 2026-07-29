@@ -24,11 +24,20 @@ import {
   MatrixClientService,
   SecretStorageKeyHolder,
 } from '@trinity/data-access-matrix-client';
+import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util-matrix';
 
 /** A 401 UIA challenge carrying flows + session, as the SDK surfaces it. */
 function uiaError(session: string): MatrixError {
   return new MatrixError(
     { flows: [{ stages: ['m.login.password'] }], session },
+    401,
+  );
+}
+
+/** The 401 a password-less account gets: the server offers only an SSO stage. */
+function ssoOnlyUiaError(): MatrixError {
+  return new MatrixError(
+    { flows: [{ stages: ['m.login.sso'] }], session: 's' },
     401,
   );
 }
@@ -94,7 +103,7 @@ function setup(opts: CryptoOpts = {}) {
     checkKeyBackupAndEnable: vi.fn().mockResolvedValue(null),
     exportRoomKeysAsJson: vi.fn().mockResolvedValue(opts.exportedKeys ?? '[]'),
     importRoomKeysAsJson: vi.fn().mockResolvedValue(undefined),
-    resetEncryption: vi.fn().mockResolvedValue(undefined),
+    userHasCrossSigningKeys: vi.fn().mockResolvedValue(true),
   };
 
   const secretStorage = {
@@ -109,6 +118,8 @@ function setup(opts: CryptoOpts = {}) {
         opts.defaultKeyId ? [opts.defaultKeyId, opts.keyInfo ?? {}] : null,
       ),
     checkKey: vi.fn().mockResolvedValue(opts.checkKey ?? true),
+    setDefaultKeyId: vi.fn().mockResolvedValue(undefined),
+    store: vi.fn().mockResolvedValue(undefined),
   };
 
   // Dispatching rather than inert, so a test can drive the event path the service
@@ -119,6 +130,9 @@ function setup(opts: CryptoOpts = {}) {
     secretStorage,
     getDeviceId: () => 'DEV',
     getUserId: () => '@me:hs',
+    // The reset's pre-flight probe. A real Synapse answers this with a UIA 401 listing
+    // the stages THIS user can complete, so the password flow is the realistic default.
+    deleteMultipleDevices: vi.fn().mockRejectedValue(uiaError('probe')),
     on: vi.fn((event: string, fn: () => void) => {
       const set = listeners.get(event) ?? new Set<() => void>();
       listeners.set(event, set.add(fn));
@@ -240,7 +254,7 @@ describe('CryptoService', () => {
   });
 
   describe('resetRecovery', () => {
-    it('resets, then re-bootstraps 4S and returns the NEW recovery key', async () => {
+    it('publishes the new identity, then re-bootstraps 4S and returns the NEW key', async () => {
       const { svc, crypto } = setup({
         recoveryKey: {
           encodedPrivateKey: 'EsTAfterReset',
@@ -250,7 +264,9 @@ describe('CryptoService', () => {
 
       const shown = await firstValueFrom(svc.resetRecovery(async () => 'pw'));
 
-      expect(crypto.resetEncryption).toHaveBeenCalledOnce();
+      expect(crypto.bootstrapCrossSigning).toHaveBeenCalledWith(
+        expect.objectContaining({ setupNewCrossSigning: true }),
+      );
       expect(shown).toBe('EsTAfterReset');
       const ssOpts = crypto.bootstrapSecretStorage.mock.calls[0][0];
       await expect(ssOpts.createSecretStorageKey()).resolves.toMatchObject({
@@ -258,50 +274,66 @@ describe('CryptoService', () => {
       });
     });
 
-    it('bootstraps 4S WITHOUT asking for another key backup', async () => {
-      // resetEncryption already made one. Passing setupNewKeyBackup would reset the
-      // backup a second time and leave the account holding two versions — which is
-      // exactly why setUp(), which passes true, cannot be reused for this flow.
+    // THE test. Call counts alone pass on the old, destructive ordering; only the
+    // sequence distinguishes "authenticate, then destroy" from "destroy, then ask".
+    it('authenticates BEFORE anything destructive runs', async () => {
+      const order: string[] = [];
+      const { svc, crypto, secretStorage } = setup({ defaultKeyId: 'old-key' });
+      secretStorage.setDefaultKeyId.mockImplementation(
+        async () => void order.push('park'),
+      );
+      crypto.bootstrapCrossSigning.mockImplementation(
+        async () => void order.push('upload'),
+      );
+      crypto.bootstrapSecretStorage.mockImplementation(
+        async () => void order.push('destroy'),
+      );
+
+      await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(order).toEqual(['park', 'upload', 'destroy']);
+    });
+
+    it('asks for a new key backup, because nothing else now makes one', async () => {
+      // The inverse of what this flow needed while it called resetEncryption, which made
+      // the backup itself. `setupKeyBackup` opens by deleting every existing version, so
+      // this single call is the whole destructive tail.
       const { svc, crypto } = setup();
 
       await firstValueFrom(svc.resetRecovery(async () => 'pw'));
 
       expect(
         crypto.bootstrapSecretStorage.mock.calls[0][0].setupNewKeyBackup,
-      ).toBeUndefined();
+      ).toBe(true);
     });
 
-    it('bootstraps 4S AFTER the reset, or the new key would be wiped', async () => {
-      // resetEncryption deletes secret storage. Bootstrapping first would hand the user
-      // a recovery key that the reset then destroyed.
-      const order: string[] = [];
-      const { svc, crypto } = setup();
-      crypto.resetEncryption.mockImplementation(async () => {
-        order.push('reset');
-      });
-      crypto.bootstrapSecretStorage.mockImplementation(async () => {
-        order.push('bootstrap');
-      });
+    it('parks the 4S pointer so the rotation can reach the upload', async () => {
+      // resetCrossSigning exports the rotated privates into the CURRENT 4S key first, but
+      // only when one is set — and this user cannot open theirs, so it would die there.
+      const { svc, secretStorage } = setup({ defaultKeyId: 'old-key' });
 
       await firstValueFrom(svc.resetRecovery(async () => 'pw'));
 
-      expect(order).toEqual(['reset', 'bootstrap']);
+      expect(secretStorage.setDefaultKeyId).toHaveBeenCalledWith(null);
     });
 
-    it('drives the reset through the password UIA callback', async () => {
-      const { svc, crypto } = setup();
+    it('leaves the pointer alone when the account has no 4S', async () => {
+      const { svc, secretStorage } = setup({ defaultKeyId: null });
 
       await firstValueFrom(svc.resetRecovery(async () => 'pw'));
 
-      expect(crypto.resetEncryption.mock.calls[0][0]).toBeTypeOf('function');
+      expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
     });
 
-    it('does not touch cross-signing itself — the reset owns that', async () => {
+    it('drives the upload through the password UIA callback', async () => {
       const { svc, crypto } = setup();
 
       await firstValueFrom(svc.resetRecovery(async () => 'pw'));
 
-      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+      expect(
+        crypto.bootstrapCrossSigning.mock.calls[0][0]
+          .authUploadDeviceSigningKeys,
+      ).toBeTypeOf('function');
     });
 
     it('recomputes status, so the UI stops reporting the old posture', async () => {
@@ -316,14 +348,121 @@ describe('CryptoService', () => {
       expect(svc.status()).toBe('ready');
     });
 
-    it('propagates a failed reset rather than reporting a new key', async () => {
-      const { svc, crypto } = setup();
-      crypto.resetEncryption.mockRejectedValue(new Error('server said no'));
+    it('drops the orphaned key description once the new pointer lands', async () => {
+      const { svc, secretStorage } = setup({ defaultKeyId: 'old-key' });
+      secretStorage.getDefaultKeyId
+        .mockResolvedValueOnce('old-key')
+        .mockResolvedValue('new-key');
+
+      await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(secretStorage.store).toHaveBeenCalledWith(
+        'm.secret_storage.key.old-key',
+        null,
+      );
+    });
+
+    it('keeps the old description when the new key never landed', async () => {
+      const { svc, secretStorage } = setup({ defaultKeyId: 'old-key' });
+
+      await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(secretStorage.store).not.toHaveBeenCalled();
+    });
+
+    // Each of these is a route to the measured data loss: the account's backup used to be
+    // gone by the time any of them could happen.
+    for (const [label, error] of [
+      ['the user cancels the password prompt', new UiaCancelledError()],
+      ['the server will not take a password', new UiaUnsupportedError()],
+      ['the password is wrong too many times', new Error('Too many attempts.')],
+    ] as const) {
+      it(`destroys nothing when ${label}`, async () => {
+        const { svc, crypto, secretStorage } = setup({
+          defaultKeyId: 'old-key',
+        });
+        crypto.bootstrapCrossSigning.mockRejectedValue(error);
+
+        await expect(
+          firstValueFrom(svc.resetRecovery(async () => 'pw')),
+        ).rejects.toThrow(error.message);
+
+        expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+        expect(crypto.createRecoveryKeyFromPassphrase).not.toHaveBeenCalled();
+        expect(secretStorage.setDefaultKeyId).toHaveBeenLastCalledWith(
+          'old-key',
+        );
+      });
+    }
+
+    it('re-seats the real identity after a refused upload', async () => {
+      // The olm machine rotated its private keys before the upload was authorised, so
+      // without a forced key query this device believes in an identity nobody published.
+      const { svc, crypto } = setup({ defaultKeyId: 'old-key' });
+      crypto.bootstrapCrossSigning.mockRejectedValue(new UiaCancelledError());
 
       await expect(
         firstValueFrom(svc.resetRecovery(async () => 'pw')),
-      ).rejects.toThrow('server said no');
+      ).rejects.toThrow(UiaCancelledError);
+
+      expect(crypto.userHasCrossSigningKeys).toHaveBeenCalledWith(
+        '@me:hs',
+        true,
+      );
+    });
+
+    it('lets the original error through even if the rollback fails', async () => {
+      const { svc, crypto, secretStorage } = setup({ defaultKeyId: 'old-key' });
+      crypto.bootstrapCrossSigning.mockRejectedValue(new UiaCancelledError());
+      secretStorage.setDefaultKeyId
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValue(new Error('rollback exploded'));
+
+      await expect(
+        firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      ).rejects.toThrow(UiaCancelledError);
+    });
+
+    // The probe is no longer what prevents data loss — the ordering above is — but it
+    // still bails out before the LOCAL key rotation, which has no clean undo.
+    it('refuses before the rotation when the server offers no password stage', async () => {
+      const { svc, crypto, client } = setup();
+      client.deleteMultipleDevices.mockRejectedValue(ssoOnlyUiaError());
+
+      await expect(
+        firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      ).rejects.toBeInstanceOf(UiaUnsupportedError);
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
       expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+    });
+
+    it('probes with an empty device list, so the check itself deletes nothing', async () => {
+      const { svc, client } = setup();
+
+      await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(client.deleteMultipleDevices).toHaveBeenCalledWith([]);
+    });
+
+    it('goes ahead when the probe cannot answer, rather than inventing a failure', async () => {
+      // The probe exists to stop a reset that is certain to fail, not to become a new way
+      // for one to fail. A dropped connection must leave the user where they were.
+      const { svc, crypto, client } = setup();
+      client.deleteMultipleDevices.mockRejectedValue(new Error('network down'));
+
+      await expect(
+        firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      ).resolves.toBeTypeOf('string');
+      expect(crypto.bootstrapCrossSigning).toHaveBeenCalledOnce();
+    });
+
+    it('goes ahead when the probe is not challenged at all', async () => {
+      const { svc, crypto, client } = setup();
+      client.deleteMultipleDevices.mockResolvedValue({});
+
+      await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+
+      expect(crypto.bootstrapCrossSigning).toHaveBeenCalledOnce();
     });
   });
 

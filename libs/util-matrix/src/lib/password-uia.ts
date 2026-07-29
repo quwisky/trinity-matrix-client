@@ -99,6 +99,33 @@ export async function runPasswordUia<T>(
   throw new Error('Too many password attempts.');
 }
 
+/**
+ * Rule out a password UIA flow *before* running something that cannot be undone.
+ *
+ * `probe` must be a harmless request against a UIA-gated endpoint. The server answers it
+ * with a 401 listing the stages this user could complete, and the request itself is then
+ * abandoned — the flows are the only thing wanted. Throws {@link UiaUnsupportedError}
+ * when none of them offers a password, which is what an SSO-only or OIDC-native account
+ * looks like.
+ *
+ * Deliberately silent in every other case, **including when the probe itself fails**.
+ * This exists to stop an action that is certain to fail, not to become a new way for one
+ * to fail: a dropped connection, or a server that gates the probe differently from the
+ * real request, must leave the caller exactly where it was.
+ */
+export async function assertPasswordUiaAvailable(
+  probe: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await probe();
+  } catch (err) {
+    const challenge = uiaChallenge(err);
+    if (challenge && !offersPassword(challenge)) {
+      throw new UiaUnsupportedError();
+    }
+  }
+}
+
 /** A UIA 401 carries `flows` + a `session`; return its data, or null. */
 function uiaChallenge(err: unknown): UiaData | null {
   const data = err instanceof MatrixError ? err.data : undefined;

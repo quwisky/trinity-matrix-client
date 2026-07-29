@@ -15,9 +15,11 @@ All notable changes to this project are documented here. The format is based on
   and gives you a new key to save. It is a last resort and it is spelled out before you
   confirm: your message backup on the server is deleted, so anything your devices cannot
   already read stays unreadable, and your other devices have to be verified again — they are
-  not signed out. You have to type the word RESET to go ahead. If your account signs in
-  through an identity provider, Trinity sends you there to do it, since only the provider can
-  authorise it.
+  not signed out. You have to type the word RESET to go ahead, and nothing is touched until
+  your homeserver has accepted your password — so cancelling the prompt, mistyping it, or an
+  account whose provider has to authorise the reset all leave you exactly where you started.
+  If your account signs in through an identity provider, Trinity sends you there, since only
+  the provider can authorise it.
 
 - **Be notified when someone says a word you care about.** Settings → Notifications gains a
   **Keywords** list: add a word — your team's name, a project, an on-call term, a nickname
@@ -83,7 +85,8 @@ All notable changes to this project are documented here. The format is based on
   itself and says so — a claim that until now rested on a mocked homeserver reply. The
   disposable test stack grew a throwaway identity provider, so the suite holds an account with
   no password and drives that refusal end to end: a real sign-in, a real rejection, and a check
-  that nothing about the account's encryption was changed on the way past.
+  that the account's backup and encryption identity both survive it untouched. That last check
+  is what caught the reset destroying the backup before it gave up.
 
 - **The space header makes room for the space's name.** A space's sidebar header carried up to
   six icon buttons on one row, which left the name itself about six characters before it was

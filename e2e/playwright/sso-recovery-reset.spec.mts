@@ -17,10 +17,18 @@ import { ensureCrossSigning, ssoApiSession, ssoLogin } from './support/sso.mts';
 const session = synapseSession();
 
 test.describe('Recovery reset on an SSO account', () => {
-  test.skip(
-    !session.available || !session.sso,
-    'needs the Synapse + Dex harness (Docker)',
-  );
+  test.skip(!session.available, 'needs the Synapse + Dex harness (Docker)');
+  // Not part of the skip: global-setup rethrows under CI precisely so a missing harness
+  // cannot report a green run, and start() cannot resolve without the sso block (it
+  // waits on Dex's discovery document first). Gating the skip on it too would hand back
+  // the silence that rule exists to prevent — so if it is ever absent, say so loudly.
+  test.beforeAll(() => {
+    if (session.available && !session.sso) {
+      throw new Error(
+        'the harness came up without an SSO account; e2e/synapse/start.mjs should never allow this',
+      );
+    }
+  });
 
   test('refuses the reset and points at the identity provider', async ({
     page,
@@ -35,6 +43,12 @@ test.describe('Recovery reset on an SSO account', () => {
     await ensureCrossSigning(request, hs, account);
     const masterKeyBefore = await masterKey(request, hs, account);
     expect(masterKeyBefore).toBeTruthy();
+
+    // …and something to lose. `resetEncryption` deletes every key-backup version before
+    // it reaches the upload that needs auth, so a reset that merely *reports* the failure
+    // still costs the user their backup on the way past. That is what this pins.
+    const backupBefore = await ensureKeyBackup(request, hs, account);
+    expect(backupBefore).toBeTruthy();
 
     await ssoLogin(page, session);
     await page.goto('/encryption/unlock', { waitUntil: 'domcontentloaded' });
@@ -64,16 +78,57 @@ test.describe('Recovery reset on an SSO account', () => {
     await expect(page.getByTestId('recovery-key')).toHaveCount(0);
     await expect(page.getByText('Confirm your password')).toHaveCount(0);
 
-    // …and the account's identity is the one it started with. A reset that half-ran and
-    // replaced the cross-signing keys anyway would still show the message above.
-    //
-    // Note what is deliberately NOT asserted: `resetEncryption` deletes the server-side
-    // key backups and secret storage *before* the upload that fails, so this account is
-    // left worse off than it started. That is the SDK's ordering, it is a real defect,
-    // and pinning it here would make the fix look like a regression.
+    // The two assertions that make this more than a copy check: the reset was refused
+    // *before* it ran, not partway through. The message above appears either way — it is
+    // only these that tell a clean refusal from an expensive one.
     expect(await masterKey(request, hs, account)).toBe(masterKeyBefore);
+    expect(await keyBackupVersion(request, hs, account)).toBe(backupBefore);
   });
 });
+
+/** The account's current key-backup version, or undefined when it has none. */
+async function keyBackupVersion(
+  request: APIRequestContext,
+  hs: string,
+  { accessToken }: { accessToken: string },
+): Promise<string | undefined> {
+  const res = await request.get(`${hs}/_matrix/client/v3/room_keys/version`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return res.ok() ? ((await res.json()).version as string) : undefined;
+}
+
+/**
+ * Make sure the account has a key backup, creating an empty one if not.
+ *
+ * The public key is arbitrary — nothing here ever writes or reads a room key. What
+ * matters is only that a version exists on the server for the reset to destroy, so its
+ * survival means something. Idempotent, for the same retry reason as the cross-signing
+ * seed.
+ */
+async function ensureKeyBackup(
+  request: APIRequestContext,
+  hs: string,
+  account: { accessToken: string },
+): Promise<string | undefined> {
+  const existing = await keyBackupVersion(request, hs, account);
+  if (existing) {
+    return existing;
+  }
+  const res = await request.post(`${hs}/_matrix/client/v3/room_keys/version`, {
+    headers: { Authorization: `Bearer ${account.accessToken}` },
+    data: {
+      algorithm: 'm.megolm_backup.v1.curve25519-aes-sha2',
+      auth_data: {
+        public_key: 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWY',
+      },
+    },
+  });
+  if (!res.ok()) {
+    throw new Error(`seeding key backup → ${res.status()} ${await res.text()}`);
+  }
+  return (await res.json()).version as string;
+}
 
 /** The account's cross-signing master key as the homeserver holds it. */
 async function masterKey(

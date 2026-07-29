@@ -5,7 +5,7 @@ import { render, screen } from '@trinity/testing';
 import { CryptoService } from '@trinity/data-access-crypto';
 import { AuthService } from '@trinity/data-access-auth';
 import { TrnAlertService } from '@trinity/helm/overlay';
-import { UiaUnsupportedError } from '@trinity/util-matrix';
+import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util-matrix';
 import { Browser } from '@capacitor/browser';
 import { MockProvider } from 'ng-mocks';
 import { Observable, of, throwError } from 'rxjs';
@@ -26,6 +26,10 @@ interface RenderOptions {
   typed?: string | null;
   /** What `AuthService.getAccountManagement` resolves to. */
   management?: { url: string; actionsSupported: string[] } | null;
+  /** Make the provider lookup reject, as a locked keychain would. */
+  managementFails?: boolean;
+  /** What the "are you sure you want to close" guard resolves to. */
+  confirmClose?: boolean;
 }
 
 /** Renders the page with mocked DI and returns the fixture + mocked deps. */
@@ -37,11 +41,14 @@ async function renderPage(options: RenderOptions = {}) {
     reset,
     typed,
     management = null,
+    managementFails = false,
+    confirmClose = true,
   } = options;
   // The type-to-confirm gate and the password prompt both go through prompt(); the
   // first call is the gate, any later one is the password.
   const prompt = vi.fn();
   prompt.mockResolvedValueOnce(typed ?? null).mockResolvedValue('pw');
+  const confirm = vi.fn().mockResolvedValue(confirmClose);
   const result = await render(EncryptionUnlockPage, {
     inputs: asModal === undefined ? {} : { asModal },
     providers: [
@@ -55,9 +62,12 @@ async function renderPage(options: RenderOptions = {}) {
         },
       } as never),
       MockProvider(DialogRef),
-      MockProvider(TrnAlertService, { prompt }),
+      MockProvider(TrnAlertService, { prompt, confirm }),
       MockProvider(AuthService, {
-        getAccountManagement: () => of(management),
+        getAccountManagement: () =>
+          managementFails
+            ? throwError(() => new Error('keychain locked'))
+            : of(management),
       }),
     ],
   });
@@ -70,7 +80,7 @@ async function renderPage(options: RenderOptions = {}) {
   }
   vi.mocked(crypto.resetRecovery).mockReturnValue(reset ?? of('EsTNew'));
 
-  return { ...result, crypto, router, dialogRef, prompt };
+  return { ...result, crypto, router, dialogRef, prompt, confirm };
 }
 
 /** Let the reset's async provider lookup settle (firstValueFrom + its own awaits). */
@@ -222,7 +232,9 @@ describe('EncryptionUnlockPage', () => {
       );
       expect(done?.disabled).toBe(true);
 
-      fixture.componentInstance.confirmedSaved.set(true);
+      el.querySelector<HTMLElement>(
+        '[data-testid="recovery-key-saved"] button[role="checkbox"]',
+      )?.click();
       fixture.detectChanges();
       expect(
         el.querySelector<HTMLButtonElement>('[data-testid="reset-done"]')
@@ -281,6 +293,137 @@ describe('EncryptionUnlockPage', () => {
 
       expect(Browser.open).not.toHaveBeenCalled();
       expect(fixture.componentInstance.error()).toContain('server exploded');
+    });
+  });
+
+  describe('closing without losing something', () => {
+    it('asks before discarding a key that is only shown once', async () => {
+      const { fixture, confirm, dialogRef } = await renderPage({
+        asModal: true,
+        typed: 'RESET',
+        reset: of('EsTBrandNew'),
+        confirmClose: false,
+      });
+      await fixture.componentInstance.resetRecovery();
+      fixture.detectChanges();
+
+      await fixture.componentInstance.close();
+
+      expect(confirm).toHaveBeenCalledOnce();
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.newRecoveryKey()).toBe('EsTBrandNew');
+    });
+
+    it('closes anyway when the user insists', async () => {
+      const { fixture, dialogRef } = await renderPage({
+        asModal: true,
+        typed: 'RESET',
+        reset: of('EsTBrandNew'),
+        confirmClose: true,
+      });
+      await fixture.componentInstance.resetRecovery();
+      fixture.detectChanges();
+
+      await fixture.componentInstance.close();
+
+      expect(dialogRef.close).toHaveBeenCalled();
+    });
+
+    it('asks while a reset is still running, since closing cannot stop it', async () => {
+      // Unsubscribing does not abort the promise: the SDK finishes and emits the only
+      // copy of the new key into a subscriber that is gone.
+      const { fixture, confirm, dialogRef } = await renderPage({
+        asModal: true,
+        typed: 'RESET',
+        reset: new Observable<string>(() => undefined), // never settles
+        confirmClose: false,
+      });
+      void fixture.componentInstance.resetRecovery();
+      await flush();
+      expect(fixture.componentInstance.busy()).toBe(true);
+
+      await fixture.componentInstance.close();
+
+      expect(confirm).toHaveBeenCalledOnce();
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('leaves the Close control ENABLED throughout', async () => {
+      // The desktop dialog opens with disableClose, so this is the only way out —
+      // disabling it would trap the user behind a reset that never settles.
+      const { fixture } = await renderPage({
+        asModal: true,
+        typed: 'RESET',
+        reset: new Observable<string>(() => undefined),
+      });
+      void fixture.componentInstance.resetRecovery();
+      await flush();
+      fixture.detectChanges();
+
+      expect(closeButton()).toBeEnabled();
+    });
+
+    it('closes without asking when there is nothing to lose', async () => {
+      const { fixture, confirm, dialogRef } = await renderPage({
+        asModal: true,
+      });
+
+      await fixture.componentInstance.close();
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(dialogRef.close).toHaveBeenCalled();
+    });
+  });
+
+  describe('when the reset does not run', () => {
+    it('says so when the confirmation word is wrong', async () => {
+      // A bare return here is indistinguishable from a broken button.
+      const { fixture, crypto } = await renderPage({ typed: 'yes please' });
+
+      await fixture.componentInstance.resetRecovery();
+
+      expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.error()).toContain('RESET');
+    });
+
+    it('stays quiet when the user simply cancels', async () => {
+      const { fixture, crypto } = await renderPage({ typed: null });
+
+      await fixture.componentInstance.resetRecovery();
+
+      expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.error()).toBeNull();
+    });
+
+    it('says nothing when the password prompt is cancelled', async () => {
+      // A cancel is now a routine answer given BEFORE anything is destroyed, not a
+      // failure worth reporting back at the user.
+      const { fixture } = await renderPage({
+        typed: 'RESET',
+        reset: throwError(() => new UiaCancelledError()),
+      });
+
+      await fixture.componentInstance.resetRecovery();
+      await flush();
+
+      expect(fixture.componentInstance.error()).toBeNull();
+      expect(fixture.componentInstance.busy()).toBe(false);
+    });
+
+    it('still explains itself when the provider lookup throws', async () => {
+      // The whole job of this branch is to say something; a swallowed rejection would
+      // leave the user staring at a screen that appears to have done nothing.
+      const { fixture } = await renderPage({
+        typed: 'RESET',
+        reset: throwError(() => new UiaUnsupportedError()),
+        managementFails: true,
+      });
+
+      await fixture.componentInstance.resetRecovery();
+      await flush();
+
+      expect(fixture.componentInstance.error()).toContain('identity provider');
+      expect(fixture.componentInstance.busy()).toBe(false);
     });
   });
 });

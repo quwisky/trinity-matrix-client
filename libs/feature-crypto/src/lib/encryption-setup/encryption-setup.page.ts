@@ -2,22 +2,18 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
-  effect,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmSpinner } from '@trinity/helm/spinner';
 import { CryptoService } from '@trinity/data-access-crypto';
 import { type PasswordPrompt } from '@trinity/util-matrix';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
-import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
+import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 
 /**
  * First-device encryption setup (flow A). Triggers
@@ -34,9 +30,8 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
   imports: [
     PageHeaderComponent,
     HlmButton,
-    HlmCheckbox,
     HlmSpinner,
-    RecoveryKeyDisplayComponent,
+    RecoveryKeySaveComponent,
   ],
 })
 export class EncryptionSetupPage {
@@ -50,27 +45,6 @@ export class EncryptionSetupPage {
 
   /** The generated recovery key — shown once, never persisted. */
   readonly recoveryKey = signal<string | null>(null);
-
-  /** Gates "Continue" until the user confirms they saved the key. */
-  readonly confirmedSaved = signal(false);
-
-  /** The "Save your recovery key" heading, focused when the key is revealed. */
-  private readonly savedHeading =
-    viewChild<ElementRef<HTMLElement>>('savedHeading');
-  private hasFocusedSavedHeading = false;
-
-  constructor() {
-    // Move focus to the heading once, when the recovery key first appears, so
-    // keyboard and screen-reader users land on the critical "save this now"
-    // content — without stealing focus again if the view later re-evaluates.
-    effect(() => {
-      const heading = this.savedHeading();
-      if (heading && !this.hasFocusedSavedHeading) {
-        this.hasFocusedSavedHeading = true;
-        heading.nativeElement.focus();
-      }
-    });
-  }
 
   /** Kick off cross-signing + secret-storage + key-backup bootstrap. */
   setUp(): void {

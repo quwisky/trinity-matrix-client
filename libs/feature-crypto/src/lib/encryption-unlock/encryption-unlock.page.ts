@@ -17,7 +17,11 @@ import { Browser } from '@capacitor/browser';
 import { Observable, finalize, firstValueFrom } from 'rxjs';
 import { CryptoService } from '@trinity/data-access-crypto';
 import { AuthService } from '@trinity/data-access-auth';
-import { UiaUnsupportedError, type PasswordPrompt } from '@trinity/util-matrix';
+import {
+  UiaCancelledError,
+  UiaUnsupportedError,
+  type PasswordPrompt,
+} from '@trinity/util-matrix';
 import {
   PageHeaderComponent,
   resolveInternalReturnTo,
@@ -26,10 +30,9 @@ import {
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmSpinner } from '@trinity/helm/spinner';
 import { TrnAlertService } from '@trinity/helm/overlay';
-import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
+import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
   RESET_CONFIRMATION_WORD,
   RESET_CONSEQUENCES,
@@ -51,9 +54,8 @@ import {
     FormField,
     NgTemplateOutlet,
     PageHeaderComponent,
-    RecoveryKeyDisplayComponent,
+    RecoveryKeySaveComponent,
     HlmButton,
-    HlmCheckbox,
     HlmInput,
     HlmLabel,
     HlmSpinner,
@@ -93,8 +95,6 @@ export class EncryptionUnlockPage {
    * cannot be what decides this.
    */
   readonly newRecoveryKey = signal<string | null>(null);
-  /** The user has ticked "I've saved it", which is what releases the Done button. */
-  readonly confirmedSaved = signal(false);
 
   /** When true the page is modal content (desktop); else a routed page. */
   readonly asModal = input(false);
@@ -124,13 +124,21 @@ export class EncryptionUnlockPage {
   async resetRecovery(): Promise<void> {
     const typed = await this.alert.prompt({
       header: 'Reset encryption',
-      message: RESET_CONSEQUENCES,
+      message: `${RESET_CONSEQUENCES}\n\nType ${RESET_CONFIRMATION_WORD} to confirm.`,
       placeholder: RESET_CONFIRMATION_WORD,
+      inputLabel: `Type ${RESET_CONFIRMATION_WORD} to confirm`,
       confirmText: 'Reset',
       cancelText: 'Cancel',
       destructive: true,
     });
-    if (typed?.trim().toUpperCase() !== RESET_CONFIRMATION_WORD) {
+    if (typed === null) {
+      return; // cancelled — they said no, and that needs no explanation
+    }
+    if (typed.trim().toUpperCase() !== RESET_CONFIRMATION_WORD) {
+      // Silence here is indistinguishable from a broken button.
+      this.error.set(
+        `Nothing was reset. Type ${RESET_CONFIRMATION_WORD} exactly to confirm.`,
+      );
       return;
     }
     // Deliberately NOT runWithBusy: it turns a failure into EMPTY, so an error handler
@@ -158,11 +166,18 @@ export class EncryptionUnlockPage {
    * password or a dropped connection must keep the message they already produced.
    */
   private async onResetFailed(err: unknown): Promise<void> {
+    if (err instanceof UiaCancelledError) {
+      return; // they stopped it themselves, before anything was touched
+    }
     if (!(err instanceof UiaUnsupportedError)) {
       this.error.set(err instanceof Error ? err.message : String(err));
       return;
     }
-    const management = await firstValueFrom(this.auth.getAccountManagement());
+    // A rejected read here must not swallow the explanation: the whole point of this
+    // branch is to say something, and `void`-discarding a throw would say nothing.
+    const management = await firstValueFrom(
+      this.auth.getAccountManagement(),
+    ).catch(() => null);
     const url = management ? crossSigningResetUrl(management) : null;
     if (!url) {
       this.error.set(
@@ -183,6 +198,21 @@ export class EncryptionUnlockPage {
   }
 
   /**
+   * Whether closing right now would throw something away.
+   *
+   * The reset cannot be cancelled once it is running — unsubscribing does not abort the
+   * promise — and the key it mints is shown exactly once. Both are reasons to ask first,
+   * and neither is a reason to disable the button: the desktop dialog opens with
+   * `disableClose`, so this is the only way out and taking it away would trap the user.
+   */
+  private closeWouldDiscard(): 'in-flight' | 'unsaved-key' | null {
+    if (this.newRecoveryKey()) {
+      return 'unsaved-key';
+    }
+    return this.busy() ? 'in-flight' : null;
+  }
+
+  /**
    * Password prompt for the reset's device-signing-key upload. Same copy as encryption
    * setup, which drives the identical UIA stage.
    */
@@ -196,7 +226,26 @@ export class EncryptionUnlockPage {
     });
 
   /** Close without unlocking (modal Close / return on the routed page). */
-  close(): void {
+  async close(): Promise<void> {
+    const risk = this.closeWouldDiscard();
+    if (risk) {
+      const confirmed = await this.alert.confirm({
+        header:
+          risk === 'unsaved-key'
+            ? 'Leave without saving your key?'
+            : 'Encryption reset in progress',
+        message:
+          risk === 'unsaved-key'
+            ? "This key is shown once. Close now and you won't be able to recover your messages on another device."
+            : "Closing won't stop it, and the new recovery key it produces will be lost. Wait for it to finish.",
+        confirmText: risk === 'unsaved-key' ? 'Close anyway' : 'Close anyway',
+        cancelText: 'Stay',
+        destructive: true,
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
     this.clearKey();
     this.leave();
   }

@@ -1,0 +1,78 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  effect,
+  input,
+  linkedSignal,
+  output,
+  viewChild,
+} from '@angular/core';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
+
+/**
+ * "Here is your recovery key — save it before you go anywhere." The shown-once gate,
+ * shared by first-run setup and by the reset that mints a replacement.
+ *
+ * It exists as a component because the two surfaces had a copy each and they had already
+ * drifted apart in seven ways — including one page losing the `.warning` style entirely
+ * (it lived only in the other page's stylesheet, so encapsulation left the warning as
+ * plain body text) and only one of them moving focus to the heading on reveal. The
+ * contract this enforces — the key is displayed exactly once, and the way out is disabled
+ * until the user says they have it — is not something to maintain in two places.
+ *
+ * The visible checkbox label is load-bearing for three Playwright specs, which select it
+ * by accessible name. It carries no `aria-label`: an override there would make the
+ * accessible name differ from the words on screen (WCAG 2.5.3).
+ */
+@Component({
+  selector: 'trn-recovery-key-save',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './recovery-key-save.component.html',
+  styleUrls: ['./recovery-key-save.component.scss'],
+  imports: [HlmButton, HlmCheckbox, RecoveryKeyDisplayComponent],
+})
+export class RecoveryKeySaveComponent {
+  readonly recoveryKey = input.required<string>();
+  readonly heading = input.required<string>();
+  /** Optional lead paragraph above the warning; setup has one, the reset does not. */
+  readonly intro = input<string | null>(null);
+  readonly warning = input.required<string>();
+  readonly confirmLabel = input.required<string>();
+  /** Test hook for the confirm button, so each surface keeps its own established id. */
+  readonly confirmTestId = input<string | null>(null);
+
+  /** The user says the key is saved; the way out opens. */
+  readonly confirmed = output<void>();
+
+  /**
+   * Ticked-and-saved, reset whenever a DIFFERENT key is shown.
+   *
+   * `linkedSignal` rather than a plain signal because a surface can present a second key
+   * without being destroyed in between — a reset whose `returnTo` points back at the page
+   * it is already on navigates nowhere. A stale tick there would hand someone a
+   * shown-once key with the gate already open.
+   */
+  readonly saved = linkedSignal<string, boolean>({
+    source: this.recoveryKey,
+    computation: () => false,
+  });
+
+  private readonly headingRef =
+    viewChild<ElementRef<HTMLElement>>('savedHeading');
+  private focused = false;
+
+  constructor() {
+    // Land keyboard and screen-reader users on the "save this now" content when the key
+    // appears — once, so a later re-render doesn't yank focus back.
+    effect(() => {
+      const heading = this.headingRef();
+      if (heading && !this.focused) {
+        this.focused = true;
+        heading.nativeElement.focus();
+      }
+    });
+  }
+}

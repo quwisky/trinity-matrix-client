@@ -142,7 +142,12 @@ test.describe('Recovery reset', () => {
     await expect(gate).toContainText('backup on the server is deleted');
     await gate.locator('input').fill('yes please');
     await gate.getByTestId('alert-confirm').click();
-    await expect(page.getByTestId('recovery-key')).toHaveCount(0);
+    // Not `expect(recovery-key).toHaveCount(0)` — that locator is already absent, so it
+    // holds however the click was handled. The account's own 4S pointer is the proof: a
+    // reset that ran would replace it within seconds.
+    await expect(gate).toBeHidden();
+    await expect(resetButton).toBeEnabled();
+    expect(await defaultKeyId()).toBe(keyIdBefore);
 
     // Now confirm properly.
     await resetButton.click();
@@ -165,7 +170,7 @@ test.describe('Recovery reset', () => {
     const done = page.getByTestId('reset-done');
     await expect(done).toBeDisabled();
     await page
-      .getByRole('checkbox', { name: /I've saved my new recovery key/ })
+      .getByRole('checkbox', { name: /I've saved my recovery key/ })
       .click();
     await expect(done).toBeEnabled();
     await done.click();
@@ -190,5 +195,84 @@ test.describe('Recovery reset', () => {
     // The ready branch is the only one with no call to action.
     await expect(page.getByTestId('security-unlock')).toHaveCount(0);
     await expect(page.getByTestId('security-setup')).toHaveCount(0);
+  });
+
+  test('a cancelled password costs the account nothing', async ({
+    page,
+    request,
+  }) => {
+    // The reset used to delete every key-backup version and all of secret storage BEFORE
+    // it asked for the password — so pressing Cancel here left the account with no
+    // backup, no new key, and nothing to show for it. Measured, then fixed by doing the
+    // authenticated step first. This is the spec that stops it coming back.
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}c`;
+    const user = `reset-cancel-${runId}`;
+    const pass = `${user}-pass`;
+
+    await registerUser(request, user, pass);
+    const auth = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json());
+    const headers = { Authorization: `Bearer ${auth.access_token}` };
+    const defaultKeyId = async (): Promise<string | undefined> => {
+      const res = await request.get(
+        `${hs}/_matrix/client/v3/user/${encodeURIComponent(auth.user_id)}/account_data/m.secret_storage.default_key`,
+        { headers },
+      );
+      return res.ok() ? ((await res.json()).key as string) : undefined;
+    };
+    const backupVersion = async (): Promise<string | undefined> => {
+      const res = await request.get(
+        `${hs}/_matrix/client/v3/room_keys/version`,
+        { headers },
+      );
+      return res.ok() ? ((await res.json()).version as string) : undefined;
+    };
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await setUpEncryption(page, pass);
+
+    const keyIdBefore = await defaultKeyId();
+    const versionBefore = await backupVersion();
+    expect(keyIdBefore).toBeTruthy();
+    expect(versionBefore).toBeTruthy();
+
+    await page.goto('/encryption/unlock', { waitUntil: 'domcontentloaded' });
+    const resetButton = page.getByTestId('reset-recovery');
+    await expect(resetButton).toBeVisible({ timeout: 30_000 });
+    await resetButton.click();
+
+    const gate = page.locator('trn-alert-dialog');
+    await expect(gate).toBeVisible({ timeout: 15_000 });
+    await gate.locator('input').fill('RESET');
+    await gate.getByTestId('alert-confirm').click();
+
+    // …and now refuse at the password, which is the whole point.
+    await expect(gate).toContainText('Confirm your password', {
+      timeout: 60_000,
+    });
+    await gate.getByTestId('alert-cancel').click();
+
+    await expect(page.getByTestId('recovery-key')).toHaveCount(0);
+    await expect(resetButton).toBeEnabled({ timeout: 30_000 });
+
+    // The two assertions that matter. Both were destroyed before this fix.
+    expect(await backupVersion()).toBe(versionBefore);
+    expect(await defaultKeyId()).toBe(keyIdBefore);
+
+    // And the device must not now claim to be fine: the local identity was rotated
+    // before the upload was refused, so a reset that failed to re-seat it would make the
+    // app report a cross-signed device the server has never heard of.
+    await page.goto('/settings/security', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('security-unlock')).toBeVisible({
+      timeout: 30_000,
+    });
   });
 });

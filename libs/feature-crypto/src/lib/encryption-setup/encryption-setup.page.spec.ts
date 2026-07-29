@@ -53,8 +53,18 @@ describe('EncryptionSetupPage', () => {
 
     expect(continueButton()).toBeDisabled();
 
-    fixture.componentInstance.confirmedSaved.set(true);
-    fixture.detectChanges();
+    // Drive the rendered control, not the component's state: the gate a user meets is
+    // the checkbox, and a test that sets the signal passes even if the two are unwired.
+    const tickSaved = (): void => {
+      const box = (
+        fixture.nativeElement as HTMLElement
+      ).querySelector<HTMLElement>(
+        '[data-testid="recovery-key-saved"] button[role="checkbox"]',
+      );
+      box?.click();
+      fixture.detectChanges();
+    };
+    tickSaved();
     expect(continueButton()).toBeEnabled();
 
     fixture.componentInstance.finish();

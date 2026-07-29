@@ -17,6 +17,7 @@ export interface AlertDialogData {
   cancelText: string;
   destructive: boolean;
   placeholder?: string;
+  inputLabel?: string;
   value?: string;
   maxLength?: number;
   inputType?: 'text' | 'password';
@@ -43,7 +44,9 @@ export type AlertDialogResult = boolean | string | null;
         {{ data.header }}
       </h2>
       @if (data.message) {
-        <p class="mt-2 text-sm text-muted-foreground">{{ data.message }}</p>
+        <p class="mt-2 text-sm whitespace-pre-line text-muted-foreground">
+          {{ data.message }}
+        </p>
       }
       @if (data.kind === 'prompt') {
         <input
@@ -51,6 +54,7 @@ export type AlertDialogResult = boolean | string | null;
           class="mt-4"
           [type]="data.inputType ?? 'text'"
           [placeholder]="data.placeholder ?? ''"
+          [attr.aria-label]="data.inputLabel ?? null"
           [attr.maxlength]="data.maxLength ?? null"
           [value]="value()"
           (input)="onInput($event)"

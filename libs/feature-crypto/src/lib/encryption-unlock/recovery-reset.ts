@@ -38,7 +38,14 @@ export function crossSigningResetUrl(management: {
   if (!management.actionsSupported.includes(CROSS_SIGNING_RESET_ACTION)) {
     return null;
   }
-  const url = new URL(management.url);
-  url.searchParams.set('action', CROSS_SIGNING_RESET_ACTION);
-  return url.toString();
+  try {
+    const url = new URL(management.url);
+    url.searchParams.set('action', CROSS_SIGNING_RESET_ACTION);
+    return url.toString();
+  } catch {
+    // The value comes from homeserver-controlled metadata and is only checked for an
+    // `https:` prefix upstream — which `https://` alone satisfies while still throwing
+    // here. An unusable URL is the same answer as an unadvertised action: no deep link.
+    return null;
+  }
 }
