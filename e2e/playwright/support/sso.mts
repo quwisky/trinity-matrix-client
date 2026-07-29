@@ -51,27 +51,29 @@ export async function ssoLogin(page: Page, s: SynapseSession): Promise<void> {
 }
 
 /**
- * An access token for the SSO account, obtained the only way one can be: by completing a
- * real SSO round-trip in a throwaway browser context and exchanging the `loginToken`.
+ * A single-use `loginToken` for the SSO account, obtained the only way one can be: by
+ * completing a real SSO round-trip in a throwaway browser context.
  *
- * The redirect target is a path the app does not route (`/sso-harness-callback`) rather
- * than the real callback, so the app can never consume the token we are about to use. It
- * still has to sit under the app's origin — Synapse refuses to hand a login token to any
- * URL outside `sso.client_whitelist`.
+ * Returned unspent, so a caller can hand it to the app and then check whether the app
+ * consumed it. The redirect target is a path the app does not route
+ * (`/sso-harness-callback`) rather than the real callback, so nothing exchanges it on the
+ * way past. It still has to sit under the app's origin — Synapse refuses to hand a login
+ * token to any URL outside `sso.client_whitelist`.
  */
-export async function ssoApiSession(
+export async function ssoLoginToken(
   browser: Browser,
-  request: APIRequestContext,
   s: SynapseSession,
-): Promise<{ userId: string; accessToken: string }> {
+): Promise<string> {
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
   try {
     const page = await context.newPage();
-    let loginToken: string | null = null;
+    // Held on an object rather than in a local: the assignment happens inside a listener,
+    // which control-flow analysis cannot see, so a bare `let` reads as permanently null.
+    const captured: { token: string | null } = { token: null };
     page.on('request', (req) => {
       const match = /[?&]loginToken=([^&]+)/.exec(req.url());
       if (match) {
-        loginToken = decodeURIComponent(match[1]);
+        captured.token = decodeURIComponent(match[1]);
       }
     });
     const redirectUrl = encodeURIComponent(
@@ -82,22 +84,45 @@ export async function ssoApiSession(
       { waitUntil: 'domcontentloaded' },
     );
     await answerDexForm(page, s.sso as SsoAccount);
-    await expect.poll(() => loginToken, { timeout: 60_000 }).not.toBeNull();
-
-    const res = await request.post(`${s.hs}/_matrix/client/v3/login`, {
-      data: { type: 'm.login.token', token: loginToken },
-    });
-    if (!res.ok()) {
-      throw new Error(`sso token login → ${res.status()} ${await res.text()}`);
+    await expect.poll(() => captured.token, { timeout: 60_000 }).not.toBeNull();
+    if (!captured.token) {
+      throw new Error('the provider round-trip produced no login token');
     }
-    const body = await res.json();
-    return {
-      userId: body.user_id as string,
-      accessToken: body.access_token as string,
-    };
+    return captured.token;
   } finally {
     await context.close();
   }
+}
+
+/** Exchange a `loginToken` for a session, as the app's callback route does. */
+export async function redeemLoginToken(
+  request: APIRequestContext,
+  hs: string,
+  loginToken: string,
+): Promise<{ userId: string; accessToken: string }> {
+  const res = await request.post(`${hs}/_matrix/client/v3/login`, {
+    data: { type: 'm.login.token', token: loginToken },
+  });
+  if (!res.ok()) {
+    throw new Error(`sso token login → ${res.status()} ${await res.text()}`);
+  }
+  const body = await res.json();
+  return {
+    userId: body.user_id as string,
+    accessToken: body.access_token as string,
+  };
+}
+
+export async function ssoApiSession(
+  browser: Browser,
+  request: APIRequestContext,
+  s: SynapseSession,
+): Promise<{ userId: string; accessToken: string }> {
+  return redeemLoginToken(
+    request,
+    s.hs as string,
+    await ssoLoginToken(browser, s),
+  );
 }
 
 /**
