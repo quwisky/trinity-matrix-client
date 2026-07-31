@@ -78,10 +78,27 @@ jobs:
   e2e:
     name: E2E (Playwright + Synapse)
     runs-on: ubuntu-latest
-    # 161 specs, each doing a cold UI login (Rust-crypto init + first /sync), at
+    # 166 specs, each doing a cold UI login (Rust-crypto init + first /sync), at
     # workers: 2 with retries: 2 — plus the browser install, three Docker image pulls and
-    # a full dev build inside the same budget. Measure a real run before lowering this.
-    timeout-minutes: 45
+    # a full dev build inside the same budget.
+    #
+    # Derived, not measured: no CI run of this size exists yet. The measurement it is
+    # derived FROM is the 8-11 min critical path recorded for this job when it ran 104
+    # specs (docs/DEVELOPMENT.md), of which ~4-5 min is the fixed part — setup, the
+    # cached browser install, the image pull, the dev build — leaving ~4-6 min of
+    # Playwright wall time at workers: 2, i.e. ~5-7s of test time per ordinary spec.
+    # Applied to what is here now:
+    #   158 ordinary specs  x 5-7s   =  790-1110s of test time  ->  7-9 min of wall
+    #     8 login-heavy specs x 60-120s =  480-960s             ->  4-8 min of wall
+    #     (the recovery-reset + SSO specs: a Dex round-trip, an encryption bootstrap
+    #      with UIA, a second browser context — several of them two or three of those)
+    #   fixed overhead                                          ->  4-5 min
+    # = 15-22 min for a clean run, ~21-28 min once retries: 2 fires on two or three of
+    # the expensive ones. 45 would leave that only 1.6-2.1x of headroom, against the ~4x
+    # it gave the 104-spec suite it was sized for; 60 restores ~2.1-2.9x. The budget only
+    # ever costs runner minutes on a job that is already hung, so the trade is one-sided.
+    # Measure a real run before lowering this.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
@@ -110,7 +127,7 @@ jobs:
           pnpm exec nx run trinity:build:development
           # Per-pid, deliberately: `wait $pw $dk` returns only the LAST pid's status, so a
           # failed browser install would be swallowed and the job would then burn its
-          # 45-minute budget on 161 specs x 3 attempts of "Executable doesn't exist".
+          # 60-minute budget on 166 specs x 3 attempts of "Executable doesn't exist".
           wait "$pw"; pw_rc=$?
           wait "$dk"; dk_rc=$?
           echo '--- playwright install ---'; cat /tmp/pw.log
