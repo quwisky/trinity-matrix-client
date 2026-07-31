@@ -325,6 +325,37 @@ describe('EncryptionUnlockPage', () => {
       expect(link?.href).toContain('action=org.matrix.cross_signing_reset');
     });
 
+    it('drops the link once the next action clears the error it belongs to', async () => {
+      // The link is the second half of a message. Left behind, it sits next to an
+      // unrelated error (or next to none at all) telling the user two contradictory
+      // things: "your provider has to do this" and "that recovery key is incorrect".
+      const { fixture } = await renderPage({
+        typed: 'RESET',
+        reset: throwError(() => new UiaUnsupportedError()),
+        management: {
+          url: 'https://auth.example/account',
+          actionsSupported: ['org.matrix.cross_signing_reset'],
+        },
+        recover: throwError(() => new Error('That recovery key is incorrect.')),
+      });
+      await fixture.componentInstance.resetRecovery();
+      await flush();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.providerResetUrl()).not.toBeNull();
+
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('EsTx');
+      fixture.componentInstance.unlock();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.providerResetUrl()).toBeNull();
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="provider-reset-link"]',
+        ),
+      ).toBeNull();
+      expect(fixture.componentInstance.error()).toContain('incorrect');
+    });
+
     it('offers no link when the provider advertises no reset action', async () => {
       const { fixture } = await renderPage({
         typed: 'RESET',

@@ -8,6 +8,7 @@ import {
 import {
   provideRouter,
   withPreloading,
+  withRouterConfig,
   PreloadAllModules,
 } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
@@ -71,7 +72,17 @@ bootstrapApplication(AppComponent, {
     // Spartan/helm CDK-overlay default: disable Angular 21's usePopover so helm
     // dialogs/tooltips render above position:fixed elements (e.g. the toaster).
     provideSpartanHlm(),
-    provideRouter(routes, withPreloading(PreloadAllModules)),
+    // `canceledNavigationResolution: 'computed'` is required by the canDeactivate guards
+    // on /encryption/{setup,unlock}: under the default 'replace', a guard that cancels a
+    // popstate navigation makes the router replaceState the current URL over the entry
+    // the browser has ALREADY moved to, destroying the forward entry — so the next Back
+    // press jumps two entries instead of asking again. 'computed' navigates back to the
+    // matching history index instead.
+    provideRouter(
+      routes,
+      withPreloading(PreloadAllModules),
+      withRouterConfig({ canceledNavigationResolution: 'computed' }),
+    ),
     // Apply the saved light/dark preference before the first paint.
     provideAppInitializer(() => inject(ThemeService).init()),
     // Load persisted experimental feature flags (e.g. virtualized timeline).

@@ -6,6 +6,7 @@ import {
   computed,
   inject,
   input,
+  linkedSignal,
   output,
   signal,
 } from '@angular/core';
@@ -19,11 +20,6 @@ import { Observable, finalize, firstValueFrom } from 'rxjs';
 import { CryptoService } from '@trinity/data-access-crypto';
 import { AuthService } from '@trinity/data-access-auth';
 import {
-  UiaCancelledError,
-  UiaUnsupportedError,
-  type PasswordPrompt,
-} from '@trinity/util-matrix';
-import {
   PageHeaderComponent,
   resolveInternalReturnTo,
   runWithBusy,
@@ -35,9 +31,14 @@ import { HlmSpinner } from '@trinity/helm/spinner';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
-  RESET_CONFIRMATION_WORD,
-  RESET_CONSEQUENCES,
-  crossSigningResetUrl,
+  confirmLeaving,
+  type LeaveRisk,
+} from '../recovery-key-save/leave-confirmation';
+import {
+  RESET_MISTYPED_MESSAGE,
+  confirmResetIntent,
+  describeResetFailure,
+  resetPasswordPrompt,
 } from './recovery-reset';
 
 /**
@@ -102,8 +103,17 @@ export class EncryptionUnlockPage {
    * open it, several awaits and a network round-trip have passed since the user's click,
    * so the browser no longer counts it as user-initiated and blocks the popup. A link
    * they can press is the difference between an explanation and a dead end.
+   *
+   * Linked to {@link error} so it cannot outlive the message it is the second half of.
+   * Every action on this page clears `error` first ({@link runWithBusy} included), and
+   * this link surviving that would sit next to an unrelated failure — or next to none —
+   * telling the user two contradictory things. Structural on purpose: the next action
+   * added here gets the clearing for free rather than having to remember it.
    */
-  readonly providerResetUrl = signal<string | null>(null);
+  readonly providerResetUrl = linkedSignal<string | null, string | null>({
+    source: this.error,
+    computation: () => null,
+  });
 
   /** What the busy spinner says — the two operations are not interchangeable. */
   readonly progressMessage = computed(() =>
@@ -170,23 +180,12 @@ export class EncryptionUnlockPage {
    * are the same answer — no.
    */
   async resetRecovery(): Promise<void> {
-    const typed = await this.alert.prompt({
-      header: 'Reset encryption',
-      message: `${RESET_CONSEQUENCES}\n\nType ${RESET_CONFIRMATION_WORD} to confirm.`,
-      placeholder: RESET_CONFIRMATION_WORD,
-      inputLabel: `Type ${RESET_CONFIRMATION_WORD} to confirm`,
-      confirmText: 'Reset',
-      cancelText: 'Cancel',
-      destructive: true,
-    });
-    if (typed === null) {
-      return; // cancelled — they said no, and that needs no explanation
+    const intent = await confirmResetIntent(this.alert);
+    if (intent === 'cancelled') {
+      return; // they said no, and that needs no explanation
     }
-    if (typed.trim().toUpperCase() !== RESET_CONFIRMATION_WORD) {
-      // Silence here is indistinguishable from a broken button.
-      this.error.set(
-        `Nothing was reset. Type ${RESET_CONFIRMATION_WORD} exactly to confirm.`,
-      );
+    if (intent === 'mistyped') {
+      this.error.set(RESET_MISTYPED_MESSAGE);
       return;
     }
     // Deliberately NOT runWithBusy: it turns a failure into EMPTY, so an error handler
@@ -194,9 +193,8 @@ export class EncryptionUnlockPage {
     this.busy.set(true);
     this.resetting.set(true);
     this.error.set(null);
-    this.providerResetUrl.set(null);
     this.crypto
-      .resetRecovery(this.promptPassword)
+      .resetRecovery(resetPasswordPrompt(this.alert))
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => {
@@ -213,38 +211,22 @@ export class EncryptionUnlockPage {
       });
   }
 
-  /**
-   * An OIDC-native account cannot answer a password challenge in-app, so the reset has to
-   * happen at the identity provider. Only {@link UiaUnsupportedError} means that — a wrong
-   * password or a dropped connection must keep the message they already produced.
-   */
+  /** Say what went wrong, and open the provider's page when that is the answer. */
   private async onResetFailed(err: unknown): Promise<void> {
-    if (err instanceof UiaCancelledError) {
-      return; // they stopped it themselves, before anything was touched
-    }
-    if (!(err instanceof UiaUnsupportedError)) {
-      this.error.set(err instanceof Error ? err.message : String(err));
-      return;
-    }
-    // A rejected read here must not swallow the explanation: the whole point of this
-    // branch is to say something, and `void`-discarding a throw would say nothing.
-    const management = await firstValueFrom(
-      this.auth.getAccountManagement(),
-    ).catch(() => null);
-    const url = management ? crossSigningResetUrl(management) : null;
-    if (!url) {
-      this.error.set(
-        'Your identity provider has to reset encryption for this account. Trinity cannot do it here.',
-      );
-      return;
-    }
-    this.error.set(
-      'Your identity provider handles this. Finish the reset there, then come back and sign in again.',
+    const failure = await describeResetFailure(err, () =>
+      firstValueFrom(this.auth.getAccountManagement()),
     );
-    // Rendered as a link too — see providerResetUrl. Native has no popup blocker, so
-    // this still opens straight away there.
-    this.providerResetUrl.set(url);
-    void Browser.open({ url });
+    if (!failure) {
+      return;
+    }
+    // Order matters: providerResetUrl is linked to error and clears when it changes.
+    this.error.set(failure.message);
+    if (failure.providerUrl) {
+      // Rendered as a link too — see providerResetUrl. Native has no popup blocker, so
+      // this still opens straight away there.
+      this.providerResetUrl.set(failure.providerUrl);
+      void Browser.open({ url: failure.providerUrl });
+    }
   }
 
   /** Finish after a reset: the key has been shown and the user says it is saved. */
@@ -261,11 +243,11 @@ export class EncryptionUnlockPage {
    * and neither is a reason to disable the button: the desktop dialog opens with
    * `disableClose`, so this is the only way out and taking it away would trap the user.
    */
-  private closeWouldDiscard(): 'in-flight' | 'unsaved-key' | null {
+  private closeWouldDiscard(): LeaveRisk | null {
     if (this.newRecoveryKey()) {
       return 'unsaved-key';
     }
-    return this.resetting() ? 'in-flight' : null;
+    return this.resetting() ? 'reset-in-flight' : null;
   }
 
   /**
@@ -274,46 +256,10 @@ export class EncryptionUnlockPage {
    * Shared by the modal's Close button and by the route guard, because the routed page
    * is dismissed by the browser's own back button and would otherwise throw a shown-once
    * key away without a word — which is the path most users are on.
-   *
-   * Fails towards staying: if the confirmation itself cannot be shown there is nothing
-   * to read, and refusing to leave loses nothing that cannot be retried.
    */
-  async confirmLeave(): Promise<boolean> {
-    const risk = this.closeWouldDiscard();
-    if (!risk) {
-      return true;
-    }
-    try {
-      return await this.alert.confirm({
-        header:
-          risk === 'unsaved-key'
-            ? 'Leave without saving your key?'
-            : 'Encryption reset in progress',
-        message:
-          risk === 'unsaved-key'
-            ? "This key is shown once. Leave now and you won't be able to recover your messages on another device."
-            : "Leaving won't stop it, and the new recovery key it produces will be lost. Wait for it to finish.",
-        confirmText: 'Leave anyway',
-        cancelText: 'Stay',
-        destructive: true,
-      });
-    } catch {
-      return false;
-    }
+  confirmLeave(): Promise<boolean> {
+    return confirmLeaving(this.alert, this.closeWouldDiscard());
   }
-
-  /**
-   * Password prompt for the reset's device-signing-key upload. Same copy as encryption
-   * setup, which drives the identical UIA stage.
-   */
-  private readonly promptPassword: PasswordPrompt = () =>
-    this.alert.prompt({
-      header: 'Confirm your password',
-      message: 'Your homeserver needs your password to reset encryption.',
-      placeholder: 'Password',
-      confirmText: 'Confirm',
-      inputType: 'password',
-    });
 
   /** Close without unlocking (modal Close / return on the routed page). */
   async close(): Promise<void> {

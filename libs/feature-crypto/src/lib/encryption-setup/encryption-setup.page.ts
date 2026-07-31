@@ -14,6 +14,10 @@ import { CryptoService } from '@trinity/data-access-crypto';
 import { type PasswordPrompt } from '@trinity/util-matrix';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
+import {
+  confirmLeaving,
+  type LeaveRisk,
+} from '../recovery-key-save/leave-confirmation';
 
 /**
  * First-device encryption setup (flow A). Triggers
@@ -58,6 +62,37 @@ export class EncryptionSetupPage {
     // Drop our reference to the key as early as possible (it's never persisted).
     this.recoveryKey.set(null);
     void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+  }
+
+  /**
+   * Whether leaving right now would throw something away.
+   *
+   * A setup already running is the worse of the two: unsubscribing does not abort it
+   * ({@link CryptoService.setUp} is a promise behind `defer`), so it goes on to provision
+   * 4S and a key backup whose only recovery key was emitted to a subscriber that no
+   * longer exists — after which Settings → Security reports the account as secured and
+   * nothing ever prompts the user to fix it. A key already on screen is the more urgent
+   * of the two only because it is one press from being saved.
+   *
+   * `busy` is a safe proxy for "setup in flight" here because {@link setUp} is the page's
+   * only action; the unlock page needs a separate signal precisely because it has two.
+   */
+  private leaveWouldDiscard(): LeaveRisk | null {
+    if (this.recoveryKey()) {
+      return 'unsaved-key';
+    }
+    return this.busy() ? 'setup-in-flight' : null;
+  }
+
+  /**
+   * Whether it is safe to leave, asking the user when it is not.
+   *
+   * Called by the route guard. The browser's own back button dismisses this page without
+   * asking anyone — on the path every new account takes. Same fail-towards-staying
+   * semantics as the unlock page's guard.
+   */
+  confirmLeave(): Promise<boolean> {
+    return confirmLeaving(this.alert, this.leaveWouldDiscard());
   }
 
   /**
