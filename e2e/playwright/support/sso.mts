@@ -5,18 +5,22 @@ import {
   type Browser,
   type Page,
 } from '@playwright/test';
+import type { AccountSession } from './account.mts';
 import {
   fillLabeledInput,
   type SsoAccount,
   type SynapseSession,
 } from './app.mts';
 
-// Helpers for the harness's SSO account — a Matrix user Synapse created through the
-// throwaway Dex provider (e2e/synapse/dex.yaml), and which therefore has no password.
+// Helpers for the harness's SSO accounts — Matrix users Synapse created through the
+// throwaway Dex provider (e2e/synapse/dex.yaml), and which therefore have no password.
 //
-// That is the point of it. Trinity's password user-interactive auth can never be
+// That is the point of them. Trinity's password user-interactive auth can never be
 // satisfied by such an account, which is the only way to drive the "your identity
 // provider has to do this" path against a real homeserver instead of a mock.
+//
+// Every entry point takes the identity explicitly (defaulting to `session.sso`), because
+// which one a spec must use is not a detail: see `ssoReset` in app.mts.
 
 /** Where the app under test is served; must stay in step with `playwright.config.mts`. */
 const APP_ORIGIN = process.env['BASE_URL'] ?? 'http://localhost:4200';
@@ -36,15 +40,19 @@ async function answerDexForm(page: Page, sso: SsoAccount): Promise<void> {
   await page.locator('#submit-login').click();
 }
 
-/** Sign in to the app as the SSO account: homeserver → Continue with SSO → Dex → /rooms. */
-export async function ssoLogin(page: Page, s: SynapseSession): Promise<void> {
+/** Sign in to the app as an SSO account: homeserver → Continue with SSO → Dex → /rooms. */
+export async function ssoLogin(
+  page: Page,
+  s: SynapseSession,
+  account: SsoAccount = s.sso as SsoAccount,
+): Promise<void> {
   await page.goto('/login', { waitUntil: 'networkidle' });
   await fillLabeledInput(page, 'Homeserver', s.hs as string);
   await page.getByText('Continue', { exact: true }).click();
   const ssoButton = page.getByRole('button', { name: 'Continue with SSO' });
   await ssoButton.waitFor({ state: 'visible', timeout: 30_000 });
   await ssoButton.click();
-  await answerDexForm(page, s.sso as SsoAccount);
+  await answerDexForm(page, account);
   // The Dex round-trip adds a provider page and two redirects to an already slow first
   // login (Rust-crypto init + first /sync), so this gets more room than a password one.
   await page.waitForURL('**/rooms', { timeout: 60_000 });
@@ -63,6 +71,7 @@ export async function ssoLogin(page: Page, s: SynapseSession): Promise<void> {
 export async function ssoLoginToken(
   browser: Browser,
   s: SynapseSession,
+  account: SsoAccount = s.sso as SsoAccount,
 ): Promise<string> {
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
   try {
@@ -83,7 +92,7 @@ export async function ssoLoginToken(
       `${s.hs}/_matrix/client/v3/login/sso/redirect?redirectUrl=${redirectUrl}`,
       { waitUntil: 'domcontentloaded' },
     );
-    await answerDexForm(page, s.sso as SsoAccount);
+    await answerDexForm(page, account);
     await expect.poll(() => captured.token, { timeout: 60_000 }).not.toBeNull();
     if (!captured.token) {
       throw new Error('the provider round-trip produced no login token');
@@ -99,7 +108,7 @@ export async function redeemLoginToken(
   request: APIRequestContext,
   hs: string,
   loginToken: string,
-): Promise<{ userId: string; accessToken: string }> {
+): Promise<AccountSession> {
   const res = await request.post(`${hs}/_matrix/client/v3/login`, {
     data: { type: 'm.login.token', token: loginToken },
   });
@@ -117,11 +126,12 @@ export async function ssoApiSession(
   browser: Browser,
   request: APIRequestContext,
   s: SynapseSession,
-): Promise<{ userId: string; accessToken: string }> {
+  account: SsoAccount = s.sso as SsoAccount,
+): Promise<AccountSession> {
   return redeemLoginToken(
     request,
     s.hs as string,
-    await ssoLoginToken(browser, s),
+    await ssoLoginToken(browser, s, account),
   );
 }
 
@@ -141,7 +151,7 @@ export async function ssoApiSession(
 export async function ensureCrossSigning(
   request: APIRequestContext,
   hs: string,
-  { userId, accessToken }: { userId: string; accessToken: string },
+  { userId, accessToken }: AccountSession,
 ): Promise<void> {
   const headers = { Authorization: `Bearer ${accessToken}` };
   const existing = await request

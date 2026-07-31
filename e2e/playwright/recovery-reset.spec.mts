@@ -1,11 +1,12 @@
-import { createHmac } from 'node:crypto';
-import {
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-} from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
+import {
+  defaultKeyId,
+  keyBackupVersion,
+  masterKey,
+  passwordLogin,
+  registerUser,
+} from './support/account.mts';
 
 // End-to-end for the recovery-key reset (issue #43): the escape hatch for someone who has
 // lost their recovery key and has no other verified device.
@@ -17,31 +18,6 @@ import { login, synapseSession, type SynapseSession } from './support/app.mts';
 //
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = synapseSession();
-
-const SYNAPSE_HTTP = 'http://localhost:8008';
-const REG_SECRET = 'trinity-e2e-shared-secret';
-
-async function registerUser(
-  request: APIRequestContext,
-  username: string,
-  password: string,
-): Promise<void> {
-  const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
-    .then((r) => r.json());
-  const mac = createHmac('sha1', REG_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
-  if (!res.ok()) {
-    const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
-    }
-  }
-}
 
 /** Answer the device-signing UIA prompt if the server asks for it. */
 async function answerUiaIfAsked(
@@ -105,24 +81,9 @@ test.describe('Recovery reset', () => {
     const pass = `${user}-pass`;
 
     await registerUser(request, user, pass);
-    const auth = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user },
-          password: pass,
-        },
-      })
-      .then((r) => r.json());
-    const headers = { Authorization: `Bearer ${auth.access_token}` };
+    const account = await passwordLogin(request, hs, user, pass);
     /** The account's 4S default key pointer — absent means no usable recovery key. */
-    const defaultKeyId = async (): Promise<string | undefined> => {
-      const res = await request.get(
-        `${hs}/_matrix/client/v3/user/${encodeURIComponent(auth.user_id)}/account_data/m.secret_storage.default_key`,
-        { headers },
-      );
-      return res.ok() ? ((await res.json()).key as string) : undefined;
-    };
+    const currentKeyId = () => defaultKeyId(request, hs, account);
 
     await login(page, {
       available: true,
@@ -133,7 +94,7 @@ test.describe('Recovery reset', () => {
 
     const originalKey = await setUpEncryption(page, pass);
     expect(originalKey.length).toBeGreaterThan(0);
-    const keyIdBefore = await defaultKeyId();
+    const keyIdBefore = await currentKeyId();
     expect(keyIdBefore).toBeTruthy();
 
     await page.goto('/encryption/unlock', { waitUntil: 'domcontentloaded' });
@@ -165,7 +126,7 @@ test.describe('Recovery reset', () => {
     // reset that ran would replace it within seconds.
     await expect(gate).toBeHidden();
     await expect(resetButton).toBeEnabled();
-    expect(await defaultKeyId()).toBe(keyIdBefore);
+    expect(await currentKeyId()).toBe(keyIdBefore);
     // Silence would be indistinguishable from a broken button.
     await expect(page.getByTestId('unlock-error')).toContainText('RESET');
 
@@ -204,8 +165,8 @@ test.describe('Recovery reset', () => {
     // screen, which is minted before the bootstrap. The server's default-key pointer is
     // the only place the difference shows, and a NEW id proves 4S was rebuilt rather than
     // merely left over.
-    await expect.poll(defaultKeyId, { timeout: 30_000 }).toBeTruthy();
-    expect(await defaultKeyId()).not.toBe(keyIdBefore);
+    await expect.poll(currentKeyId, { timeout: 30_000 }).toBeTruthy();
+    expect(await currentKeyId()).not.toBe(keyIdBefore);
 
     await page.goto('/settings/security', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('security-encryption')).toContainText(
@@ -231,36 +192,13 @@ test.describe('Recovery reset', () => {
     const pass = `${user}-pass`;
 
     await registerUser(request, user, pass);
-    const auth = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user },
-          password: pass,
-        },
-      })
-      .then((r) => r.json());
-    const headers = { Authorization: `Bearer ${auth.access_token}` };
-    const defaultKeyId = async (): Promise<string | undefined> => {
-      const res = await request.get(
-        `${hs}/_matrix/client/v3/user/${encodeURIComponent(auth.user_id)}/account_data/m.secret_storage.default_key`,
-        { headers },
-      );
-      return res.ok() ? ((await res.json()).key as string) : undefined;
-    };
-    const backupVersion = async (): Promise<string | undefined> => {
-      const res = await request.get(
-        `${hs}/_matrix/client/v3/room_keys/version`,
-        { headers },
-      );
-      return res.ok() ? ((await res.json()).version as string) : undefined;
-    };
+    const account = await passwordLogin(request, hs, user, pass);
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await setUpEncryption(page, pass);
 
-    const keyIdBefore = await defaultKeyId();
-    const versionBefore = await backupVersion();
+    const keyIdBefore = await defaultKeyId(request, hs, account);
+    const versionBefore = await keyBackupVersion(request, hs, account);
     expect(keyIdBefore).toBeTruthy();
     expect(versionBefore).toBeTruthy();
 
@@ -284,16 +222,93 @@ test.describe('Recovery reset', () => {
     await expect(resetButton).toBeEnabled({ timeout: 30_000 });
 
     // The two assertions that matter. Both were destroyed before this fix.
-    expect(await backupVersion()).toBe(versionBefore);
-    expect(await defaultKeyId()).toBe(keyIdBefore);
+    expect(await keyBackupVersion(request, hs, account)).toBe(versionBefore);
+    expect(await defaultKeyId(request, hs, account)).toBe(keyIdBefore);
 
-    // And the device must not now claim to be fine: the local identity was rotated
-    // before the upload was refused, so a reset that failed to re-seat it would make the
-    // app report a cross-signed device the server has never heard of.
+    // And the device is left exactly as it was found. This assertion used to require the
+    // opposite — that the device now needed unlocking — because the reset rotated the
+    // local cross-signing identity on its way to asking for the password, so refusing
+    // stranded this device even when the account survived. Authenticating first removes
+    // that step from the refusal path entirely: there is nothing to re-seat, because
+    // nothing was ever rotated. "Costs the account nothing" now includes the device.
     await page.goto('/settings/security', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByTestId('security-unlock')).toBeVisible({
-      timeout: 30_000,
+    await expect(page.getByTestId('security-encryption')).toContainText(
+      'Your messages are secured',
+      { timeout: 30_000 },
+    );
+    await expect(page.getByTestId('security-unlock')).toHaveCount(0);
+    await expect(page.getByTestId('security-setup')).toHaveCount(0);
+  });
+
+  test('leaves the original recovery key working after a cancelled reset', async ({
+    page,
+    request,
+  }) => {
+    // The most expensive way to get this wrong, and the one no server-side assertion can
+    // see. Leaving the account's stored state untouched is only half of an abort: what
+    // the user actually has is the key, and the thing that must still be true is that it
+    // opens the lock. Nothing says otherwise until they try it, possibly weeks later when
+    // they finally find the key they thought they had lost — so the round trip through
+    // the real unlock path is the assertion, not the server-side values alone.
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}f`;
+    const user = `reset-found-${runId}`;
+    const pass = `${user}-pass`;
+
+    await registerUser(request, user, pass);
+    const account = await passwordLogin(request, hs, user, pass);
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    const originalKey = await setUpEncryption(page, pass);
+    expect(originalKey.length).toBeGreaterThan(0);
+
+    const keyIdBefore = await defaultKeyId(request, hs, account);
+    const versionBefore = await keyBackupVersion(request, hs, account);
+    const masterBefore = await masterKey(request, hs, account);
+    expect(keyIdBefore).toBeTruthy();
+    expect(versionBefore).toBeTruthy();
+    expect(masterBefore).toBeTruthy();
+
+    await page.goto('/encryption/unlock', { waitUntil: 'domcontentloaded' });
+    const resetButton = page.getByTestId('reset-recovery');
+    await expect(resetButton).toBeVisible({ timeout: 30_000 });
+    await resetButton.click();
+
+    const gate = page.locator('trn-alert-dialog');
+    await expect(gate).toBeVisible({ timeout: 15_000 });
+    await gate.locator('input').fill('RESET');
+    await gate.getByTestId('alert-confirm').click();
+
+    await expect(gate).toContainText('Confirm your password', {
+      timeout: 60_000,
     });
+    await gate.getByTestId('alert-cancel').click();
+    await expect(resetButton).toBeEnabled({ timeout: 30_000 });
+
+    // …and then they find the key they thought was gone.
+    await page.getByTestId('recovery-key-input').fill(originalKey);
+    await page.getByTestId('unlock-submit').click();
+
+    // Leaving the unlock screen for the app is what success looks like: the page only
+    // navigates once `recoverWithKey` has resolved, and an error would keep it here with
+    // `unlock-error` filled in instead.
+    await page.waitForURL('**/rooms', { timeout: 60_000 });
+    await expect(page.getByTestId('unlock-error')).toHaveCount(0);
+
+    // The device is trusted again, by the app's own account of itself.
+    await page.goto('/settings/security', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('security-encryption')).toContainText(
+      'Your messages are secured',
+      { timeout: 30_000 },
+    );
+    await expect(page.getByTestId('security-unlock')).toHaveCount(0);
+    await expect(page.getByTestId('security-setup')).toHaveCount(0);
+
+    // …and it got there by re-using the account's existing identity, not by quietly
+    // minting a replacement. All three would move if the abort had let the reset through.
+    expect(await masterKey(request, hs, account)).toBe(masterBefore);
+    expect(await keyBackupVersion(request, hs, account)).toBe(versionBefore);
+    expect(await defaultKeyId(request, hs, account)).toBe(keyIdBefore);
   });
 
   test('Settings offers the escape hatch to someone who cannot unlock', async ({

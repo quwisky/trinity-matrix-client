@@ -1,5 +1,10 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { synapseSession } from './support/app.mts';
+import { synapseSession, type SsoAccount } from './support/app.mts';
+import {
+  keyBackupVersion,
+  masterKey,
+  type AccountSession,
+} from './support/account.mts';
 import { ensureCrossSigning, ssoApiSession, ssoLogin } from './support/sso.mts';
 
 // End-to-end for the half of the recovery-key reset (issue #43) that Trinity CANNOT
@@ -14,6 +19,12 @@ import { ensureCrossSigning, ssoApiSession, ssoLogin } from './support/sso.mts';
 // This used to be unit-tested only, against a fabricated 401. It is now driven against a
 // real password-less account, courtesy of the harness's Dex provider — see
 // e2e/synapse/dex.yaml. Needs Docker; self-skips otherwise like the other web specs.
+//
+// It runs on `session.ssoReset`, NOT the general `session.sso`: everything it seeds is
+// permanent (a cross-signing master key can be replaced but never removed, and a
+// key-backup version outlives the run), and everything it asserts is that those did not
+// change. Both only mean something on an account no other worker is signing into, and
+// `fullyParallel` puts sso-login.spec.mts in a second worker against the same homeserver.
 const session = synapseSession();
 
 test.describe('Recovery reset on an SSO account', () => {
@@ -23,9 +34,9 @@ test.describe('Recovery reset on an SSO account', () => {
   // waits on Dex's discovery document first). Gating the skip on it too would hand back
   // the silence that rule exists to prevent — so if it is ever absent, say so loudly.
   test.beforeAll(() => {
-    if (session.available && !session.sso) {
+    if (session.available && !session.ssoReset) {
       throw new Error(
-        'the harness came up without an SSO account; e2e/synapse/start.mjs should never allow this',
+        'the harness came up without the reset SSO account; e2e/synapse/start.mjs should never allow this',
       );
     }
   });
@@ -36,10 +47,11 @@ test.describe('Recovery reset on an SSO account', () => {
     request,
   }) => {
     const hs = session.hs as string;
+    const identity = session.ssoReset as SsoAccount;
 
     // Give the account a cross-signing identity if it has none; without one the server
     // waives UIA entirely and the reset would sail through, testing nothing.
-    const account = await ssoApiSession(browser, request, session);
+    const account = await ssoApiSession(browser, request, session, identity);
     await ensureCrossSigning(request, hs, account);
     const masterKeyBefore = await masterKey(request, hs, account);
     expect(masterKeyBefore).toBeTruthy();
@@ -50,7 +62,7 @@ test.describe('Recovery reset on an SSO account', () => {
     const backupBefore = await ensureKeyBackup(request, hs, account);
     expect(backupBefore).toBeTruthy();
 
-    await ssoLogin(page, session);
+    await ssoLogin(page, session, identity);
     await page.goto('/encryption/unlock', { waitUntil: 'domcontentloaded' });
 
     const resetButton = page.getByTestId('reset-recovery');
@@ -86,18 +98,6 @@ test.describe('Recovery reset on an SSO account', () => {
   });
 });
 
-/** The account's current key-backup version, or undefined when it has none. */
-async function keyBackupVersion(
-  request: APIRequestContext,
-  hs: string,
-  { accessToken }: { accessToken: string },
-): Promise<string | undefined> {
-  const res = await request.get(`${hs}/_matrix/client/v3/room_keys/version`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  return res.ok() ? ((await res.json()).version as string) : undefined;
-}
-
 /**
  * Make sure the account has a key backup, creating an empty one if not.
  *
@@ -109,7 +109,7 @@ async function keyBackupVersion(
 async function ensureKeyBackup(
   request: APIRequestContext,
   hs: string,
-  account: { accessToken: string },
+  account: AccountSession,
 ): Promise<string | undefined> {
   const existing = await keyBackupVersion(request, hs, account);
   if (existing) {
@@ -128,18 +128,4 @@ async function ensureKeyBackup(
     throw new Error(`seeding key backup → ${res.status()} ${await res.text()}`);
   }
   return (await res.json()).version as string;
-}
-
-/** The account's cross-signing master key as the homeserver holds it. */
-async function masterKey(
-  request: APIRequestContext,
-  hs: string,
-  { userId, accessToken }: { userId: string; accessToken: string },
-): Promise<string | undefined> {
-  const res = await request.post(`${hs}/_matrix/client/v3/keys/query`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    data: { device_keys: { [userId]: [] } },
-  });
-  const keys = (await res.json()).master_keys?.[userId]?.keys;
-  return keys ? Object.keys(keys)[0] : undefined;
 }

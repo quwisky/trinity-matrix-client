@@ -16,6 +16,12 @@ export interface SynapseSession {
   pass?: string;
   /** Absent when the harness predates the Dex provider, so specs can gate on it. */
   sso?: SsoAccount;
+  /**
+   * A second Dex identity, for the one spec that leaves permanent state on the account
+   * it uses and asserts that nothing else moved. Kept apart from `sso` because
+   * `fullyParallel` runs the two SSO specs in different workers — see e2e/synapse/dex.yaml.
+   */
+  ssoReset?: SsoAccount;
 }
 
 /** Read the homeserver session recorded by global-setup (available:false if Docker
