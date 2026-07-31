@@ -98,6 +98,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Leaving encryption setup half-way no longer costs you your recovery key.** Setting up
+  encryption shows your recovery key exactly once. Pressing the browser's back button — or
+  Android's — while that key was on screen closed the page without a word, and the key was
+  gone. Doing it while setup was still running was worse: setup carried on in the background
+  and finished, producing a recovery key nobody ever saw, after which Settings → Security
+  cheerfully reported your messages were secured. Both now ask before they let you go. Backing
+  out of a page that asks also no longer eats an entry from your history, so the next press of
+  the back button goes where you expect instead of skipping one.
+
 - **Direct messages show the other person's face.** A one-to-one conversation is never given
   a picture of its own, and Trinity only ever looked for one — so every DM in the sidebar, the
   quick switcher and the invite list showed a coloured letter, right next to the person's name,
