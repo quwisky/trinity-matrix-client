@@ -1,11 +1,10 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { type UIAuthCallback } from 'matrix-js-sdk';
+import { Method, type MatrixClient, type UIAuthCallback } from 'matrix-js-sdk';
 import {
   CryptoEvent,
   decodeRecoveryKey,
   deriveRecoveryKeyFromPassphrase,
   type CryptoApi,
-  type GeneratedSecretStorageKey,
 } from 'matrix-js-sdk/lib/crypto-api';
 import type {
   SecretStorageKeyDescriptionAesV1,
@@ -17,46 +16,21 @@ import {
   projectFromClient,
 } from '@trinity/data-access-matrix-client';
 import {
-  assertPasswordUiaAvailable,
   decryptMegolmKeyFile,
   encryptMegolmKeyFile,
   runPasswordUia,
   type PasswordPrompt,
 } from '@trinity/util-matrix';
-
-/** How long the reset's rollback may wait on the homeserver before giving up. */
-const ROLLBACK_TIMEOUT_MS = 10_000;
-
-/**
- * Await `work`, but not forever.
- *
- * Account-data writes resolve only when their echo returns over /sync, so a stopped or
- * stalled sync loop leaves them pending indefinitely. Survivable on the happy path;
- * not survivable on the failure path, where the rollback sits between the user's
- * cancellation and the error they are waiting to be told about.
- */
-async function withTimeout<T>(
-  work: Promise<T>,
-  ms = ROLLBACK_TIMEOUT_MS,
-): Promise<T> {
-  // The loser of the race stays pending; without this its later rejection would surface
-  // as an unhandled one.
-  work.catch(() => undefined);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error('Timed out waiting for the homeserver.')),
-          ms,
-        );
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
+import {
+  hasStrandedCrossSigning,
+  repairStaleCrossSigning,
+} from './cross-signing-repair';
+import {
+  DEFAULT_KEY_EVENT,
+  encodedRecoveryKey,
+  runRecoveryReset,
+  withTimeout,
+} from './recovery-reset';
 
 /**
  * Where this device stands relative to the account's encryption setup:
@@ -145,12 +119,17 @@ export class CryptoService {
    *
    * The key is generated randomly (no passphrase), so accounts onboarded here are
    * recovered via {@link recoverWithKey}, not {@link recoverWithPassphrase}.
+   *
+   * Refuses outright on an account that already has a 4S key — see
+   * {@link assertNoRecoveryOnAccount} for why that check reads the server rather than
+   * this device's own view of it.
    */
   setUp(promptPassword: PasswordPrompt): Observable<string> {
     return defer(() =>
       from(
         (async (): Promise<string> => {
           const crypto = this.requireCrypto();
+          await assertNoRecoveryOnAccount(this.matrix.instance);
           const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
           await crypto.bootstrapCrossSigning({
             authUploadDeviceSigningKeys: this.passwordUia(promptPassword),
@@ -160,7 +139,7 @@ export class CryptoService {
             createSecretStorageKey: async () => recoveryKey,
           });
           await this.computeStatus();
-          return this.encoded(recoveryKey);
+          return encodedRecoveryKey(recoveryKey);
         })(),
       ),
     );
@@ -170,153 +149,28 @@ export class CryptoService {
    * Last resort (flow C): throw the account's encryption identity away and build a new
    * one, for someone who has lost their recovery key and has no other verified device.
    *
-   * Emits the new recovery key, exactly as {@link setUp} does, so the same
-   * shown-once display can present it.
-   *
-   * **This destroys data and cannot be undone.** `resetEncryption` deletes *every*
-   * key-backup version on the account, not just this device's view of it, so the user's
-   * other devices lose the shared backup too — they keep whatever message keys are
-   * already in their local stores, stay signed in, and lose only cross-signing trust.
-   * Anything not already decryptable somewhere is gone. Callers must say so before
-   * calling this.
-   *
-   * **It deliberately does not call `CryptoApi.resetEncryption`.** That method deletes every
-   * key-backup version and all of secret storage *before* the cross-signing upload that
-   * needs user-interactive auth — and the password prompt lives inside that upload. So a
-   * cancelled prompt, a mistyped password, an SSO-only account or an OIDC-native homeserver
-   * all destroyed the backup on the way to failing, and gave nothing back. Measured against
-   * Synapse v1.119.0: `room_keys/version` went from 200 to `M_NOT_FOUND` while the UI
-   * reported that the identity provider had to do it instead.
-   *
-   * The same steps in an order that authenticates first fix that. The only server write
-   * ahead of the accepted password is parking the 4S pointer, and that is put back on
-   * failure; everything destructive rides on `bootstrapSecretStorage`, which happens once
-   * the new identity is already published. `setupNewKeyBackup` is REQUIRED here (unlike in
-   * the `resetEncryption` shape this replaced, where passing it would have made a second
-   * backup): `resetKeyBackup` → `setupKeyBackup` opens with `deleteAllKeyBackupVersions()`,
-   * so that one call *is* the destructive tail — new 4S key, the new cross-signing privates
-   * and the new backup key filed under it, old versions gone.
-   *
-   * We now own a copy of the SDK's reset, so an extra step added to `resetEncryption`
-   * upstream will not be inherited — the ordering unit test is what guards that.
+   * Emits the new recovery key, exactly as {@link setUp} does, so the same shown-once
+   * display can present it. **This destroys data and cannot be undone** — see
+   * {@link runRecoveryReset}, which owns the ordering that makes a refused reset free.
    */
   resetRecovery(promptPassword: PasswordPrompt): Observable<string> {
-    return defer(() =>
-      from(
-        (async (): Promise<string> => {
-          const crypto = this.requireCrypto();
-          // Captured once: this spans several awaits, and an account switch mid-reset must
-          // not retarget the rollback (or the UIA user id) onto a different account.
-          const client = this.matrix.instance;
-          const userId = client.getUserId() ?? '';
-          const storage = client.secretStorage;
-
-          // Fail fast on an account that provably cannot answer a password challenge. The
-          // ordering below is what prevents data loss now, so this is only here to bail
-          // out before the LOCAL key rotation, which has no clean undo. It stays silent on
-          // everything else for the reasons in assertPasswordUiaAvailable.
-          await assertPasswordUiaAvailable(() =>
-            client.deleteMultipleDevices([]),
-          );
-
-          // Park the 4S pointer. `resetCrossSigning` exports the freshly rotated private
-          // keys into the CURRENT 4S key before it uploads anything — but only when
-          // `hasKey()`, which resolves through the default key id. This user cannot open
-          // that key, so leaving the pointer in place makes the rotation die on a falsey
-          // key callback and never reach the upload at all. `resetEncryption` creates the
-          // same precondition by deleting secret storage outright; parking the pointer is
-          // the reversible version of that.
-          const previousKeyId = await storage.getDefaultKeyId();
-          if (previousKeyId) {
-            await storage.setDefaultKeyId(null);
-          }
-
-          try {
-            // The UIA happens HERE, with nothing yet destroyed: the password prompt, the
-            // SSO-only refusal and the OIDC-native `cross_signing_reset` challenge all
-            // surface from this call.
-            await crypto.bootstrapCrossSigning({
-              setupNewCrossSigning: true,
-              authUploadDeviceSigningKeys: this.passwordUia(
-                promptPassword,
-                userId,
-              ),
-            });
-          } catch (err) {
-            await this.abandonReset(crypto, storage, previousKeyId, userId);
-            throw err;
-          }
-
-          // Past the point of no return: the new identity is published. Failing from here
-          // cannot be undone, but it must not also leave the UI describing an account
-          // that no longer exists — so the status is recomputed either way.
-          try {
-            const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
-            await crypto.bootstrapSecretStorage({
-              setupNewKeyBackup: true,
-              createSecretStorageKey: async () => recoveryKey,
-            });
-            await this.dropStaleKeyDescription(storage, previousKeyId);
-            return this.encoded(recoveryKey);
-          } finally {
-            await this.computeStatus();
-          }
-        })(),
-      ),
-    );
-  }
-
-  /**
-   * Undo the one reversible thing a failed reset did, and re-seat the account's real
-   * cross-signing identity locally — the olm machine rotated its private keys before the
-   * upload was authorised, so without a forced `/keys/query` this device would go on
-   * believing in an identity the server has never seen.
-   *
-   * Best effort by construction: it must never replace the error that caused it.
-   */
-  private async abandonReset(
-    crypto: CryptoApi,
-    storage: ServerSideSecretStorage,
-    previousKeyId: string | null,
-    userId: string,
-  ): Promise<void> {
-    // `crypto` and `storage` are the caller's captures, not `this.matrix.instance` —
-    // an account switch mid-reset must not point the repair at the wrong account.
-    try {
-      await withTimeout(
-        (async () => {
-          if (previousKeyId) {
-            await storage.setDefaultKeyId(previousKeyId);
-          }
-          await crypto.userHasCrossSigningKeys(userId, true);
-        })(),
+    return defer(() => {
+      // Captured once: the reset spans several awaits, and an account switch mid-flight
+      // must not retarget the rollback (or the UIA user id) onto a different account.
+      const client = this.matrix.instance;
+      return from(
+        runRecoveryReset(
+          {
+            crypto: this.requireCrypto(),
+            client,
+            storage: client.secretStorage,
+            userId: client.getUserId() ?? '',
+            refreshStatus: () => this.computeStatus(),
+          },
+          promptPassword,
+        ),
       );
-    } catch {
-      // Nothing better to do here; the caller's error is the one that matters.
-    }
-    await this.computeStatus();
-  }
-
-  /**
-   * The one bit of cleanup `bootstrapSecretStorage` does not do for us: drop the old key
-   * description, which nothing points at once the new default key is in place. Best effort
-   * — a stale description is inert, and failing here must not fail a completed reset.
-   */
-  private async dropStaleKeyDescription(
-    storage: ServerSideSecretStorage,
-    previousKeyId: string | null,
-  ): Promise<void> {
-    if (!previousKeyId) {
-      return;
-    }
-    try {
-      if ((await storage.getDefaultKeyId()) === previousKeyId) {
-        return; // the new key never landed; leave the old description alone
-      }
-      await storage.store(`m.secret_storage.key.${previousKeyId}`, null);
-    } catch {
-      // inert leftover; not worth failing a completed reset
-    }
+    });
   }
 
   /** Unlock this device from the account's recovery key (flow B). */
@@ -398,7 +252,8 @@ export class CryptoService {
           // Capture the account's 4S holder up front so a mid-recovery account switch
           // can't retarget the cached key onto a different account's holder.
           const holder = this.matrix.activeHolder();
-          const secretStorage = this.matrix.instance.secretStorage;
+          const client = this.matrix.instance;
+          const secretStorage = client.secretStorage;
           const keyId = await secretStorage.getDefaultKeyId();
           const tuple = keyId ? await secretStorage.getKey(keyId) : null;
           if (!keyId || !tuple) {
@@ -416,6 +271,17 @@ export class CryptoService {
           // no UIA, since the keys already exist server-side.
           await crypto.bootstrapCrossSigning({});
 
+          // ...unless the olm machine already holds privates, in which case that call
+          // does nothing at all — including when they are the ones a reset rotated and
+          // never published (see repairStaleCrossSigning). Unlocking 4S is exactly when
+          // that is both detectable and fixable, so do it here rather than leaving the
+          // device stuck at needs-recovery forever.
+          await this.repairStrandedIdentity(
+            crypto,
+            secretStorage,
+            client.getDeviceId(),
+          );
+
           // Enable key backup if one exists. The device is already trusted at this
           // point, so a missing/stale backup key in 4S must not fail the recovery —
           // backup can self-enable later via the crypto event listeners.
@@ -431,6 +297,39 @@ export class CryptoService {
         })(),
       ),
     );
+  }
+
+  /**
+   * Evict cross-signing privates stranded by an interrupted reset, when that is what this
+   * device is actually holding — see {@link hasStrandedCrossSigning} for why the check is
+   * narrower than "cross-signing isn't ready".
+   *
+   * The repair is optional in a way the recovery around it is not. It sits after
+   * `bootstrapCrossSigning`, which may already have trusted this device, and it can fail
+   * for reasons that say nothing about the user's key: `exportSecretsBundle` /
+   * `importSecretsBundle` are optional on `CryptoApi`, the bundle shape is probed at
+   * runtime, and the WASM crate refuses to export unless all three privates are present.
+   * A user who typed the CORRECT key must not be shown a raw SDK error over a device that
+   * is in fact trusted — so a failure recomputes the status first and is only re-raised
+   * when the device really is still untrusted. Loud when it matters, silent when the
+   * recovery worked anyway.
+   */
+  private async repairStrandedIdentity(
+    crypto: CryptoApi,
+    storage: ServerSideSecretStorage,
+    deviceId: string | null,
+  ): Promise<void> {
+    if (!(await hasStrandedCrossSigning(crypto))) {
+      return;
+    }
+    try {
+      await repairStaleCrossSigning(crypto, storage, deviceId);
+    } catch (err) {
+      await this.computeStatus();
+      if (!this._thisDeviceVerified()) {
+        throw err;
+      }
+    }
   }
 
   /** Monotonic token so a slow status run can't overwrite a newer one. */
@@ -496,10 +395,8 @@ export class CryptoService {
    * UIA callback for uploading new device-signing keys: defers to the shared
    * password-UIA loop (probe unauthenticated, then prompt + retry).
    */
-  private passwordUia(
-    promptPassword: PasswordPrompt,
-    userId = this.matrix.instance.getUserId() ?? '',
-  ): UIAuthCallback<void> {
+  private passwordUia(promptPassword: PasswordPrompt): UIAuthCallback<void> {
+    const userId = this.matrix.instance.getUserId() ?? '';
     return (makeRequest) => runPasswordUia(makeRequest, promptPassword, userId);
   }
 
@@ -518,11 +415,62 @@ export class CryptoService {
       throw new Error('That does not look like a valid recovery key.');
     }
   }
+}
 
-  private encoded(key: GeneratedSecretStorageKey): string {
-    if (!key.encodedPrivateKey) {
-      throw new Error('Failed to generate a recovery key.');
-    }
-    return key.encodedPrivateKey;
+/**
+ * Refuse first-device setup on an account that already has a 4S key.
+ *
+ * {@link CryptoService.setUp} is one click away from every `needs-setup` surface, and on
+ * an account that is already set up it is destructive rather than idempotent:
+ * `bootstrapSecretStorage({ setupNewKeyBackup: true })` mints a fresh 4S key — orphaning
+ * the still-valid one the user holds — and `resetKeyBackup` opens by deleting every
+ * key-backup version on the account.
+ *
+ * `needs-setup` is derived from `secretStorage.getDefaultKeyId()`, which after initial
+ * sync answers from this client's LOCAL store, so it goes stale for as long as a /sync
+ * echo is missing — up to the ~110s the sync loop takes to notice a dead long-poll. That
+ * is precisely the window a rolled-back recovery reset opens, which is why the local view
+ * cannot be the check here. Ask the server.
+ *
+ * **Fails open on purpose.** Only a pointer the server positively reports stops the setup;
+ * an unreachable or unhappy server does not. This exists to block a known-destructive
+ * action, not to become a new way for genuine first-run setup to fail.
+ */
+async function assertNoRecoveryOnAccount(client: MatrixClient): Promise<void> {
+  if (!(await readServerDefaultKeyId(client))) {
+    return;
+  }
+  throw new Error(
+    'This account already has a recovery key. Unlock this device with that key instead — setting up a new one here would replace it and delete the account’s key backup.',
+  );
+}
+
+/**
+ * The account's 4S pointer as the SERVER has it, or null when there is none — which is
+ * also what a failed read yields, since the caller fails open.
+ */
+async function readServerDefaultKeyId(
+  client: MatrixClient,
+): Promise<string | null> {
+  const userId = client.getUserId();
+  if (!userId) {
+    return null;
+  }
+  try {
+    // Bounded: `createClient` passes no `localTimeoutMs`, so a socket the homeserver
+    // accepts and never answers would otherwise hang first-run setup before it had done
+    // anything at all. A timeout lands in the same catch as every other read failure.
+    const content = await withTimeout(
+      client.http.authedRequest<{ key?: string }>(
+        Method.Get,
+        `/user/${encodeURIComponent(userId)}/account_data/${encodeURIComponent(DEFAULT_KEY_EVENT)}`,
+      ),
+    );
+    return content.key ?? null;
+  } catch {
+    // `M_NOT_FOUND` is the ordinary first-run answer, and anything else (offline, 5xx,
+    // a homeserver that stopped answering) is a read we cannot trust either way. Both
+    // mean "let the setup proceed".
+    return null;
   }
 }
