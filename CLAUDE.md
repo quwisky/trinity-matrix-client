@@ -9,7 +9,7 @@ Rust crypto WASM, Capacitor 8, and a hand-rolled Electron shell, in an Nx monore
 
 **Companion docs** (read these for depth — do not duplicate them here):
 `.claude/CLAUDE.md` (Angular/TypeScript style guide, always applies) · [`.claude/README.md`](.claude/README.md)
-(agents · skills · rules catalog) · `.claude/rules/code-quality.md`
+(skills · rules catalog) · `.claude/rules/code-quality.md`
 (file-size / single-responsibility thresholds) · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) · [STACK.md](docs/STACK.md) (pinned versions + gotchas) ·
 [PLAN.md](docs/PLAN.md) (roadmap) · [docs/PUSH.md](docs/PUSH.md) ·
