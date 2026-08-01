@@ -236,7 +236,10 @@ describe('MessageRowComponent', () => {
       '[data-testid=msg-shield-red]',
     ) as HTMLElement;
 
-    fireEvent.mouseEnter(shield);
+    // brn >= 1.2.0 listens on pointerenter, not mouseenter, and opens only for a
+    // pointerType of 'mouse' or 'pen' — see the PointerEvent polyfill in
+    // test-setup.base.ts for why the pointerType has to survive the trip.
+    fireEvent.pointerEnter(shield, { pointerType: 'mouse' });
     // brn opens after a 150ms show delay, into a CDK overlay outside this container.
     const tip = await waitFor(() => {
       const found = document.body.querySelector('[data-testid=msg-shield-tip]');
@@ -248,6 +251,52 @@ describe('MessageRowComponent', () => {
     expect(tip.textContent).toContain('Only its owner can confirm');
     // Wired as the icon's description so a screen reader reads it on focus.
     expect(shield.getAttribute('aria-describedby')).not.toBeNull();
+  });
+
+  // Pins brain's own gate, not any device: a touch pointer must not open the tooltip.
+  // On brain 1.1 a tap fired a synthesised mouseenter that opened the tooltip and no
+  // matching mouseleave to close it, so touch users got one stuck open. This asserts
+  // the fix stays fixed — a future bump that re-enables touch fails here rather than
+  // silently regressing. The e2e suite cannot cover it: it is a single Desktop Chrome
+  // project.
+  it('does not open the tooltip for a touch pointer', async () => {
+    const { container } = await renderRow({
+      row: row({
+        shield: {
+          level: 'red',
+          reason: 'Sent from a device its owner hasn’t verified.',
+          explanation: 'Only its owner can confirm the device is theirs.',
+        },
+      }),
+    });
+    const shield = container.querySelector(
+      '[data-testid=msg-shield-red]',
+    ) as HTMLElement;
+
+    const tip = () =>
+      document.body.querySelector('[data-testid=msg-shield-tip]');
+
+    // Fake timers rather than a real sleep: brn opens after a 150ms delay, and a real
+    // wait can only ever prove "nothing had appeared yet". A slow box that fired the
+    // delay late would pass this test without ever having outlasted it — a false green
+    // in the one direction a negative assertion cannot survive.
+    vi.useFakeTimers();
+    try {
+      fireEvent.pointerEnter(shield, { pointerType: 'touch' });
+      await vi.advanceTimersByTimeAsync(300);
+      expect(tip()).toBeNull();
+
+      // Defect control, and the reason the assertion above means anything. On its own,
+      // "no tooltip appeared" also passes if the PointerEvent shim were dropped, if
+      // [hlmTooltip] were removed from the shield, or if brain stopped rendering this
+      // testid — every regression it is meant to catch. Driving the SAME element through
+      // the SAME plumbing with a mouse pointer must open it.
+      fireEvent.pointerEnter(shield, { pointerType: 'mouse' });
+      await vi.advanceTimersByTimeAsync(300);
+      expect(tip()).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // Hover is not an input method everyone has. The icon is focusable precisely so the

@@ -57,6 +57,45 @@ vi.stubGlobal('matchMedia', (query: string) => ({
   dispatchEvent: () => false,
 }));
 
+// jsdom 25 has no PointerEvent, and that gap is a silent trap rather than a missing
+// feature. brain's BrnTooltip (>= 1.2.0) opens only for a `pointerType` of 'mouse' or
+// 'pen', while @testing-library/dom builds events as `window[EventType] || window.Event`
+// — so for a window without PointerEvent it falls back to the plain Event constructor,
+// which drops `pointerType` on the floor. Without this shim
+// `fireEvent.pointerEnter(el, { pointerType: 'mouse' })` arrives ungated and the tooltip
+// never opens, failing in a way indistinguishable from the bug it is testing for.
+//
+// Subclassing MouseEvent (rather than Event) keeps the event's mouse-ness — brn reads
+// clientX/clientY off the same object for overlay positioning.
+//
+// The defaults deliberately DIVERGE from the PointerEvent spec, which says `pointerType`
+// is '' and `isPrimary` false. Those are the right defaults for a browser and the wrong
+// ones for a test double: they would re-create the very trap above one step later, since
+// a plain `fireEvent.pointerEnter(el)` would produce an event brain rejects and a spec
+// that fails for an invisible reason. Defaulting to a primary mouse makes the common
+// case correct and leaves `{ pointerType: 'touch' }` an explicit opt-in. Angular CDK's
+// own test harness takes the same view (`isPrimary: true`).
+//
+// Not solved here, and not solvable this way: jsdom implements no pointer *capture* —
+// setPointerCapture/hasPointerCapture/releasePointerCapture are absent from its DOM — so
+// a spec driving brain's sonner/drawer/slider swipe paths (all of which call
+// `target.setPointerCapture(event.pointerId)`) needs those three methods stubbed too,
+// whatever this shim carries.
+vi.stubGlobal(
+  'PointerEvent',
+  class JsdomPointerEvent extends MouseEvent {
+    readonly pointerType: string;
+    readonly pointerId: number;
+    readonly isPrimary: boolean;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerType = init.pointerType ?? 'mouse';
+      this.pointerId = init.pointerId ?? 1;
+      this.isPrimary = init.isPrimary ?? true;
+    }
+  },
+);
+
 // Zoneless TestBed (provideZonelessChangeDetection); the app runs zoneless in
 // production, so specs exercise the same change-detection mode.
 setupTestBed({ zoneless: true });

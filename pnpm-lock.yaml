@@ -102,8 +102,8 @@ importers:
         specifier: 4.3.1
         version: 4.3.1
       '@spartan-ng/brain':
-        specifier: 1.1.0
-        version: 1.1.0(6954e05d368a16b8659b349eb4cee233)
+        specifier: 1.3.0
+        version: 1.3.0(6954e05d368a16b8659b349eb4cee233)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -196,8 +196,8 @@ importers:
         specifier: 22.1.2
         version: 22.1.2(chokidar@5.0.0)
       '@spartan-ng/cli':
-        specifier: 1.1.0
-        version: 1.1.0(0f0b338087a9f9ad010d8fe34ccb594f)
+        specifier: 1.3.0
+        version: 1.3.0(0f0b338087a9f9ad010d8fe34ccb594f)
       '@swc/helpers':
         specifier: ~0.5.23
         version: 0.5.23
@@ -3936,8 +3936,8 @@ packages:
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
 
-  '@spartan-ng/brain@1.1.0':
-    resolution: {integrity: sha512-W+jkjvwmD+wC3OW6c7Ijw17yiir00ri5qoflizp63sOIkpoxGvzvoOLiUCqNvS1cAIqpGydz+mRqQ7+64iHLKQ==}
+  '@spartan-ng/brain@1.3.0':
+    resolution: {integrity: sha512-uYSaphZZJWY+tma2bWJ4Gqh7lQiQyAk92iiUj3zzVV1F6LtsM81NO1vD5xitN+k93bGjSziCbDlzBRUCX2a8dw==}
     peerDependencies:
       '@angular/cdk': '>=21.0.0 <23.0.0'
       '@angular/common': '>=21.0.0 <23.0.0'
@@ -3952,8 +3952,8 @@ packages:
       luxon:
         optional: true
 
-  '@spartan-ng/cli@1.1.0':
-    resolution: {integrity: sha512-dD797NS07DIzFTjkma/MIMAHLLWOv9s1q3ubH4tYN+IKKbQIhXODn4q1ykkUNXG6ii2EnmOEExkBfy2ZlGdFcA==}
+  '@spartan-ng/cli@1.3.0':
+    resolution: {integrity: sha512-cO5XGb/ia+dF94mNS+a1I2xzrrhe0mtGf+lrFFcLdxoz8rOK6qxxCNtEKDwQI6rT0p365BTWQXsnswOf7abh7g==}
     peerDependencies:
       tslib: ^2.3.0
 
@@ -13339,7 +13339,7 @@ snapshots:
   '@socket.io/component-emitter@3.1.2':
     optional: true
 
-  '@spartan-ng/brain@1.1.0(6954e05d368a16b8659b349eb4cee233)':
+  '@spartan-ng/brain@1.3.0(6954e05d368a16b8659b349eb4cee233)':
     dependencies:
       '@angular/cdk': 22.1.0(@angular/common@22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(@angular/platform-browser@22.1.0(@angular/common@22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2)))(rxjs@7.8.2)
       '@angular/common': 22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2)
@@ -13353,7 +13353,7 @@ snapshots:
     optionalDependencies:
       luxon: 3.7.2
 
-  '@spartan-ng/cli@1.1.0(0f0b338087a9f9ad010d8fe34ccb594f)':
+  '@spartan-ng/cli@1.3.0(0f0b338087a9f9ad010d8fe34ccb594f)':
     dependencies:
       '@angular/core': 22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2)
       '@nx/angular': 23.1.1(8531b938924e6c399e934a00ce717adf)
