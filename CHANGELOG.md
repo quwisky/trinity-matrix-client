@@ -80,6 +80,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **A tap no longer leaves a tooltip stuck open.** On a touch screen, tapping something with a
+  tooltip — the icon buttons in the composer and room header, the encryption shield on a
+  message — used to open the tooltip and then leave you with no way to dismiss it, because the
+  browser reports the start of a tap but never the end of a hover that never happened.
+  Tooltips now open for a mouse or pen, and for keyboard focus. Where a tap moves focus to the
+  thing you tapped, the tooltip still appears. Every one of these also carries its text as an
+  accessible label, so nothing a screen reader announces has changed — with one detail worth
+  naming: the encryption shield labels the finding itself ("Sent from a device its owner hasn't
+  verified") but keeps the longer sentence explaining what to do about it in the tooltip alone.
+
 - **The "your provider has to reset this" path is now tested against a real server.** When an
   account signs in through an identity provider, Trinity cannot authorise an encryption reset
   itself and says so — a claim that until now rested on a mocked homeserver reply. The
