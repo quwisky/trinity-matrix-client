@@ -379,6 +379,33 @@ Setting one up, once:
    vulnerability, and the `vulnerabilityAlerts` carve-out never fires — with nothing anywhere
    reporting that it is dead.
 
+   **`Commit statuses: write` is the one whose absence takes the whole bot down, silently.**
+   Renovate publishes its internal checks by `POST`ing a commit status to the branch —
+   `renovate/stability-days` (written whenever `minimumReleaseAge` is set, which it is here,
+   so this fires on _every_ branch), plus `renovate/artifacts`, `renovate/config-validation`
+   and `renovate/merge-confidence`. Without write access GitHub answers **403**
+   `integration-unauthorized`, and Renovate maps that to `REPOSITORY_CHANGED` — aborting the
+   entire repository on the spot:
+
+   ```
+   DEBUG: Caught error setting branch status - aborting
+   DEBUG: Passing repository-changed error up
+   INFO:  Repository has changed during renovation - aborting
+   ```
+
+   Nothing in that reads as a permission problem, and four things conspire to hide it: the
+   workflow job still reports **success**; the log line blames a repository race that did not
+   happen; the abort fires on the first branch Renovate touches, which is long before the
+   Dependency Dashboard is written, so the dashboard issue is never created at all; and a
+   **dry run passes cleanly**, because it writes nothing and so never hits the 403. With
+   `dependencyDashboardApproval` on, a dashboard that does not exist silently takes every
+   minor and major update off the table, and the patch automerge with it.
+
+   That is not hypothetical — it is what this repo did from 2026-07-27 (the first run under
+   the App token) to 2026-08-01: nine consecutive green runs, none of which landed anything.
+   If Renovate ever goes quiet again, `gh workflow run renovate.yml -f logLevel=debug` and
+   grep the log for `integration-unauthorized` before suspecting the config.
+
 3. Generate a private key and **install the App on this repository**.
 4. Add the credentials under **Settings → Secrets and variables → Actions**. They go on
    two different tabs, and this is the easiest thing to get wrong:
