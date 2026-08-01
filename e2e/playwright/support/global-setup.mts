@@ -21,10 +21,10 @@ export default async function globalSetup(): Promise<void> {
   // Node's fetch + the browser must accept Caddy's self-signed cert.
   process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
   try {
-    const { hs, user, pass } = await start();
+    const { hs, user, pass, sso, ssoReset } = await start();
     writeFileSync(
       SESSION_FILE,
-      JSON.stringify({ available: true, hs, user, pass }),
+      JSON.stringify({ available: true, hs, user, pass, sso, ssoReset }),
     );
     console.log(`[e2e] Synapse ready at ${hs} (user ${user})`);
   } catch (err) {

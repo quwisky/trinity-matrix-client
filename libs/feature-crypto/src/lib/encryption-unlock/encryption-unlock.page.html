@@ -5,7 +5,7 @@
     <div
       class="flex items-center gap-2 border-b border-solid border-border p-3"
     >
-      <h2 class="flex-1 text-base font-semibold">Verify this device</h2>
+      <h2 class="flex-1 text-base font-semibold">{{ title() }}</h2>
       <button hlmBtn variant="ghost" size="sm" (click)="close()">Close</button>
     </div>
     <div class="overflow-y-auto p-4">
@@ -13,7 +13,7 @@
     </div>
   </div>
 } @else {
-  <trn-page-header title="Verify this device" />
+  <trn-page-header [title]="title()" />
 
   <main class="flex-1 overflow-y-auto p-4">
     <ng-container [ngTemplateOutlet]="body" />
@@ -21,46 +21,91 @@
 }
 
 <ng-template #body>
-  <h2 class="heading">Enter your recovery key</h2>
-  <p class="text-muted-foreground">
-    This device isn't trusted yet. Enter the recovery key you saved when you set
-    up encryption to unlock your encrypted messages here.
-  </p>
-
-  <div class="mt-4">
-    <label hlmLabel for="recovery-key">Recovery key</label>
-    <input
-      id="recovery-key"
-      hlmInput
-      class="mt-1"
-      autocapitalize="off"
-      autocorrect="off"
-      autocomplete="off"
-      placeholder="EsTx xxxx xxxx …"
-      [formField]="unlockForm.recoveryKey"
-      (keyup.enter)="unlock()"
+  @if (newRecoveryKey(); as key) {
+    <!-- Post-reset: the account has a brand-new identity and this key is the only copy. -->
+    <trn-recovery-key-save
+      [recoveryKey]="key"
+      heading="Save your new recovery key"
+      warning="We'll only show this key once. Without it, you can't recover your message history on another device."
+      confirmLabel="Done"
+      confirmTestId="reset-done"
+      (confirmed)="finishReset()"
     />
-    <p class="mt-1 text-xs text-muted-foreground">
-      Paste the key you saved during setup. Spaces don't matter.
+  } @else {
+    <h2 class="heading">Enter your recovery key</h2>
+    <p class="text-muted-foreground">
+      This device isn't trusted yet. Enter the recovery key you saved when you
+      set up encryption to unlock your encrypted messages here.
     </p>
-  </div>
 
-  <button
-    hlmBtn
-    class="mt-4 w-full"
-    [disabled]="busy() || !hasKey()"
-    (click)="unlock()"
-  >
-    Unlock
-  </button>
-
-  @if (busy()) {
-    <div class="mt-4 text-center" role="status" aria-live="polite">
-      <hlm-spinner />
-      <p class="progress">Unlocking your encrypted messages…</p>
+    <div class="mt-4">
+      <label hlmLabel for="recovery-key">Recovery key</label>
+      <input
+        id="recovery-key"
+        hlmInput
+        class="mt-1"
+        autocapitalize="off"
+        autocorrect="off"
+        autocomplete="off"
+        placeholder="EsTx xxxx xxxx …"
+        data-testid="recovery-key-input"
+        [formField]="unlockForm.recoveryKey"
+        (keyup.enter)="unlock()"
+      />
+      <p class="mt-1 text-xs text-muted-foreground">
+        Paste the key you saved during setup. Spaces don't matter.
+      </p>
     </div>
-  }
-  @if (error(); as message) {
-    <p class="mt-2 text-danger" role="alert">{{ message }}</p>
+
+    <button
+      hlmBtn
+      class="mt-4 w-full"
+      [disabled]="busy() || !hasKey()"
+      (click)="unlock()"
+      data-testid="unlock-submit"
+    >
+      Unlock
+    </button>
+
+    @if (busy()) {
+      <div class="mt-4 text-center" role="status" aria-live="polite">
+        <hlm-spinner />
+        <p class="progress">{{ progressMessage() }}</p>
+      </div>
+    }
+    @if (error(); as message) {
+      <p class="mt-2 text-danger" role="alert" data-testid="unlock-error">
+        {{ message }}
+      </p>
+    }
+    <!-- A link, not only Browser.open: by the time the provider's page is known the
+         click is long over, so the popup is blocked and the message alone is a dead end. -->
+    @if (providerResetUrl(); as providerUrl) {
+      <a
+        hlmBtn
+        variant="outline"
+        class="mt-2 w-full"
+        [href]="providerUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid="provider-reset-link"
+      >
+        Open my identity provider
+      </a>
+    }
+
+    <!-- Subordinate on purpose: this is the way out for someone who has no key, not an
+       alternative to entering one. -->
+    <button
+      hlmBtn
+      variant="ghost"
+      size="sm"
+      class="mt-4 w-full text-muted-foreground"
+      [disabled]="busy()"
+      (click)="resetRecovery()"
+      data-testid="reset-recovery"
+    >
+      I've lost my recovery key
+    </button>
   }
 </ng-template>

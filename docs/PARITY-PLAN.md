@@ -181,7 +181,7 @@ Effort: **S** ≤ half-day · **M** ~1 day · **L** multi-day.
 | 1a  | Export / import room keys   | Passphrase-encrypted `.txt` of E2EE room keys (`exportRoomKeysAsJson` + `encryptMegolmKeyFile` / decrypt on import).                                    | M      | ✅  |
 | 1b  | Per-message trust shields   | Shield / warning from `getEncryptionInfoForEvent` (unverified device, unencrypted-in-E2EE); projected into `MessageView`, re-rendered on trust changes. | M      | ⚠️  |
 | 1c  | Cross-user verification     | Verify another user via SAS over `requestVerificationDM`; reuses the SAS UI + the 2-client `e2e:verify` harness.                                        | L      | ✅  |
-| 1d  | Recovery reset escape hatch | `resetEncryption()` re-bootstraps cross-signing + 4S + backup when the recovery key is lost.                                                            | M      | ⚠️  |
+| 1d  | Recovery reset escape hatch | **Shipped.** Re-bootstraps cross-signing + 4S + backup when the recovery key is lost. Deliberately does NOT call `resetEncryption()` — see STACK.md.    | M      | ✅  |
 
 ### Track 2 — Timeline richness
 

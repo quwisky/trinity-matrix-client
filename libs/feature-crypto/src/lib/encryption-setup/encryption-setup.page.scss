@@ -1,28 +1,5 @@
+@use '../styles/mixins' as *;
+
 .heading {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--trinity-text-bright);
-  margin: 0 0 8px;
-}
-
-.warning {
-  margin: 12px 0;
-  padding: 12px 14px;
-  border-left: 3px solid var(--trinity-accent);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
-  color: var(--trinity-text-bright);
-  font-weight: 600;
-}
-
-.confirm {
-  // Layout (flex/alignment/gap) comes from the utility classes on the label;
-  // this scoped rule only contributes the section's spacing and text color.
-  margin: 20px 0;
-  color: var(--trinity-text);
-}
-
-.heading:focus-visible {
-  outline: 2px solid var(--trinity-accent);
-  outline-offset: 4px;
+  @include heading;
 }

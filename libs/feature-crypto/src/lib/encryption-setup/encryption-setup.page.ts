@@ -2,22 +2,22 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
-  effect,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmSpinner } from '@trinity/helm/spinner';
 import { CryptoService } from '@trinity/data-access-crypto';
 import { type PasswordPrompt } from '@trinity/util-matrix';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
-import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-key-display.component';
+import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
+import {
+  confirmLeaving,
+  type LeaveRisk,
+} from '../recovery-key-save/leave-confirmation';
 
 /**
  * First-device encryption setup (flow A). Triggers
@@ -34,9 +34,8 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
   imports: [
     PageHeaderComponent,
     HlmButton,
-    HlmCheckbox,
     HlmSpinner,
-    RecoveryKeyDisplayComponent,
+    RecoveryKeySaveComponent,
   ],
 })
 export class EncryptionSetupPage {
@@ -51,27 +50,6 @@ export class EncryptionSetupPage {
   /** The generated recovery key — shown once, never persisted. */
   readonly recoveryKey = signal<string | null>(null);
 
-  /** Gates "Continue" until the user confirms they saved the key. */
-  readonly confirmedSaved = signal(false);
-
-  /** The "Save your recovery key" heading, focused when the key is revealed. */
-  private readonly savedHeading =
-    viewChild<ElementRef<HTMLElement>>('savedHeading');
-  private hasFocusedSavedHeading = false;
-
-  constructor() {
-    // Move focus to the heading once, when the recovery key first appears, so
-    // keyboard and screen-reader users land on the critical "save this now"
-    // content — without stealing focus again if the view later re-evaluates.
-    effect(() => {
-      const heading = this.savedHeading();
-      if (heading && !this.hasFocusedSavedHeading) {
-        this.hasFocusedSavedHeading = true;
-        heading.nativeElement.focus();
-      }
-    });
-  }
-
   /** Kick off cross-signing + secret-storage + key-backup bootstrap. */
   setUp(): void {
     this.withBusy(this.crypto.setUp(this.promptPassword)).subscribe((key) => {
@@ -84,6 +62,37 @@ export class EncryptionSetupPage {
     // Drop our reference to the key as early as possible (it's never persisted).
     this.recoveryKey.set(null);
     void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+  }
+
+  /**
+   * Whether leaving right now would throw something away.
+   *
+   * A setup already running is the worse of the two: unsubscribing does not abort it
+   * ({@link CryptoService.setUp} is a promise behind `defer`), so it goes on to provision
+   * 4S and a key backup whose only recovery key was emitted to a subscriber that no
+   * longer exists — after which Settings → Security reports the account as secured and
+   * nothing ever prompts the user to fix it. A key already on screen is the more urgent
+   * of the two only because it is one press from being saved.
+   *
+   * `busy` is a safe proxy for "setup in flight" here because {@link setUp} is the page's
+   * only action; the unlock page needs a separate signal precisely because it has two.
+   */
+  private leaveWouldDiscard(): LeaveRisk | null {
+    if (this.recoveryKey()) {
+      return 'unsaved-key';
+    }
+    return this.busy() ? 'setup-in-flight' : null;
+  }
+
+  /**
+   * Whether it is safe to leave, asking the user when it is not.
+   *
+   * Called by the route guard. The browser's own back button dismisses this page without
+   * asking anyone — on the path every new account takes. Same fail-towards-staying
+   * semantics as the unlock page's guard.
+   */
+  confirmLeave(): Promise<boolean> {
+    return confirmLeaving(this.alert, this.leaveWouldDiscard());
   }
 
   /**

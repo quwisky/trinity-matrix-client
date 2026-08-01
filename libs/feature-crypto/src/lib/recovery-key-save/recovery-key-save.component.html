@@ -1,0 +1,27 @@
+<h2 #savedHeading tabindex="-1" class="heading">{{ heading() }}</h2>
+
+@if (intro(); as lead) {
+  <p class="text-muted-foreground">{{ lead }}</p>
+}
+
+<p class="warning" role="note">{{ warning() }}</p>
+
+<trn-recovery-key-display [recoveryKey]="recoveryKey()" />
+
+<label
+  class="confirm flex cursor-pointer items-center gap-2 text-sm font-medium"
+  data-testid="recovery-key-saved"
+>
+  <hlm-checkbox [checked]="saved()" (checkedChange)="saved.set($event)" />
+  I've saved my recovery key somewhere safe
+</label>
+
+<button
+  hlmBtn
+  class="w-full"
+  [disabled]="!saved()"
+  [attr.data-testid]="confirmTestId()"
+  (click)="confirmed.emit()"
+>
+  {{ confirmLabel() }}
+</button>

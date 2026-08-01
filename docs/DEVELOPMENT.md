@@ -160,8 +160,9 @@ Two traps worth knowing:
 
 **App journeys (`@nx/playwright`)** — `@playwright/test` specs in
 [`e2e/playwright/`](../e2e/playwright/) covering the app shell/login guard, navigation, notifications, pinned
-messages, favourite and room lists, unread badges, timeline virtualization, and settings
-(theme, profile, device management). Builds the dev bundle, serves `www/`, and brings the Synapse
+messages, favourite and room lists, unread badges, timeline virtualization, settings
+(theme, profile, device management), and a full SSO sign-in against the harness's own
+identity provider. Builds the dev bundle, serves `www/`, and brings the Synapse
 harness below up/down via global setup (auth specs skip themselves when Docker is absent —
 except under `CI`, where a missing Synapse is a hard failure instead of a quietly green run):
 
@@ -169,6 +170,25 @@ except under `CI`, where a missing Synapse is a hard failure instead of a quietl
 pnpm exec nx e2e trinity-e2e            # all specs (Chromium)
 pnpm exec nx e2e trinity-e2e -- --list  # enumerate without running
 ```
+
+**The harness's identity provider ([`e2e/synapse/dex.yaml`](../e2e/synapse/dex.yaml))** — a
+third container, [Dex](https://dexidp.io), wired into Synapse as an `oidc_provider` so the
+suite can hold an account **with no Matrix password**. That is the only way to reach the
+paths Trinity takes when a homeserver will not accept a password for a privileged action:
+re-uploading cross-signing keys is gated behind user-interactive auth, and such an account
+is offered only `m.login.sso`, which matrix-js-sdk cannot complete in-app. `ssoLogin()` in
+[`e2e/playwright/support/sso.mts`](../e2e/playwright/support/sso.mts) drives it end to end.
+
+Two things about it are load-bearing and easy to undo by accident:
+
+- This is **legacy SSO** (Synapse owns the session and returns a `loginToken`), _not_
+  MSC3861 next-gen auth. Delegating authentication outright forces password login and
+  registration off for the whole homeserver, which every other spec on this stack depends
+  on — Synapse refuses to start with both enabled.
+- Synapse addresses Dex by its compose hostname while the browser uses the published port,
+  so `discover: false` plus explicit split endpoints is required: a discovery document can
+  only advertise one of the two. `start.mjs` rewrites that block on every start, because
+  the internal name differs under the containerised-runner override below.
 
 **Electron desktop (`@playwright/test` + `_electron`)** — specs in
 [`e2e/electron/`](../e2e/electron/) launch the **built**
@@ -239,6 +259,14 @@ to point it at your own homeserver. The verification harness needs a homeserver 
   simulator/emulator run is the real thing — see [SPIKE.md](SPIKE.md)).
 - The **native SSO deep link** (`eu.qwky.trinity://sso-callback`) — wired with a state
   nonce, but the round-trip needs on-device validation (`cap sync` then a real SSO).
+- **OIDC-native (MSC3861) login**, and with it the encryption-reset _deep link_ to a
+  provider's account-management page. `oidc-login.spec.mts` mocks the homeserver and the
+  provider with `page.route`; the reset's deep-link branch is unit-tested only. The Dex
+  provider above cannot stand in: next-gen auth needs a Matrix-aware OP that issues
+  device-scoped tokens and supports dynamic client registration, which in practice means
+  matrix-authentication-service — and that needs PostgreSQL plus a **second** homeserver,
+  since MSC3861 cannot coexist with the password login the rest of the suite uses. Three
+  more containers for one branch; measured, then deliberately not built.
 
 ## Code quality & git hooks
 
@@ -478,7 +506,7 @@ Two things worth knowing about the jobs that are new to CI:
   binary is dead weight.
 - **`e2e`** runs the Playwright journeys against the disposable Synapse + Caddy stack in
   Docker. Its first step runs three independent things **concurrently** — the
-  browser install, the Synapse/Caddy image pull, and the dev build — because Playwright
+  browser install, the Synapse/Caddy/Dex image pull, and the dev build — because Playwright
   otherwise does them in sequence (it orders `webServer` before `globalSetup`, and the
   browser install precedes both). Worth ~25-45s on the only job on the critical path; the
   pre-build is not duplicated work, since the suite's own `webServer` replays it from the

@@ -24,3 +24,10 @@ services:
     network_mode: 'container:${TRINITY_E2E_NETWORK_CONTAINER}'
     ports: !reset []
     networks: !reset null
+
+  # Same story for Dex: no `dex` DNS name here, so start.mjs writes Synapse's
+  # server-to-server OIDC endpoints as localhost:5556 whenever this override is in play.
+  dex:
+    network_mode: 'container:${TRINITY_E2E_NETWORK_CONTAINER}'
+    ports: !reset []
+    networks: !reset null

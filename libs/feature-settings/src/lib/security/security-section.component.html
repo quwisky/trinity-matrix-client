@@ -46,6 +46,20 @@
         >
           Enter recovery key
         </button>
+        <!-- Subordinate, and deliberately the same destination: the unlock screen owns
+             the reset, so this is a second door to one implementation of an irreversible
+             flow, not a second copy of it. Someone who has lost their key would not
+             otherwise guess it lives behind "Enter recovery key". -->
+        <button
+          hlmBtn
+          variant="ghost"
+          size="sm"
+          class="self-start text-muted-foreground"
+          (click)="resetRecovery()"
+          data-testid="security-reset-recovery"
+        >
+          I've lost my recovery key
+        </button>
       }
       @default {
         <p class="text-13 text-muted-foreground">Checking encryption status…</p>

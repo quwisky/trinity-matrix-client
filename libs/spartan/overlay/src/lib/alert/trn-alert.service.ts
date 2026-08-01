@@ -8,6 +8,10 @@ import {
 
 export interface ConfirmOptions {
   header: string;
+  /**
+   * Body copy. Newlines are preserved and render as separate paragraphs, so a message
+   * whose parts must be read one at a time can be joined with `\n\n`.
+   */
   message?: string;
   /** Confirm button label. Default 'OK'. */
   confirmText?: string;
@@ -19,6 +23,12 @@ export interface ConfirmOptions {
 
 export interface PromptOptions extends ConfirmOptions {
   placeholder?: string;
+  /**
+   * Accessible name for the input. A placeholder is not one — it vanishes on the first
+   * keystroke and assistive tech is not obliged to announce it — so any prompt whose
+   * expected input is not obvious from the header should set this.
+   */
+  inputLabel?: string;
   /** Mask the input (e.g. for passwords). Default 'text'. */
   inputType?: 'text' | 'password';
   /** Initial input value. */
@@ -64,6 +74,7 @@ export class TrnAlertService {
       cancelText: opts.cancelText ?? 'Cancel',
       destructive: opts.destructive ?? false,
       placeholder: opts.placeholder,
+      inputLabel: opts.inputLabel,
       inputType: opts.inputType,
       value: opts.value,
       maxLength: opts.maxLength,

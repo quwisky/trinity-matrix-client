@@ -99,11 +99,31 @@ describe('SecuritySectionComponent', () => {
     expect(openUnlock).toHaveBeenCalledWith({ returnTo: '/settings/security' });
   });
 
+  it('offers the lost-key escape hatch, arriving with the reset offered', async () => {
+    // Same screen as "Enter recovery key" — one implementation of an irreversible flow —
+    // but it must not dump the user there to hunt for the same words a second time.
+    const { container, openUnlock } = await build({ status: 'needs-recovery' });
+    const lost = container.querySelector<HTMLButtonElement>(
+      '[data-testid=security-reset-recovery]',
+    );
+    expect(lost).not.toBeNull();
+
+    lost?.click();
+
+    expect(openUnlock).toHaveBeenCalledWith({
+      returnTo: '/settings/security',
+      offerReset: true,
+    });
+  });
+
   it('shows the secured state when encryption is ready (no fix action)', async () => {
     const { container } = await build({ status: 'ready' });
     expect(container.textContent).toContain('secured with end-to-end');
     expect(container.querySelector('[data-testid=security-setup]')).toBeNull();
     expect(container.querySelector('[data-testid=security-unlock]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid=security-reset-recovery]'),
+    ).toBeNull();
   });
 
   it('offers session verification when this session is unverified', async () => {

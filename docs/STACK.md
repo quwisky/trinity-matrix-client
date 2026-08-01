@@ -96,6 +96,25 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 - Crypto bootstrap sequence: init rust crypto -> cross-signing setup
   (`bootstrapCrossSigning`) -> key backup (`bootstrapSecretStorage` / key backup APIs).
   **Implemented (M3)** in `@trinity/data-access-crypto` `CryptoService` + `@trinity/feature-crypto`.
+- **`CryptoApi.resetEncryption` is deliberately not used, and we own a copy of it.**
+  It deletes every key-backup version and all of secret storage _before_ the cross-signing
+  upload that needs user-interactive auth — and the password prompt lives inside that
+  upload, so a cancel, a wrong password, an SSO-only account or an OIDC-native homeserver
+  all destroyed the backup on the way to failing. Measured against Synapse v1.119.0:
+  `room_keys/version` went from 200 to `M_NOT_FOUND`. `CryptoService.resetRecovery`
+  (implemented in `recovery-reset.ts`) runs the same steps authenticated-first instead:
+  complete a real password UIA round-trip against a request that does nothing
+  (`deleteMultipleDevices([])`) → park the 4S pointer → `bootstrapCrossSigning`, replaying
+  the accepted password → delete the dehydrated device →
+  `bootstrapSecretStorage({ setupNewKeyBackup: true })`, which is the whole destructive
+  tail because `setupKeyBackup` opens with `deleteAllKeyBackupVersions()`.
+  One step is deliberately **not** where the SDK puts it: `resetEncryption` deletes the
+  dehydrated device first thing, which here would destroy something before the user has
+  authenticated, so it heads the destructive tail instead.
+  **On every SDK bump, diff `rust-crypto.js`'s `resetEncryption` against that method** — a
+  step added upstream will not be inherited, and a step we moved will not be re-ordered for
+  us. The ordering unit tests in `crypto.service.spec.ts` are the guard, not a substitute
+  for looking.
 - Device verification via the `VerificationRequest`/`Verifier` APIs. **Implemented (M7):**
   emoji-SAS self-verification (`requestOwnUserVerification`) in `VerificationService` +
   `@trinity/feature-crypto`. QR and cross-user verification are deferred.

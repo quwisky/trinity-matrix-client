@@ -8,6 +8,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A way back in when you have lost your recovery key.** If you lost your recovery key and
+  had no other signed-in device to verify from, Trinity had no way forward — the unlock
+  screen offered your key or nothing. Settings → Security, and the unlock screen itself, now
+  offer **I've lost my recovery key**, which builds your account a new encryption identity
+  and gives you a new key to save. It is a last resort and it is spelled out before you
+  confirm: your message backup on the server is deleted, so anything your devices cannot
+  already read stays unreadable, and your other devices have to be verified again — they are
+  not signed out. You have to type the word RESET to go ahead, and nothing is touched until
+  your homeserver has accepted your password — so cancelling the prompt, mistyping it, or an
+  account whose provider has to authorise the reset all leave you exactly where you started.
+  If your account signs in through an identity provider, Trinity sends you there, since only
+  the provider can authorise it.
+
 - **Be notified when someone says a word you care about.** Settings → Notifications gains a
   **Keywords** list: add a word — your team's name, a project, an on-call term, a nickname
   you're known by — and any message using it notifies you and marks the room, in every room
@@ -67,6 +80,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The "your provider has to reset this" path is now tested against a real server.** When an
+  account signs in through an identity provider, Trinity cannot authorise an encryption reset
+  itself and says so — a claim that until now rested on a mocked homeserver reply. The
+  disposable test stack grew a throwaway identity provider, so the suite holds an account with
+  no password and drives that refusal end to end: a real sign-in, a real rejection, and a check
+  that the account's backup and encryption identity both survive it untouched. That last check
+  is what caught the reset destroying the backup before it gave up.
+
 - **The space header makes room for the space's name.** A space's sidebar header carried up to
   six icon buttons on one row, which left the name itself about six characters before it was
   cut off — and on a touchscreen, where the buttons grow to a thumb-sized minimum, they needed
@@ -76,6 +97,15 @@ All notable changes to this project are documented here. The format is based on
   **Invite people**. Home is unchanged — it has room.
 
 ### Fixed
+
+- **Leaving encryption setup half-way no longer costs you your recovery key.** Setting up
+  encryption shows your recovery key exactly once. Pressing the browser's back button — or
+  Android's — while that key was on screen closed the page without a word, and the key was
+  gone. Doing it while setup was still running was worse: setup carried on in the background
+  and finished, producing a recovery key nobody ever saw, after which Settings → Security
+  cheerfully reported your messages were secured. Both now ask before they let you go. Backing
+  out of a page that asks also no longer eats an entry from your history, so the next press of
+  the back button goes where you expect instead of skipping one.
 
 - **Direct messages show the other person's face.** A one-to-one conversation is never given
   a picture of its own, and Trinity only ever looked for one — so every DM in the sidebar, the
