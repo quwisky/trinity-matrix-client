@@ -237,10 +237,28 @@ describe('formatDaySeparator', () => {
 describe('formatter cache', () => {
   const instant = at(2026, 6, 24, 15, 45);
 
+  // Vitest 4 made spies genuinely constructible, so a bare `vi.spyOn` on a built-in
+  // constructor no longer yields a usable instance: `new` runs through the spy, whose
+  // prototype lacks the internal slot that `format` is an accessor for, so calls fail
+  // with "format is not a function". Under Vitest 3 the spy fell back to calling the
+  // original as a plain function — which `Intl.DateTimeFormat` happens to permit — so
+  // this read as an ordinary pass-through spy and needed no implementation.
+  //
+  // The implementation has to be a `function` rather than an arrow: Vitest 4 invokes it
+  // with `new`, and an arrow cannot be constructed.
+  const spyOnDateTimeFormat = () => {
+    const RealDateTimeFormat = Intl.DateTimeFormat;
+    return vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (
+      ...args: ConstructorParameters<typeof Intl.DateTimeFormat>
+    ) {
+      return new RealDateTimeFormat(...args);
+    } as unknown as typeof Intl.DateTimeFormat);
+  };
+
   it('reuses a formatter for repeated calls with the same preference', () => {
     formatDateTime(instant, prefs('h24', 'system', ['en-US'])); // warm
 
-    const construct = vi.spyOn(Intl, 'DateTimeFormat');
+    const construct = spyOnDateTimeFormat();
     try {
       formatDateTime(instant, prefs('h24', 'system', ['en-US']));
       expect(construct).not.toHaveBeenCalled();
@@ -277,7 +295,7 @@ describe('formatter cache', () => {
   it('rebuilds when the local UTC offset moves', () => {
     formatDateTime(instant, prefs('h24', 'system', ['en-US'])); // warm
 
-    const construct = vi.spyOn(Intl, 'DateTimeFormat');
+    const construct = spyOnDateTimeFormat();
     try {
       const real = new Date().getTimezoneOffset();
       const moved = vi
