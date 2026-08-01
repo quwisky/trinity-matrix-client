@@ -84,11 +84,11 @@ importers:
         specifier: ^18.3.1
         version: 18.3.1
       '@ng-icons/core':
-        specifier: ^32.5.0
-        version: 32.5.0(@angular/common@22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2)
+        specifier: ^34.0.0
+        version: 34.0.0(@angular-devkit/schematics@22.1.2(chokidar@5.0.0))(@angular/common@22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(@schematics/angular@22.1.2(chokidar@5.0.0))(rxjs@7.8.2)
       '@ng-icons/lucide':
-        specifier: ^32.5.0
-        version: 32.5.0
+        specifier: ^34.0.0
+        version: 34.0.0
       '@sanity/diff-match-patch':
         specifier: ^3.2.0
         version: 3.2.0
@@ -102,8 +102,8 @@ importers:
         specifier: 4.3.1
         version: 4.3.1
       '@spartan-ng/brain':
-        specifier: 1.1.0
-        version: 1.1.0(6954e05d368a16b8659b349eb4cee233)
+        specifier: 1.3.0
+        version: 1.3.0(6954e05d368a16b8659b349eb4cee233)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -196,8 +196,8 @@ importers:
         specifier: 22.1.2
         version: 22.1.2(chokidar@5.0.0)
       '@spartan-ng/cli':
-        specifier: 1.1.0
-        version: 1.1.0(0f0b338087a9f9ad010d8fe34ccb594f)
+        specifier: 1.3.0
+        version: 1.3.0(0f0b338087a9f9ad010d8fe34ccb594f)
       '@swc/helpers':
         specifier: ~0.5.23
         version: 0.5.23
@@ -2725,15 +2725,17 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
-  '@ng-icons/core@32.5.0':
-    resolution: {integrity: sha512-6zAXQ5vryaclOWEVzprFJjJAW6NSOl0eBm+I6BwmcMk+vR+1vHU82DNpNTbUE9Wn4CGXEP1yd+S+pTKIaRTXjg==}
+  '@ng-icons/core@34.0.0':
+    resolution: {integrity: sha512-SrL8dBApSKzXhihEGmiJ/tAj+wSvt6XmZJOAzUTVcgkuV0YuL1WCHVfAwXgQHVG5Te27JkjyXd2n76pNFMuekw==}
     peerDependencies:
-      '@angular/common': '>=20.0.0'
-      '@angular/core': '>=20.0.0'
+      '@angular-devkit/schematics': '>=21.0.0'
+      '@angular/common': '>=21.0.0'
+      '@angular/core': '>=21.0.0'
+      '@schematics/angular': '>=21.0.0'
       rxjs: ^6.5.3 || ^7.4.0
 
-  '@ng-icons/lucide@32.5.0':
-    resolution: {integrity: sha512-oLIkz2tB4ZnO3JoLQ8pS15AaR7kxBpF81s/e3mGALqNXSu2U2u0TgiP88CF/4DQ14ONFD7S/gT4Ej4gIESvbeQ==}
+  '@ng-icons/lucide@34.0.0':
+    resolution: {integrity: sha512-cojXLo23MA4l8qqwLkKs/Ym66/eXSzpJ8ZvaQOTOK1sRSEjZiQBc4emyGJpqZLr12FO9xssLMfdnqa2tag+yWw==}
 
   '@ngtools/webpack@22.1.2':
     resolution: {integrity: sha512-5o3zbOdEHv5+wjRCMN+t6RBou28dbPkio5/rxEJBsQ9iEq11K+atsSKEaZXBMUhYr9nLYR8Pckm5Cqx2FP9R2Q==}
@@ -3934,8 +3936,8 @@ packages:
   '@socket.io/component-emitter@3.1.2':
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
 
-  '@spartan-ng/brain@1.1.0':
-    resolution: {integrity: sha512-W+jkjvwmD+wC3OW6c7Ijw17yiir00ri5qoflizp63sOIkpoxGvzvoOLiUCqNvS1cAIqpGydz+mRqQ7+64iHLKQ==}
+  '@spartan-ng/brain@1.3.0':
+    resolution: {integrity: sha512-uYSaphZZJWY+tma2bWJ4Gqh7lQiQyAk92iiUj3zzVV1F6LtsM81NO1vD5xitN+k93bGjSziCbDlzBRUCX2a8dw==}
     peerDependencies:
       '@angular/cdk': '>=21.0.0 <23.0.0'
       '@angular/common': '>=21.0.0 <23.0.0'
@@ -3950,8 +3952,8 @@ packages:
       luxon:
         optional: true
 
-  '@spartan-ng/cli@1.1.0':
-    resolution: {integrity: sha512-dD797NS07DIzFTjkma/MIMAHLLWOv9s1q3ubH4tYN+IKKbQIhXODn4q1ykkUNXG6ii2EnmOEExkBfy2ZlGdFcA==}
+  '@spartan-ng/cli@1.3.0':
+    resolution: {integrity: sha512-cO5XGb/ia+dF94mNS+a1I2xzrrhe0mtGf+lrFFcLdxoz8rOK6qxxCNtEKDwQI6rT0p365BTWQXsnswOf7abh7g==}
     peerDependencies:
       tslib: ^2.3.0
 
@@ -12017,14 +12019,16 @@ snapshots:
       '@tybys/wasm-util': 0.10.3
     optional: true
 
-  '@ng-icons/core@32.5.0(@angular/common@22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2)':
+  '@ng-icons/core@34.0.0(@angular-devkit/schematics@22.1.2(chokidar@5.0.0))(@angular/common@22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(@schematics/angular@22.1.2(chokidar@5.0.0))(rxjs@7.8.2)':
     dependencies:
+      '@angular-devkit/schematics': 22.1.2(chokidar@5.0.0)
       '@angular/common': 22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2)
       '@angular/core': 22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2)
+      '@schematics/angular': 22.1.2(chokidar@5.0.0)
       rxjs: 7.8.2
       tslib: 2.8.1
 
-  '@ng-icons/lucide@32.5.0':
+  '@ng-icons/lucide@34.0.0':
     dependencies:
       tslib: 2.8.1
 
@@ -13335,7 +13339,7 @@ snapshots:
   '@socket.io/component-emitter@3.1.2':
     optional: true
 
-  '@spartan-ng/brain@1.1.0(6954e05d368a16b8659b349eb4cee233)':
+  '@spartan-ng/brain@1.3.0(6954e05d368a16b8659b349eb4cee233)':
     dependencies:
       '@angular/cdk': 22.1.0(@angular/common@22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(@angular/platform-browser@22.1.0(@angular/common@22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2))(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2)))(rxjs@7.8.2)
       '@angular/common': 22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2)
@@ -13349,7 +13353,7 @@ snapshots:
     optionalDependencies:
       luxon: 3.7.2
 
-  '@spartan-ng/cli@1.1.0(0f0b338087a9f9ad010d8fe34ccb594f)':
+  '@spartan-ng/cli@1.3.0(0f0b338087a9f9ad010d8fe34ccb594f)':
     dependencies:
       '@angular/core': 22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2)
       '@nx/angular': 23.1.1(8531b938924e6c399e934a00ce717adf)
@@ -18778,7 +18782,7 @@ snapshots:
 
   vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.0):
     dependencies:
-      lightningcss: 1.32.0
+      lightningcss: 1.33.0
       picomatch: 4.0.5
       postcss: 8.5.25
       rolldown: 1.1.5

@@ -1,17 +1,17 @@
 # Stack Reference — collected knowledge
 
-Pinned versions and integration notes gathered 2026-06-26. This is the "skills"
+Pinned versions and integration notes gathered 2026-06-26; version rows refreshed 2026-08-01. This is the "skills"
 reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
-## Pinned versions (latest on npm, 2026-06-26)
+## Pinned versions (as installed, 2026-08-01)
 
 | Package                              | Version   | Notes                                                                                                                                                                           |
 | ------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@angular/core`                      | 22.0.7    | Standalone + signals; typed reactive forms                                                                                                                                      |
-| `@spartan-ng/brain` + `/cli`         | 1.1.0     | Headless UI primitives (Brain); styled Helm layer copied into `libs/spartan/*` (`@trinity/helm/*`) via the CLI                                                                  |
-| `@angular/cdk`                       | 22.0.5    | Overlay/Dialog behind the helm overlays (dialog/tooltip/dropdown/sonner) + encryption modals                                                                                    |
+| `@angular/core`                      | 22.1.0    | Standalone + signals; typed reactive forms                                                                                                                                      |
+| `@spartan-ng/brain` + `/cli`         | 1.3.0     | Headless UI primitives (Brain); styled Helm layer copied into `libs/spartan/*` (`@trinity/helm/*`) via the CLI                                                                  |
+| `@angular/cdk`                       | 22.1.0    | Overlay/Dialog behind the helm overlays (dialog/tooltip/dropdown/sonner) + encryption modals                                                                                    |
 | `tailwindcss` + `tw-animate-css`     | 4.3 / 1.4 | Styling + theming (tokens & palettes in `theme/variables.scss`; wiring in `theme/spartan.css`); base reset is Tailwind preflight                                                |
-| `@ng-icons/{core,lucide}`            | 32.5.0    | Icon components (`<ng-icon name="lucide…">`) used across the UI                                                                                                                 |
+| `@ng-icons/{core,lucide}`            | 34.0.0    | Icon components (`<ng-icon name="lucide…">`) used across the UI                                                                                                                 |
 | `@capacitor/core`                    | 8.4.2     | Capacitor 8: SPM default on iOS, edge-to-edge Android                                                                                                                           |
 | `electron` + `electron-builder`      | 42 / 26   | Hand-rolled desktop shell in `electron/` (own package.json); see Electron desktop below                                                                                         |
 | `matrix-js-sdk`                      | 41.9.0    | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                                                                                                               |
@@ -22,10 +22,10 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | `@capacitor/filesystem`              | 8.1.2     | Write a downloaded attachment to cache before sharing it (native save)                                                                                                          |
 | `@capacitor/share`                   | 8.0.1     | Native OS save/share sheet for downloads (web `<a download>` fallback)                                                                                                          |
 | `@capacitor/status-bar`              | 8.0.3     | Sets the native status-bar style to match the light/dark theme                                                                                                                  |
-| `@angular/service-worker`            | 22.0.7    | PWA service worker (production web): precaches the app shell + crypto WASM for offline                                                                                          |
+| `@angular/service-worker`            | 22.1.0    | PWA service worker (production web): precaches the app shell + crypto WASM for offline                                                                                          |
 | `@capacitor/push-notifications`      | 8.1.2     | FCM/APNs device token for the Matrix pusher (see [PUSH.md](PUSH.md))                                                                                                            |
 | `matrix-encrypt-attachment`          | —         | Removed (unmaintained since 2022); ported into `@trinity/util-matrix` `attachment-crypto.ts`                                                                                    |
-| `marked`                             | 18.0.6    | Markdown → HTML for the composer/timeline                                                                                                                                       |
+| `marked`                             | 18.0.7    | Markdown → HTML for the composer/timeline                                                                                                                                       |
 | `dompurify`                          | 3.4.12    | Sanitizes `formatted_body` HTML against the Matrix allowlist — inbound **and** outbound (one config, two entry points in `message-view.ts`)                                     |
 | `@shikijs/core`                      | 4.3.1     | Syntax highlighting for fenced code. Exact pins: the three must move together, and `@shikijs/langs-precompiled` is unusable (`v`-flag regex literals vs. our Safari 16.4 floor) |
 | `@shikijs/engine-javascript`         | 4.3.1     | Shiki's pure-JS RegExp engine — chosen over the default Oniguruma WASM to avoid a second wasm asset and its loader gotcha                                                       |
@@ -34,16 +34,16 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
 > Versions moved since the original plan draft: Capacitor is on **8** (not 6); the
 > UI layer moved **off Ionic to spartan-ng** (Brain + Helm) on **Tailwind v4**; and
-> Angular is on **22.0**.
+> Angular is on **22.1**.
 
 ## Dev tooling & quality gates
 
 | Package                                           | Version       | Notes                                                                |
 | ------------------------------------------------- | ------------- | -------------------------------------------------------------------- |
-| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.1.0        | Monorepo task graph, caching, module boundaries                      |
-| `@nx/playwright` + `@playwright/test`             | 23.1.0 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium)        |
-| `vitest` + `@analogjs/*`                          | 3 / 2.6.2     | Unit tests; the Analog plugin compiles Angular for Vite              |
-| `vite`, `vite-tsconfig-paths`, `jsdom`            | 6 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env             |
+| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.1.1        | Monorepo task graph, caching, module boundaries                      |
+| `@nx/playwright` + `@playwright/test`             | 23.1.1 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium)        |
+| `vitest` + `@analogjs/*`                          | 4 / 2.6.3     | Unit tests; the Analog plugin compiles Angular for Vite              |
+| `vite`, `vite-tsconfig-paths`, `jsdom`            | 8 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env             |
 | `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 22.1 / 8  | Flat config (`eslint.config.mjs`) + module boundaries                |
 | `prettier` (+ `prettier-plugin-tailwindcss`)      | 3.9 / 0.8     | `singleQuote`; Angular parser for `*.page.html`; Tailwind class sort |
 | `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                            |
@@ -60,6 +60,22 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
   the copied Helm code is owned in-repo and customizable.
 - Bootstrap via `bootstrapApplication(...)` with `provideSpartanHlm()` (configures the
   Angular CDK overlay) + `provideRouter(routes, withPreloading(PreloadAllModules))`.
+- **Tooltips never open on touch, by design, since Brain 1.2.0.** `BrnTooltip` listens on
+  `pointerenter`/`pointerleave` behind a `pointerType === 'mouse' || 'pen'` gate (upstream
+  `93d40b7a`, "Don't leak hover events on mobile devices"); `focus`/`blur` are ungated, so
+  keyboard — and a tap that moves focus — still open it. There is **no opt-out**:
+  `BrnTooltipOptions` carries no pointer field, so `provideBrnTooltipDefaultOptions` cannot
+  restore it. Upstream's guidance is to use a popover where touch users must read the
+  content. Practical consequence for this repo: a tooltip is a supplement, never the only
+  route to something — every `hlmTooltip` site repeats its text in an `aria-label`, and the
+  one place that does not (the message-row encryption shield keeps `shield.explanation` in
+  the tooltip alone) is the one to watch.
+- **Testing a tooltip needs the PointerEvent shim.** jsdom 25 defines no `PointerEvent`, and
+  `@testing-library/dom` builds events as `window[EventType] || window.Event` — so it falls
+  back to plain `Event`, which drops `pointerType`, and the gate above rejects it. Without
+  the shim in `test-setup.base.ts` a tooltip spec fails in a way indistinguishable from the
+  bug it is testing for. Note `libs/util-matrix` does **not** import `test-setup.base.ts`,
+  so the shim is absent there.
 - Styling/theming is **Tailwind CSS v4**: all design tokens (Trinity + Helm) and colour
   palettes live in `theme/variables.scss` (the single source of truth), while `theme/spartan.css`
   is framework wiring only (Tailwind layers + the `@theme inline` map). Two orthogonal axes —
