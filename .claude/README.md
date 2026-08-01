@@ -1,40 +1,14 @@
 # `.claude/` — AI tooling for Trinity
 
-This directory configures **Claude Code** for the Trinity workspace. It holds three kinds of thing:
+This directory configures **Claude Code** for the Trinity workspace. It holds two kinds of thing:
 
-- **Agents** (`agents/`) — specialised subagents Claude can delegate a scoped task to.
 - **Skills** (`skills/`) — capability packs Claude loads on demand when a task matches their triggers.
 - **Rules** (`rules/`) — always-on conventions applied to every change.
 
 The always-loaded instructions live in [`CLAUDE.md`](../CLAUDE.md) (project) and
 [`.claude/CLAUDE.md`](CLAUDE.md) (Angular/TypeScript style guide). This file is a catalog of the
-_optional_ tooling around them — nothing here needs manual wiring; Claude selects agents and skills
-by matching the task to the descriptions below.
-
----
-
-## Agents (`agents/`)
-
-Delegate a focused, multi-step job to one of these instead of doing it inline. Each runs with its own
-model and tool set. Invoke with the `Agent` tool (or let Claude pick one).
-
-| Agent | Model | Use it when |
-| --- | --- | --- |
-| `angular-architect` | opus | Architecting enterprise Angular 15+ apps — complex state, RxJS optimisation, micro-frontends, large-codebase performance/scalability. |
-| `architect-reviewer` | inherit | Evaluating system-design decisions, architectural patterns, and technology choices at the macro level. |
-| `code-reviewer` | inherit | Comprehensive code review — code quality, security vulnerabilities, best practices. |
-| `debugger` | sonnet | Diagnosing and fixing bugs — root-cause analysis, error logs, stack traces. |
-| `dependency-manager` | haiku | Auditing dependencies for vulnerabilities, resolving version conflicts, optimising bundle size, automating updates. |
-| `devops-engineer` | opus | Infrastructure automation, CI/CD pipelines, containerisation, deployment workflows. |
-| `electron-pro` | opus | Electron desktop apps — native OS integration, cross-platform distribution, security hardening, signed/notarised installers. |
-| `frontend-developer` | opus | Building complete frontends across React, Vue, and Angular with full-stack integration. |
-| `mobile-app-developer` | opus | iOS/Android apps — native or cross-platform implementation, performance, platform-specific UX. |
-| `security-auditor` | inherit | Security audits, compliance assessments, risk evaluation, evidence-based vulnerability analysis. Read-only (`Read`/`Grep`/`Glob`). |
-| `ui-designer` | sonnet | Visual interface design, design systems, component libraries, accessibility-minded aesthetics. |
-
-> **Note:** the `frontend-developer` agent is stored in the mis-spelled file `agents/frontend-developar.md`.
-> Claude registers agents by their `name:` front-matter, so it is invoked as `frontend-developer`
-> regardless of the filename.
+_optional_ tooling around them — nothing here needs manual wiring; Claude selects skills by matching
+the task to the descriptions below.
 
 ---
 
