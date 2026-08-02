@@ -12,7 +12,7 @@ import {
   HlmAvatarFallback,
   HlmAvatarImage,
 } from '@trinity/helm/avatar';
-import { type PresenceState, presenceLabel } from '@trinity/util-matrix';
+import { type PresenceState, presenceLabel } from '@trinity/util/matrix';
 import { AVATAR_RESOLVER } from './avatar-resolver';
 
 /**

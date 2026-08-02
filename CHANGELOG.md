@@ -80,6 +80,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Library imports now mirror the directory layout.** The data-access, feature and util
+  libraries each repeated their layer in their own directory name — `libs/data-access-rooms`,
+  `libs/feature-shell`, `libs/util-matrix`. They now nest under a parent directory instead, and
+  the import path says the same thing: `@trinity/data-access/rooms`, `@trinity/feature/shell`,
+  `@trinity/util/matrix`. Nx project names are unchanged, so every `nx test data-access-rooms`
+  command and every CI job name still works. Developer-facing only — nothing in the app behaves
+  differently, though a branch opened before this will need its imports rewritten.
+
 - **The documentation has been rewritten from the code up.** `docs/` was 15 flat files that had
   drifted apart from the thing they described — one roadmap listed thirteen already-shipped
   features as still outstanding, four pages linked to a source file that no longer exists, and

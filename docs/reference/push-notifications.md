@@ -19,7 +19,7 @@ with. The other two layers are delivery mechanisms and are per-install.
 
 ### Push rules
 
-Three services in `@trinity/data-access-notifications` write push rules, and they are
+Three services in `@trinity/data-access/notifications` write push rules, and they are
 deliberately separate because they address different rule buckets.
 
 `RoomNotificationsService` maps a per-room mode onto rules. `all` is the absence of any

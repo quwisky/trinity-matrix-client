@@ -13,17 +13,17 @@ import {
 } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
-import { AvatarService } from '@trinity/data-access-media';
-import { GifSettingsService } from '@trinity/data-access-gif';
+import { AvatarService } from '@trinity/data-access/media';
+import { GifSettingsService } from '@trinity/data-access/gif';
 import {
   AccountScopeService,
   SpaceRoomOrderService,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import {
   AppBadgeService,
   PUSH_CONFIG,
   PushGatewayService,
-} from '@trinity/data-access-notifications';
+} from '@trinity/data-access/notifications';
 import {
   BUILD_INFO,
   DateTimeFormatService,
@@ -45,7 +45,7 @@ import {
 import { provideSpartanHlm } from '@trinity/helm/utils';
 
 import { routes } from './app/app.routes';
-import { AppComponent, NavigationFocusService } from '@trinity/feature-shell';
+import { AppComponent, NavigationFocusService } from '@trinity/feature/shell';
 import { environment } from './environments/environment';
 import { BUILD_INFO_VALUE } from './app/build-info';
 
@@ -156,9 +156,9 @@ bootstrapApplication(AppComponent, {
       provide: ENCRYPTION_DIALOG_COMPONENTS,
       useValue: {
         unlock: () =>
-          import('@trinity/feature-crypto').then((m) => m.EncryptionUnlockPage),
+          import('@trinity/feature/crypto').then((m) => m.EncryptionUnlockPage),
         verify: () =>
-          import('@trinity/feature-crypto').then(
+          import('@trinity/feature/crypto').then(
             (m) => m.DeviceVerificationPage,
           ),
       } satisfies EncryptionDialogLoaders,

@@ -35,7 +35,9 @@ Run `corepack enable` once; it picks up the pinned pnpm version.
 | `pnpm format` / `format:check` | Prettier write / verify (CI uses `format:check`)                      |
 
 **Single project / single test** — Vitest runs via an `nx:run-commands` target (`vitest run`,
-`cwd` = the project dir), so forward Vitest args after `--`:
+`cwd` = the project dir), so forward Vitest args after `--`. Note the argument is the **Nx
+project name**, which since the libs were nested is neither the directory nor the alias:
+`data-access-rooms` is at `libs/data-access/rooms` and imports as `@trinity/data-access/rooms`.
 
 ```bash
 pnpm exec nx test data-access-rooms                        # one project
@@ -95,18 +97,19 @@ The web build emits to root `www/` (not `dist/`), which Capacitor and Electron w
 `scope:*` tags in each `project.json`). The former monolithic `@trinity/core` was dissolved into
 typed, per-domain libs (do **not** import `@trinity/core` — it no longer exists):
 
-- `@trinity/util-matrix` `[type:util]` — pure, DI-free Matrix models/helpers (`MessageView` +
+- `@trinity/util/matrix` `[type:util]` — pure, DI-free Matrix models/helpers (`MessageView` +
   `buildMessageView`/`initialOf`/`isEditableMessage`, `MediaPayload`, `MatrixSession`, markdown/sanitize,
   `crypto-wasm-loader`, attachment-crypto). No Angular DI. Everything may depend on it.
 - `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
   preferences, theme/status-bar, launcher badge, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.
-- `@trinity/data-access-matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
+- `@trinity/data-access/matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
   the client/session foundation every domain data-access lib depends on.
-- `@trinity/data-access-*` `[type:data-access]` — one lib per Matrix domain (`-media`, `-rooms`,
-  `-timeline`, `-crypto`, `-profile`, `-invites`, `-pinned`, `-search`, `-notifications`, `-auth`).
+- `@trinity/data-access/*` `[type:data-access]` — one lib per Matrix domain (`media`, `rooms`,
+  `timeline`, `crypto`, `profile`, `invites`, `pinned`, `search`, `notifications`, `auth`, `gif`),
+  each at `libs/data-access/<domain>`.
   Cross-domain injects are inter-lib edges (search→rooms/invites, auth→media/notifications, notification→timeline).
-- `@trinity/feature-*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
+- `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
 - `@trinity/ui` + `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]` — **presentational** only; no
   state/SDK deps. Helm is `@spartan-ng/cli`-generated.
@@ -114,9 +117,9 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   `scope:matrix` (domain data-access + feature libs); the thin `apps/trinity` composes both.
 
 **The core rule: components never import `matrix-js-sdk` directly.** All SDK access is wrapped in the
-`@trinity/data-access-*` services. New SDK interaction belongs there, not in a component. This keeps the
+`@trinity/data-access/*` services. New SDK interaction belongs there, not in a component. This keeps the
 SDK swappable and the UI testable. A cross-feature dependency the boundary forbids (e.g. the encryption
-banner needing crypto status) is resolved by reading the relevant `@trinity/data-access-*` signal from the
+banner needing crypto status) is resolved by reading the relevant `@trinity/data-access/*` signal from the
 feature that owns the surface, or via a provided-loader token (`ENCRYPTION_DIALOG_COMPONENTS`, wired in
 `main.ts`) — never by importing the other feature.
 
@@ -157,7 +160,7 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
   runs lint-staged (eslint --fix + prettier); a module-boundary violation fails the commit.
 - **Cross-lib imports use `@trinity/*` aliases**; imports within a lib stay relative.
 - **Keep `data-testid` hooks** on interactive elements — the headless Playwright harnesses drive them.
-- Shared SCSS mixins live in `libs/feature-rooms/src/lib/styles/_mixins.scss`.
+- Shared SCSS mixins live in `libs/feature/rooms/src/lib/styles/_mixins.scss`.
 - **Component SCSS references design tokens** (`--trinity-*`; alert **text/icons** =
   `--trinity-danger`, a filled danger badge = `--trinity-danger-solid` +
   `--trinity-danger-solid-foreground`, on-accent text = `--trinity-accent-foreground`, which

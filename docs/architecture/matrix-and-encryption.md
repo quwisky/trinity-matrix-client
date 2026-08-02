@@ -7,11 +7,11 @@ user-facing view of encryption — what a recovery key is, what the shields mean
 in [encryption](../users/encryption.md).
 
 Everything described here sits in two libraries:
-[`libs/data-access-matrix-client`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access-matrix-client)
+[`libs/data-access/matrix-client`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access/matrix-client)
 (client lifecycle, registry, 4S key holder, token refresher) and
-[`libs/data-access-crypto`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access-crypto)
+[`libs/data-access/crypto`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access/crypto)
 (the crypto flows), with the DI-free primitives in
-[`libs/util-matrix`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/util-matrix)
+[`libs/util/matrix`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/util/matrix)
 and the storage backends in
 [`libs/platform-native`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/platform-native).
 
@@ -41,18 +41,18 @@ repo breaks at once.
 
 !!! warning "Components never import matrix-js-sdk"
 
-    All SDK access is wrapped in the `@trinity/data-access-*` services. This is enforced
+    All SDK access is wrapped in the `@trinity/data-access/*` services. This is enforced
     by Nx module boundaries, and it is what keeps the SDK swappable and the UI testable.
     See [libraries](libraries.md).
 
 ## MatrixClientService is a registry, not a wrapper
 
-[`MatrixClientService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-matrix-client/src/lib/matrix-client.service.ts)
+[`MatrixClientService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/matrix-client.service.ts)
 holds a `Map<userId, AccountClient>`. Every signed-in account has its own live
 `MatrixClient` and all of them sync concurrently; exactly one is marked **active**, and
 `instance` returns the active account's client. That is the design decision that let
-multi-account land without touching the ~78 call sites that read `this.matrix.instance`:
-they stay scoped to whichever account is in view, for free.
+multi-account land without touching the roughly 110 call sites that read
+`this.matrix.instance`: they stay scoped to whichever account is in view, for free.
 
 Each `AccountClient` carries the per-account state that teardown needs later:
 
@@ -98,7 +98,7 @@ failing ghost it is marked `softLoggedOut` and offered for re-auth.
 ### Projecting SDK events into signals
 
 Every service that bridges SDK events into signals goes through
-[`projectFromClient`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-matrix-client/src/lib/project-from-client.ts),
+[`projectFromClient`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/project-from-client.ts),
 which decides three things once so no service re-derives them: coalescing a sync burst
 into a single microtask-deferred rebuild, keying the connection to the **client instance**
 rather than a boolean, and re-projecting onto the newly-active client when
@@ -210,7 +210,7 @@ the homeserver step, and passes the stored `deviceId` into the login call as `de
 Olm store, cross-signing trust and message keys intact.
 
 The IndexedDB names the SDK derives from a prefix live in exactly one file,
-[`rust-crypto-store.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/rust-crypto-store.ts):
+[`rust-crypto-store.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/rust-crypto-store.ts):
 `${base}::matrix-sdk-crypto` and `${base}::matrix-sdk-crypto-meta`, where `base` falls
 back to the SDK's own `matrix-js-sdk` default. Three call sites depend on that convention
 — the logout wipe, the device-change reclaim, and the cold-start sweep — so it is defined
@@ -295,7 +295,7 @@ its own bundled JS. Angular's esbuild does not emit that file as an asset, so th
    }
    ```
 
-2. [`preloadCryptoWasm()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/crypto-wasm-loader.ts)
+2. [`preloadCryptoWasm()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/crypto-wasm-loader.ts)
    calls `initAsync` with an explicit URL against that path:
 
    ```ts
@@ -322,7 +322,7 @@ is available offline on the production web build.
 
 ## Secret storage and the key holder
 
-[`SecretStorageKeyHolder`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-matrix-client/src/lib/secret-storage-key-holder.ts)
+[`SecretStorageKeyHolder`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/secret-storage-key-holder.ts)
 is a plain class, deliberately not `@Injectable`. One is constructed per `AccountClient`
 inside `start()` and wired straight into that client's crypto callbacks:
 
@@ -378,14 +378,15 @@ It is driven by a coalesced `projectFromClient` bound to `CryptoEvent.KeysChange
 during initial sync and after a key query, and each previously ran a full status recompute
 — several async crypto reads — on its own.
 
-`CryptoStatus` is what the encryption banner reads. That banner lives in `feature-rooms`,
-not `feature-crypto`, because the module boundary forbids a feature-to-feature dependency;
-it reads the signal from `@trinity/data-access-crypto` directly.
+`CryptoStatus` is what the encryption banner reads. That banner lives in
+`@trinity/feature/rooms`, not `@trinity/feature/crypto`, because the module boundary
+forbids a feature-to-feature dependency; it reads the signal from
+`@trinity/data-access/crypto` directly.
 
 ## Setup and recovery
 
 Three flows, all in
-[`CryptoService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-crypto/src/lib/crypto.service.ts).
+[`CryptoService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/crypto/src/lib/crypto.service.ts).
 
 ### First device
 
@@ -448,7 +449,7 @@ the backup once it is enabled, and the bulk download can take hours.
     later never replaces them and the device stays untrusted forever. The user types the
     correct recovery key, the flow reports success, and the status stays `needs-recovery`.
 
-    [`cross-signing-repair.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-crypto/src/lib/cross-signing-repair.ts)
+    [`cross-signing-repair.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/crypto/src/lib/cross-signing-repair.ts)
     detects it narrowly — all three privates cached locally **and** present in secret
     storage **and** `!isCrossSigningReady()`. The `!isCrossSigningReady()` test alone is
     far too wide; it matches every ordinary unverified device. The repair reads the three
@@ -462,7 +463,7 @@ the backup once it is enabled, and the bulk download can take hours.
 
 The last resort, for someone who has lost their recovery key and has no other verified
 device.
-[`runRecoveryReset`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-crypto/src/lib/recovery-reset.ts)
+[`runRecoveryReset`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/crypto/src/lib/recovery-reset.ts)
 is a hand-written replacement for `CryptoApi.resetEncryption`.
 
 !!! danger "Why CryptoApi.resetEncryption is not used"
@@ -574,7 +575,7 @@ secured and nothing ever prompts a fix.
 ## Shared password UIA
 
 `runPasswordUia(makeRequest, promptPassword, userId, opts?)` in
-[`password-uia.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/password-uia.ts)
+[`password-uia.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/password-uia.ts)
 probes unauthenticated first (many servers complete without UIA), then on a 401 carrying
 `flows` and `session` prompts and retries with an `m.login.password` auth dict, up to three
 attempts. Three distinct error types exist because callers act on them differently:
@@ -591,7 +592,7 @@ device sign-out, and change-password.
 
 ## Verification and shields
 
-[`VerificationService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-crypto/src/lib/verification.service.ts)
+[`VerificationService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/crypto/src/lib/verification.service.ts)
 wraps the SDK's `VerificationRequest` and `Verifier` behind a single `active` signal.
 Method is `m.sas.v1`, for both self-verification (`requestOwnUserVerification`) and
 cross-user verification (`requestVerificationDM`, launched from the member-info panel).
@@ -602,13 +603,14 @@ The `sasConfirmed` flag on the view model is **local**, because the SDK's phase 
 instead of waiting for the other side; a rejected `confirm()` flips it back so nobody is
 stuck waiting on a MAC that never sent.
 
-Presentation is split. `VerificationHostComponent` in `feature-shell` renders nothing and
-owns `connect()`, presenting a modal for any verification the route does not own —
-`active.incoming || !active.isSelfVerification`. An outgoing _self_-verification belongs to
-`/encryption/verify`. The modal component is resolved through the
-`ENCRYPTION_DIALOG_COMPONENTS` token so `feature-shell` never imports `feature-crypto`.
+Presentation is split. `VerificationHostComponent` in `@trinity/feature/shell` renders
+nothing and owns `connect()`, presenting a modal for any verification the route does not
+own — `active.incoming || !active.isSelfVerification`. An outgoing _self_-verification
+belongs to `/encryption/verify`. The modal component is resolved through the
+`ENCRYPTION_DIALOG_COMPONENTS` token so `@trinity/feature/shell` never imports
+`@trinity/feature/crypto`.
 
-[`shields.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-timeline/src/lib/shields.ts)
+[`shields.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/timeline/src/lib/shields.ts)
 is the single mapping from `getEncryptionInfoForEvent` to a `MessageShield`, shared by
 `TimelineService` and `ThreadsService` so the main timeline and the thread panel agree.
 
@@ -622,9 +624,9 @@ is the single mapping from `getEncryptionInfoForEvent` to a `MessageShield`, sha
 
 ## Attachment and key-file crypto
 
-Both live in `util-matrix`, in-tree rather than as dependencies.
+Both live in `@trinity/util/matrix`, in-tree rather than as dependencies.
 
-[`attachment-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/attachment-crypto.ts)
+[`attachment-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/attachment-crypto.ts)
 is a faithful port of Matrix.org's `matrix-encrypt-attachment` (Apache-2.0). It is inlined
 because that package has had no release since 2022 and the scheme is frozen by spec — there
 is nothing to track, and a security-sensitive primitive stays auditable in-tree with no
@@ -641,7 +643,7 @@ encrypts the client-generated thumbnail under its own independent key, IV and ha
 thumbnail is the only one an encrypted room can show, since the server cannot scale an
 encrypted original.
 
-[`key-file-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/key-file-crypto.ts)
+[`key-file-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/key-file-crypto.ts)
 implements the interoperable Matrix megolm export, the same `.txt` Element reads and
 writes:
 

@@ -34,8 +34,8 @@ readonly totalUnread = computed(() =>
 ```
 
 The writable signal is private, the readable one is exposed, and derived values are `computed`.
-Nothing outside the service can write. There are 63 `asReadonly()` exposures and 168 `computed()`
-calls across the libraries.
+Nothing outside the service can write. There are 63 `asReadonly()` exposures and 218 `computed()`
+declarations across `libs/`.
 
 The action half is always cold, so nothing happens until someone subscribes, and always resolves
 its client at subscribe time rather than at construction time:
@@ -90,7 +90,7 @@ It also means unit tests need a zoneless-aware render helper. Import `render` fr
 
 Every projecting service has to get the same three things right, and each one was independently
 re-derived — and sometimes mis-derived — before they were extracted into one primitive,
-[`projectFromClient()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-matrix-client/src/lib/project-from-client.ts).
+[`projectFromClient()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/project-from-client.ts).
 
 1. **Coalescing.** A completed `/sync` emits many events at once. Rebuilding an O(rooms) read model
    and re-sorting it once per event is waste.
@@ -164,7 +164,7 @@ primitive's own doc comment says new code should not copy them.
 
 ## coalesce
 
-[`coalesce(fn)`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-matrix-client/src/lib/coalesce.ts)
+[`coalesce(fn)`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/coalesce.ts)
 returns `{ schedule(), cancel(), pending() }` and queues `fn` on `queueMicrotask`. Two details in it
 are load-bearing and easy to lose when reimplementing it by hand, which is why it is a shared
 function rather than a described convention:
@@ -214,15 +214,20 @@ multi-account design.
 
 Seven services take the full `projectFromClient`:
 
-| Service               | Library               |
-| --------------------- | --------------------- |
-| `RoomsService`        | `data-access-rooms`   |
-| `SpacesService`       | `data-access-rooms`   |
-| `InvitesService`      | `data-access-invites` |
-| `CryptoService`       | `data-access-crypto`  |
-| `VerificationService` | `data-access-crypto`  |
-| `DevicesService`      | `data-access-crypto`  |
-| `PresenceService`     | `data-access-profile` |
+| Service               | Library                        |
+| --------------------- | ------------------------------ |
+| `RoomsService`        | `@trinity/data-access/rooms`   |
+| `SpacesService`       | `@trinity/data-access/rooms`   |
+| `InvitesService`      | `@trinity/data-access/invites` |
+| `CryptoService`       | `@trinity/data-access/crypto`  |
+| `VerificationService` | `@trinity/data-access/crypto`  |
+| `DevicesService`      | `@trinity/data-access/crypto`  |
+| `PresenceService`     | `@trinity/data-access/profile` |
+
+The library column is the import alias, and it mirrors the directory:
+`@trinity/data-access/rooms` is `libs/data-access/rooms`. The Nx project name is the third
+string and keeps the flat hyphenated form, so the command stays
+`pnpm exec nx test data-access-rooms`.
 
 Six take **only** `coalesce()`, and each says why at the call site. The split is not arbitrary — it
 follows from what the service's lifetime is keyed to:
@@ -245,7 +250,7 @@ The rule to apply when writing a new service: if your listeners follow _the acti
 
 ## A worked example: RoomsService
 
-[`RoomsService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-rooms/src/lib/rooms.service.ts)
+[`RoomsService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/rooms/src/lib/rooms.service.ts)
 is the reference implementation, and the annotations in it are the actual documentation for the
 awkward cases.
 
@@ -339,8 +344,8 @@ does not re-run on every read receipt), and coalesce it when the events are per-
 `PinnedMessagesService` does — a bump per backfilled event is the difference between per-message
 and per-turn work in a busy room.
 
-The other recorded strain is the rooms shell itself. `libs/feature-rooms/src/lib/rooms/rooms.page.ts`
-is over 2,000 lines with more than forty `inject()` calls and eight selection and UI signals, well
+The other recorded strain is the rooms shell itself. `libs/feature/rooms/src/lib/rooms/rooms.page.ts`
+is over 2,000 lines with more than forty `inject()` calls and ten selection and UI signals, well
 past the workspace's own refactor threshold. It is also the single place the client projections are
 started — `ngOnInit` calls `connect()` on rooms, spaces, invites, crypto, presence and
 notifications — so read it before adding another projection to the shell.

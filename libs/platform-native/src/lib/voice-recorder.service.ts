@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { WAVEFORM_BUCKETS, downsampleWaveform } from '@trinity/util-matrix';
+import { WAVEFORM_BUCKETS, downsampleWaveform } from '@trinity/util/matrix';
 
 /** A finished recording: the encoded audio plus its duration and waveform. */
 export interface VoiceRecording {

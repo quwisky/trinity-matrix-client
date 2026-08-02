@@ -9,15 +9,33 @@ Libraries are imported through `@trinity/*` path aliases declared in
 [`tsconfig.base.json`](https://github.com/quwisky/trinity-matrix-client/blob/develop/tsconfig.base.json),
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
+`libs/` itself has seven entries. Three are layer parents holding that layer's libraries:
+`data-access/` (12), `feature/` (5) and `util/` (1). `spartan/` (17) groups the Helm components and
+the overlay adapters. The remaining three are single libraries sitting directly under `libs/`:
+`platform-native`, `testing` and `ui`.
+
+A library answers to three different strings, and they are not interchangeable. The directories
+were nested without renaming the Nx projects, so for the rooms data-access library:
+
+| What            | Value                        | Declared in                            |
+| --------------- | ---------------------------- | -------------------------------------- |
+| Nx project name | `data-access-rooms`          | `name` in the library's `project.json` |
+| Directory       | `libs/data-access/rooms`     | the filesystem                         |
+| Import alias    | `@trinity/data-access/rooms` | `paths` in `tsconfig.base.json`        |
+
+Nx takes the project name, so `pnpm exec nx test data-access-rooms` is still the command to run
+that library's specs and nothing about the move changed it. Source code takes the alias. In the
+tables below, the `Library` column is the directory and the `Alias` column is what you import.
+
 ## Utility libraries
 
 Pure code with no Angular dependency injection. `type:util` may depend only on other `type:util`
 libraries, which in practice means npm packages and nothing else in the workspace.
 
-| Library            | Alias                  | Tags                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------ | ---------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/util-matrix` | `@trinity/util-matrix` | `type:util`, `scope:shared` | 25 DI-free modules: the `MessageView` model and its builders, day separators, date formatting, edit history and diffing, timeline-event helpers, media and session models, the Rust crypto store naming, presence, message content, markdown editing, voice, typing, `matrix.to` links, polls, transient-error classification, password UIA, attachment and key-file crypto, authenticated media, room avatars, room creation, room state, and the crypto WASM loader |
-| `libs/testing`     | `@trinity/testing`     | `type:util`, `scope:shared` | One export: the zoneless-safe `render()` wrapper every component spec must use. See [testing](../contributing/testing.md)                                                                                                                                                                                                                                                                                                                                             |
+| Library            | Alias                  | Tags                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------ | ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs/util/matrix` | `@trinity/util/matrix` | `type:util`, `scope:shared` | 26 DI-free modules: the `MessageView` model and its builders, day separators, date formatting, edit history and diffing, timeline-event helpers, media and session models, the Rust crypto store naming, presence, message content, markdown editing, voice, typing, `matrix.to` links, polls, transient-error classification, password UIA, attachment and key-file crypto, authenticated media, room avatars, room creation, room state, the Shiki code highlighter, and the crypto WASM loader |
+| `libs/testing`     | `@trinity/testing`     | `type:util`, `scope:shared` | One export: the zoneless-safe `render()` wrapper every component spec must use. See [testing](../contributing/testing.md)                                                                                                                                                                                                                                                                                                                                                                         |
 
 `libs/testing` is the one project in the workspace whose `project.json` declares `"targets": {}`.
 It picks up an inferred `lint` target from the `@nx/eslint` plugin, but it has no `test` target at
@@ -34,27 +52,30 @@ depend on `util` and nothing else, which is why it holds no Matrix knowledge.
 
 ## Data-access libraries
 
-One library per Matrix domain. These are the only places `matrix-js-sdk` is imported, apart from
-`util-matrix`. All are `scope:matrix` except `data-access-matrix-client`.
+One library per Matrix domain. Apart from `libs/util/matrix`, which models the SDK's types, these
+are the only places `matrix-js-sdk` is imported — eleven of the twelve do, `libs/data-access/gif`
+being the exception. All are tagged `scope:matrix` except `data-access-matrix-client`, which is
+`scope:shared`.
 
 | Library                          | Alias                                | Tags                                   | Purpose                                                                                                                                                                                                                                       |
 | -------------------------------- | ------------------------------------ | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/data-access-matrix-client` | `@trinity/data-access-matrix-client` | `type:data-access`, **`scope:shared`** | The client and session foundation: `MatrixClientService` (a registry of concurrently syncing accounts), `SecretStorageKeyHolder`, and the three projection primitives `projectFromClient`, `coalesce` and `reprojectOnAccountSwitch`          |
-| `libs/data-access-auth`          | `@trinity/data-access-auth`          | `type:data-access`, `scope:matrix`     | Login, legacy SSO, OIDC-native authentication, logout and account switching, plus `authGuard`                                                                                                                                                 |
-| `libs/data-access-crypto`        | `@trinity/data-access-crypto`        | `type:data-access`, `scope:matrix`     | `CryptoService` (4S, cross-signing and key-backup status), `VerificationService` (emoji SAS), `DevicesService`, and the dev-only `CryptoSpikeService`                                                                                         |
-| `libs/data-access-gif`           | `@trinity/data-access-gif`           | `type:data-access`, `scope:matrix`     | Tenor and Giphy search plus the provider settings. Notably imports no other `@trinity` library                                                                                                                                                |
-| `libs/data-access-invites`       | `@trinity/data-access-invites`       | `type:data-access`, `scope:matrix`     | Incoming room invites, and the mixed-account variant                                                                                                                                                                                          |
-| `libs/data-access-media`         | `@trinity/data-access-media`         | `type:data-access`, `scope:matrix`     | `MediaService` for encrypted attachments, and `AvatarService`                                                                                                                                                                                 |
-| `libs/data-access-notifications` | `@trinity/data-access-notifications` | `type:data-access`, `scope:matrix`     | Web and OS notifications, push registration, the push gateway, the app badge, per-room notification settings, push rules and keyword rules                                                                                                    |
-| `libs/data-access-pinned`        | `@trinity/data-access-pinned`        | `type:data-access`, `scope:matrix`     | Pinned messages for the open room                                                                                                                                                                                                             |
-| `libs/data-access-profile`       | `@trinity/data-access-profile`       | `type:data-access`, `scope:matrix`     | Profile, presence and ignored users                                                                                                                                                                                                           |
-| `libs/data-access-rooms`         | `@trinity/data-access-rooms`         | `type:data-access`, `scope:matrix`     | The largest domain library: the room list, spaces, space children and per-space ordering, room settings, moderation and aliases, the public-room directory, the account scope, the three mixed-account projections, and the unread aggregator |
-| `libs/data-access-search`        | `@trinity/data-access-search`        | `type:data-access`, `scope:matrix`     | Quick-switcher ranking, directory search and in-room message search                                                                                                                                                                           |
-| `libs/data-access-timeline`      | `@trinity/data-access-timeline`      | `type:data-access`, `scope:matrix`     | `TimelineService`, `ThreadsService`, URL previews and edit history                                                                                                                                                                            |
+| `libs/data-access/matrix-client` | `@trinity/data-access/matrix-client` | `type:data-access`, **`scope:shared`** | The client and session foundation: `MatrixClientService` (a registry of concurrently syncing accounts), `SecretStorageKeyHolder`, and the three projection primitives `projectFromClient`, `coalesce` and `reprojectOnAccountSwitch`          |
+| `libs/data-access/auth`          | `@trinity/data-access/auth`          | `type:data-access`, `scope:matrix`     | Login, legacy SSO, OIDC-native authentication, logout and account switching, plus `authGuard`                                                                                                                                                 |
+| `libs/data-access/crypto`        | `@trinity/data-access/crypto`        | `type:data-access`, `scope:matrix`     | `CryptoService` (4S, cross-signing and key-backup status), `VerificationService` (emoji SAS), `DevicesService`, and the dev-only `CryptoSpikeService`                                                                                         |
+| `libs/data-access/gif`           | `@trinity/data-access/gif`           | `type:data-access`, `scope:matrix`     | Tenor and Giphy search plus the provider settings. Notably imports no other `@trinity` library                                                                                                                                                |
+| `libs/data-access/invites`       | `@trinity/data-access/invites`       | `type:data-access`, `scope:matrix`     | Incoming room invites, and the mixed-account variant                                                                                                                                                                                          |
+| `libs/data-access/media`         | `@trinity/data-access/media`         | `type:data-access`, `scope:matrix`     | `MediaService` for encrypted attachments, and `AvatarService`                                                                                                                                                                                 |
+| `libs/data-access/notifications` | `@trinity/data-access/notifications` | `type:data-access`, `scope:matrix`     | Web and OS notifications, push registration, the push gateway, the app badge, per-room notification settings, push rules and keyword rules                                                                                                    |
+| `libs/data-access/pinned`        | `@trinity/data-access/pinned`        | `type:data-access`, `scope:matrix`     | Pinned messages for the open room                                                                                                                                                                                                             |
+| `libs/data-access/profile`       | `@trinity/data-access/profile`       | `type:data-access`, `scope:matrix`     | Profile, presence and ignored users                                                                                                                                                                                                           |
+| `libs/data-access/rooms`         | `@trinity/data-access/rooms`         | `type:data-access`, `scope:matrix`     | The largest domain library: the room list, spaces, space children and per-space ordering, room settings, moderation and aliases, the public-room directory, the account scope, the three mixed-account projections, and the unread aggregator |
+| `libs/data-access/search`        | `@trinity/data-access/search`        | `type:data-access`, `scope:matrix`     | Quick-switcher ranking, directory search and in-room message search                                                                                                                                                                           |
+| `libs/data-access/timeline`      | `@trinity/data-access/timeline`      | `type:data-access`, `scope:matrix`     | `TimelineService`, `ThreadsService`, URL previews and edit history                                                                                                                                                                            |
 
 Data-access libraries may depend on one another, and several do. The real edges today are
 `notifications → rooms, timeline`, `search → rooms, invites`, `timeline → media`, and
-`auth → media, notifications`. Every one of them also depends on `data-access-matrix-client`.
+`auth → media, notifications`. Every domain library except `data-access-gif` also depends on
+`data-access-matrix-client`.
 
 !!! warning "data-access-matrix-client is scope:shared on purpose"
 
@@ -70,11 +91,11 @@ Screens and pages. `type:feature` may not depend on another `type:feature`; see
 
 | Library                 | Alias                       | Tags                           | Purpose                                                                                                                                                                                           |
 | ----------------------- | --------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/feature-shell`    | `@trinity/feature-shell`    | `type:feature`, `scope:matrix` | The application shell: `AppComponent`, `VerificationHostComponent`, `NavigationFocusService`                                                                                                      |
-| `libs/feature-auth`     | `@trinity/feature-auth`     | `type:feature`, `scope:matrix` | `LoginPage` and `SsoCallbackPage`                                                                                                                                                                 |
-| `libs/feature-crypto`   | `@trinity/feature-crypto`   | `type:feature`, `scope:matrix` | `EncryptionSetupPage`, `EncryptionUnlockPage`, `DeviceVerificationPage`                                                                                                                           |
-| `libs/feature-rooms`    | `@trinity/feature-rooms`    | `type:feature`, `scope:matrix` | The entire chat surface, across 44 component directories: the rooms shell, sidebar and server rail, message list, composer, threads, reactions, polls, media, search, member and space management |
-| `libs/feature-settings` | `@trinity/feature-settings` | `type:feature`, `scope:matrix` | Exports only `settingsRoutes`; the settings shell and its eleven sections are internal routing targets                                                                                            |
+| `libs/feature/shell`    | `@trinity/feature/shell`    | `type:feature`, `scope:matrix` | The application shell: `AppComponent`, `VerificationHostComponent`, `NavigationFocusService`                                                                                                      |
+| `libs/feature/auth`     | `@trinity/feature/auth`     | `type:feature`, `scope:matrix` | `LoginPage` and `SsoCallbackPage`                                                                                                                                                                 |
+| `libs/feature/crypto`   | `@trinity/feature/crypto`   | `type:feature`, `scope:matrix` | `EncryptionSetupPage`, `EncryptionUnlockPage`, `DeviceVerificationPage`                                                                                                                           |
+| `libs/feature/rooms`    | `@trinity/feature/rooms`    | `type:feature`, `scope:matrix` | The entire chat surface, across 44 component directories: the rooms shell, sidebar and server rail, message list, composer, threads, reactions, polls, media, search, member and space management |
+| `libs/feature/settings` | `@trinity/feature/settings` | `type:feature`, `scope:matrix` | Exports only `settingsRoutes`; the settings shell and its eleven sections are internal routing targets                                                                                            |
 
 `feature-settings` is worth copying as a pattern. Its public surface is a route table, not a set of
 components, so nothing outside the library can accidentally import one of its sections and pull it
@@ -112,20 +133,24 @@ components, all tagged `type:ui`, `scope:shared`, all with the `hlm` selector pr
 | `libs/spartan/tooltip`       | `@trinity/helm/tooltip`       |
 | `libs/spartan/utils`         | `@trinity/helm/utils`         |
 
-Note the mismatch: the alias namespace is `@trinity/helm/*`, the directory is `libs/spartan/*`.
+These are the widest case of the three-way naming split described above: the directory is
+`libs/spartan/*`, the alias namespace is `@trinity/helm/*`, and the Nx project name is the bare
+component name. The button library lives at `libs/spartan/button`, is imported as
+`@trinity/helm/button`, and is built with `nx build button`.
+
 `libs/spartan/overlay` is the exception in that group — it is hand-written Trinity code with the
 `trn` prefix and no ng-package, not generated Helm. Regenerating or adding Helm components goes
 through the CLI; see [UI and theming](ui-and-theming.md).
 
 ## The two secondary entry points
 
-Almost every alias points at a library's barrel, `libs/<name>/src/index.ts`. Two point at a single
-file instead, and both exist for a bundling reason rather than a stylistic one.
+Almost every alias points at a library's barrel, its `src/index.ts`. Two point at a single file
+instead, and both exist for a bundling reason rather than a stylistic one.
 
 | Alias                                 | Target                                       | Why it bypasses the barrel                                                                                                                                                                                                                                           |
 | ------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@trinity/util-matrix/code-highlight` | `libs/util-matrix/src/lib/code-highlight.ts` | `message-view.ts` is in the eager chunk, and a barrel export would drag every Shiki grammar in with it. The module self-registers via `setCodeHighlighter()` when evaluated, so the render path stays synchronous; the lazily loaded rooms route is what pulls it in |
-| `@trinity/feature-shell/home-page`    | `libs/feature-shell/src/lib/home.page.ts`    | `main.ts` imports the `feature-shell` barrel eagerly for `AppComponent`, so re-exporting the dev-only E2EE spike harness would ship it, and `CryptoSpikeService` with it, in production                                                                              |
+| `@trinity/util/matrix/code-highlight` | `libs/util/matrix/src/lib/code-highlight.ts` | `message-view.ts` is in the eager chunk, and a barrel export would drag every Shiki grammar in with it. The module self-registers via `setCodeHighlighter()` when evaluated, so the render path stays synchronous; the lazily loaded rooms route is what pulls it in |
+| `@trinity/feature/shell/home-page`    | `libs/feature/shell/src/lib/home.page.ts`    | `main.ts` imports the `feature-shell` barrel eagerly for `AppComponent`, so re-exporting the dev-only E2EE spike harness would ship it, and `CryptoSpikeService` with it, in production                                                                              |
 
 Nothing enforces either exclusion. Both barrels carry a comment explaining it, and that comment is
 the only guard. Before adding an export to a barrel that the app imports eagerly, check what it

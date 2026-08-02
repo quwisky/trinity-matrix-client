@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "feature-settings",
+  "projectType": "library",
+  "sourceRoot": "libs/feature/settings/src",
+  "prefix": "trn",
+  "tags": ["type:feature", "scope:matrix"],
+  "targets": {
+    "test": {}
+  }
+}

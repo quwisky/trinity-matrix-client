@@ -13,7 +13,7 @@ once.
 | Brain         | `@spartan-ng/brain` 1.3.0 in `node_modules`, plus `@angular/cdk` 22.1.0 | Headless primitives: behaviour, accessibility, positioning. No styling. |
 | Helm          | `libs/spartan/*`, aliased `@trinity/helm/*`                             | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
 | `@trinity/ui` | `libs/ui`                                                               | Trinity's own presentational components and small UI utilities.         |
-| Features      | `libs/feature-*`                                                        | Screens and the components that make them up.                           |
+| Features      | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
 
 Seventeen Helm libraries are installed: avatar, badge, button, card, checkbox,
 dropdown-menu, input, label, overlay, progress, radio-group, select, sonner, spinner,
@@ -101,7 +101,7 @@ message-search panels use, sized `w-screen md:w-[480px]` so they go full-screen 
     one that forgets renders as text floating over the timeline — easy to miss in review,
     because the layout is correct in isolation and only the background is wrong. Use the
     `dialog-surface($width)` mixin from
-    [`_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature-rooms/src/lib/styles/_mixins.scss).
+    [`_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/styles/_mixins.scss).
 
     **`autoFocus` defaults to CDK's `'first-tabbable'`**, which is wrong for any dialog whose
     header carries a Cancel or Close button ahead of the field the user came to type in — the
@@ -319,7 +319,7 @@ without a specificity war.
 Eight roles colour fenced code blocks, consumed from exactly one place —
 `rendered-markdown.scss`, on the `tok-*` classes the highlighter emits. The role names must
 stay in step with `TOKEN_ROLES` in
-[`code-highlight.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/code-highlight.ts).
+[`code-highlight.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/code-highlight.ts).
 
 The backdrop is `--trinity-rail`, not the chat canvas — that is the `pre` background — and
 every value clears 4.5:1 against it in both shipped palettes (worst case 4.61:1 light,
@@ -333,9 +333,9 @@ A new palette inherits all eight, and nothing checks them. If your rail departs 
 
 Highlighting itself is Shiki with thirteen statically imported grammars — roughly 813 KB raw
 and 134 kB gzipped. The module is reachable **only** through the
-`@trinity/util-matrix/code-highlight` path alias and is imported for side effect at the top
+`@trinity/util/matrix/code-highlight` path alias and is imported for side effect at the top
 of `rooms.page.ts`, so the grammars land in the lazy rooms chunk. Exporting it from the
-`@trinity/util-matrix` barrel would drag every grammar into the eager bundle, because
+`@trinity/util/matrix` barrel would drag every grammar into the eager bundle, because
 `message-view.ts` consumes the highlighter and sits there.
 
 ## Adding a palette
@@ -416,7 +416,7 @@ attribute at all.
     a fallback are safe, since they render the fallback.
 
     Running that check today finds one live instance:
-    `libs/feature-rooms/src/lib/account-picker/account-picker.component.scss` uses
+    `libs/feature/rooms/src/lib/account-picker/account-picker.component.scss` uses
     `var(--trinity-radius-lg)`, which `variables.scss` does not define — the mobile
     account-picker dialog renders with square corners. The base 8px token is
     `--trinity-radius`. Note that `spartan.css` *does* define a Tailwind `--radius-lg`, which
@@ -452,7 +452,7 @@ so it cannot be selected, copied, or picked up by the edit-history diff.
 ## The HTML allowlist
 
 One DOMPurify configuration in
-[`message-view.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/message-view.ts)
+[`message-view.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/message-view.ts)
 serves both directions — incoming render and outgoing send.
 
 - `MATRIX_ALLOWED_TAGS` is the Matrix specification list.
@@ -474,7 +474,7 @@ too.
 
 ### Three deliberate outgoing rewrites
 
-[`message-content.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/message-content.ts)
+[`message-content.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/message-content.ts)
 overrides three `marked` renderers, each for a stated reason:
 
 | Rewrite                                                    | Why                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -491,7 +491,7 @@ overrides three `marked` renderers, each for a stated reason:
 - Each component lives in its own directory as `name/name.component.ts` plus `.html`, `.scss`
   and `.spec.ts`.
 - Shared SCSS mixins live in
-  [`libs/feature-rooms/src/lib/styles/_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature-rooms/src/lib/styles/_mixins.scss):
+  [`libs/feature/rooms/src/lib/styles/_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/styles/_mixins.scss):
   `ellipsis`, `category-label`, `profile-card`, `dialog-surface($width)`, `column($bg)`,
   `interactive-row`, `scrollable`.
 - Component SCSS references design tokens. Never hardcode a colour, or it will not re-theme
@@ -501,7 +501,7 @@ More on the workspace-wide rules is in [conventions](../contributing/conventions
 
 ## Overlay presentation
 
-Nearly every dialog in `feature-rooms` follows the same shape: a thin `*Service` owns
+Nearly every dialog in `@trinity/feature/rooms` follows the same shape: a thin `*Service` owns
 presentation and resolves a value, and the page performs the action. `UserPickerService`
 resolves an MXID and never invites anyone itself; `QuickSwitcherService` resolves a
 selection; `MessageSearchService`, `PinnedPanelService` and `EditHistoryDialogService` each

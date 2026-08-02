@@ -5,7 +5,7 @@ import {
   MatrixSession,
   isRustCryptoStoreDbName,
   rustCryptoStoreDbNames,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import { SecureStorageService } from './secure-storage.service';
 
 /**

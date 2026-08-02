@@ -1,9 +1,15 @@
 # Architecture overview
 
 Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 38
-libraries under `libs/`. Web, iOS, Android and desktop are all the same compiled bundle wrapped
+libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/` and
+`libs/util/`, alongside `libs/platform-native`, `libs/ui`, `libs/testing` and the `libs/spartan/`
+Helm components. Web, iOS, Android and desktop are all the same compiled bundle wrapped
 differently, so there is no per-platform source tree — platform differences are branches inside
 `libs/platform-native`, not forks of the app.
+
+Names like `data-access-rooms` on this page are Nx project names, which is what `nx` commands take.
+A library's directory and its import alias are two further, different strings; see
+[the library inventory](libraries.md) for the mapping.
 
 `nx.json` sets `"defaultBase": "develop"`, so `nx affected` diffs against `develop` rather than
 `main`.
@@ -15,14 +21,15 @@ differently, so there is no per-platform source tree — platform differences ar
 | File                                                                       | What it is                                                            |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | `main.ts`                                                                  | `bootstrapApplication` plus the provider and initializer manifest     |
-| `app/app.routes.ts`                                                        | The eight top-level routes                                            |
+| `app/app.routes.ts`                                                        | The eight top-level routes, plus a development-only ninth             |
 | `app/build-info.ts`                                                        | Generated at build time by the `build-info` target, and git-ignored   |
 | `environments/environment.ts`, `environment.prod.ts`                       | Build-time configuration                                              |
 | `polyfills.ts`                                                             | Comment-only; it exists to record that zone.js is deliberately absent |
+| `test-setup.ts`                                                            | One line; it imports the workspace-root `test-setup.base.ts`          |
 | `index.html`, `global.scss`, `theme/`, `rendered-markdown.scss`, `assets/` | Shell markup, styles and static assets                                |
 
 The application shell itself — `AppComponent`, `VerificationHostComponent`,
-`NavigationFocusService` — lives in `libs/feature-shell`. Moving it out of the app is what makes
+`NavigationFocusService` — lives in `libs/feature/shell`. Moving it out of the app is what makes
 the app project a composition root rather than a sixth feature library: everything that can be
 tested in isolation lives in a library, and the app only wires those libraries together.
 
@@ -44,7 +51,7 @@ declared once at `eslint.config.mjs`.
 | `type:data-access` | `data-access`, `util`, `platform`                  | Domain services may fan out sideways to each other, but never up into a screen               |
 | `type:ui`          | `ui`, `util`, `platform`                           | Presentational only. A `ui` component can never reach a service                              |
 | `type:platform`    | `platform`, `util`                                 | Capability wrappers sit below everything except pure code                                    |
-| `type:util`        | `util`                                             | Pure, DI-free code. `util-matrix` may depend on npm packages and nothing else                |
+| `type:util`        | `util`                                             | Pure, DI-free code. `libs/util/matrix` may depend on npm packages and nothing else           |
 
 There is no escape hatch. The rule is configured with `allow: []`, and there is not a single
 `eslint-disable` for `@nx/enforce-module-boundaries` anywhere under `apps/` or `libs/`. A violation
@@ -75,9 +82,10 @@ still fails the scope rule. That is the intended behaviour, not a misconfigurati
 **Components never import `matrix-js-sdk`.**
 
 This is not a style preference; it is checkable, and it currently holds absolutely. Across every
-non-spec file in `libs/feature-*`, `libs/ui` and `libs/platform-native` there are zero imports from
-`matrix-js-sdk`. The SDK appears only in the twelve `data-access-*` libraries and in `util-matrix`,
-which models its types.
+non-spec file in `libs/feature/*`, `libs/ui` and `libs/platform-native` there are zero imports from
+`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in eleven of its twelve
+libraries; `data-access-gif` talks to Tenor and Giphy and needs none of it — and in
+`libs/util/matrix`, which models its types.
 
 Two things follow from keeping it that way:
 
@@ -88,7 +96,7 @@ Two things follow from keeping it that way:
   one layer means a breaking change in it has a bounded blast radius.
 
 When a feature genuinely needs an SDK _type_ — not the SDK — the owning data-access library
-re-exports it. `libs/data-access-auth/src/index.ts` re-exports `OidcClientConfig` from
+re-exports it. `libs/data-access/auth/src/index.ts` re-exports `OidcClientConfig` from
 `matrix-js-sdk` with a comment saying exactly why: so a feature library can type delegated-auth
 metadata without an SDK import of its own.
 
@@ -117,8 +125,8 @@ export const ENCRYPTION_DIALOG_COMPONENTS = new InjectionToken<EncryptionDialogL
 {
   provide: ENCRYPTION_DIALOG_COMPONENTS,
   useValue: {
-    unlock: () => import('@trinity/feature-crypto').then((m) => m.EncryptionUnlockPage),
-    verify: () => import('@trinity/feature-crypto').then((m) => m.DeviceVerificationPage),
+    unlock: () => import('@trinity/feature/crypto').then((m) => m.EncryptionUnlockPage),
+    verify: () => import('@trinity/feature/crypto').then((m) => m.DeviceVerificationPage),
   } satisfies EncryptionDialogLoaders,
 }
 ```
@@ -137,7 +145,7 @@ import.
 !!! warning "Do not reach for a token first"
 
     The token seam is the second-choice resolution. The first is to read the relevant
-    `@trinity/data-access-*` signal from the feature that owns the surface: the encryption banner
+    `@trinity/data-access/*` signal from the feature that owns the surface: the encryption banner
     lives in `feature-rooms` and injects `CryptoService` directly, rather than importing anything
     from `feature-crypto`. Reach for a token only when one feature must *present* another's page.
 
@@ -181,7 +189,7 @@ The dev-only `/spike` route is _spread out of the array_ rather than guarded by 
 `environment.production`. A ternary would leave the route absent at runtime but still ship the
 chunk and precache it in the service worker.
 
-The same class of trap applies to library barrels: `libs/feature-shell/src/index.ts` deliberately
+The same class of trap applies to library barrels: `libs/feature/shell/src/index.ts` deliberately
 does not re-export the dev spike page, because `main.ts` imports that barrel eagerly for
 `AppComponent`. Nothing enforces this — only the comment at the barrel.
 

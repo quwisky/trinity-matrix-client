@@ -99,34 +99,38 @@ apps/trinity/
   project.json        build/serve/test targets (Angular esbuild builder)
   vite.config.ts      Vitest setup (Analog Angular plugin)
 libs/
-  util-matrix/        @trinity/util-matrix — pure DI-free Matrix models/helpers
+  util/
+    matrix/           @trinity/util/matrix — pure DI-free Matrix models/helpers
                       (MessageView/MediaPayload/MatrixSession, markdown, wasm loader,
                       attachment crypto)  [type:util]
+  testing/            @trinity/testing — the zoneless render() wrapper every
+                      component spec must use  [type:util]
   platform-native/    @trinity/platform-native — Capacitor/native capabilities
                       (session/secure storage, preferences, theme/status-bar, launcher
                       badge, desktop bridge, error handler)  [type:platform]
-  data-access-matrix-client/
-                      @trinity/data-access-matrix-client — MatrixClient lifecycle +
+  data-access/
+    matrix-client/    @trinity/data-access/matrix-client — MatrixClient lifecycle +
                       4S key service; the client/session foundation  [type:data-access]
-  data-access-*/      @trinity/data-access-{media,rooms,timeline,crypto,profile,invites,
-                      pinned,search,notifications,auth} — one lib per Matrix domain
+    */                @trinity/data-access/{media,rooms,timeline,crypto,profile,invites,
+                      pinned,search,notifications,auth,gif} — one lib per Matrix domain
                       (read models + write actions + guards)  [type:data-access]
-  feature-shell/      @trinity/feature-shell — app shell (AppComponent, verification
+  feature/
+    shell/            @trinity/feature/shell — app shell (AppComponent, verification
                       host, nav-focus) + the dev-only /spike page  [type:feature]
-  feature-auth/       @trinity/feature-auth — login + SSO callback  [type:feature]
-  feature-rooms/      @trinity/feature-rooms — Discord-style shell (server rail =
+    auth/             @trinity/feature/auth — login + SSO callback  [type:feature]
+    rooms/            @trinity/feature/rooms — Discord-style shell (server rail =
                       Spaces, channel list, members) + message timeline (list,
                       composer + emoji picker, hover toolbar, reactions, replies,
                       encrypted media) + encryption/offline banners  [type:feature]
-  feature-crypto/     @trinity/feature-crypto — encryption setup + recovery pages
+    crypto/           @trinity/feature/crypto — encryption setup + recovery pages
                       + device-verification (emoji SAS)  [type:feature]
-  feature-settings/   @trinity/feature-settings — Settings page: appearance
+    settings/         @trinity/feature/settings — Settings page: appearance
                       (light/dark/system theme), profile (name + avatar), and
                       device management (sign-out/verify)  [type:feature]
   ui/                 @trinity/ui — reusable presentational components (avatar +
                       mxc resolver token, banner, page header, media bubble,
                       message toolbar, encryption-dialog service); may use
-                      @trinity/helm/* + @trinity/util-* but no data-access/state deps  [type:ui]
+                      @trinity/helm/* + @trinity/util/* but no data-access/state deps  [type:ui]
   spartan/*           @trinity/helm/* — styled spartan-ng Helm components over
                       headless Brain primitives (button, input, card, overlay,
                       dropdown-menu, …), generated via @spartan-ng/cli  [type:ui]
@@ -140,7 +144,13 @@ Boundaries are enforced by `@nx/enforce-module-boundaries` on two independent ax
 `type:` and `scope:`, with no exceptions configured. Dependencies point inward —
 `app → feature → {data-access, ui} → {util, platform}` — and one feature may never
 import another. `ui` is presentational only and cannot reach a data-access lib at all.
-New shared libs are added when first needed. Each component/page lives in its own directory
+A library is named three different ways and they no longer coincide: the directory
+(`libs/data-access/rooms`), the import alias (`@trinity/data-access/rooms`) and the Nx
+project name (`data-access-rooms`). Commands take the project name — `nx test
+data-access-rooms` — while imports take the alias.
+
+New shared libs are added when first needed, under the parent for their layer. Each
+component/page lives in its own directory
 (`name/name.component.ts` + `.html`/`.scss`/`.spec.ts`). See
 [the architecture docs](docs/architecture/index.md) for the rationale and data flow.
 

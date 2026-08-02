@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "feature-crypto",
+  "projectType": "library",
+  "sourceRoot": "libs/feature/crypto/src",
+  "prefix": "trn",
+  "tags": ["type:feature", "scope:matrix"],
+  "targets": {
+    "test": {}
+  }
+}

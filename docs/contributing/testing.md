@@ -38,6 +38,24 @@ Coverage is fully configured — the v8 provider, `text`/`html`/`lcov` reporters
 output under `coverage/<project>` — but it is opt-in and thresholdless. A normal
 `vitest run` collects nothing, and no CI job passes `--coverage`.
 
+### The scripts project runs plain Node, on a raised timeout
+
+`scripts` is the one project with a `test` target that does not use that factory. Its
+[`vitest.config.mjs`](https://github.com/quwisky/trinity-matrix-client/blob/develop/scripts/vitest.config.mjs)
+is standalone — `environment: 'node'`, `include: ['**/*.spec.mjs']`, no Angular plugin —
+because what it covers is the build scripts and the repository invariants, with no
+Angular anywhere.
+
+It also sets `testTimeout: 30_000`, which is not arbitrary.
+`lint-invariants.spec.mjs` constructs a real ESLint instance and resolves configs
+against the actual tree: roughly 1.6s on a warm dev machine, but 6.3s on a loaded CI
+runner, past Vitest's 5s default. The result was the `Unit tests` job failing on a
+timeout rather than an assertion — a red run that says nothing about the code. The
+ceiling sits well clear of the worst observed time so it still catches a genuine hang,
+and it is set per project, so nothing else inherits it. Do not answer a slow run here
+by deleting the spec: what it guards, and why a green `pnpm lint` is not evidence of
+it, is in [CI and releases](ci-and-releases.md#the-lint-invariants-spec).
+
 ### The pool is pinned to forks, and that is load-bearing
 
 `vite.base.config.ts` sets `test.pool: 'forks'` explicitly. Without that line
@@ -147,9 +165,9 @@ fixture.detectChanges();
 ```
 
 The pattern is used at four sites across
-[`simple-message-list.component.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature-rooms/src/lib/message-list/simple-message-list/simple-message-list.component.spec.ts)
+[`simple-message-list.component.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/message-list/simple-message-list/simple-message-list.component.spec.ts)
 and
-[`virtual-message-list.component.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature-rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.spec.ts),
+[`virtual-message-list.component.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.spec.ts),
 with the reasoning written out at the first one.
 
 ### jsdom shims you inherit
@@ -387,9 +405,9 @@ outright and never reaches the branch under test.
 
 `pnpm electron:e2e` is not an Nx target. It runs `pnpm run electron:build` and then
 `playwright test -c e2e/playwright.electron.config.mts`. The build chain begins with
-`pnpm build`, the **production** Angular build, which makes these seven specs the
-only browser-driven gate on production output — and is exactly why the desktop
-dark-theme regression test lives here.
+`pnpm build`, the **production** Angular build, which makes the seven tests in
+`e2e/electron/app.electron.spec.mts` the only browser-driven gate on production
+output — and is exactly why the desktop dark-theme regression test lives here.
 
 The config sets `fullyParallel: false`, `workers: 1` and a 60s timeout, and has no
 `webServer` or `baseURL`: each spec launches the process itself.

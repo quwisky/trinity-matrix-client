@@ -10,7 +10,7 @@ to hold it.
 Each component lives in its own directory, named after itself, with four files:
 
 ```text
-libs/feature-auth/src/lib/login/
+libs/feature/auth/src/lib/login/
 ├── login.page.ts
 ├── login.page.html
 ├── login.page.scss
@@ -84,8 +84,8 @@ There are zero occurrences of `@HostBinding`, `@HostListener`, `ngClass` and
 
 The workspace is 100% `@angular/forms/signals`. There is no `FormControl`, no
 `FormGroup`, no `ReactiveFormsModule`, and no `ngModel` anywhere in `libs/` or
-`apps/`. Ten components use Signal Forms today, and there is deliberately no legacy
-idiom left to imitate.
+`apps/`. Nine components import `@angular/forms/signals` today, plus one shared schema
+fragment, and there is deliberately no legacy idiom left to imitate.
 
 The form is a signal over a model object, which is the same reactive model as the
 rest of the app. Build it with `form(model, schema)`, bind native controls with
@@ -128,6 +128,17 @@ advice: `@nx/enforce-module-boundaries` errors on a same-project alias import wi
 "Projects should use relative imports to import from other files within the same
 project", and because the rule is an error it fails the pre-commit hook, not just CI.
 
+An alias is `@trinity/` followed by the library's path under `libs/`:
+`libs/data-access/rooms` is `@trinity/data-access/rooms`, `libs/util/matrix` is
+`@trinity/util/matrix`, `libs/ui` is `@trinity/ui`. The generated Helm packages are the
+single exception — `libs/spartan/tooltip` is `@trinity/helm/tooltip`.
+
+A new library goes inside the directory for its layer, `libs/data-access/`,
+`libs/feature/` or `libs/util/`, and gets the matching alias in `tsconfig.base.json`. Its
+Nx **project name** stays flat and hyphenated — `data-access-rooms`, not
+`data-access/rooms` — so the string you pass to `nx test` is a third one; see
+[Commands](commands.md#nx-patterns).
+
 Which library may import which is decided by `type:*` and `scope:*` tags in each
 project's `project.json`. The ladder and the reasoning behind it are in
 [Libraries](../architecture/libraries.md); the rule contributors hit most often is
@@ -135,12 +146,12 @@ that a `type:feature` library may never import another `type:feature` library.
 
 Two barrels are deliberately incomplete, and nothing enforces either:
 
-- `libs/feature-shell/src/index.ts` does not re-export `home.page`. That barrel is
+- `libs/feature/shell/src/index.ts` does not re-export `home.page`. That barrel is
   eagerly imported by `main.ts` for `AppComponent`, so anything in it ships in the
-  eager chunk. The page is reached through the `@trinity/feature-shell/home-page`
+  eager chunk. The page is reached through the `@trinity/feature/shell/home-page`
   alias instead.
 - `code-highlight.ts` is kept out of the `util-matrix` barrel and reached through
-  `@trinity/util-matrix/code-highlight`, because `message-view.ts` is eager and the
+  `@trinity/util/matrix/code-highlight`, because `message-view.ts` is eager and the
   Shiki grammars are roughly 813 kB raw.
 
 Adding either to its barrel ships a large payload into the initial bundle with no
@@ -155,7 +166,7 @@ text colour and which is a fill, are in
 [UI and theming](../architecture/ui-and-theming.md).
 
 Shared SCSS mixins live in
-[`libs/feature-rooms/src/lib/styles/_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature-rooms/src/lib/styles/_mixins.scss):
+[`libs/feature/rooms/src/lib/styles/_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/styles/_mixins.scss):
 `ellipsis`, `category-label`, `profile-card`, `dialog-surface($width)`,
 `column($background)`, `interactive-row` and `scrollable`.
 
