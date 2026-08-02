@@ -14,7 +14,7 @@
       }
     },
     "build": {
-      "executor": "@angular-devkit/build-angular:application",
+      "executor": "@angular/build:application",
       "dependsOn": ["build-info"],
       "outputs": ["{workspaceRoot}/www"],
       "options": {
@@ -85,15 +85,12 @@
           "extractLicenses": false,
           "sourceMap": true,
           "namedChunks": true
-        },
-        "ci": {
-          "progress": false
         }
       },
       "defaultConfiguration": "production"
     },
     "serve": {
-      "executor": "@angular-devkit/build-angular:dev-server",
+      "executor": "@angular/build:dev-server",
       "dependsOn": ["build-info"],
       "configurations": {
         "production": {
@@ -101,18 +98,9 @@
         },
         "development": {
           "buildTarget": "trinity:build:development"
-        },
-        "ci": {
-          "progress": false
         }
       },
       "defaultConfiguration": "development"
-    },
-    "extract-i18n": {
-      "executor": "@angular-devkit/build-angular:extract-i18n",
-      "options": {
-        "buildTarget": "trinity:build"
-      }
     },
     "test": {}
   }

@@ -38,19 +38,20 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 
 ## Dev tooling & quality gates
 
-| Package                                           | Version       | Notes                                                                |
-| ------------------------------------------------- | ------------- | -------------------------------------------------------------------- |
-| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.1.1        | Monorepo task graph, caching, module boundaries                      |
-| `@nx/playwright` + `@playwright/test`             | 23.1.1 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium)        |
-| `vitest` + `@analogjs/*`                          | 4 / 2.6.3     | Unit tests; the Analog plugin compiles Angular for Vite              |
-| `vite`, `vite-tsconfig-paths`, `jsdom`            | 8 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env             |
-| `eslint` + `angular-eslint` + `typescript-eslint` | 10 / 22.1 / 8 | Flat config (`eslint.config.mjs`) + module boundaries                |
-| `prettier` (+ `prettier-plugin-tailwindcss`)      | 3.9 / 0.8     | `singleQuote`; Angular parser for `*.page.html`; Tailwind class sort |
-| `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                            |
-| `@commitlint/{cli,config-conventional}`           | 21            | `commit-msg` hook; Conventional Commits convention                   |
-| `husky` + `lint-staged`                           | 9 / 17        | `pre-commit` (lint/format staged) + `commit-msg` hooks               |
-| `typescript`                                      | 6.0           | `moduleResolution: bundler`; aliases in `tsconfig.base.json`         |
-| `@types/node`                                     | 22            | Node globals for `vite.config.ts` + the spec tsconfigs               |
+| Package                                           | Version       | Notes                                                                                                                                                   |
+| ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@angular/build`                                  | 22.1.2        | The web build + dev server (esbuild/Vite/Rolldown). Owns `application` and `dev-server`; @angular-devkit/build-angular is deprecated and no longer used |
+| `nx`, `@nx/{angular,vite,eslint,js}`              | 23.1.1        | Monorepo task graph, caching, module boundaries                                                                                                         |
+| `@nx/playwright` + `@playwright/test`             | 23.1.1 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium)                                                                                           |
+| `vitest` + `@analogjs/*`                          | 4 / 2.6.3     | Unit tests; the Analog plugin compiles Angular for Vite                                                                                                 |
+| `vite`, `vite-tsconfig-paths`, `jsdom`            | 8 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env                                                                                                |
+| `eslint` + `angular-eslint` + `typescript-eslint` | 10 / 22.1 / 8 | Flat config (`eslint.config.mjs`) + module boundaries                                                                                                   |
+| `prettier` (+ `prettier-plugin-tailwindcss`)      | 3.9 / 0.8     | `singleQuote`; Angular parser for `*.page.html`; Tailwind class sort                                                                                    |
+| `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                                                                                                               |
+| `@commitlint/{cli,config-conventional}`           | 21            | `commit-msg` hook; Conventional Commits convention                                                                                                      |
+| `husky` + `lint-staged`                           | 9 / 17        | `pre-commit` (lint/format staged) + `commit-msg` hooks                                                                                                  |
+| `typescript`                                      | 6.0           | `moduleResolution: bundler`; aliases in `tsconfig.base.json`                                                                                            |
+| `@types/node`                                     | 22            | Node globals for `vite.config.ts` + the spec tsconfigs                                                                                                  |
 
 ## spartan-ng (Brain + Helm) + Angular (standalone)
 
