@@ -120,6 +120,7 @@ import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
+import { MemberActionsService } from './member-actions.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 
 /**
@@ -138,6 +139,7 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     ShellStatusService,
     RoomShellViewModel,
     RoomShellNavigationService,
+    MemberActionsService,
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
@@ -230,6 +232,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly status = inject(ShellStatusService);
   private readonly vm = inject(RoomShellViewModel);
   private readonly nav = inject(RoomShellNavigationService);
+  private readonly members_ = inject(MemberActionsService);
 
   readonly activeSpaceId = this.store.activeSpaceId;
   /**
@@ -1025,50 +1028,21 @@ export class RoomsPage implements OnInit, OnDestroy {
       });
   }
 
-  /** Show the user card; if they pick "Message", open (or reuse) a DM with the user. */
-  private async openUserCard(userId: string): Promise<void> {
-    const messageUserId = await this.userCard.open(userId);
-    if (messageUserId) {
-      this.startDirectMessage(messageUserId);
-    }
+  private openUserCard(userId: string): Promise<void> {
+    return this.members_.openUserCard(userId);
   }
 
-  /** Member-list row: open the member's info panel; "Message" opens/reuses a DM. */
+  /** A member row was picked in the list. */
   onSelectMember(member: MemberSummary): void {
-    const roomId = this.activeRoomId();
-    if (roomId) {
-      // On the narrow layout the list is an overlay drawer — close it so the info
-      // panel isn't stacked behind it. The wide static column stays put.
-      if (membersShownAsDrawer()) {
-        this.closeMembers();
-      }
-      void this.openMemberInfo(member, roomId);
-    }
+    this.members_.onSelectMember(member);
   }
 
-  private async openMemberInfo(
-    member: MemberSummary,
-    roomId: string,
-  ): Promise<void> {
-    // Kick/ban actions are gated by the viewer's power over this member; the panel
-    // resolves a user id only for "Message" (kick/ban close it themselves via sync).
-    const caps = this.moderation.canModerate(roomId, member.userId);
-    const messageUserId = await this.memberInfo.open(
-      member,
-      roomId,
-      caps,
-      this.rooms.directRoomIds().has(roomId),
-    );
-    if (messageUserId) {
-      this.startDirectMessage(messageUserId);
-    }
+  private openMemberInfo(member: MemberSummary, roomId: string): Promise<void> {
+    return this.members_.openMemberInfo(member, roomId);
   }
 
-  /** Open (or reuse) a direct message with `userId` and navigate to it. */
   private startDirectMessage(userId: string): void {
-    runWithBusy(this.rooms.createDirectMessage(userId), this.status).subscribe(
-      (roomId) => this.onSelectRoom(roomId),
-    );
+    this.members_.startDirectMessage(userId);
   }
 
   /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
