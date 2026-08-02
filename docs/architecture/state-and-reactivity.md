@@ -339,7 +339,7 @@ does not re-run on every read receipt), and coalesce it when the events are per-
 `PinnedMessagesService` does — a bump per backfilled event is the difference between per-message
 and per-turn work in a busy room.
 
-The other recorded strain is the rooms shell itself. `libs/feature-rooms/src/lib/rooms/rooms.page.ts`
+The other recorded strain is the rooms shell itself. `libs/feature/rooms/src/lib/rooms/rooms.page.ts`
 is over 2,000 lines with more than forty `inject()` calls and eight selection and UI signals, well
 past the workspace's own refactor threshold. It is also the single place the client projections are
 started — `ngOnInit` calls `connect()` on rooms, spaces, invites, crypto, presence and

@@ -91,7 +91,7 @@ describe('lint invariants', () => {
 
   it('lints Angular templates through the template parser, not the TypeScript one', async () => {
     const template = await resolve(
-      'libs/feature-rooms/src/lib/message-row/message-row.component.html',
+      'libs/feature/rooms/src/lib/message-row/message-row.component.html',
     );
 
     // Templates resolve a genuinely different chain — a different parser and a much

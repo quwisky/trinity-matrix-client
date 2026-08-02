@@ -10,7 +10,7 @@ to hold it.
 Each component lives in its own directory, named after itself, with four files:
 
 ```text
-libs/feature-auth/src/lib/login/
+libs/feature/auth/src/lib/login/
 ├── login.page.ts
 ├── login.page.html
 ├── login.page.scss
@@ -135,7 +135,7 @@ that a `type:feature` library may never import another `type:feature` library.
 
 Two barrels are deliberately incomplete, and nothing enforces either:
 
-- `libs/feature-shell/src/index.ts` does not re-export `home.page`. That barrel is
+- `libs/feature/shell/src/index.ts` does not re-export `home.page`. That barrel is
   eagerly imported by `main.ts` for `AppComponent`, so anything in it ships in the
   eager chunk. The page is reached through the `@trinity/feature-shell/home-page`
   alias instead.
@@ -155,7 +155,7 @@ text colour and which is a fill, are in
 [UI and theming](../architecture/ui-and-theming.md).
 
 Shared SCSS mixins live in
-[`libs/feature-rooms/src/lib/styles/_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature-rooms/src/lib/styles/_mixins.scss):
+[`libs/feature/rooms/src/lib/styles/_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/styles/_mixins.scss):
 `ellipsis`, `category-label`, `profile-card`, `dialog-surface($width)`,
 `column($background)`, `interactive-row` and `scrollable`.
 

@@ -147,9 +147,9 @@ fixture.detectChanges();
 ```
 
 The pattern is used at four sites across
-[`simple-message-list.component.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature-rooms/src/lib/message-list/simple-message-list/simple-message-list.component.spec.ts)
+[`simple-message-list.component.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/message-list/simple-message-list/simple-message-list.component.spec.ts)
 and
-[`virtual-message-list.component.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature-rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.spec.ts),
+[`virtual-message-list.component.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.spec.ts),
 with the reasoning written out at the first one.
 
 ### jsdom shims you inherit

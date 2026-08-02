@@ -22,7 +22,7 @@ differently, so there is no per-platform source tree — platform differences ar
 | `index.html`, `global.scss`, `theme/`, `rendered-markdown.scss`, `assets/` | Shell markup, styles and static assets                                |
 
 The application shell itself — `AppComponent`, `VerificationHostComponent`,
-`NavigationFocusService` — lives in `libs/feature-shell`. Moving it out of the app is what makes
+`NavigationFocusService` — lives in `libs/feature/shell`. Moving it out of the app is what makes
 the app project a composition root rather than a sixth feature library: everything that can be
 tested in isolation lives in a library, and the app only wires those libraries together.
 
@@ -75,7 +75,7 @@ still fails the scope rule. That is the intended behaviour, not a misconfigurati
 **Components never import `matrix-js-sdk`.**
 
 This is not a style preference; it is checkable, and it currently holds absolutely. Across every
-non-spec file in `libs/feature-*`, `libs/ui` and `libs/platform-native` there are zero imports from
+non-spec file in `libs/feature/*`, `libs/ui` and `libs/platform-native` there are zero imports from
 `matrix-js-sdk`. The SDK appears only in the twelve `data-access-*` libraries and in `util-matrix`,
 which models its types.
 
@@ -181,7 +181,7 @@ The dev-only `/spike` route is _spread out of the array_ rather than guarded by 
 `environment.production`. A ternary would leave the route absent at runtime but still ship the
 chunk and precache it in the service worker.
 
-The same class of trap applies to library barrels: `libs/feature-shell/src/index.ts` deliberately
+The same class of trap applies to library barrels: `libs/feature/shell/src/index.ts` deliberately
 does not re-export the dev spike page, because `main.ts` imports that barrel eagerly for
 `AppComponent`. Nothing enforces this — only the comment at the barrel.
 

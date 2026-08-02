@@ -49,14 +49,14 @@
       "@trinity/data-access/rooms": ["./libs/data-access/rooms/src/index.ts"],
       "@trinity/data-access/media": ["./libs/data-access/media/src/index.ts"],
       "@trinity/data-access/gif": ["./libs/data-access/gif/src/index.ts"],
-      "@trinity/feature-auth": ["./libs/feature-auth/src/index.ts"],
-      "@trinity/feature-crypto": ["./libs/feature-crypto/src/index.ts"],
-      "@trinity/feature-rooms": ["./libs/feature-rooms/src/index.ts"],
-      "@trinity/feature-settings": ["./libs/feature-settings/src/index.ts"],
+      "@trinity/feature-auth": ["./libs/feature/auth/src/index.ts"],
+      "@trinity/feature-crypto": ["./libs/feature/crypto/src/index.ts"],
+      "@trinity/feature-rooms": ["./libs/feature/rooms/src/index.ts"],
+      "@trinity/feature-settings": ["./libs/feature/settings/src/index.ts"],
       "@trinity/ui": ["./libs/ui/src/index.ts"],
-      "@trinity/feature-shell": ["./libs/feature-shell/src/index.ts"],
+      "@trinity/feature-shell": ["./libs/feature/shell/src/index.ts"],
       "@trinity/feature-shell/home-page": [
-        "./libs/feature-shell/src/lib/home.page.ts"
+        "./libs/feature/shell/src/lib/home.page.ts"
       ],
       "@trinity/helm/button": ["./libs/spartan/button/src/index.ts"],
       "@trinity/helm/utils": ["./libs/spartan/utils/src/index.ts"],

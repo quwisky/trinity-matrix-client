@@ -158,7 +158,7 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
   runs lint-staged (eslint --fix + prettier); a module-boundary violation fails the commit.
 - **Cross-lib imports use `@trinity/*` aliases**; imports within a lib stay relative.
 - **Keep `data-testid` hooks** on interactive elements — the headless Playwright harnesses drive them.
-- Shared SCSS mixins live in `libs/feature-rooms/src/lib/styles/_mixins.scss`.
+- Shared SCSS mixins live in `libs/feature/rooms/src/lib/styles/_mixins.scss`.
 - **Component SCSS references design tokens** (`--trinity-*`; alert **text/icons** =
   `--trinity-danger`, a filled danger badge = `--trinity-danger-solid` +
   `--trinity-danger-solid-foreground`, on-accent text = `--trinity-accent-foreground`, which

@@ -13,7 +13,7 @@ once.
 | Brain         | `@spartan-ng/brain` 1.3.0 in `node_modules`, plus `@angular/cdk` 22.1.0 | Headless primitives: behaviour, accessibility, positioning. No styling. |
 | Helm          | `libs/spartan/*`, aliased `@trinity/helm/*`                             | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
 | `@trinity/ui` | `libs/ui`                                                               | Trinity's own presentational components and small UI utilities.         |
-| Features      | `libs/feature-*`                                                        | Screens and the components that make them up.                           |
+| Features      | `libs/feature/*`                                                        | Screens and the components that make them up.                           |
 
 Seventeen Helm libraries are installed: avatar, badge, button, card, checkbox,
 dropdown-menu, input, label, overlay, progress, radio-group, select, sonner, spinner,
@@ -101,7 +101,7 @@ message-search panels use, sized `w-screen md:w-[480px]` so they go full-screen 
     one that forgets renders as text floating over the timeline — easy to miss in review,
     because the layout is correct in isolation and only the background is wrong. Use the
     `dialog-surface($width)` mixin from
-    [`_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature-rooms/src/lib/styles/_mixins.scss).
+    [`_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/styles/_mixins.scss).
 
     **`autoFocus` defaults to CDK's `'first-tabbable'`**, which is wrong for any dialog whose
     header carries a Cancel or Close button ahead of the field the user came to type in — the
@@ -416,7 +416,7 @@ attribute at all.
     a fallback are safe, since they render the fallback.
 
     Running that check today finds one live instance:
-    `libs/feature-rooms/src/lib/account-picker/account-picker.component.scss` uses
+    `libs/feature/rooms/src/lib/account-picker/account-picker.component.scss` uses
     `var(--trinity-radius-lg)`, which `variables.scss` does not define — the mobile
     account-picker dialog renders with square corners. The base 8px token is
     `--trinity-radius`. Note that `spartan.css` *does* define a Tailwind `--radius-lg`, which
@@ -491,7 +491,7 @@ overrides three `marked` renderers, each for a stated reason:
 - Each component lives in its own directory as `name/name.component.ts` plus `.html`, `.scss`
   and `.spec.ts`.
 - Shared SCSS mixins live in
-  [`libs/feature-rooms/src/lib/styles/_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature-rooms/src/lib/styles/_mixins.scss):
+  [`libs/feature/rooms/src/lib/styles/_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/styles/_mixins.scss):
   `ellipsis`, `category-label`, `profile-card`, `dialog-surface($width)`, `column($bg)`,
   `interactive-row`, `scrollable`.
 - Component SCSS references design tokens. Never hardcode a colour, or it will not re-theme
