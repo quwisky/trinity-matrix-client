@@ -15,12 +15,10 @@ import {
   afterNextRender,
   effect,
   inject,
-  signal,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { Observable, finalize } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
@@ -117,6 +115,7 @@ import { InviteActionsService } from './invite-actions.service';
 import { SpaceActionsService } from './space-actions.service';
 import { RoomActionsService } from './room-actions.service';
 import { ReadStateService } from './read-state.service';
+import { MessageActionsService } from './message-actions.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 
 /**
@@ -141,6 +140,7 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     SpaceActionsService,
     RoomActionsService,
     ReadStateService,
+    MessageActionsService,
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
@@ -239,6 +239,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly spaceActions = inject(SpaceActionsService);
   private readonly roomActions = inject(RoomActionsService);
   private readonly readState = inject(ReadStateService);
+  private readonly messageActions = inject(MessageActionsService);
 
   readonly activeSpaceId = this.store.activeSpaceId;
   /**
@@ -281,7 +282,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Bumped on every jump request so the list re-jumps even to an unchanged target. */
   readonly jumpRequest = this.store.jumpRequest;
   /** Attachment upload fraction in [0, 1] while a send is uploading, else null. */
-  readonly uploadProgress = signal<number | null>(null);
+  readonly uploadProgress = this.messageActions.uploadProgress;
 
   /** A create-space / create-channel / leave-space action is in flight. */
   readonly spaceBusy = this.status.busy;
@@ -524,22 +525,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Open in-room message search for the active room and, on a chosen hit, jump the
-   * timeline to that event. Bumping jumpRequest guarantees the list's jump effect
-   * re-fires even when the same message is picked again.
-   */
-  async openMessageSearch(): Promise<void> {
-    const roomId = this.activeRoomId();
-    if (!roomId) {
-      return;
-    }
-    const eventId = await this.messageSearch.search(roomId);
-    if (!eventId) {
-      return; // cancelled / already open
-    }
-    this.messageSearchTarget.set(eventId);
-    this.jumpRequest.update((n) => n + 1);
+  openMessageSearch(): Promise<void> {
+    return this.messageActions.openMessageSearch();
   }
 
   /** Show the Recent activity view. */
@@ -663,24 +650,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.nav.onSelectRoom(id, source);
   }
 
-  /**
-   * Route a `matrix.to` permalink clicked in a message, in-app. A user shows a profile
-   * card (from which the viewer can start a DM); a room resolves its id/alias and — if
-   * we're joined — opens it, then jumps to a linked event. A room we haven't joined
-   * surfaces a toast rather than navigating.
-   */
+  /** Follow a matrix.to link from rendered markdown. */
   onMatrixLink(target: MatrixLinkTarget): void {
-    if (target.kind === 'user') {
-      void this.openUserCard(target.userId);
-      return;
-    }
-    this.rooms
-      .resolveRoomId(target.roomIdOrAlias)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (roomId) => this.openLinkedRoom(roomId, target.eventId),
-        error: () => void this.status.showError('Could not open that room.'),
-      });
+    this.messageActions.onMatrixLink(target);
   }
 
   private openUserCard(userId: string): Promise<void> {
@@ -754,12 +726,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
   }
 
-  /** Open the thread rooted at `rootEventId` (raised by a message's indicator). */
   onOpenThread(rootEventId: string): void {
-    const roomId = this.activeRoomId();
-    if (roomId) {
-      void this.threadPanel.open(roomId, rootEventId);
-    }
+    this.messageActions.onOpenThread(rootEventId);
   }
 
   /** Set a room's notification level from the sidebar menu. */
@@ -811,134 +779,56 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.spaceActions.onOpenSpaceMembers();
   }
 
-  /** Open the threads-list panel for the active room (header "Threads" button). */
   openThreadsList(): void {
-    const roomId = this.activeRoomId();
-    if (roomId) {
-      void this.threadPanel.openList(roomId);
-    }
+    this.messageActions.openThreadsList();
   }
 
-  /** Pin or unpin a message from its overflow menu, resolving which by current state. */
   onTogglePin(eventId: string): void {
-    const pinning = !this.pinned.isPinned(eventId);
-    const action = pinning
-      ? this.pinned.pin(eventId)
-      : this.pinned.unpin(eventId);
-    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: () =>
-        this.status.showSuccess(
-          pinning ? 'Message pinned.' : 'Message unpinned.',
-        ),
-      error: () =>
-        void this.status.showError(
-          pinning
-            ? 'Could not pin the message.'
-            : 'Could not unpin the message.',
-        ),
-    });
+    this.messageActions.onTogglePin(eventId);
   }
 
-  /**
-   * Open the pinned-messages panel for the active room and, on a chosen row, jump the
-   * timeline to that event. Bumping jumpRequest guarantees the list's jump effect
-   * re-fires even when the same message is picked again (as in-room search does).
-   */
-  async openPinnedPanel(): Promise<void> {
-    const eventId = await this.pinnedPanel.openPanel();
-    if (!eventId) {
-      return; // cancelled / already open / just closed
-    }
-    this.messageSearchTarget.set(eventId);
-    this.jumpRequest.update((n) => n + 1);
+  openPinnedPanel(): Promise<void> {
+    return this.messageActions.openPinnedPanel();
   }
 
   loadOlder(): void {
-    this.timeline
-      .loadOlder()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+    this.messageActions.loadOlder();
   }
 
-  onSend({ body, mentions }: { body: string; mentions: Mention[] }): void {
-    // The local echo (and its failed/retry state) surfaces the result.
-    this.timeline
-      .send(body, mentions)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+  onSend(message: { body: string; mentions: Mention[] }): void {
+    this.messageActions.onSend(message);
   }
 
-  /** Composer typing state → a (throttled) Matrix typing notification for the room. */
   onTyping(typing: boolean): void {
-    this.timeline.setTyping(typing);
+    this.messageActions.onTyping(typing);
   }
 
-  /** Cast a vote on a poll (m.poll.response). */
-  onPollVote({ pollId, answerId }: { pollId: string; answerId: string }): void {
-    this.runAction(
-      this.timeline.votePoll(pollId, answerId),
-      'Could not cast your vote.',
-    );
+  onPollVote(vote: { pollId: string; answerId: string }): void {
+    this.messageActions.onPollVote(vote);
   }
 
-  /** Close a poll (m.poll.end). */
   onPollEnd(pollId: string): void {
-    this.runAction(this.timeline.endPoll(pollId), 'Could not end the poll.');
+    this.messageActions.onPollEnd(pollId);
   }
 
-  onSendMedia({ file, caption }: { file: File; caption: string }): void {
-    // The upload phase has no echo, so drive a determinate progress bar from the
-    // upload fraction and surface a failure as a toast. Once the event is sent the
-    // SDK echo + retry path takes over (like onSend). finalize() clears the bar on
-    // success, error, or unsubscribe — runAction has no such hook, so subscribe here.
-    this.uploadProgress.set(0);
-    this.timeline
-      .sendMedia(file, caption, (fraction) => this.uploadProgress.set(fraction))
-      .pipe(
-        finalize(() => this.uploadProgress.set(null)),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        error: () =>
-          void this.status.showError('Could not upload the attachment.'),
-      });
+  onSendMedia(media: { file: File; caption: string }): void {
+    this.messageActions.onSendMedia(media);
   }
 
-  // Edit/delete/react have no visible local echo, so a failure would otherwise be
-  // silent — surface it as a toast. (Send/reply produce an echo with a retry.)
   onEdit(edit: { id: string; body: string; mentions: Mention[] }): void {
-    this.runAction(
-      this.timeline.edit(edit.id, edit.body, edit.mentions),
-      'Could not edit the message.',
-    );
+    this.messageActions.onEdit(edit);
   }
 
   onDelete(messageId: string): void {
-    this.runAction(
-      this.timeline.redact(messageId),
-      'Could not delete the message.',
-    );
+    this.messageActions.onDelete(messageId);
   }
 
   onReact(reaction: { id: string; key: string }): void {
-    this.runAction(
-      this.timeline.toggleReaction(reaction.id, reaction.key),
-      'Could not update the reaction.',
-    );
+    this.messageActions.onReact(reaction);
   }
 
   onReply(reply: { id: string; body: string; mentions: Mention[] }): void {
-    this.timeline
-      .reply(reply.id, reply.body, reply.mentions)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
-  }
-
-  /** Run a fire-and-forget timeline action, surfacing a failure as a toast. */
-  private runAction(action: Observable<void>, failureMessage: string): void {
-    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      error: () => void this.status.showError(failureMessage),
-    });
+    this.messageActions.onReply(reply);
   }
 
   goToSettings(): void {
