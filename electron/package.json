@@ -20,7 +20,7 @@
     "package:win": "electron-builder --win",
     "package:all": "electron-builder --mac --linux --win",
     "pack:dir": "electron-builder --dir",
-    "sign:dev": "codesign --force --deep --sign \"trinity-dev\" node_modules/electron/dist/Electron.app"
+    "sign:dev": "node -e \"if (process.platform !== 'darwin') { console.log('sign:dev: skipped, not macOS'); process.exit(0); } require('node:child_process').execFileSync('codesign', ['--force','--deep','--sign','trinity-dev','node_modules/electron/dist/Electron.app'], { stdio: 'inherit' });\""
   },
   "devDependencies": {
     "@electron/fuses": "1.8.0",

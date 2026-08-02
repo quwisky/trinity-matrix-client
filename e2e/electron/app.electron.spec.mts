@@ -25,13 +25,55 @@ test('boots the app over the trinity:// custom scheme', async () => {
   await expect(page.getByLabel('Homeserver')).toBeVisible();
 });
 
-test('initializes without renderer crashes (crypto WASM loads)', async () => {
-  // A WASM/init failure surfaces as a pageerror; assert none fired and the app
-  // shell is interactive.
+test('boots the shell without renderer errors', async () => {
+  // Deliberately NOT a WASM assertion, despite what this test used to be called.
+  // `preloadCryptoWasm()` is only reached from an authenticated session
+  // (matrix-client.service.ts and crypto-spike.service.ts), and this spec never
+  // leaves the login screen — so nothing here instantiates WebAssembly. The real
+  // WASM gate is the next test. This one is worth keeping for what it does check:
+  // that the shell boots far enough to be interactive with a clean console.
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.getByText('Continue', { exact: true }).waitFor();
   expect(errors).toEqual([]);
+});
+
+test('stream-instantiates the crypto WASM over the trinity:// scheme', async () => {
+  // THE assertion the hand-rolled shell exists to make, and until now it was never
+  // made anywhere in this repo.
+  //
+  // `WebAssembly.compileStreaming` is the strict form on purpose: it rejects unless
+  // the response arrives with `Content-Type: application/wasm` over a streamable
+  // body from a secure context. That is exactly the contract scheme.ts sets up —
+  // trinity:// registered `standard + secure + supportFetchAPI + stream`, with
+  // `.wasm` mapped at scheme.ts:36. A regression in any one of those (an Electron
+  // major changing custom-scheme privileges, a lost MIME mapping, a non-streaming
+  // response) fails here and nowhere else in the suite.
+  const result = await page.evaluate(async () => {
+    try {
+      const response = await fetch(
+        '/assets/crypto/matrix_sdk_crypto_wasm_bg.wasm',
+      );
+      const contentType = response.headers.get('content-type');
+      const module = await WebAssembly.compileStreaming(response);
+      return {
+        ok: true,
+        contentType,
+        origin: location.origin,
+        exports: WebAssembly.Module.exports(module).length,
+      };
+    } catch (error) {
+      return { ok: false, error: (error as Error).message };
+    }
+  });
+
+  expect(result.ok, `compileStreaming failed: ${result.error ?? ''}`).toBe(
+    true,
+  );
+  expect(result.contentType).toBe('application/wasm');
+  expect(result.origin).toBe('trinity://app');
+  // A real module, not an empty or truncated body.
+  expect(result.exports).toBeGreaterThan(0);
 });
 
 test('exposes the desktop bridge but no Node in the renderer', async () => {
@@ -127,21 +169,24 @@ test('secureStore round-trips through the main process (or degrades cleanly)', a
   }
 });
 
-test('dark palette wins the cascade when ion-palette-dark is set (regression)', async () => {
+test('dark palette wins the cascade when .dark is set (regression)', async () => {
   // Regression for the desktop dark-theme bug: the class lands on <html>, but the
   // dark tokens must actually beat the light :root in the real Electron renderer.
+  // This is why apps/trinity/project.json sets optimization.styles.inlineCritical to
+  // false — the deferred stylesheet onload never fires over the trinity:// scheme, so
+  // a regression here shows up as an unstyled or light-in-dark desktop app.
   const result = await page.evaluate(() => {
     const html = document.documentElement;
     const railVar = () =>
       getComputedStyle(html).getPropertyValue('--trinity-rail').trim();
-    html.classList.remove('ion-palette-dark');
+    html.classList.remove('dark');
     const light = railVar();
-    html.classList.add('ion-palette-dark');
+    html.classList.add('dark');
     const dark = railVar();
     return { light, dark };
   });
   expect(result.light).toBe('#e3e5e8'); // :root light default
-  expect(result.dark).toBe('#1e1f22'); // :root.ion-palette-dark wins
+  expect(result.dark).toBe('#1e1f22'); // :root.dark (0,2,0) out-ranks :root (0,1,0)
 });
 
 test('exposes the CORS-allowlist bridge (a plain send, not an invoke)', async () => {
