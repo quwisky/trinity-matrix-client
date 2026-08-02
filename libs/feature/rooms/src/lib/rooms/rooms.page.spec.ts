@@ -60,6 +60,7 @@ import { SpaceActionsService } from './space-actions.service';
 import { RoomActionsService } from './room-actions.service';
 import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
+import { ShellShortcutsService } from './shell-shortcuts.service';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -100,6 +101,7 @@ const SHARED_MOCKS: Provider[] = [
   RoomActionsService,
   ReadStateService,
   MessageActionsService,
+  ShellShortcutsService,
   MockProvider(CryptoService),
   MockProvider(PinnedMessagesService),
   MockProvider(PinnedPanelService),

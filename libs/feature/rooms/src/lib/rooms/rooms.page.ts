@@ -80,20 +80,18 @@ import {
   type SpaceChildRoom,
 } from '@trinity/data-access/rooms';
 import { MemberInfoService } from '../member-info/member-info.service';
-import { type SwitcherSelection } from '@trinity/data-access/search';
 import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
 import { type MatrixLinkTarget, type Mention } from '@trinity/util/matrix';
 import {
   FeatureFlagsService,
   KeyboardShortcutsService,
 } from '@trinity/platform-native';
-import { AvatarComponent, PageHeaderComponent, runWithBusy } from '@trinity/ui';
+import { AvatarComponent, PageHeaderComponent } from '@trinity/ui';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MruRoomsService } from '../shortcuts/mru-rooms.service';
-import { stepList, stepUnread } from '../shortcuts/room-navigation';
 import { MessageSearchService } from '../message-search/message-search.service';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
@@ -116,6 +114,7 @@ import { SpaceActionsService } from './space-actions.service';
 import { RoomActionsService } from './room-actions.service';
 import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
+import { ShellShortcutsService } from './shell-shortcuts.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 
 /**
@@ -141,6 +140,7 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     RoomActionsService,
     ReadStateService,
     MessageActionsService,
+    ShellShortcutsService,
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
@@ -240,6 +240,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly roomActions = inject(RoomActionsService);
   private readonly readState = inject(ReadStateService);
   private readonly messageActions = inject(MessageActionsService);
+  private readonly shortcutActions = inject(ShellShortcutsService);
 
   readonly activeSpaceId = this.store.activeSpaceId;
   /**
@@ -370,159 +371,14 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.invites.disconnect();
   }
 
-  /**
-   * Global keyboard shortcuts (issues #12/#13). One listener rather than many host
-   * bindings: it bails unless a modifier is held (so plain typing is untouched) and no
-   * overlay owns the screen (mirrors {@link openSwitcher}'s guard), then asks
-   * {@link KeyboardShortcutsService} which shortcut the chord triggers — honouring the
-   * user's custom bindings and the desktop-only gate — and dispatches it. The bindings
-   * themselves live in the registry (and the settings page); this only maps an id to its
-   * action.
-   */
+  /** Global keyboard chords, bound on the host. */
   onGlobalKeydown(event: Event): void {
-    const e = event as KeyboardEvent;
-    if ((!e.ctrlKey && !e.metaKey && !e.altKey) || this.dialog.hasOpen()) {
-      return;
-    }
-    const hit = this.shortcuts.resolve(e);
-    if (!hit) {
-      return;
-    }
-    // preventDefault belongs to the branches that act, NOT to "the catalogue matched". The
-    // catalogue also holds the composer's formatting shortcuts, which this handler knows
-    // nothing about — blocking those here would swallow Ctrl+B app-wide and do nothing with
-    // it. An id we do not handle must fall through to the browser untouched.
-    switch (hit.id) {
-      case 'switcher.open':
-        e.preventDefault();
-        void this.openSwitcher();
-        break;
-      case 'room.hop.back':
-        e.preventDefault();
-        this.hopRoom('back');
-        break;
-      case 'room.hop.forward':
-        e.preventDefault();
-        this.hopRoom('forward');
-        break;
-      case 'room.walk.down':
-        e.preventDefault();
-        this.walkList('next');
-        break;
-      case 'room.walk.up':
-        e.preventDefault();
-        this.walkList('previous');
-        break;
-      case 'room.walk.unread.down':
-        e.preventDefault();
-        this.walkUnread('next');
-        break;
-      case 'room.walk.unread.up':
-        e.preventDefault();
-        this.walkUnread('previous');
-        break;
-      case 'room.jump':
-        if (hit.digit) {
-          e.preventDefault();
-          this.openShortcutTarget(
-            this.mru.nth(hit.digit, this.activeRoomId()),
-            'user',
-          );
-        }
-        break;
-    }
+    this.shortcutActions.onGlobalKeydown(event);
   }
 
-  private hopRoom(direction: 'back' | 'forward'): void {
-    // Across every mixed account, not just the active one — otherwise hopping back to a
-    // room you opened on another account silently does nothing.
-    const known = new Set(this.knownRooms().map((room) => room.id));
-    this.openShortcutTarget(
-      this.mru.hop(direction, this.activeRoomId(), known),
-      'hop',
-    );
-  }
-
-  private walkList(direction: 'next' | 'previous'): void {
-    this.openShortcutTarget(
-      stepList(
-        this.visibleRooms().map((room) => room.id),
-        this.activeRoomId(),
-        direction,
-      ),
-      'user',
-    );
-  }
-
-  private walkUnread(direction: 'next' | 'previous'): void {
-    this.openShortcutTarget(
-      stepUnread(this.visibleRooms(), this.activeRoomId(), direction),
-      'user',
-    );
-  }
-
-  /**
-   * Open a shortcut's resolved target when there is one and it isn't already open. The MRU
-   * remembers rooms across account switches, so a target can name a room no account in the
-   * current scope holds (it was unticked, or signed out) — opening that would tear down the
-   * timeline and leave a blank chat pane, so drop it instead.
-   */
-  private openShortcutTarget(
-    roomId: string | null,
-    source: 'user' | 'hop',
-  ): void {
-    if (!roomId || roomId === this.activeRoomId()) {
-      return;
-    }
-    if (!this.knownRooms().some((room) => room.id === roomId)) {
-      return;
-    }
-    this.onSelectRoomRow(roomId, source);
-  }
-
-  /**
-   * Open the switcher and jump to the selection: room/DM open the room, space selects
-   * it in the rail, a directory person opens (or reuses) a DM, an invite runs the
-   * page's existing accept path. Also the header search button's handler.
-   *
-   * Bail when an overlay already owns the screen: the Cmd/Ctrl+K shortcut fires even
-   * while a thread/search/verification modal is open (RoomsPage isn't destroyed), so
-   * without this it would stack the switcher over that modal — and picking a result
-   * runs onSelectRoom() → media.releaseAll(), revoking the open modal's pinned blobs.
-   */
-  async openSwitcher(): Promise<void> {
-    if (this.dialog.hasOpen()) {
-      return; // an overlay owns the screen — don't stack the switcher over it
-    }
-    const selection = await this.switcher.pick();
-    if (!selection) {
-      return; // cancelled / already open
-    }
-    this.jumpTo(selection);
-  }
-
-  private jumpTo(selection: SwitcherSelection): void {
-    switch (selection.kind) {
-      case 'room':
-      case 'dm':
-        // Via the row path, so picking a mixed-in account's room switches to that account
-        // before opening it — otherwise the jump would land on the wrong client.
-        this.onSelectRoomRow(selection.id);
-        break;
-      case 'space':
-        this.onSelectSpaceRow(selection.id);
-        break;
-      case 'user':
-        this.spaceError.set(null);
-        runWithBusy(
-          this.rooms.createDirectMessage(selection.id),
-          this.status,
-        ).subscribe((roomId) => this.onSelectRoom(roomId));
-        break;
-      case 'invite':
-        this.onAcceptInvite({ roomId: selection.id });
-        break;
-    }
+  /** Open the quick switcher. */
+  openSwitcher(): Promise<void> {
+    return this.shortcutActions.openSwitcher();
   }
 
   openMessageSearch(): Promise<void> {
