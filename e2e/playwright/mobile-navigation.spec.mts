@@ -227,4 +227,35 @@ test.describe('Mobile room navigation', () => {
     await expect(page.getByTestId('member-info')).toBeVisible();
     await expect(page.locator('.chat-members')).toBeHidden();
   });
+
+  test('Escape dismisses the member drawer, and only when it is open', async ({
+    page,
+    request,
+  }) => {
+    // The drawer's backdrop is mouse-only, so Escape is the keyboard path to dismissing
+    // it — and it had no coverage of any kind: it is reachable only through a `host`
+    // binding, which the unit spec cannot drive because it never renders the page.
+    const runId = `${Date.now().toString(36)}e`;
+    const { reader, roomName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+
+    await openOverflowMenu(page);
+    await page.getByTestId('overflow-toggle-members').click();
+    await expect(page.locator('.chat-members')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.chat-members')).toBeHidden();
+    await expect(page.getByTestId('members-backdrop')).toBeHidden();
+
+    // The binding is scoped to the drawer being open, so a second Escape must not
+    // navigate away or close the room — otherwise it would swallow the key everywhere.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('composer-input')).toBeVisible();
+  });
 });
