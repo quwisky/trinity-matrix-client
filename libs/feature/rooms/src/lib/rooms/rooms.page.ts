@@ -128,11 +128,8 @@ import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
-import {
-  isMobileMasterDetail,
-  membersColumnDefaultsOpen,
-  membersShownAsDrawer,
-} from './shell-layout';
+import { RoomShellStore } from './room-shell-store';
+import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -143,6 +140,9 @@ import {
 @Component({
   selector: 'trn-rooms',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // Page-scoped, not root: these share the page's lifetime and its DestroyRef, which is
+  // what every runWithBusy subscription is tied to. See shell-invariants.spec.ts.
+  providers: [RoomShellStore],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
   imports: [
@@ -230,18 +230,19 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly actionSheet = inject(TrnActionSheetService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+  private readonly store = inject(RoomShellStore);
 
-  readonly activeSpaceId = signal<string | null>(null);
+  readonly activeSpaceId = this.store.activeSpaceId;
   /**
    * Whether the Recent activity view is active — the default on launch. It lists every
    * joined DM + room (space-owned included), mixed by recency, so it overrides the
    * Home/Rooms/space scoping below. Cleared by selecting Home, Rooms, or a space.
    */
-  readonly recentView = signal(true);
+  readonly recentView = this.store.recentView;
   /** Whether the Rooms view is active — filters the sidebar to non-DM rooms. Home (no
    * space) shows direct messages only; Recent, a space, or this view clears the others. */
-  readonly roomsView = signal(false);
-  readonly activeRoomId = signal<string | null>(null);
+  readonly roomsView = this.store.roomsView;
+  readonly activeRoomId = this.store.activeRoomId;
 
   /**
    * The accounts the view draws from — the user's picker selection, persisted and always
@@ -262,15 +263,15 @@ export class RoomsPage implements OnInit, OnDestroy {
    * closed. Seeded from the viewport so the drawer doesn't render open on a mobile
    * load, while the wide layout keeps the column visible by default.
    */
-  readonly membersOpen = signal(membersColumnDefaultsOpen());
+  readonly membersOpen = this.store.membersOpen;
   /**
    * Event id the message list should scroll to, set by in-room search, a reply
    * preview, or the pinned panel. Bound to the list's `jumpToId`, paired with
    * {@link jumpRequest} so re-selecting the SAME message still re-triggers the jump.
    */
-  readonly messageSearchTarget = signal<string | null>(null);
+  readonly messageSearchTarget = this.store.messageSearchTarget;
   /** Bumped on every jump request so the list re-jumps even to an unchanged target. */
-  readonly jumpRequest = signal(0);
+  readonly jumpRequest = this.store.jumpRequest;
   /** Attachment upload fraction in [0, 1] while a send is uploading, else null. */
   readonly uploadProgress = signal<number | null>(null);
 
