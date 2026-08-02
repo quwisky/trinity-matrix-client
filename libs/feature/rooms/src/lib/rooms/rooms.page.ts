@@ -128,34 +128,11 @@ import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
-
-/** True when the member list is currently the overlay drawer rather than the static
- * column — mirrors the `max-width: 1100px` query the drawer styling uses. Feature-detects
- * matchMedia so non-DOM contexts fall back to the static column. */
-function membersShownAsDrawer(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 1100px)').matches
-  );
-}
-
-/** The member list is a static column above the drawer cutoff (shown by default) and an
- * overlay drawer at/below it (starts closed). Derived as the exact complement of
- * membersShownAsDrawer so the two share one boundary with no sub-pixel gap between them. */
-function membersColumnDefaultsOpen(): boolean {
-  return !membersShownAsDrawer();
-}
-
-/** True on the mobile master-detail layout (below md), where the room list and the
- * chat are separate full-screen pages — mirrors the `max-width: 767.98px` scss query. */
-function isMobileMasterDetail(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 767.98px)').matches
-  );
-}
+import {
+  isMobileMasterDetail,
+  membersColumnDefaultsOpen,
+  membersShownAsDrawer,
+} from './shell-layout';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
