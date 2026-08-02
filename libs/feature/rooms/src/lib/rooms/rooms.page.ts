@@ -121,6 +121,7 @@ import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { MemberActionsService } from './member-actions.service';
+import { AccountRoutingService } from './account-routing.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 
 /**
@@ -140,6 +141,7 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     RoomShellViewModel,
     RoomShellNavigationService,
     MemberActionsService,
+    AccountRoutingService,
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
@@ -233,6 +235,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly vm = inject(RoomShellViewModel);
   private readonly nav = inject(RoomShellNavigationService);
   private readonly members_ = inject(MemberActionsService);
+  private readonly routing = inject(AccountRoutingService);
 
   readonly activeSpaceId = this.store.activeSpaceId;
   /**
@@ -936,71 +939,31 @@ export class RoomsPage implements OnInit, OnDestroy {
     );
   }
 
-  /**
-   * Open a room. `source` distinguishes a normal open (the default — records the visit,
-   * committing any hop cycle) from a hop-driven one (leaves the MRU stack frozen so
-   * repeated hops keep cycling deeper). Every existing caller uses the default.
-   */
-  /**
-   * Open a room chosen from the sidebar list. In mixed-account mode the row may belong to
-   * a different signed-in account — switch to that account first (so every downstream
-   * action runs on its client), then open the room; otherwise open it directly.
-   */
+  /** A sidebar room row was picked; may belong to another account. */
   onSelectRoomRow(id: string, source: 'user' | 'hop' = 'user'): void {
-    const accountId = this.knownRooms().find((r) => r.id === id)?.accountId;
-    if (accountId && accountId !== this.matrix.activeUserId()) {
-      this.runOnAccount(accountId, () => this.onSelectRoom(id, source));
-      return;
-    }
-    this.onSelectRoom(id, source);
+    this.routing.onSelectRoomRow(id, source);
   }
 
-  /**
-   * Select a space pill from the rail. In mixed mode a foreign account's space switches to
-   * that account first; Home (`null`) and same-account spaces select directly.
-   */
+  /** A rail space pill was picked; may belong to another account. */
   onSelectSpaceRow(id: string | null): void {
-    const accountId = id
-      ? this.railSpaces().find((s) => s.id === id)?.accountId
-      : undefined;
-    if (accountId && accountId !== this.matrix.activeUserId()) {
-      this.runOnAccount(accountId, () => this.onSelectSpace(id));
-      return;
-    }
-    this.onSelectSpace(id);
+    this.routing.onSelectSpaceRow(id);
   }
 
-  /**
-   * Include/exclude an account from the mixed view (the account picker's checkbox). The
-   * active account is always shown, and the service ignores an attempt to drop it.
-   */
+  /** Toggle whether an account contributes to the mixed view. */
   onToggleAccountShown(userId: string): void {
-    this.accountScope.toggle(userId);
+    this.routing.onToggleAccountShown(userId);
   }
 
   private knownRooms(): RoomSummary[] {
     return this.nav.knownRooms();
   }
 
-  /** An account's display name for user-facing copy, falling back to its user id. */
   private accountLabel(accountId: string): string {
-    return this.accountBadges().get(accountId)?.name ?? accountId;
+    return this.routing.accountLabel(accountId);
   }
 
-  /** Switch to `accountId`, then run `then` once the switch has landed. */
   private runOnAccount(accountId: string, then: () => void): void {
-    this.closeOpenRoom();
-    this.resetViewScope();
-    this.auth
-      .switchAccount(accountId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() =>
-        // Deferred past the render that follows the switch: RoomsService/SpacesService
-        // re-project onto the new client from an effect, and a space hierarchy requested
-        // before that flush is wiped by it — leaving the sidebar's "More Channels" and
-        // sub-space sections permanently empty until the pill is clicked a second time.
-        afterNextRender(() => then(), { injector: this.injector }),
-      );
+    this.routing.runOnAccount(accountId, then);
   }
 
   /** Open a room. `source` distinguishes a user click from a keyboard hop. */
@@ -1045,23 +1008,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.members_.startDirectMessage(userId);
   }
 
-  /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
   private openLinkedRoom(roomId: string, eventId?: string): void {
-    // Against the mixed superset: while mixing, a room owned by another selected account is
-    // listed and openable in the sidebar, so refusing its permalink would contradict the
-    // list one column to the left.
-    if (!this.knownRooms().some((r) => r.id === roomId)) {
-      void this.status.showError("You're not in that room.");
-      return;
-    }
-    if (roomId !== this.activeRoomId()) {
-      this.onSelectRoomRow(roomId);
-    }
-    if (eventId) {
-      // Jump to the linked event (a no-op until it's in the loaded timeline).
-      this.messageSearchTarget.set(eventId);
-      this.jumpRequest.update((n) => n + 1);
-    }
+    this.routing.openLinkedRoom(roomId, eventId);
   }
 
   /**
