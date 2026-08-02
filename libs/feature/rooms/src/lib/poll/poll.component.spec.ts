@@ -1,6 +1,6 @@
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
-import { type PollView } from '@trinity/util-matrix';
+import { type PollView } from '@trinity/util/matrix';
 import { PollComponent } from './poll.component';
 
 function poll(over: Partial<PollView> = {}): PollView {

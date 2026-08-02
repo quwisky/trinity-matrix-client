@@ -5,7 +5,7 @@ import { render, screen } from '@trinity/testing';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { AuthService } from '@trinity/data-access/auth';
 import { TrnAlertService } from '@trinity/helm/overlay';
-import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util-matrix';
+import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util/matrix';
 import { Browser } from '@capacitor/browser';
 import { MockProvider } from 'ng-mocks';
 import { Observable, of, throwError } from 'rxjs';

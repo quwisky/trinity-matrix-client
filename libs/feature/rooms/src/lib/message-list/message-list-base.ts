@@ -28,7 +28,7 @@ import {
   type MatrixLinkTarget,
   type MessageView,
   type Mention,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { DayBoundaryService } from './day-boundary.service';
 import {

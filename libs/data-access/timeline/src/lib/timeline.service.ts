@@ -68,7 +68,7 @@ import {
   type MessageShield,
   type Mention,
   type ReactionDetail,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import { resolveShieldsInto, shieldKey } from './shields';
 
 const SCROLLBACK = 30;

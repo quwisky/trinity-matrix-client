@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { createClient } from 'matrix-js-sdk';
 import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
-import { preloadCryptoWasm } from '@trinity/util-matrix';
+import { preloadCryptoWasm } from '@trinity/util/matrix';
 
 export interface CryptoSpikeResult {
   ok: boolean;

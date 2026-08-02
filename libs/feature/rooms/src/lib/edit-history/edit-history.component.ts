@@ -21,7 +21,7 @@ import {
   annotateRevision,
   type MatrixLinkTarget,
   type MessageRevisionView,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import { switchMap, timer } from 'rxjs';
 import { runWithBusy } from '@trinity/ui';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';

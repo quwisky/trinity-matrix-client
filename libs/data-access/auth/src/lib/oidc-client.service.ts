@@ -9,7 +9,7 @@ import {
   type OidcRegistrationClientMetadata,
 } from 'matrix-js-sdk';
 import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
-import type { OidcSessionBinding } from '@trinity/util-matrix';
+import type { OidcSessionBinding } from '@trinity/util/matrix';
 
 /** How this client identifies itself to an OIDC provider during dynamic registration. */
 const CLIENT_NAME = 'Trinity';

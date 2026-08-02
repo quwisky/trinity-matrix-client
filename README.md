@@ -99,7 +99,7 @@ apps/trinity/
   project.json        build/serve/test targets (Angular esbuild builder)
   vite.config.ts      Vitest setup (Analog Angular plugin)
 libs/
-  util-matrix/        @trinity/util-matrix — pure DI-free Matrix models/helpers
+  util-matrix/        @trinity/util/matrix — pure DI-free Matrix models/helpers
                       (MessageView/MediaPayload/MatrixSession, markdown, wasm loader,
                       attachment crypto)  [type:util]
   platform-native/    @trinity/platform-native — Capacitor/native capabilities

@@ -1,7 +1,7 @@
 import { Injectable, Signal, inject, signal } from '@angular/core';
 import { UserEvent, type User } from 'matrix-js-sdk';
 import { Observable, defer, from, tap, throwError } from 'rxjs';
-import { type PresenceState, toPresenceState } from '@trinity/util-matrix';
+import { type PresenceState, toPresenceState } from '@trinity/util/matrix';
 import {
   MatrixClientService,
   projectFromClient,

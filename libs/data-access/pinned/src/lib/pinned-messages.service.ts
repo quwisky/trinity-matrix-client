@@ -13,7 +13,7 @@ import {
   coalesce,
   MatrixClientService,
 } from '@trinity/data-access/matrix-client';
-import { liveRoomState, messagePreview } from '@trinity/util-matrix';
+import { liveRoomState, messagePreview } from '@trinity/util/matrix';
 
 /**
  * A compact, render-ready projection of one pinned message — the pinned panel's row

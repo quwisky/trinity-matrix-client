@@ -5,7 +5,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import { type PollView } from '@trinity/util-matrix';
+import { type PollView } from '@trinity/util/matrix';
 import { HlmButton } from '@trinity/helm/button';
 
 /**

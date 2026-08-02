@@ -8,7 +8,7 @@ import {
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideUsers } from '@ng-icons/lucide';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { type ReactionView } from '@trinity/util-matrix';
+import { type ReactionView } from '@trinity/util/matrix';
 
 /** A reaction pill plus the "reacted by …" line shown on hover/focus. */
 interface ReactionPill extends ReactionView {

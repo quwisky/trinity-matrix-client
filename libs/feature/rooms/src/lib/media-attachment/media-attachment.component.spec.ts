@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { MediaService } from '@trinity/data-access/media';
-import { type MediaPayload } from '@trinity/util-matrix';
+import { type MediaPayload } from '@trinity/util/matrix';
 import { MediaAttachmentComponent } from './media-attachment.component';
 import { FileSaveService } from '../media-save/file-save.service';
 

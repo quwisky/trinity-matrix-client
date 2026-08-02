@@ -78,7 +78,7 @@ major rather than editing numbers by hand.
 | `@aparajita/capacitor-secure-storage` | 8.0.0   | Keychain and Keystore for the access token on native                                                        |
 
 `matrix-encrypt-attachment` was removed rather than upgraded: it has been unmaintained
-since 2022, and its logic is ported into `attachment-crypto.ts` in `@trinity/util-matrix`.
+since 2022, and its logic is ported into `attachment-crypto.ts` in `@trinity/util/matrix`.
 
 ## Toolchain
 
@@ -161,8 +161,8 @@ Safari 16.4 floor the browserslist policy sets.
 
 The grammars are roughly 813 KB raw and 134 kB gzipped. `message-view.ts` consumes the
 highlighter and sits in the eager chunk, so exporting `code-highlight` from the
-`@trinity/util-matrix` barrel would drag every grammar into the initial bundle. It is
-reachable only through the `@trinity/util-matrix/code-highlight` path alias and imported
+`@trinity/util/matrix` barrel would drag every grammar into the initial bundle. It is
+reachable only through the `@trinity/util/matrix/code-highlight` path alias and imported
 for side effect at the top of the rooms page, which puts it in the lazy rooms chunk.
 Nothing enforces that — only the comment at the barrel.
 

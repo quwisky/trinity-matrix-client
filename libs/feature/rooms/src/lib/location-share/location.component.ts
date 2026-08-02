@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideMapPin } from '@ng-icons/lucide';
-import { type LocationView } from '@trinity/util-matrix';
+import { type LocationView } from '@trinity/util/matrix';
 
 /**
  * A shared-location (`m.location`) card: a pin, the coordinates, and an "Open in maps"

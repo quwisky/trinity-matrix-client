@@ -20,7 +20,7 @@ import {
   encryptMegolmKeyFile,
   runPasswordUia,
   type PasswordPrompt,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import {
   hasStrandedCrossSigning,
   repairStaleCrossSigning,

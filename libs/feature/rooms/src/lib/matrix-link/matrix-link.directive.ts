@@ -1,5 +1,5 @@
 import { Directive, output } from '@angular/core';
-import { parseMatrixToLink, type MatrixLinkTarget } from '@trinity/util-matrix';
+import { parseMatrixToLink, type MatrixLinkTarget } from '@trinity/util/matrix';
 
 /**
  * Intercepts anchor clicks inside a rendered message body (set via `[innerHTML]`, so

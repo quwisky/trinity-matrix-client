@@ -8,7 +8,7 @@ import {
   liveRoomState,
   messagePreview,
   roomAvatarMxc,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import { type RoomSummary } from './rooms.service';
 
 /** State event type linking a space to a child room. */

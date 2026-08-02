@@ -13,7 +13,7 @@ import {
   isUiaRefusal,
   runPasswordUia,
   type PasswordPrompt,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 
 /**
  * How long any one of the reset's single homeserver round-trips may wait — an

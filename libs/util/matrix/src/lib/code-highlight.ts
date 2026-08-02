@@ -22,8 +22,8 @@ import { setCodeHighlighter } from './message-view';
 /**
  * Synchronous syntax highlighting for fenced code blocks in rendered Matrix HTML.
  *
- * **Not exported from the `@trinity/util-matrix` barrel**, and reachable only through the
- * `@trinity/util-matrix/code-highlight` path alias. That is load-bearing: `message-view.ts`
+ * **Not exported from the `@trinity/util/matrix` barrel**, and reachable only through the
+ * `@trinity/util/matrix/code-highlight` path alias. That is load-bearing: `message-view.ts`
  * sits in the app's eager chunk, so a barrel export would put every grammar in the initial
  * bundle. Importing this module from the lazily-loaded rooms route puts it in the rooms
  * chunk instead. The module registers itself on evaluation, which happens before any

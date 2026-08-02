@@ -26,7 +26,7 @@ import {
   type MatrixLinkTarget,
   type MessageView,
   type ReceiptView,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';

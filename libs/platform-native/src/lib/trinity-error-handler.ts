@@ -1,5 +1,5 @@
 import { ErrorHandler, Injectable } from '@angular/core';
-import { isTransientMatrixError } from '@trinity/util-matrix';
+import { isTransientMatrixError } from '@trinity/util/matrix';
 
 /**
  * App-wide {@link ErrorHandler} that quiets transient homeserver noise.

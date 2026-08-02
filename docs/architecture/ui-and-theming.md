@@ -333,9 +333,9 @@ A new palette inherits all eight, and nothing checks them. If your rail departs 
 
 Highlighting itself is Shiki with thirteen statically imported grammars — roughly 813 KB raw
 and 134 kB gzipped. The module is reachable **only** through the
-`@trinity/util-matrix/code-highlight` path alias and is imported for side effect at the top
+`@trinity/util/matrix/code-highlight` path alias and is imported for side effect at the top
 of `rooms.page.ts`, so the grammars land in the lazy rooms chunk. Exporting it from the
-`@trinity/util-matrix` barrel would drag every grammar into the eager bundle, because
+`@trinity/util/matrix` barrel would drag every grammar into the eager bundle, because
 `message-view.ts` consumes the highlighter and sits there.
 
 ## Adding a palette

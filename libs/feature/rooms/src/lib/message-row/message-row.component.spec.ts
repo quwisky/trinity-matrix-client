@@ -13,7 +13,7 @@ import {
   DateTimeFormatService,
   PrivacySettingsService,
 } from '@trinity/platform-native';
-import { type MediaPayload } from '@trinity/util-matrix';
+import { type MediaPayload } from '@trinity/util/matrix';
 import { FileSaveService } from '../media-save/file-save.service';
 import {
   MessageRowComponent,

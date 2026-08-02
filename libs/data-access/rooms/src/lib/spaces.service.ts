@@ -18,7 +18,7 @@ import {
 import {
   roomEncryptionInitialState,
   visibilityOptions,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import { spaceChildIdsOf } from './room-projection';
 
 /** Children fetched per `getRoomHierarchy` page. */

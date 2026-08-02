@@ -15,7 +15,7 @@ import {
   PrivacySettingsService,
   SystemLineSettingsService,
 } from '@trinity/platform-native';
-import { TYPING_REFRESH_MS } from '@trinity/util-matrix';
+import { TYPING_REFRESH_MS } from '@trinity/util/matrix';
 
 /** A PrivacySettingsService mock with a fixed send-read-receipts preference. */
 function privacyProvider(sendReadReceipts: boolean) {

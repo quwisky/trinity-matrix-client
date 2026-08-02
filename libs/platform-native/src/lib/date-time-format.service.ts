@@ -19,7 +19,7 @@ import {
   type DateFormat,
   type DateTimePrefs,
   type TimeFormat,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 
 const TIME_KEY = 'trinity.format.time';
 const DATE_KEY = 'trinity.format.date';

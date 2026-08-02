@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { EventType } from 'matrix-js-sdk';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { liveRoomState } from '@trinity/util-matrix';
+import { liveRoomState } from '@trinity/util/matrix';
 
 /**
  * Manages a room's published addresses: its local aliases in the homeserver's room

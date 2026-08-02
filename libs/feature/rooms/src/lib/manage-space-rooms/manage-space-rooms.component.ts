@@ -19,7 +19,7 @@ import {
   SpacesService,
 } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
-import { initialOf } from '@trinity/util-matrix';
+import { initialOf } from '@trinity/util/matrix';
 
 /** One child row: its link state plus whatever we can resolve about the room itself. */
 export interface ManagedChild {

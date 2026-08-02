@@ -27,7 +27,7 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { initialOf } from '@trinity/util-matrix';
+import { initialOf } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 
 /** Most avatars drawn in the mixed-account stack before it collapses to a "+N" count. */

@@ -21,8 +21,8 @@
     "skipLibCheck": true,
     "useDefineForClassFields": false,
     "paths": {
-      "@trinity/util-matrix": ["./libs/util/matrix/src/index.ts"],
-      "@trinity/util-matrix/code-highlight": [
+      "@trinity/util/matrix": ["./libs/util/matrix/src/index.ts"],
+      "@trinity/util/matrix/code-highlight": [
         "./libs/util/matrix/src/lib/code-highlight.ts"
       ],
       "@trinity/testing": ["./libs/testing/src/index.ts"],

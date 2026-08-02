@@ -24,7 +24,7 @@ import {
   MatrixClientService,
   SecretStorageKeyHolder,
 } from '@trinity/data-access/matrix-client';
-import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util-matrix';
+import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util/matrix';
 
 /** A 401 UIA challenge carrying flows + session, as the SDK surfaces it. */
 function uiaError(session: string): MatrixError {

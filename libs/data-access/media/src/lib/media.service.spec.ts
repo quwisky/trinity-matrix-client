@@ -12,15 +12,15 @@ import {
 } from 'vitest';
 import { MediaService } from './media.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import type { MediaPayload } from '@trinity/util-matrix';
-import { decryptAttachment, encryptAttachment } from '@trinity/util-matrix';
+import type { MediaPayload } from '@trinity/util/matrix';
+import { decryptAttachment, encryptAttachment } from '@trinity/util/matrix';
 
-// Stub attachment-crypto (now in @trinity/util-matrix): exercise MediaService's
+// Stub attachment-crypto (now in @trinity/util/matrix): exercise MediaService's
 // fetch→decrypt→blob and encrypt→upload wiring without a real WebCrypto `subtle`
 // backend (absent under jsdom). Partial-mock so the module's other exports stay
 // real; the crypto itself is round-tripped for real in attachment-crypto.spec.ts.
-vi.mock('@trinity/util-matrix', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@trinity/util-matrix')>()),
+vi.mock('@trinity/util/matrix', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
   decryptAttachment: vi.fn(() =>
     Promise.resolve(new Uint8Array([7, 7, 7]).buffer),
   ),

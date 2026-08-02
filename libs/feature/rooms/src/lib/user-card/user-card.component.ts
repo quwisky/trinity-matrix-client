@@ -11,7 +11,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { DialogRef } from '@trinity/helm/overlay';
 import { ProfileService, PresenceService } from '@trinity/data-access/profile';
 import { AvatarComponent } from '@trinity/ui';
-import { initialOf } from '@trinity/util-matrix';
+import { initialOf } from '@trinity/util/matrix';
 
 /**
  * A small profile card for a user (avatar, name, id, online status), shown when a

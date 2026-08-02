@@ -857,7 +857,7 @@ const MAX_HIGHLIGHT_CHARS_PER_MESSAGE = 20_000;
  *
  * A registration seam rather than a direct import: this module is in the app's EAGER
  * bundle, so importing a highlighter here would put every grammar in the initial
- * chunk. The implementation lives behind `@trinity/util-matrix/code-highlight`, which
+ * chunk. The implementation lives behind `@trinity/util/matrix/code-highlight`, which
  * only the lazily-loaded rooms route pulls in.
  *
  * Clears the memo, because anything cached before installation was scrubbed without

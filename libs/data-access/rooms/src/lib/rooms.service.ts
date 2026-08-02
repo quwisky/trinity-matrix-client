@@ -31,7 +31,7 @@ import {
   isValidUserId,
   roomEncryptionInitialState,
   visibilityOptions,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import {
   buildRoomSummary,
   compareRoomSummaries,

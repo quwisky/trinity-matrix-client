@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
-import { type MessageView } from '@trinity/util-matrix';
+import { type MessageView } from '@trinity/util/matrix';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { SimpleMessageListComponent } from './simple-message-list.component';
 import { DayBoundaryService } from '../day-boundary.service';

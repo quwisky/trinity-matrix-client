@@ -9,7 +9,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideLocateFixed, lucideMapPin } from '@ng-icons/lucide';
-import { parseLocationInput } from '@trinity/util-matrix';
+import { parseLocationInput } from '@trinity/util/matrix';
 import { GeolocationService, type GeoPoint } from '@trinity/platform-native';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';

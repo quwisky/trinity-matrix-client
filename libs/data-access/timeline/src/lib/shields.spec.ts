@@ -3,7 +3,7 @@ import {
   EventShieldColour,
   EventShieldReason,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { type MessageShield } from '@trinity/util-matrix';
+import { type MessageShield } from '@trinity/util/matrix';
 import { describe, expect, it, vi } from 'vitest';
 import {
   resolveShieldsInto,

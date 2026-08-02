@@ -1,5 +1,5 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
-import { startOfLocalDay, startOfNextLocalDay } from '@trinity/util-matrix';
+import { startOfLocalDay, startOfNextLocalDay } from '@trinity/util/matrix';
 
 /**
  * The local calendar day the user is currently in, as a signal — so anything deriving

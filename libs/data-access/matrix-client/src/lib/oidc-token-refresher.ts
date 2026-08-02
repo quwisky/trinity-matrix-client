@@ -1,7 +1,7 @@
 import { OidcTokenRefresher } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import type { SessionStorageService } from '@trinity/platform-native';
-import type { OidcSessionBinding } from '@trinity/util-matrix';
+import type { OidcSessionBinding } from '@trinity/util/matrix';
 
 /** The SDK's `IdTokenClaims` param type, extracted without importing oidc-client-ts. */
 type SdkIdTokenClaims = ConstructorParameters<typeof OidcTokenRefresher>[4];

@@ -69,7 +69,7 @@ import {
   type EditResult,
   type FormatAction,
   type Mention,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/ui';
 import { ComposerToolbarComponent } from './composer-toolbar/composer-toolbar.component';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';

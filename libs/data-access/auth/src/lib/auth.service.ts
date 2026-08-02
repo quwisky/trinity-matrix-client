@@ -30,7 +30,7 @@ import {
   runPasswordUia,
   type OidcSessionBinding,
   type PasswordPrompt,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import {
   OidcClientService,
   type OidcAuthorizationParams,

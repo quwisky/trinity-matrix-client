@@ -3,7 +3,7 @@ import { By } from '@angular/platform-browser';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { render } from '@trinity/testing';
 import { afterEach, describe, expect, it } from 'vitest';
-import { type FormatAction } from '@trinity/util-matrix';
+import { type FormatAction } from '@trinity/util/matrix';
 import { ComposerToolbarComponent } from './composer-toolbar.component';
 
 async function renderToolbar(

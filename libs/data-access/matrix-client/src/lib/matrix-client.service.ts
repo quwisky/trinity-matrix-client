@@ -30,8 +30,8 @@ import {
   SessionStorageService,
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
-import { MatrixSession } from '@trinity/util-matrix';
-import { preloadCryptoWasm } from '@trinity/util-matrix';
+import { MatrixSession } from '@trinity/util/matrix';
+import { preloadCryptoWasm } from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { TrinityOidcTokenRefresher } from './oidc-token-refresher';
 

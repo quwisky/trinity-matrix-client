@@ -140,7 +140,7 @@ Two barrels are deliberately incomplete, and nothing enforces either:
   eager chunk. The page is reached through the `@trinity/feature/shell/home-page`
   alias instead.
 - `code-highlight.ts` is kept out of the `util-matrix` barrel and reached through
-  `@trinity/util-matrix/code-highlight`, because `message-view.ts` is eager and the
+  `@trinity/util/matrix/code-highlight`, because `message-view.ts` is eager and the
   Shiki grammars are roughly 813 kB raw.
 
 Adding either to its barrel ships a large payload into the initial bundle with no

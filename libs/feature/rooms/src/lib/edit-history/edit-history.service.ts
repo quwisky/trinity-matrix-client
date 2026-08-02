@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/helm/overlay';
-import { type MatrixLinkTarget } from '@trinity/util-matrix';
+import { type MatrixLinkTarget } from '@trinity/util/matrix';
 import { EditHistoryComponent } from './edit-history.component';
 
 /**

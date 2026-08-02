@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import { render } from '@trinity/testing';
 import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
-import { type MessageView } from '@trinity/util-matrix';
+import { type MessageView } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';

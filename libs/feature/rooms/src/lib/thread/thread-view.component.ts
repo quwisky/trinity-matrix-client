@@ -26,7 +26,7 @@ import {
   isEditableMessage,
   messagePermalink,
   type MessageView,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import {
   MessageRowComponent,
   type MessageRow,

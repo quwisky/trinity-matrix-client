@@ -4,7 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { PresenceService } from '@trinity/data-access/profile';
-import { type PresenceState } from '@trinity/util-matrix';
+import { type PresenceState } from '@trinity/util/matrix';
 import { PresenceSectionComponent } from './presence-section.component';
 
 function providers(

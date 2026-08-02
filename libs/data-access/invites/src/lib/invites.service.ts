@@ -10,7 +10,7 @@ import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
-import { roomAvatarMxc } from '@trinity/util-matrix';
+import { roomAvatarMxc } from '@trinity/util/matrix';
 
 /** A room we have been invited to but not yet joined (shown in the Invites group). */
 export interface PendingInvite {

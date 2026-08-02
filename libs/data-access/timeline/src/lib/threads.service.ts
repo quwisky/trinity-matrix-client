@@ -36,7 +36,7 @@ import {
   isDisplayableMessage,
   type MessageShield,
   type MessageView,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import { resolveShieldsInto, shieldKey } from './shields';
 import { eventRevision } from './timeline.service';
 import {
@@ -50,7 +50,7 @@ import {
   slashCommandContent,
   textMessageContent,
   type Mention,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 
 /** A distinct participant of a thread, for compact avatar/name display. */
 export interface ThreadParticipant {

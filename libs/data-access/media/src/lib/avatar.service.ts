@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, map, of, shareReplay } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { fetchMediaBytes } from '@trinity/util-matrix';
+import { fetchMediaBytes } from '@trinity/util/matrix';
 
 /** Default avatar edge (px) requested from the server thumbnailer. */
 const AVATAR_PX = 96;

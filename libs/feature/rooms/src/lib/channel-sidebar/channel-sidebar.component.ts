@@ -69,7 +69,7 @@ import {
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
-import { type PresenceState } from '@trinity/util-matrix';
+import { type PresenceState } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 import { AccountPickerService } from '../account-picker/account-picker.service';
 import {

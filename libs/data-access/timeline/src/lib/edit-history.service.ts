@@ -11,7 +11,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   buildEditRevisions,
   type MessageRevisionView,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 
 /** Every version of a message we could fetch, and whether that was all of them. */
 export interface EditHistoryResult {

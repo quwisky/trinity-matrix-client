@@ -2,7 +2,7 @@ import {
   UiaCancelledError,
   UiaUnsupportedError,
   type PasswordPrompt,
-} from '@trinity/util-matrix';
+} from '@trinity/util/matrix';
 import type { TrnAlertService } from '@trinity/helm/overlay';
 
 /**

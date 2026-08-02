@@ -1,7 +1,7 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/ui';
-import { type ReactionDetail } from '@trinity/util-matrix';
+import { type ReactionDetail } from '@trinity/util/matrix';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

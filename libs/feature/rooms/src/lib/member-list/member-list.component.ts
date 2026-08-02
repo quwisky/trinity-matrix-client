@@ -16,7 +16,7 @@ import {
 import { AvatarComponent } from '@trinity/ui';
 import { type MemberSummary } from '@trinity/data-access/rooms';
 import { PresenceService } from '@trinity/data-access/profile';
-import { type PresenceState } from '@trinity/util-matrix';
+import { type PresenceState } from '@trinity/util/matrix';
 import {
   MEMBER_ROLE_LABEL,
   MEMBER_ROLE_ORDER,

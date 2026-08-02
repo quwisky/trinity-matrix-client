@@ -11,7 +11,7 @@ import { DialogRef } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/ui';
-import { type ReactionDetail } from '@trinity/util-matrix';
+import { type ReactionDetail } from '@trinity/util/matrix';
 
 /**
  * Dialog listing everyone who reacted to a message, one section per emoji.

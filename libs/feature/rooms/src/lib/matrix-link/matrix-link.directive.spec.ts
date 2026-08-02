@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
-import { type MatrixLinkTarget } from '@trinity/util-matrix';
+import { type MatrixLinkTarget } from '@trinity/util/matrix';
 import { MatrixLinkDirective } from './matrix-link.directive';
 
 /** A fresh directive (output() needs an injection context) plus its emitted targets. */

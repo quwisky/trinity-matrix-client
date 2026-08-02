@@ -95,7 +95,7 @@ The web build emits to root `www/` (not `dist/`), which Capacitor and Electron w
 `scope:*` tags in each `project.json`). The former monolithic `@trinity/core` was dissolved into
 typed, per-domain libs (do **not** import `@trinity/core` — it no longer exists):
 
-- `@trinity/util-matrix` `[type:util]` — pure, DI-free Matrix models/helpers (`MessageView` +
+- `@trinity/util/matrix` `[type:util]` — pure, DI-free Matrix models/helpers (`MessageView` +
   `buildMessageView`/`initialOf`/`isEditableMessage`, `MediaPayload`, `MatrixSession`, markdown/sanitize,
   `crypto-wasm-loader`, attachment-crypto). No Angular DI. Everything may depend on it.
 - `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
