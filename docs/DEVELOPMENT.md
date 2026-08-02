@@ -232,6 +232,15 @@ browsers:
 pnpm exec playwright install chromium webkit
 ```
 
+**Re-run that after every Playwright version bump, not just once per clone.** Each
+release pins its own browser build, so a bumped runner against the old binaries fails
+_every_ browser test at launch with `Executable doesn't exist at
+.../chromium_headless_shell-<n>` — which reads like a catastrophic regression rather
+than a missing download. The 1.61 → 1.62 bump did exactly this: 165 of 167 e2e specs
+failed until the browsers were re-installed. CI is immune because it keys the
+`~/.cache/ms-playwright` cache on `hashFiles('pnpm-lock.yaml')`, so a moved lockfile
+necessarily misses and re-downloads.
+
 `e2e/features/` holds `smoke-login.mjs`, `crypto-spike.mjs`, the two-client
 `verify-sas.mjs` (+ `verify-sas-selfcheck.mjs`); the `e2e/runners/*-run.mjs` orchestrators own the
 disposable `e2e/synapse/` Synapse+Caddy harness, the feature flows

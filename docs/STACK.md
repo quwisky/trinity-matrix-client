@@ -42,16 +42,16 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@angular/build`                                  | 22.1.2        | The web build + dev server (esbuild/Vite/Rolldown). Owns `application` and `dev-server`; @angular-devkit/build-angular is deprecated and no longer used |
 | `nx`, `@nx/{angular,vite,eslint,js}`              | 23.1.1        | Monorepo task graph, caching, module boundaries                                                                                                         |
-| `@nx/playwright` + `@playwright/test`             | 23.1.1 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium)                                                                                           |
-| `vitest` + `@analogjs/*`                          | 4 / 2.6.3     | Unit tests; the Analog plugin compiles Angular for Vite                                                                                                 |
-| `vite`, `vite-tsconfig-paths`, `jsdom`            | 8 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env                                                                                                |
+| `@nx/playwright` + `@playwright/test`             | 23.1.1 / 1.62 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium)                                                                                           |
+| `vitest` + `@analogjs/*`                          | 4 / 2.6.4     | Unit tests; the Analog plugin compiles Angular for Vite                                                                                                 |
+| `vite`, `vite-tsconfig-paths`, `jsdom`            | 8 / 6 / 30    | Vitest runtime + `@trinity/*` alias resolution + DOM env                                                                                                |
 | `eslint` + `angular-eslint` + `typescript-eslint` | 10 / 22.1 / 8 | Flat config (`eslint.config.mjs`) + module boundaries                                                                                                   |
 | `prettier` (+ `prettier-plugin-tailwindcss`)      | 3.9 / 0.8     | `singleQuote`; Angular parser for `*.page.html`; Tailwind class sort                                                                                    |
 | `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                                                                                                               |
 | `@commitlint/{cli,config-conventional}`           | 21            | `commit-msg` hook; Conventional Commits convention                                                                                                      |
 | `husky` + `lint-staged`                           | 9 / 17        | `pre-commit` (lint/format staged) + `commit-msg` hooks                                                                                                  |
 | `typescript`                                      | 6.0           | `moduleResolution: bundler`; aliases in `tsconfig.base.json`                                                                                            |
-| `@types/node`                                     | 22            | Node globals for `vite.config.ts` + the spec tsconfigs                                                                                                  |
+| `@types/node`                                     | 24            | Node globals for `vite.config.ts` + the spec tsconfigs                                                                                                  |
 
 ## spartan-ng (Brain + Helm) + Angular (standalone)
 
@@ -71,12 +71,15 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
   route to something — every `hlmTooltip` site repeats its text in an `aria-label`, and the
   one place that does not (the message-row encryption shield keeps `shield.explanation` in
   the tooltip alone) is the one to watch.
-- **Testing a tooltip needs the PointerEvent shim.** jsdom 25 defines no `PointerEvent`, and
-  `@testing-library/dom` builds events as `window[EventType] || window.Event` — so it falls
-  back to plain `Event`, which drops `pointerType`, and the gate above rejects it. Without
-  the shim in `test-setup.base.ts` a tooltip spec fails in a way indistinguishable from the
-  bug it is testing for. Note `libs/util-matrix` does **not** import `test-setup.base.ts`,
-  so the shim is absent there.
+- **Testing a tooltip needs the PointerEvent shim — and jsdom having `PointerEvent` is not a
+  reason to delete it.** jsdom ships `PointerEvent` natively since 27, but with the spec
+  defaults (`pointerType: ''`, `isPrimary: false`), and the gate above opens only for
+  `'mouse'` or `'pen'`. So on stock jsdom a plain `fireEvent.pointerEnter(el)` builds an
+  event brain silently rejects, and the spec fails in a way indistinguishable from the bug
+  it is testing for. The shim in `test-setup.base.ts` exists to make a primary mouse the
+  default, leaving `{ pointerType: 'touch' }` an explicit opt-in — it is a **defaults** shim,
+  not a missing-feature one. Note `libs/util-matrix` does **not** import
+  `test-setup.base.ts`, so the shim is absent there.
 - Styling/theming is **Tailwind CSS v4**: all design tokens (Trinity + Helm) and colour
   palettes live in `theme/variables.scss` (the single source of truth), while `theme/spartan.css`
   is framework wiring only (Tailwind layers + the `@theme inline` map). Two orthogonal axes —
