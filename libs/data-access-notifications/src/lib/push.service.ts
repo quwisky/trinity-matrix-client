@@ -8,7 +8,7 @@ import { SessionStorageService } from '@trinity/platform-native';
 import { DEFAULT_APP_ID } from './push-config';
 import { PushGatewayService } from './push-gateway.service';
 
-/** Pusher `data` key carrying the owning account's user id (see docs/PUSH.md). The
+/** Pusher `data` key carrying the owning account's user id (see docs/reference/push-notifications.md). The
  * gateway must forward this from `devices[].data` into the delivered push payload so
  * a tap can switch to the right account. */
 const ACCOUNT_DATA_KEY = 'trinity_user_id';
@@ -286,7 +286,7 @@ export class PushService {
       }
       // `event_id_only` keeps message content off the gateway; the client fetches the
       // event after sync. `trinity_user_id` tags the pusher so the gateway can fan out
-      // to the right account and a tap can switch to it (see docs/PUSH.md). Built as a
+      // to the right account and a tap can switch to it (see docs/reference/push-notifications.md). Built as a
       // value, not an inline literal: the Matrix spec allows extra `data` keys but the
       // SDK types the field narrowly (`{ url, format, brand }`).
       const data = {

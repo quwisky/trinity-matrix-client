@@ -49,7 +49,7 @@ export type CryptoStatus =
  * and recovers a fresh device from the recovery key. Wraps `client.getCrypto()`
  * (the CryptoApi) so components never touch matrix-js-sdk directly.
  *
- * Two entry flows (see docs/CRYPTO-BOOTSTRAP-PLAN.md):
+ * Two entry flows (see docs/architecture/matrix-and-encryption.md):
  * - {@link setUp}: first device — generate a recovery key, set up cross-signing,
  *   secret storage and a server key backup. Needs UIA (the user's password) to
  *   upload the new device-signing keys.

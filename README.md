@@ -19,17 +19,16 @@ End-to-end encryption is a first-class, in-MVP feature.
 
 ## Documentation
 
-| Doc                                            | What's in it                                             |
-| ---------------------------------------------- | -------------------------------------------------------- |
-| [docs/PLAN.md](docs/PLAN.md)                   | Roadmap, milestones, scope, decisions, risks             |
-| [docs/STACK.md](docs/STACK.md)                 | Pinned versions + integration notes for every dependency |
-| [docs/SPIKE.md](docs/SPIKE.md)                 | E2EE crypto WASM validation results (the gating risk)    |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)   | How the code is organized and how data flows             |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)     | Setup, running, testing, troubleshooting                 |
-| [docs/THEMING.md](docs/THEMING.md)             | Design tokens, light/dark × palette axes, adding a theme |
-| [docs/PUSH.md](docs/PUSH.md)                   | Push notifications: architecture + native/gateway setup  |
-| [docs/MULTI-ACCOUNT.md](docs/MULTI-ACCOUNT.md) | Multi-account support: design + phased plan (planned)    |
-| [docs/REVIEW.md](docs/REVIEW.md)               | Whole-codebase review findings (2026-06-27)              |
+Everything lives under [`docs/`](docs/index.md), grouped by who is reading.
+
+| Section                                              | What's in it                                                                       |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [Using Trinity](docs/users/index.md)                 | What the app can do, installing, signing in, encryption, messaging, settings       |
+| [Contributing](docs/contributing/index.md)           | First run, the command reference, testing, CI and releases, conventions            |
+| [Architecture](docs/architecture/index.md)           | Libraries and boundaries, the state pattern, Matrix and encryption, UI and theming |
+| [Platforms](docs/platforms/index.md)                 | Web, the Electron desktop shell, and the Capacitor mobile targets                  |
+| [Stack reference](docs/reference/stack.md)           | Pinned versions and the integration note for each dependency                       |
+| [Troubleshooting](docs/reference/troubleshooting.md) | The gotcha index: symptom, cause, fix                                              |
 
 ## Tech stack
 
@@ -50,13 +49,13 @@ End-to-end encryption is a first-class, in-MVP feature.
   hooks (lint-staged + commitlint / Angular commit convention), re-run on every PR
   (and on pushes to `develop`/`master`) by **GitHub Actions** — alongside the unit tests, the production build, the
   Electron main-process checks, and the Playwright e2e journeys (the badge above; see
-  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#continuous-integration))
+  [CI and releases](docs/contributing/ci-and-releases.md))
 
-Exact versions and gotchas live in [STACK.md](docs/STACK.md).
+Exact versions and gotchas live in the [stack reference](docs/reference/stack.md).
 
 ## Quick start
 
-Requires **Node 24.15+** (what CI runs and the repo is developed on; 25.x is excluded — see docs/STACK.md) and
+Requires **Node 24.15+** (what CI runs and the repo is developed on; 25.x is excluded — see the stack reference) and
 **pnpm** (`corepack enable` picks up the pinned version in `package.json`).
 
 ```bash
@@ -67,7 +66,7 @@ pnpm start           # web dev server at http://localhost:4200
 You'll land on `/login`. Enter a homeserver (e.g. `matrix.org`) to discover its login
 flows, then sign in with a real account. The dev-only E2EE spike lives at `/spike`.
 
-For native and full testing details see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+For native and full testing details see the [contributor docs](docs/contributing/index.md).
 
 ## Common commands
 
@@ -137,28 +136,30 @@ android/ ios/         Capacitor native projects (webDir: www)
 www/                  web build output
 ```
 
-Boundaries: features may depend on `core`, `ui`, and the Helm UI libs
-(`@trinity/helm/*`); `ui` is presentational-only (may use `@trinity/helm/*`, no
-`core`/state deps); `core` depends on nothing; the app may depend on anything.
+Boundaries are enforced by `@nx/enforce-module-boundaries` on two independent axes,
+`type:` and `scope:`, with no exceptions configured. Dependencies point inward —
+`app → feature → {data-access, ui} → {util, platform}` — and one feature may never
+import another. `ui` is presentational only and cannot reach a data-access lib at all.
 New shared libs are added when first needed. Each component/page lives in its own directory
 (`name/name.component.ts` + `.html`/`.scss`/`.spec.ts`). See
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the rationale and data flow.
+[the architecture docs](docs/architecture/index.md) for the rationale and data flow.
 
 ## Project status
 
 | Milestone                                        | State                                                                                                                                                                                              |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit ([SPIKE.md](docs/SPIKE.md))                                                                                                                             |
+| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit                                                                                                                                                         |
 | 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                                                                                                                                                 |
 | 3 — Crypto bootstrap (cross-signing, key backup) | ✅ Done — core services + setup/recovery UI and a non-blocking `/rooms` banner                                                                                                                     |
 | 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock                                                                                                                             |
 | 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history                                                                                                                                    |
 | 6 — Compose (send)                               | ✅ Done — send/edit/delete, reactions, replies, emoji, local echo + retry                                                                                                                          |
-| 7 — Device verification UI                       | ✅ Done — emoji SAS self-verification (QR / cross-user deferred)                                                                                                                                   |
+| 7 — Device verification UI                       | ✅ Done — emoji SAS, self and cross-user (QR deferred)                                                                                                                                             |
 | 8 — Media                                        | ✅ Done — display + send (image/file/video/audio), AES-CTR attachment crypto in-tree, server thumbnails + duration/dimension probing, native Camera picker + Filesystem/Share save (web fallbacks) |
 | 9 — MVP polish                                   | ✅ Done — light/dark/system theme (+ native status bar), offline sync cache + web/PWA service worker, Settings (profile + device management), authenticated avatars                                |
 
-Full breakdown in [PLAN.md](docs/PLAN.md).
+A current capability list, including what is deliberately not supported yet, is in
+[Using Trinity](docs/users/index.md).
 
 ## Known limitations (current)
 

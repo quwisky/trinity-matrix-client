@@ -12,7 +12,7 @@ export type ResolvedTheme = 'light' | 'dark';
  * The named colour schemes shipped with the app. A palette is orthogonal to
  * light/dark — every palette works in both modes. Adding one is two steps: a CSS
  * block in apps/trinity/src/theme/variables.scss (keyed on `[data-theme='<id>']`)
- * and an entry here. See docs/THEMING.md.
+ * and an entry here. See docs/architecture/ui-and-theming.md.
  *
  * `trinity` is the default and applies no `data-theme` attribute (the `:root`
  * defaults in variables.scss).

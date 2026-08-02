@@ -22,7 +22,7 @@ which the `pnpm` wrappers below do for you.
 > On a **containerised CI runner** (a job container talking to a separate Docker
 > daemon), set `TRINITY_E2E_STATE_DIR` and `TRINITY_E2E_NETWORK_CONTAINER` — bind
 > mounts and published ports are both resolved by the daemon, not by the job. See
-> `e2e/synapse/paths.mjs` and docs/DEVELOPMENT.md.
+> `e2e/synapse/paths.mjs` and docs/contributing/testing.md.
 
 ## Layout
 
@@ -37,7 +37,7 @@ e2e/
   electron/   @nx/playwright Electron specs + support/launch — `pnpm electron:e2e`
   support/    shared helpers (e.g. serve.mjs — static file server for www/)
   synapse/    the disposable Synapse + Caddy + Dex harness (docker-compose, start/stop;
-              dex.yaml is the throwaway identity provider — see docs/DEVELOPMENT.md)
+              dex.yaml is the throwaway identity provider — see docs/contributing/testing.md)
 ```
 
 A `features/` body can be run on its own against an already-running homeserver
@@ -157,7 +157,7 @@ Disposable, self-contained:
 - **`dex.yaml`** — a throwaway identity provider, wired into Synapse as an
   `oidc_provider` so the suite can hold accounts with **no Matrix password**. That is
   the only way to drive the paths Trinity takes when a homeserver refuses a password for
-  a privileged action; see docs/DEVELOPMENT.md for why it is legacy SSO and not MSC3861.
+  a privileged action; see docs/contributing/testing.md for why it is legacy SSO and not MSC3861.
   It declares **two** static identities (`sso-e2e`, `sso-reset-e2e`) — one per spec file,
   because the list is fixed at container start (no per-test identity is possible) and the
   reset spec seeds state on its account that cannot be undone.

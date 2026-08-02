@@ -63,7 +63,7 @@ bootstrapApplication(AppComponent, {
   providers: [
     // Zoneless change detection (no zone.js). The data-access services' matrix-js-sdk
     // event handlers write signals, which schedule change detection directly. See
-    // docs/ZONELESS.md.
+    // docs/architecture/state-and-reactivity.md.
     provideZonelessChangeDetection(),
     // Quiet transient homeserver noise (503s / dropped connections during the
     // initial-sync request burst) so SDK-internal rejections don't spam the

@@ -19,7 +19,7 @@
 //   Where a Helm token always equals a Trinity token it is defined *as a reference*
 //   (`--card: var(--trinity-sidebar)`) so a palette only sets the value once.
 
-// HOW TO ADD A PALETTE  (see docs/THEMING.md for the full walk-through)
+// HOW TO ADD A PALETTE  (see docs/architecture/ui-and-theming.md for the full walk-through)
 // --------------------
 //   1. Copy the two `[data-theme='amethyst']` blocks below, rename the attribute.
 //   2. Override only the tokens that differ from the default — anything you leave out

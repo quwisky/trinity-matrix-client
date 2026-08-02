@@ -5,13 +5,14 @@ body:
   - type: markdown
     attributes:
       value: |
-        Much of what Trinity is missing is already written down and prioritised. Please skim
-        these first — if your idea is there, say so below rather than opening a duplicate,
-        and add what the plan is missing:
+        Some of what Trinity is missing is already known and written down. Please skim these
+        first — if your idea is there, say so below rather than opening a duplicate, and add
+        what is missing:
 
-        - `docs/PLAN.md` — the roadmap and the deliberately deferred items
-        - `docs/PARITY-PLAN.md` — gaps against Element, with effort estimates
-        - `docs/UX-POLISH-PLAN.md` — everyday polish, ranked by value ÷ effort
+        - [Using Trinity](https://github.com/quwisky/trinity-matrix-client/blob/develop/docs/users/index.md)
+          ends with a "Not yet supported" list of the deliberate gaps
+        - [The open issues](https://github.com/quwisky/trinity-matrix-client/issues) are where
+          prioritisation actually happens
 
   - type: textarea
     id: problem

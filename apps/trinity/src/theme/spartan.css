@@ -46,7 +46,7 @@
    * `text-danger` for alert TEXT. `text-destructive` reads --destructive, which is a
    * fill-only token: in dark it is a near-black maroon (#7f1d1d) that lands at 1.26:1
    * on the chat canvas, so error copy set with it is effectively invisible. This maps
-   * to the measured text role instead. See docs/THEMING.md.
+   * to the measured text role instead. See docs/architecture/ui-and-theming.md.
    */
   --color-danger: var(--trinity-danger);
   --color-success: var(--success);
@@ -114,7 +114,7 @@
  *   pnpm exec nx build trinity
  *   tr '}' '\n' < www/styles-*.css | grep 'text-destructive.*color:var(--destructive)'
  *
- * See docs/THEMING.md.
+ * See docs/architecture/ui-and-theming.md.
  */
 .text-destructive,
 [data-invalid='true'].data-\[invalid\=true\]\:text-destructive,

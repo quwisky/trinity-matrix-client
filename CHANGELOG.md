@@ -80,6 +80,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The documentation has been rewritten from the code up.** `docs/` was 15 flat files that had
+  drifted apart from the thing they described — one roadmap listed thirteen already-shipped
+  features as still outstanding, four pages linked to a source file that no longer exists, and
+  the version table had to be corrected by hand after every dependency wave. It is replaced by
+  27 pages in five sections, each rediscovered from the source rather than edited forward:
+  **Using Trinity** (installing, signing in, encryption and recovery, messaging, notifications,
+  settings — the first user-facing documentation the project has had), **Contributing**,
+  **Architecture**, **Platforms**, and a **Reference** section whose troubleshooting page
+  collects the traps that were previously scattered through prose or known only to whoever hit
+  them. Every page states what is genuinely not supported rather than staying quiet about it.
+  The ten roadmap and review documents are gone; git history keeps them, and the issue tracker
+  is where prioritisation actually happens. Developer-facing only — nothing in the app behaves
+  differently.
+
 - **Trinity now needs Node 24.15 or newer.** Both Angular 22 and the test environment
   declare 24.15 as their floor, and both exclude the 25.x line entirely — so the project
   requirement now says exactly that (`^24.15.0 || >=26.0.0`) instead of the looser `>=24`

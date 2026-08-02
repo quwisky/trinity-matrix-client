@@ -49,7 +49,7 @@ jobs:
 
   # Not redundant with `test`: the production build runs the AOT compiler, which rejects
   # things Vitest happily runs — template type errors, and the `lib: es2018` trap where
-  # ES2019+ methods pass the unit tests and fail the build (docs/STACK.md).
+  # ES2019+ methods pass the unit tests and fail the build (docs/reference/stack.md).
   build:
     name: Web build
     runs-on: ubuntu-latest
@@ -101,7 +101,7 @@ jobs:
     #
     # Derived, not measured: no CI run of this size exists yet. The measurement it is
     # derived FROM is the 8-11 min critical path recorded for this job when it ran 104
-    # specs (docs/DEVELOPMENT.md), of which ~4-5 min is the fixed part — setup, the
+    # specs (docs/contributing/testing.md), of which ~4-5 min is the fixed part — setup, the
     # cached browser install, the image pull, the dev build — leaving ~4-6 min of
     # Playwright wall time at workers: 2, i.e. ~5-7s of test time per ordinary spec.
     # Applied to what is here now:

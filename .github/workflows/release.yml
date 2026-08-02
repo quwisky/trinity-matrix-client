@@ -245,6 +245,6 @@ jobs:
               gh release create "$TAG" artifacts/* \
                 --draft \
                 --title "Trinity $TAG" \
-                --notes "Desktop builds for $TAG. Artifacts are unsigned unless signing secrets were configured — see docs/DEVELOPMENT.md."
+                --notes "Desktop builds for $TAG. Artifacts are unsigned unless signing secrets were configured — see https://github.com/quwisky/trinity-matrix-client/blob/develop/docs/platforms/desktop.md"
               ;;
           esac

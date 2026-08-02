@@ -10,10 +10,15 @@ Rust crypto WASM, Capacitor 8, and a hand-rolled Electron shell, in an Nx monore
 **Companion docs** (read these for depth — do not duplicate them here):
 `.claude/CLAUDE.md` (Angular/TypeScript style guide, always applies) · [`.claude/README.md`](.claude/README.md)
 (skills · rules catalog) · `.claude/rules/code-quality.md`
-(file-size / single-responsibility thresholds) · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) · [STACK.md](docs/STACK.md) (pinned versions + gotchas) ·
-[PLAN.md](docs/PLAN.md) (roadmap) · [docs/PUSH.md](docs/PUSH.md) ·
-[docs/THEMING.md](docs/THEMING.md) (design tokens · light/dark × palette · adding a theme).
+(file-size / single-responsibility thresholds) ·
+[docs/architecture/](docs/architecture/index.md) (layering · the state pattern ·
+[Matrix and encryption](docs/architecture/matrix-and-encryption.md) ·
+[UI and theming](docs/architecture/ui-and-theming.md) — design tokens, light/dark × palette,
+adding a theme) · [docs/contributing/](docs/contributing/index.md) (setup · commands · testing ·
+CI · conventions) · [docs/platforms/](docs/platforms/index.md) (web · desktop · mobile) ·
+[docs/reference/stack.md](docs/reference/stack.md) (pinned versions + gotchas) ·
+[docs/reference/troubleshooting.md](docs/reference/troubleshooting.md) (the gotcha index) ·
+[docs/reference/push-notifications.md](docs/reference/push-notifications.md).
 
 ## Commands
 
@@ -33,10 +38,10 @@ Run `corepack enable` once; it picks up the pinned pnpm version.
 `cwd` = the project dir), so forward Vitest args after `--`:
 
 ```bash
-pnpm exec nx test core                        # one project
-pnpm exec nx test core --configuration=watch  # watch mode
-pnpm exec nx test core -- message-list        # files matching a path substring
-pnpm exec nx test core -- -t "sends a read receipt"   # one test by name
+pnpm exec nx test data-access-rooms                        # one project
+pnpm exec nx test data-access-rooms --configuration=watch  # watch mode
+pnpm exec nx test data-access-rooms -- message-list        # files matching a path substring
+pnpm exec nx test data-access-rooms -- -t "sends a read receipt"   # one test by name
 pnpm exec nx affected -t lint test            # only what changed vs. the base branch
 pnpm exec nx reset                            # clear Nx cache if results look stale
 ```
@@ -57,7 +62,7 @@ pnpm exec nx reset                            # clear Nx cache if results look s
 
 | Command                                           | Purpose                                                          |
 | ------------------------------------------------- | ---------------------------------------------------------------- |
-| `pnpm electron:install`                           | One-time: download the Electron binary (normal install skips it) |
+| `pnpm electron:install`                           | Install the shell's deps and download the Electron binary   |
 | `pnpm electron:start`                             | Build + run the desktop shell                                    |
 | `pnpm electron:package[:mac\|:linux\|:win\|:all]` | Package for the host OS (or a named target)                      |
 | `pnpm electron:package:mac:signed`                | Signed + notarized macOS build (needs Developer ID / creds)      |
@@ -78,7 +83,7 @@ pnpm exec nx reset                            # clear Nx cache if results look s
 The Synapse-backed flows (`e2e:verify`, `e2e:media`, `e2e:threads`, `e2e:reply`, `e2e:spaces`,
 `e2e:rooms`, `e2e:search`, `e2e:emoji`) each own **one** disposable Synapse Docker stack on fixed ports, so they
 **must run sequentially, never concurrently** (e.g. `pnpm e2e:threads && pnpm e2e:spaces`). See
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#testing).
+[docs/contributing/testing.md](docs/contributing/testing.md).
 
 ## Architecture
 
@@ -145,7 +150,7 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
   it's intentionally exempt from the `trn`-prefix and class-suffix ESLint rules. Where upstream
   is wrong we *do* diverge — but on the record: comment it at the site, add it to the banner at
   the top of the file, pin it with a test, and list it under **Vendored spartan overrides** in
-  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#vendored-spartan-overrides).
+  [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).
 - **Commits use the Conventional Commits convention** (commitlint `commit-msg` hook via
   `@commitlint/config-conventional`): `type(scope): subject` where `type` ∈
   `feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert`. A `pre-commit` hook
@@ -161,7 +166,7 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
   use Helm's `--destructive` as a foreground — it's a fill/tint-only token whose dark value
   is a near-black maroon (in a template the alert-text utility is `text-danger`, **not**
   `text-destructive`). Rendered `[innerHTML]` markdown is styled globally in
-  `apps/trinity/src/rendered-markdown.scss` (not `::ng-deep`). See [docs/THEMING.md](docs/THEMING.md).
+  `apps/trinity/src/rendered-markdown.scss` (not `::ng-deep`). See [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).
 - **Desktop detection**: Capacitor's `isNativePlatform()` is `false` in the Electron shell — branch on
   the `trinityDesktop` preload marker to treat desktop like web (service worker off, push off).
 
