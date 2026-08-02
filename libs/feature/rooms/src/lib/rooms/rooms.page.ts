@@ -122,6 +122,7 @@ import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { MemberActionsService } from './member-actions.service';
 import { AccountRoutingService } from './account-routing.service';
+import { InviteActionsService } from './invite-actions.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 
 /**
@@ -142,6 +143,7 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     RoomShellNavigationService,
     MemberActionsService,
     AccountRoutingService,
+    InviteActionsService,
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
@@ -236,6 +238,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly nav = inject(RoomShellNavigationService);
   private readonly members_ = inject(MemberActionsService);
   private readonly routing = inject(AccountRoutingService);
+  private readonly inviteActions = inject(InviteActionsService);
 
   readonly activeSpaceId = this.store.activeSpaceId;
   /**
@@ -859,60 +862,18 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
   }
 
-  /** Accept a pending invite (join); select the joined room when it's not a space. */
-  onAcceptInvite({
-    roomId,
-    accountId,
-  }: {
-    roomId: string;
-    accountId?: string;
-  }): void {
-    this.spaceError.set(null);
-    const invite = this.knownInvites().find((i) => i.roomId === roomId);
-    // Joined on the account the invite was sent to — answering one must never need an
-    // account switch, and joining as the wrong account would fail or join the wrong user.
-    runWithBusy(
-      this.invites.acceptInvite(roomId, accountId),
-      this.status,
-    ).subscribe(() => {
-      // Open what was just joined. A joined space needs nothing — it appears in the rail.
-      //
-      // Only a DM switches view. `onSelectSpace(null)` lands on the Home view, which lists
-      // DIRECT MESSAGES ONLY (see `visibleRooms`) — right for a DM, and wrong for anything
-      // else: a joined ROOM would be opened in the timeline while vanishing from the sidebar,
-      // measurably so (the row count dropped from 2 to 1). That was correct before the rail
-      // split in bd16dc25, when Home listed everything. A room is instead left on whatever
-      // view the user was already on — Recent activity by default, which lists everything.
-      if (!invite || invite.isSpace) {
-        return;
-      }
-      if (invite.isDirect) {
-        this.onSelectSpace(null);
-      }
-      this.onSelectRoomRow(roomId);
-    });
+  /** Accept an invite and open the room, switching account if it is not the active one. */
+  onAcceptInvite(invite: { roomId: string; accountId?: string }): void {
+    this.inviteActions.onAcceptInvite(invite);
   }
 
-  /** Pending invites across the mixed accounts, or the active account's when not mixing. */
   private knownInvites(): readonly PendingInvite[] {
-    return this.mixedOn()
-      ? this.mixedInvites.invites()
-      : this.invites.pendingInvites();
+    return this.inviteActions.knownInvites();
   }
 
-  /** Decline a pending invite (leave the invited room/space). */
-  onDeclineInvite({
-    roomId,
-    accountId,
-  }: {
-    roomId: string;
-    accountId?: string;
-  }): void {
-    this.spaceError.set(null);
-    runWithBusy(
-      this.invites.declineInvite(roomId, accountId),
-      this.status,
-    ).subscribe();
+  /** Decline an invite. */
+  onDeclineInvite(invite: { roomId: string; accountId?: string }): void {
+    this.inviteActions.onDeclineInvite(invite);
   }
 
   private applyCreateRoom(name: string): void {
