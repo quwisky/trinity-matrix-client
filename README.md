@@ -56,7 +56,7 @@ Exact versions and gotchas live in [STACK.md](docs/STACK.md).
 
 ## Quick start
 
-Requires **Node 24** (what CI runs and the repo is developed on) and
+Requires **Node 24.15+** (what CI runs and the repo is developed on; 25.x is excluded — see docs/STACK.md) and
 **pnpm** (`corepack enable` picks up the pinned version in `package.json`).
 
 ```bash

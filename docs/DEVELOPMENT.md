@@ -29,7 +29,7 @@ are unchanged. `pnpm exec nx graph` opens the dependency graph.
 
 ## Prerequisites
 
-- **Node 24** (what CI runs and the repo is developed on) and **pnpm**
+- **Node 24.15+** (what CI runs and the repo is developed on; the 25.x line is excluded) and **pnpm**
   (`corepack enable` installs the version pinned in `package.json`). This project is
   **pnpm-only** — a `preinstall` guard aborts `npm install` / `yarn install`.
 - **iOS builds:** macOS with **Xcode** installed and selected
@@ -231,6 +231,15 @@ browsers:
 ```bash
 pnpm exec playwright install chromium webkit
 ```
+
+**Re-run that after every Playwright version bump, not just once per clone.** Each
+release pins its own browser build, so a bumped runner against the old binaries fails
+_every_ browser test at launch with `Executable doesn't exist at
+.../chromium_headless_shell-<n>` — which reads like a catastrophic regression rather
+than a missing download. The 1.61 → 1.62 bump did exactly this: 165 of 167 e2e specs
+failed until the browsers were re-installed. CI is immune because it keys the
+`~/.cache/ms-playwright` cache on `hashFiles('pnpm-lock.yaml')`, so a moved lockfile
+necessarily misses and re-downloads.
 
 `e2e/features/` holds `smoke-login.mjs`, `crypto-spike.mjs`, the two-client
 `verify-sas.mjs` (+ `verify-sas-selfcheck.mjs`); the `e2e/runners/*-run.mjs` orchestrators own the

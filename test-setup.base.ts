@@ -7,10 +7,14 @@ import { vi } from 'vitest';
 // src/test-setup.ts (the vite `setupFiles` entry) imports this; lib-specific
 // extras (e.g. feature-rooms' ResizeObserver stub) are appended in that file.
 
-// jsdom 25 forwards non-fatal "jsdomError" events to the console, flooding test
+// jsdom forwards non-fatal "jsdomError" events to the console, flooding test
 // output with noise from feature gaps our components legitimately hit:
-//   • "Could not parse CSS stylesheet" — jsdom can't parse CSS cascade layers
-//     (`@layer`, emitted by ng-icons and the CDK overlay) on every style inject.
+//   • "Could not parse CSS stylesheet" — originally cascade layers (`@layer`, emitted
+//     by ng-icons and the CDK overlay), which jsdom 27 learned to parse. Verified on
+//     jsdom 30: `@layer` alone no longer errors. The entry stays because it is keyed on
+//     a message, not a cause, and Tailwind v4 still emits constructs jsdom's CSS parser
+//     rejects (`@property`, `color-mix`, nested rules). Do not drop it on the strength
+//     of `@layer` being fixed — confirm nothing else trips it first.
 //   • "Not implemented: navigation" — jsdom has no real navigation, so a component
 //     that redirects via `location.href` (e.g. SSO login) trips this.
 // Filter just these known-benign messages at their source, the per-window
@@ -57,30 +61,35 @@ vi.stubGlobal('matchMedia', (query: string) => ({
   dispatchEvent: () => false,
 }));
 
-// jsdom 25 has no PointerEvent, and that gap is a silent trap rather than a missing
-// feature. brain's BrnTooltip (>= 1.2.0) opens only for a `pointerType` of 'mouse' or
-// 'pen', while @testing-library/dom builds events as `window[EventType] || window.Event`
-// — so for a window without PointerEvent it falls back to the plain Event constructor,
-// which drops `pointerType` on the floor. Without this shim
-// `fireEvent.pointerEnter(el, { pointerType: 'mouse' })` arrives ungated and the tooltip
-// never opens, failing in a way indistinguishable from the bug it is testing for.
+// jsdom HAS shipped PointerEvent since 27, so this is no longer a missing-feature shim.
+// It survives for its DEFAULTS. The native constructor follows the spec — `pointerType`
+// is '' and `isPrimary` false — while brain's BrnTooltip (>= 1.2.0) opens only for a
+// `pointerType` of 'mouse' or 'pen'. So on stock jsdom a plain
+// `fireEvent.pointerEnter(el)` builds an event brain silently rejects, and the spec fails
+// in a way indistinguishable from the bug it is testing for.
 //
-// Subclassing MouseEvent (rather than Event) keeps the event's mouse-ness — brn reads
-// clientX/clientY off the same object for overlay positioning.
+// Those are the right defaults for a browser and the wrong ones for a test double.
+// Defaulting to a primary mouse makes the common case correct and leaves
+// `{ pointerType: 'touch' }` an explicit opt-in. Angular CDK's own test harness takes the
+// same view (`isPrimary: true`).
 //
-// The defaults deliberately DIVERGE from the PointerEvent spec, which says `pointerType`
-// is '' and `isPrimary` false. Those are the right defaults for a browser and the wrong
-// ones for a test double: they would re-create the very trap above one step later, since
-// a plain `fireEvent.pointerEnter(el)` would produce an event brain rejects and a spec
-// that fails for an invisible reason. Defaulting to a primary mouse makes the common
-// case correct and leaves `{ pointerType: 'touch' }` an explicit opt-in. Angular CDK's
-// own test harness takes the same view (`isPrimary: true`).
+// Deleting it would pass today — all three pointer call sites in
+// message-row.component.spec.ts name `pointerType` explicitly — and would re-arm the trap
+// for the next spec written without one. That is the whole reason it is still here.
 //
-// Not solved here, and not solvable this way: jsdom implements no pointer *capture* —
-// setPointerCapture/hasPointerCapture/releasePointerCapture are absent from its DOM — so
-// a spec driving brain's sonner/drawer/slider swipe paths (all of which call
-// `target.setPointerCapture(event.pointerId)`) needs those three methods stubbed too,
-// whatever this shim carries.
+// Subclassing MouseEvent keeps the event's mouse-ness: brn reads clientX/clientY off the
+// same object for overlay positioning.
+//
+// Two things this does NOT solve, both verified against jsdom 30:
+//   - jsdom still implements no pointer *capture*. setPointerCapture, hasPointerCapture
+//     and releasePointerCapture are absent from its DOM, so a spec driving brain's
+//     sonner/drawer/slider swipe paths (all of which call
+//     `target.setPointerCapture(event.pointerId)`) needs those three stubbed too,
+//     whatever this shim carries.
+//   - `element.click()` fires a NATIVE PointerEvent on jsdom >= 27, so an event from a
+//     click is not an instance of the class stubbed here. Nothing in the tree does
+//     `instanceof PointerEvent` today (checked across brain, CDK and core), so this is
+//     latent rather than live — but it is the seam a future dependency would trip on.
 vi.stubGlobal(
   'PointerEvent',
   class JsdomPointerEvent extends MouseEvent {
