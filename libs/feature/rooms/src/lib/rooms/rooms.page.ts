@@ -20,7 +20,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { Observable, finalize, forkJoin } from 'rxjs';
+import { Observable, finalize } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
@@ -116,6 +116,7 @@ import { AccountRoutingService } from './account-routing.service';
 import { InviteActionsService } from './invite-actions.service';
 import { SpaceActionsService } from './space-actions.service';
 import { RoomActionsService } from './room-actions.service';
+import { ReadStateService } from './read-state.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 
 /**
@@ -139,6 +140,7 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     InviteActionsService,
     SpaceActionsService,
     RoomActionsService,
+    ReadStateService,
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
@@ -236,6 +238,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly inviteActions = inject(InviteActionsService);
   private readonly spaceActions = inject(SpaceActionsService);
   private readonly roomActions = inject(RoomActionsService);
+  private readonly readState = inject(ReadStateService);
 
   readonly activeSpaceId = this.store.activeSpaceId;
   /**
@@ -759,117 +762,28 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
   }
 
-  /** Sidebar room ⋮ menu: apply a chosen notification level (all / mentions / mute). */
-  onSetNotifyMode({
-    roomId,
-    mode,
-    accountIds,
-  }: {
+  /** Set a room's notification level from the sidebar menu. */
+  onSetNotifyMode(change: {
     roomId: string;
     mode: RoomNotifyMode;
-    accountIds?: readonly string[];
+    accountId?: string;
   }): void {
-    this.setNotifyMode(roomId, mode, accountIds);
+    this.readState.onSetNotifyMode(change);
   }
 
-  /** Apply a notification level on every account joined to the row — a merged row shows one
-   * menu, so muting it must actually mute the room everywhere it is contributing. */
-  private setNotifyMode(
-    roomId: string,
-    mode: RoomNotifyMode,
-    accountIds?: readonly string[],
-  ): void {
-    const targets = accountIds?.length ? accountIds : [undefined];
-    forkJoin(
-      targets.map((accountId) =>
-        this.roomNotifications.setMode(roomId, mode, accountId),
-      ),
-    )
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        error: () =>
-          void this.status.showError('Could not update notifications.'),
-      });
+  /** Mark a room read. */
+  onMarkRead(target: { roomId: string; accountId?: string }): void {
+    this.readState.onMarkRead(target);
   }
 
-  /** Mark a single room read (from its ⋮ menu); the badge clears via sync. Acked on the
-   * row's own account, which in the mixed view need not be the active one. */
-  onMarkRead({
-    roomId,
-    accountIds,
-  }: {
-    roomId: string;
-    accountIds?: readonly string[];
-  }): void {
-    this.ackRead(roomId, accountIds)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        error: () =>
-          void this.status.showError('Could not mark the room read.'),
-      });
+  /** Flag a room to come back to. */
+  onMarkUnread(target: { roomId: string; accountId?: string }): void {
+    this.readState.onMarkUnread(target);
   }
 
-  /**
-   * Flag a room to come back to. Written on every account joined to the row for the same
-   * reason {@link onMarkRead} acks all of them: a merged mixed-account row would otherwise
-   * be flagged on one account and not the other, and the two would disagree.
-   */
-  onMarkUnread({
-    roomId,
-    accountIds,
-  }: {
-    roomId: string;
-    accountIds?: readonly string[];
-  }): void {
-    const targets = accountIds?.length ? accountIds : [undefined];
-    forkJoin(
-      targets.map((accountId) =>
-        this.rooms.setMarkedUnread(roomId, true, accountId),
-      ),
-    )
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        error: () =>
-          void this.status.showError('Could not mark the room unread.'),
-      });
-  }
-
-  /**
-   * Ack a room on every account joined to it. A room both mixed accounts are in is ONE row
-   * carrying the loudest unread of the two, so acking only one leaves a badge the user has
-   * no way to clear.
-   */
-  private ackRead(
-    roomId: string,
-    accountIds?: readonly string[],
-  ): Observable<unknown> {
-    const targets = accountIds?.length ? accountIds : [undefined];
-    return forkJoin(
-      targets.map((accountId) => this.rooms.markRead(roomId, accountId)),
-    );
-  }
-
-  /**
-   * Mark the currently-visible unread rooms read (header action). Scoped to the sidebar's
-   * rooms so it matches the button, which is gated on their unread state — and acked per
-   * owning account, since in the mixed view the button is offered for rooms belonging to
-   * accounts other than the active one (acking those through the active client would
-   * silently do nothing).
-   */
+  /** Mark every visible room read. */
   onMarkAllRead(): void {
-    const unread = this.visibleRooms().filter((room) => room.hasUnread);
-    if (unread.length === 0) {
-      return;
-    }
-    // Acked on every account joined to the row, exactly as the ⋮ path does: a merged
-    // mixed-account row can be flagged on the account that did NOT win the merge, and
-    // acking only the winner leaves the row unread with the button still offering to
-    // clear it.
-    forkJoin(unread.map((room) => this.ackRead(room.id, room.accountIds)))
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        error: () => void this.status.showError('Could not mark rooms read.'),
-      });
+    this.readState.onMarkAllRead();
   }
 
   /** Set this space's room order, or clear back to the account default. */
