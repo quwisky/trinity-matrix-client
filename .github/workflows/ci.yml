@@ -66,13 +66,30 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
-      # Nothing here launches Electron — this only typechecks and unit-tests the main
-      # process — so skip the ~100 MB binary download.
+      # The binary download is NOT skipped any more, and that is the point of this job.
+      # It used to be, on the reasoning that "nothing here launches Electron" — which was
+      # true and was the problem: a two-major Chromium bump had no gate at all, and the
+      # e2e suite that does launch Electron had silently rotted (it still toggled a CSS
+      # class renamed months earlier, and its "crypto WASM loads" test never loaded any
+      # WASM). ~100 MB, cached below.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('electron/pnpm-lock.yaml') }}
+          restore-keys: electron-${{ runner.os }}-
       - run: pnpm -C electron install --frozen-lockfile
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      # Fetch it here rather than letting `electron:e2e` trip the package's lazy download
+      # mid-run: this is the step that populates the cache above, and a wedged @electron/get
+      # should fail as itself, not as a Playwright launch timeout.
+      - run: pnpm -C electron run ensure:binary
       - run: pnpm -C electron run compile
       - run: pnpm -C electron test
+      # Launches the real binary and serves www/ over trinity://app. `electron:e2e` runs
+      # `electron:build` first (Angular www/ + the main-process tsc), which this job needs
+      # and no other job hands it. `xvfb-run` is required — Electron needs an X server
+      # even headless. This is the only gate in the repo that exercises the custom
+      # privileged scheme, WASM stream-instantiation, the sandbox posture and safeStorage.
+      - run: xvfb-run -a pnpm electron:e2e
 
   # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
   e2e:

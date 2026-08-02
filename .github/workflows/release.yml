@@ -86,9 +86,11 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm build
+      # No binary download to opt out of: Electron has had no postinstall since v42, and this
+      # job never launches it (`pnpm -C electron test` is main-process unit tests only). The
+      # `ELECTRON_SKIP_BINARY_DOWNLOAD=1` that used to sit here gated that postinstall, so it
+      # had stopped doing anything at all.
       - run: pnpm -C electron install --frozen-lockfile
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: pnpm -C electron test
 
   package:

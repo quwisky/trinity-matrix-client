@@ -13,7 +13,7 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | `tailwindcss` + `tw-animate-css`     | 4.3 / 1.4 | Styling + theming (tokens & palettes in `theme/variables.scss`; wiring in `theme/spartan.css`); base reset is Tailwind preflight                                                |
 | `@ng-icons/{core,lucide}`            | 34.0.0    | Icon components (`<ng-icon name="lucide…">`) used across the UI                                                                                                                 |
 | `@capacitor/core`                    | 8.4.2     | Capacitor 8: SPM default on iOS, edge-to-edge Android                                                                                                                           |
-| `electron` + `electron-builder`      | 42 / 26   | Hand-rolled desktop shell in `electron/` (own package.json); see Electron desktop below                                                                                         |
+| `electron` + `electron-builder`      | 43 / 26   | Hand-rolled desktop shell in `electron/` (own package.json); see Electron desktop below                                                                                         |
 | `matrix-js-sdk`                      | 41.9.0    | Requires **Node.js 22+**; browser entry auto-configures IndexedDB                                                                                                               |
 | `@matrix-org/matrix-sdk-crypto-wasm` | 18.3.1    | Rust crypto WASM bindings; E2EE backend                                                                                                                                         |
 | `@capacitor/app`                     | 8.1.1     | App URL-open events — native SSO deep-link callback                                                                                                                             |
@@ -180,10 +180,36 @@ the architecture changes — find out before building UI on top.
   Windows builds run on Windows (or macOS/Linux **with Wine**); Linux builds run on
   Linux/macOS (deb needs `dpkg`/`fpm`). `:all` (`-mwl`) therefore only fully succeeds on a
   suitably-tooled macOS host. CI per-OS runners are the reliable way to ship all three.
-- First package downloads the Electron binary (the headless install skipped it); run
-  `pnpm electron:install` on a real machine, or it fetches on first package.
-- Signing/notarization deferred (`electron-builder.yml` TODOs). Confirm WASM crypto +
-  IndexedDB on a real desktop run.
+- **`pnpm install` does not download the Electron binary — nothing does, automatically.**
+  Electron dropped its postinstall script in v42 (41.10.3 still has it; 42.0.0 has no
+  `scripts` at all, and this shell shipped on 42.5.0 — so it never fetched here); it
+  fetches lazily instead, the first
+  time `require('electron')` resolves a path. That is too late on macOS, where `sign:dev`
+  codesigns `dist/Electron.app` before anything requires the package, so the first
+  `electron:start` after a clone would fail on a missing app. `pnpm electron:install`
+  therefore chains `electron/scripts/ensure-electron.mjs`, which drives the package's own
+  installer — idempotent, since it self-skips when the matching version is already unpacked.
+  Cost: ~119 MB zipped in `~/.cache/electron`, ~313 MB extracted into
+  `node_modules/electron/dist`. `ELECTRON_SKIP_BINARY_DOWNLOAD` is dead weight since v42 (it
+  gated the postinstall that no longer exists) — don't reach for it to make an install lean.
+- `electron:sign:dev` **self-skips off macOS.** It ad-hoc-signs the dev binary so macOS will
+  run it, and it is the last link of an `&&` chain — so while it called `codesign`
+  unconditionally it killed `electron:start`, `electron:e2e` and every `package:*` on Linux
+  and Windows, where `codesign` does not exist. It now no-ops with a message on non-darwin.
+- **macOS signing and notarization are fully configured; what is missing is credentials.**
+  `electron-builder.yml` wires `afterPack: ./afterPack.cjs` (fuses) and
+  `afterSign: build/notarize.cjs`, sets `hardenedRuntime: true` with entitlements for the
+  V8/WASM JIT, and deliberately leaves `identity` unpinned so electron-builder
+  auto-discovers a Developer ID. The notarize hook is a no-op unless notarization
+  credentials are present. The real outstanding TODOs are **Windows** code signing
+  (`electron-builder.yml:111`, Authenticode / Azure Trusted Signing) and auto-update.
+- WASM crypto over `trinity://` and the sandbox posture are **no longer** "confirm on a real
+  desktop run" — `e2e/electron/app.electron.spec.mts` asserts them against a launched binary
+  (`compileStreaming` of the real `.wasm`, `Content-Type: application/wasm`, origin
+  `trinity://app`, no `require`/`process` in the renderer, safeStorage round-trip, the dark
+  cascade), and CI runs it under `xvfb-run`. **Still unasserted: IndexedDB persistence** —
+  the suite never leaves the login screen, so nothing opens the crypto store. That needs an
+  authenticated desktop session, which no gate here drives yet.
 
 ## Testing — Vitest + Playwright
 
