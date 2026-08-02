@@ -44,7 +44,7 @@ reference for building the client; see [PLAN.md](PLAN.md) for the roadmap.
 | `@nx/playwright` + `@playwright/test`             | 23.1.1 / 1.61 | `nx e2e trinity-e2e` app-journey tests (Playwright, Chromium)        |
 | `vitest` + `@analogjs/*`                          | 4 / 2.6.3     | Unit tests; the Analog plugin compiles Angular for Vite              |
 | `vite`, `vite-tsconfig-paths`, `jsdom`            | 8 / 6 / 25    | Vitest runtime + `@trinity/*` alias resolution + DOM env             |
-| `eslint` + `angular-eslint` + `typescript-eslint` | 9 / 22.1 / 8  | Flat config (`eslint.config.mjs`) + module boundaries                |
+| `eslint` + `angular-eslint` + `typescript-eslint` | 10 / 22.1 / 8 | Flat config (`eslint.config.mjs`) + module boundaries                |
 | `prettier` (+ `prettier-plugin-tailwindcss`)      | 3.9 / 0.8     | `singleQuote`; Angular parser for `*.page.html`; Tailwind class sort |
 | `stylelint` + `stylelint-config-standard-scss`    | 17 / 17       | SCSS lint                                                            |
 | `@commitlint/{cli,config-conventional}`           | 21            | `commit-msg` hook; Conventional Commits convention                   |
