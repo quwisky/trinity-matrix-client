@@ -180,13 +180,18 @@ the architecture changes — find out before building UI on top.
   Windows builds run on Windows (or macOS/Linux **with Wine**); Linux builds run on
   Linux/macOS (deb needs `dpkg`/`fpm`). `:all` (`-mwl`) therefore only fully succeeds on a
   suitably-tooled macOS host. CI per-OS runners are the reliable way to ship all three.
-- The Electron binary (~119 MB zipped in `~/.cache/electron`, ~313 MB extracted into
-  `node_modules/electron/dist`) is fetched by the `electron` package's own postinstall, not
-  by anything in this repo. **`pnpm electron:install` will NOT fetch it if
-  `electron/node_modules` already exists** — pnpm reports "Already up to date", the
-  postinstall never re-runs, and `dist/` stays empty however many times you run it. To force
-  it, run the package's own installer:
-  `node electron/node_modules/electron/install.js`.
+- **`pnpm install` does not download the Electron binary — nothing does, automatically.**
+  Electron dropped its postinstall script in v42 (41.10.3 still has it; 42.0.0 has no
+  `scripts` at all, and this shell shipped on 42.5.0 — so it never fetched here); it
+  fetches lazily instead, the first
+  time `require('electron')` resolves a path. That is too late on macOS, where `sign:dev`
+  codesigns `dist/Electron.app` before anything requires the package, so the first
+  `electron:start` after a clone would fail on a missing app. `pnpm electron:install`
+  therefore chains `electron/scripts/ensure-electron.mjs`, which drives the package's own
+  installer — idempotent, since it self-skips when the matching version is already unpacked.
+  Cost: ~119 MB zipped in `~/.cache/electron`, ~313 MB extracted into
+  `node_modules/electron/dist`. `ELECTRON_SKIP_BINARY_DOWNLOAD` is dead weight since v42 (it
+  gated the postinstall that no longer exists) — don't reach for it to make an install lean.
 - `electron:sign:dev` **self-skips off macOS.** It ad-hoc-signs the dev binary so macOS will
   run it, and it is the last link of an `&&` chain — so while it called `codesign`
   unconditionally it killed `electron:start`, `electron:e2e` and every `package:*` on Linux

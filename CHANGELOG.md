@@ -206,6 +206,17 @@ All notable changes to this project are documented here. The format is based on
   their menu, so you can see where you came from. On a phone, where there is no room beside
   a menu for anything to open into, **Show accounts** now opens a dialog instead.
 
+- **`pnpm electron:install` now actually installs Electron.** Electron stopped shipping a
+  postinstall script in v42, so the command only installed the desktop shell's dependencies —
+  the binary it is named for was never fetched, and `node_modules/electron/dist` stayed empty
+  however many times you ran it. The shell shipped on 42.5.0, the first release without that
+  postinstall, so the command has never once done what it is named for. The package downloads lazily instead, the first time
+  something asks it for a path, which is too late on macOS: `electron:build` code-signs the
+  app before anything asks, so a fresh clone's first `pnpm electron:start` died on a missing
+  `Electron.app`. The command now fetches the binary itself, says so, skips the download when
+  the matching version is already unpacked, and fails with an explanation rather than an empty
+  directory. Developer-facing only — nothing in the app behaves differently.
+
 ### Added
 
 - **Formatting buttons, shortcuts and a preview in the composer.** Writing a formatted message

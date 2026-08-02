@@ -8,6 +8,7 @@
   "homepage": "https://github.com/quwisky/trinity-matrix-client",
   "main": "dist/main.js",
   "scripts": {
+    "ensure:binary": "node scripts/ensure-electron.mjs",
     "copy:www": "node scripts/copy-www.mjs",
     "compile": "tsc -p tsconfig.json",
     "build": "node scripts/copy-www.mjs && tsc -p tsconfig.json",

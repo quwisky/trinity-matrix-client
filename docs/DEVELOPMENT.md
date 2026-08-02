@@ -197,7 +197,7 @@ boots, exposes the preload bridge but no Node, and renders dark mode (a regressi
 for the critical-CSS/Electron dark-theme bug):
 
 ```bash
-pnpm electron:install   # once — downloads the Electron binary (normal install skips it)
+pnpm electron:install   # once — installs the shell's deps and downloads the Electron binary
 pnpm electron:e2e       # builds the app, then runs the Electron specs
 # headless Linux/CI: wrap with xvfb (Electron needs a display):
 xvfb-run -a pnpm electron:e2e
@@ -538,8 +538,11 @@ Two things worth knowing about the jobs that are new to CI:
 
 - **`desktop`** exists because `electron/`'s specs are part of no other command — `pnpm test`
   is `nx run-many -t test`, and the `trinity-desktop` project exposes only a `lint` target.
-  It sets `ELECTRON_SKIP_BINARY_DOWNLOAD=1`: nothing here launches Electron, so the ~100 MB
-  binary is dead weight.
+  It no longer skips the binary: `electron:e2e` launches the real thing, and the ~119 MB
+  download is cached between runs on `~/.cache/electron`. (Nothing has to opt into that
+  download any more either — Electron dropped its postinstall in v42, so
+  `ELECTRON_SKIP_BINARY_DOWNLOAD` now gates nothing, and the package fetches lazily the first
+  time something resolves its path. `pnpm electron:install` is what fetches it deliberately.)
 - **`e2e`** runs the Playwright journeys against the disposable Synapse + Caddy stack in
   Docker. Its first step runs three independent things **concurrently** — the
   browser install, the Synapse/Caddy/Dex image pull, and the dev build — because Playwright

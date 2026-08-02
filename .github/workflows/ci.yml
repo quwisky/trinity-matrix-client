@@ -78,6 +78,10 @@ jobs:
           key: electron-${{ runner.os }}-${{ hashFiles('electron/pnpm-lock.yaml') }}
           restore-keys: electron-${{ runner.os }}-
       - run: pnpm -C electron install --frozen-lockfile
+      # Fetch it here rather than letting `electron:e2e` trip the package's lazy download
+      # mid-run: this is the step that populates the cache above, and a wedged @electron/get
+      # should fail as itself, not as a Playwright launch timeout.
+      - run: pnpm -C electron run ensure:binary
       - run: pnpm -C electron run compile
       - run: pnpm -C electron test
       # Launches the real binary and serves www/ over trinity://app. `electron:e2e` runs
