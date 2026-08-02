@@ -137,7 +137,7 @@ Two barrels are deliberately incomplete, and nothing enforces either:
 
 - `libs/feature/shell/src/index.ts` does not re-export `home.page`. That barrel is
   eagerly imported by `main.ts` for `AppComponent`, so anything in it ships in the
-  eager chunk. The page is reached through the `@trinity/feature-shell/home-page`
+  eager chunk. The page is reached through the `@trinity/feature/shell/home-page`
   alias instead.
 - `code-highlight.ts` is kept out of the `util-matrix` barrel and reached through
   `@trinity/util-matrix/code-highlight`, because `message-view.ts` is eager and the

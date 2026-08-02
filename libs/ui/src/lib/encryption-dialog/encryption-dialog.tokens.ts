@@ -11,7 +11,7 @@ export type EncryptionDialogLoaders = Record<
 
 /**
  * Lazy loaders for the modal-mode encryption pages. Wired at the app (`main.ts`)
- * with dynamic `import('@trinity/feature-crypto')` calls, so `ui` never imports the
+ * with dynamic `import('@trinity/feature/crypto')` calls, so `ui` never imports the
  * feature — keeping the `type:ui` (scope:shared) → `type:feature` (scope:matrix)
  * module boundary intact while {@link EncryptionDialogService} can still present those
  * pages as modals on desktop. Absent in `ui`-in-isolation / tests with no app

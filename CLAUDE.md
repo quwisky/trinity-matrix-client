@@ -107,7 +107,7 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   `timeline`, `crypto`, `profile`, `invites`, `pinned`, `search`, `notifications`, `auth`, `gif`),
   each at `libs/data-access/<domain>`.
   Cross-domain injects are inter-lib edges (search→rooms/invites, auth→media/notifications, notification→timeline).
-- `@trinity/feature-*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
+- `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
 - `@trinity/ui` + `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]` — **presentational** only; no
   state/SDK deps. Helm is `@spartan-ng/cli`-generated.

@@ -45,7 +45,7 @@ import {
 import { provideSpartanHlm } from '@trinity/helm/utils';
 
 import { routes } from './app/app.routes';
-import { AppComponent, NavigationFocusService } from '@trinity/feature-shell';
+import { AppComponent, NavigationFocusService } from '@trinity/feature/shell';
 import { environment } from './environments/environment';
 import { BUILD_INFO_VALUE } from './app/build-info';
 
@@ -156,9 +156,9 @@ bootstrapApplication(AppComponent, {
       provide: ENCRYPTION_DIALOG_COMPONENTS,
       useValue: {
         unlock: () =>
-          import('@trinity/feature-crypto').then((m) => m.EncryptionUnlockPage),
+          import('@trinity/feature/crypto').then((m) => m.EncryptionUnlockPage),
         verify: () =>
-          import('@trinity/feature-crypto').then(
+          import('@trinity/feature/crypto').then(
             (m) => m.DeviceVerificationPage,
           ),
       } satisfies EncryptionDialogLoaders,

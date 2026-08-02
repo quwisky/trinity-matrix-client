@@ -117,8 +117,8 @@ export const ENCRYPTION_DIALOG_COMPONENTS = new InjectionToken<EncryptionDialogL
 {
   provide: ENCRYPTION_DIALOG_COMPONENTS,
   useValue: {
-    unlock: () => import('@trinity/feature-crypto').then((m) => m.EncryptionUnlockPage),
-    verify: () => import('@trinity/feature-crypto').then((m) => m.DeviceVerificationPage),
+    unlock: () => import('@trinity/feature/crypto').then((m) => m.EncryptionUnlockPage),
+    verify: () => import('@trinity/feature/crypto').then((m) => m.DeviceVerificationPage),
   } satisfies EncryptionDialogLoaders,
 }
 ```

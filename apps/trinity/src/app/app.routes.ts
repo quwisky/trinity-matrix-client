@@ -5,31 +5,31 @@ import { authGuard } from '@trinity/data-access/auth';
 import type {
   EncryptionSetupPage,
   EncryptionUnlockPage,
-} from '@trinity/feature-crypto';
+} from '@trinity/feature/crypto';
 import { environment } from '../environments/environment';
 
 export const routes: Routes = [
   {
     path: 'login',
     loadComponent: () =>
-      import('@trinity/feature-auth').then((m) => m.LoginPage),
+      import('@trinity/feature/auth').then((m) => m.LoginPage),
   },
   {
     path: 'sso-callback',
     loadComponent: () =>
-      import('@trinity/feature-auth').then((m) => m.SsoCallbackPage),
+      import('@trinity/feature/auth').then((m) => m.SsoCallbackPage),
   },
   {
     path: 'rooms',
     canActivate: [authGuard],
     loadComponent: () =>
-      import('@trinity/feature-rooms').then((m) => m.RoomsPage),
+      import('@trinity/feature/rooms').then((m) => m.RoomsPage),
   },
   {
     path: 'settings',
     canActivate: [authGuard],
     loadChildren: () =>
-      import('@trinity/feature-settings').then((m) => m.settingsRoutes),
+      import('@trinity/feature/settings').then((m) => m.settingsRoutes),
   },
   {
     path: 'encryption/setup',
@@ -40,7 +40,7 @@ export const routes: Routes = [
     // router config these guards need.)
     canDeactivate: [(page: EncryptionSetupPage) => page.confirmLeave()],
     loadComponent: () =>
-      import('@trinity/feature-crypto').then((m) => m.EncryptionSetupPage),
+      import('@trinity/feature/crypto').then((m) => m.EncryptionSetupPage),
   },
   {
     path: 'encryption/unlock',
@@ -53,16 +53,16 @@ export const routes: Routes = [
     // cover a tab close or reload (that needs beforeunload, which cannot show our copy).
     canDeactivate: [(page: EncryptionUnlockPage) => page.confirmLeave()],
     loadComponent: () =>
-      import('@trinity/feature-crypto').then((m) => m.EncryptionUnlockPage),
+      import('@trinity/feature/crypto').then((m) => m.EncryptionUnlockPage),
   },
   {
     path: 'encryption/verify',
     canActivate: [authGuard],
     loadComponent: () =>
-      import('@trinity/feature-crypto').then((m) => m.DeviceVerificationPage),
+      import('@trinity/feature/crypto').then((m) => m.DeviceVerificationPage),
   },
   // Dev-only E2EE crypto spike (Milestone 1 harness; driven by `pnpm spike:chromium`).
-  // Deep-imported rather than taken from the @trinity/feature-shell barrel ON PURPOSE:
+  // Deep-imported rather than taken from the @trinity/feature/shell barrel ON PURPOSE:
   // main.ts imports that barrel eagerly for AppComponent, so a barrel import here would
   // merge the harness into the eager chunk. esbuild does not constant-fold
   // `environment.production`, so the ternary alone does NOT strip the import — the route
@@ -73,7 +73,7 @@ export const routes: Routes = [
         {
           path: 'spike',
           loadComponent: () =>
-            import('@trinity/feature-shell/home-page').then((m) => m.HomePage),
+            import('@trinity/feature/shell/home-page').then((m) => m.HomePage),
         },
       ]),
   {

@@ -111,16 +111,16 @@ libs/
     */                @trinity/data-access/{media,rooms,timeline,crypto,profile,invites,
                       pinned,search,notifications,auth,gif} — one lib per Matrix domain
                       (read models + write actions + guards)  [type:data-access]
-  feature-shell/      @trinity/feature-shell — app shell (AppComponent, verification
+  feature-shell/      @trinity/feature/shell — app shell (AppComponent, verification
                       host, nav-focus) + the dev-only /spike page  [type:feature]
-  feature-auth/       @trinity/feature-auth — login + SSO callback  [type:feature]
-  feature-rooms/      @trinity/feature-rooms — Discord-style shell (server rail =
+  feature-auth/       @trinity/feature/auth — login + SSO callback  [type:feature]
+  feature-rooms/      @trinity/feature/rooms — Discord-style shell (server rail =
                       Spaces, channel list, members) + message timeline (list,
                       composer + emoji picker, hover toolbar, reactions, replies,
                       encrypted media) + encryption/offline banners  [type:feature]
-  feature-crypto/     @trinity/feature-crypto — encryption setup + recovery pages
+  feature-crypto/     @trinity/feature/crypto — encryption setup + recovery pages
                       + device-verification (emoji SAS)  [type:feature]
-  feature-settings/   @trinity/feature-settings — Settings page: appearance
+  feature-settings/   @trinity/feature/settings — Settings page: appearance
                       (light/dark/system theme), profile (name + avatar), and
                       device management (sign-out/verify)  [type:feature]
   ui/                 @trinity/ui — reusable presentational components (avatar +
