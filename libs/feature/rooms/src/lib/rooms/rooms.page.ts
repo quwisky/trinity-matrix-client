@@ -17,7 +17,6 @@ import {
   inject,
   viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
@@ -115,6 +114,7 @@ import { RoomActionsService } from './room-actions.service';
 import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
+import { SessionActionsService } from './session-actions.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 
 /**
@@ -141,6 +141,7 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     ReadStateService,
     MessageActionsService,
     ShellShortcutsService,
+    SessionActionsService,
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
@@ -241,6 +242,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly readState = inject(ReadStateService);
   private readonly messageActions = inject(MessageActionsService);
   private readonly shortcutActions = inject(ShellShortcutsService);
+  private readonly session = inject(SessionActionsService);
 
   readonly activeSpaceId = this.store.activeSpaceId;
   /**
@@ -688,25 +690,12 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   goToSettings(): void {
-    void this.router.navigateByUrl('/settings');
+    this.session.goToSettings();
   }
 
-  /** Switch the active account (no-op when it is already active). */
+  /** Make another signed-in account the active one. */
   switchAccount(userId: string): void {
-    if (userId === this.matrix.activeUserId()) {
-      return;
-    }
-    // Close the open room FIRST. Its panes are bound to this account's client and Room
-    // objects, and timeline/threads/pinned all early-return on `open(sameRoomId)` — so
-    // leaving it open would keep projecting the outgoing account's data (including its
-    // decryption) with no way to re-bind short of a reload. The user re-picks a room on
-    // the new account, which opens it cleanly.
-    this.closeOpenRoom();
-    this.resetViewScope();
-    this.auth
-      .switchAccount(userId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+    this.session.switchAccount(userId);
   }
 
   private resetViewScope(): void {
@@ -717,37 +706,15 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.nav.closeOpenRoom();
   }
 
-  /** Start adding another account: route to the login screen in add mode. */
   addAccount(): void {
-    void this.router.navigate(['/login'], { queryParams: { add: 1 } });
+    this.session.addAccount();
   }
 
-  /** Re-authenticate a soft-logged-out account: route to the login prefilled for it. */
   reauthAccount(userId: string): void {
-    void this.router.navigate(['/login'], { queryParams: { reauth: userId } });
+    this.session.reauthAccount(userId);
   }
 
-  async logout(userId: string): Promise<void> {
-    const confirmed = await this.alert.confirm({
-      header: 'Sign out',
-      message: 'Sign out of this account on this device?',
-      confirmText: 'Sign out',
-      destructive: true,
-    });
-    if (!confirmed) {
-      return;
-    }
-    // Captured before the sign-out mutates the registry: signing out the last
-    // account tears everything down → back to login; otherwise another account is
-    // now active and we stay in the shell.
-    const wasLastAccount = this.matrix.accountIds().length <= 1;
-    this.auth
-      .logout(userId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        if (wasLastAccount) {
-          void this.router.navigateByUrl('/login', { replaceUrl: true });
-        }
-      });
+  logout(userId: string): Promise<void> {
+    return this.session.logout(userId);
   }
 }
