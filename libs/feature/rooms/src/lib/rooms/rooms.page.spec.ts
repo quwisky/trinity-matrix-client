@@ -52,6 +52,7 @@ import { RoomsPage } from './rooms.page';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
+import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -84,6 +85,7 @@ const SHARED_MOCKS: Provider[] = [
   RoomShellStore,
   ShellStatusService,
   RoomShellViewModel,
+  RoomShellNavigationService,
   MockProvider(CryptoService),
   MockProvider(PinnedMessagesService),
   MockProvider(PinnedPanelService),

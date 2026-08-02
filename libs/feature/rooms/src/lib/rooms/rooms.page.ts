@@ -119,6 +119,7 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
+import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 
 /**
@@ -132,7 +133,12 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
   changeDetection: ChangeDetectionStrategy.OnPush,
   // Page-scoped, not root: these share the page's lifetime and its DestroyRef, which is
   // what every runWithBusy subscription is tied to. See shell-invariants.spec.ts.
-  providers: [RoomShellStore, ShellStatusService, RoomShellViewModel],
+  providers: [
+    RoomShellStore,
+    ShellStatusService,
+    RoomShellViewModel,
+    RoomShellNavigationService,
+  ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
   imports: [
@@ -223,6 +229,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly store = inject(RoomShellStore);
   private readonly status = inject(ShellStatusService);
   private readonly vm = inject(RoomShellViewModel);
+  private readonly nav = inject(RoomShellNavigationService);
 
   readonly activeSpaceId = this.store.activeSpaceId;
   /**
@@ -333,6 +340,8 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // The service cannot read the page's viewChild refs, so hand it the focus call.
+    this.nav.bindFocus(() => this.focusActiveView());
     this.rooms.connect();
     this.spaces.connect();
     this.invites.connect();
@@ -524,31 +533,19 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.jumpRequest.update((n) => n + 1);
   }
 
-  /** Switch to the Recent activity view (all DMs + rooms, mixed); clears any space. */
+  /** Show the Recent activity view. */
   onShowRecent(): void {
-    this.recentView.set(true);
-    this.roomsView.set(false);
-    this.activeSpaceId.set(null);
-    // Home clears the space hierarchy the same way; keep the sidebar's space extras off.
-    this.spaces.openSpace(null);
+    this.nav.onShowRecent();
   }
 
+  /** Select a space (or Home when null). */
   onSelectSpace(id: string | null): void {
-    // Selecting a space (or Home) leaves the Recent + Rooms views.
-    this.recentView.set(false);
-    this.roomsView.set(false);
-    this.activeSpaceId.set(id);
-    // Load (or clear, for Home) the space's full child hierarchy so the sidebar can
-    // offer not-yet-joined channels + sub-spaces. The fetch is cancelled/replaced if
-    // the selection changes again before it lands.
-    this.spaces.openSpace(id);
+    this.nav.onSelectSpace(id);
   }
 
-  /** Switch to the Rooms view (non-DM rooms); clears Recent and any selected space. */
+  /** Show the flat Rooms view. */
   onShowRooms(): void {
-    this.recentView.set(false);
-    this.activeSpaceId.set(null);
-    this.roomsView.set(true);
+    this.nav.onShowRooms();
   }
 
   /** Rail "+": prompt for a name, create the space, then select it on success. */
@@ -978,14 +975,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.accountScope.toggle(userId);
   }
 
-  /**
-   * Every room the shell can currently open, unfiltered by the active view. `visibleRooms()`
-   * is a *filtered* projection (Home shows DMs only, a space shows its children), so an MRU
-   * or hop target is routinely absent from it — resolving a row's owning account there would
-   * silently miss and open the room on the wrong client.
-   */
   private knownRooms(): RoomSummary[] {
-    return this.mixedOn() ? this.mixedRooms.rooms() : this.rooms.rooms();
+    return this.nav.knownRooms();
   }
 
   /** An account's display name for user-facing copy, falling back to its user id. */
@@ -1009,23 +1000,9 @@ export class RoomsPage implements OnInit, OnDestroy {
       );
   }
 
+  /** Open a room. `source` distinguishes a user click from a keyboard hop. */
   onSelectRoom(id: string, source: 'user' | 'hop' = 'user'): void {
-    // Drop the previous room's resolved media URLs before switching timelines.
-    this.media.releaseAll();
-    this.activeRoomId.set(id);
-    this.timeline.open(id);
-    this.threads.open(id); // project this room's thread summaries for indicators
-    this.pinned.open(id); // project this room's pinned messages
-    if (source === 'user') {
-      this.mru.record(id);
-    }
-    // Opening the room is the user dealing with it, so the come-back-to-it flag goes.
-    // Cleared HERE rather than on the auto-ack in TimelineService: that path is gated on
-    // the window having focus and dedupes repeat acks, so a room opened in a background
-    // window — or re-opened after being acked once — would stay flagged for good.
-    this.rooms.clearMarkedUnread(id);
-    // On mobile, setting activeRoomId switches from the room-list page to the chat.
-    this.focusActiveView();
+    this.nav.onSelectRoom(id, source);
   }
 
   /**
@@ -1583,46 +1560,12 @@ export class RoomsPage implements OnInit, OnDestroy {
       .subscribe();
   }
 
-  /**
-   * Drop the space/Rooms scope back to Recent before an account switch. `activeSpaceId`
-   * names a space on the OUTGOING account: SpacesService re-projects onto the new client and
-   * wipes it, leaving the sidebar empty, the header falling back to "Home", and the
-   * space-only actions (leave / invite / create channel) aimed at a space the now-active
-   * account isn't in. A selection that wants a different scope — selecting a foreign space —
-   * sets its own afterwards.
-   */
   private resetViewScope(): void {
-    // Only the SPACE scope is account-bound. Recent / Direct Messages / Rooms are filters
-    // over whatever the new account has, so preserve the user's choice — resetting it too
-    // silently dumped them in Recent mid-task. Fall back to Recent only when a space was
-    // open, since that space belongs to the outgoing account.
-    if (this.activeSpaceId() !== null) {
-      this.recentView.set(true);
-      this.roomsView.set(false);
-      this.activeSpaceId.set(null);
-    }
-    this.spaces.openSpace(null);
+    this.nav.resetViewScope();
   }
 
-  /**
-   * Tear down the open room's panes and forget it. The single definition of "close the
-   * open room" — leaving a room, switching account, and destroying the page all need
-   * exactly this, and when it was inlined at each site they drifted (one forgot
-   * `closeThread()`, leaving an open thread projecting a room the user had left).
-   */
   private closeOpenRoom(): void {
-    // On mobile the member list is an overlay drawer; don't carry an open one over
-    // to the next room (it would slide in unrequested). The wide static column keeps
-    // its persisted open/closed state.
-    if (membersShownAsDrawer()) {
-      this.membersOpen.set(false);
-    }
-    this.activeRoomId.set(null);
-    this.timeline.close();
-    this.threads.close();
-    this.threads.closeThread();
-    this.pinned.close();
-    this.media.releaseAll();
+    this.nav.closeOpenRoom();
   }
 
   /** Start adding another account: route to the login screen in add mode. */
