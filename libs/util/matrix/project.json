@@ -1,8 +1,8 @@
 {
-  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "name": "util-matrix",
   "projectType": "library",
-  "sourceRoot": "libs/util-matrix/src",
+  "sourceRoot": "libs/util/matrix/src",
   "prefix": "trn",
   "tags": ["type:util", "scope:shared"],
   "targets": {

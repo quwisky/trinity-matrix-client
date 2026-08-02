@@ -128,7 +128,7 @@ so the fetch 404s and crypto never initializes.
 
 The fix has two halves that must stay in step. The build target copies the file out of
 `node_modules/@matrix-org/matrix-sdk-crypto-wasm/pkg` into `assets/crypto`, and
-[`crypto-wasm-loader.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/crypto-wasm-loader.ts)
+[`crypto-wasm-loader.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/crypto-wasm-loader.ts)
 calls `initAsync` against that served path before `initRustCrypto()`:
 
 ```ts

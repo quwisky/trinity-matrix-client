@@ -11,7 +11,7 @@ Everything described here sits in two libraries:
 (client lifecycle, registry, 4S key holder, token refresher) and
 [`libs/data-access/crypto`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access/crypto)
 (the crypto flows), with the DI-free primitives in
-[`libs/util-matrix`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/util-matrix)
+[`libs/util/matrix`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/util/matrix)
 and the storage backends in
 [`libs/platform-native`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/platform-native).
 
@@ -210,7 +210,7 @@ the homeserver step, and passes the stored `deviceId` into the login call as `de
 Olm store, cross-signing trust and message keys intact.
 
 The IndexedDB names the SDK derives from a prefix live in exactly one file,
-[`rust-crypto-store.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/rust-crypto-store.ts):
+[`rust-crypto-store.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/rust-crypto-store.ts):
 `${base}::matrix-sdk-crypto` and `${base}::matrix-sdk-crypto-meta`, where `base` falls
 back to the SDK's own `matrix-js-sdk` default. Three call sites depend on that convention
 — the logout wipe, the device-change reclaim, and the cold-start sweep — so it is defined
@@ -295,7 +295,7 @@ its own bundled JS. Angular's esbuild does not emit that file as an asset, so th
    }
    ```
 
-2. [`preloadCryptoWasm()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/crypto-wasm-loader.ts)
+2. [`preloadCryptoWasm()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/crypto-wasm-loader.ts)
    calls `initAsync` with an explicit URL against that path:
 
    ```ts
@@ -574,7 +574,7 @@ secured and nothing ever prompts a fix.
 ## Shared password UIA
 
 `runPasswordUia(makeRequest, promptPassword, userId, opts?)` in
-[`password-uia.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/password-uia.ts)
+[`password-uia.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/password-uia.ts)
 probes unauthenticated first (many servers complete without UIA), then on a 401 carrying
 `flows` and `session` prompts and retries with an `m.login.password` auth dict, up to three
 attempts. Three distinct error types exist because callers act on them differently:
@@ -624,7 +624,7 @@ is the single mapping from `getEncryptionInfoForEvent` to a `MessageShield`, sha
 
 Both live in `util-matrix`, in-tree rather than as dependencies.
 
-[`attachment-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/attachment-crypto.ts)
+[`attachment-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/attachment-crypto.ts)
 is a faithful port of Matrix.org's `matrix-encrypt-attachment` (Apache-2.0). It is inlined
 because that package has had no release since 2022 and the scheme is frozen by spec — there
 is nothing to track, and a security-sensitive primitive stays auditable in-tree with no
@@ -641,7 +641,7 @@ encrypts the client-generated thumbnail under its own independent key, IV and ha
 thumbnail is the only one an encrypted room can show, since the server cannot scale an
 encrypted original.
 
-[`key-file-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/key-file-crypto.ts)
+[`key-file-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/key-file-crypto.ts)
 implements the interoperable Matrix megolm export, the same `.txt` Element reads and
 writes:
 

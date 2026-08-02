@@ -74,7 +74,7 @@ This is the single most consequential piece of build configuration in the reposi
 bundled JavaScript. Angular's esbuild pipeline never emits a file at that location, so the
 default loader 404s and encryption fails to initialise. The asset entry above copies the
 module into `assets/crypto/`, and
-[libs/util-matrix/src/lib/crypto-wasm-loader.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/crypto-wasm-loader.ts)
+[libs/util/matrix/src/lib/crypto-wasm-loader.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/crypto-wasm-loader.ts)
 calls `initAsync` against that path explicitly, before `initRustCrypto()` ever runs:
 
 ```ts

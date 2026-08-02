@@ -319,7 +319,7 @@ without a specificity war.
 Eight roles colour fenced code blocks, consumed from exactly one place —
 `rendered-markdown.scss`, on the `tok-*` classes the highlighter emits. The role names must
 stay in step with `TOKEN_ROLES` in
-[`code-highlight.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/code-highlight.ts).
+[`code-highlight.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/code-highlight.ts).
 
 The backdrop is `--trinity-rail`, not the chat canvas — that is the `pre` background — and
 every value clears 4.5:1 against it in both shipped palettes (worst case 4.61:1 light,
@@ -452,7 +452,7 @@ so it cannot be selected, copied, or picked up by the edit-history diff.
 ## The HTML allowlist
 
 One DOMPurify configuration in
-[`message-view.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/message-view.ts)
+[`message-view.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/message-view.ts)
 serves both directions — incoming render and outgoing send.
 
 - `MATRIX_ALLOWED_TAGS` is the Matrix specification list.
@@ -474,7 +474,7 @@ too.
 
 ### Three deliberate outgoing rewrites
 
-[`message-content.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util-matrix/src/lib/message-content.ts)
+[`message-content.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/message-content.ts)
 overrides three `marked` renderers, each for a stated reason:
 
 | Rewrite                                                    | Why                                                                                                                                                                                                                                                                                                                                                                                  |
