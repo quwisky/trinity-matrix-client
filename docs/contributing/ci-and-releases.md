@@ -163,6 +163,11 @@ asserts its **shape**:
 Counting rules was rejected deliberately: that fails on every legitimate rule
 addition and gets deleted the first time it cries wolf.
 
+Resolving real configs is slow enough that the `scripts` project raises Vitest's default
+test timeout to accommodate it — the reason is recorded in
+[Testing](testing.md#the-scripts-project-runs-plain-node-on-a-raised-timeout), because a
+timeout here reads like a hang rather than the loaded runner it usually is.
+
 ### The stack versions spec
 
 [`stack-versions.spec.mjs`](https://github.com/quwisky/trinity-matrix-client/blob/develop/scripts/stack-versions.spec.mjs)

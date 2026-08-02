@@ -35,7 +35,9 @@ Run `corepack enable` once; it picks up the pinned pnpm version.
 | `pnpm format` / `format:check` | Prettier write / verify (CI uses `format:check`)                      |
 
 **Single project / single test** — Vitest runs via an `nx:run-commands` target (`vitest run`,
-`cwd` = the project dir), so forward Vitest args after `--`:
+`cwd` = the project dir), so forward Vitest args after `--`. Note the argument is the **Nx
+project name**, which since the libs were nested is neither the directory nor the alias:
+`data-access-rooms` is at `libs/data-access/rooms` and imports as `@trinity/data-access/rooms`.
 
 ```bash
 pnpm exec nx test data-access-rooms                        # one project

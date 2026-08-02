@@ -34,8 +34,8 @@ readonly totalUnread = computed(() =>
 ```
 
 The writable signal is private, the readable one is exposed, and derived values are `computed`.
-Nothing outside the service can write. There are 63 `asReadonly()` exposures and 168 `computed()`
-calls across the libraries.
+Nothing outside the service can write. There are 63 `asReadonly()` exposures and 218 `computed()`
+declarations across `libs/`.
 
 The action half is always cold, so nothing happens until someone subscribes, and always resolves
 its client at subscribe time rather than at construction time:
@@ -214,15 +214,20 @@ multi-account design.
 
 Seven services take the full `projectFromClient`:
 
-| Service               | Library               |
-| --------------------- | --------------------- |
-| `RoomsService`        | `data-access-rooms`   |
-| `SpacesService`       | `data-access-rooms`   |
-| `InvitesService`      | `data-access-invites` |
-| `CryptoService`       | `data-access-crypto`  |
-| `VerificationService` | `data-access-crypto`  |
-| `DevicesService`      | `data-access-crypto`  |
-| `PresenceService`     | `data-access-profile` |
+| Service               | Library                        |
+| --------------------- | ------------------------------ |
+| `RoomsService`        | `@trinity/data-access/rooms`   |
+| `SpacesService`       | `@trinity/data-access/rooms`   |
+| `InvitesService`      | `@trinity/data-access/invites` |
+| `CryptoService`       | `@trinity/data-access/crypto`  |
+| `VerificationService` | `@trinity/data-access/crypto`  |
+| `DevicesService`      | `@trinity/data-access/crypto`  |
+| `PresenceService`     | `@trinity/data-access/profile` |
+
+The library column is the import alias, and it mirrors the directory:
+`@trinity/data-access/rooms` is `libs/data-access/rooms`. The Nx project name is the third
+string and keeps the flat hyphenated form, so the command stays
+`pnpm exec nx test data-access-rooms`.
 
 Six take **only** `coalesce()`, and each says why at the call site. The split is not arbitrary — it
 follows from what the service's lifetime is keyed to:
@@ -340,7 +345,7 @@ does not re-run on every read receipt), and coalesce it when the events are per-
 and per-turn work in a busy room.
 
 The other recorded strain is the rooms shell itself. `libs/feature/rooms/src/lib/rooms/rooms.page.ts`
-is over 2,000 lines with more than forty `inject()` calls and eight selection and UI signals, well
+is over 2,000 lines with more than forty `inject()` calls and ten selection and UI signals, well
 past the workspace's own refactor threshold. It is also the single place the client projections are
 started — `ngOnInit` calls `connect()` on rooms, spaces, invites, crypto, presence and
 notifications — so read it before adding another projection to the shell.

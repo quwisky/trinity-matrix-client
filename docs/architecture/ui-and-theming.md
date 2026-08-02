@@ -13,7 +13,7 @@ once.
 | Brain         | `@spartan-ng/brain` 1.3.0 in `node_modules`, plus `@angular/cdk` 22.1.0 | Headless primitives: behaviour, accessibility, positioning. No styling. |
 | Helm          | `libs/spartan/*`, aliased `@trinity/helm/*`                             | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
 | `@trinity/ui` | `libs/ui`                                                               | Trinity's own presentational components and small UI utilities.         |
-| Features      | `libs/feature/*`                                                        | Screens and the components that make them up.                           |
+| Features      | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
 
 Seventeen Helm libraries are installed: avatar, badge, button, card, checkbox,
 dropdown-menu, input, label, overlay, progress, radio-group, select, sonner, spinner,
@@ -501,7 +501,7 @@ More on the workspace-wide rules is in [conventions](../contributing/conventions
 
 ## Overlay presentation
 
-Nearly every dialog in `feature-rooms` follows the same shape: a thin `*Service` owns
+Nearly every dialog in `@trinity/feature/rooms` follows the same shape: a thin `*Service` owns
 presentation and resolves a value, and the page performs the action. `UserPickerService`
 resolves an MXID and never invites anyone itself; `QuickSwitcherService` resolves a
 selection; `MessageSearchService`, `PinnedPanelService` and `EditHistoryDialogService` each

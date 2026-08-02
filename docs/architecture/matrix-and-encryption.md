@@ -51,8 +51,8 @@ repo breaks at once.
 holds a `Map<userId, AccountClient>`. Every signed-in account has its own live
 `MatrixClient` and all of them sync concurrently; exactly one is marked **active**, and
 `instance` returns the active account's client. That is the design decision that let
-multi-account land without touching the ~78 call sites that read `this.matrix.instance`:
-they stay scoped to whichever account is in view, for free.
+multi-account land without touching the roughly 110 call sites that read
+`this.matrix.instance`: they stay scoped to whichever account is in view, for free.
 
 Each `AccountClient` carries the per-account state that teardown needs later:
 
@@ -378,9 +378,10 @@ It is driven by a coalesced `projectFromClient` bound to `CryptoEvent.KeysChange
 during initial sync and after a key query, and each previously ran a full status recompute
 — several async crypto reads — on its own.
 
-`CryptoStatus` is what the encryption banner reads. That banner lives in `feature-rooms`,
-not `feature-crypto`, because the module boundary forbids a feature-to-feature dependency;
-it reads the signal from `@trinity/data-access/crypto` directly.
+`CryptoStatus` is what the encryption banner reads. That banner lives in
+`@trinity/feature/rooms`, not `@trinity/feature/crypto`, because the module boundary
+forbids a feature-to-feature dependency; it reads the signal from
+`@trinity/data-access/crypto` directly.
 
 ## Setup and recovery
 
@@ -602,11 +603,12 @@ The `sasConfirmed` flag on the view model is **local**, because the SDK's phase 
 instead of waiting for the other side; a rejected `confirm()` flips it back so nobody is
 stuck waiting on a MAC that never sent.
 
-Presentation is split. `VerificationHostComponent` in `feature-shell` renders nothing and
-owns `connect()`, presenting a modal for any verification the route does not own —
-`active.incoming || !active.isSelfVerification`. An outgoing _self_-verification belongs to
-`/encryption/verify`. The modal component is resolved through the
-`ENCRYPTION_DIALOG_COMPONENTS` token so `feature-shell` never imports `feature-crypto`.
+Presentation is split. `VerificationHostComponent` in `@trinity/feature/shell` renders
+nothing and owns `connect()`, presenting a modal for any verification the route does not
+own — `active.incoming || !active.isSelfVerification`. An outgoing _self_-verification
+belongs to `/encryption/verify`. The modal component is resolved through the
+`ENCRYPTION_DIALOG_COMPONENTS` token so `@trinity/feature/shell` never imports
+`@trinity/feature/crypto`.
 
 [`shields.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/timeline/src/lib/shields.ts)
 is the single mapping from `getEncryptionInfoForEvent` to a `MessageShield`, shared by
@@ -622,7 +624,7 @@ is the single mapping from `getEncryptionInfoForEvent` to a `MessageShield`, sha
 
 ## Attachment and key-file crypto
 
-Both live in `util-matrix`, in-tree rather than as dependencies.
+Both live in `@trinity/util/matrix`, in-tree rather than as dependencies.
 
 [`attachment-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/attachment-crypto.ts)
 is a faithful port of Matrix.org's `matrix-encrypt-attachment` (Apache-2.0). It is inlined

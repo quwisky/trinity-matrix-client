@@ -84,8 +84,8 @@ There are zero occurrences of `@HostBinding`, `@HostListener`, `ngClass` and
 
 The workspace is 100% `@angular/forms/signals`. There is no `FormControl`, no
 `FormGroup`, no `ReactiveFormsModule`, and no `ngModel` anywhere in `libs/` or
-`apps/`. Ten components use Signal Forms today, and there is deliberately no legacy
-idiom left to imitate.
+`apps/`. Nine components import `@angular/forms/signals` today, plus one shared schema
+fragment, and there is deliberately no legacy idiom left to imitate.
 
 The form is a signal over a model object, which is the same reactive model as the
 rest of the app. Build it with `form(model, schema)`, bind native controls with
@@ -127,6 +127,17 @@ Cross-library imports go through `@trinity/*` path aliases declared in
 advice: `@nx/enforce-module-boundaries` errors on a same-project alias import with
 "Projects should use relative imports to import from other files within the same
 project", and because the rule is an error it fails the pre-commit hook, not just CI.
+
+An alias is `@trinity/` followed by the library's path under `libs/`:
+`libs/data-access/rooms` is `@trinity/data-access/rooms`, `libs/util/matrix` is
+`@trinity/util/matrix`, `libs/ui` is `@trinity/ui`. The generated Helm packages are the
+single exception — `libs/spartan/tooltip` is `@trinity/helm/tooltip`.
+
+A new library goes inside the directory for its layer, `libs/data-access/`,
+`libs/feature/` or `libs/util/`, and gets the matching alias in `tsconfig.base.json`. Its
+Nx **project name** stays flat and hyphenated — `data-access-rooms`, not
+`data-access/rooms` — so the string you pass to `nx test` is a third one; see
+[Commands](commands.md#nx-patterns).
 
 Which library may import which is decided by `type:*` and `scope:*` tags in each
 project's `project.json`. The ladder and the reasoning behind it are in

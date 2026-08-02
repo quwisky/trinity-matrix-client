@@ -9,15 +9,33 @@ Libraries are imported through `@trinity/*` path aliases declared in
 [`tsconfig.base.json`](https://github.com/quwisky/trinity-matrix-client/blob/develop/tsconfig.base.json),
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
+`libs/` itself has seven entries. Three are layer parents holding that layer's libraries:
+`data-access/` (12), `feature/` (5) and `util/` (1). `spartan/` (17) groups the Helm components and
+the overlay adapters. The remaining three are single libraries sitting directly under `libs/`:
+`platform-native`, `testing` and `ui`.
+
+A library answers to three different strings, and they are not interchangeable. The directories
+were nested without renaming the Nx projects, so for the rooms data-access library:
+
+| What            | Value                        | Declared in                            |
+| --------------- | ---------------------------- | -------------------------------------- |
+| Nx project name | `data-access-rooms`          | `name` in the library's `project.json` |
+| Directory       | `libs/data-access/rooms`     | the filesystem                         |
+| Import alias    | `@trinity/data-access/rooms` | `paths` in `tsconfig.base.json`        |
+
+Nx takes the project name, so `pnpm exec nx test data-access-rooms` is still the command to run
+that library's specs and nothing about the move changed it. Source code takes the alias. In the
+tables below, the `Library` column is the directory and the `Alias` column is what you import.
+
 ## Utility libraries
 
 Pure code with no Angular dependency injection. `type:util` may depend only on other `type:util`
 libraries, which in practice means npm packages and nothing else in the workspace.
 
-| Library            | Alias                  | Tags                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------ | ---------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/util/matrix` | `@trinity/util/matrix` | `type:util`, `scope:shared` | 25 DI-free modules: the `MessageView` model and its builders, day separators, date formatting, edit history and diffing, timeline-event helpers, media and session models, the Rust crypto store naming, presence, message content, markdown editing, voice, typing, `matrix.to` links, polls, transient-error classification, password UIA, attachment and key-file crypto, authenticated media, room avatars, room creation, room state, and the crypto WASM loader |
-| `libs/testing`     | `@trinity/testing`     | `type:util`, `scope:shared` | One export: the zoneless-safe `render()` wrapper every component spec must use. See [testing](../contributing/testing.md)                                                                                                                                                                                                                                                                                                                                             |
+| Library            | Alias                  | Tags                        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------ | ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs/util/matrix` | `@trinity/util/matrix` | `type:util`, `scope:shared` | 26 DI-free modules: the `MessageView` model and its builders, day separators, date formatting, edit history and diffing, timeline-event helpers, media and session models, the Rust crypto store naming, presence, message content, markdown editing, voice, typing, `matrix.to` links, polls, transient-error classification, password UIA, attachment and key-file crypto, authenticated media, room avatars, room creation, room state, the Shiki code highlighter, and the crypto WASM loader |
+| `libs/testing`     | `@trinity/testing`     | `type:util`, `scope:shared` | One export: the zoneless-safe `render()` wrapper every component spec must use. See [testing](../contributing/testing.md)                                                                                                                                                                                                                                                                                                                                                                         |
 
 `libs/testing` is the one project in the workspace whose `project.json` declares `"targets": {}`.
 It picks up an inferred `lint` target from the `@nx/eslint` plugin, but it has no `test` target at
@@ -34,8 +52,10 @@ depend on `util` and nothing else, which is why it holds no Matrix knowledge.
 
 ## Data-access libraries
 
-One library per Matrix domain. These are the only places `matrix-js-sdk` is imported, apart from
-`util-matrix`. All are `scope:matrix` except `data-access-matrix-client`.
+One library per Matrix domain. Apart from `libs/util/matrix`, which models the SDK's types, these
+are the only places `matrix-js-sdk` is imported — eleven of the twelve do, `libs/data-access/gif`
+being the exception. All are tagged `scope:matrix` except `data-access-matrix-client`, which is
+`scope:shared`.
 
 | Library                          | Alias                                | Tags                                   | Purpose                                                                                                                                                                                                                                       |
 | -------------------------------- | ------------------------------------ | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -54,7 +74,8 @@ One library per Matrix domain. These are the only places `matrix-js-sdk` is impo
 
 Data-access libraries may depend on one another, and several do. The real edges today are
 `notifications → rooms, timeline`, `search → rooms, invites`, `timeline → media`, and
-`auth → media, notifications`. Every one of them also depends on `data-access-matrix-client`.
+`auth → media, notifications`. Every domain library except `data-access-gif` also depends on
+`data-access-matrix-client`.
 
 !!! warning "data-access-matrix-client is scope:shared on purpose"
 
@@ -112,15 +133,19 @@ components, all tagged `type:ui`, `scope:shared`, all with the `hlm` selector pr
 | `libs/spartan/tooltip`       | `@trinity/helm/tooltip`       |
 | `libs/spartan/utils`         | `@trinity/helm/utils`         |
 
-Note the mismatch: the alias namespace is `@trinity/helm/*`, the directory is `libs/spartan/*`.
+These are the widest case of the three-way naming split described above: the directory is
+`libs/spartan/*`, the alias namespace is `@trinity/helm/*`, and the Nx project name is the bare
+component name. The button library lives at `libs/spartan/button`, is imported as
+`@trinity/helm/button`, and is built with `nx build button`.
+
 `libs/spartan/overlay` is the exception in that group — it is hand-written Trinity code with the
 `trn` prefix and no ng-package, not generated Helm. Regenerating or adding Helm components goes
 through the CLI; see [UI and theming](ui-and-theming.md).
 
 ## The two secondary entry points
 
-Almost every alias points at a library's barrel, `libs/<name>/src/index.ts`. Two point at a single
-file instead, and both exist for a bundling reason rather than a stylistic one.
+Almost every alias points at a library's barrel, its `src/index.ts`. Two point at a single file
+instead, and both exist for a bundling reason rather than a stylistic one.
 
 | Alias                                 | Target                                       | Why it bypasses the barrel                                                                                                                                                                                                                                           |
 | ------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

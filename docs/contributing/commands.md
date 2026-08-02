@@ -35,11 +35,18 @@ with an empty `"test": {}` in its own `project.json`. Because it is run-commands
 rather than a Vitest executor, **Vitest arguments must come after `--`**, where
 they are appended to the end of `vitest run`.
 
+The argument to `nx test` is the **project name**, which is neither the directory nor
+the import alias. All three are different strings for every library under
+`libs/data-access`, `libs/feature` and `libs/util`: the rooms data-access library is the
+Nx project `data-access-rooms`, it lives at `libs/data-access/rooms`, and it is imported
+as `@trinity/data-access/rooms`. Only the first form works on a command line, and the
+same goes for a `--projects=` filter.
+
 ```bash
 pnpm exec nx test util-matrix                          # one project
 pnpm exec nx test feature-rooms --configuration=watch  # watch mode
-pnpm exec nx test data-access-rooms -- message-list    # files matching a path substring
-pnpm exec nx test data-access-rooms -- -t "sends a read receipt"   # one test by name
+pnpm exec nx test feature-rooms -- message-list        # files matching a path substring
+pnpm exec nx test data-access-rooms -- -t "acks the read receipt"  # one test by name
 pnpm exec nx test data-access-rooms -- --coverage      # coverage is opt-in, no threshold
 pnpm exec nx affected -t lint test                     # only what changed versus develop
 pnpm exec nx show projects                             # the real project names
@@ -73,7 +80,7 @@ workspace data goes too.
 
 ### What `pnpm test` does not cover
 
-`pnpm test` runs 23 projects: the `data-access-*` libraries, `feature-auth`,
+`pnpm test` runs 23 projects: the twelve `data-access-*` libraries, `feature-auth`,
 `feature-crypto`, `feature-rooms`, `feature-settings`, `feature-shell`,
 `platform-native`, `ui`, `util-matrix`, the `overlay` spartan library, the
 `trinity` app itself, and `scripts`.

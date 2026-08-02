@@ -1,9 +1,15 @@
 # Architecture overview
 
 Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 38
-libraries under `libs/`. Web, iOS, Android and desktop are all the same compiled bundle wrapped
+libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/` and
+`libs/util/`, alongside `libs/platform-native`, `libs/ui`, `libs/testing` and the `libs/spartan/`
+Helm components. Web, iOS, Android and desktop are all the same compiled bundle wrapped
 differently, so there is no per-platform source tree — platform differences are branches inside
 `libs/platform-native`, not forks of the app.
+
+Names like `data-access-rooms` on this page are Nx project names, which is what `nx` commands take.
+A library's directory and its import alias are two further, different strings; see
+[the library inventory](libraries.md) for the mapping.
 
 `nx.json` sets `"defaultBase": "develop"`, so `nx affected` diffs against `develop` rather than
 `main`.
@@ -15,10 +21,11 @@ differently, so there is no per-platform source tree — platform differences ar
 | File                                                                       | What it is                                                            |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | `main.ts`                                                                  | `bootstrapApplication` plus the provider and initializer manifest     |
-| `app/app.routes.ts`                                                        | The eight top-level routes                                            |
+| `app/app.routes.ts`                                                        | The eight top-level routes, plus a development-only ninth             |
 | `app/build-info.ts`                                                        | Generated at build time by the `build-info` target, and git-ignored   |
 | `environments/environment.ts`, `environment.prod.ts`                       | Build-time configuration                                              |
 | `polyfills.ts`                                                             | Comment-only; it exists to record that zone.js is deliberately absent |
+| `test-setup.ts`                                                            | One line; it imports the workspace-root `test-setup.base.ts`          |
 | `index.html`, `global.scss`, `theme/`, `rendered-markdown.scss`, `assets/` | Shell markup, styles and static assets                                |
 
 The application shell itself — `AppComponent`, `VerificationHostComponent`,
@@ -44,7 +51,7 @@ declared once at `eslint.config.mjs`.
 | `type:data-access` | `data-access`, `util`, `platform`                  | Domain services may fan out sideways to each other, but never up into a screen               |
 | `type:ui`          | `ui`, `util`, `platform`                           | Presentational only. A `ui` component can never reach a service                              |
 | `type:platform`    | `platform`, `util`                                 | Capability wrappers sit below everything except pure code                                    |
-| `type:util`        | `util`                                             | Pure, DI-free code. `util-matrix` may depend on npm packages and nothing else                |
+| `type:util`        | `util`                                             | Pure, DI-free code. `libs/util/matrix` may depend on npm packages and nothing else           |
 
 There is no escape hatch. The rule is configured with `allow: []`, and there is not a single
 `eslint-disable` for `@nx/enforce-module-boundaries` anywhere under `apps/` or `libs/`. A violation
@@ -76,8 +83,9 @@ still fails the scope rule. That is the intended behaviour, not a misconfigurati
 
 This is not a style preference; it is checkable, and it currently holds absolutely. Across every
 non-spec file in `libs/feature/*`, `libs/ui` and `libs/platform-native` there are zero imports from
-`matrix-js-sdk`. The SDK appears only in the twelve `data-access-*` libraries and in `util-matrix`,
-which models its types.
+`matrix-js-sdk`. The SDK appears only under `libs/data-access/` — in eleven of its twelve
+libraries; `data-access-gif` talks to Tenor and Giphy and needs none of it — and in
+`libs/util/matrix`, which models its types.
 
 Two things follow from keeping it that way:
 

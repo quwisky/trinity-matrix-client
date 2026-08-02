@@ -89,15 +89,21 @@ maps. Or `pnpm electron:e2e` taking far longer than expected.
 Synapse e2e scripts already do. This is also why production-only regressions are only
 reachable through the desktop path.
 
-### nx test core says it cannot find the task
+### nx test cannot find the project you named
 
-**Symptom.** `Cannot find configuration for task core:test`.
+**Symptom.** `Cannot find project 'core'`, or `Cannot find project 'data-access/rooms'`.
 
-**Cause.** `@trinity/core` was dissolved into per-domain libraries. There is no Nx project
-called `core`.
+**Cause.** Two different mistakes produce the same message. `@trinity/core` was dissolved
+into per-domain libraries, so no project called `core` exists. And for every library nested
+under `libs/data-access/`, `libs/feature/` and `libs/util/`, the Nx project name, the
+directory and the import alias are three different strings: the project `data-access-rooms`
+lives in `libs/data-access/rooms` and is imported from `@trinity/data-access/rooms`. Only
+the hyphenated form names a task, so a directory or an alias pasted into an `nx` command
+never resolves.
 
-**Fix.** Use a real project name, and remember the `test` target is `nx:run-commands`
-running `vitest run` with `cwd` set to the project, so Vitest arguments come after `--`:
+**Fix.** Use the hyphenated project name — `pnpm exec nx show projects` lists them all. The
+`test` target is `nx:run-commands` running `vitest run` with `cwd` set to the project, so
+Vitest arguments come after `--`:
 
 ```bash
 pnpm exec nx test util-matrix -- message-view
@@ -105,6 +111,67 @@ pnpm exec nx test feature-rooms --configuration=watch
 ```
 
 See [commands](../contributing/commands.md).
+
+### Moving a library breaks its test suite with every config file correct
+
+**Symptom.** After relocating a library, every spec in it fails before a single test runs,
+with `Failed to resolve import "../../../test-setup.base" from "src/test-setup.ts"`.
+
+**Cause.** `project.json`, `tsconfig.json`, `tsconfig.spec.json` and `vite.config.ts` are
+the files you go looking for, and they are easy to correct. `src/test-setup.ts` also reaches
+the workspace root by relative path, and nothing in the config layer names it by depth, so
+it is invisible from there. The whole file is one line:
+
+```ts
+import '../../../../test-setup.base';
+```
+
+What makes it easy to overlook is that the neighbouring config genuinely is
+depth-independent. `vite.base.config.ts` derives the workspace root by walking up to the
+directory holding `nx.json`, and its docblock says so, so a `vite.config.ts` that moved a
+level deeper keeps working. The setup file it points at does not: a library directly under
+`libs/` needs three `../` segments, one nested a level deeper needs four.
+
+**Fix.** After moving a library, grep it for relative specifiers that climb out of it and
+re-check each one against the new depth:
+
+```bash
+grep -rn "'\.\./\.\./" libs/data-access/rooms
+```
+
+That surfaces both root-relative imports the library template carries: `vite.config.ts`
+reaching `../../../vite.base.config`, and `src/test-setup.ts` reaching
+`../../../../test-setup.base`.
+
+### A library move can silently weaken module boundaries
+
+**Symptom.** None at all. `pnpm lint` stays green.
+
+**Cause.** `@nx/enforce-module-boundaries` reports a violation only for an import it can
+resolve to a project in the Nx graph. If a renamed specifier stops resolving, the rule does
+not fail — it has nothing to say about that import, and silence is exactly what a compliant
+codebase looks like. A passing lint is therefore not evidence that the rule still applies.
+`scripts/lint-invariants.spec.mjs` does not close the gap either: it asserts the rule is
+configured at severity 2, which is a weaker claim than the rule still matching anything.
+
+**Fix.** Prove it with a positive control. Add an import the tags forbid, confirm lint
+fails, then revert:
+
+```bash
+echo "import type { RoomsService } from '@trinity/data-access/rooms';" >> libs/ui/src/index.ts
+pnpm exec nx lint ui --skip-nx-cache   # must fail
+git checkout -- libs/ui/src/index.ts
+```
+
+`libs/ui` is tagged `type:ui` and `scope:shared`, while `data-access-rooms` is
+`type:data-access` and `scope:matrix`, so both axes are violated. The scope one is what gets
+reported:
+
+```text
+A project tagged with "scope:shared" can only depend on libs tagged with "scope:shared"
+```
+
+An unused-variable error rides along with it; the boundary error is the one that matters.
 
 ### A broken import in an e2e spec survives lint
 
