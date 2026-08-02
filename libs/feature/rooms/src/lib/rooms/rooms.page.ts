@@ -48,7 +48,6 @@ import { CryptoService } from '@trinity/data-access/crypto';
 import {
   InvitesService,
   MixedInvitesService,
-  type PendingInvite,
 } from '@trinity/data-access/invites';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService } from '@trinity/data-access/media';
@@ -56,7 +55,6 @@ import {
   NotificationService,
   PushService,
   RoomNotificationsService,
-  type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { PresenceService } from '@trinity/data-access/profile';
@@ -73,14 +71,9 @@ import {
   MixedSpacesService,
   UnreadAggregatorService,
   SpaceRoomOrderService,
-  type MemberSummary,
-  type RoomSortMode,
-  type RoomSummary,
-  type SpaceChildRoom,
 } from '@trinity/data-access/rooms';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
-import { type MatrixLinkTarget, type Mention } from '@trinity/util/matrix';
 import {
   FeatureFlagsService,
   KeyboardShortcutsService,
@@ -230,31 +223,27 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly actionSheet = inject(TrnActionSheetService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
-  private readonly store = inject(RoomShellStore);
-  private readonly status = inject(ShellStatusService);
-  private readonly vm = inject(RoomShellViewModel);
-  private readonly nav = inject(RoomShellNavigationService);
-  private readonly members_ = inject(MemberActionsService);
-  private readonly routing = inject(AccountRoutingService);
-  private readonly inviteActions = inject(InviteActionsService);
-  private readonly spaceActions = inject(SpaceActionsService);
-  private readonly roomActions = inject(RoomActionsService);
-  private readonly readState = inject(ReadStateService);
-  private readonly messageActions = inject(MessageActionsService);
-  private readonly shortcutActions = inject(ShellShortcutsService);
-  private readonly session = inject(SessionActionsService);
+  readonly store = inject(RoomShellStore);
+  readonly status = inject(ShellStatusService);
+  readonly vm = inject(RoomShellViewModel);
+  readonly nav = inject(RoomShellNavigationService);
+  readonly members_ = inject(MemberActionsService);
+  readonly routing = inject(AccountRoutingService);
+  readonly inviteActions = inject(InviteActionsService);
+  readonly spaceActions = inject(SpaceActionsService);
+  readonly roomActions = inject(RoomActionsService);
+  readonly readState = inject(ReadStateService);
+  readonly messageActions = inject(MessageActionsService);
+  readonly shortcutActions = inject(ShellShortcutsService);
+  readonly session = inject(SessionActionsService);
 
-  readonly activeSpaceId = this.store.activeSpaceId;
   /**
    * Whether the Recent activity view is active — the default on launch. It lists every
    * joined DM + room (space-owned included), mixed by recency, so it overrides the
    * Home/Rooms/space scoping below. Cleared by selecting Home, Rooms, or a space.
    */
-  readonly recentView = this.store.recentView;
   /** Whether the Rooms view is active — filters the sidebar to non-DM rooms. Home (no
    * space) shows direct messages only; Recent, a space, or this view clears the others. */
-  readonly roomsView = this.store.roomsView;
-  readonly activeRoomId = this.store.activeRoomId;
 
   /**
    * The accounts the view draws from — the user's picker selection, persisted and always
@@ -275,61 +264,28 @@ export class RoomsPage implements OnInit, OnDestroy {
    * closed. Seeded from the viewport so the drawer doesn't render open on a mobile
    * load, while the wide layout keeps the column visible by default.
    */
-  readonly membersOpen = this.store.membersOpen;
   /**
    * Event id the message list should scroll to, set by in-room search, a reply
    * preview, or the pinned panel. Bound to the list's `jumpToId`, paired with
    * {@link jumpRequest} so re-selecting the SAME message still re-triggers the jump.
    */
-  readonly messageSearchTarget = this.store.messageSearchTarget;
   /** Bumped on every jump request so the list re-jumps even to an unchanged target. */
-  readonly jumpRequest = this.store.jumpRequest;
   /** Attachment upload fraction in [0, 1] while a send is uploading, else null. */
-  readonly uploadProgress = this.messageActions.uploadProgress;
 
   /** A create-space / create-channel / leave-space action is in flight. */
-  readonly spaceBusy = this.status.busy;
   /** Last space-management failure (surfaced as a toast); null when clear. */
-  readonly spaceError = this.status.error;
 
   /**
    * Derived shell state. Each field is the SAME signal object the view model exposes,
    * aliased here so the template and the spec keep reading it off the page.
    */
-  readonly visibleRooms = this.vm.visibleRooms;
-  readonly spaceSortMode = this.vm.spaceSortMode;
-  readonly spaceSortOverridden = this.vm.spaceSortOverridden;
-  readonly defaultSpaceSortMode = this.vm.defaultSpaceSortMode;
-  readonly activeSpaceName = this.vm.activeSpaceName;
-  readonly sidebarTitle = this.vm.sidebarTitle;
-  readonly recentUnread = this.vm.recentUnread;
-  readonly homeUnread = this.vm.homeUnread;
-  readonly roomsUnread = this.vm.roomsUnread;
-  readonly spaceUnread = this.vm.spaceUnread;
-  readonly railUnread = this.vm.railUnread;
-  readonly activeRoom = this.vm.activeRoom;
-  readonly members = this.vm.members;
-  readonly activeRoomIsDirect = this.vm.activeRoomIsDirect;
-  readonly userId = this.vm.userId;
-  readonly userName = this.vm.userName;
-  readonly userAvatarMxc = this.vm.userAvatarMxc;
-  readonly userInitial = this.vm.userInitial;
-  readonly userProfile = this.vm.userProfile;
-  readonly accounts = this.vm.accounts;
-  readonly activeAccountId = this.vm.activeAccountId;
-  readonly railSpaces = this.vm.railSpaces;
-  readonly canCurateSpace = this.vm.canCurateSpace;
-  readonly canConfigureSpace = this.vm.canConfigureSpace;
-  readonly accountBadges = this.vm.accountBadges;
-  readonly reauthAccounts = this.vm.reauthAccounts;
-  readonly syncLabel = this.vm.syncLabel;
 
   constructor() {
     // Space-management failures (create/leave) have no inline echo in the shell, so
     // surface each new error as a danger toast. runWithBusy captures the message
     // into spaceError; this reacts to that signal turning non-null.
     effect(() => {
-      const message = this.spaceError();
+      const message = this.status.error();
       if (message) {
         void this.status.showError(message);
       }
@@ -368,170 +324,18 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.notifications.connect();
   }
 
-  ngOnDestroy(): void {
-    this.closeOpenRoom();
-    this.invites.disconnect();
-  }
-
-  /** Global keyboard chords, bound on the host. */
+  /**
+   * Global keyboard chords. Kept on the page, unlike every other workflow: a `host`
+   * binding can only name a member of the component class, so this one cannot be bound
+   * straight to the coordinator.
+   */
   onGlobalKeydown(event: Event): void {
     this.shortcutActions.onGlobalKeydown(event);
   }
 
-  /** Open the quick switcher. */
-  openSwitcher(): Promise<void> {
-    return this.shortcutActions.openSwitcher();
-  }
-
-  openMessageSearch(): Promise<void> {
-    return this.messageActions.openMessageSearch();
-  }
-
-  /** Show the Recent activity view. */
-  onShowRecent(): void {
-    this.nav.onShowRecent();
-  }
-
-  /** Select a space (or Home when null). */
-  onSelectSpace(id: string | null): void {
-    this.nav.onSelectSpace(id);
-  }
-
-  /** Show the flat Rooms view. */
-  onShowRooms(): void {
-    this.nav.onShowRooms();
-  }
-
-  onCreateSpace(): Promise<void> {
-    return this.spaceActions.onCreateSpace();
-  }
-
-  onCreateSubspace(): Promise<void> {
-    return this.spaceActions.onCreateSubspace();
-  }
-
-  onCreateChannel(): Promise<void> {
-    return this.spaceActions.onCreateChannel();
-  }
-
-  onLeaveSpace(): Promise<void> {
-    return this.spaceActions.onLeaveSpace();
-  }
-
-  /** Join a suggested/known child room of the open space. */
-  onJoinChild(child: SpaceChildRoom): void {
-    this.spaceActions.onJoinChild(child);
-  }
-
-  onRemoveFromSpace(roomId: string): Promise<void> {
-    return this.spaceActions.onRemoveFromSpace(roomId);
-  }
-
-  /** Leave a room after confirmation; may belong to another account. */
-  onLeaveRoom(target: { roomId: string; accountId?: string }): Promise<void> {
-    return this.roomActions.onLeaveRoom(target);
-  }
-
-  /** The composer-adjacent "new chat" action sheet. */
-  onNewChat(): void {
-    this.roomActions.onNewChat();
-  }
-
-  onExploreRooms(): Promise<void> {
-    return this.roomActions.onExploreRooms();
-  }
-
-  /** Follow a tombstone to the room that replaced this one. */
-  onGoToUpgradedRoom(roomId: string): void {
-    this.roomActions.onGoToUpgradedRoom(roomId);
-  }
-
-  onCreateRoom(): Promise<void> {
-    return this.roomActions.onCreateRoom();
-  }
-
-  onStartDm(): Promise<void> {
-    return this.roomActions.onStartDm();
-  }
-
-  onInviteToRoom(): Promise<void> {
-    return this.roomActions.onInviteToRoom();
-  }
-
-  onInviteToSpace(): Promise<void> {
-    return this.roomActions.onInviteToSpace();
-  }
-
-  /** Accept an invite and open the room, switching account if it is not the active one. */
-  onAcceptInvite(invite: { roomId: string; accountId?: string }): void {
-    this.inviteActions.onAcceptInvite(invite);
-  }
-
-  private knownInvites(): readonly PendingInvite[] {
-    return this.inviteActions.knownInvites();
-  }
-
-  /** Decline an invite. */
-  onDeclineInvite(invite: { roomId: string; accountId?: string }): void {
-    this.inviteActions.onDeclineInvite(invite);
-  }
-
-  /** A sidebar room row was picked; may belong to another account. */
-  onSelectRoomRow(id: string, source: 'user' | 'hop' = 'user'): void {
-    this.routing.onSelectRoomRow(id, source);
-  }
-
-  /** A rail space pill was picked; may belong to another account. */
-  onSelectSpaceRow(id: string | null): void {
-    this.routing.onSelectSpaceRow(id);
-  }
-
-  /** Toggle whether an account contributes to the mixed view. */
-  onToggleAccountShown(userId: string): void {
-    this.routing.onToggleAccountShown(userId);
-  }
-
-  private knownRooms(): RoomSummary[] {
-    return this.nav.knownRooms();
-  }
-
-  private accountLabel(accountId: string): string {
-    return this.routing.accountLabel(accountId);
-  }
-
-  private runOnAccount(accountId: string, then: () => void): void {
-    this.routing.runOnAccount(accountId, then);
-  }
-
-  /** Open a room. `source` distinguishes a user click from a keyboard hop. */
-  onSelectRoom(id: string, source: 'user' | 'hop' = 'user'): void {
-    this.nav.onSelectRoom(id, source);
-  }
-
-  /** Follow a matrix.to link from rendered markdown. */
-  onMatrixLink(target: MatrixLinkTarget): void {
-    this.messageActions.onMatrixLink(target);
-  }
-
-  private openUserCard(userId: string): Promise<void> {
-    return this.members_.openUserCard(userId);
-  }
-
-  /** A member row was picked in the list. */
-  onSelectMember(member: MemberSummary): void {
-    this.members_.onSelectMember(member);
-  }
-
-  private openMemberInfo(member: MemberSummary, roomId: string): Promise<void> {
-    return this.members_.openMemberInfo(member, roomId);
-  }
-
-  private startDirectMessage(userId: string): void {
-    this.members_.startDirectMessage(userId);
-  }
-
-  private openLinkedRoom(roomId: string, eventId?: string): void {
-    this.routing.openLinkedRoom(roomId, eventId);
+  ngOnDestroy(): void {
+    this.nav.closeOpenRoom();
+    this.invites.disconnect();
   }
 
   /**
@@ -540,7 +344,7 @@ export class RoomsPage implements OnInit, OnDestroy {
    * (keyed off `activeRoomId`); at md+ both columns are static and this is unused.
    */
   backToList(): void {
-    this.closeOpenRoom();
+    this.nav.closeOpenRoom();
     this.focusActiveView();
   }
 
@@ -556,7 +360,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     }
     afterNextRender(
       () => {
-        const view = this.activeRoomId() ? this.mainView() : this.listView();
+        const view = this.store.activeRoomId()
+          ? this.mainView()
+          : this.listView();
         view?.nativeElement.focus();
       },
       { injector: this.injector },
@@ -565,12 +371,12 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Show/hide the member list from the toolbar / overflow menu. */
   toggleMembers(): void {
-    this.membersOpen.update((open) => !open);
+    this.store.membersOpen.update((open) => !open);
   }
 
   /** Close the member list — used by the mobile drawer's backdrop. */
   closeMembers(): void {
-    this.membersOpen.set(false);
+    this.store.membersOpen.set(false);
   }
 
   /**
@@ -579,142 +385,8 @@ export class RoomsPage implements OnInit, OnDestroy {
    * info panel is a CDK dialog that closes the drawer as it opens, so there's no clash.
    */
   onEscapeKey(): void {
-    if (this.membersOpen() && membersShownAsDrawer()) {
+    if (this.store.membersOpen() && membersShownAsDrawer()) {
       this.closeMembers();
     }
-  }
-
-  onOpenThread(rootEventId: string): void {
-    this.messageActions.onOpenThread(rootEventId);
-  }
-
-  /** Set a room's notification level from the sidebar menu. */
-  onSetNotifyMode(change: {
-    roomId: string;
-    mode: RoomNotifyMode;
-    accountId?: string;
-  }): void {
-    this.readState.onSetNotifyMode(change);
-  }
-
-  /** Mark a room read. */
-  onMarkRead(target: { roomId: string; accountId?: string }): void {
-    this.readState.onMarkRead(target);
-  }
-
-  /** Flag a room to come back to. */
-  onMarkUnread(target: { roomId: string; accountId?: string }): void {
-    this.readState.onMarkUnread(target);
-  }
-
-  /** Mark every visible room read. */
-  onMarkAllRead(): void {
-    this.readState.onMarkAllRead();
-  }
-
-  /** Set this space's room order, or clear back to the account default. */
-  onSetSpaceSort(mode: RoomSortMode | null): void {
-    this.spaceActions.onSetSpaceSort(mode);
-  }
-
-  onOpenRoomSettings(): void {
-    this.roomActions.onOpenRoomSettings();
-  }
-
-  onOpenSpaceSettings(): void {
-    this.spaceActions.onOpenSpaceSettings();
-  }
-
-  onAddToSpace(): void {
-    this.spaceActions.onAddToSpace();
-  }
-
-  onManageSpaceRooms(): void {
-    this.spaceActions.onManageSpaceRooms();
-  }
-
-  onOpenSpaceMembers(): void {
-    this.spaceActions.onOpenSpaceMembers();
-  }
-
-  openThreadsList(): void {
-    this.messageActions.openThreadsList();
-  }
-
-  onTogglePin(eventId: string): void {
-    this.messageActions.onTogglePin(eventId);
-  }
-
-  openPinnedPanel(): Promise<void> {
-    return this.messageActions.openPinnedPanel();
-  }
-
-  loadOlder(): void {
-    this.messageActions.loadOlder();
-  }
-
-  onSend(message: { body: string; mentions: Mention[] }): void {
-    this.messageActions.onSend(message);
-  }
-
-  onTyping(typing: boolean): void {
-    this.messageActions.onTyping(typing);
-  }
-
-  onPollVote(vote: { pollId: string; answerId: string }): void {
-    this.messageActions.onPollVote(vote);
-  }
-
-  onPollEnd(pollId: string): void {
-    this.messageActions.onPollEnd(pollId);
-  }
-
-  onSendMedia(media: { file: File; caption: string }): void {
-    this.messageActions.onSendMedia(media);
-  }
-
-  onEdit(edit: { id: string; body: string; mentions: Mention[] }): void {
-    this.messageActions.onEdit(edit);
-  }
-
-  onDelete(messageId: string): void {
-    this.messageActions.onDelete(messageId);
-  }
-
-  onReact(reaction: { id: string; key: string }): void {
-    this.messageActions.onReact(reaction);
-  }
-
-  onReply(reply: { id: string; body: string; mentions: Mention[] }): void {
-    this.messageActions.onReply(reply);
-  }
-
-  goToSettings(): void {
-    this.session.goToSettings();
-  }
-
-  /** Make another signed-in account the active one. */
-  switchAccount(userId: string): void {
-    this.session.switchAccount(userId);
-  }
-
-  private resetViewScope(): void {
-    this.nav.resetViewScope();
-  }
-
-  private closeOpenRoom(): void {
-    this.nav.closeOpenRoom();
-  }
-
-  addAccount(): void {
-    this.session.addAccount();
-  }
-
-  reauthAccount(userId: string): void {
-    this.session.reauthAccount(userId);
-  }
-
-  logout(userId: string): Promise<void> {
-    return this.session.logout(userId);
   }
 }
