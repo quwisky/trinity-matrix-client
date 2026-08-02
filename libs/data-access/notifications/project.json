@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "data-access-notifications",
+  "projectType": "library",
+  "sourceRoot": "libs/data-access/notifications/src",
+  "prefix": "trn",
+  "tags": ["type:data-access", "scope:matrix"],
+  "targets": {
+    "test": {}
+  }
+}

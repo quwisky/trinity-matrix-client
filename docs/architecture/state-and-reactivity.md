@@ -90,7 +90,7 @@ It also means unit tests need a zoneless-aware render helper. Import `render` fr
 
 Every projecting service has to get the same three things right, and each one was independently
 re-derived — and sometimes mis-derived — before they were extracted into one primitive,
-[`projectFromClient()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-matrix-client/src/lib/project-from-client.ts).
+[`projectFromClient()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/project-from-client.ts).
 
 1. **Coalescing.** A completed `/sync` emits many events at once. Rebuilding an O(rooms) read model
    and re-sorting it once per event is waste.
@@ -164,7 +164,7 @@ primitive's own doc comment says new code should not copy them.
 
 ## coalesce
 
-[`coalesce(fn)`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-matrix-client/src/lib/coalesce.ts)
+[`coalesce(fn)`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/coalesce.ts)
 returns `{ schedule(), cancel(), pending() }` and queues `fn` on `queueMicrotask`. Two details in it
 are load-bearing and easy to lose when reimplementing it by hand, which is why it is a shared
 function rather than a described convention:
@@ -245,7 +245,7 @@ The rule to apply when writing a new service: if your listeners follow _the acti
 
 ## A worked example: RoomsService
 
-[`RoomsService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access-rooms/src/lib/rooms.service.ts)
+[`RoomsService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/rooms/src/lib/rooms.service.ts)
 is the reference implementation, and the annotations in it are the actual documentation for the
 awkward cases.
 

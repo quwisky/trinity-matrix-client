@@ -88,7 +88,7 @@ Two things follow from keeping it that way:
   one layer means a breaking change in it has a bounded blast radius.
 
 When a feature genuinely needs an SDK _type_ — not the SDK — the owning data-access library
-re-exports it. `libs/data-access-auth/src/index.ts` re-exports `OidcClientConfig` from
+re-exports it. `libs/data-access/auth/src/index.ts` re-exports `OidcClientConfig` from
 `matrix-js-sdk` with a comment saying exactly why: so a feature library can type delegated-auth
 metadata without an SDK import of its own.
 
