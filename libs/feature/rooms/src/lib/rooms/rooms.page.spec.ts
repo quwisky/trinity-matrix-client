@@ -57,6 +57,7 @@ import { MemberActionsService } from './member-actions.service';
 import { AccountRoutingService } from './account-routing.service';
 import { InviteActionsService } from './invite-actions.service';
 import { SpaceActionsService } from './space-actions.service';
+import { RoomActionsService } from './room-actions.service';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -94,6 +95,7 @@ const SHARED_MOCKS: Provider[] = [
   AccountRoutingService,
   InviteActionsService,
   SpaceActionsService,
+  RoomActionsService,
   MockProvider(CryptoService),
   MockProvider(PinnedMessagesService),
   MockProvider(PinnedPanelService),
