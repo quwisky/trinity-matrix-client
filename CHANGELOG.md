@@ -80,6 +80,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Trinity now needs Node 24.15 or newer.** Both Angular 22 and the test environment
+  declare 24.15 as their floor, and both exclude the 25.x line entirely — so the project
+  requirement now says exactly that (`^24.15.0 || >=26.0.0`) instead of the looser `>=24`
+  it had drifted to. `.nvmrc` is pinned to match, because the engines field is only
+  advisory: pnpm warns and carries on, so `nvm use` is what actually keeps you on a
+  supported runtime.
+
 - **A tap no longer leaves a tooltip stuck open.** On a touch screen, tapping something with a
   tooltip — the icon buttons in the composer and room header, the encryption shield on a
   message — used to open the tooltip and then leave you with no way to dismiss it, because the

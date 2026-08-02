@@ -29,7 +29,7 @@ are unchanged. `pnpm exec nx graph` opens the dependency graph.
 
 ## Prerequisites
 
-- **Node 24** (what CI runs and the repo is developed on) and **pnpm**
+- **Node 24.15+** (what CI runs and the repo is developed on; the 25.x line is excluded) and **pnpm**
   (`corepack enable` installs the version pinned in `package.json`). This project is
   **pnpm-only** — a `preinstall` guard aborts `npm install` / `yarn install`.
 - **iOS builds:** macOS with **Xcode** installed and selected

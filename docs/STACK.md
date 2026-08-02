@@ -209,7 +209,7 @@ the architecture changes — find out before building UI on top.
 
 ## Open setup decisions / reminders
 
-- Node 24 — the version CI pins and the repo is developed on. The binding constraint is
+- Node 24.15+ — the version CI pins and the repo is developed on. The binding constraint is
   Angular 22 (`^22.22.3 || ^24.15.0 || >=26.0.0`), not matrix-js-sdk (`>=22.0.0`); note
   that range excludes Node 25, so "newer is fine" does not hold here.
 - SSO on native: the deep-link / custom URL scheme is configured (App plugin +
