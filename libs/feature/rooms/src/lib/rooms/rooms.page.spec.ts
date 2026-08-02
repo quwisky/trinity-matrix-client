@@ -112,6 +112,34 @@ const SHARED_MOCKS: Provider[] = [
   MockProvider(TrnActionSheetService),
 ];
 
+/**
+ * The page together with the page-scoped coordinators that actually own its behaviour.
+ *
+ * Assertions go to the owner — `shell.messages.onEdit(...)`, `shell.store.activeRoomId` —
+ * rather than through the page. The page kept one-line delegates during the extraction so
+ * this spec could stay an unmodified oracle while state moved out from under it; now that
+ * the moves are done, testing the delegate instead of the thing it calls would only pin the
+ * forwarding.
+ */
+function shellFrom() {
+  return {
+    page: TestBed.inject(RoomsPage),
+    store: TestBed.inject(RoomShellStore),
+    vm: TestBed.inject(RoomShellViewModel),
+    status: TestBed.inject(ShellStatusService),
+    nav: TestBed.inject(RoomShellNavigationService),
+    routing: TestBed.inject(AccountRoutingService),
+    members: TestBed.inject(MemberActionsService),
+    invites: TestBed.inject(InviteActionsService),
+    spaces: TestBed.inject(SpaceActionsService),
+    rooms: TestBed.inject(RoomActionsService),
+    readState: TestBed.inject(ReadStateService),
+    messages: TestBed.inject(MessageActionsService),
+    shortcuts: TestBed.inject(ShellShortcutsService),
+    session: TestBed.inject(SessionActionsService),
+  };
+}
+
 /** Default InvitesService mock: empty model + join/leave stubs. */
 function invitesProvider(over: Partial<InvitesService> = {}) {
   return MockProvider(InvitesService, {
@@ -167,7 +195,7 @@ describe('RoomsPage action error feedback', () => {
   let setMarkedUnreadFn: ReturnType<typeof vi.fn>;
   let clearMarkedUnreadFn: ReturnType<typeof vi.fn>;
 
-  function build(): RoomsPage {
+  function build() {
     toastShow = vi.fn();
     edit = vi.fn();
     sendMedia = vi.fn(() => of(undefined));
@@ -264,14 +292,14 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(RoomNotificationsService, { setMode: setNotifyMode }),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   it('shows a danger toast when an edit fails', () => {
-    const page = build();
+    const shell = build();
     edit.mockReturnValue(throwError(() => new Error('nope')));
 
-    page.onEdit({ id: '$1', body: 'x' });
+    shell.messages.onEdit({ id: '$1', body: 'x' });
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
@@ -280,10 +308,10 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('does not toast when the action succeeds', () => {
-    const page = build();
+    const shell = build();
     edit.mockReturnValue(of(undefined));
 
-    page.onEdit({ id: '$1', body: 'x' });
+    shell.messages.onEdit({ id: '$1', body: 'x' });
 
     expect(toastShow).not.toHaveBeenCalled();
   });
@@ -292,19 +320,19 @@ describe('RoomsPage action error feedback', () => {
   // directly), so that behaviour is covered by channel-sidebar.component.spec.ts.
 
   it('applies a notification level chosen from the sidebar room menu', () => {
-    const page = build();
+    const shell = build();
 
-    page.onSetNotifyMode({ roomId: '!r:hs', mode: 'mentions' });
+    shell.readState.onSetNotifyMode({ roomId: '!r:hs', mode: 'mentions' });
 
     expect(setNotifyMode).toHaveBeenCalledWith('!r:hs', 'mentions', undefined);
     expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('shows a danger toast when setting a notification level fails', () => {
-    const page = build();
+    const shell = build();
     setNotifyMode.mockReturnValue(throwError(() => new Error('nope')));
 
-    page.onSetNotifyMode({ roomId: '!r:hs', mode: 'mute' });
+    shell.readState.onSetNotifyMode({ roomId: '!r:hs', mode: 'mute' });
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
@@ -313,14 +341,14 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('leaves a room after confirmation and clears it if it was the open one', async () => {
-    const page = build();
-    page.activeRoomId.set('!r:hs');
+    const shell = build();
+    shell.store.activeRoomId.set('!r:hs');
 
-    await page.onLeaveRoom({ roomId: '!r:hs' });
+    await shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(alertConfirm).toHaveBeenCalled();
     expect(leaveRoom).toHaveBeenCalledWith('!r:hs', undefined);
-    expect(page.activeRoomId()).toBeNull();
+    expect(shell.store.activeRoomId()).toBeNull();
     // Tear every open-room projection down so none keeps listening on it.
     expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
     expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
@@ -332,39 +360,39 @@ describe('RoomsPage action error feedback', () => {
   // Leaving is irreversible for a private room, so a mixed-in row must leave on ITS
   // account rather than falling through to whichever one happens to be active.
   it('leaves a foreign-account room on its own account', async () => {
-    const page = build();
+    const shell = build();
 
-    await page.onLeaveRoom({ roomId: '!r:hs', accountId: '@alt:hs' });
+    await shell.rooms.onLeaveRoom({ roomId: '!r:hs', accountId: '@alt:hs' });
 
     expect(leaveRoom).toHaveBeenCalledWith('!r:hs', '@alt:hs');
   });
 
   it('leaves a room but keeps a different open room selected', async () => {
-    const page = build();
-    page.activeRoomId.set('!other:hs');
+    const shell = build();
+    shell.store.activeRoomId.set('!other:hs');
 
-    await page.onLeaveRoom({ roomId: '!r:hs' });
+    await shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(leaveRoom).toHaveBeenCalledWith('!r:hs', undefined);
-    expect(page.activeRoomId()).toBe('!other:hs');
+    expect(shell.store.activeRoomId()).toBe('!other:hs');
     // The open room wasn't the one left, so its projections stay put.
     expect(TestBed.inject(TimelineService).close).not.toHaveBeenCalled();
   });
 
   it('does not leave a room when the confirmation is cancelled', async () => {
-    const page = build();
+    const shell = build();
     alertConfirm.mockResolvedValue(false);
 
-    await page.onLeaveRoom({ roomId: '!r:hs' });
+    await shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(leaveRoom).not.toHaveBeenCalled();
   });
 
   it('shows a danger toast when leaving a room fails', async () => {
-    const page = build();
+    const shell = build();
     leaveRoom.mockReturnValue(throwError(() => new Error('nope')));
 
-    await page.onLeaveRoom({ roomId: '!r:hs' });
+    await shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
@@ -385,8 +413,8 @@ describe('RoomsPage action error feedback', () => {
   }
 
   it('opens the space members dialog and routes a pick to member info', async () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     railSpacesSignal.set([railSpace('!s:hs')]);
     const picked = {
       userId: '@a:hs',
@@ -400,7 +428,7 @@ describe('RoomsPage action error feedback', () => {
       TestBed.inject(TrnDialogService).openAndWait as ReturnType<typeof vi.fn>
     ).mockResolvedValue(picked);
 
-    page.onOpenSpaceMembers();
+    shell.spaces.onOpenSpaceMembers();
     await Promise.resolve();
     await Promise.resolve();
 
@@ -415,14 +443,14 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('does not open member info when the members dialog is dismissed', async () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     railSpacesSignal.set([railSpace('!s:hs')]);
     (
       TestBed.inject(TrnDialogService).openAndWait as ReturnType<typeof vi.fn>
     ).mockResolvedValue(null);
 
-    page.onOpenSpaceMembers();
+    shell.spaces.onOpenSpaceMembers();
     await Promise.resolve();
     await Promise.resolve();
 
@@ -430,8 +458,8 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('creates a subspace and links it into the active space', async () => {
-    const page = build();
-    page.activeSpaceId.set('!parent:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!parent:hs');
     railSpacesSignal.set([railSpace('!parent:hs')]);
     alertConfirm.mockResolvedValue(true);
     const prompt = TestBed.inject(TrnAlertService).prompt as ReturnType<
@@ -439,7 +467,7 @@ describe('RoomsPage action error feedback', () => {
     >;
     prompt.mockResolvedValue('Sub');
 
-    await page.onCreateSubspace();
+    await shell.spaces.onCreateSubspace();
 
     expect(createSpace).toHaveBeenCalledWith({ name: 'Sub' });
     // The link is the whole point — a space created and not nested is just a space.
@@ -447,22 +475,22 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('does not create a subspace without power to curate', async () => {
-    const page = build();
-    page.activeSpaceId.set('!parent:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!parent:hs');
     railSpacesSignal.set([railSpace('!parent:hs')]);
     canCurate.mockReturnValue(false);
 
-    await page.onCreateSubspace();
+    await shell.spaces.onCreateSubspace();
 
     expect(createSpace).not.toHaveBeenCalled();
   });
 
   it('opens the add-rooms picker for the active space', () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     railSpacesSignal.set([railSpace('!s:hs')]);
 
-    page.onAddToSpace();
+    shell.spaces.onAddToSpace();
 
     expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
       AddToSpaceComponent,
@@ -473,11 +501,11 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('opens the curation dialog for the active space', () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     railSpacesSignal.set([railSpace('!s:hs')]);
 
-    page.onManageSpaceRooms();
+    shell.spaces.onManageSpaceRooms();
 
     expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
       ManageSpaceRoomsComponent,
@@ -488,14 +516,14 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('refuses both curation dialogs without power to curate', () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     railSpacesSignal.set([railSpace('!s:hs')]);
     canCurate.mockReturnValue(false);
 
-    expect(page.canCurateSpace()).toBe(false);
-    page.onAddToSpace();
-    page.onManageSpaceRooms();
+    expect(shell.vm.canCurateSpace()).toBe(false);
+    shell.spaces.onAddToSpace();
+    shell.spaces.onManageSpaceRooms();
 
     expect(TestBed.inject(TrnDialogService).openAndWait).not.toHaveBeenCalled();
   });
@@ -503,28 +531,28 @@ describe('RoomsPage action error feedback', () => {
   it('refuses to curate another account’s space', () => {
     // Same reasoning as Space settings: the write goes through the ACTIVE client, so it
     // would land on the wrong account or nowhere.
-    const page = build();
-    page.activeSpaceId.set('!theirs:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!theirs:hs');
     railSpacesSignal.set([railSpace('!theirs:hs', '@other:hs')]);
     canCurate.mockReturnValue(true);
 
-    expect(page.canCurateSpace()).toBe(false);
+    expect(shell.vm.canCurateSpace()).toBe(false);
   });
 
   it('separates curating from configuring, which are different power levels', () => {
     // A moderator can curate the child list without being able to rename the space.
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     railSpacesSignal.set([railSpace('!s:hs')]);
     canCurate.mockReturnValue(false);
 
-    expect(page.canConfigureSpace()).toBe(true);
-    expect(page.canCurateSpace()).toBe(false);
+    expect(shell.vm.canConfigureSpace()).toBe(true);
+    expect(shell.vm.canCurateSpace()).toBe(false);
   });
 
   it('opens space settings seeded from raw state and the viewer’s permissions', () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     railSpacesSignal.set([railSpace('!s:hs')]);
     currentIdentity.mockReturnValue({
       name: 'Design',
@@ -546,7 +574,7 @@ describe('RoomsPage action error feedback', () => {
     canManageBans.mockReturnValue(true);
     canManageAliases.mockReturnValue(false);
 
-    page.onOpenSpaceSettings();
+    shell.spaces.onOpenSpaceSettings();
 
     // Every read is against the SPACE id — a space is a room, so these services take it
     // unchanged, and passing the active ROOM id here would silently configure the wrong one.
@@ -577,11 +605,11 @@ describe('RoomsPage action error feedback', () => {
   it('offers no history visibility to the space dialog', () => {
     // A space has no timeline to hide, and the dialog has no control for it — passing one
     // would be a seed for a field that cannot be saved.
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     railSpacesSignal.set([railSpace('!s:hs')]);
 
-    page.onOpenSpaceSettings();
+    shell.spaces.onOpenSpaceSettings();
 
     const [, options] = (
       TestBed.inject(TrnDialogService).openAndWait as ReturnType<typeof vi.fn>
@@ -591,10 +619,10 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('does not open space settings when no space is active', () => {
-    const page = build();
-    page.activeSpaceId.set(null);
+    const shell = build();
+    shell.store.activeSpaceId.set(null);
 
-    page.onOpenSpaceSettings();
+    shell.spaces.onOpenSpaceSettings();
 
     expect(TestBed.inject(TrnDialogService).openAndWait).not.toHaveBeenCalled();
   });
@@ -602,39 +630,39 @@ describe('RoomsPage action error feedback', () => {
   it('refuses to configure another account’s space', () => {
     // RoomSettingsService resolves the ACTIVE client, so this dialog would seed blank and
     // every write would land on the wrong account — or nowhere.
-    const page = build();
-    page.activeSpaceId.set('!theirs:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!theirs:hs');
     railSpacesSignal.set([railSpace('!theirs:hs', '@other:hs')]);
 
-    expect(page.canConfigureSpace()).toBe(false);
+    expect(shell.vm.canConfigureSpace()).toBe(false);
 
-    page.onOpenSpaceSettings();
+    shell.spaces.onOpenSpaceSettings();
 
     expect(TestBed.inject(TrnDialogService).openAndWait).not.toHaveBeenCalled();
     expect(currentIdentity).not.toHaveBeenCalled();
   });
 
   it('allows configuring a space on the signed-in account', () => {
-    const page = build();
-    page.activeSpaceId.set('!mine:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!mine:hs');
     railSpacesSignal.set([railSpace('!mine:hs', '@me:hs')]);
 
-    expect(page.canConfigureSpace()).toBe(true);
+    expect(shell.vm.canConfigureSpace()).toBe(true);
   });
 
   it('reports no configurable space for Home or an unknown id', () => {
-    const page = build();
+    const shell = build();
     railSpacesSignal.set([railSpace('!s:hs')]);
 
-    page.activeSpaceId.set(null);
-    expect(page.canConfigureSpace()).toBe(false);
+    shell.store.activeSpaceId.set(null);
+    expect(shell.vm.canConfigureSpace()).toBe(false);
 
-    page.activeSpaceId.set('!gone:hs');
-    expect(page.canConfigureSpace()).toBe(false);
+    shell.store.activeSpaceId.set('!gone:hs');
+    expect(shell.vm.canConfigureSpace()).toBe(false);
   });
 
   it('seeds the restricted option from the spaces the room sits in', () => {
-    const page = build();
+    const shell = build();
     roomsSignal.set([
       {
         id: '!r:hs',
@@ -655,7 +683,7 @@ describe('RoomsPage action error feedback', () => {
         favourite: false,
       },
     ]);
-    page.activeRoomId.set('!r:hs');
+    shell.store.activeRoomId.set('!r:hs');
     railSpacesSignal.set([
       {
         id: '!s:hs',
@@ -674,7 +702,7 @@ describe('RoomsPage action error feedback', () => {
       allowedSpaceIds: ['!kept:hs'],
     });
 
-    page.onOpenRoomSettings();
+    shell.rooms.onOpenRoomSettings();
 
     // The label names the space, so the id alone is not enough to pass through.
     expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
@@ -691,7 +719,7 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('opens room settings, mapping each edit permission to a dialog input', () => {
-    const page = build();
+    const shell = build();
     roomsSignal.set([
       {
         id: '!r:hs',
@@ -712,7 +740,7 @@ describe('RoomsPage action error feedback', () => {
         favourite: false,
       },
     ]);
-    page.activeRoomId.set('!r:hs');
+    shell.store.activeRoomId.set('!r:hs');
     editableFields.mockReturnValue({
       name: true,
       topic: false,
@@ -736,7 +764,7 @@ describe('RoomsPage action error feedback', () => {
       avatarMxc: 'mxc://a/b',
     });
 
-    page.onOpenRoomSettings();
+    shell.rooms.onOpenRoomSettings();
 
     expect(editableFields).toHaveBeenCalledWith('!r:hs');
     expect(currentAccess).toHaveBeenCalledWith('!r:hs');
@@ -766,67 +794,70 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('opens the room directory and selects a room joined from it', async () => {
-    const page = build();
+    const shell = build();
     const dialog = TestBed.inject(TrnDialogService);
     vi.mocked(dialog.openAndWait).mockResolvedValue({
       roomId: '!joined:hs',
       isSpace: false,
     });
 
-    await page.onExploreRooms();
+    await shell.rooms.onExploreRooms();
 
     expect(dialog.openAndWait).toHaveBeenCalledWith(RoomDirectoryComponent);
-    expect(page.roomsView()).toBe(true); // listed in the Rooms view
-    expect(page.activeSpaceId()).toBeNull();
-    expect(page.activeRoomId()).toBe('!joined:hs'); // onSelectRoom ran
+    expect(shell.store.roomsView()).toBe(true); // listed in the Rooms view
+    expect(shell.store.activeSpaceId()).toBeNull();
+    expect(shell.store.activeRoomId()).toBe('!joined:hs'); // onSelectRoom ran
   });
 
   it('selects a space joined from the directory in the rail', async () => {
-    const page = build();
+    const shell = build();
     const dialog = TestBed.inject(TrnDialogService);
     vi.mocked(dialog.openAndWait).mockResolvedValue({
       roomId: '!space:hs',
       isSpace: true,
     });
 
-    await page.onExploreRooms();
+    await shell.rooms.onExploreRooms();
 
-    expect(page.activeSpaceId()).toBe('!space:hs'); // onSelectSpace ran
-    expect(page.activeRoomId()).toBeNull(); // no room opened
+    expect(shell.store.activeSpaceId()).toBe('!space:hs'); // onSelectSpace ran
+    expect(shell.store.activeRoomId()).toBeNull(); // no room opened
   });
 
   it('does not select a room when the directory is dismissed', async () => {
-    const page = build();
+    const shell = build();
     const dialog = TestBed.inject(TrnDialogService);
     vi.mocked(dialog.openAndWait).mockResolvedValue(null);
 
-    await page.onExploreRooms();
+    await shell.rooms.onExploreRooms();
 
-    expect(page.activeRoomId()).toBeNull();
+    expect(shell.store.activeRoomId()).toBeNull();
   });
 
   it('joins and opens the successor room from the tombstone banner', () => {
-    const page = build();
+    const shell = build();
 
-    page.onGoToUpgradedRoom('!old:hs');
+    shell.rooms.onGoToUpgradedRoom('!old:hs');
 
     expect(joinPublicRoom).toHaveBeenCalledWith('!old:hs');
-    expect(page.roomsView()).toBe(true); // surfaced in the Rooms view, not opened invisibly
-    expect(page.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
+    expect(shell.store.roomsView()).toBe(true); // surfaced in the Rooms view, not opened invisibly
+    expect(shell.store.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
   });
 
   it('marks a room read via RoomsService', () => {
-    const page = build();
-    page.onMarkRead({ roomId: '!r:hs' });
+    const shell = build();
+    shell.readState.onMarkRead({ roomId: '!r:hs' });
     expect(markReadFn).toHaveBeenCalledWith('!r:hs', undefined);
   });
 
   // A row merged from two accounts carries the loudest unread of the two, so acking only
   // one would leave a badge the user has no way to clear.
   it('acks every account joined to a merged row', () => {
-    const page = build();
+    const shell = build();
 
-    page.onMarkRead({ roomId: '!r:hs', accountIds: ['@me:hs', '@alt:hs'] });
+    shell.readState.onMarkRead({
+      roomId: '!r:hs',
+      accountIds: ['@me:hs', '@alt:hs'],
+    });
 
     expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@me:hs');
     expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@alt:hs');
@@ -835,10 +866,10 @@ describe('RoomsPage action error feedback', () => {
   it('tells the user when flagging a room fails', () => {
     // The service rolls its optimistic overlay back on failure, so without this the row
     // simply un-flags itself and the user is left thinking the click missed.
-    const page = build();
+    const shell = build();
     setMarkedUnreadFn.mockReturnValue(throwError(() => new Error('nope')));
 
-    page.onMarkUnread({ roomId: '!r:hs', accountIds: ['@me:hs'] });
+    shell.readState.onMarkUnread({ roomId: '!r:hs', accountIds: ['@me:hs'] });
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Could not mark the room unread.'),
@@ -847,9 +878,12 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('flags a room on every account joined to a merged row', () => {
-    const page = build();
+    const shell = build();
 
-    page.onMarkUnread({ roomId: '!r:hs', accountIds: ['@me:hs', '@alt:hs'] });
+    shell.readState.onMarkUnread({
+      roomId: '!r:hs',
+      accountIds: ['@me:hs', '@alt:hs'],
+    });
 
     expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, '@me:hs');
     expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, '@alt:hs');
@@ -858,9 +892,9 @@ describe('RoomsPage action error feedback', () => {
   it('flags on the active account when the row names none', () => {
     // The fallback matters: `forkJoin([])` completes without emitting, so dropping it
     // would make the single-account ⋮ menu write nothing at all, silently.
-    const page = build();
+    const shell = build();
 
-    page.onMarkUnread({ roomId: '!r:hs' });
+    shell.readState.onMarkUnread({ roomId: '!r:hs' });
 
     expect(setMarkedUnreadFn).toHaveBeenCalledTimes(1);
     expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, undefined);
@@ -869,19 +903,19 @@ describe('RoomsPage action error feedback', () => {
   it('clears the flag whenever a room is opened, however it was opened', () => {
     // The clear is wired to selection rather than to the focus-gated ack, so every
     // opener has to go through it — a permalink hop included.
-    const page = build();
+    const shell = build();
 
-    page.onSelectRoom('!r:hs');
-    page.onSelectRoom('!h:hs', 'hop');
+    shell.nav.onSelectRoom('!r:hs');
+    shell.nav.onSelectRoom('!h:hs', 'hop');
 
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!r:hs');
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!h:hs');
   });
 
   it('applies a notification level on every account joined to a merged row', () => {
-    const page = build();
+    const shell = build();
 
-    page.onSetNotifyMode({
+    shell.readState.onSetNotifyMode({
       roomId: '!r:hs',
       mode: 'mute',
       accountIds: ['@me:hs', '@alt:hs'],
@@ -895,7 +929,7 @@ describe('RoomsPage action error feedback', () => {
   // header button is offered for rooms belonging to accounts other than the active one,
   // and acking those through the active client would silently do nothing.
   it('marks every unread visible room read on its own account', () => {
-    const page = build();
+    const shell = build();
     const unreadRoom = (
       id: string,
       accountId: string,
@@ -924,7 +958,7 @@ describe('RoomsPage action error feedback', () => {
       unreadRoom('!c:hs', '@alt:hs', true),
     ]);
 
-    page.onMarkAllRead();
+    shell.readState.onMarkAllRead();
 
     expect(markReadFn).toHaveBeenCalledWith('!a:hs', '@me:hs');
     expect(markReadFn).toHaveBeenCalledWith('!c:hs', '@alt:hs');
@@ -934,7 +968,7 @@ describe('RoomsPage action error feedback', () => {
   it('marks read a room that is flagged but has no unread count', () => {
     // The header button selects on hasUnread, which now includes the flag. Narrowing it
     // to a notification count would leave the button offering to clear a row it skips.
-    const page = build();
+    const shell = build();
     const flagged = (id: string): RoomSummary => ({
       id,
       accountId: '@me:hs',
@@ -955,7 +989,7 @@ describe('RoomsPage action error feedback', () => {
     });
     roomsSignal.set([flagged('!f:hs')]);
 
-    page.onMarkAllRead();
+    shell.readState.onMarkAllRead();
 
     expect(markReadFn).toHaveBeenCalledWith('!f:hs', '@me:hs');
   });
@@ -963,7 +997,7 @@ describe('RoomsPage action error feedback', () => {
   it('marks read on every account of a merged row', () => {
     // Mirrors the ⋮ path: acking only the winning account leaves a merged row unread
     // with the header button still offering to clear it, forever.
-    const page = build();
+    const shell = build();
     const merged: RoomSummary = {
       id: '!m:hs',
       accountId: '@me:hs',
@@ -984,39 +1018,39 @@ describe('RoomsPage action error feedback', () => {
     };
     roomsSignal.set([merged]);
 
-    page.onMarkAllRead();
+    shell.readState.onMarkAllRead();
 
     expect(markReadFn).toHaveBeenCalledWith('!m:hs', '@me:hs');
     expect(markReadFn).toHaveBeenCalledWith('!m:hs', '@alt:hs');
   });
 
   it('opens the threads-list panel for the active room', () => {
-    const page = build();
-    page.activeRoomId.set('!r:hs');
+    const shell = build();
+    shell.store.activeRoomId.set('!r:hs');
     const panel = TestBed.inject(ThreadPanelService);
 
-    page.openThreadsList();
+    shell.messages.openThreadsList();
 
     expect(panel.openList).toHaveBeenCalledWith('!r:hs');
   });
 
   it('does not open the threads-list panel without an active room', () => {
-    const page = build();
-    page.activeRoomId.set(null);
+    const shell = build();
+    shell.store.activeRoomId.set(null);
     const panel = TestBed.inject(ThreadPanelService);
 
-    page.openThreadsList();
+    shell.messages.openThreadsList();
 
     expect(panel.openList).not.toHaveBeenCalled();
   });
 
   it('onTogglePin pins an unpinned message', () => {
-    const page = build();
+    const shell = build();
     const pinned = TestBed.inject(PinnedMessagesService);
     vi.mocked(pinned.isPinned).mockReturnValue(false);
     vi.mocked(pinned.pin).mockReturnValue(of(undefined));
 
-    page.onTogglePin('$1');
+    shell.messages.onTogglePin('$1');
 
     expect(pinned.pin).toHaveBeenCalledWith('$1');
     expect(pinned.unpin).not.toHaveBeenCalled();
@@ -1027,12 +1061,12 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('onTogglePin unpins an already-pinned message', () => {
-    const page = build();
+    const shell = build();
     const pinned = TestBed.inject(PinnedMessagesService);
     vi.mocked(pinned.isPinned).mockReturnValue(true);
     vi.mocked(pinned.unpin).mockReturnValue(of(undefined));
 
-    page.onTogglePin('$1');
+    shell.messages.onTogglePin('$1');
 
     expect(pinned.unpin).toHaveBeenCalledWith('$1');
     expect(pinned.pin).not.toHaveBeenCalled();
@@ -1043,12 +1077,12 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('onTogglePin shows a destructive toast when the pin fails', () => {
-    const page = build();
+    const shell = build();
     const pinned = TestBed.inject(PinnedMessagesService);
     vi.mocked(pinned.isPinned).mockReturnValue(false);
     vi.mocked(pinned.pin).mockReturnValue(throwError(() => new Error('nope')));
 
-    page.onTogglePin('$1');
+    shell.messages.onTogglePin('$1');
 
     expect(toastShow).toHaveBeenCalledWith(
       'Could not pin the message.',
@@ -1057,50 +1091,50 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('openPinnedPanel jumps the timeline to the chosen pinned message', async () => {
-    const page = build();
+    const shell = build();
     const panel = TestBed.inject(PinnedPanelService);
     vi.mocked(panel.openPanel).mockResolvedValue('$evt:hs');
 
-    await page.openPinnedPanel();
+    await shell.messages.openPinnedPanel();
 
     expect(panel.openPanel).toHaveBeenCalled();
-    expect(page.messageSearchTarget()).toBe('$evt:hs');
-    expect(page.jumpRequest()).toBe(1);
+    expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
+    expect(shell.store.jumpRequest()).toBe(1);
   });
 
   it('openPinnedPanel bumps jumpRequest again when the SAME message is re-picked', async () => {
     // The bug: re-selecting the same pinned row must still re-trigger a jump —
     // messageSearchTarget alone is a no-op signal write (Object.is), so the list
     // only re-fires because jumpRequest keeps incrementing.
-    const page = build();
+    const shell = build();
     const panel = TestBed.inject(PinnedPanelService);
     vi.mocked(panel.openPanel).mockResolvedValue('$evt:hs');
 
-    await page.openPinnedPanel();
-    expect(page.jumpRequest()).toBe(1);
+    await shell.messages.openPinnedPanel();
+    expect(shell.store.jumpRequest()).toBe(1);
 
-    await page.openPinnedPanel();
+    await shell.messages.openPinnedPanel();
 
-    expect(page.messageSearchTarget()).toBe('$evt:hs');
-    expect(page.jumpRequest()).toBe(2);
+    expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
+    expect(shell.store.jumpRequest()).toBe(2);
   });
 
   it('openPinnedPanel does not jump when the panel is cancelled', async () => {
-    const page = build();
+    const shell = build();
     const panel = TestBed.inject(PinnedPanelService);
     vi.mocked(panel.openPanel).mockResolvedValue(null);
 
-    await page.openPinnedPanel();
+    await shell.messages.openPinnedPanel();
 
-    expect(page.messageSearchTarget()).toBeNull();
-    expect(page.jumpRequest()).toBe(0);
+    expect(shell.store.messageSearchTarget()).toBeNull();
+    expect(shell.store.jumpRequest()).toBe(0);
   });
 
   const pngFile = () =>
     new File([new Uint8Array([1])], 'pic.png', { type: 'image/png' });
 
   it('drives uploadProgress 0 → fraction → null over a successful media send', () => {
-    const page = build(); // build() (re)creates the sendMedia mock — set it after
+    const shell = build(); // build() (re)creates the sendMedia mock — set it after
     const stream = new Subject<void>();
     let progressCb: ((fraction: number) => void) | undefined;
     sendMedia.mockImplementation(
@@ -1110,28 +1144,28 @@ describe('RoomsPage action error feedback', () => {
       },
     );
 
-    page.onSendMedia({ file: pngFile(), caption: '' });
-    expect(page.uploadProgress()).toBe(0); // reset to 0 on start
+    shell.messages.onSendMedia({ file: pngFile(), caption: '' });
+    expect(shell.messages.uploadProgress()).toBe(0); // reset to 0 on start
 
     progressCb?.(0.5);
-    expect(page.uploadProgress()).toBe(0.5); // tracks the upload fraction
+    expect(shell.messages.uploadProgress()).toBe(0.5); // tracks the upload fraction
 
     stream.complete();
-    expect(page.uploadProgress()).toBeNull(); // cleared by finalize on success
+    expect(shell.messages.uploadProgress()).toBeNull(); // cleared by finalize on success
     expect(toastShow).not.toHaveBeenCalled(); // no error toast
   });
 
   it('clears uploadProgress and toasts when a media send fails', () => {
-    const page = build();
+    const shell = build();
     const stream = new Subject<void>();
     sendMedia.mockReturnValue(stream.asObservable());
 
-    page.onSendMedia({ file: pngFile(), caption: '' });
-    expect(page.uploadProgress()).toBe(0);
+    shell.messages.onSendMedia({ file: pngFile(), caption: '' });
+    expect(shell.messages.uploadProgress()).toBe(0);
 
     stream.error(new Error('upload failed'));
 
-    expect(page.uploadProgress()).toBeNull(); // finalize clears on error too
+    expect(shell.messages.uploadProgress()).toBeNull(); // finalize clears on error too
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ variant: 'destructive' }),
@@ -1174,7 +1208,7 @@ describe('RoomsPage space filtering', () => {
     };
   }
 
-  function build(): RoomsPage {
+  function build() {
     // Home recency order is c, a, b. The space orders its children b, a — deliberately NOT
     // alphabetical, because every room here has activityTs 0: with a name tiebreak, a
     // curated order of a, b would be indistinguishable from the default recency ordering,
@@ -1228,96 +1262,102 @@ describe('RoomsPage space filtering', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   it('Recent activity (the default) shows every joined room, mixed', () => {
-    const page = build();
+    const shell = build();
 
     // Nothing selected → Recent is active from the start, listing all rooms in the
     // service's favourite-then-recency order (c, a, b as seeded), DM and non-DM alike.
-    expect(page.recentView()).toBe(true);
-    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+    expect(shell.store.recentView()).toBe(true);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
       '!c:hs',
       '!a:hs',
       '!b:hs',
     ]);
-    expect(page.sidebarTitle()).toBe('Recent activity');
+    expect(shell.vm.sidebarTitle()).toBe('Recent activity');
   });
 
   it('Home (no space) shows only direct messages', () => {
-    const page = build();
-    page.onSelectSpace(null); // click Home — leaves the default Recent view
+    const shell = build();
+    shell.nav.onSelectSpace(null); // click Home — leaves the default Recent view
 
     // Only '!a:hs' is a DM (see directRoomIds in build()).
-    expect(page.recentView()).toBe(false);
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']);
-    expect(page.sidebarTitle()).toBe('Direct Messages');
+    expect(shell.store.recentView()).toBe(false);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']);
+    expect(shell.vm.sidebarTitle()).toBe('Direct Messages');
   });
 
   it('a selected space shows only its joined children, in space order', () => {
-    const page = build();
-    page.onSelectSpace('!s:hs');
+    const shell = build();
+    shell.nav.onSelectSpace('!s:hs');
 
     // '!c:hs' is excluded (not a child); b/a appear in the space's curated order, which is
     // neither alphabetical nor the recency order the other views use.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!b:hs', '!a:hs']);
-    expect(page.activeSpaceName()).toBe('!s:hs');
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!b:hs',
+      '!a:hs',
+    ]);
+    expect(shell.vm.activeSpaceName()).toBe('!s:hs');
   });
 
   it('the Rooms view shows non-DM rooms that do not belong to a space', () => {
-    const page = build();
-    page.onShowRooms();
+    const shell = build();
+    shell.nav.onShowRooms();
 
-    expect(page.roomsView()).toBe(true);
-    expect(page.recentView()).toBe(false); // Rooms clears the default Recent view
+    expect(shell.store.roomsView()).toBe(true);
+    expect(shell.store.recentView()).toBe(false); // Rooms clears the default Recent view
     // Only the spaceless non-DM room '!c:hs': the DM '!a:hs' and the space child
     // '!b:hs' (owned by '!s:hs') are both excluded.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
-    expect(page.sidebarTitle()).toBe('Rooms');
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
+    expect(shell.vm.sidebarTitle()).toBe('Rooms');
   });
 
   it('showing Rooms clears the active space', () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs'); // a space is selected…
-    page.onShowRooms(); // …switching to Rooms leaves it
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs'); // a space is selected…
+    shell.nav.onShowRooms(); // …switching to Rooms leaves it
 
-    expect(page.activeSpaceId()).toBeNull();
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
+    expect(shell.store.activeSpaceId()).toBeNull();
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
   });
 
   it('selecting a space leaves the Rooms view', () => {
-    const page = build();
-    page.onShowRooms();
-    expect(page.roomsView()).toBe(true);
+    const shell = build();
+    shell.nav.onShowRooms();
+    expect(shell.store.roomsView()).toBe(true);
 
-    page.onSelectSpace('!s:hs');
-    expect(page.roomsView()).toBe(false);
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!b:hs', '!a:hs']);
-    expect(page.sidebarTitle()).toBe('!s:hs');
+    shell.nav.onSelectSpace('!s:hs');
+    expect(shell.store.roomsView()).toBe(false);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!b:hs',
+      '!a:hs',
+    ]);
+    expect(shell.vm.sidebarTitle()).toBe('!s:hs');
   });
 
   it('Home returns to direct messages from the Rooms view', () => {
-    const page = build();
-    page.onShowRooms();
-    expect(page.roomsView()).toBe(true);
+    const shell = build();
+    shell.nav.onShowRooms();
+    expect(shell.store.roomsView()).toBe(true);
 
-    page.onSelectSpace(null); // clicking Home
-    expect(page.roomsView()).toBe(false);
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']); // DMs
-    expect(page.sidebarTitle()).toBe('Direct Messages');
+    shell.nav.onSelectSpace(null); // clicking Home
+    expect(shell.store.roomsView()).toBe(false);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']); // DMs
+    expect(shell.vm.sidebarTitle()).toBe('Direct Messages');
   });
 
   it('returns to Recent activity from another view', () => {
-    const page = build();
-    page.onShowRooms();
-    expect(page.recentView()).toBe(false);
+    const shell = build();
+    shell.nav.onShowRooms();
+    expect(shell.store.recentView()).toBe(false);
 
-    page.onShowRecent();
-    expect(page.recentView()).toBe(true);
-    expect(page.roomsView()).toBe(false);
-    expect(page.activeSpaceId()).toBeNull();
-    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+    shell.nav.onShowRecent();
+    expect(shell.store.recentView()).toBe(true);
+    expect(shell.store.roomsView()).toBe(false);
+    expect(shell.store.activeSpaceId()).toBeNull();
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
       '!c:hs',
       '!a:hs',
       '!b:hs',
@@ -1325,25 +1365,25 @@ describe('RoomsPage space filtering', () => {
   });
 
   it('sums unread notifications for the Recent, Home (DMs) and Rooms rail badges', () => {
-    const page = build();
+    const shell = build();
     // directRoomIds = {!a:hs}; DMs: a(5). Rooms view (non-DM, spaceless): c(2).
     // b(3) is a child of '!s:hs' → counted on the space pill, not the Rooms badge.
     // Recent lists everything, so its badge is the sum across all rooms: 2 + 5 + 3.
-    expect(page.recentUnread()).toBe(10);
-    expect(page.homeUnread()).toBe(5);
-    expect(page.roomsUnread()).toBe(2);
+    expect(shell.vm.recentUnread()).toBe(10);
+    expect(shell.vm.homeUnread()).toBe(5);
+    expect(shell.vm.roomsUnread()).toBe(2);
   });
 
   it('sums unread notifications per space for the space-pill badges', () => {
-    const page = build();
+    const shell = build();
     // space !s:hs children [a, b] → a(5) + b(3) = 8.
-    expect(page.spaceUnread()['!s:hs']).toBe(8);
+    expect(shell.vm.spaceUnread()['!s:hs']).toBe(8);
   });
 
   it('re-derives homeUnread/roomsUnread when a room unreadCount changes underneath', () => {
-    const page = build();
-    expect(page.homeUnread()).toBe(5); // a(5)
-    expect(page.roomsUnread()).toBe(2); // c(2); b is a space child → excluded
+    const shell = build();
+    expect(shell.vm.homeUnread()).toBe(5); // a(5)
+    expect(shell.vm.roomsUnread()).toBe(2); // c(2); b is a space child → excluded
 
     const rooms = TestBed.inject(RoomsService)
       .rooms as unknown as WritableSignal<RoomSummary[]>;
@@ -1351,13 +1391,13 @@ describe('RoomsPage space filtering', () => {
       list.map((r) => (r.id === '!c:hs' ? { ...r, unreadCount: 20 } : r)),
     );
 
-    expect(page.roomsUnread()).toBe(20); // c(20); b still excluded
-    expect(page.homeUnread()).toBe(5); // DM total untouched
+    expect(shell.vm.roomsUnread()).toBe(20); // c(20); b still excluded
+    expect(shell.vm.homeUnread()).toBe(5); // DM total untouched
   });
 
   it('re-derives spaceUnread when a room is added to the tracked room list', () => {
-    const page = build();
-    expect(page.spaceUnread()['!s:hs']).toBe(8); // a(5) + b(3)
+    const shell = build();
+    expect(shell.vm.spaceUnread()['!s:hs']).toBe(8); // a(5) + b(3)
 
     const rooms = TestBed.inject(RoomsService)
       .rooms as unknown as WritableSignal<RoomSummary[]>;
@@ -1366,28 +1406,28 @@ describe('RoomsPage space filtering', () => {
       list.map((r) => (r.id === '!b:hs' ? { ...r, unreadCount: 30 } : r)),
     );
 
-    expect(page.spaceUnread()['!s:hs']).toBe(35); // a(5) + b(30)
+    expect(shell.vm.spaceUnread()['!s:hs']).toBe(35); // a(5) + b(30)
   });
 
   it('re-derives the aggregates when a room is removed from the list', () => {
-    const page = build();
-    expect(page.spaceUnread()['!s:hs']).toBe(8);
-    expect(page.roomsUnread()).toBe(2); // c(2); b is a space child → excluded
+    const shell = build();
+    expect(shell.vm.spaceUnread()['!s:hs']).toBe(8);
+    expect(shell.vm.roomsUnread()).toBe(2); // c(2); b is a space child → excluded
 
     const rooms = TestBed.inject(RoomsService)
       .rooms as unknown as WritableSignal<RoomSummary[]>;
     rooms.update((list) => list.filter((r) => r.id !== '!b:hs'));
 
-    expect(page.spaceUnread()['!s:hs']).toBe(5); // only a(5) remains
-    expect(page.roomsUnread()).toBe(2); // still just c(2) — b was already excluded
+    expect(shell.vm.spaceUnread()['!s:hs']).toBe(5); // only a(5) remains
+    expect(shell.vm.roomsUnread()).toBe(2); // still just c(2) — b was already excluded
   });
 
   it('a spaceless room disappears from the Rooms view once a space claims it', () => {
-    const page = build();
-    page.onShowRooms();
+    const shell = build();
+    shell.nav.onShowRooms();
     // Before: only '!c:hs' is spaceless non-DM.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
-    expect(page.roomsUnread()).toBe(2);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
+    expect(shell.vm.roomsUnread()).toBe(2);
 
     const spaces = TestBed.inject(SpacesService)
       .spaces as unknown as WritableSignal<SpaceSummary[]>;
@@ -1400,34 +1440,37 @@ describe('RoomsPage space filtering', () => {
       ),
     );
 
-    expect(page.visibleRooms()).toEqual([]); // '!c:hs' is now space-owned
-    expect(page.roomsUnread()).toBe(0); // its unread leaves the Rooms badge too
+    expect(shell.vm.visibleRooms()).toEqual([]); // '!c:hs' is now space-owned
+    expect(shell.vm.roomsUnread()).toBe(0); // its unread leaves the Rooms badge too
   });
 
   it('a space child reappears in the Rooms view once its space no longer lists it', () => {
-    const page = build();
-    page.onShowRooms();
+    const shell = build();
+    shell.nav.onShowRooms();
     // '!b:hs' is owned by '!s:hs' — hidden from the Rooms view.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
-    expect(page.roomsUnread()).toBe(2);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']);
+    expect(shell.vm.roomsUnread()).toBe(2);
 
     const spaces = TestBed.inject(SpacesService)
       .spaces as unknown as WritableSignal<SpaceSummary[]>;
     // The space is removed entirely (as leaving it would surface via sync).
     spaces.set([]);
 
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs', '!b:hs']);
-    expect(page.roomsUnread()).toBe(5); // c(2) + b(3), now both spaceless
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!c:hs',
+      '!b:hs',
+    ]);
+    expect(shell.vm.roomsUnread()).toBe(5); // c(2) + b(3), now both spaceless
   });
 
   it('a room owned by two spaces is still excluded once it is dropped from only one', () => {
-    const page = build();
+    const shell = build();
     const spaces = TestBed.inject(SpacesService)
       .spaces as unknown as WritableSignal<SpaceSummary[]>;
     // '!b:hs' is now a child of both '!s:hs' and a second space '!t:hs'.
     spaces.update((list) => [...list, spaceSummary('!t:hs', ['!b:hs'])]);
-    page.onShowRooms();
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // b still hidden
+    shell.nav.onShowRooms();
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // b still hidden
 
     // Dropping '!b:hs' from '!s:hs' alone must not surface it — '!t:hs' still owns it.
     spaces.update((list) =>
@@ -1441,8 +1484,8 @@ describe('RoomsPage space filtering', () => {
       ),
     );
 
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // still hidden
-    expect(page.roomsUnread()).toBe(2); // b's unread stays off the Rooms badge
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // still hidden
+    expect(shell.vm.roomsUnread()).toBe(2); // b's unread stays off the Rooms badge
   });
 });
 
@@ -1542,46 +1585,47 @@ describe('RoomsPage space ordering', () => {
         MockProvider(TrnToastService),
       ],
     });
-    const page = TestBed.inject(RoomsPage);
-    page.onSelectSpace('!s:hs');
-    return { page, rooms, setForSpace, clearForSpace };
+    const shell = shellFrom();
+    shell.nav.onSelectSpace('!s:hs');
+    return { shell, rooms, setForSpace, clearForSpace };
   }
 
-  const names = (page: RoomsPage) => page.visibleRooms().map((r) => r.name);
+  const names = (shell: ReturnType<typeof shellFrom>) =>
+    shell.vm.visibleRooms().map((r) => r.name);
 
   it('orders by recent activity, ignoring the curated child order', () => {
-    const { page } = build({ effectiveFor: () => 'recent' });
+    const { shell } = build({ effectiveFor: () => 'recent' });
 
-    expect(names(page)).toEqual(['mike', 'zulu', 'alpha']);
+    expect(names(shell)).toEqual(['mike', 'zulu', 'alpha']);
   });
 
   it('orders alphabetically, ignoring both activity and the curated order', () => {
-    const { page } = build({ effectiveFor: () => 'alphabetical' });
+    const { shell } = build({ effectiveFor: () => 'alphabetical' });
 
-    expect(names(page)).toEqual(['alpha', 'mike', 'zulu']);
+    expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
   });
 
   it('preserves the curated order under space mode', () => {
-    const { page } = build({ effectiveFor: () => 'space' });
+    const { shell } = build({ effectiveFor: () => 'space' });
 
-    expect(names(page)).toEqual(['zulu', 'alpha', 'mike']);
+    expect(names(shell)).toEqual(['zulu', 'alpha', 'mike']);
   });
 
   it("uses a space's own override rather than the account default", () => {
-    const { page } = build({
+    const { shell } = build({
       effectiveFor: (spaceId: string | null) =>
         spaceId === '!s:hs' ? 'alphabetical' : 'recent',
     });
 
-    expect(names(page)).toEqual(['alpha', 'mike', 'zulu']);
+    expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
   });
 
   it('re-sorts when a room becomes active, with nothing else called', () => {
     // The acceptance criterion: a new message reorders the space without reopening it.
     // No new listener is involved — `visibleRooms` already reads `rooms()`, which the
     // service re-snapshots on every sync.
-    const { page, rooms } = build({ effectiveFor: () => 'recent' });
-    expect(names(page)).toEqual(['mike', 'zulu', 'alpha']);
+    const { shell, rooms } = build({ effectiveFor: () => 'recent' });
+    expect(names(shell)).toEqual(['mike', 'zulu', 'alpha']);
 
     rooms.update((list) =>
       list.map((room) =>
@@ -1589,11 +1633,11 @@ describe('RoomsPage space ordering', () => {
       ),
     );
 
-    expect(names(page)).toEqual(['alpha', 'mike', 'zulu']);
+    expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
   });
 
   it('keeps favourites first in every mode', () => {
-    const { page, rooms } = build({ effectiveFor: () => 'space' });
+    const { shell, rooms } = build({ effectiveFor: () => 'space' });
     rooms.update((list) =>
       list.map((room) =>
         room.id === '!a:hs' ? { ...room, favourite: true } : room,
@@ -1602,53 +1646,53 @@ describe('RoomsPage space ordering', () => {
 
     // 'alpha' is second in the curated order, but the array the keyboard walk and
     // "mark all read" iterate must match what the sidebar renders — favourites first.
-    expect(names(page)).toEqual(['alpha', 'zulu', 'mike']);
+    expect(names(shell)).toEqual(['alpha', 'zulu', 'mike']);
   });
 
   it('sorts a copy, never the array the rooms service handed out', () => {
-    const { page, rooms } = build({ effectiveFor: () => 'alphabetical' });
+    const { shell, rooms } = build({ effectiveFor: () => 'alphabetical' });
     const seeded = rooms();
 
-    expect(names(page)).toEqual(['alpha', 'mike', 'zulu']);
+    expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
 
     // `sort` mutates; reordering this array would corrupt every other consumer of the
     // service's signal (unread totals, the rail badges, the quick switcher).
     expect(rooms()).toBe(seeded);
     expect(seeded.map((r) => r.name)).toEqual(['zulu', 'alpha', 'mike']);
-    expect(page.visibleRooms()).not.toBe(seeded);
+    expect(shell.vm.visibleRooms()).not.toBe(seeded);
   });
 
   it('leaves the Recent view returning the service array by identity', () => {
-    const { page, rooms } = build();
-    page.onShowRecent();
+    const { shell, rooms } = build();
+    shell.nav.onShowRecent();
 
-    expect(page.visibleRooms()).toBe(rooms());
+    expect(shell.vm.visibleRooms()).toBe(rooms());
   });
 
   describe('changing the order from the sidebar', () => {
     it('pins the open space to a mode', () => {
-      const { page, setForSpace } = build();
+      const { shell, setForSpace } = build();
 
-      page.onSetSpaceSort('alphabetical');
+      shell.spaces.onSetSpaceSort('alphabetical');
 
       expect(setForSpace).toHaveBeenCalledWith('!s:hs', 'alphabetical');
     });
 
     it('clears the override when asked to follow the default', () => {
-      const { page, clearForSpace, setForSpace } = build();
+      const { shell, clearForSpace, setForSpace } = build();
 
-      page.onSetSpaceSort(null);
+      shell.spaces.onSetSpaceSort(null);
 
       expect(clearForSpace).toHaveBeenCalledWith('!s:hs');
       expect(setForSpace).not.toHaveBeenCalled();
     });
 
     it('does nothing when no space is open', () => {
-      const { page, setForSpace, clearForSpace } = build();
-      page.onSelectSpace(null);
+      const { shell, setForSpace, clearForSpace } = build();
+      shell.nav.onSelectSpace(null);
 
-      page.onSetSpaceSort('space');
-      page.onSetSpaceSort(null);
+      shell.spaces.onSetSpaceSort('space');
+      shell.spaces.onSetSpaceSort(null);
 
       expect(setForSpace).not.toHaveBeenCalled();
       expect(clearForSpace).not.toHaveBeenCalled();
@@ -1697,9 +1741,7 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
   }
 
   /** `extra` adds a third space and its rooms, so the default fixture is unchanged. */
-  function build(
-    extra: { rooms?: RoomSummary[]; children?: string[] } = {},
-  ): RoomsPage {
+  function build(extra: { rooms?: RoomSummary[]; children?: string[] } = {}) {
     const rooms = [
       roomSummary('!dm:hs', 'dm-with-bob', 4), // a direct message
       roomSummary('!a:hs', 'alpha', 5), // space 1's only child
@@ -1753,27 +1795,27 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   it('keeps each space total independent and splits DM vs non-DM totals', () => {
-    const page = build();
+    const shell = build();
 
-    expect(page.spaceUnread()).toEqual({
+    expect(shell.vm.spaceUnread()).toEqual({
       '!s1:hs': 5, // alpha only
       '!s2:hs': 10, // bravo(3) + charlie(7)
     });
-    expect(page.homeUnread()).toBe(4); // the DM only
+    expect(shell.vm.homeUnread()).toBe(4); // the DM only
     // The Rooms view is spaceless non-DM rooms only: just freestanding(6).
     // a/b/c belong to spaces (counted on their pills) and the DM is excluded.
-    expect(page.roomsUnread()).toBe(6);
+    expect(shell.vm.roomsUnread()).toBe(6);
   });
 
   it('counts a flagged child as one, without adding to a real count', () => {
     // A flagged room has no notification count behind it, so without this the pill for
     // the space holding it stays blank and the flag is invisible from everywhere but
     // that space's own list — which is most of the point of the feature.
-    const page = build({
+    const shell = build({
       rooms: [
         roomSummary('!flagged:hs', 'flagged', 0, true),
         roomSummary('!loud:hs', 'loud', 4, true),
@@ -1781,7 +1823,7 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
       children: ['!flagged:hs', '!loud:hs'],
     });
 
-    expect(page.spaceUnread()['!s3:hs']).toBe(5); // 1 for the flag + 4 real, not 6
+    expect(shell.vm.spaceUnread()['!s3:hs']).toBe(5); // 1 for the flag + 4 real, not 6
   });
 });
 
@@ -1797,7 +1839,7 @@ describe('RoomsPage space actions', () => {
   function build(
     activeUserId: string | null = '@me:hs',
     accountIds: readonly string[] = ['@me:hs'],
-  ): RoomsPage {
+  ) {
     alertPrompt = vi.fn().mockResolvedValue(null);
     alertConfirm = vi.fn().mockResolvedValue(false);
     createSpace = vi.fn(() => of('!new:hs'));
@@ -1844,54 +1886,54 @@ describe('RoomsPage space actions', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   it('creates a space and selects it on success', async () => {
-    const page = build();
+    const shell = build();
     alertPrompt.mockResolvedValue('My Space');
 
-    await page.onCreateSpace();
+    await shell.spaces.onCreateSpace();
 
     expect(createSpace).toHaveBeenCalledWith({ name: 'My Space' });
-    expect(page.activeSpaceId()).toBe('!new:hs');
+    expect(shell.store.activeSpaceId()).toBe('!new:hs');
   });
 
   it('does not create a space for an empty name', async () => {
-    const page = build();
+    const shell = build();
     alertPrompt.mockResolvedValue('   ');
 
-    await page.onCreateSpace();
+    await shell.spaces.onCreateSpace();
 
     expect(createSpace).not.toHaveBeenCalled();
   });
 
   it('does not create a space when the prompt is cancelled', async () => {
-    const page = build();
+    const shell = build();
     alertPrompt.mockResolvedValue(null);
 
-    await page.onCreateSpace();
+    await shell.spaces.onCreateSpace();
 
     expect(createSpace).not.toHaveBeenCalled();
   });
 
   it('surfaces a create-space failure in spaceError', async () => {
-    const page = build();
+    const shell = build();
     alertPrompt.mockResolvedValue('My Space');
     createSpace.mockReturnValue(throwError(() => new Error('boom')));
 
-    await page.onCreateSpace();
+    await shell.spaces.onCreateSpace();
 
-    expect(page.spaceError()).toBe('boom');
-    expect(page.activeSpaceId()).toBeNull(); // not selected on failure
+    expect(shell.status.error()).toBe('boom');
+    expect(shell.store.activeSpaceId()).toBeNull(); // not selected on failure
   });
 
   it('creates a channel in the active space', async () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     alertPrompt.mockResolvedValue('general');
 
-    await page.onCreateChannel();
+    await shell.spaces.onCreateChannel();
 
     expect(createRoomInSpace).toHaveBeenCalledWith('!s:hs', {
       name: 'general',
@@ -1899,53 +1941,53 @@ describe('RoomsPage space actions', () => {
   });
 
   it('does not prompt to create a channel on Home (no active space)', async () => {
-    const page = build();
-    page.activeSpaceId.set(null);
+    const shell = build();
+    shell.store.activeSpaceId.set(null);
 
-    await page.onCreateChannel();
+    await shell.spaces.onCreateChannel();
 
     expect(alertPrompt).not.toHaveBeenCalled();
     expect(createRoomInSpace).not.toHaveBeenCalled();
   });
 
   it('leaves the active space and returns to Home on success', async () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     alertConfirm.mockResolvedValue(true);
 
-    await page.onLeaveSpace();
+    await shell.spaces.onLeaveSpace();
 
     expect(leaveSpace).toHaveBeenCalledWith('!s:hs');
-    expect(page.activeSpaceId()).toBeNull();
+    expect(shell.store.activeSpaceId()).toBeNull();
   });
 
   it('does not leave when the confirm is cancelled', async () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     alertConfirm.mockResolvedValue(false);
 
-    await page.onLeaveSpace();
+    await shell.spaces.onLeaveSpace();
 
     expect(leaveSpace).not.toHaveBeenCalled();
   });
 
   it('does not prompt to leave on Home (no active space)', async () => {
-    const page = build();
-    page.activeSpaceId.set(null);
+    const shell = build();
+    shell.store.activeSpaceId.set(null);
 
-    await page.onLeaveSpace();
+    await shell.spaces.onLeaveSpace();
 
     expect(alertConfirm).not.toHaveBeenCalled();
     expect(leaveSpace).not.toHaveBeenCalled();
   });
 
   it('signs out the last account and navigates to /login after confirming', async () => {
-    const page = build();
+    const shell = build();
     alertConfirm.mockResolvedValue(true);
     const auth = TestBed.inject(AuthService);
     const router = TestBed.inject(Router);
 
-    await page.logout('@me:hs');
+    await shell.session.logout('@me:hs');
 
     expect(alertConfirm).toHaveBeenCalled();
     expect(auth.logout).toHaveBeenCalledWith('@me:hs');
@@ -1956,12 +1998,12 @@ describe('RoomsPage space actions', () => {
   });
 
   it('signs out one of several accounts without leaving the shell', async () => {
-    const page = build('@me:hs', ['@me:hs', '@alt:hs']);
+    const shell = build('@me:hs', ['@me:hs', '@alt:hs']);
     alertConfirm.mockResolvedValue(true);
     const auth = TestBed.inject(AuthService);
     const router = TestBed.inject(Router);
 
-    await page.logout('@me:hs');
+    await shell.session.logout('@me:hs');
 
     expect(auth.logout).toHaveBeenCalledWith('@me:hs');
     // A second account is still signed in (activeUserId stays non-null), so the
@@ -1972,23 +2014,23 @@ describe('RoomsPage space actions', () => {
   });
 
   it('does not sign out when the confirm is cancelled', async () => {
-    const page = build();
+    const shell = build();
     alertConfirm.mockResolvedValue(false);
     const auth = TestBed.inject(AuthService);
 
-    await page.logout('@me:hs');
+    await shell.session.logout('@me:hs');
 
     expect(auth.logout).not.toHaveBeenCalled();
   });
 
   it('switches to another account (and no-ops on the active one)', () => {
-    const page = build();
+    const shell = build();
     const auth = TestBed.inject(AuthService);
 
-    page.switchAccount('@me:hs'); // already active → ignored
+    shell.session.switchAccount('@me:hs'); // already active → ignored
     expect(auth.switchAccount).not.toHaveBeenCalled();
 
-    page.switchAccount('@other:hs');
+    shell.session.switchAccount('@other:hs');
     expect(auth.switchAccount).toHaveBeenCalledWith('@other:hs');
   });
 
@@ -1997,16 +2039,16 @@ describe('RoomsPage space actions', () => {
     // timeline/threads/pinned each early-return on open(sameRoomId) — so leaving the
     // room open across a switch would keep projecting the old account's data (including
     // its decryption) with no way to re-bind short of a reload.
-    const page = build();
+    const shell = build();
     const timeline = TestBed.inject(TimelineService);
     const threads = TestBed.inject(ThreadsService);
     const pinned = TestBed.inject(PinnedMessagesService);
-    page.onSelectRoom('!r:hs');
-    expect(page.activeRoomId()).toBe('!r:hs');
+    shell.nav.onSelectRoom('!r:hs');
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
 
-    page.switchAccount('@other:hs');
+    shell.session.switchAccount('@other:hs');
 
-    expect(page.activeRoomId()).toBeNull();
+    expect(shell.store.activeRoomId()).toBeNull();
     expect(timeline.close).toHaveBeenCalled();
     expect(threads.close).toHaveBeenCalled();
     expect(threads.closeThread).toHaveBeenCalled();
@@ -2014,10 +2056,10 @@ describe('RoomsPage space actions', () => {
   });
 
   it('routes to /login in add mode from "Add account"', () => {
-    const page = build();
+    const shell = build();
     const router = TestBed.inject(Router);
 
-    page.addAccount();
+    shell.session.addAccount();
 
     expect(router.navigate).toHaveBeenCalledWith(['/login'], {
       queryParams: { add: 1 },
@@ -2025,10 +2067,10 @@ describe('RoomsPage space actions', () => {
   });
 
   it('routes to /login in re-auth mode for a soft-logged-out account', () => {
-    const page = build();
+    const shell = build();
     const router = TestBed.inject(Router);
 
-    page.reauthAccount('@bob:hs');
+    shell.session.reauthAccount('@bob:hs');
 
     expect(router.navigate).toHaveBeenCalledWith(['/login'], {
       queryParams: { reauth: '@bob:hs' },
@@ -2078,7 +2120,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     };
   }
 
-  function build(): RoomsPage {
+  function build() {
     alertPrompt = vi.fn().mockResolvedValue(null);
     toastShow = vi.fn();
     pick = vi.fn();
@@ -2141,65 +2183,65 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(TrnToastService, { show: toastShow }),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   it('creates an encrypted room from the name prompt and selects it', async () => {
-    const page = build();
+    const shell = build();
     alertPrompt.mockResolvedValue('general');
 
-    await page.onCreateRoom();
+    await shell.rooms.onCreateRoom();
 
     expect(createRoom).toHaveBeenCalledWith({ name: 'general' });
-    expect(page.activeRoomId()).toBe('!room:hs');
+    expect(shell.store.activeRoomId()).toBe('!room:hs');
   });
 
   it('does not create a room for an empty name', async () => {
-    const page = build();
+    const shell = build();
     alertPrompt.mockResolvedValue('   ');
 
-    await page.onCreateRoom();
+    await shell.rooms.onCreateRoom();
 
     expect(createRoom).not.toHaveBeenCalled();
   });
 
   it('starts a DM with the picked user and selects the DM room', async () => {
-    const page = build();
+    const shell = build();
     pick.mockResolvedValue('@bob:hs');
 
-    await page.onStartDm();
+    await shell.rooms.onStartDm();
 
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
-    expect(page.activeRoomId()).toBe('!dm:hs');
+    expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
 
   it('does not start a DM when the picker is cancelled', async () => {
-    const page = build();
+    const shell = build();
     pick.mockResolvedValue(null);
 
-    await page.onStartDm();
+    await shell.rooms.onStartDm();
 
     expect(createDirectMessage).not.toHaveBeenCalled();
   });
 
   it('shows a user card for a mention link, starting a DM only if messaged', async () => {
-    const page = build();
+    const shell = build();
     userCardOpen.mockResolvedValue('@bob:hs'); // the viewer chose "Message"
 
-    page.onMatrixLink({ kind: 'user', userId: '@bob:hs' });
+    shell.messages.onMatrixLink({ kind: 'user', userId: '@bob:hs' });
     await Promise.resolve();
     await Promise.resolve();
 
     expect(userCardOpen).toHaveBeenCalledWith('@bob:hs');
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
-    expect(page.activeRoomId()).toBe('!dm:hs');
+    expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
 
   it('opens no conversation when the user card is dismissed', async () => {
-    const page = build();
+    const shell = build();
     userCardOpen.mockResolvedValue(null); // dismissed
 
-    page.onMatrixLink({ kind: 'user', userId: '@bob:hs' });
+    shell.messages.onMatrixLink({ kind: 'user', userId: '@bob:hs' });
     await Promise.resolve();
     await Promise.resolve();
 
@@ -2208,8 +2250,8 @@ describe('RoomsPage room / DM / invite actions', () => {
   });
 
   it('opens a member info panel and starts a DM only if messaged', async () => {
-    const page = build();
-    page.activeRoomId.set('!r:hs');
+    const shell = build();
+    shell.store.activeRoomId.set('!r:hs');
     const bob = {
       userId: '@bob:hs',
       name: 'Bob',
@@ -2220,7 +2262,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     };
     memberInfoOpen.mockResolvedValue('@bob:hs'); // the viewer chose "Message"
 
-    page.onSelectMember(bob);
+    shell.members.onSelectMember(bob);
     await Promise.resolve();
     await Promise.resolve();
 
@@ -2234,7 +2276,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       false,
     );
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
-    expect(page.activeRoomId()).toBe('!dm:hs');
+    expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
 
   it('tells the member panel when the room is a direct message', async () => {
@@ -2248,11 +2290,11 @@ describe('RoomsPage room / DM / invite actions', () => {
       powerLevel: 0,
       isCreator: false,
     };
-    const page = build();
-    page.activeRoomId.set('!dm:hs');
+    const shell = build();
+    shell.store.activeRoomId.set('!dm:hs');
     directIds.set(new Set(['!dm:hs']));
 
-    page.onSelectMember(bob);
+    shell.members.onSelectMember(bob);
     await Promise.resolve();
 
     expect(memberInfoOpen).toHaveBeenCalledWith(
@@ -2264,10 +2306,10 @@ describe('RoomsPage room / DM / invite actions', () => {
   });
 
   it('opens no member info panel without an active room', () => {
-    const page = build();
-    page.activeRoomId.set(null);
+    const shell = build();
+    shell.store.activeRoomId.set(null);
 
-    page.onSelectMember({
+    shell.members.onSelectMember({
       userId: '@bob:hs',
       name: 'Bob',
       initial: 'B',
@@ -2284,12 +2326,12 @@ describe('RoomsPage room / DM / invite actions', () => {
     // member must then slide it shut.
     const restore = stubNarrowLayout();
     try {
-      const page = build();
-      page.activeRoomId.set('!r:hs');
-      page.membersOpen.set(true);
-      expect(page.membersOpen()).toBe(true);
+      const shell = build();
+      shell.store.activeRoomId.set('!r:hs');
+      shell.store.membersOpen.set(true);
+      expect(shell.store.membersOpen()).toBe(true);
 
-      page.onSelectMember({
+      shell.members.onSelectMember({
         userId: '@bob:hs',
         name: 'Bob',
         initial: 'B',
@@ -2298,7 +2340,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         isCreator: false,
       });
 
-      expect(page.membersOpen()).toBe(false);
+      expect(shell.store.membersOpen()).toBe(false);
       expect(memberInfoOpen).toHaveBeenCalled();
     } finally {
       restore();
@@ -2308,11 +2350,11 @@ describe('RoomsPage room / DM / invite actions', () => {
   it('keeps the members column open when a member is selected on the wide layout', () => {
     // The base matchMedia stub reports non-drawer (matches:false) — i.e. the wide
     // static column, the desktop-protected path. onSelectMember must NOT collapse it.
-    const page = build();
-    page.activeRoomId.set('!r:hs');
-    page.membersOpen.set(true);
+    const shell = build();
+    shell.store.activeRoomId.set('!r:hs');
+    shell.store.membersOpen.set(true);
 
-    page.onSelectMember({
+    shell.members.onSelectMember({
       userId: '@bob:hs',
       name: 'Bob',
       initial: 'B',
@@ -2321,16 +2363,16 @@ describe('RoomsPage room / DM / invite actions', () => {
       isCreator: false,
     });
 
-    expect(page.membersOpen()).toBe(true);
+    expect(shell.store.membersOpen()).toBe(true);
     expect(memberInfoOpen).toHaveBeenCalled();
   });
 
   it('opens no conversation when the member panel is dismissed', async () => {
-    const page = build();
-    page.activeRoomId.set('!r:hs');
+    const shell = build();
+    shell.store.activeRoomId.set('!r:hs');
     memberInfoOpen.mockResolvedValue(null); // dismissed
 
-    page.onSelectMember({
+    shell.members.onSelectMember({
       userId: '@bob:hs',
       name: 'Bob',
       initial: 'B',
@@ -2346,11 +2388,11 @@ describe('RoomsPage room / DM / invite actions', () => {
   });
 
   it('invites the picked user to the active room and toasts success', async () => {
-    const page = build();
-    page.activeRoomId.set('!r:hs');
+    const shell = build();
+    shell.store.activeRoomId.set('!r:hs');
     pick.mockResolvedValue('@bob:hs');
 
-    await page.onInviteToRoom();
+    await shell.rooms.onInviteToRoom();
 
     expect(inviteUser).toHaveBeenCalledWith('!r:hs', '@bob:hs');
     expect(toastShow).toHaveBeenCalledWith(
@@ -2360,47 +2402,47 @@ describe('RoomsPage room / DM / invite actions', () => {
   });
 
   it('captures an invite failure in spaceError without a success toast', async () => {
-    const page = build();
-    page.activeRoomId.set('!r:hs');
+    const shell = build();
+    shell.store.activeRoomId.set('!r:hs');
     pick.mockResolvedValue('@bob:hs');
     inviteUser.mockReturnValue(throwError(() => new Error('forbidden')));
 
-    await page.onInviteToRoom();
+    await shell.rooms.onInviteToRoom();
 
     // runWithBusy records the message in spaceError (the shell's effect toasts it,
     // like the create-space path); no success toast on failure.
-    expect(page.spaceError()).toBe('forbidden');
+    expect(shell.status.error()).toBe('forbidden');
     expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('does not invite when the picker is cancelled', async () => {
-    const page = build();
-    page.activeRoomId.set('!r:hs');
+    const shell = build();
+    shell.store.activeRoomId.set('!r:hs');
     pick.mockResolvedValue(null);
 
-    await page.onInviteToRoom();
+    await shell.rooms.onInviteToRoom();
 
     expect(inviteUser).not.toHaveBeenCalled();
   });
 
   it('invites to the active space from the sidebar action', async () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     pick.mockResolvedValue('@bob:hs');
 
-    await page.onInviteToSpace();
+    await shell.rooms.onInviteToSpace();
 
     expect(inviteUser).toHaveBeenCalledWith('!s:hs', '@bob:hs');
   });
 
   it('accepts a room invite (joins) and selects the joined room', () => {
-    const page = build();
+    const shell = build();
     pending.set([pendingInvite({ roomId: '!i:hs', isSpace: false })]);
 
-    page.onAcceptInvite({ roomId: '!i:hs' });
+    shell.invites.onAcceptInvite({ roomId: '!i:hs' });
 
     expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
-    expect(page.activeRoomId()).toBe('!i:hs');
+    expect(shell.store.activeRoomId()).toBe('!i:hs');
   });
 
   it('leaves a room invite on a view that can actually show the room', () => {
@@ -2408,53 +2450,53 @@ describe('RoomsPage room / DM / invite actions', () => {
     // rail split — so the room you had just joined was invisible in the sidebar, and the
     // row count went DOWN. Recent activity is the default and lists everything; accepting
     // a non-DM room must not navigate away from it.
-    const page = build();
+    const shell = build();
     pending.set([pendingInvite({ roomId: '!i:hs', isDirect: false })]);
-    expect(page.recentView()).toBe(true);
+    expect(shell.store.recentView()).toBe(true);
 
-    page.onAcceptInvite({ roomId: '!i:hs' });
+    shell.invites.onAcceptInvite({ roomId: '!i:hs' });
 
-    expect(page.recentView()).toBe(true);
-    expect(page.activeRoomId()).toBe('!i:hs');
+    expect(shell.store.recentView()).toBe(true);
+    expect(shell.store.activeRoomId()).toBe('!i:hs');
   });
 
   it('still lands a DM invite on the direct-message view', () => {
     // A DM is exactly what that view shows, so switching to it is right here.
-    const page = build();
+    const shell = build();
     pending.set([pendingInvite({ roomId: '!d:hs', isDirect: true })]);
 
-    page.onAcceptInvite({ roomId: '!d:hs' });
+    shell.invites.onAcceptInvite({ roomId: '!d:hs' });
 
-    expect(page.recentView()).toBe(false);
-    expect(page.activeSpaceId()).toBeNull();
-    expect(page.activeRoomId()).toBe('!d:hs');
+    expect(shell.store.recentView()).toBe(false);
+    expect(shell.store.activeSpaceId()).toBeNull();
+    expect(shell.store.activeRoomId()).toBe('!d:hs');
   });
 
   it('accepts a space invite without auto-selecting a room', () => {
-    const page = build();
+    const shell = build();
     pending.set([pendingInvite({ roomId: '!s:hs', isSpace: true })]);
 
-    page.onAcceptInvite({ roomId: '!s:hs' });
+    shell.invites.onAcceptInvite({ roomId: '!s:hs' });
 
     expect(acceptInvite).toHaveBeenCalledWith('!s:hs', undefined);
-    expect(page.activeRoomId()).toBeNull(); // a space lands in the rail, not selected
+    expect(shell.store.activeRoomId()).toBeNull(); // a space lands in the rail, not selected
   });
 
   it('declines an invite (leaves)', () => {
-    const page = build();
+    const shell = build();
 
-    page.onDeclineInvite({ roomId: '!i:hs' });
+    shell.invites.onDeclineInvite({ roomId: '!i:hs' });
 
     expect(declineInvite).toHaveBeenCalledWith('!i:hs', undefined);
   });
 
   it('opens the new-chat action sheet on Home', async () => {
-    const page = build();
+    const shell = build();
     const sheetOpen = TestBed.inject(TrnActionSheetService).open as ReturnType<
       typeof vi.fn
     >;
 
-    page.onNewChat();
+    shell.rooms.onNewChat();
 
     expect(sheetOpen).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2493,7 +2535,7 @@ describe('RoomsPage space hierarchy actions', () => {
     };
   }
 
-  function build(): RoomsPage {
+  function build() {
     alertConfirm = vi.fn().mockResolvedValue(false);
     openSpace = vi.fn();
     joinRoom = vi.fn(() => of(undefined));
@@ -2560,34 +2602,36 @@ describe('RoomsPage space hierarchy actions', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   it('loads the hierarchy when a space is selected (and clears it for Home)', () => {
-    const page = build();
+    const shell = build();
 
-    page.onSelectSpace('!s:hs');
-    expect(page.activeSpaceId()).toBe('!s:hs');
+    shell.nav.onSelectSpace('!s:hs');
+    expect(shell.store.activeSpaceId()).toBe('!s:hs');
     expect(openSpace).toHaveBeenCalledWith('!s:hs');
 
-    page.onSelectSpace(null);
+    shell.nav.onSelectSpace(null);
     expect(openSpace).toHaveBeenLastCalledWith(null);
   });
 
   it('joins a not-yet-joined child through its via servers', () => {
-    const page = build();
+    const shell = build();
 
-    page.onJoinChild(childRoom({ roomId: '!x:hs', via: ['hs.example'] }));
+    shell.spaces.onJoinChild(
+      childRoom({ roomId: '!x:hs', via: ['hs.example'] }),
+    );
 
     expect(joinRoom).toHaveBeenCalledWith('!x:hs', ['hs.example']);
   });
 
   it('confirms then removes a joined child from the active space', async () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     alertConfirm.mockResolvedValue(true);
 
-    await page.onRemoveFromSpace('!c:hs');
+    await shell.spaces.onRemoveFromSpace('!c:hs');
 
     // The confirmation names the channel and the space.
     expect(alertConfirm).toHaveBeenCalledWith(
@@ -2597,20 +2641,20 @@ describe('RoomsPage space hierarchy actions', () => {
   });
 
   it('does not remove when the confirm is cancelled', async () => {
-    const page = build();
-    page.activeSpaceId.set('!s:hs');
+    const shell = build();
+    shell.store.activeSpaceId.set('!s:hs');
     alertConfirm.mockResolvedValue(false);
 
-    await page.onRemoveFromSpace('!c:hs');
+    await shell.spaces.onRemoveFromSpace('!c:hs');
 
     expect(removeRoomFromSpace).not.toHaveBeenCalled();
   });
 
   it('does not prompt to remove on Home (no active space)', async () => {
-    const page = build();
-    page.activeSpaceId.set(null);
+    const shell = build();
+    shell.store.activeSpaceId.set(null);
 
-    await page.onRemoveFromSpace('!c:hs');
+    await shell.spaces.onRemoveFromSpace('!c:hs');
 
     expect(alertConfirm).not.toHaveBeenCalled();
     expect(removeRoomFromSpace).not.toHaveBeenCalled();
@@ -2630,7 +2674,7 @@ describe('RoomsPage quick switcher', () => {
   let pending: WritableSignal<PendingInvite[]>;
   let dialogHasOpen: ReturnType<typeof vi.fn>;
 
-  function build(): RoomsPage {
+  function build() {
     pick = vi.fn();
     messageSearch = vi.fn();
     createDirectMessage = vi.fn(() => of('!dm:hs'));
@@ -2682,51 +2726,51 @@ describe('RoomsPage quick switcher', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   it('opens the selected room', async () => {
-    const page = build();
+    const shell = build();
     pick.mockResolvedValue({ kind: 'room', id: '!r:hs' });
 
-    await page.openSwitcher();
+    await shell.shortcuts.openSwitcher();
 
-    expect(page.activeRoomId()).toBe('!r:hs');
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
   });
 
   it('opens a DM result like a room', async () => {
-    const page = build();
+    const shell = build();
     pick.mockResolvedValue({ kind: 'dm', id: '!d:hs' });
 
-    await page.openSwitcher();
+    await shell.shortcuts.openSwitcher();
 
-    expect(page.activeRoomId()).toBe('!d:hs');
+    expect(shell.store.activeRoomId()).toBe('!d:hs');
   });
 
   it('selects a space in the rail (loading its hierarchy)', async () => {
-    const page = build();
+    const shell = build();
     pick.mockResolvedValue({ kind: 'space', id: '!s:hs' });
 
-    await page.openSwitcher();
+    await shell.shortcuts.openSwitcher();
 
-    expect(page.activeSpaceId()).toBe('!s:hs');
+    expect(shell.store.activeSpaceId()).toBe('!s:hs');
     expect(openSpace).toHaveBeenCalledWith('!s:hs');
-    expect(page.activeRoomId()).toBeNull();
+    expect(shell.store.activeRoomId()).toBeNull();
   });
 
   it('opens (or reuses) a DM for a directory person', async () => {
-    const page = build();
+    const shell = build();
     pick.mockResolvedValue({ kind: 'user', id: '@bob:hs' });
 
-    await page.openSwitcher();
+    await shell.shortcuts.openSwitcher();
 
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
-    expect(page.activeRoomId()).toBe('!dm:hs');
+    expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
 
   it('runs the accept path for an invite result', async () => {
-    const page = build();
+    const shell = build();
     pending.set([
       {
         roomId: '!i:hs',
@@ -2740,29 +2784,29 @@ describe('RoomsPage quick switcher', () => {
     ]);
     pick.mockResolvedValue({ kind: 'invite', id: '!i:hs' });
 
-    await page.openSwitcher();
+    await shell.shortcuts.openSwitcher();
 
     expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
-    expect(page.activeRoomId()).toBe('!i:hs');
+    expect(shell.store.activeRoomId()).toBe('!i:hs');
   });
 
   it('does nothing when the switcher is cancelled', async () => {
-    const page = build();
+    const shell = build();
     pick.mockResolvedValue(null);
 
-    await page.openSwitcher();
+    await shell.shortcuts.openSwitcher();
 
-    expect(page.activeRoomId()).toBeNull();
+    expect(shell.store.activeRoomId()).toBeNull();
     expect(timelineOpen).not.toHaveBeenCalled();
   });
 
   it('Ctrl/Cmd+K prevents default and opens the switcher', async () => {
-    const page = build();
+    const shell = build();
     pick.mockResolvedValue(null);
     const preventDefault = vi.fn();
 
     // Cmd+K resolves to the `switcher.open` shortcut through the registry.
-    page.onGlobalKeydown({
+    shell.shortcuts.onGlobalKeydown({
       key: 'k',
       code: 'KeyK',
       metaKey: true,
@@ -2778,10 +2822,10 @@ describe('RoomsPage quick switcher', () => {
   });
 
   it('does not open the switcher over an existing overlay', async () => {
-    const page = build();
+    const shell = build();
     dialogHasOpen.mockReturnValue(true);
 
-    await page.openSwitcher();
+    await shell.shortcuts.openSwitcher();
 
     // A thread/search/verification modal owns the screen — the switcher must not
     // stack over it (picking a result would releaseAll() its pinned media).
@@ -2789,52 +2833,52 @@ describe('RoomsPage quick switcher', () => {
   });
 
   it('opens in-room message search for the active room and jumps to the hit', async () => {
-    const page = build();
-    page.onSelectRoom('!r:hs');
+    const shell = build();
+    shell.nav.onSelectRoom('!r:hs');
     messageSearch.mockResolvedValue('$evt:hs');
 
-    await page.openMessageSearch();
+    await shell.messages.openMessageSearch();
 
     expect(messageSearch).toHaveBeenCalledWith('!r:hs');
-    expect(page.messageSearchTarget()).toBe('$evt:hs');
-    expect(page.jumpRequest()).toBe(1);
+    expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
+    expect(shell.store.jumpRequest()).toBe(1);
   });
 
   it('in-room search bumps jumpRequest again when the SAME hit is re-picked', async () => {
     // Same crux as the pinned panel: picking the identical hit twice must still
     // re-fire the jump, which only happens because jumpRequest keeps incrementing.
-    const page = build();
-    page.onSelectRoom('!r:hs');
+    const shell = build();
+    shell.nav.onSelectRoom('!r:hs');
     messageSearch.mockResolvedValue('$evt:hs');
 
-    await page.openMessageSearch();
-    expect(page.jumpRequest()).toBe(1);
+    await shell.messages.openMessageSearch();
+    expect(shell.store.jumpRequest()).toBe(1);
 
-    await page.openMessageSearch();
+    await shell.messages.openMessageSearch();
 
-    expect(page.messageSearchTarget()).toBe('$evt:hs');
-    expect(page.jumpRequest()).toBe(2);
+    expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
+    expect(shell.store.jumpRequest()).toBe(2);
   });
 
   it('does not jump when in-room search is cancelled', async () => {
-    const page = build();
-    page.onSelectRoom('!r:hs');
+    const shell = build();
+    shell.nav.onSelectRoom('!r:hs');
     messageSearch.mockResolvedValue(null);
 
-    await page.openMessageSearch();
+    await shell.messages.openMessageSearch();
 
-    expect(page.messageSearchTarget()).toBeNull();
-    expect(page.jumpRequest()).toBe(0);
+    expect(shell.store.messageSearchTarget()).toBeNull();
+    expect(shell.store.jumpRequest()).toBe(0);
   });
 
   it('does not open in-room search when no room is active', async () => {
-    const page = build();
+    const shell = build();
     messageSearch.mockResolvedValue('$evt:hs');
 
-    await page.openMessageSearch();
+    await shell.messages.openMessageSearch();
 
     expect(messageSearch).not.toHaveBeenCalled();
-    expect(page.messageSearchTarget()).toBeNull();
+    expect(shell.store.messageSearchTarget()).toBeNull();
   });
 });
 
@@ -2846,7 +2890,7 @@ describe('RoomsPage mobile navigation', () => {
   let threadsOpen: ReturnType<typeof vi.fn>;
   let releaseAll: ReturnType<typeof vi.fn>;
 
-  function build(): RoomsPage {
+  function build() {
     timelineOpen = vi.fn();
     threadsOpen = vi.fn();
     releaseAll = vi.fn();
@@ -2880,17 +2924,17 @@ describe('RoomsPage mobile navigation', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   it('backToList closes the open room, returning to the list page', () => {
-    const page = build();
-    page.onSelectRoom('!r:hs');
-    expect(page.activeRoomId()).toBe('!r:hs');
+    const shell = build();
+    shell.nav.onSelectRoom('!r:hs');
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
 
-    page.backToList();
+    shell.page.backToList();
 
-    expect(page.activeRoomId()).toBeNull();
+    expect(shell.store.activeRoomId()).toBeNull();
     expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
     expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
     expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
@@ -2900,15 +2944,15 @@ describe('RoomsPage mobile navigation', () => {
     // Force the narrow (drawer) layout so the member list reads as an overlay.
     const restore = stubNarrowLayout();
     try {
-      const page = build();
-      page.onSelectRoom('!a:hs');
-      page.membersOpen.set(true); // the drawer is open in room A
-      expect(page.membersOpen()).toBe(true);
+      const shell = build();
+      shell.nav.onSelectRoom('!a:hs');
+      shell.store.membersOpen.set(true); // the drawer is open in room A
+      expect(shell.store.membersOpen()).toBe(true);
 
-      page.backToList();
+      shell.page.backToList();
 
       // The drawer state is dropped, so it won't slide in over the next room.
-      expect(page.membersOpen()).toBe(false);
+      expect(shell.store.membersOpen()).toBe(false);
     } finally {
       restore();
     }
@@ -2917,14 +2961,14 @@ describe('RoomsPage mobile navigation', () => {
   it('seeds the members list open as the wide static column and toggleMembers flips it', () => {
     // The base stub reports non-drawer (matches:false) — the wide layout — so the static
     // members column shows by default; toggleMembers hides and re-shows it.
-    const page = build();
-    expect(page.membersOpen()).toBe(true);
+    const shell = build();
+    expect(shell.store.membersOpen()).toBe(true);
 
-    page.toggleMembers();
-    expect(page.membersOpen()).toBe(false);
+    shell.page.toggleMembers();
+    expect(shell.store.membersOpen()).toBe(false);
 
-    page.toggleMembers();
-    expect(page.membersOpen()).toBe(true);
+    shell.page.toggleMembers();
+    expect(shell.store.membersOpen()).toBe(true);
   });
 
   it('seeds the members drawer closed on the narrow layout', () => {
@@ -2932,27 +2976,27 @@ describe('RoomsPage mobile navigation', () => {
     // rather than defaulting open like the wide static column.
     const restore = stubNarrowLayout();
     try {
-      expect(build().membersOpen()).toBe(false);
+      expect(build().store.membersOpen()).toBe(false);
     } finally {
       restore();
     }
   });
 
   it('closeMembers closes the member list (the mobile drawer backdrop)', () => {
-    const page = build();
-    page.membersOpen.set(true);
-    expect(page.membersOpen()).toBe(true);
+    const shell = build();
+    shell.store.membersOpen.set(true);
+    expect(shell.store.membersOpen()).toBe(true);
 
-    page.closeMembers();
-    expect(page.membersOpen()).toBe(false);
+    shell.page.closeMembers();
+    expect(shell.store.membersOpen()).toBe(false);
   });
 
   it('onSelectRoom opens the room (switching to the mobile chat page)', () => {
-    const page = build();
+    const shell = build();
 
-    page.onSelectRoom('!r:hs');
+    shell.nav.onSelectRoom('!r:hs');
 
-    expect(page.activeRoomId()).toBe('!r:hs');
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
     expect(threadsOpen).toHaveBeenCalledWith('!r:hs');
     expect(releaseAll).toHaveBeenCalled();
@@ -2966,7 +3010,7 @@ describe('RoomsPage mobile navigation', () => {
 describe('RoomsPage account switcher summary', () => {
   const meAvatar = 'mxc://hs/me';
 
-  function build(): RoomsPage {
+  function build() {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -3006,16 +3050,16 @@ describe('RoomsPage account switcher summary', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   it('summarises each account by its client profile, MXID fallback, and unread total', () => {
-    const page = build();
+    const shell = build();
 
     // '@me:hs': live profile (name + avatar) with its unread total from the
     // aggregator. '@alt:hs': no live client, so name falls back to the MXID, the
     // avatar is null, and its unread defaults to 0 (absent from the map).
-    expect(page.accounts()).toEqual([
+    expect(shell.vm.accounts()).toEqual([
       { userId: '@me:hs', displayName: 'Me', avatarMxc: meAvatar, unread: 4 },
       { userId: '@alt:hs', displayName: '@alt:hs', avatarMxc: null, unread: 0 },
     ]);
@@ -3049,7 +3093,7 @@ describe('RoomsPage keyboard room switching', () => {
 
   let keyboardRooms: WritableSignal<RoomSummary[]>;
 
-  function build(): RoomsPage {
+  function build() {
     dialogOpen = false;
     // Display order a, b, c; b and c carry unread.
     keyboardRooms = signal<RoomSummary[]>([
@@ -3092,7 +3136,7 @@ describe('RoomsPage keyboard room switching', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   /** A minimal KeyboardEvent-like with a preventDefault spy, for the host handler. */
@@ -3114,69 +3158,73 @@ describe('RoomsPage keyboard room switching', () => {
   });
 
   /** Visit a → b → c so the MRU is [c, b, a] and we're in c. */
-  function visitABC(page: RoomsPage): void {
-    page.onSelectRoom('!a:hs');
-    page.onSelectRoom('!b:hs');
-    page.onSelectRoom('!c:hs');
+  function visitABC(shell: ReturnType<typeof shellFrom>): void {
+    shell.nav.onSelectRoom('!a:hs');
+    shell.nav.onSelectRoom('!b:hs');
+    shell.nav.onSelectRoom('!c:hs');
   }
 
   it('hops back through the visited stack, cycling deeper, without recording mid-cycle', () => {
-    const page = build();
-    visitABC(page);
+    const shell = build();
+    visitABC(shell);
 
-    page.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
-    expect(page.activeRoomId()).toBe('!b:hs'); // previous room
+    shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!b:hs'); // previous room
 
-    page.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
-    expect(page.activeRoomId()).toBe('!a:hs'); // two back — cycling deeper
+    shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!a:hs'); // two back — cycling deeper
 
     // Shift reverses.
-    page.onGlobalKeydown(key({ key: "'", ctrlKey: true, shiftKey: true }));
-    expect(page.activeRoomId()).toBe('!b:hs');
+    shell.shortcuts.onGlobalKeydown(
+      key({ key: "'", ctrlKey: true, shiftKey: true }),
+    );
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
   });
 
   it('consumes the chord it handles and ignores an unmodified quote', () => {
-    const page = build();
-    visitABC(page);
+    const shell = build();
+    visitABC(shell);
 
     const handled = key({ key: "'", metaKey: true });
-    page.onGlobalKeydown(handled);
+    shell.shortcuts.onGlobalKeydown(handled);
     expect(handled.preventDefault).toHaveBeenCalled();
 
     const typed = key({ key: "'" }); // no modifier → plain typing
-    page.onGlobalKeydown(typed);
+    shell.shortcuts.onGlobalKeydown(typed);
     expect(typed.preventDefault).not.toHaveBeenCalled();
   });
 
   it('walks the visible list with Alt+Arrow, wrapping', () => {
-    const page = build(); // list order a, b, c; in c after visiting
-    visitABC(page);
+    const shell = build(); // list order a, b, c; in c after visiting
+    visitABC(shell);
 
-    page.onGlobalKeydown(key({ key: 'ArrowDown', altKey: true }));
-    expect(page.activeRoomId()).toBe('!a:hs'); // c → wrap to a
+    shell.shortcuts.onGlobalKeydown(key({ key: 'ArrowDown', altKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!a:hs'); // c → wrap to a
 
-    page.onGlobalKeydown(key({ key: 'ArrowUp', altKey: true }));
-    expect(page.activeRoomId()).toBe('!c:hs'); // a → wrap back to c
+    shell.shortcuts.onGlobalKeydown(key({ key: 'ArrowUp', altKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // a → wrap back to c
   });
 
   it('jumps to the next unread room with Alt+Shift+Arrow', () => {
-    const page = build(); // b(3) and c(1) are unread
-    page.onSelectRoom('!a:hs'); // in a read room
+    const shell = build(); // b(3) and c(1) are unread
+    shell.nav.onSelectRoom('!a:hs'); // in a read room
 
-    page.onGlobalKeydown(
+    shell.shortcuts.onGlobalKeydown(
       key({ key: 'ArrowDown', altKey: true, shiftKey: true }),
     );
-    expect(page.activeRoomId()).toBe('!b:hs'); // first unread
+    expect(shell.store.activeRoomId()).toBe('!b:hs'); // first unread
   });
 
   it('ignores Ctrl/Cmd+1…9 and Ctrl+Tab on the web (browser-reserved)', () => {
-    const page = build(); // no desktop marker
-    visitABC(page);
+    const shell = build(); // no desktop marker
+    visitABC(shell);
 
-    page.onGlobalKeydown(key({ code: 'Digit1', key: '1', metaKey: true }));
-    expect(page.activeRoomId()).toBe('!c:hs'); // unchanged
-    page.onGlobalKeydown(key({ key: 'Tab', ctrlKey: true }));
-    expect(page.activeRoomId()).toBe('!c:hs'); // unchanged
+    shell.shortcuts.onGlobalKeydown(
+      key({ code: 'Digit1', key: '1', metaKey: true }),
+    );
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // unchanged
+    shell.shortcuts.onGlobalKeydown(key({ key: 'Tab', ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // unchanged
   });
 
   it('jumps to the Nth most-recent room with Ctrl/Cmd+1…9 on the desktop shell', () => {
@@ -3184,22 +3232,24 @@ describe('RoomsPage keyboard room switching', () => {
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
       isElectron: true,
     };
-    const page = build();
-    visitABC(page); // MRU [c, b, a], in c
+    const shell = build();
+    visitABC(shell); // MRU [c, b, a], in c
 
-    page.onGlobalKeydown(key({ code: 'Digit2', key: '2', ctrlKey: true }));
-    expect(page.activeRoomId()).toBe('!a:hs'); // 2 = two rooms back
+    shell.shortcuts.onGlobalKeydown(
+      key({ code: 'Digit2', key: '2', ctrlKey: true }),
+    );
+    expect(shell.store.activeRoomId()).toBe('!a:hs'); // 2 = two rooms back
   });
 
   it('hops with Ctrl+Tab on the desktop shell', () => {
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
       isElectron: true,
     };
-    const page = build();
-    visitABC(page); // in c
+    const shell = build();
+    visitABC(shell); // in c
 
-    page.onGlobalKeydown(key({ key: 'Tab', ctrlKey: true }));
-    expect(page.activeRoomId()).toBe('!b:hs'); // Tab hops like the quote
+    shell.shortcuts.onGlobalKeydown(key({ key: 'Tab', ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!b:hs'); // Tab hops like the quote
   });
 
   // The MRU outlives account switches and unticks, so a numbered jump can name a room no
@@ -3209,42 +3259,46 @@ describe('RoomsPage keyboard room switching', () => {
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
       isElectron: true,
     };
-    const page = build();
-    visitABC(page); // MRU [c, b, a], in c
+    const shell = build();
+    visitABC(shell); // MRU [c, b, a], in c
     // '!b:hs' leaves the scope (its account was unticked, or signed out).
     keyboardRooms.set([roomSummary('!a:hs'), roomSummary('!c:hs')]);
 
-    page.onGlobalKeydown(key({ code: 'Digit1', key: '1', ctrlKey: true }));
+    shell.shortcuts.onGlobalKeydown(
+      key({ code: 'Digit1', key: '1', ctrlKey: true }),
+    );
 
-    expect(page.activeRoomId()).toBe('!c:hs'); // stayed put rather than opening a ghost
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // stayed put rather than opening a ghost
   });
 
   it('still jumps to a room that is in scope', () => {
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
       isElectron: true,
     };
-    const page = build();
-    visitABC(page);
+    const shell = build();
+    visitABC(shell);
 
-    page.onGlobalKeydown(key({ code: 'Digit1', key: '1', ctrlKey: true }));
+    shell.shortcuts.onGlobalKeydown(
+      key({ code: 'Digit1', key: '1', ctrlKey: true }),
+    );
 
-    expect(page.activeRoomId()).toBe('!b:hs');
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
   });
 
   it('stays quiet while an overlay owns the screen', () => {
-    const page = build();
-    visitABC(page);
+    const shell = build();
+    visitABC(shell);
     dialogOpen = true;
 
     const event = key({ key: "'", ctrlKey: true });
-    page.onGlobalKeydown(event);
-    expect(page.activeRoomId()).toBe('!c:hs'); // no hop
+    shell.shortcuts.onGlobalKeydown(event);
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // no hop
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
   it('follows a rebound chord, not the old one', () => {
-    const page = build();
-    visitABC(page); // in c, MRU [c, b, a]
+    const shell = build();
+    visitABC(shell); // in c, MRU [c, b, a]
     // Move "hop back" from Ctrl+' to Alt+J through the registry.
     TestBed.inject(KeyboardShortcutsService).rebind('room.hop.back', {
       accel: false,
@@ -3253,11 +3307,11 @@ describe('RoomsPage keyboard room switching', () => {
       key: 'j',
     });
 
-    page.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
-    expect(page.activeRoomId()).toBe('!c:hs'); // old chord no longer hops
+    shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // old chord no longer hops
 
-    page.onGlobalKeydown(key({ key: 'j', altKey: true }));
-    expect(page.activeRoomId()).toBe('!b:hs'); // the new chord does
+    shell.shortcuts.onGlobalKeydown(key({ key: 'j', altKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!b:hs'); // the new chord does
 
     TestBed.inject(KeyboardShortcutsService).resetAll(); // don't leak into other specs
   });
@@ -3327,7 +3381,7 @@ describe('RoomsPage mixed-account view', () => {
   function build(
     accountIds: string[],
     avatars: Record<string, string | null> = {},
-  ): RoomsPage {
+  ) {
     switchAccount = vi.fn(() => of(undefined));
     setMixedRoomsAccounts = vi.fn();
     shownAccounts = signal<ReadonlySet<string>>(new Set(['@me:hs']));
@@ -3391,110 +3445,110 @@ describe('RoomsPage mixed-account view', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return TestBed.inject(RoomsPage);
+    return shellFrom();
   }
 
   it('scopes Recent + rail spaces to the active account by default', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     // Default 'this' — the active account only.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
-    expect(page.railSpaces().map((s) => s.id)).toEqual(['!s-mine:hs']);
-    expect(page.accountBadges().size).toBe(0); // no badges outside mixed mode
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
+    expect(shell.vm.railSpaces().map((s) => s.id)).toEqual(['!s-mine:hs']);
+    expect(shell.vm.accountBadges().size).toBe(0); // no badges outside mixed mode
   });
 
   it('Recent spans every account when the toggle is "All accounts"', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.tick(); // run the enable effect
 
     // Recent lists every account's rooms unfiltered, in the aggregator's order.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
       '!mine:hs',
       '!theirs:hs',
       '!dm-mine:hs',
       '!dm-theirs:hs',
       '!child-theirs:hs',
     ]);
-    expect(page.railSpaces().map((s) => s.id)).toEqual([
+    expect(shell.vm.railSpaces().map((s) => s.id)).toEqual([
       '!s-mine:hs',
       '!s-alt:hs',
     ]);
     expect(setMixedRoomsAccounts).toHaveBeenCalledWith(
       new Set(['@me:hs', '@alt:hs']),
     );
-    expect(page.accountBadges().size).toBeGreaterThan(0);
+    expect(shell.vm.accountBadges().size).toBeGreaterThan(0);
   });
 
   it('carries each account’s real avatar into the badge lookup', () => {
-    const page = build(['@me:hs', '@alt:hs'], {
+    const shell = build(['@me:hs', '@alt:hs'], {
       '@alt:hs': 'mxc://hs/alt-avatar',
     });
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
 
     // The badge exposes the account's own avatar (resolved to the real image downstream)…
-    expect(page.accountBadges().get('@alt:hs')?.avatarMxc).toBe(
+    expect(shell.vm.accountBadges().get('@alt:hs')?.avatarMxc).toBe(
       'mxc://hs/alt-avatar',
     );
     // …and null for an account with no avatar, so the badge falls back to its initial.
-    expect(page.accountBadges().get('@me:hs')?.avatarMxc).toBeNull();
+    expect(shell.vm.accountBadges().get('@me:hs')?.avatarMxc).toBeNull();
   });
 
   it('Home shows every account’s DMs in mixed mode', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    page.onSelectSpace(null); // Home — leaves Recent
+    shell.nav.onSelectSpace(null); // Home — leaves Recent
 
     // Both accounts' DMs (classified by each row's own-account m.direct), nothing else.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
       '!dm-mine:hs',
       '!dm-theirs:hs',
     ]);
-    expect(page.sidebarTitle()).toBe('Direct Messages');
+    expect(shell.vm.sidebarTitle()).toBe('Direct Messages');
   });
 
   it('Rooms shows every account’s non-DM, non-space rooms in mixed mode', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    page.onShowRooms();
+    shell.nav.onShowRooms();
 
     // Non-DM rooms from both accounts, excluding DMs and @alt's space child.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual([
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
       '!mine:hs',
       '!theirs:hs',
     ]);
-    expect(page.sidebarTitle()).toBe('Rooms');
+    expect(shell.vm.sidebarTitle()).toBe('Rooms');
   });
 
   it('switches to the owning account before opening a foreign room', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
 
-    page.onSelectRoomRow('!theirs:hs'); // belongs to @alt:hs
+    shell.routing.onSelectRoomRow('!theirs:hs'); // belongs to @alt:hs
     expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
 
     // A room on the active account opens without a switch.
     switchAccount.mockClear();
-    page.onSelectRoomRow('!mine:hs');
+    shell.routing.onSelectRoomRow('!mine:hs');
     expect(switchAccount).not.toHaveBeenCalled();
-    expect(page.activeRoomId()).toBe('!mine:hs');
+    expect(shell.store.activeRoomId()).toBe('!mine:hs');
   });
 
   it('switches to the owning account before selecting a foreign space', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
 
-    page.onSelectSpaceRow('!s-alt:hs'); // belongs to @alt:hs
+    shell.routing.onSelectSpaceRow('!s-alt:hs'); // belongs to @alt:hs
     expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
 
     // The active account's own space selects without a switch; Home (null) too.
     switchAccount.mockClear();
-    page.onSelectSpaceRow('!s-mine:hs');
-    page.onSelectSpaceRow(null);
+    shell.routing.onSelectSpaceRow('!s-mine:hs');
+    shell.routing.onSelectSpaceRow(null);
     expect(switchAccount).not.toHaveBeenCalled();
   });
 
   it('narrows the projections back down when an account is unticked', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.tick();
     expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(
@@ -3506,35 +3560,37 @@ describe('RoomsPage mixed-account view', () => {
     // One account is not a mix — the projection is told so and empties itself.
     expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(new Set(['@me:hs']));
     // Recent falls back to the active account's rooms only.
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
   });
 
   // The rail badges must count what their view renders: before this they summed the ACTIVE
   // account's rooms while the list below showed every mixed account's.
   it('sums the rail unread badges across the mixed accounts', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
 
-    expect(page.recentUnread()).toBe(15); // 7 + 3 + 5 across both accounts
-    expect(page.homeUnread()).toBe(3); // the foreign account's DM
-    expect(page.roomsUnread()).toBe(7); // non-DM, minus @alt's space child
-    expect(page.spaceUnread()['!s-alt:hs']).toBe(5); // the foreign space's child
+    expect(shell.vm.recentUnread()).toBe(15); // 7 + 3 + 5 across both accounts
+    expect(shell.vm.homeUnread()).toBe(3); // the foreign account's DM
+    expect(shell.vm.roomsUnread()).toBe(7); // non-DM, minus @alt's space child
+    expect(shell.vm.spaceUnread()['!s-alt:hs']).toBe(5); // the foreign space's child
 
     // Unticking drops back to the active account's own totals (all zero here).
     shownAccounts.set(new Set(['@me:hs']));
-    expect(page.recentUnread()).toBe(0);
+    expect(shell.vm.recentUnread()).toBe(0);
   });
 
   // A shortcut/MRU target is routinely OUTSIDE the current view (Home lists DMs only, a
   // space lists its children), so resolving the owning account from visibleRooms() would
   // miss and open the room on whatever client happens to be active.
   it('resolves a foreign room’s account even when the current view filters it out', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    page.onSelectSpace(null); // Home — DMs only, so '!theirs:hs' is not visible
-    expect(page.visibleRooms().map((r) => r.id)).not.toContain('!theirs:hs');
+    shell.nav.onSelectSpace(null); // Home — DMs only, so '!theirs:hs' is not visible
+    expect(shell.vm.visibleRooms().map((r) => r.id)).not.toContain(
+      '!theirs:hs',
+    );
 
-    page.onSelectRoomRow('!theirs:hs');
+    shell.routing.onSelectRoomRow('!theirs:hs');
 
     expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
   });
@@ -3542,27 +3598,27 @@ describe('RoomsPage mixed-account view', () => {
   // The switcher searches every mixed account, so a jump can land on a room owned by an
   // account that isn't active — it must switch first, exactly like clicking the row.
   it('switches accounts when jumping to a foreign room from the quick switcher', async () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
       Promise.resolve({ kind: 'room' as const, id: '!theirs:hs' }),
     );
 
-    await page.openSwitcher();
+    await shell.shortcuts.openSwitcher();
     TestBed.tick(); // the follow-up open is deferred past the re-projection render
 
     expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
-    expect(page.activeRoomId()).toBe('!theirs:hs');
+    expect(shell.store.activeRoomId()).toBe('!theirs:hs');
   });
 
   it('switches accounts when jumping to a foreign space from the quick switcher', async () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
       Promise.resolve({ kind: 'space' as const, id: '!s-alt:hs' }),
     );
 
-    await page.openSwitcher();
+    await shell.shortcuts.openSwitcher();
 
     expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
   });
@@ -3570,54 +3626,56 @@ describe('RoomsPage mixed-account view', () => {
   // A room that is top-level for the account you are ACTING AS must not vanish from the
   // Rooms view just because a different mixed account files it inside one of its spaces.
   it('keeps a room that only another account files under a space', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    page.onShowRooms();
+    shell.nav.onShowRooms();
 
     // '!child-theirs:hs' is a child of @alt's space, so it is excluded for @alt…
-    expect(page.visibleRooms().map((r) => r.id)).not.toContain(
+    expect(shell.vm.visibleRooms().map((r) => r.id)).not.toContain(
       '!child-theirs:hs',
     );
     // …while @me's own spaceless room stays, even though @alt's space claims a room id.
-    expect(page.visibleRooms().map((r) => r.id)).toContain('!mine:hs');
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toContain('!mine:hs');
   });
 
   // The pill's unread badge is summed over the mixed union, so the space it opens must
   // list that same union — otherwise the badge counts rooms the view never renders.
   it('lists a mixed space’s children from the same union its badge counts', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    page.onSelectSpace('!s-alt:hs');
+    shell.nav.onSelectSpace('!s-alt:hs');
 
-    expect(page.visibleRooms().map((r) => r.id)).toEqual(['!child-theirs:hs']);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!child-theirs:hs',
+    ]);
   });
 
   // The space scope belongs to the outgoing account; the Recent/DMs/Rooms filter does not.
   it('keeps the Rooms filter across an account switch but drops the space', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    page.onShowRooms();
+    shell.nav.onShowRooms();
 
-    page.onSelectRoomRow('!theirs:hs'); // switches to @alt
+    shell.routing.onSelectRoomRow('!theirs:hs'); // switches to @alt
 
-    expect(page.roomsView()).toBe(true); // the user's filter survives
-    expect(page.activeSpaceId()).toBeNull();
+    expect(shell.store.roomsView()).toBe(true); // the user's filter survives
+    expect(shell.store.activeSpaceId()).toBeNull();
   });
 
   it('returns to Recent when the switch happened from inside a space', () => {
-    const page = build(['@me:hs', '@alt:hs']);
+    const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    page.onSelectSpace('!s-mine:hs');
+    shell.nav.onSelectSpace('!s-mine:hs');
 
-    page.onSelectRoomRow('!theirs:hs');
+    shell.routing.onSelectRoomRow('!theirs:hs');
 
-    expect(page.activeSpaceId()).toBeNull();
-    expect(page.recentView()).toBe(true);
+    expect(shell.store.activeSpaceId()).toBeNull();
+    expect(shell.store.recentView()).toBe(true);
   });
 
   it('forwards a picker tick to the account scope', () => {
-    const page = build(['@me:hs', '@alt:hs']);
-    page.onToggleAccountShown('@alt:hs');
+    const shell = build(['@me:hs', '@alt:hs']);
+    shell.routing.onToggleAccountShown('@alt:hs');
     expect(toggleAccount).toHaveBeenCalledWith('@alt:hs');
   });
 });
