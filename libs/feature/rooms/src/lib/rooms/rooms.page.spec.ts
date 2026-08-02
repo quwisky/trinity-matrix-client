@@ -2,6 +2,7 @@ import {
   ApplicationRef,
   computed,
   signal,
+  type Provider,
   type WritableSignal,
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -61,6 +62,27 @@ import { SpaceSettingsComponent } from '../space-settings/space-settings.compone
 import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
+
+/**
+ * Providers every TestBed block in this file supplies identically, with no stub.
+ *
+ * Only tokens that are bare in ALL twelve blocks live here. The blocks are deliberately
+ * divergent elsewhere — RoomsService is richly stubbed in some and bare in others, for
+ * instance — so folding a stubbed token in here would silently change what a describe
+ * asserts against, and every test would still pass against different data.
+ *
+ * This is also the single place to register a page-scoped provider: services listed in
+ * a component's `providers:` array are invisible to `TestBed.inject(RoomsPage)`, so each
+ * one has to be supplied to the TestBed by hand, in every block.
+ */
+const SHARED_MOCKS: Provider[] = [
+  MockProvider(CryptoService),
+  MockProvider(PinnedMessagesService),
+  MockProvider(PinnedPanelService),
+  MockProvider(Router),
+  MockProvider(ThreadPanelService),
+  MockProvider(TrnActionSheetService),
+];
 
 /** Default InvitesService mock: empty model + join/leave stubs. */
 function invitesProvider(over: Partial<InvitesService> = {}) {
@@ -159,6 +181,7 @@ describe('RoomsPage action error feedback', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService, {
           leave: leaveRoom,
           rooms: roomsSignal,
@@ -202,18 +225,12 @@ describe('RoomsPage action error feedback', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
-        MockProvider(TrnActionSheetService),
         MockProvider(AuthService),
-        MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, { setMode: setNotifyMode }),
@@ -1145,6 +1162,7 @@ describe('RoomsPage space filtering', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService, {
           rooms: signal(rooms),
           directRoomIds: signal<ReadonlySet<string>>(new Set(['!a:hs'])), // '!a:hs' is a DM
@@ -1172,18 +1190,12 @@ describe('RoomsPage space filtering', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
-        MockProvider(TrnActionSheetService),
         MockProvider(AuthService),
-        MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -1460,6 +1472,7 @@ describe('RoomsPage space ordering', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService, {
           rooms,
           directRoomIds: signal<ReadonlySet<string>>(new Set()),
@@ -1491,18 +1504,12 @@ describe('RoomsPage space ordering', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
-        MockProvider(TrnActionSheetService),
         MockProvider(AuthService),
-        MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -1682,6 +1689,7 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService, {
           rooms: signal(rooms),
           directRoomIds: signal<ReadonlySet<string>>(new Set(['!dm:hs'])),
@@ -1707,18 +1715,12 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
-        MockProvider(TrnActionSheetService),
         MockProvider(AuthService),
-        MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -1776,6 +1778,7 @@ describe('RoomsPage space actions', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService),
         MockProvider(SpacesService, {
           spaces: signal<SpaceSummary[]>([]),
@@ -1796,21 +1799,15 @@ describe('RoomsPage space actions', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
-        MockProvider(TrnActionSheetService),
         MockProvider(AuthService, {
           logout: vi.fn(() => of(undefined)),
           switchAccount: vi.fn(() => of(undefined)),
         }),
-        MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnAlertService, {
           confirm: alertConfirm,
@@ -2075,6 +2072,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService, {
           rooms: signal<RoomSummary[]>([]),
           createRoom,
@@ -2108,16 +2106,10 @@ describe('RoomsPage room / DM / invite actions', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         MockProvider(AuthService),
-        MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnAlertService, { prompt: alertPrompt }),
-        MockProvider(TrnActionSheetService),
         MockProvider(TrnToastService, { show: toastShow }),
       ],
     });
@@ -2481,6 +2473,7 @@ describe('RoomsPage space hierarchy actions', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService, {
           rooms: signal<RoomSummary[]>([
             {
@@ -2528,18 +2521,12 @@ describe('RoomsPage space hierarchy actions', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
-        MockProvider(TrnActionSheetService),
         MockProvider(AuthService),
-        MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
         MockProvider(TrnToastService),
@@ -2627,6 +2614,7 @@ describe('RoomsPage quick switcher', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService, {
           createDirectMessage,
           // The jump resolves the row's owning account from the known room set.
@@ -2659,16 +2647,10 @@ describe('RoomsPage quick switcher', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         MockProvider(AuthService),
-        MockProvider(Router),
         MockProvider(TrnDialogService, { hasOpen: dialogHasOpen }),
         MockProvider(TrnAlertService),
-        MockProvider(TrnActionSheetService),
         MockProvider(TrnToastService),
       ],
     });
@@ -2843,6 +2825,7 @@ describe('RoomsPage mobile navigation', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService),
         MockProvider(SpacesService),
         MockProvider(TimelineService, { open: timelineOpen }),
@@ -2859,18 +2842,12 @@ describe('RoomsPage mobile navigation', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService, { open: threadsOpen }),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
-        MockProvider(TrnActionSheetService),
         MockProvider(AuthService),
-        MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -2965,6 +2942,7 @@ describe('RoomsPage account switcher summary', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService, { revision: signal(0).asReadonly() }),
         MockProvider(SpacesService),
         MockProvider(TimelineService),
@@ -2990,18 +2968,12 @@ describe('RoomsPage account switcher summary', () => {
             new Map([['@me:hs', 4]]),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
-        MockProvider(TrnActionSheetService),
         MockProvider(AuthService),
-        MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
@@ -3060,6 +3032,7 @@ describe('RoomsPage keyboard room switching', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService, {
           rooms: keyboardRooms,
           directRoomIds: signal<ReadonlySet<string>>(new Set()),
@@ -3081,18 +3054,12 @@ describe('RoomsPage keyboard room switching', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
-        MockProvider(TrnActionSheetService),
         MockProvider(AuthService),
-        MockProvider(Router),
         MockProvider(TrnDialogService, { hasOpen: () => dialogOpen }),
         MockProvider(TrnToastService),
       ],
@@ -3340,6 +3307,7 @@ describe('RoomsPage mixed-account view', () => {
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
+        ...SHARED_MOCKS,
         MockProvider(RoomsService, {
           rooms: signal([room('!mine:hs', '@me:hs')]),
           directRoomIds: signal<ReadonlySet<string>>(new Set()),
@@ -3385,18 +3353,12 @@ describe('RoomsPage mixed-account view', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(CryptoService),
         MockProvider(ThreadsService),
-        MockProvider(ThreadPanelService),
-        MockProvider(PinnedMessagesService),
-        MockProvider(PinnedPanelService),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
-        MockProvider(TrnActionSheetService),
         MockProvider(AuthService, { switchAccount }),
-        MockProvider(Router),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService),
       ],
