@@ -129,6 +129,7 @@ import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.c
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { RoomShellStore } from './room-shell-store';
+import { ShellStatusService } from './shell-status.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 
 /**
@@ -142,7 +143,7 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
   changeDetection: ChangeDetectionStrategy.OnPush,
   // Page-scoped, not root: these share the page's lifetime and its DestroyRef, which is
   // what every runWithBusy subscription is tied to. See shell-invariants.spec.ts.
-  providers: [RoomShellStore],
+  providers: [RoomShellStore, ShellStatusService],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
   imports: [
@@ -231,6 +232,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly store = inject(RoomShellStore);
+  private readonly status = inject(ShellStatusService);
 
   readonly activeSpaceId = this.store.activeSpaceId;
   /**
@@ -276,9 +278,9 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly uploadProgress = signal<number | null>(null);
 
   /** A create-space / create-channel / leave-space action is in flight. */
-  readonly spaceBusy = signal(false);
+  readonly spaceBusy = this.status.busy;
   /** Last space-management failure (surfaced as a toast); null when clear. */
-  readonly spaceError = signal<string | null>(null);
+  readonly spaceError = this.status.error;
 
   /** Ids of every joined room that is a child of some space, unioned across all spaces.
    * Used to keep space-owned rooms out of the flat Rooms view (they live in their space).
@@ -617,7 +619,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     effect(() => {
       const message = this.spaceError();
       if (message) {
-        void this.showError(message);
+        void this.status.showError(message);
       }
     });
     // If every account is gone (e.g. a server-side soft-logout of the last one), the
@@ -801,11 +803,10 @@ export class RoomsPage implements OnInit, OnDestroy {
         break;
       case 'user':
         this.spaceError.set(null);
-        runWithBusy(this.rooms.createDirectMessage(selection.id), {
-          busy: this.spaceBusy,
-          error: this.spaceError,
-          destroyRef: this.destroyRef,
-        }).subscribe((roomId) => this.onSelectRoom(roomId));
+        runWithBusy(
+          this.rooms.createDirectMessage(selection.id),
+          this.status,
+        ).subscribe((roomId) => this.onSelectRoom(roomId));
         break;
       case 'invite':
         this.onAcceptInvite({ roomId: selection.id });
@@ -937,11 +938,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (!name.trim()) {
       return; // empty name — dismiss the prompt without creating
     }
-    runWithBusy(this.spaces.createSpace({ name }), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe((spaceId) => this.onSelectSpace(spaceId));
+    runWithBusy(this.spaces.createSpace({ name }), this.status).subscribe(
+      (spaceId) => this.onSelectSpace(spaceId),
+    );
   }
 
   /**
@@ -966,11 +965,7 @@ export class RoomsPage implements OnInit, OnDestroy {
               .pipe(map(() => spaceId)),
           ),
         ),
-      {
-        busy: this.spaceBusy,
-        error: this.spaceError,
-        destroyRef: this.destroyRef,
-      },
+      this.status,
     ).subscribe((spaceId) => this.onSelectSpace(spaceId));
   }
 
@@ -979,19 +974,16 @@ export class RoomsPage implements OnInit, OnDestroy {
       return;
     }
     // The new room surfaces in the sidebar live via Rooms/Spaces sync listeners.
-    runWithBusy(this.spaces.createRoomInSpace(spaceId, { name }), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe();
+    runWithBusy(
+      this.spaces.createRoomInSpace(spaceId, { name }),
+      this.status,
+    ).subscribe();
   }
 
   private applyLeaveSpace(spaceId: string): void {
-    runWithBusy(this.spaces.leaveSpace(spaceId), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe(() => this.onSelectSpace(null));
+    runWithBusy(this.spaces.leaveSpace(spaceId), this.status).subscribe(() =>
+      this.onSelectSpace(null),
+    );
   }
 
   /** Sidebar "Join" on a not-yet-joined child: join it (via its routing servers). */
@@ -1000,11 +992,10 @@ export class RoomsPage implements OnInit, OnDestroy {
     // On success the child lands in the synced read model — a room moves into the
     // joined channel list, a space into the rail — and its `joined` flag flips live,
     // dropping it from the "more channels"/Spaces lists. No manual selection here.
-    runWithBusy(this.spaces.joinRoom(child.roomId, child.via), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe();
+    runWithBusy(
+      this.spaces.joinRoom(child.roomId, child.via),
+      this.status,
+    ).subscribe();
   }
 
   /** Sidebar remove icon on a joined channel: confirm, then unlink it from the space. */
@@ -1029,11 +1020,10 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   private applyRemoveFromSpace(spaceId: string, childId: string): void {
-    runWithBusy(this.spaces.removeRoomFromSpace(spaceId, childId), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe();
+    runWithBusy(
+      this.spaces.removeRoomFromSpace(spaceId, childId),
+      this.status,
+    ).subscribe();
   }
 
   /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely — on the
@@ -1073,7 +1063,7 @@ export class RoomsPage implements OnInit, OnDestroy {
             this.closeOpenRoom();
           }
         },
-        error: () => void this.showError('Could not leave the room.'),
+        error: () => void this.status.showError('Could not leave the room.'),
       });
   }
 
@@ -1118,16 +1108,14 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Move to a room's upgraded successor (from the tombstone banner): join it, then open it. */
   onGoToUpgradedRoom(roomId: string): void {
     this.spaceError.set(null);
-    runWithBusy(this.publicRooms.join(roomId), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe((joinedId) => {
-      // Surface the successor in the sidebar (Home shows DMs only) so it isn't
-      // opened-but-invisible, mirroring onExploreRooms.
-      this.onShowRooms();
-      this.onSelectRoom(joinedId);
-    });
+    runWithBusy(this.publicRooms.join(roomId), this.status).subscribe(
+      (joinedId) => {
+        // Surface the successor in the sidebar (Home shows DMs only) so it isn't
+        // opened-but-invisible, mirroring onExploreRooms.
+        this.onShowRooms();
+        this.onSelectRoom(joinedId);
+      },
+    );
   }
 
   /** Prompt for a name, create a standalone encrypted room, then select it. */
@@ -1155,11 +1143,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (!userId) {
       return; // cancelled
     }
-    runWithBusy(this.rooms.createDirectMessage(userId), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe((roomId) => this.onSelectRoom(roomId));
+    runWithBusy(this.rooms.createDirectMessage(userId), this.status).subscribe(
+      (roomId) => this.onSelectRoom(roomId),
+    );
   }
 
   /** Open-room header: invite a user to the active room. */
@@ -1190,11 +1176,10 @@ export class RoomsPage implements OnInit, OnDestroy {
     const invite = this.knownInvites().find((i) => i.roomId === roomId);
     // Joined on the account the invite was sent to — answering one must never need an
     // account switch, and joining as the wrong account would fail or join the wrong user.
-    runWithBusy(this.invites.acceptInvite(roomId, accountId), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe(() => {
+    runWithBusy(
+      this.invites.acceptInvite(roomId, accountId),
+      this.status,
+    ).subscribe(() => {
       // Open what was just joined. A joined space needs nothing — it appears in the rail.
       //
       // Only a DM switches view. `onSelectSpace(null)` lands on the Home view, which lists
@@ -1229,22 +1214,19 @@ export class RoomsPage implements OnInit, OnDestroy {
     accountId?: string;
   }): void {
     this.spaceError.set(null);
-    runWithBusy(this.invites.declineInvite(roomId, accountId), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe();
+    runWithBusy(
+      this.invites.declineInvite(roomId, accountId),
+      this.status,
+    ).subscribe();
   }
 
   private applyCreateRoom(name: string): void {
     if (!name.trim()) {
       return; // empty name — dismiss without creating
     }
-    runWithBusy(this.rooms.createRoom({ name }), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe((roomId) => this.onSelectRoom(roomId));
+    runWithBusy(this.rooms.createRoom({ name }), this.status).subscribe(
+      (roomId) => this.onSelectRoom(roomId),
+    );
   }
 
   /** Shared invite flow for a room or space: pick a user, invite, then toast. */
@@ -1257,11 +1239,9 @@ export class RoomsPage implements OnInit, OnDestroy {
     if (!userId) {
       return; // cancelled
     }
-    runWithBusy(this.rooms.inviteUser(targetId, userId), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe(() => void this.showSuccess(`Invitation sent to ${userId}.`));
+    runWithBusy(this.rooms.inviteUser(targetId, userId), this.status).subscribe(
+      () => void this.status.showSuccess(`Invitation sent to ${userId}.`),
+    );
   }
 
   /**
@@ -1372,7 +1352,7 @@ export class RoomsPage implements OnInit, OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (roomId) => this.openLinkedRoom(roomId, target.eventId),
-        error: () => void this.showError('Could not open that room.'),
+        error: () => void this.status.showError('Could not open that room.'),
       });
   }
 
@@ -1417,11 +1397,9 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Open (or reuse) a direct message with `userId` and navigate to it. */
   private startDirectMessage(userId: string): void {
-    runWithBusy(this.rooms.createDirectMessage(userId), {
-      busy: this.spaceBusy,
-      error: this.spaceError,
-      destroyRef: this.destroyRef,
-    }).subscribe((roomId) => this.onSelectRoom(roomId));
+    runWithBusy(this.rooms.createDirectMessage(userId), this.status).subscribe(
+      (roomId) => this.onSelectRoom(roomId),
+    );
   }
 
   /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
@@ -1430,7 +1408,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     // listed and openable in the sidebar, so refusing its permalink would contradict the
     // list one column to the left.
     if (!this.knownRooms().some((r) => r.id === roomId)) {
-      void this.showError("You're not in that room.");
+      void this.status.showError("You're not in that room.");
       return;
     }
     if (roomId !== this.activeRoomId()) {
@@ -1529,7 +1507,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        error: () => void this.showError('Could not update notifications.'),
+        error: () =>
+          void this.status.showError('Could not update notifications.'),
       });
   }
 
@@ -1545,7 +1524,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.ackRead(roomId, accountIds)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        error: () => void this.showError('Could not mark the room read.'),
+        error: () =>
+          void this.status.showError('Could not mark the room read.'),
       });
   }
 
@@ -1569,7 +1549,8 @@ export class RoomsPage implements OnInit, OnDestroy {
     )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        error: () => void this.showError('Could not mark the room unread.'),
+        error: () =>
+          void this.status.showError('Could not mark the room unread.'),
       });
   }
 
@@ -1607,7 +1588,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     forkJoin(unread.map((room) => this.ackRead(room.id, room.accountIds)))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        error: () => void this.showError('Could not mark rooms read.'),
+        error: () => void this.status.showError('Could not mark rooms read.'),
       });
   }
 
@@ -1774,9 +1755,11 @@ export class RoomsPage implements OnInit, OnDestroy {
       : this.pinned.unpin(eventId);
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () =>
-        this.showSuccess(pinning ? 'Message pinned.' : 'Message unpinned.'),
+        this.status.showSuccess(
+          pinning ? 'Message pinned.' : 'Message unpinned.',
+        ),
       error: () =>
-        void this.showError(
+        void this.status.showError(
           pinning
             ? 'Could not pin the message.'
             : 'Could not unpin the message.',
@@ -1844,7 +1827,8 @@ export class RoomsPage implements OnInit, OnDestroy {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        error: () => void this.showError('Could not upload the attachment.'),
+        error: () =>
+          void this.status.showError('Could not upload the attachment.'),
       });
   }
 
@@ -1881,16 +1865,8 @@ export class RoomsPage implements OnInit, OnDestroy {
   /** Run a fire-and-forget timeline action, surfacing a failure as a toast. */
   private runAction(action: Observable<void>, failureMessage: string): void {
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      error: () => void this.showError(failureMessage),
+      error: () => void this.status.showError(failureMessage),
     });
-  }
-
-  private showError(message: string): void {
-    this.toast.show(message, { duration: 4000, variant: 'destructive' });
-  }
-
-  private showSuccess(message: string): void {
-    this.toast.show(message, { duration: 3000, variant: 'success' });
   }
 
   goToSettings(): void {

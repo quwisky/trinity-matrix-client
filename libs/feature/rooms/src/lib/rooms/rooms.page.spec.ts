@@ -50,6 +50,7 @@ import { Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { RoomShellStore } from './room-shell-store';
+import { ShellStatusService } from './shell-status.service';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -80,6 +81,7 @@ const SHARED_MOCKS: Provider[] = [
   // Page-scoped in the component; TestBed.inject(RoomsPage) does not apply component
   // providers, so it is supplied here as the real class.
   RoomShellStore,
+  ShellStatusService,
   MockProvider(CryptoService),
   MockProvider(PinnedMessagesService),
   MockProvider(PinnedPanelService),
