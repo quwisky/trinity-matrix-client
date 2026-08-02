@@ -7,7 +7,7 @@ import {
   type MatrixEvent,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, map } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   buildEditRevisions,
   type MessageRevisionView,

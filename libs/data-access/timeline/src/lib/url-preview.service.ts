@@ -9,7 +9,7 @@ import {
   shareReplay,
   tap,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /** Open-Graph link preview for a URL, projected for the preview card. */
 export interface UrlPreview {

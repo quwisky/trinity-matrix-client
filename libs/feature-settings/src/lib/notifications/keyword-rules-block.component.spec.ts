@@ -8,7 +8,7 @@ import {
   KeywordRulesService,
   KeywordValidationError,
   type KeywordRule,
-} from '@trinity/data-access-notifications';
+} from '@trinity/data-access/notifications';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 

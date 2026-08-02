@@ -8,7 +8,7 @@ import {
   timeout,
 } from 'rxjs';
 import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
-import { TimelineService } from '@trinity/data-access-timeline';
+import { TimelineService } from '@trinity/data-access/timeline';
 import {
   GeolocationService,
   getTrinityDesktopBridge,

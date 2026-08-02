@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 import { NotificationCountType, RoomEvent } from 'matrix-js-sdk';
 import { MixedRoomsService } from './mixed-rooms.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 type Listener = (...args: unknown[]) => void;
 

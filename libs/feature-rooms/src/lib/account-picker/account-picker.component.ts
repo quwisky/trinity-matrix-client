@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { DialogRef } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
-import { AccountScopeService } from '@trinity/data-access-rooms';
+import { AccountScopeService } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 

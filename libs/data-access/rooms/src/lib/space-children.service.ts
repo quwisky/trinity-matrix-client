@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { EventType, type MatrixClient } from 'matrix-js-sdk';
 import { Observable, defer, from, map, switchMap, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util-matrix';
 import {
   compareOrder,

@@ -28,8 +28,8 @@ import {
 import {
   coalesce,
   MatrixClientService,
-} from '@trinity/data-access-matrix-client';
-import { MediaService } from '@trinity/data-access-media';
+} from '@trinity/data-access/matrix-client';
+import { MediaService } from '@trinity/data-access/media';
 import {
   PrivacySettingsService,
   SystemLineSettingsService,

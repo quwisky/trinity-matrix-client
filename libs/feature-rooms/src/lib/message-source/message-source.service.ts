@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/helm/overlay';
-import { TimelineService } from '@trinity/data-access-timeline';
+import { TimelineService } from '@trinity/data-access/timeline';
 import { MessageSourceComponent } from './message-source.component';
 
 /** Opens the {@link MessageSourceComponent} dialog with an event's raw JSON. */

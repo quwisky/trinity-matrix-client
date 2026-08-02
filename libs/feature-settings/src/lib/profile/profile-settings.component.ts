@@ -15,7 +15,7 @@ import { HlmTooltip } from '@trinity/helm/tooltip';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
-import { ProfileService } from '@trinity/data-access-profile';
+import { ProfileService } from '@trinity/data-access/profile';
 
 /** Profile settings sub-page: avatar (with a corner change badge) + display name. */
 @Component({

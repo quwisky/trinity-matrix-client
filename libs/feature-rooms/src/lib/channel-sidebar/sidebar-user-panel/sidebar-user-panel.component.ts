@@ -14,7 +14,7 @@ import {
   lucideUsers,
 } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
-import { type UserProfile } from '@trinity/data-access-profile';
+import { type UserProfile } from '@trinity/data-access/profile';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuCheckbox,

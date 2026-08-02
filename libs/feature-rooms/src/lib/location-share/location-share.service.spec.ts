@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
-import { TimelineService } from '@trinity/data-access-timeline';
+import { TimelineService } from '@trinity/data-access/timeline';
 import { GeolocationService } from '@trinity/platform-native';
 import { LocationShareService } from './location-share.service';
 

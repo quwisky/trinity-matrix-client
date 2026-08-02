@@ -2,7 +2,7 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MediaService } from '@trinity/data-access-media';
+import { MediaService } from '@trinity/data-access/media';
 import { type MediaPayload } from '@trinity/util-matrix';
 import { VoiceMessageComponent } from './voice-message.component';
 

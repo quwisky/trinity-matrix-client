@@ -47,26 +47,26 @@ import {
   TrnDialogService,
   TrnToastService,
 } from '@trinity/helm/overlay';
-import { AuthService } from '@trinity/data-access-auth';
-import { CryptoService } from '@trinity/data-access-crypto';
+import { AuthService } from '@trinity/data-access/auth';
+import { CryptoService } from '@trinity/data-access/crypto';
 import {
   InvitesService,
   MixedInvitesService,
   type PendingInvite,
-} from '@trinity/data-access-invites';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { MediaService } from '@trinity/data-access-media';
+} from '@trinity/data-access/invites';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { MediaService } from '@trinity/data-access/media';
 import {
   NotificationService,
   PushService,
   RoomNotificationsService,
   type RoomNotifyMode,
-} from '@trinity/data-access-notifications';
-import { PinnedMessagesService } from '@trinity/data-access-pinned';
+} from '@trinity/data-access/notifications';
+import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   PresenceService,
   type UserProfile,
-} from '@trinity/data-access-profile';
+} from '@trinity/data-access/profile';
 import {
   RoomsService,
   RoomSettingsService,
@@ -86,7 +86,7 @@ import {
   type RoomSummary,
   type SpaceSummary,
   type SpaceChildRoom,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
@@ -97,8 +97,8 @@ import {
   type DirectoryJoin,
 } from '../room-directory/room-directory.component';
 import { MemberInfoService } from '../member-info/member-info.service';
-import { type SwitcherSelection } from '@trinity/data-access-search';
-import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
+import { type SwitcherSelection } from '@trinity/data-access/search';
+import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
 import { type MatrixLinkTarget, type Mention } from '@trinity/util-matrix';
 import {
   FeatureFlagsService,

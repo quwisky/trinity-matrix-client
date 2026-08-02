@@ -14,7 +14,7 @@ import {
   HlmRadioGroup,
   HlmRadioIndicator,
 } from '@trinity/helm/radio-group';
-import { PresenceService } from '@trinity/data-access-profile';
+import { PresenceService } from '@trinity/data-access/profile';
 import { presenceLabel, type PresenceState } from '@trinity/util-matrix';
 import { runWithBusy } from '@trinity/ui';
 

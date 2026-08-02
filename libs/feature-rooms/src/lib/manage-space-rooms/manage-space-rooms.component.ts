@@ -17,7 +17,7 @@ import {
   RoomsService,
   SpaceChildrenService,
   SpacesService,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util-matrix';
 

@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { Direction, EventType, RelationType } from 'matrix-js-sdk';
 import type { MatrixEvent } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { EditHistoryService } from './edit-history.service';
 
 const SENDER = '@alice:hs';

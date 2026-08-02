@@ -8,8 +8,8 @@ import type { DialogRef } from '@angular/cdk/dialog';
 import {
   VerificationService,
   type VerificationView,
-} from '@trinity/data-access-crypto';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/crypto';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/ui';
 import { TrnDialogService } from '@trinity/helm/overlay';
 

@@ -12,7 +12,7 @@ import { Observable, defer, from, map, of, tap } from 'rxjs';
 import {
   coalesce,
   MatrixClientService,
-} from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/matrix-client';
 import { liveRoomState, messagePreview } from '@trinity/util-matrix';
 
 /**

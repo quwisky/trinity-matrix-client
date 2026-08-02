@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
-import { type LoginMode } from '@trinity/data-access-auth';
+import { type LoginMode } from '@trinity/data-access/auth';
 
 const STATE_KEY = 'oidc.state';
 const BASE_URL_KEY = 'oidc.baseUrl';

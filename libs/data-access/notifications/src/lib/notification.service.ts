@@ -9,8 +9,8 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { TimelineService } from '@trinity/data-access-timeline';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { TimelineService } from '@trinity/data-access/timeline';
 import { SessionStorageService } from '@trinity/platform-native';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
 

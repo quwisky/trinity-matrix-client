@@ -9,7 +9,7 @@ import { Observable, defer, from, map, throwError } from 'rxjs';
 import {
   MatrixClientService,
   projectFromClient,
-} from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/matrix-client';
 import { roomAvatarMxc } from '@trinity/util-matrix';
 
 /** A room we have been invited to but not yet joined (shown in the Invites group). */

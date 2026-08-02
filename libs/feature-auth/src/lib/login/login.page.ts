@@ -37,7 +37,7 @@ import {
   type OidcApplicationType,
   type OidcAuthorizationRequest,
   type OidcClientConfig,
-} from '@trinity/data-access-auth';
+} from '@trinity/data-access/auth';
 import { SessionStorageService } from '@trinity/platform-native';
 import { runWithBusy } from '@trinity/ui';
 import { SsoStateStore } from '../sso-state.store';

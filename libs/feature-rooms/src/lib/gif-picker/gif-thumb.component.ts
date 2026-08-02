@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { catchError, of, switchMap } from 'rxjs';
-import { GifService } from '@trinity/data-access-gif';
+import { GifService } from '@trinity/data-access/gif';
 
 /**
  * A single GIF preview. The app's CSP forbids binding a remote `<img src>`

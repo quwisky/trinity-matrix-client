@@ -11,7 +11,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnToastService } from '@trinity/helm/overlay';
-import { RoomSettingsService } from '@trinity/data-access-rooms';
+import { RoomSettingsService } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 
 /**

@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Observable, defer } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
 import { DEFAULT_APP_ID } from './push-config';
 import { PushGatewayService } from './push-gateway.service';

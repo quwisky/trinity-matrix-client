@@ -21,7 +21,7 @@ import {
   type MessageToolbarCaps,
 } from '@trinity/ui';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { type ThreadSummary } from '@trinity/data-access-timeline';
+import { type ThreadSummary } from '@trinity/data-access/timeline';
 import {
   type MatrixLinkTarget,
   type MessageView,

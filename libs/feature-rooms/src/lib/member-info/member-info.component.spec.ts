@@ -8,14 +8,14 @@ import {
 import {
   IgnoredUsersService,
   PresenceService,
-} from '@trinity/data-access-profile';
+} from '@trinity/data-access/profile';
 import {
   RoomModerationService,
   RoomsService,
   type MemberSummary,
-} from '@trinity/data-access-rooms';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { VerificationService } from '@trinity/data-access-crypto';
+} from '@trinity/data-access/rooms';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { VerificationService } from '@trinity/data-access/crypto';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';

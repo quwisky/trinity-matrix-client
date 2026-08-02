@@ -11,7 +11,7 @@ import {
   VerifierEvent,
 } from 'matrix-js-sdk/lib/crypto-api';
 import { VerificationService } from './verification.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 // Minimal event emitter shaped like matrix-js-sdk's TypedEventEmitter.
 function emitter() {

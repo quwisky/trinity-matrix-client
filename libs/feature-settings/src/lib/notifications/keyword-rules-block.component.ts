@@ -17,7 +17,7 @@ import {
   KeywordRulesService,
   KeywordValidationError,
   type KeywordRule,
-} from '@trinity/data-access-notifications';
+} from '@trinity/data-access/notifications';
 
 /**
  * The keyword list in Settings → Notifications: words that notify wherever they are said.

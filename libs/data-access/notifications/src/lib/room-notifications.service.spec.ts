@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomNotificationsService } from './room-notifications.service';
 
 const ROOM = '!r:hs';

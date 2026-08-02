@@ -1,5 +1,5 @@
 import { DialogRef } from '@angular/cdk/dialog';
-import { TimelineService } from '@trinity/data-access-timeline';
+import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/ui';
 import { type ReactionDetail } from '@trinity/util-matrix';
 import { render } from '@trinity/testing';

@@ -25,7 +25,7 @@ import {
   GifService,
   GifSettingsService,
   type GifResult,
-} from '@trinity/data-access-gif';
+} from '@trinity/data-access/gif';
 import { GifThumbComponent } from './gif-thumb.component';
 
 /** Delay between the last keystroke and firing a search request. */

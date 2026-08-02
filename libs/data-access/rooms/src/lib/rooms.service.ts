@@ -25,7 +25,7 @@ import {
 import {
   MatrixClientService,
   projectFromClient,
-} from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   isValidUserId,

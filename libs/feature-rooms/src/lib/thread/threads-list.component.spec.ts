@@ -4,7 +4,7 @@ import { render } from '@trinity/testing';
 import {
   ThreadsService,
   type ThreadSummary,
-} from '@trinity/data-access-timeline';
+} from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/ui';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';

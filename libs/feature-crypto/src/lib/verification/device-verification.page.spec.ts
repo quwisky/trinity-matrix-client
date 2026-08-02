@@ -7,7 +7,7 @@ import { MockProvider } from 'ng-mocks';
 import {
   VerificationService,
   type VerificationView,
-} from '@trinity/data-access-crypto';
+} from '@trinity/data-access/crypto';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { DeviceVerificationPage } from './device-verification.page';

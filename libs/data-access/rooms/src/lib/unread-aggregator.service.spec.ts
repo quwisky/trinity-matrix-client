@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ClientEvent, RoomEvent } from 'matrix-js-sdk';
 import { describe, expect, it } from 'vitest';
 import { UnreadAggregatorService } from './unread-aggregator.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 type Listener = (...args: unknown[]) => void;
 

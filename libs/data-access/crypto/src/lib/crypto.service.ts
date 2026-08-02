@@ -14,7 +14,7 @@ import { Observable, defer, from } from 'rxjs';
 import {
   MatrixClientService,
   projectFromClient,
-} from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/matrix-client';
 import {
   decryptMegolmKeyFile,
   encryptMegolmKeyFile,

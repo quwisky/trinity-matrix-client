@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { HistoryVisibility, JoinRule } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomSettingsService } from './room-settings.service';
 
 function setup(

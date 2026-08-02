@@ -25,8 +25,8 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { MediaService } from '@trinity/data-access-media';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { MediaService } from '@trinity/data-access/media';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {

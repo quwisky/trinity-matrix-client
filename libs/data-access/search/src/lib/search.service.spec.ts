@@ -12,8 +12,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   InvitesService,
   type PendingInvite,
-} from '@trinity/data-access-invites';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/invites';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   AccountScopeService,
   MixedRoomsService,
@@ -21,9 +21,9 @@ import {
   RoomsService,
   type RoomSummary,
   type UserSearchResult,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { SearchService } from './search.service';
-import { SpacesService, type SpaceSummary } from '@trinity/data-access-rooms';
+import { SpacesService, type SpaceSummary } from '@trinity/data-access/rooms';
 
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {

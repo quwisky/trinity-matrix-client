@@ -25,7 +25,7 @@ import {
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
   isRoomSortMode,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { isDateFormat, isTimeFormat } from '@trinity/util-matrix';
 
 /**

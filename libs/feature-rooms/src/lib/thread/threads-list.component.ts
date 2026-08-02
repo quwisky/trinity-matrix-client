@@ -14,7 +14,7 @@ import { HlmTooltip } from '@trinity/helm/tooltip';
 import {
   ThreadsService,
   type ThreadSummary,
-} from '@trinity/data-access-timeline';
+} from '@trinity/data-access/timeline';
 
 /** Most participant avatars shown per row before the "+N" overflow chip. */
 const MAX_AVATARS = 4;

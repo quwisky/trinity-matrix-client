@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /** Persisted set of account ids the user has opted into mixing. */
 const SCOPE_KEY = 'trinity.accounts.mixed';

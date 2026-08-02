@@ -11,7 +11,7 @@ import {
   type Mock,
 } from 'vitest';
 import { AvatarService } from './avatar.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 function fakeClient(overrides: Record<string, unknown> = {}) {
   return {

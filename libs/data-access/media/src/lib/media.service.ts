@@ -15,7 +15,7 @@ import {
 } from 'rxjs';
 import { MsgType } from 'matrix-js-sdk';
 import { decryptAttachment, encryptAttachment } from '@trinity/util-matrix';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util-matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util-matrix';
 

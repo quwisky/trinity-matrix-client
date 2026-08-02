@@ -7,8 +7,8 @@ import {
   type LoadedMessageSearch,
   type MessageHit,
   type ServerMessageSearch,
-} from '@trinity/data-access-search';
-import { TimelineService } from '@trinity/data-access-timeline';
+} from '@trinity/data-access/search';
+import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/ui';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';

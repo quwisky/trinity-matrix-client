@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { RuleId } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PushRulesService, type PushRuleToggle } from './push-rules.service';
 
 function setup(

@@ -6,7 +6,7 @@ import {
   type IPushRules,
 } from 'matrix-js-sdk';
 import { Observable, defer, forkJoin, from, map, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /**
  * One account-level notification preference, mapping a labelled toggle to a predefined

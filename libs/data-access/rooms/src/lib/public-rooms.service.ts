@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { RoomType } from 'matrix-js-sdk';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /** A room from the public directory, projected for the browse UI. */
 export interface PublicRoomSummary {

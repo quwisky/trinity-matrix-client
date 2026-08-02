@@ -19,7 +19,7 @@ import {
 import {
   RoomsService,
   type UserSearchResult,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { isValidUserId } from '@trinity/util-matrix';
 import { AvatarComponent } from '@trinity/ui';
 import { DialogRef } from '@trinity/helm/overlay';

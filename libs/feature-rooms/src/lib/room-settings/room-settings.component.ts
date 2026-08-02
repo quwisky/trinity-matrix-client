@@ -18,7 +18,7 @@ import {
   HistoryVisibility,
   JoinRule,
   RoomSettingsService,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { initialOf } from '@trinity/util-matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';

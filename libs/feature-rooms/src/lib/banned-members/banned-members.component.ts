@@ -14,7 +14,7 @@ import { TrnToastService } from '@trinity/helm/overlay';
 import {
   RoomModerationService,
   type BannedMember,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 
 /**
  * The room's banned members, with an Unban action per row. Rendered inside the room

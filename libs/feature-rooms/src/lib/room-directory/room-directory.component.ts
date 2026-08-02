@@ -16,7 +16,7 @@ import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
   PublicRoomsService,
   type PublicRoomSummary,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util-matrix';
 

@@ -7,17 +7,17 @@ import {
 import { TestBed } from '@angular/core/testing';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { Router } from '@angular/router';
-import { AuthService } from '@trinity/data-access-auth';
-import { CryptoService } from '@trinity/data-access-crypto';
+import { AuthService } from '@trinity/data-access/auth';
+import { CryptoService } from '@trinity/data-access/crypto';
 import {
   InvitesService,
   MixedInvitesService,
   type PendingInvite,
-} from '@trinity/data-access-invites';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { MediaService } from '@trinity/data-access-media';
-import { RoomNotificationsService } from '@trinity/data-access-notifications';
-import { PinnedMessagesService } from '@trinity/data-access-pinned';
+} from '@trinity/data-access/invites';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { MediaService } from '@trinity/data-access/media';
+import { RoomNotificationsService } from '@trinity/data-access/notifications';
+import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
   RoomsService,
   RoomSettingsService,
@@ -36,8 +36,8 @@ import {
   type RoomSummary,
   type SpaceChildRoom,
   type SpaceSummary,
-} from '@trinity/data-access-rooms';
-import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
+} from '@trinity/data-access/rooms';
+import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
 import {
   TrnActionSheetService,
   TrnAlertService,

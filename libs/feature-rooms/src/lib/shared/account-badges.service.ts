@@ -1,10 +1,10 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   AccountScopeService,
   RoomsService,
   UnreadAggregatorService,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { type AccountBadge } from '@trinity/ui';
 
 /**

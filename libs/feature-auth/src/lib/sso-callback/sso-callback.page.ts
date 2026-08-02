@@ -11,7 +11,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { AuthService } from '@trinity/data-access-auth';
+import { AuthService } from '@trinity/data-access/auth';
 import { SsoStateStore } from '../sso-state.store';
 import { OidcStateStore } from '../oidc-state.store';
 

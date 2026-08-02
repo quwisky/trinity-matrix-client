@@ -20,8 +20,8 @@ import {
   type SwitcherKind,
   type SwitcherResult,
   type SwitcherSelection,
-} from '@trinity/data-access-search';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/search';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { AvatarComponent, type AccountBadge } from '@trinity/ui';
 import { DialogRef } from '@trinity/helm/overlay';

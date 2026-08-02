@@ -4,7 +4,7 @@ import {
   RoomAliasesService,
   RoomModerationService,
   RoomSettingsService,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { JoinRule } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';

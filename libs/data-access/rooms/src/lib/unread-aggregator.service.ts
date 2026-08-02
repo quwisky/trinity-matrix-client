@@ -8,7 +8,7 @@ import {
 import {
   coalesce,
   MatrixClientService,
-} from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/matrix-client';
 import { isMarkedUnread } from './room-projection';
 
 /** A no-arg listener reused across every unread-affecting client / room event. */

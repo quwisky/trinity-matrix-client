@@ -5,7 +5,7 @@ import { UserEvent } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PresenceService } from './presence.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /** The signed-in user's id — distinct from the seeded co-members below. */
 const SELF = '@self:hs';

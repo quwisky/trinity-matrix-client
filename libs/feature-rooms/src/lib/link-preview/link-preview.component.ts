@@ -11,7 +11,7 @@ import { Subscription } from 'rxjs';
 import {
   UrlPreviewService,
   type UrlPreview,
-} from '@trinity/data-access-timeline';
+} from '@trinity/data-access/timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { AVATAR_RESOLVER } from '@trinity/ui';
 

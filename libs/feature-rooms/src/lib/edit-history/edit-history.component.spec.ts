@@ -10,7 +10,7 @@ import {
 import {
   EditHistoryService,
   type EditHistoryResult,
-} from '@trinity/data-access-timeline';
+} from '@trinity/data-access/timeline';
 import { type MessageRevisionView } from '@trinity/util-matrix';
 import { EditHistoryComponent } from './edit-history.component';
 

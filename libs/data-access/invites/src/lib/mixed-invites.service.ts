@@ -3,7 +3,7 @@ import { ClientEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import {
   coalesce,
   MatrixClientService,
-} from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/matrix-client';
 import { buildInvite, type PendingInvite } from './invites.service';
 
 /** A no-arg listener reused across every invite-affecting event of one account. */

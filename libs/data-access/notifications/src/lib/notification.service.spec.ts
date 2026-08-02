@@ -6,8 +6,8 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { TimelineService } from '@trinity/data-access-timeline';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { TimelineService } from '@trinity/data-access/timeline';
 import { SessionStorageService } from '@trinity/platform-native';
 
 const cap = vi.hoisted(() => ({ native: false }));

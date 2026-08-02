@@ -8,7 +8,7 @@ import {
   GifSettingsService,
   type GifProviderId,
   type GifResult,
-} from '@trinity/data-access-gif';
+} from '@trinity/data-access/gif';
 import { GifPickerComponent } from './gif-picker.component';
 
 const results: GifResult[] = [

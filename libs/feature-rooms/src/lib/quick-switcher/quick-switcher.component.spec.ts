@@ -4,12 +4,12 @@ import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import {
   SearchService,
   type SwitcherResult,
-} from '@trinity/data-access-search';
+} from '@trinity/data-access/search';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { signal } from '@angular/core';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 import { QuickSwitcherService } from './quick-switcher.service';

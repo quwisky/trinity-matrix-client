@@ -8,7 +8,7 @@ import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideLock } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
-import { CryptoService } from '@trinity/data-access-crypto';
+import { CryptoService } from '@trinity/data-access/crypto';
 import { BannerComponent, EncryptionDialogService } from '@trinity/ui';
 
 /** Which encryption flow a banner action triggers. */
@@ -28,7 +28,7 @@ interface BannerAction {
  * `ready` or still `unknown`. Its status is the ACTIVE account's, re-projected on an
  * account switch, so the prompt always reflects the account in view. Lives in
  * feature-rooms (not feature-crypto) because the module boundary forbids
- * feature→feature dependencies; it depends only on `@trinity/data-access-crypto`.
+ * feature→feature dependencies; it depends only on `@trinity/data-access/crypto`.
  */
 @Component({
   selector: 'trn-encryption-banner',

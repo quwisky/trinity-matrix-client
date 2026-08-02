@@ -5,7 +5,7 @@ import { type PresenceState, toPresenceState } from '@trinity/util-matrix';
 import {
   MatrixClientService,
   projectFromClient,
-} from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/matrix-client';
 
 /**
  * Projects other users' Matrix presence (`m.presence`) into read-only Angular signals.

@@ -7,7 +7,7 @@ import {
   type MatrixClient,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /**
  * Per-room notification level:

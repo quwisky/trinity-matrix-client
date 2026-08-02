@@ -19,13 +19,13 @@ import {
   RoomModerationService,
   RoomsService,
   type MemberSummary,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import {
   IgnoredUsersService,
   PresenceService,
-} from '@trinity/data-access-profile';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { VerificationService } from '@trinity/data-access-crypto';
+} from '@trinity/data-access/profile';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { VerificationService } from '@trinity/data-access/crypto';
 import { AvatarComponent } from '@trinity/ui';
 import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
 

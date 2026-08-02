@@ -628,7 +628,7 @@ axis and the scope axis are checked independently, so a library can satisfy one 
 other — `data-access-matrix-client` is tagged `scope:shared` on purpose, so the client
 foundation stays domain-agnostic.
 
-**Fix.** For a cross-feature need, either read the relevant `@trinity/data-access-*` signal
+**Fix.** For a cross-feature need, either read the relevant `@trinity/data-access/*` signal
 from the feature that owns the surface, or put a lazy-loader `InjectionToken` in `libs/ui`,
 provide it in `main.ts` with a dynamic `import()`, and inject it optionally with a graceful
 fallback. See [libraries](../architecture/libraries.md).

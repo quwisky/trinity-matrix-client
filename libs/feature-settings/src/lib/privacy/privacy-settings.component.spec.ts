@@ -6,7 +6,7 @@ import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { UrlPreviewService } from '@trinity/data-access-timeline';
+import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PrivacySettingsComponent } from './privacy-settings.component';
 
 describe('PrivacySettingsComponent', () => {

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { UrlPreviewService } from '@trinity/data-access-timeline';
+import { UrlPreviewService } from '@trinity/data-access/timeline';
 
 /** Privacy settings sub-page: device-scoped toggles for what others can see. */
 @Component({

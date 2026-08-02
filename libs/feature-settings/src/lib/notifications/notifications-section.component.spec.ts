@@ -8,7 +8,7 @@ import {
   KeywordRulesService,
   PushRulesService,
   type PushRuleToggle,
-} from '@trinity/data-access-notifications';
+} from '@trinity/data-access/notifications';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { NotificationsSectionComponent } from './notifications-section.component';
 

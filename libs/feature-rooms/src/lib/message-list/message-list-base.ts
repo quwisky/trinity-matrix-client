@@ -17,7 +17,7 @@ import { ReportService } from '../report/report.service';
 import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
-import { type ThreadSummary } from '@trinity/data-access-timeline';
+import { type ThreadSummary } from '@trinity/data-access/timeline';
 import {
   dayLabel,
   formatTypingNotice,

@@ -11,7 +11,7 @@ import {
   type Mock,
 } from 'vitest';
 import { MediaService } from './media.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MediaPayload } from '@trinity/util-matrix';
 import { decryptAttachment, encryptAttachment } from '@trinity/util-matrix';
 

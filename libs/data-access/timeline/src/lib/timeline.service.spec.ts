@@ -9,8 +9,8 @@ import {
 } from 'matrix-js-sdk/lib/crypto-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimelineService } from './timeline.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { MediaService, type UploadedMedia } from '@trinity/data-access-media';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import {
   PrivacySettingsService,
   SystemLineSettingsService,

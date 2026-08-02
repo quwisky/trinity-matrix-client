@@ -18,7 +18,7 @@ import {
   GifSettingsService,
   isGifProviderId,
   type GifProviderId,
-} from '@trinity/data-access-gif';
+} from '@trinity/data-access/gif';
 
 /**
  * GIF-picker settings: choose a provider (Tenor / GIPHY) and paste its API key.

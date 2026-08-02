@@ -12,7 +12,7 @@ import { TrnToastService } from '@trinity/helm/overlay';
 import {
   PushRulesService,
   type PushRuleToggle,
-} from '@trinity/data-access-notifications';
+} from '@trinity/data-access/notifications';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 import { PushGatewayBlockComponent } from './push-gateway-block.component';
 

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { type SwitcherSelection } from '@trinity/data-access-search';
+import { type SwitcherSelection } from '@trinity/data-access/search';
 import { TrnDialogService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

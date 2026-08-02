@@ -13,7 +13,7 @@ import { FormField, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { TrnToastService } from '@trinity/helm/overlay';
-import { RoomAliasesService } from '@trinity/data-access-rooms';
+import { RoomAliasesService } from '@trinity/data-access/rooms';
 
 /** Reject alias localparts containing characters an `#alias:server` can't hold. */
 const INVALID_LOCALPART = /[\s:#]/;

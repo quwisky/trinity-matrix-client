@@ -78,7 +78,7 @@ one of these is probably where it belongs.
 | Concern                     | Owner                                                               | How it splits                                                                                                   |
 | --------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Secret storage              | `SecureStorageService` in `@trinity/platform-native`                | Electron `safeStorage` over IPC, then native Keychain and Keystore, then plaintext on web                       |
-| Notification delivery       | `NotificationService` in `@trinity/data-access-notifications`       | No-op on mobile because push owns delivery there; main-process notification on desktop; Web Notification on web |
+| Notification delivery       | `NotificationService` in `@trinity/data-access/notifications`       | No-op on mobile because push owns delivery there; main-process notification on desktop; Web Notification on web |
 | Push registration           | `PushService`                                                       | Gated on `getPlatform()` being `'ios'` or `'android'`                                                           |
 | App icon badge              | `AppBadgeService`, `MobileBadgeService`                             | Preload `setBadgeCount` on desktop, `@capawesome/capacitor-badge` on mobile                                     |
 | Native chrome               | `ThemeService`                                                      | Sets the Capacitor status-bar style on native only                                                              |

@@ -4,7 +4,7 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { Observable, firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { authGuard } from './auth.guard';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /** Run the guard inside an injection context (it takes no route/state). */
 function run(): Observable<boolean | UrlTree> {

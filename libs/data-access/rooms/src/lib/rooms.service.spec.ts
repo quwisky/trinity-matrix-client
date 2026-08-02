@@ -10,7 +10,7 @@ import {
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { describe, expect, it, vi } from 'vitest';
 

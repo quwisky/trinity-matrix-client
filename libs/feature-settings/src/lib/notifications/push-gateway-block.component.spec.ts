@@ -8,7 +8,7 @@ import {
   PushGatewayService,
   PushService,
   type PushRegistrationState,
-} from '@trinity/data-access-notifications';
+} from '@trinity/data-access/notifications';
 import { PushGatewayBlockComponent } from './push-gateway-block.component';
 
 interface Stub {

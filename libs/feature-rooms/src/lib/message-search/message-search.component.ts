@@ -15,8 +15,8 @@ import {
   SearchService,
   type LoadedMessageSearch,
   type MessageHit,
-} from '@trinity/data-access-search';
-import { TimelineService } from '@trinity/data-access-timeline';
+} from '@trinity/data-access/search';
+import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';

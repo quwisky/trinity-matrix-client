@@ -55,8 +55,8 @@ import {
   GifService,
   GifSettingsService,
   type GifResult,
-} from '@trinity/data-access-gif';
-import { TimelineService } from '@trinity/data-access-timeline';
+} from '@trinity/data-access/gif';
+import { TimelineService } from '@trinity/data-access/timeline';
 import {
   applyFormat,
   continueList,

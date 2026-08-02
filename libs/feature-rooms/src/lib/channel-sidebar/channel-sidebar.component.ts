@@ -50,11 +50,11 @@ import {
   InvitesService,
   MixedInvitesService,
   type PendingInvite,
-} from '@trinity/data-access-invites';
+} from '@trinity/data-access/invites';
 import {
   PresenceService,
   type UserProfile,
-} from '@trinity/data-access-profile';
+} from '@trinity/data-access/profile';
 import {
   AccountScopeService,
   DEFAULT_ROOM_SORT,
@@ -64,11 +64,11 @@ import {
   type RoomSortMode,
   type RoomSummary,
   type SpaceChildRoom,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import {
   RoomNotificationsService,
   type RoomNotifyMode,
-} from '@trinity/data-access-notifications';
+} from '@trinity/data-access/notifications';
 import { type PresenceState } from '@trinity/util-matrix';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 import { AccountPickerService } from '../account-picker/account-picker.service';

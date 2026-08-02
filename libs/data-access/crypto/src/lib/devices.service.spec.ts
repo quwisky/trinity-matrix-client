@@ -6,7 +6,7 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevicesService } from './devices.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /** A UIA 401 carrying a password flow + session, like a homeserver returns. */
 function uia(session: string): MatrixError {

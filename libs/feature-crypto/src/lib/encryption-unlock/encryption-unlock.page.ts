@@ -17,8 +17,8 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Browser } from '@capacitor/browser';
 import { Observable, finalize, firstValueFrom } from 'rxjs';
-import { CryptoService } from '@trinity/data-access-crypto';
-import { AuthService } from '@trinity/data-access-auth';
+import { CryptoService } from '@trinity/data-access/crypto';
+import { AuthService } from '@trinity/data-access/auth';
 import {
   PageHeaderComponent,
   resolveInternalReturnTo,

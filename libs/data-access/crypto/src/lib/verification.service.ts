@@ -14,7 +14,7 @@ import { Observable, defer, from, of } from 'rxjs';
 import {
   MatrixClientService,
   projectFromClient,
-} from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/matrix-client';
 
 /** UI-facing stage of the active verification (maps the SDK's numeric phase). */
 export type VerificationStage =

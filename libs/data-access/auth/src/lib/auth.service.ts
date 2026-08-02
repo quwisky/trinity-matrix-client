@@ -16,10 +16,10 @@ import {
   tap,
   throwError,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { AvatarService } from '@trinity/data-access-media';
-import { MediaService } from '@trinity/data-access-media';
-import { PushService } from '@trinity/data-access-notifications';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { AvatarService } from '@trinity/data-access/media';
+import { MediaService } from '@trinity/data-access/media';
+import { PushService } from '@trinity/data-access/notifications';
 import {
   SessionStorageService,
   getTrinityDesktopBridge,

@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideCloudOff } from '@ng-icons/lucide';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { BannerComponent } from '@trinity/ui';
 
 /**

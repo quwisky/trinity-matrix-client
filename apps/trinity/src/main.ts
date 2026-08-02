@@ -13,17 +13,17 @@ import {
 } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
-import { AvatarService } from '@trinity/data-access-media';
-import { GifSettingsService } from '@trinity/data-access-gif';
+import { AvatarService } from '@trinity/data-access/media';
+import { GifSettingsService } from '@trinity/data-access/gif';
 import {
   AccountScopeService,
   SpaceRoomOrderService,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import {
   AppBadgeService,
   PUSH_CONFIG,
   PushGatewayService,
-} from '@trinity/data-access-notifications';
+} from '@trinity/data-access/notifications';
 import {
   BUILD_INFO,
   DateTimeFormatService,

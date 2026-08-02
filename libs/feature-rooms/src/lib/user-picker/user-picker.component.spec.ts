@@ -2,7 +2,7 @@ import { DialogRef } from '@angular/cdk/dialog';
 import {
   RoomsService,
   type UserSearchResult,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';

@@ -6,8 +6,8 @@ import {
   type MatrixEvent,
 } from 'matrix-js-sdk';
 import { Observable, catchError, defer, from, map, of } from 'rxjs';
-import { InvitesService } from '@trinity/data-access-invites';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { InvitesService } from '@trinity/data-access/invites';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { isDisplayableMessage } from '@trinity/util-matrix';
 import {
   AccountScopeService,
@@ -15,7 +15,7 @@ import {
   MixedSpacesService,
   RoomsService,
   SpacesService,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 
 /** What a {@link SwitcherResult} points at, driving its icon and the jump on select. */
 export type SwitcherKind = 'room' | 'space' | 'dm' | 'invite' | 'user';

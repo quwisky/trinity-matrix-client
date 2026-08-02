@@ -8,7 +8,7 @@ import {
   type PushRuleAction,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /**
  * A keyword the user typed that cannot be stored, with a message written for them.

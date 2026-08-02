@@ -2,7 +2,7 @@ import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 import { MixedSpacesService } from './mixed-spaces.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 type Listener = (...args: unknown[]) => void;
 

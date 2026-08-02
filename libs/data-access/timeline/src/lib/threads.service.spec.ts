@@ -14,8 +14,8 @@ import {
 } from 'matrix-js-sdk/lib/crypto-api';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadsService } from './threads.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
-import { MediaService, type UploadedMedia } from '@trinity/data-access-media';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import { PrivacySettingsService } from '@trinity/platform-native';
 
 const MEMBERS: Record<string, string> = {

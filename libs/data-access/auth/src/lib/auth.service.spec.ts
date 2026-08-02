@@ -18,11 +18,11 @@ vi.mock('matrix-js-sdk', async (importActual) => {
 import { AutoDiscovery, MatrixError, createClient } from 'matrix-js-sdk';
 import { AuthService } from './auth.service';
 import { OidcClientService } from './oidc-client.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
-import { AvatarService } from '@trinity/data-access-media';
-import { MediaService } from '@trinity/data-access-media';
-import { PushService } from '@trinity/data-access-notifications';
+import { AvatarService } from '@trinity/data-access/media';
+import { MediaService } from '@trinity/data-access/media';
+import { PushService } from '@trinity/data-access/notifications';
 
 const findClientConfig = vi.mocked(AutoDiscovery.findClientConfig);
 const createClientMock = vi.mocked(createClient);

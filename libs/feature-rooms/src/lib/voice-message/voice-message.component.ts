@@ -12,7 +12,7 @@ import {
 import { Subscription } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucidePause, lucidePlay } from '@ng-icons/lucide';
-import { MediaService } from '@trinity/data-access-media';
+import { MediaService } from '@trinity/data-access/media';
 import { type MediaPayload } from '@trinity/util-matrix';
 
 /** Bars whose height is scaled from a `[0, 1024]` waveform amplitude. */

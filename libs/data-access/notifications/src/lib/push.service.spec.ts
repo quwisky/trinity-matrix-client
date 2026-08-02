@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_ID, PUSH_CONFIG, type PushConfig } from './push-config';
 import { PushGatewayService } from './push-gateway.service';
 import { PushService } from './push.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
 
 // Shared, mutable mock state — hoisted so the vi.mock factories can close over it.

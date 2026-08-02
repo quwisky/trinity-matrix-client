@@ -1,7 +1,7 @@
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
-import { CryptoSpikeService } from '@trinity/data-access-crypto';
+import { CryptoSpikeService } from '@trinity/data-access/crypto';
 import { HomePage } from './home.page';
 
 describe('HomePage', () => {

@@ -1,4 +1,4 @@
-import { type MemberSummary } from '@trinity/data-access-rooms';
+import { type MemberSummary } from '@trinity/data-access/rooms';
 import { describe, expect, it } from 'vitest';
 import {
   MEMBER_ROLE_LABEL,

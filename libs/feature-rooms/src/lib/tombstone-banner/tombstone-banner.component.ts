@@ -7,7 +7,7 @@ import {
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideArchive } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
-import { TimelineService } from '@trinity/data-access-timeline';
+import { TimelineService } from '@trinity/data-access/timeline';
 import { BannerComponent } from '@trinity/ui';
 
 /**

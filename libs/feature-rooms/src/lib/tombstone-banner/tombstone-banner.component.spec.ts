@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   TimelineService,
   type RoomTombstone,
-} from '@trinity/data-access-timeline';
+} from '@trinity/data-access/timeline';
 import { TombstoneBannerComponent } from './tombstone-banner.component';
 
 async function build(tombstone: RoomTombstone | null) {

@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockProvider } from 'ng-mocks';
-import { GifService } from '@trinity/data-access-gif';
+import { GifService } from '@trinity/data-access/gif';
 import { GifThumbComponent } from './gif-thumb.component';
 
 describe('GifThumbComponent', () => {

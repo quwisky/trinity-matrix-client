@@ -9,7 +9,7 @@ import {
 import {
   coalesce,
   MatrixClientService,
-} from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/matrix-client';
 import { sameAccountSet } from './account-scope.service';
 import {
   buildRoomSummary,

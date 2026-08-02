@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { type SasEmoji } from '@trinity/data-access-crypto';
+import { type SasEmoji } from '@trinity/data-access/crypto';
 
 /**
  * The Short-Authentication-String emoji comparison: shows the seven emoji (glyph

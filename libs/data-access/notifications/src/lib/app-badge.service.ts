@@ -1,6 +1,6 @@
 import { Injectable, effect, inject } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
-import { UnreadAggregatorService } from '@trinity/data-access-rooms';
+import { UnreadAggregatorService } from '@trinity/data-access/rooms';
 import {
   getTrinityDesktopBridge,
   MobileBadgeService,

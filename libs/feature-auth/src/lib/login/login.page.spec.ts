@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AuthService } from '@trinity/data-access-auth';
+import { AuthService } from '@trinity/data-access/auth';
 import { SessionStorageService } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';

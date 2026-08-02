@@ -41,7 +41,7 @@ repo breaks at once.
 
 !!! warning "Components never import matrix-js-sdk"
 
-    All SDK access is wrapped in the `@trinity/data-access-*` services. This is enforced
+    All SDK access is wrapped in the `@trinity/data-access/*` services. This is enforced
     by Nx module boundaries, and it is what keeps the SDK swappable and the UI testable.
     See [libraries](libraries.md).
 
@@ -380,7 +380,7 @@ during initial sync and after a key query, and each previously ran a full status
 
 `CryptoStatus` is what the encryption banner reads. That banner lives in `feature-rooms`,
 not `feature-crypto`, because the module boundary forbids a feature-to-feature dependency;
-it reads the signal from `@trinity/data-access-crypto` directly.
+it reads the signal from `@trinity/data-access/crypto` directly.
 
 ## Setup and recovery
 

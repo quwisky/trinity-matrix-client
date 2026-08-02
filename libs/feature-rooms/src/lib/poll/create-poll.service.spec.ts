@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { type Observable, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
-import { TimelineService } from '@trinity/data-access-timeline';
+import { TimelineService } from '@trinity/data-access/timeline';
 import { CreatePollService } from './create-poll.service';
 import { type NewPoll } from './create-poll-dialog.component';
 

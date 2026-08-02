@@ -23,7 +23,7 @@ import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { runWithBusy } from '@trinity/ui';
-import { AuthService, type AccountManagement } from '@trinity/data-access-auth';
+import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
 
 /** Minimum length we require for a new password (a light client-side guard). */
 const MIN_PASSWORD = 8;

@@ -6,7 +6,7 @@ import { TrnToastService } from '@trinity/helm/overlay';
 import {
   RoomModerationService,
   type BannedMember,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { BannedMembersComponent } from './banned-members.component';
 
 async function build(

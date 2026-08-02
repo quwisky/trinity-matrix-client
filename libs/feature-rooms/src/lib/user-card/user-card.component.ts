@@ -9,7 +9,7 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { catchError, of, switchMap } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { DialogRef } from '@trinity/helm/overlay';
-import { ProfileService, PresenceService } from '@trinity/data-access-profile';
+import { ProfileService, PresenceService } from '@trinity/data-access/profile';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util-matrix';
 

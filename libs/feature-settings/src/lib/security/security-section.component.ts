@@ -12,7 +12,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
-import { CryptoService } from '@trinity/data-access-crypto';
+import { CryptoService } from '@trinity/data-access/crypto';
 import { EncryptionDialogService } from '@trinity/ui';
 
 /** Where the encryption flows return after finishing on the routed (mobile) path. */

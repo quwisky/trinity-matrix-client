@@ -4,7 +4,7 @@ import { of } from 'rxjs';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ProfileService, type UserProfile } from '@trinity/data-access-profile';
+import { ProfileService, type UserProfile } from '@trinity/data-access/profile';
 import { AvatarComponent } from '@trinity/ui';
 import { ProfileSettingsComponent } from './profile-settings.component';
 

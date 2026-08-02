@@ -8,7 +8,7 @@ import {
   PresenceService,
   ProfileService,
   type UserProfile,
-} from '@trinity/data-access-profile';
+} from '@trinity/data-access/profile';
 import { AvatarComponent } from '@trinity/ui';
 import { UserCardComponent } from './user-card.component';
 

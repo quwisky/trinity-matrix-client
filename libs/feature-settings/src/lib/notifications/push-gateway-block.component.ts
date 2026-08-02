@@ -16,7 +16,7 @@ import {
   PushGatewayService,
   PushService,
   normalizeGatewayUrl,
-} from '@trinity/data-access-notifications';
+} from '@trinity/data-access/notifications';
 import {
   PushGatewayTrustDialogComponent,
   type PushGatewayTrustData,

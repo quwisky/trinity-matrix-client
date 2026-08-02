@@ -2,12 +2,12 @@ import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   AccountScopeService,
   RoomsService,
   UnreadAggregatorService,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { AccountBadgesService } from './account-badges.service';
 
 interface FakeUser {

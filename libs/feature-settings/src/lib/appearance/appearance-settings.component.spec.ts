@@ -19,7 +19,7 @@ import {
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
   type RoomSortMode,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { AppearanceSettingsComponent } from './appearance-settings.component';
 
 describe('AppearanceSettingsComponent', () => {

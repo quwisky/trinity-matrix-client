@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ConnectivityBannerComponent } from './connectivity-banner.component';
 
 describe('ConnectivityBannerComponent', () => {

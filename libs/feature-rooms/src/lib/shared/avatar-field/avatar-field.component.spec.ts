@@ -3,7 +3,7 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RoomSettingsService } from '@trinity/data-access-rooms';
+import { RoomSettingsService } from '@trinity/data-access/rooms';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { AvatarFieldComponent } from './avatar-field.component';
 

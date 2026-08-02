@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { AvatarComponent } from '@trinity/ui';
-import { PresenceService } from '@trinity/data-access-profile';
+import { PresenceService } from '@trinity/data-access/profile';
 import { type PresenceState } from '@trinity/util-matrix';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';

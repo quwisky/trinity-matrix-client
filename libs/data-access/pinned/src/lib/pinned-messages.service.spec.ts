@@ -8,7 +8,7 @@ import {
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { PinnedMessagesService } from './pinned-messages.service';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 const MEMBERS: Record<string, string> = {
   '@me:hs': 'Me',

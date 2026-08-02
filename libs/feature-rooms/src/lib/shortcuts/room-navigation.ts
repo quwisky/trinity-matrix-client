@@ -1,4 +1,4 @@
-import { type RoomSummary } from '@trinity/data-access-rooms';
+import { type RoomSummary } from '@trinity/data-access/rooms';
 
 /** Which way a walk-the-list shortcut moves. */
 export type WalkDirection = 'next' | 'previous';

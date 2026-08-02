@@ -20,8 +20,8 @@ import { lucideX } from '@ng-icons/lucide';
 import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { ThreadsService, TimelineService } from '@trinity/data-access-timeline';
-import { RoomsService } from '@trinity/data-access-rooms';
+import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import { RoomsService } from '@trinity/data-access/rooms';
 import {
   isEditableMessage,
   messagePermalink,

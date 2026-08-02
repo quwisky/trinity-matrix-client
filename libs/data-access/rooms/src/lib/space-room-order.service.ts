@@ -1,6 +1,6 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   DEFAULT_ROOM_SORT,
   TRINITY_ROOM_SORTS,

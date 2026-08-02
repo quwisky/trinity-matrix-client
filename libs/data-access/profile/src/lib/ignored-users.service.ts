@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, defer, from, map, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access-matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /**
  * The account-wide ignore ("block") list (`m.ignored_user_list`). Ignoring a user makes

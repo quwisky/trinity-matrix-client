@@ -101,10 +101,11 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
 - `@trinity/platform-native` `[type:platform]` — Capacitor/native capabilities (session/secure storage,
   preferences, theme/status-bar, launcher badge, desktop bridge, error handler). Branches on
   `isNativePlatform()` internally. May depend only on `util`.
-- `@trinity/data-access-matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
+- `@trinity/data-access/matrix-client` `[type:data-access]` — `MatrixClientService` + the 4S key service;
   the client/session foundation every domain data-access lib depends on.
-- `@trinity/data-access-*` `[type:data-access]` — one lib per Matrix domain (`-media`, `-rooms`,
-  `-timeline`, `-crypto`, `-profile`, `-invites`, `-pinned`, `-search`, `-notifications`, `-auth`).
+- `@trinity/data-access/*` `[type:data-access]` — one lib per Matrix domain (`media`, `rooms`,
+  `timeline`, `crypto`, `profile`, `invites`, `pinned`, `search`, `notifications`, `auth`, `gif`),
+  each at `libs/data-access/<domain>`.
   Cross-domain injects are inter-lib edges (search→rooms/invites, auth→media/notifications, notification→timeline).
 - `@trinity/feature-*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
@@ -114,9 +115,9 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   `scope:matrix` (domain data-access + feature libs); the thin `apps/trinity` composes both.
 
 **The core rule: components never import `matrix-js-sdk` directly.** All SDK access is wrapped in the
-`@trinity/data-access-*` services. New SDK interaction belongs there, not in a component. This keeps the
+`@trinity/data-access/*` services. New SDK interaction belongs there, not in a component. This keeps the
 SDK swappable and the UI testable. A cross-feature dependency the boundary forbids (e.g. the encryption
-banner needing crypto status) is resolved by reading the relevant `@trinity/data-access-*` signal from the
+banner needing crypto status) is resolved by reading the relevant `@trinity/data-access/*` signal from the
 feature that owns the surface, or via a provided-loader token (`ENCRYPTION_DIALOG_COMPONENTS`, wired in
 `main.ts`) — never by importing the other feature.
 

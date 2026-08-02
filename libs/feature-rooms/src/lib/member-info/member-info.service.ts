@@ -3,7 +3,7 @@ import { TrnDialogService } from '@trinity/helm/overlay';
 import {
   type MemberSummary,
   type ModerationCaps,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { MemberInfoComponent } from './member-info.component';
 
 /**

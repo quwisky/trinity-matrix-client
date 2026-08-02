@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   GifSettingsService,
   type GifProviderId,
-} from '@trinity/data-access-gif';
+} from '@trinity/data-access/gif';
 import { GifsSectionComponent } from './gifs-section.component';
 
 function providers(

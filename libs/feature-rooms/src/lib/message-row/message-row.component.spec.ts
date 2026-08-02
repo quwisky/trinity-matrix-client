@@ -4,11 +4,11 @@ import { fireEvent, render, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import { of } from 'rxjs';
-import { MediaService } from '@trinity/data-access-media';
+import { MediaService } from '@trinity/data-access/media';
 import {
   UrlPreviewService,
   type ThreadSummary,
-} from '@trinity/data-access-timeline';
+} from '@trinity/data-access/timeline';
 import {
   DateTimeFormatService,
   PrivacySettingsService,

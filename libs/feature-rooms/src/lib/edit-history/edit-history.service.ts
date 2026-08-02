@@ -9,7 +9,7 @@ import { EditHistoryComponent } from './edit-history.component';
  * {@link MessageSearchService}, which resolves the event to jump to.
  *
  * Named for the dialog it opens, not the data it shows: the fetching
- * `EditHistoryService` lives in `@trinity/data-access-timeline`.
+ * `EditHistoryService` lives in `@trinity/data-access/timeline`.
  *
  * A re-entrancy guard makes a repeat trigger a no-op rather than stacking dialogs.
  */

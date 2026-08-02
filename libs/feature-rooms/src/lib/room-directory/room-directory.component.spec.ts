@@ -8,7 +8,7 @@ import {
   PublicRoomsService,
   type PublicRoomsPage,
   type PublicRoomSummary,
-} from '@trinity/data-access-rooms';
+} from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { RoomDirectoryComponent } from './room-directory.component';
 

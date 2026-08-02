@@ -5,7 +5,7 @@ import { DialogRef } from '@angular/cdk/dialog';
 import {
   PinnedMessagesService,
   type PinnedMessageView,
-} from '@trinity/data-access-pinned';
+} from '@trinity/data-access/pinned';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';

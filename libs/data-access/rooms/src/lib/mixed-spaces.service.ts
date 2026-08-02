@@ -3,7 +3,7 @@ import { ClientEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import {
   coalesce,
   MatrixClientService,
-} from '@trinity/data-access-matrix-client';
+} from '@trinity/data-access/matrix-client';
 import { sameAccountSet } from './account-scope.service';
 import { initialOf, spaceChildIdsOf } from './room-projection';
 import { type SpaceSummary } from './spaces.service';
