@@ -6,17 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- **Mentions now have to be meant.** Quoting a message put the quoted words into the
-  message you sent, so quoting "Bob, can you look at this?" notified Bob a second time for
-  a message that addressed nobody — and quoting anything containing `@room` pinged the
-  whole room again. Trinity now marks every message with who it actually addresses, which
-  is what tells your homeserver to stop matching on the text. The effect is that mentioning
-  someone is deliberate: pick them from the autocomplete and they are notified, as before,
-  but merely writing a name in passing — or carrying it along inside a quote — no longer
-  is. `@room` still notifies everyone when you type it yourself and still needs the
-  permission it always did; it just no longer fires from words you were quoting.
+- **Mentions look like mentions.** Someone's name in a message rendered as an ordinary
+  link, indistinguishable from a URL, so a message addressed to you read no differently
+  from any other. Mentions are now pills, and a mention of **you** is filled in the accent
+  colour so you can spot it while scrolling past. It works on mentions written in Element
+  and other Matrix clients too, not just ones written here.
 
 - **Jump to a date in a conversation.** Finding what someone said last Tuesday meant
   scrolling and waiting, over and over. **Jump to date** in a room's ⋯ menu asks for a day
@@ -124,6 +120,16 @@ All notable changes to this project are documented here. The format is based on
   no longer discards a rename that the server accepted.
 
 ### Changed
+
+- **Mentions now have to be meant.** Quoting a message put the quoted words into the
+  message you sent, so quoting "Bob, can you look at this?" notified Bob a second time for
+  a message that addressed nobody — and quoting anything containing `@room` pinged the
+  whole room again. Trinity now marks every message with who it actually addresses, which
+  is what tells your homeserver to stop matching on the text. The effect is that mentioning
+  someone is deliberate: pick them from the autocomplete and they are notified, as before,
+  but merely writing a name in passing — or carrying it along inside a quote — no longer
+  is. `@room` still notifies everyone when you type it yourself and still needs the
+  permission it always did; it just no longer fires from words you were quoting.
 
 - **Library imports now mirror the directory layout.** The data-access, feature and util
   libraries each repeated their layer in their own directory name — `libs/data-access-rooms`,

@@ -29,6 +29,35 @@
     &:hover {
       text-decoration: underline;
     }
+
+    // A mention is a person, not a destination — give it a pill so it reads as one at a
+    // glance instead of looking like any other link. Marked by `markMentionPills` from the
+    // matrix.to href, so mentions written by Element and other clients get it too.
+    &.mention {
+      padding: 0 0.35em;
+      border-radius: var(--trinity-radius-pill);
+      background: color-mix(in srgb, var(--trinity-accent) 18%, transparent);
+      color: var(--trinity-text-bright);
+      font-weight: 600;
+      text-decoration: none;
+
+      &:hover {
+        background: color-mix(in srgb, var(--trinity-accent) 28%, transparent);
+        text-decoration: none;
+      }
+    }
+
+    // A mention OF YOU has to be findable while scrolling past, so it takes the solid
+    // accent rather than a tint. `--trinity-accent-foreground` tracks the palette's
+    // on-accent colour, so this stays legible when the palette changes.
+    &.mention--self {
+      background: var(--trinity-accent);
+      color: var(--trinity-accent-foreground);
+
+      &:hover {
+        background: var(--trinity-accent-hover);
+      }
+    }
   }
 
   code {

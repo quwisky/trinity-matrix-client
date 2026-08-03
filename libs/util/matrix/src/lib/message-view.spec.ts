@@ -790,3 +790,74 @@ describe('collectMessageSenders', () => {
     expect([...senders]).toEqual(['@author:hs', '@reader:hs']);
   });
 });
+
+/**
+ * Mention pills. A mention is a person rather than a destination, so it is marked in the
+ * rendered HTML and styled as a pill; a mention of the VIEWER is marked again so it can be
+ * spotted while scrolling past.
+ */
+describe('sanitizeMatrixHtml mention pills', () => {
+  const link = (id: string, label = id) =>
+    `<a href="https://matrix.to/#/${id}">${label}</a>`;
+
+  it('marks a matrix.to user link as a mention', () => {
+    const html = sanitizeMatrixHtml(link('@alice:hs', '@Alice'), '@me:hs');
+
+    expect(html).toContain('class="mention"');
+  });
+
+  it('marks a mention of the viewer as well', () => {
+    const html = sanitizeMatrixHtml(link('@me:hs', '@Me'), '@me:hs');
+
+    expect(html).toContain('mention--self');
+  });
+
+  it('does not mark a mention of someone else as the viewer', () => {
+    const html = sanitizeMatrixHtml(link('@alice:hs', '@Alice'), '@me:hs');
+
+    expect(html).toContain('class="mention"');
+    expect(html).not.toContain('mention--self');
+  });
+
+  it('leaves ordinary links and room links alone', () => {
+    const room = sanitizeMatrixHtml(link('!r:hs', 'the room'), '@me:hs');
+    const web = sanitizeMatrixHtml(
+      '<a href="https://example.test">a link</a>',
+      '@me:hs',
+    );
+
+    // Only a USER link is a mention. A room permalink is a destination.
+    expect(room).not.toContain('mention');
+    expect(web).not.toContain('mention');
+  });
+
+  it('cannot be forged by the sender', () => {
+    // The class allowlist strips anything but `language-*`/`mx-spoiler`, and the marking
+    // pass runs after that — so a sender cannot dress their own text as a mention of you.
+    const hostile = sanitizeMatrixHtml(
+      '<span class="mention--self">not really you</span>' +
+        '<a class="mention--self" href="https://example.test">nor this</a>',
+      '@me:hs',
+    );
+
+    expect(hostile).not.toContain('mention--self');
+  });
+
+  it('does not serve one account’s markings to the next', () => {
+    // The sanitized-HTML cache is keyed by html; without the viewer in the key, switching
+    // account would keep highlighting a mention of whoever was signed in before.
+    const source = link('@me:hs', '@Me');
+
+    expect(sanitizeMatrixHtml(source, '@me:hs')).toContain('mention--self');
+    expect(sanitizeMatrixHtml(source, '@other:hs')).not.toContain(
+      'mention--self',
+    );
+  });
+
+  it('marks nothing as self when the viewer is unknown', () => {
+    const html = sanitizeMatrixHtml(link('@alice:hs', '@Alice'));
+
+    expect(html).toContain('class="mention"');
+    expect(html).not.toContain('mention--self');
+  });
+});

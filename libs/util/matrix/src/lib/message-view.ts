@@ -11,6 +11,7 @@ import DOMPurify from 'dompurify';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { buildPollView, isPollStart, type PollView } from './poll';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
+import { parseMatrixToLink } from './matrix-to';
 
 /**
  * Shared, framework-free projection of a `matrix-js-sdk` {@link MatrixEvent} into a
@@ -370,7 +371,7 @@ export function buildMessageView(
         captionHtml: null,
         location: null,
       }
-    : renderBody(event, decryptionFailed);
+    : renderBody(event, decryptionFailed, client.getUserId() ?? '');
   return {
     id: event.getId() ?? '',
     senderId,
@@ -897,8 +898,13 @@ export function setCodeHighlighter(highlighter: CodeHighlighter | null): void {
  * Also applies render-only normalisation — spoiler tagging and syntax highlighting —
  * which is why {@link sanitizeOutgoingHtml} exists separately for the send path.
  */
-export function sanitizeMatrixHtml(html: string): string {
-  const memoized = sanitizedHtmlCache.get(html);
+export function sanitizeMatrixHtml(html: string, selfUserId = ''): string {
+  // The viewer's id is part of the OUTPUT (it decides which pills are marked as you), so it
+  // has to be part of the key. Keying on the html alone would hand the previous account's
+  // markings to the next one after a switch — every message would keep highlighting a
+  // mention of somebody you are no longer signed in as.
+  const cacheKey = `${selfUserId}\u0000${html}`;
+  const memoized = sanitizedHtmlCache.get(cacheKey);
   if (memoized !== undefined) {
     return memoized;
   }
@@ -917,6 +923,7 @@ export function sanitizeMatrixHtml(html: string): string {
   normaliseSpoilers(body);
   normaliseTaskItems(body);
   renderCodeBlocks(body);
+  markMentionPills(body, selfUserId);
   const clean = body.innerHTML;
   if (sanitizedHtmlCache.size >= SANITIZED_HTML_CACHE_MAX) {
     const oldest = sanitizedHtmlCache.keys().next().value;
@@ -924,8 +931,37 @@ export function sanitizeMatrixHtml(html: string): string {
       sanitizedHtmlCache.delete(oldest);
     }
   }
-  sanitizedHtmlCache.set(html, clean);
+  sanitizedHtmlCache.set(cacheKey, clean);
   return clean;
+}
+
+/**
+ * Tag `matrix.to` user links so a mention reads as a mention rather than as an ordinary
+ * link, and mark the one that refers to the viewer.
+ *
+ * A render-only pass, deliberately here rather than in the `afterSanitizeAttributes` hook:
+ * attributes set in that hook are not re-filtered and would ride out onto the wire, so a
+ * sent message would carry viewer-specific classes to everyone else.
+ *
+ * Running AFTER DOMPurify is also what makes it safe. `class` is filtered to
+ * {@link ALLOWED_CLASS}, so a sender cannot put `mention--self` in their own
+ * `formatted_body` and forge a highlight — by the time this adds the class, anything the
+ * sender wrote has already been stripped.
+ *
+ * Keyed off the href, so mentions from any client (Element sends the same matrix.to links)
+ * are styled the same as our own.
+ */
+function markMentionPills(body: HTMLElement, selfUserId: string): void {
+  for (const anchor of body.querySelectorAll('a[href]')) {
+    const target = parseMatrixToLink(anchor.getAttribute('href') ?? '');
+    if (target?.kind !== 'user') {
+      continue;
+    }
+    anchor.classList.add('mention');
+    if (selfUserId !== '' && target.userId === selfUserId) {
+      anchor.classList.add('mention--self');
+    }
+  }
 }
 
 /**
@@ -1153,6 +1189,8 @@ export interface RenderedText {
 export function renderTextBody(
   content: Record<string, unknown>,
   isReply: boolean,
+  /** The viewer, so a mention OF them can be marked. Omitted where it is unknown. */
+  selfUserId = '',
 ): RenderedText {
   const raw = (content['body'] as string) ?? '';
   const text = isReply ? stripReplyFallbackText(raw) : raw;
@@ -1164,7 +1202,8 @@ export function renderTextBody(
       : null;
   const strippedHtml =
     isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
-  const html = strippedHtml === null ? null : sanitizeMatrixHtml(strippedHtml);
+  const html =
+    strippedHtml === null ? null : sanitizeMatrixHtml(strippedHtml, selfUserId);
 
   // Plain text (no formatted_body) still gets bare URLs linkified so they're clickable.
   return { text, html, textHtml: html ?? linkifyText(text) };
@@ -1173,6 +1212,7 @@ export function renderTextBody(
 function renderBody(
   event: MatrixEvent,
   decryptionFailed: boolean,
+  selfUserId: string,
 ): RenderedBody {
   if (decryptionFailed) {
     return {
@@ -1194,6 +1234,7 @@ function renderBody(
   const { text, html, textHtml } = renderTextBody(
     content,
     !!event.replyEventId,
+    selfUserId,
   );
   switch (content.msgtype) {
     case MsgType.Text:
