@@ -110,3 +110,42 @@ export function dayLabel(
     new Date(dayStart).getFullYear() !== new Date(todayStart).getFullYear();
   return formatDaySeparator(dayStart, prefs, earlierYear);
 }
+
+/**
+ * Epoch ms of local midnight for a `YYYY-MM-DD` string — what `<input type="date">` puts in
+ * its value.
+ *
+ * Built from the numeric fields rather than `new Date(iso)`, because ECMAScript parses a
+ * bare date-only string as **UTC**: `new Date('2026-08-03').getTime()` is 2026-08-03T00:00Z,
+ * which is the 2nd for anyone west of Greenwich and the right day at the wrong hour for
+ * everyone east of it. A date jump built on that lands on the previous day for roughly half
+ * the world — and never for whoever wrote it, if they are on UTC.
+ *
+ * Returns null for anything that is not a real calendar date, including the ones that parse
+ * but roll over (2026-02-30 would otherwise silently become 2 March).
+ */
+export function localDayStartFromIso(iso: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) {
+    return null;
+  }
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  // Reject a rolled-over date: `new Date(2026, 1, 30)` is 2 March, not an error.
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return date.getTime();
+}
+
+/** `YYYY-MM-DD` for the local day containing `ts` — the inverse, for seeding a date input. */
+export function isoDateOf(ts: number): string {
+  const date = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}

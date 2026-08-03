@@ -266,6 +266,14 @@
                 </button>
                 <button
                   hlmDropdownMenuItem
+                  (triggered)="messageActions.jumpToDate()"
+                  data-testid="overflow-jump-to-date"
+                >
+                  <ng-icon name="lucideCalendarSearch" />
+                  Jump to date
+                </button>
+                <button
+                  hlmDropdownMenuItem
                   (triggered)="toggleMembers()"
                   data-testid="overflow-toggle-members"
                 >

@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Jump to a date in a conversation.** Finding what someone said last Tuesday meant
+  scrolling and waiting, over and over. **Jump to date** in a room's ⋯ menu asks for a day
+  and takes you to the first message on it, loading the history in between for you. It
+  reaches a few hundred messages back — the range you would otherwise have scrolled by hand
+  — and says so plainly when a date is further back than that, rather than appearing to work
+  and leaving you where you were. It also tells you when a day simply has no messages, and
+  when your homeserver is too old to support this at all, because those are three different
+  problems and only one of them is worth you retrying.
+
 - **Quote a message.** Replying points at a message; it does not bring its words with it, so
   answering one line of a long message meant retyping it. **Quote** in a message's ⋯ menu
   pulls the text into the composer as a `>` block with the cursor below it, ready to write

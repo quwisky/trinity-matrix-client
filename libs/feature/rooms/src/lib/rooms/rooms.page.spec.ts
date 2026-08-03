@@ -75,6 +75,7 @@ import { SpaceSettingsComponent } from '../space-settings/space-settings.compone
 import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { MessageSearchService } from '../message-search/message-search.service';
+import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 
 /**
  * Providers every TestBed block in this file supplies identically, with no stub.
@@ -286,6 +287,7 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
+        MockProvider(JumpToDateService),
         MockProvider(AuthService),
         MockProvider(TrnDialogService),
         MockProvider(TrnToastService, { show: toastShow }),
@@ -1101,6 +1103,67 @@ describe('RoomsPage action error feedback', () => {
     expect(panel.openPanel).toHaveBeenCalled();
     expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
     expect(shell.store.jumpRequest()).toBe(1);
+  });
+
+  it('jumpToDate scrolls to the event the date resolved to', async () => {
+    const shell = build();
+    shell.store.activeRoomId.set('!a:hs'); // jumpToDate is a no-op with no room open
+    const picker = TestBed.inject(JumpToDateService);
+    const timeline = TestBed.inject(TimelineService);
+    vi.mocked(picker.pick).mockResolvedValue(1_700_000_000_000);
+    vi.mocked(timeline.jumpToDate).mockReturnValue(
+      of({ kind: 'found', eventId: '$day:hs' }),
+    );
+
+    await shell.messages.jumpToDate();
+
+    expect(timeline.jumpToDate).toHaveBeenCalledWith(1_700_000_000_000);
+    // Reuses the one definition of "scroll the list to this event".
+    expect(shell.store.messageSearchTarget()).toBe('$day:hs');
+    expect(shell.store.jumpRequest()).toBe(1);
+  });
+
+  it('jumpToDate does nothing at all when the picker is cancelled', async () => {
+    const shell = build();
+    shell.store.activeRoomId.set('!a:hs');
+    const picker = TestBed.inject(JumpToDateService);
+    const timeline = TestBed.inject(TimelineService);
+    vi.mocked(picker.pick).mockResolvedValue(null);
+
+    await shell.messages.jumpToDate();
+
+    expect(timeline.jumpToDate).not.toHaveBeenCalled();
+    expect(shell.store.jumpRequest()).toBe(0);
+  });
+
+  it('jumpToDate says something different for each way it can fail', async () => {
+    // Collapsing these into one message would send someone hunting for a problem that is
+    // not theirs: "too far back" is fixable by scrolling, "no messages" is a fact about
+    // the room, and "unsupported" is their homeserver.
+    const cases = [
+      ['too-far', /further back/i],
+      ['no-event', /No messages/i],
+      ['unsupported', /homeserver/i],
+    ] as const;
+
+    for (const [kind, expected] of cases) {
+      TestBed.resetTestingModule();
+      const shell = build();
+      shell.store.activeRoomId.set('!a:hs');
+      const picker = TestBed.inject(JumpToDateService);
+      const timeline = TestBed.inject(TimelineService);
+      vi.mocked(picker.pick).mockResolvedValue(1_700_000_000_000);
+      vi.mocked(timeline.jumpToDate).mockReturnValue(of({ kind }));
+
+      await shell.messages.jumpToDate();
+
+      expect(toastShow, kind).toHaveBeenCalledWith(
+        expect.stringMatching(expected),
+        expect.objectContaining({ variant: 'destructive' }),
+      );
+      // And it must NOT pretend the jump happened.
+      expect(shell.store.jumpRequest(), kind).toBe(0);
+    }
   });
 
   it('openPinnedPanel bumps jumpRequest again when the SAME message is re-picked', async () => {

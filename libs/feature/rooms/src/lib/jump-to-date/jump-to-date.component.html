@@ -1,0 +1,29 @@
+<!-- `[formRoot]` sets novalidate and preventDefaults the submit; a bare <form> whose only
+     binding is a control triggers a native submit and a full page reload. -->
+<form class="jump" [formRoot]="dateForm" (submit)="jump()">
+  <h2 class="jump__title">Jump to date</h2>
+  <label class="jump__label" for="jump-date">Date</label>
+  <input
+    id="jump-date"
+    hlmInput
+    class="w-full"
+    type="date"
+    [max]="today"
+    [formField]="dateForm.date"
+    data-autofocus
+    data-testid="jump-to-date-input"
+  />
+  <div class="jump__actions">
+    <button hlmBtn type="button" variant="ghost" (click)="cancel()">
+      Cancel
+    </button>
+    <button
+      hlmBtn
+      type="submit"
+      [disabled]="!canJump()"
+      data-testid="jump-to-date-confirm"
+    >
+      Jump
+    </button>
+  </div>
+</form>

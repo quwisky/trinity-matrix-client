@@ -8,6 +8,7 @@ import { Observable, finalize } from 'rxjs';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { MessageSearchService } from '../message-search/message-search.service';
+import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { RoomShellStore } from './room-shell-store';
 import { AccountRoutingService } from './account-routing.service';
 import { MemberActionsService } from './member-actions.service';
@@ -28,6 +29,7 @@ export class MessageActionsService {
   private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomsService);
+  private readonly jumpToDateSvc = inject(JumpToDateService);
   private readonly timeline = inject(TimelineService);
   private readonly pinned = inject(PinnedMessagesService);
   private readonly threadPanel = inject(ThreadPanelService);
@@ -213,4 +215,49 @@ export class MessageActionsService {
     this.store.messageSearchTarget.set(eventId);
     this.store.jumpRequest.update((n) => n + 1);
   }
+
+  /**
+   * Ask for a date, then scroll the timeline to the first message on it.
+   *
+   * The jump reuses the same `messageSearchTarget` + `jumpRequest` pair as in-room search,
+   * so there is one definition of "scroll the list to this event". What is different is
+   * everything before that: `TimelineService.jumpToDate` has to page history in until the
+   * event is actually loaded, because the list scrolls by DOM lookup and an id it has
+   * never rendered is a silent no-op.
+   *
+   * Each unhappy outcome says its own thing. "Too far back" is not "no messages that day",
+   * and neither is "your server cannot do this" — collapsing them into one message would
+   * send people looking for a problem that is not theirs.
+   */
+  async jumpToDate(): Promise<void> {
+    if (!this.store.activeRoomId()) {
+      return;
+    }
+    const at = await this.jumpToDateSvc.pick();
+    if (at === null) {
+      return; // cancelled / already open
+    }
+    this.timeline
+      .jumpToDate(at)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (result) => {
+          if (result.kind === 'found') {
+            this.store.messageSearchTarget.set(result.eventId);
+            this.store.jumpRequest.update((n) => n + 1);
+            return;
+          }
+          void this.status.showError(JUMP_FAILURE_MESSAGE[result.kind]);
+        },
+        error: () => void this.status.showError('Could not jump to that date.'),
+      });
+  }
 }
+
+/** What to say for each outcome that is not a successful jump. */
+const JUMP_FAILURE_MESSAGE = {
+  'too-far':
+    'That date is further back than Trinity can load here. Scroll up to load more history first.',
+  'no-event': 'No messages on or after that date.',
+  unsupported: 'This homeserver cannot jump to a date.',
+} as const;
