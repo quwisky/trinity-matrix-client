@@ -88,6 +88,16 @@
         {{ caps().pinned ? 'Unpin message' : 'Pin message' }}
       </button>
     }
+    @if (caps().canQuote) {
+      <button
+        hlmDropdownMenuItem
+        (triggered)="action.emit({ type: 'quote' })"
+        data-testid="msg-quote"
+      >
+        <ng-icon name="lucideQuote" />
+        Quote
+      </button>
+    }
     <button
       hlmDropdownMenuItem
       (triggered)="action.emit({ type: 'copy' })"

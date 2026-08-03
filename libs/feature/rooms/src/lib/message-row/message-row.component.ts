@@ -64,6 +64,8 @@ export interface MessageRowCaps {
   pinned: boolean;
   /** Offer "Reply in thread" — false inside a thread (no nesting). */
   canThread: boolean;
+  /** Whether this message has text worth pulling into the composer as a quote. */
+  canQuote: boolean;
   /** Hide the hover toolbar + retry affordance (view-only thread panel). */
   readOnly: boolean;
 }
@@ -132,6 +134,7 @@ export class MessageRowComponent {
     canPin: false,
     pinned: false,
     canThread: true,
+    canQuote: false,
     readOnly: false,
   });
 
@@ -172,6 +175,7 @@ export class MessageRowComponent {
       canPin: c.canPin,
       pinned: c.pinned,
       canThread: c.canThread,
+      canQuote: c.canQuote,
     };
   });
 

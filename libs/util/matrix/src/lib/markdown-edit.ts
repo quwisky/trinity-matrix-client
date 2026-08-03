@@ -394,3 +394,28 @@ export function continueList(text: string, caret: number): EditResult | null {
     selectionEnd: at + inserted.length,
   };
 }
+
+/**
+ * Turn a message body into a markdown blockquote for the composer to write around.
+ *
+ * Deliberately NOT {@link applyFormat}'s `'quote'` action, which is the composer button's
+ * toggle: that unquotes when every line already carries `>`, so quoting a quote would
+ * silently unwrap it, and it leaves blank lines bare — which in CommonMark ENDS the
+ * blockquote, so a two-paragraph message would half-escape and render its second half as
+ * the quoter's own words. This is unconditional and marks every line.
+ *
+ * Blank lines get a bare `>` rather than `> ` so the block carries no trailing whitespace.
+ *
+ * Returns the block plus a blank line, so the caret lands below it ready to type — or `''`
+ * for a body with nothing in it, which has no quote worth making.
+ */
+export function quoteBlock(body: string): string {
+  if (body.trim() === '') {
+    return '';
+  }
+  const quoted = body
+    .split('\n')
+    .map((line) => (line.trim() === '' ? '>' : `${BLOCK_MARKER.quote}${line}`))
+    .join('\n');
+  return `${quoted}\n\n`;
+}

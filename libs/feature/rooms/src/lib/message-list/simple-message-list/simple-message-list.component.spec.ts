@@ -1,11 +1,13 @@
 import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
 import { type MessageView } from '@trinity/util/matrix';
 import { TrnAlertService } from '@trinity/helm/overlay';
+import { By } from '@angular/platform-browser';
 import { SimpleMessageListComponent } from './simple-message-list.component';
+import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { DayBoundaryService } from '../day-boundary.service';
 import { ReactionPickerService } from '../../reaction-picker/reaction-picker.service';
 import { MessageSourceService } from '../../message-source/message-source.service';
@@ -38,6 +40,14 @@ function msg(
     readReceipts: [],
     poll: null,
   };
+}
+
+/** The composer this list renders, for asserting what a quote put into it. */
+function composerOf(
+  fixture: ComponentFixture<SimpleMessageListComponent>,
+): MessageComposerComponent {
+  return fixture.debugElement.query(By.directive(MessageComposerComponent))
+    .componentInstance as MessageComposerComponent;
 }
 
 function eventRow(id: string, summary: string, ts: number): MessageView {
@@ -106,6 +116,34 @@ describe('SimpleMessageListComponent', () => {
     // A moderator (canRedactOthers) can.
     fixture.componentRef.setInput('canRedactOthers', true);
     expect(cmp.rowCaps(row).deletable).toBe(true);
+  });
+
+  it('offers quoting for text but not for media, and re-issues caps when it changes', async () => {
+    const text = msg('$1', '@a:hs', 'Alice', 1000);
+    const media: MessageView = {
+      ...msg('$2', '@a:hs', 'Alice', 2000),
+      kind: 'image',
+      body: 'IMG_1234.jpg',
+    };
+    const { fixture } = await render(SimpleMessageListComponent, {
+      providers: [MockProvider(TrnAlertService)],
+      inputs: { messages: [text, media] },
+    });
+    const cmp = fixture.componentInstance;
+
+    expect(cmp.rowCaps({ ...text, showHeader: true }).canQuote).toBe(true);
+    // A media body is the filename; quoting it helps nobody.
+    expect(cmp.rowCaps({ ...media, showHeader: true }).canQuote).toBe(false);
+
+    // Caps objects are reused by identity unless something changed, so `canQuote` has to
+    // be part of that comparison or a message becoming quotable would never reach the row.
+    const before = cmp.rowCaps({ ...media, showHeader: true });
+    fixture.componentRef.setInput('messages', [
+      text,
+      { ...media, kind: 'text', body: 'now quotable' },
+    ]);
+    expect(cmp.rowCaps({ ...media, showHeader: true })).not.toBe(before);
+    expect(cmp.rowCaps({ ...media, showHeader: true }).canQuote).toBe(true);
   });
 
   it('withholds threading and pinning from a message that is still unsent', async () => {
@@ -687,6 +725,44 @@ describe('SimpleMessageListComponent', () => {
       cmp.onSubmit({ text: 're', mentions: [] });
       expect(replied).toEqual({ id: '$3', body: 're', mentions: [] });
       expect(cmp.replyingToId()).toBeNull();
+    });
+
+    it('quotes a message into the composer as a > block', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        providers: [MockProvider(TrnAlertService)],
+        inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
+      });
+      const cmp = fixture.componentInstance;
+
+      cmp.onRowAction(
+        { ...msg('$1', '@a:hs', 'Alice', 1000), showHeader: true },
+        {
+          type: 'quote',
+        },
+      );
+
+      expect(composerOf(fixture).text()).toBe('> body $1\n\n');
+    });
+
+    it('cancels an edit when quoting, but keeps the reply target', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        providers: [MockProvider(TrnAlertService)],
+        inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
+      });
+      const cmp = fixture.componentInstance;
+      cmp.editingId.set('$9');
+      cmp.replyingToId.set('$7');
+
+      cmp.startQuote({
+        ...msg('$1', '@a:hs', 'Alice', 1000),
+        showHeader: true,
+      });
+
+      // Editing holds the original's body in the composer — inserting a quote there would
+      // rewrite that message rather than answer it. A reply is a send target, not composer
+      // content, so quoting while replying composes rather than conflicts.
+      expect(cmp.editingId()).toBeNull();
+      expect(cmp.replyingToId()).toBe('$7');
     });
 
     it('makes startEdit and startReply mutually exclusive', async () => {

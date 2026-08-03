@@ -589,6 +589,32 @@ export class MessageComposerComponent {
     this.applyEdit(result);
   }
 
+  /**
+   * Put a message's text into the composer as a blockquote to write around.
+   *
+   * Called by the host list when a row raises `quote`, rather than driven by an input,
+   * because quoting is a one-shot event and not a state the composer should be able to
+   * re-enter: an input would need a token to distinguish "quoted twice" from "re-rendered".
+   *
+   * The block goes ABOVE anything already typed and the caret lands at the very end.
+   * Whatever is in the box is the response being written, so the quote belongs before it
+   * and the caret belongs after it; quoting a second message stacks rather than replaces.
+   * Routed through the same `applyEdit` a formatting chord uses, so the textarea, the
+   * autocompletes and the typing notice all stay in step.
+   */
+  insertQuote(block: string): void {
+    if (!block) {
+      return;
+    }
+    const existing = this.text();
+    const text = existing ? block + existing : block;
+    this.applyEdit({
+      text,
+      selectionStart: text.length,
+      selectionEnd: text.length,
+    });
+  }
+
   /** Apply a formatting action to the current selection. */
   onFormat(action: FormatAction): void {
     const el = this.textarea()?.nativeElement;

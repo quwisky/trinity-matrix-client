@@ -24,6 +24,7 @@ import {
   lucidePencil,
   lucidePin,
   lucidePlus,
+  lucideQuote,
   lucideReply,
   lucideSmile,
   lucideTrash2,
@@ -39,6 +40,8 @@ export interface MessageToolbarCaps {
   pinned: boolean;
   /** Whether to offer "Reply in thread" — false inside a thread. */
   canThread: boolean;
+  /** Whether this message has text worth pulling into the composer as a quote. */
+  canQuote: boolean;
 }
 
 /** A single action a user triggers from the message toolbar. */
@@ -47,6 +50,9 @@ export type MessageAction =
   /** Open the full emoji picker to react with any emoji (beyond the quick set). */
   | { type: 'react-more' }
   | { type: 'reply' }
+  /** Pull this message's text into the composer as a `>` block to write around. Distinct
+   *  from `reply`, which points at the event without bringing its words. */
+  | { type: 'quote' }
   | { type: 'edit' }
   | { type: 'delete' }
   | { type: 'copy' }
@@ -92,6 +98,7 @@ let nextPickerId = 0;
       lucideEllipsis,
       lucidePin,
       lucidePlus,
+      lucideQuote,
       lucideCopy,
       lucideLink,
       lucideCode,
@@ -109,6 +116,7 @@ export class MessageToolbarComponent {
     canPin: false,
     pinned: false,
     canThread: true,
+    canQuote: false,
   });
   readonly action = output<MessageAction>();
 

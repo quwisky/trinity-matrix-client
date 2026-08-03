@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Quote a message.** Replying points at a message; it does not bring its words with it, so
+  answering one line of a long message meant retyping it. **Quote** in a message's ⋯ menu
+  pulls the text into the composer as a `>` block with the cursor below it, ready to write
+  around. It goes above anything you had already typed rather than replacing it, and quoting
+  a second message stacks rather than swaps. Multi-paragraph messages stay whole inside the
+  quote. Offered wherever there is text worth bringing — in threads as well as the room —
+  and not on a photo or a poll, where the "text" is a filename or a question.
+
 - **Filter the room list without losing it.** Ctrl/Cmd+K jumps you to a room and closes,
   which is the wrong shape for "show me my three design rooms and let me work through
   them". A filter box now sits at the top of the sidebar: type, and the list narrows in
