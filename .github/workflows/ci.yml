@@ -15,6 +15,29 @@ on:
     # otherwise run all five jobs twice per rebase: once here, once for the pull request.
     branches: [develop, master, 'renovate/patch-**']
   pull_request:
+    # Documentation-only pull requests skip CI. The filter lives here and not on `push`
+    # because a feature branch never matches the push branch list above — `pull_request` is
+    # the only trigger it gets, and GitHub ignores `[skip ci]` markers for that event, so a
+    # commit-message convention cannot do this job.
+    #
+    # GitHub evaluates these against the PR's whole diff, not one push, so a branch that
+    # touches code AND docs still runs everything. Only an entirely-documentation PR is
+    # skipped. Safe today because `develop` has no required status checks; if branch
+    # protection is ever turned on, a skipped run reports nothing and would block the merge.
+    #
+    # `docs/reference/stack.md` is deliberately absent: scripts/stack-versions.spec.mjs
+    # parses its version table and asserts every row against node_modules, so editing it
+    # really can fail `pnpm test`. The rest of docs/reference is listed file by file rather
+    # than as `docs/reference/**` for the same reason — a new page there runs CI until
+    # someone decides otherwise, which is the safe direction to fail.
+    paths-ignore:
+      - 'docs/index.md'
+      - 'docs/users/**'
+      - 'docs/contributing/**'
+      - 'docs/architecture/**'
+      - 'docs/platforms/**'
+      - 'docs/reference/push-notifications.md'
+      - 'docs/reference/troubleshooting.md'
 
 # A newer push to the same branch makes the run in flight obsolete.
 concurrency:
