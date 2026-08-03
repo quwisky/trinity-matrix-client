@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, computed, linkedSignal, signal } from '@angular/core';
 import { membersColumnDefaultsOpen } from './shell-layout';
 
 /**
@@ -30,6 +30,29 @@ export class RoomShellStore {
   readonly roomsView = signal(false);
 
   readonly activeRoomId = signal<string | null>(null);
+
+  /**
+   * The sidebar's in-place room filter.
+   *
+   * Lives here rather than inside `ChannelSidebarComponent` because two consumers have to
+   * agree on it: the list the sidebar renders, and the Alt+↑/↓ room walk in
+   * `ShellShortcutsService`. A filter owned by the component would leave the walk stepping
+   * through rooms that are not on screen. `ReadStateService` ("mark all as read") and
+   * `RoomActionsService` (name lookup by id) deliberately keep reading the UNFILTERED
+   * `visibleRooms` — they act on rooms rather than showing them.
+   *
+   * Reset whenever the shell switches which list it is showing, so a filter typed in one
+   * space cannot silently narrow the next one. The source is the real view identity, not a
+   * display name, so two spaces sharing a name still reset.
+   */
+  readonly roomFilter = linkedSignal<string, string>({
+    source: () =>
+      `${this.recentView()}|${this.roomsView()}|${this.activeSpaceId() ?? ''}`,
+    computation: () => '',
+  });
+
+  /** Whether {@link roomFilter} is actually narrowing anything (whitespace alone is not). */
+  readonly roomFilterActive = computed(() => this.roomFilter().trim() !== '');
 
   /**
    * Whether the member list is shown. At the wide (≥1100px) layout it's the static

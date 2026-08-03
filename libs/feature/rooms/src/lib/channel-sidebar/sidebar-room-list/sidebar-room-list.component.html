@@ -85,8 +85,12 @@
   }
 }
 
-@if (!rooms().length) {
-  <p class="empty">No channels here yet.</p>
+@if (!rooms().length && !invites().length) {
+  <p class="empty" data-testid="room-list-empty">
+    {{
+      filterActive() ? 'No rooms match your filter.' : 'No channels here yet.'
+    }}
+  </p>
 }
 
 <ng-template #roomRow let-room>

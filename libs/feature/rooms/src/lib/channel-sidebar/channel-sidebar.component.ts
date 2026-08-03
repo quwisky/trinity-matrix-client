@@ -4,6 +4,7 @@ import {
   computed,
   inject,
   input,
+  model,
   output,
 } from '@angular/core';
 import {
@@ -18,6 +19,7 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
+import { HlmInput } from '@trinity/helm/input';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowDownWideNarrow,
@@ -68,6 +70,7 @@ import {
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
+import { matchesRoomFilter, normalizeRoomFilter } from './room-filter';
 import { AccountPickerService } from '../account-picker/account-picker.service';
 import {
   SidebarUserPanelComponent,
@@ -86,6 +89,7 @@ export type { AccountSummary };
     SidebarRoomListComponent,
     AvatarComponent,
     NgIcon,
+    HlmInput,
     HlmDropdownMenuTrigger,
     HlmDropdownMenu,
     HlmDropdownMenuItem,
@@ -155,9 +159,55 @@ export class ChannelSidebarComponent {
    * hold it without being able to rename the space, and vice versa.
    */
   readonly canCurateSpace = input(false);
+  /** Already narrowed by {@link filterQuery} — the shell filters, so that the Alt+↑/↓ room
+   * walk steps through exactly what is on screen (`RoomShellStore.roomFilter`). */
   readonly rooms = input<RoomSummary[]>([]);
-  /** Whether any room has unread messages — gates the "Mark all as read" affordance. */
-  readonly hasAnyUnread = computed(() => this.rooms().some((r) => r.hasUnread));
+
+  /**
+   * Whether any room has unread messages — gates the "Mark all as read" affordance.
+   *
+   * An input rather than a computed over {@link rooms}, because that list arrives filtered:
+   * the button marks EVERY room read, so hiding it because the current filter excludes the
+   * unread ones would misrepresent what it does.
+   */
+  readonly hasAnyUnread = input(false);
+
+  /**
+   * The sidebar's in-place filter, two-way bound to the shell. Separate from the Ctrl/Cmd+K
+   * switcher, which closes on selection: this one narrows the list and stays out of the way
+   * while you work through the result.
+   *
+   * The shell owns the value (and resets it on a view change) because the room walk has to
+   * see the same narrowing; this component owns the box that edits it.
+   */
+  readonly filterQuery = model('');
+
+  /** The folded query, computed once per keystroke rather than once per row below. */
+  private readonly normalizedFilter = computed(() =>
+    normalizeRoomFilter(this.filterQuery()),
+  );
+
+  /** Whether a filter is actually narrowing anything (an all-whitespace query is not). */
+  protected readonly filterActive = computed(
+    () => this.normalizedFilter() !== '',
+  );
+
+  protected clearFilter(): void {
+    this.filterQuery.set('');
+  }
+
+  /**
+   * Escape clears the box, and only then. Left to bubble when the box is already empty so
+   * the shell's own Escape handling (closing the panel behind it) still works — swallowing
+   * it unconditionally would strand a user whose focus happens to sit here.
+   */
+  protected onFilterEscape(event: Event): void {
+    if (!this.filterQuery()) {
+      return;
+    }
+    event.stopPropagation();
+    this.clearFilter();
+  }
 
   /** The account badge for a room row (mixed view), or null when not badged. */
   /**
@@ -178,6 +228,20 @@ export class ChannelSidebarComponent {
   readonly joinableRooms = this.spacesSvc.notJoinedRooms;
   /** Sub-spaces of the active space (joined → Open, otherwise Join). */
   readonly childSpaces = this.spacesSvc.childSpaces;
+
+  // The filter box sits above the whole scroll area, so it narrows everything under it —
+  // not just the joined rooms. A box that visibly ignored the two lists below the fold
+  // would read as broken.
+  protected readonly filteredJoinableRooms = computed(() =>
+    this.joinableRooms().filter((child) =>
+      matchesRoomFilter(child.name, this.normalizedFilter()),
+    ),
+  );
+  protected readonly filteredChildSpaces = computed(() =>
+    this.childSpaces().filter((child) =>
+      matchesRoomFilter(child.name, this.normalizedFilter()),
+    ),
+  );
   /** Whether the active space's child hierarchy is still loading. */
   readonly childrenLoading = this.spacesSvc.childrenLoading;
   /** Non-null when the active space's child hierarchy failed to load. */
@@ -188,6 +252,12 @@ export class ChannelSidebarComponent {
     this.accountScope.mixing()
       ? this.mixedInvites.invites()
       : this.invitesSvc.pendingInvites(),
+  );
+
+  protected readonly filteredInvites = computed(() =>
+    this.invites().filter((invite) =>
+      matchesRoomFilter(invite.name, this.normalizedFilter()),
+    ),
   );
   readonly activeRoomId = input<string | null>(null);
   /** The signed-in user (name + handle + avatar) for the bottom user panel. */

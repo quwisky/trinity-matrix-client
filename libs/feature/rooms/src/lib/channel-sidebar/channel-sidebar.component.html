@@ -61,10 +61,41 @@
     </div>
   </header>
 
+  <!-- Persistent rather than a toggled affordance: the point of this box over the Ctrl/Cmd+K
+       switcher is that the narrowed list STAYS on screen while you work through it, so the
+       control that produced it has to stay visible too. -->
+  <div class="sidebar__filter">
+    <input
+      hlmInput
+      class="h-8 w-full pr-8 text-sm"
+      type="text"
+      [value]="filterQuery()"
+      (input)="filterQuery.set($any($event.target).value)"
+      (keydown.escape)="onFilterEscape($event)"
+      placeholder="Filter rooms"
+      aria-label="Filter rooms"
+      autocomplete="off"
+      spellcheck="false"
+      data-testid="sidebar-filter"
+    />
+    @if (filterActive()) {
+      <button
+        class="sidebar__filter-clear"
+        (click)="clearFilter()"
+        aria-label="Clear filter"
+        title="Clear filter"
+        data-testid="sidebar-filter-clear"
+      >
+        <ng-icon name="lucideX" aria-hidden="true" />
+      </button>
+    }
+  </div>
+
   <div class="sidebar__scroll">
     <trn-sidebar-room-list
       [rooms]="rooms()"
-      [invites]="invites()"
+      [invites]="filteredInvites()"
+      [filterActive]="filterActive()"
       [activeRoomId]="activeRoomId()"
       [activeUserId]="activeUserId()"
       [spaceActive]="spaceActive()"
@@ -84,9 +115,9 @@
       } @else if (childrenError()) {
         <p class="empty empty--error">Couldn’t load this space’s channels.</p>
       } @else {
-        @if (joinableRooms().length) {
+        @if (filteredJoinableRooms().length) {
           <div class="category">More Channels</div>
-          @for (child of joinableRooms(); track child.roomId) {
+          @for (child of filteredJoinableRooms(); track child.roomId) {
             <div class="joinable">
               <span class="joinable__hash">#</span>
               <div class="joinable__text">
@@ -111,9 +142,9 @@
           }
         }
 
-        @if (childSpaces().length) {
+        @if (filteredChildSpaces().length) {
           <div class="category">Spaces</div>
-          @for (child of childSpaces(); track child.roomId) {
+          @for (child of filteredChildSpaces(); track child.roomId) {
             <div class="joinable joinable--space">
               <trn-avatar
                 class="joinable__avatar"

@@ -1195,6 +1195,7 @@ describe('RoomsPage space filtering', () => {
       lastMessage: '',
       activityTs: 0,
       favourite: false,
+      lowPriority: false,
     };
   }
 
@@ -1487,6 +1488,113 @@ describe('RoomsPage space filtering', () => {
 
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!c:hs']); // still hidden
     expect(shell.vm.roomsUnread()).toBe(2); // b's unread stays off the Rooms badge
+  });
+
+  // The sidebar's filter box writes `store.roomFilter`, and the shell — not the sidebar —
+  // applies it. That split exists so the Alt+Arrow room walk steps through exactly what is
+  // on screen; the tests below are what hold the two halves together.
+  it('narrows the rendered list without touching what actions operate on', () => {
+    const shell = build();
+
+    shell.store.roomFilter.set('l'); // matches "charlie" and "alpha", not "bravo"
+
+    expect(shell.vm.filteredRooms().map((r) => r.id)).toEqual([
+      '!c:hs',
+      '!a:hs',
+    ]);
+    // `visibleRooms` is what "mark all as read" and name lookups read — a filter is a view
+    // over the list, not a change to which rooms exist.
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!c:hs',
+      '!a:hs',
+      '!b:hs',
+    ]);
+  });
+
+  it('hands back the very same array when nothing is typed', () => {
+    const shell = build();
+
+    // Identity, not just equality: an unfiltered shell must not allocate a new array on
+    // every sync, or every downstream computed would invalidate for nothing.
+    expect(shell.vm.filteredRooms()).toBe(shell.vm.visibleRooms());
+  });
+
+  it('walks the FILTERED list with Alt+Arrow, so the keyboard cannot land off-screen', () => {
+    const shell = build();
+    shell.nav.onSelectRoom('!c:hs');
+    // "charlie" and "bravo" match; "alpha" does not. The hidden room has to sit BETWEEN
+    // the active one and the next visible one (list order is c, a, b) or the filtered and
+    // unfiltered walks would step to the same room and prove nothing.
+    shell.store.roomFilter.set('r');
+    expect(shell.vm.filteredRooms().map((r) => r.id)).toEqual([
+      '!c:hs',
+      '!b:hs',
+    ]);
+
+    shell.shortcuts.onGlobalKeydown({
+      key: 'ArrowDown',
+      code: '',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: true,
+      shiftKey: false,
+      preventDefault: vi.fn(),
+    } as unknown as KeyboardEvent);
+
+    // Unfiltered, c → a. Filtered, a is off screen, so the walk steps c → b.
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+  });
+
+  it('jumps to the next unread room within the filter, not past it', () => {
+    const shell = build();
+    shell.nav.onSelectRoom('!c:hs');
+    // All three are unread, so the only thing that can move the target is the filter.
+    shell.store.roomFilter.set('r'); // c, b on screen; a hidden between them
+
+    shell.shortcuts.onGlobalKeydown({
+      key: 'ArrowDown',
+      code: '',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: true,
+      shiftKey: true,
+      preventDefault: vi.fn(),
+    } as unknown as KeyboardEvent);
+
+    // Unfiltered the next unread after c is a; filtered it is b.
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+  });
+
+  it('keeps the unread flag on the unfiltered list', () => {
+    const shell = build();
+
+    // Every seeded room is unread, so a filter matching NOTHING is what separates "is
+    // anything unread" from "is anything unread on screen".
+    shell.store.roomFilter.set('zzz');
+    expect(shell.vm.filteredRooms()).toEqual([]);
+
+    // "Mark all as read" marks every room, so it must stay offered.
+    expect(shell.vm.anyRoomUnread()).toBe(true);
+  });
+
+  it('drops the filter when the shell switches to another list', () => {
+    const shell = build();
+    shell.store.roomFilter.set('alpha');
+
+    shell.nav.onSelectSpace('!s:hs');
+
+    // A filter typed in one view must not silently narrow the next one.
+    expect(shell.store.roomFilter()).toBe('');
+    expect(shell.store.roomFilterActive()).toBe(false);
+  });
+
+  it('treats an all-whitespace query as no filter', () => {
+    const shell = build();
+
+    shell.store.roomFilter.set('   ');
+
+    expect(shell.store.roomFilterActive()).toBe(false);
+    expect(shell.vm.filteredRooms()).toBe(shell.vm.visibleRooms());
   });
 });
 

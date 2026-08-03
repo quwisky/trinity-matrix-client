@@ -118,6 +118,8 @@ async function renderSidebar(
   opts: {
     inputs?: {
       rooms?: RoomSummary[];
+      hasAnyUnread?: boolean;
+      filterQuery?: string;
       spaceActive?: boolean;
       activeRoomId?: string | null;
       user?: UserProfile;
@@ -327,6 +329,7 @@ describe('ChannelSidebarComponent', () => {
       inputs: {
         spaceActive: true,
         rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        hasAnyUnread: true,
       },
     });
     expect(
@@ -345,6 +348,7 @@ describe('ChannelSidebarComponent', () => {
       inputs: {
         spaceActive: true,
         rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        hasAnyUnread: true,
       },
     });
     let marked = false;
@@ -1196,6 +1200,7 @@ describe('ChannelSidebarComponent', () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
         rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        hasAnyUnread: true,
       },
     });
     let all = false;
@@ -1623,5 +1628,177 @@ describe('ChannelSidebarComponent space sort menu', () => {
     row('space-sort-default')?.click();
 
     expect(emitted).toEqual([null]);
+  });
+});
+
+/**
+ * The filter BOX. The narrowing of joined rooms lives in the shell (`RoomShellStore`
+ * owns the query, `RoomShellViewModel.filteredRooms` applies it) so the Alt+↑/↓ room walk
+ * steps through the same list — see room-shell-view-model.spec.ts. What is left here is
+ * what the sidebar itself still owns: the control, and the lists the shell does not know
+ * about (invites and a space's children).
+ */
+describe('ChannelSidebarComponent room filter', () => {
+  function filterInput(
+    fixture: ComponentFixture<ChannelSidebarComponent>,
+  ): HTMLInputElement {
+    return fixture.nativeElement.querySelector(
+      '[data-testid=sidebar-filter]',
+    ) as HTMLInputElement;
+  }
+
+  function type(
+    fixture: ComponentFixture<ChannelSidebarComponent>,
+    value: string,
+  ): void {
+    const input = filterInput(fixture);
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+  }
+
+  it('publishes what is typed, so the shell can narrow the list and the walk together', async () => {
+    const { fixture } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })] },
+    });
+    const seen: string[] = [];
+    fixture.componentInstance.filterQuery.subscribe((q) => seen.push(q));
+
+    type(fixture, 'des');
+
+    expect(seen).toEqual(['des']);
+  });
+
+  it('narrows invites and the space’s child lists itself — the shell does not see those', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })], spaceActive: true },
+      invites: [
+        invite({ roomId: '!i1:hs', name: 'design crit' }),
+        invite({ roomId: '!i2:hs', name: 'random' }),
+      ],
+      joinableRooms: [
+        child({ roomId: '!j1:hs', name: 'design docs' }),
+        child({ roomId: '!j2:hs', name: 'ops' }),
+      ],
+      childSpaces: [
+        child({ roomId: '!s1:hs', name: 'design org', isSpace: true }),
+        child({ roomId: '!s2:hs', name: 'infra', isSpace: true }),
+      ],
+    });
+
+    type(fixture, 'design');
+
+    // The box sits above the whole scroll area, so everything under it narrows — a list
+    // that visibly ignored the filter would read as broken.
+    expect(
+      [...container.querySelectorAll('.invite__name')].map((el) =>
+        el.textContent!.trim(),
+      ),
+    ).toEqual(['design crit']);
+    expect(
+      [...container.querySelectorAll('.joinable__name')].map((el) =>
+        el.textContent!.trim(),
+      ),
+    ).toEqual(['design docs', 'design org']);
+  });
+
+  it('says nothing matched rather than claiming the space is empty', async () => {
+    // The shell has already filtered every room away; only the sidebar knows why.
+    const { container } = await renderSidebar({
+      inputs: { rooms: [], filterQuery: 'zzz' },
+    });
+
+    // Telling someone with 40 rooms that they have none is worse than saying nothing.
+    expect(
+      container.querySelector('[data-testid=room-list-empty]')!.textContent,
+    ).toContain('No rooms match');
+  });
+
+  it('still says the space is empty when nothing is filtered', async () => {
+    const { container } = await renderSidebar({ inputs: { rooms: [] } });
+
+    expect(
+      container.querySelector('[data-testid=room-list-empty]')!.textContent,
+    ).toContain('No channels here yet');
+  });
+
+  it('offers a clear button only while filtering, and clearing publishes the empty query', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })] },
+    });
+    const clear = () =>
+      container.querySelector<HTMLElement>(
+        '[data-testid=sidebar-filter-clear]',
+      );
+
+    expect(clear()).toBeNull();
+
+    type(fixture, 'design');
+    expect(clear()).not.toBeNull();
+
+    const seen: string[] = [];
+    fixture.componentInstance.filterQuery.subscribe((q) => seen.push(q));
+    clear()!.click();
+    fixture.detectChanges();
+
+    expect(seen).toEqual(['']);
+    expect(filterInput(fixture).value).toBe('');
+    expect(clear()).toBeNull();
+  });
+
+  it('treats an all-whitespace query as no filter at all', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })] },
+    });
+
+    type(fixture, '   ');
+
+    // No clear button: there is nothing meaningful to clear.
+    expect(
+      container.querySelector('[data-testid=sidebar-filter-clear]'),
+    ).toBeNull();
+  });
+
+  it('clears on Escape, and lets Escape through once the box is empty', async () => {
+    const { fixture } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })] },
+    });
+
+    type(fixture, 'zzz');
+
+    const escape = () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      const stop = vi.spyOn(event, 'stopPropagation');
+      filterInput(fixture).dispatchEvent(event);
+      fixture.detectChanges();
+      return stop;
+    };
+
+    expect(escape()).toHaveBeenCalled();
+    expect(filterInput(fixture).value).toBe('');
+
+    // Second Escape has nothing to clear, so it must reach the shell's own handler
+    // instead of being swallowed — otherwise focus in this box would trap it.
+    expect(escape()).not.toHaveBeenCalled();
+  });
+
+  it('keeps Mark all as read while the filter hides the unread room', async () => {
+    // `rooms` arrives filtered, so the affordance can only be right if it is gated on the
+    // shell's unfiltered signal rather than on what is rendered.
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'design' })],
+        hasAnyUnread: true,
+        filterQuery: 'design',
+      },
+    });
+
+    expect(
+      container.querySelector('[data-testid=mark-all-read]'),
+    ).not.toBeNull();
   });
 });

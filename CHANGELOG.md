@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Filter the room list without losing it.** Ctrl/Cmd+K jumps you to a room and closes,
+  which is the wrong shape for "show me my three design rooms and let me work through
+  them". A filter box now sits at the top of the sidebar: type, and the list narrows in
+  place and stays narrowed — rooms, invites and a space's other channels alike. Matching
+  ignores case and accents, so `cafe` finds `Café`, and it matches anywhere in the name, so
+  `dev` finds `core-dev`. Escape or the ✕ clears it, and it clears itself when you switch
+  space. Alt+↑/↓ walks the filtered list too, so the keyboard cannot land you on a room you
+  can't see, and **Mark all as read** still means all of them.
+
 - **Push a room out of the way without leaving it.** The rooms you are in but rarely read —
   an archived project, a noisy announcements channel — sat in the middle of the list
   competing with the ones you actually use. **Low priority** in a room's ⋮ menu sinks it to

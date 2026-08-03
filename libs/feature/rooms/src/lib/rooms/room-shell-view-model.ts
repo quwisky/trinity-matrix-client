@@ -15,6 +15,10 @@ import {
   type SpaceSummary,
 } from '@trinity/data-access/rooms';
 import { AccountBadgesService } from '../shared/account-badges.service';
+import {
+  matchesRoomFilter,
+  normalizeRoomFilter,
+} from '../channel-sidebar/room-filter';
 import { RoomShellStore } from './room-shell-store';
 import { type UserProfile } from '@trinity/data-access/profile';
 import { type RailUnread } from '../server-rail/server-rail.component';
@@ -126,6 +130,35 @@ export class RoomShellViewModel {
       comparatorFor(this.spaceOrder.effectiveFor(spaceId), childIds),
     );
   });
+
+  /**
+   * {@link visibleRooms} narrowed by the sidebar's filter box.
+   *
+   * This is what the sidebar renders AND what the Alt+↑/↓ room walk steps through, so the
+   * keyboard can never land on a room the filter has hidden. Everything that acts on rooms
+   * rather than displaying them — "mark all as read", name lookup — stays on the
+   * unfiltered {@link visibleRooms}.
+   */
+  readonly filteredRooms = computed<RoomSummary[]>(() => {
+    const query = normalizeRoomFilter(this.store.roomFilter());
+    if (!query) {
+      // Same array by identity when nothing is typed, so the common case allocates nothing
+      // and downstream `computed`s do not invalidate on every unrelated sync.
+      return this.visibleRooms();
+    }
+    return this.visibleRooms().filter((room) =>
+      matchesRoomFilter(room.name, query),
+    );
+  });
+
+  /**
+   * Whether any room has unread messages, read from the UNFILTERED list — "mark all as
+   * read" marks every room, so hiding it because the current filter excludes the unread
+   * ones would misrepresent what it does.
+   */
+  readonly anyRoomUnread = computed(() =>
+    this.visibleRooms().some((room) => room.hasUnread),
+  );
 
   /**
    * The ordering the open space's rooms are listed in — its own override, else the active

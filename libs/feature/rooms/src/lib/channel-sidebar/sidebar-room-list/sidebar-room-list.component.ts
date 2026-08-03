@@ -105,6 +105,13 @@ export class SidebarRoomListComponent {
   readonly activeUserId = input<string | null>(null);
   readonly spaceActive = input(false);
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
+  /**
+   * Whether the parent's filter box is narrowing {@link rooms}. Only the empty state cares:
+   * an empty list means "you have no rooms here" normally and "nothing matched" under a
+   * filter, and telling a user with 40 rooms that they have none is worse than saying
+   * nothing.
+   */
+  readonly filterActive = input(false);
 
   readonly selectRoom = output<string>();
   /** Carries the owning account so a mixed-in row leaves on ITS account, not the active one. */

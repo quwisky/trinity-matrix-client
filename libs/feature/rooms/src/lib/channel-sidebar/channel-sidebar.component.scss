@@ -51,6 +51,34 @@
   }
 }
 
+// Outside `.sidebar__scroll` on purpose: the box stays put while the list it narrows
+// scrolls under it. The input itself is `hlmInput`, so this only positions the row and
+// overlays the clear button — no colours here, or it would stop re-theming.
+.sidebar__filter {
+  position: relative;
+  flex: 0 0 auto;
+  margin: 8px 8px 0;
+}
+
+.sidebar__filter-clear {
+  @include interactive-row;
+
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+
+  &:hover {
+    color: var(--trinity-text-bright);
+  }
+}
+
 .sidebar__scroll {
   @include scrollable;
 

@@ -110,10 +110,12 @@ export class ShellShortcutsService {
     );
   }
 
+  // Both walks step through `filteredRooms`, not `visibleRooms`: with the sidebar's filter
+  // box active they must not land on a room the user cannot see.
   private walkList(direction: 'next' | 'previous'): void {
     this.openShortcutTarget(
       stepList(
-        this.vm.visibleRooms().map((room) => room.id),
+        this.vm.filteredRooms().map((room) => room.id),
         this.store.activeRoomId(),
         direction,
       ),
@@ -123,7 +125,7 @@ export class ShellShortcutsService {
 
   private walkUnread(direction: 'next' | 'previous'): void {
     this.openShortcutTarget(
-      stepUnread(this.vm.visibleRooms(), this.store.activeRoomId(), direction),
+      stepUnread(this.vm.filteredRooms(), this.store.activeRoomId(), direction),
       'user',
     );
   }
