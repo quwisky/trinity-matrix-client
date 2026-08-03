@@ -29,6 +29,7 @@ const caps = (over: Partial<MessageRowCaps> = {}): MessageRowCaps => ({
   canPin: false,
   pinned: false,
   canThread: true,
+  canQuote: false,
   readOnly: false,
   ...over,
 });

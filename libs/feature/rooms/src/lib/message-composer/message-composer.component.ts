@@ -589,6 +589,57 @@ export class MessageComposerComponent {
     this.applyEdit(result);
   }
 
+  /**
+   * Put a message's text into the composer as a blockquote to write around.
+   *
+   * Called by the host list when a row raises `quote`, rather than driven by an input,
+   * because quoting is a one-shot event and not a state the composer should be able to
+   * re-enter: an input would need a token to distinguish "quoted twice" from "re-rendered".
+   *
+   * The block goes ABOVE anything already typed and the caret lands at the very end.
+   * Whatever is in the box is the response being written, so the quote belongs before it
+   * and the caret belongs after it; quoting a second message stacks rather than replaces.
+   * Routed through the same `applyEdit` a formatting chord uses, so the textarea, the
+   * autocompletes and the typing notice all stay in step.
+   */
+  insertQuote(block: string): void {
+    if (!block) {
+      return;
+    }
+    // Quoting out of an edit has to wait for the edit to actually end.
+    //
+    // The host clears its `editingId` and calls this in the SAME tick, so `editing()` is
+    // still true here — the input only changes on the next change detection. The effect
+    // above then takes its `!editing && wasEditing` branch and does an unconditional
+    // `text.set(draft)`, which would land AFTER this insert and silently discard the
+    // quote. afterNextRender runs after that effect, so the quote survives.
+    //
+    // afterNextRender, NOT queueMicrotask: the app is zoneless, so the host's signal write
+    // only schedules change detection (rAF) and a microtask would still run before the
+    // effect. Same reason `onTogglePreview` uses it.
+    if (this.editing()) {
+      afterNextRender(() => this.insertQuoteNow(block), {
+        injector: this.injector,
+      });
+      return;
+    }
+    this.insertQuoteNow(block);
+  }
+
+  private insertQuoteNow(block: string): void {
+    // A preview hides the textarea, and `applyEdit` focuses it — on a `display: none`
+    // element that is a no-op, stranding the caret on <body>. Quoting means you are about
+    // to write, so drop back to the editor first.
+    this.previewing.set(false);
+    const existing = this.text();
+    const text = existing ? block + existing : block;
+    this.applyEdit({
+      text,
+      selectionStart: text.length,
+      selectionEnd: text.length,
+    });
+  }
+
   /** Apply a formatting action to the current selection. */
   onFormat(action: FormatAction): void {
     const el = this.textarea()?.nativeElement;

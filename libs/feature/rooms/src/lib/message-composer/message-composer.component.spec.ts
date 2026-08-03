@@ -1515,6 +1515,95 @@ describe('MessageComposerComponent', () => {
   // Formatting: a toolbar action, the rebindable chords behind it, and the preview. The
   // wrapping arithmetic itself lives in `markdown-edit.ts` and is tested there — these cover the
   // wiring: that the right selection reaches it, and that the result reaches the textarea.
+  describe('quoting', () => {
+    it('puts the block in an empty composer and leaves the caret below it', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+
+      cmp.insertQuote('> theirs\n\n');
+      await Promise.resolve();
+
+      expect(cmp.text()).toBe('> theirs\n\n');
+      const ta = fixture.nativeElement.querySelector(
+        'textarea',
+      ) as HTMLTextAreaElement;
+      expect(ta.selectionStart).toBe('> theirs\n\n'.length);
+    });
+
+    it('puts the quote ABOVE what is already typed, caret still at the end', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      cmp.text.set('my answer');
+      fixture.detectChanges();
+
+      cmp.insertQuote('> theirs\n\n');
+      await Promise.resolve();
+
+      // Whatever is in the box IS the response, so the quote belongs before it and the
+      // caret after it. Replacing the draft would silently discard work.
+      expect(cmp.text()).toBe('> theirs\n\nmy answer');
+      const ta = fixture.nativeElement.querySelector(
+        'textarea',
+      ) as HTMLTextAreaElement;
+      expect(ta.selectionStart).toBe('> theirs\n\nmy answer'.length);
+    });
+
+    it('stacks a second quote rather than replacing the first', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+
+      cmp.insertQuote('> first\n\n');
+      cmp.insertQuote('> second\n\n');
+
+      expect(cmp.text()).toBe('> second\n\n> first\n\n');
+    });
+
+    it('announces typing, so quoting alone shows the other side something is happening', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      const seen: boolean[] = [];
+      cmp.typing.subscribe((t) => seen.push(t));
+
+      cmp.insertQuote('> theirs\n\n');
+
+      expect(seen).toEqual([true]);
+    });
+
+    it('drops out of preview, so the caret lands somewhere real', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      cmp.onTogglePreview();
+      fixture.detectChanges();
+      expect(cmp.previewing()).toBe(true);
+
+      cmp.insertQuote('> theirs\n\n');
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      // A preview hides the textarea, and focus() on a display:none element is a no-op —
+      // the user would type their answer into nothing.
+      expect(cmp.previewing()).toBe(false);
+      const ta = fixture.nativeElement.querySelector(
+        'textarea',
+      ) as HTMLTextAreaElement;
+      expect(document.activeElement).toBe(ta);
+    });
+
+    it('does nothing at all for an empty block', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      cmp.text.set('untouched');
+      const seen: boolean[] = [];
+      cmp.typing.subscribe((t) => seen.push(t));
+
+      cmp.insertQuote('');
+
+      // A body with nothing quotable must not clear the box or claim the user is typing.
+      expect(cmp.text()).toBe('untouched');
+      expect(seen).toEqual([]);
+    });
+  });
+
   describe('formatting', () => {
     /** Put `value` in the composer with `[start, end)` selected, the way a user would. */
     async function withSelection(

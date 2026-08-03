@@ -14,6 +14,7 @@ const caps = (over: Partial<MessageToolbarCaps> = {}): MessageToolbarCaps => ({
   canPin: false,
   pinned: false,
   canThread: true,
+  canQuote: false,
   ...over,
 });
 
@@ -191,5 +192,37 @@ describe('MessageToolbarComponent', () => {
 
     expect(action).toEqual({ type: 'react-more' });
     expect(cmp.pickerOpen()).toBe(false); // closes the quick popover
+  });
+});
+
+describe('MessageToolbarComponent quote', () => {
+  it('offers Quote only for a message with quotable text', async () => {
+    const { fixture, container } = await render(MessageToolbarComponent, {
+      inputs: { caps: caps() },
+    });
+
+    openMenu(container, fixture);
+    expect(document.querySelector('[data-testid="msg-quote"]')).toBeNull();
+
+    fixture.componentRef.setInput('caps', caps({ canQuote: true }));
+    fixture.detectChanges();
+
+    expect(document.querySelector('[data-testid="msg-quote"]')).not.toBeNull();
+  });
+
+  it('emits a quote action distinct from reply', async () => {
+    const { fixture, container } = await render(MessageToolbarComponent, {
+      inputs: { caps: caps({ canQuote: true }) },
+    });
+    const seen: MessageAction[] = [];
+    fixture.componentInstance.action.subscribe((a) => seen.push(a));
+
+    openMenu(container, fixture);
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="msg-quote"]')!
+      .click();
+
+    // A reply points at the event; a quote brings its words. Same toolbar, different act.
+    expect(seen).toEqual([{ type: 'quote' }]);
   });
 });

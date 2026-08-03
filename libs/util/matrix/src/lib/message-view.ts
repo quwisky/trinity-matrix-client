@@ -496,6 +496,24 @@ export function isEditableMessage(message: MessageView): boolean {
   );
 }
 
+/**
+ * A message whose text is worth pulling into the composer as a quote.
+ *
+ * Not gated on ownership, unlike {@link isEditableMessage} — quoting someone else is the
+ * whole point. Media is excluded because its `body` is the filename, and quoting
+ * `IMG_1234.jpg` helps nobody; so are polls, whose text is a question rather than a
+ * statement, and anything that failed to decrypt, whose body is a placeholder.
+ */
+export function isQuotableMessage(message: MessageView): boolean {
+  return (
+    !message.decryptionFailed &&
+    (message.kind === 'text' ||
+      message.kind === 'emote' ||
+      message.kind === 'notice') &&
+    message.body.trim() !== ''
+  );
+}
+
 /** Build a short preview of a replied-to message, or null if it isn't loaded. */
 export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
   const target = room.findEventById(eventId);

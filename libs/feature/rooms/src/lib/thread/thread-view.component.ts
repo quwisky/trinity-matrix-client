@@ -24,7 +24,9 @@ import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
 import { RoomsService } from '@trinity/data-access/rooms';
 import {
   isEditableMessage,
+  isQuotableMessage,
   messagePermalink,
+  quoteBlock,
   type MessageView,
 } from '@trinity/util/matrix';
 import {
@@ -54,6 +56,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
   canPin: false,
   pinned: false,
   canThread: false,
+  canQuote: false,
   readOnly: false,
 };
 
@@ -119,6 +122,9 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
   readonly uploadProgress = signal<number | null>(null);
 
   private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
+
+  /** The thread's own composer, so a quote lands in it rather than the room's. */
+  private readonly composer = viewChild(MessageComposerComponent);
 
   /** The thread's messages (root first, then replies), grouped for display. */
   readonly rows = computed<MessageRow[]>(() => {
@@ -226,6 +232,12 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
     this.replyingToId.set(row.id);
   }
 
+  /** Pull a thread message's text into THIS panel's composer as a `>` block. */
+  startQuote(row: MessageRow): void {
+    this.editingId.set(null);
+    this.composer()?.insertQuote(quoteBlock(row.body));
+  }
+
   /** A thread message the current user can still edit (own, confirmed, text). */
   isEditable(m: MessageView): boolean {
     return isEditableMessage(m);
@@ -316,6 +328,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         canPin: false,
         pinned: false,
         canThread: false,
+        canQuote: isQuotableMessage(row),
         readOnly: false,
       });
     }
@@ -338,6 +351,9 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
         break;
       case 'reply':
         this.startReply(row);
+        break;
+      case 'quote':
+        this.startQuote(row);
         break;
       case 'copy':
         this.onCopy(row);

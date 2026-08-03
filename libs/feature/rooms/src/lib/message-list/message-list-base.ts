@@ -23,7 +23,9 @@ import {
   formatTypingNotice,
   hasUsableTimestamp,
   isEditableMessage,
+  isQuotableMessage,
   messagePermalink,
+  quoteBlock,
   startOfLocalDay,
   type MatrixLinkTarget,
   type MessageView,
@@ -37,6 +39,7 @@ import {
   type MessageRowCaps,
 } from '../message-row/message-row.component';
 import {
+  MessageComposerComponent,
   type ComposerSubmit,
   type MentionMember,
 } from '../message-composer/message-composer.component';
@@ -48,6 +51,7 @@ const DEFAULT_ROW_CAPS: MessageRowCaps = {
   canPin: false,
   pinned: false,
   canThread: true,
+  canQuote: false,
   readOnly: false,
 };
 
@@ -59,7 +63,7 @@ interface RowCacheEntry {
   readonly row: MessageRow;
 }
 
-/** Whether two caps carry the same capabilities — all six fields are flat booleans. */
+/** Whether two caps carry the same capabilities — all seven fields are flat booleans. */
 function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
   return (
     a.editable === b.editable &&
@@ -67,6 +71,7 @@ function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
     a.canPin === b.canPin &&
     a.pinned === b.pinned &&
     a.canThread === b.canThread &&
+    a.canQuote === b.canQuote &&
     a.readOnly === b.readOnly
   );
 }
@@ -183,6 +188,9 @@ export abstract class MessageListBase {
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
+
+  /** The composer rendered by each concrete list, so a quote can be put into it directly. */
+  private readonly composer = viewChild(MessageComposerComponent);
 
   // Grouping rows, cached per event id so an unchanged message (same view object, same
   // header flag AND same day-separator label) keeps its row identity — an OnPush row is
@@ -357,6 +365,19 @@ export abstract class MessageListBase {
     this.replyingToId.set(row.id);
   }
 
+  /**
+   * Pull a message's text into the composer as a `>` block.
+   *
+   * Leaves `replyingToId` alone: a quote is composer content, not a send target, so
+   * quoting while replying keeps the reply — the two compose. Editing IS cancelled,
+   * because the composer holds the edited message's body there and inserting a quote into
+   * it would rewrite the original rather than answer it.
+   */
+  startQuote(row: MessageRow): void {
+    this.editingId.set(null);
+    this.composer()?.insertQuote(quoteBlock(row.body));
+  }
+
   /** A message the current user can still edit (own, confirmed, text — not media). */
   isEditable(m: MessageView): boolean {
     return isEditableMessage(m);
@@ -417,6 +438,7 @@ export abstract class MessageListBase {
         canPin: canPin && !unsent,
         pinned: pinnedIds.includes(message.id),
         canThread: !unsent,
+        canQuote: isQuotableMessage(message),
         readOnly: false,
       };
       // Reuse the previous object when nothing about this row's caps changed, exactly
@@ -449,6 +471,9 @@ export abstract class MessageListBase {
         break;
       case 'reply':
         this.startReply(row);
+        break;
+      case 'quote':
+        this.startQuote(row);
         break;
       case 'copy':
         this.onCopy(row);
