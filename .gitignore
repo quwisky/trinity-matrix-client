@@ -38,8 +38,10 @@ log.txt
 /electron/www
 /electron/release
 
-# Node
-/node_modules
+# Node. Unanchored on purpose: pnpm and Vite create nested package dirs — `vitest` writes a
+# cache into `libs/<lib>/node_modules/.vite/`, and an anchored `/node_modules` left those
+# committable. Nothing tracked them yet, but `git add -A` picked one up.
+node_modules/
 npm-debug.log
 yarn-error.log
 
