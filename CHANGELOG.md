@@ -14,6 +14,16 @@ All notable changes to this project are documented here. The format is based on
   colour so you can spot it while scrolling past. It works on mentions written in Element
   and other Matrix clients too, not just ones written here.
 
+- **Make the text bigger.** Trinity had no type-size setting at all, which is an
+  accessibility gap rather than a preference — if the default was too small for you, there
+  was nothing to do about it. Settings → Appearance gains **Text size** with four steps. It
+  scales message text and everything written in it, all rendered markdown, and the settings
+  area itself. Parts of the app's chrome still keep a fixed size for now, so they stay
+  readable and consistent at their own size while the rest grows; those surfaces are being
+  converted one at a time. The size is a proportion of whatever your browser or phone is
+  already set to, so if you have already made text larger system-wide, this adds to it
+  rather than overriding it.
+
 - **Jump to a date in a conversation.** Finding what someone said last Tuesday meant
   scrolling and waiting, over and over. **Jump to date** in a room's ⋯ menu asks for a day
   and takes you to the first message on it, loading the history in between for you. It

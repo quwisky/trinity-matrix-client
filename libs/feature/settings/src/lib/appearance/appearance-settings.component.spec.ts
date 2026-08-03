@@ -8,8 +8,10 @@ import {
   SystemLineSettingsService,
   ThemeService,
   TRINITY_PALETTES,
+  TRINITY_TEXT_SCALES,
   type Palette,
   type ResolvedTheme,
+  type TextScale,
   type ThemePreference,
 } from '@trinity/platform-native';
 import { By } from '@angular/platform-browser';
@@ -26,6 +28,7 @@ describe('AppearanceSettingsComponent', () => {
   let preference: ReturnType<typeof signal<ThemePreference>>;
   let resolved: ReturnType<typeof signal<ResolvedTheme>>;
   let palette: ReturnType<typeof signal<Palette>>;
+  let textScale: ReturnType<typeof signal<TextScale>>;
   let showMembership: ReturnType<typeof signal<boolean>>;
   let showProfile: ReturnType<typeof signal<boolean>>;
   let showRoomChanges: ReturnType<typeof signal<boolean>>;
@@ -41,6 +44,7 @@ describe('AppearanceSettingsComponent', () => {
     preference = signal<ThemePreference>('system');
     resolved = signal<ResolvedTheme>('dark');
     palette = signal<Palette>('trinity');
+    textScale = signal<TextScale>('default');
     showMembership = signal(true);
     showProfile = signal(true);
     showRoomChanges = signal(true);
@@ -61,6 +65,8 @@ describe('AppearanceSettingsComponent', () => {
           resolved,
           palette,
           palettes: TRINITY_PALETTES,
+          textScale,
+          textScales: TRINITY_TEXT_SCALES,
         }),
         MockProvider(ComposerSettingsService, {
           showFormattingToolbar,
@@ -130,6 +136,30 @@ describe('AppearanceSettingsComponent', () => {
   // ResizeObserver/scrollIntoView), so the open→select round-trip is covered in e2e — same as
   // the palette dropdown above. Here: the controls exist, are bound, and validate what they
   // are handed.
+  it('offers every registered text size, bound to the current one', async () => {
+    textScale.set('large');
+    const { container } = await renderPage();
+
+    const trigger = container.querySelector('[data-testid=text-scale-select]');
+    expect(trigger).not.toBeNull();
+    expect(trigger!.textContent).toContain('Large');
+  });
+
+  it('applies a chosen text size, and ignores an unregistered one', async () => {
+    const { fixture } = await renderPage();
+    const theme = TestBed.inject(ThemeService);
+    const cmp = fixture.componentInstance;
+
+    cmp.onTextScaleChange('larger');
+    expect(theme.setTextScale).toHaveBeenCalledWith('larger');
+
+    // The select can only offer registered ids, but the handler takes `string | null` from
+    // the Helm output — so it must reject anything else rather than widen the type.
+    cmp.onTextScaleChange('gigantic');
+    cmp.onTextScaleChange(null);
+    expect(theme.setTextScale).toHaveBeenCalledTimes(1);
+  });
+
   describe('date and time', () => {
     it('renders both format dropdowns bound to the current preference', async () => {
       const { container } = await renderPage();
