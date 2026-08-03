@@ -16,6 +16,7 @@ import {
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   Observable,
+  catchError,
   defer,
   finalize,
   from,
@@ -82,6 +83,40 @@ function voiceExtension(mimeType: string): string {
     return 'm4a';
   }
   return 'webm';
+}
+
+/**
+ * What a "jump to date" attempt ended up doing. A discriminated union rather than
+ * `string | null`, because the four outcomes need four different things said to the user
+ * and three of them are not failures of the same kind.
+ */
+export type JumpToDateResult =
+  /** The event is loaded and can be scrolled to. */
+  | { kind: 'found'; eventId: string }
+  /** Reachable in principle, but further back than the bounded scrollback goes. */
+  | { kind: 'too-far' }
+  /** The room has nothing at or after that date (a date before it existed, or the future). */
+  | { kind: 'no-event' }
+  /** The homeserver does not implement MSC3030 at all. */
+  | { kind: 'unsupported' };
+
+/**
+ * How many `scrollback` pages a date jump will spend before giving up. 20 x 30 events is
+ * roughly the recent history a person scrolls to by hand, and it bounds the worst case at
+ * 20 sequential requests rather than paging a large room to its start.
+ */
+const MAX_JUMP_PAGES = 20;
+
+/** Map a `timestampToEvent` rejection onto the outcome the UI should describe. */
+function classifyJumpFailure(err: unknown): JumpToDateResult {
+  const code = (err as { errcode?: string } | null)?.errcode;
+  // M_UNRECOGNIZED is what a server that has never heard of the endpoint returns; the
+  // SDK surfaces a 404 on the route the same way. Distinguished from M_NOT_FOUND, which
+  // is the endpoint working and reporting that the room has no such event.
+  if (code === 'M_UNRECOGNIZED') {
+    return { kind: 'unsupported' };
+  }
+  return { kind: 'no-event' };
 }
 
 /** The open room's tombstone: it was replaced by a successor room (`m.room.tombstone`). */
@@ -455,6 +490,95 @@ export class TimelineService {
       finalize(() => this._loadingOlder.set(false)),
       map(() => void 0),
     );
+  }
+
+  /**
+   * Find the first message on or after `dayStartMs` and page history back until it is
+   * loaded, so the caller can scroll to it. Cold — runs on subscribe.
+   *
+   * Two halves, and the interesting one is the second. `timestampToEvent` (MSC3030) asks
+   * the server which event sits at a timestamp, and it answers for the WHOLE room — it
+   * happily names an event thousands back that this client has never seen. Scrolling to
+   * an id the DOM does not contain silently does nothing, which is what "jump to date"
+   * would look like without the loop below.
+   *
+   * The loop is `scrollback`, i.e. it extends the LIVE timeline rather than opening a
+   * separate window at the target. That is the deliberate trade: a windowed timeline would
+   * reach any date at all, but leaving the live timeline is what breaks read receipts and
+   * unread state, and it is a much larger change (filed separately). Paging back keeps one
+   * timeline and therefore cannot regress either — at the cost of only reaching dates
+   * within {@link MAX_JUMP_PAGES} pages, which is the recent history people actually jump
+   * to. Anything further reports `too-far` rather than pretending.
+   *
+   * Every outcome is named. A silent `null` here would be indistinguishable from "the
+   * jump worked but the room is empty", and the UI has genuinely different things to say
+   * about a server that cannot do this at all versus a date before the room existed.
+   */
+  jumpToDate(dayStartMs: number): Observable<JumpToDateResult> {
+    return defer(() => {
+      const ctx = this.context();
+      if (!ctx) {
+        return of<JumpToDateResult>({ kind: 'no-event' });
+      }
+      const { client, room } = ctx;
+      // Forward: the first event at or after midnight, which is what "this day" means.
+      // Backward would land on the last message of the PREVIOUS day for any date whose
+      // own messages all sit later in the day.
+      return from(
+        client.timestampToEvent(room.roomId, dayStartMs, Direction.Forward),
+      ).pipe(
+        switchMap((response) =>
+          this.pageBackTo(room, response.event_id as string),
+        ),
+        catchError((err: unknown) => of(classifyJumpFailure(err))),
+      );
+    });
+  }
+
+  /**
+   * Scroll history back until `eventId` is in the loaded timeline, bounded.
+   *
+   * Stops early when the server runs out of history — without that check a room whose
+   * start has been reached would burn every remaining page on requests that return
+   * nothing.
+   */
+  private pageBackTo(
+    room: Room,
+    eventId: string,
+  ): Observable<JumpToDateResult> {
+    const loaded = (): boolean => room.findEventById(eventId) !== undefined;
+    if (loaded()) {
+      return of({ kind: 'found', eventId });
+    }
+    return defer(() => {
+      this._loadingOlder.set(true);
+      return from(this.pageBackLoop(room, loaded));
+    }).pipe(
+      tap(() => this.refresh()),
+      // On success *or* error, exactly as loadOlder does: a stuck flag would disable
+      // pagination for the rest of the room's life.
+      finalize(() => this._loadingOlder.set(false)),
+      map((reached): JumpToDateResult =>
+        reached ? { kind: 'found', eventId } : { kind: 'too-far' },
+      ),
+    );
+  }
+
+  private async pageBackLoop(
+    room: Room,
+    loaded: () => boolean,
+  ): Promise<boolean> {
+    for (let page = 0; page < MAX_JUMP_PAGES; page++) {
+      const before = room.getLiveTimeline().getEvents().length;
+      await this.matrix.instance.scrollback(room, SCROLLBACK);
+      if (loaded()) {
+        return true;
+      }
+      if (room.getLiveTimeline().getEvents().length === before) {
+        return false; // start of the room: no more history to page in
+      }
+    }
+    return false;
   }
 
   /**
