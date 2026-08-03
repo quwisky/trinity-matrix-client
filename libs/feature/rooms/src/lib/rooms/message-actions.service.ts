@@ -260,4 +260,5 @@ const JUMP_FAILURE_MESSAGE = {
     'That date is further back than Trinity can load here. Scroll up to load more history first.',
   'no-event': 'No messages on or after that date.',
   unsupported: 'This homeserver cannot jump to a date.',
+  failed: 'Could not reach your homeserver. Try that date again.',
 } as const;

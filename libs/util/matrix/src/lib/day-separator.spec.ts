@@ -279,7 +279,14 @@ describe('localDayStartFromIso', () => {
       expect(local.getDate()).toBe(3);
       expect(local.getHours()).toBe(0);
     } finally {
-      process.env.TZ = original;
+      // DELETE when it was unset. `process.env.TZ = undefined` stores the STRING
+      // "undefined", which ICU cannot resolve and silently falls back to UTC — leaving
+      // every later test in this file running in a different zone than it thinks.
+      if (original === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = original;
+      }
     }
   });
 

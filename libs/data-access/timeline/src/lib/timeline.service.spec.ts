@@ -2739,8 +2739,15 @@ describe('TimelineService.jumpToDate', () => {
     pageSize?: number;
   }) {
     const pageSize = opts.pageSize ?? 30;
+    // Increasing timestamps: event i sits at (i + 1) * 1000, so a "day start" of
+    // (targetIndex + 1) * 1000 selects exactly that event and everything after it.
     const all = Array.from({ length: opts.total }, (_, i) =>
-      fakeEvent({ id: `$e${i}`, sender: '@alice:hs', body: `m${i}` }),
+      fakeEvent({
+        id: `$e${i}`,
+        sender: '@alice:hs',
+        body: `m${i}`,
+        ts: (i + 1) * 1000,
+      }),
     );
     // The live timeline holds the NEWEST `loaded` events; scrollback prepends older ones.
     let shown = all.slice(opts.total - opts.loaded);
@@ -2788,7 +2795,7 @@ describe('TimelineService.jumpToDate', () => {
       targetIndex: 40,
     });
 
-    const result = await firstValueFrom(svc.jumpToDate(1000));
+    const result = await firstValueFrom(svc.jumpToDate(41_000));
 
     expect(result).toEqual({ kind: 'found', eventId: '$e40' });
     // No paging at all: the common case (a recent date) must not cost a round trip.
@@ -2802,7 +2809,7 @@ describe('TimelineService.jumpToDate', () => {
       targetIndex: 5, // 95 events older than the loaded window
     });
 
-    const result = await firstValueFrom(svc.jumpToDate(1000));
+    const result = await firstValueFrom(svc.jumpToDate(6_000));
 
     expect(result).toEqual({ kind: 'found', eventId: '$e5' });
     // Without the loop this is where "jump to date" silently does nothing: the id is
@@ -2836,7 +2843,7 @@ describe('TimelineService.jumpToDate', () => {
       targetIndex: 0,
     });
 
-    const result = await firstValueFrom(svc.jumpToDate(1000));
+    const result = await firstValueFrom(svc.jumpToDate(1_000));
 
     expect(result).toEqual({ kind: 'too-far' });
     expect(scrollbacks()).toBe(20);
@@ -2879,6 +2886,58 @@ describe('TimelineService.jumpToDate', () => {
     });
   });
 
+  it('does not call a network failure "no messages that day"', async () => {
+    const { svc } = pagingSetup({
+      loaded: 10,
+      total: 10,
+      targetIndex: 0,
+      timestampToEvent: () => Promise.reject(new Error('offline')),
+    });
+
+    // A ConnectionError carries no errcode. Saying "no messages on or after that date"
+    // here tells someone on a captive portal that a day they spent chatting was empty —
+    // a claim about the room, made from a failure to ask.
+    expect(await firstValueFrom(svc.jumpToDate(1000))).toEqual({
+      kind: 'failed',
+    });
+  });
+
+  it('does not call a rate limit "no messages that day" either', async () => {
+    // Plausible precisely because of this feature: up to 20 scrollbacks in a burst.
+    const { svc } = pagingSetup({
+      loaded: 10,
+      total: 10,
+      targetIndex: 0,
+      timestampToEvent: () =>
+        Promise.reject(
+          Object.assign(new Error('slow down'), {
+            errcode: 'M_LIMIT_EXCEEDED',
+          }),
+        ),
+    });
+
+    expect(await firstValueFrom(svc.jumpToDate(1000))).toEqual({
+      kind: 'failed',
+    });
+  });
+
+  it('stops paginating when the user leaves the room mid-backfill', async () => {
+    const { svc, scrollbacks } = pagingSetup({
+      loaded: 10,
+      total: 5000,
+      targetIndex: 0,
+    });
+
+    const result = firstValueFrom(svc.jumpToDate(1000));
+    svc.close(); // the user clicks another room while the loop is in flight
+
+    expect(await result).toEqual({ kind: 'too-far' });
+    // It must not keep paging a room nobody is looking at, and it must not leave the flag
+    // set — the next room's viewport-fill loop bails while it is true.
+    expect(scrollbacks()).toBeLessThan(20);
+    expect(svc.loadingOlder()).toBe(false);
+  });
+
   it('reports a date the room has nothing at or after', async () => {
     const { svc } = pagingSetup({
       loaded: 10,
@@ -2895,6 +2954,52 @@ describe('TimelineService.jumpToDate', () => {
     expect(await firstValueFrom(svc.jumpToDate(1000))).toEqual({
       kind: 'no-event',
     });
+  });
+
+  it('does not claim success for an event the timeline will never render', async () => {
+    // `findEventById` answers for the RAW event, but the projection only keeps
+    // m.room.message (and displayable state). If the first event on the chosen day is a
+    // reaction, an edit, or a hidden system line, the raw id is findable and the message
+    // list has nothing carrying it — so reporting `found` produces a jump to an id that is
+    // not in `messages()`: the dialog closes, nothing scrolls, and no toast explains why.
+    const reaction = fakeEvent({ id: '$react', sender: '@alice:hs', body: '' });
+    reaction.getType = () => 'm.reaction';
+    const shown = [
+      reaction,
+      fakeEvent({
+        id: '$real',
+        sender: '@alice:hs',
+        body: 'the actual message',
+      }),
+    ];
+    const room = {
+      ...fakeRoom([]),
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => shown,
+        getPaginationToken: () => null,
+        getState: () => ({ hasSufficientPowerLevelFor: () => false }),
+      }),
+      findEventById: (id: string) => shown.find((e) => e.getId() === id),
+    };
+    const client = {
+      ...fakeClient(room as never, []),
+      getRoom: () => room,
+      scrollback: () => Promise.resolve(room),
+      timestampToEvent: () => Promise.resolve({ event_id: '$react' }),
+    };
+    TestBed.configureTestingModule({
+      providers: [TimelineService, matrixProvider(client), mediaProvider()],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    const result = await firstValueFrom(svc.jumpToDate(0));
+
+    // Whatever it answers, it must name something the list can actually scroll to.
+    if (result.kind === 'found') {
+      expect(svc.messages().map((m) => m.id)).toContain(result.eventId);
+    }
   });
 
   it('clears the loading flag whether it succeeds or fails', async () => {

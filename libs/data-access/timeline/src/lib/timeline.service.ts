@@ -98,7 +98,9 @@ export type JumpToDateResult =
   /** The room has nothing at or after that date (a date before it existed, or the future). */
   | { kind: 'no-event' }
   /** The homeserver does not implement MSC3030 at all. */
-  | { kind: 'unsupported' };
+  | { kind: 'unsupported' }
+  /** The request itself did not complete — offline, rate-limited, refused, timed out. */
+  | { kind: 'failed' };
 
 /**
  * How many `scrollback` pages a date jump will spend before giving up. 20 x 30 events is
@@ -107,16 +109,31 @@ export type JumpToDateResult =
  */
 const MAX_JUMP_PAGES = 20;
 
-/** Map a `timestampToEvent` rejection onto the outcome the UI should describe. */
+/**
+ * Map a rejection onto the outcome the UI should describe.
+ *
+ * Only two error codes mean something specific, and everything else is a REQUEST failure
+ * rather than a fact about the room. Treating the default as "no messages that day" — which
+ * this did at first — tells someone on a captive portal that a day they spent chatting was
+ * empty, and says the same thing when this feature's own burst of up to 20 scrollbacks
+ * trips a 429. Those are not facts, they are failures, and they are worth retrying.
+ *
+ * This also catches `scrollback` rejections from the backfill, because the `catchError`
+ * that calls it sits downstream of the pagination — which is another reason the default
+ * must not be a claim about the room's contents.
+ */
 function classifyJumpFailure(err: unknown): JumpToDateResult {
   const code = (err as { errcode?: string } | null)?.errcode;
-  // M_UNRECOGNIZED is what a server that has never heard of the endpoint returns; the
-  // SDK surfaces a 404 on the route the same way. Distinguished from M_NOT_FOUND, which
-  // is the endpoint working and reporting that the room has no such event.
+  // M_UNRECOGNIZED is what a server that never heard of the endpoint returns; the SDK
+  // surfaces a 404 on the route the same way.
   if (code === 'M_UNRECOGNIZED') {
     return { kind: 'unsupported' };
   }
-  return { kind: 'no-event' };
+  // M_NOT_FOUND is the endpoint working and reporting that the room has no such event.
+  if (code === 'M_NOT_FOUND') {
+    return { kind: 'no-event' };
+  }
+  return { kind: 'failed' };
 }
 
 /** The open room's tombstone: it was replaced by a successor room (`m.room.tombstone`). */
@@ -451,6 +468,10 @@ export class TimelineService {
     this._typingNames.set([]);
     this._canRedactOthers.set(false);
     this._canLoadOlder.set(false);
+    // An in-flight backfill (loadOlder, or a date jump's loop) belongs to the room being
+    // torn down. Leaving this true strands the NEXT room's viewport-fill loop, which bails
+    // while it is set.
+    this._loadingOlder.set(false);
     this._tombstone.set(null);
   }
 
@@ -528,7 +549,7 @@ export class TimelineService {
         client.timestampToEvent(room.roomId, dayStartMs, Direction.Forward),
       ).pipe(
         switchMap((response) =>
-          this.pageBackTo(room, response.event_id as string),
+          this.pageBackTo(room, response.event_id as string, dayStartMs),
         ),
         catchError((err: unknown) => of(classifyJumpFailure(err))),
       );
@@ -536,19 +557,33 @@ export class TimelineService {
   }
 
   /**
-   * Scroll history back until `eventId` is in the loaded timeline, bounded.
+   * Scroll history back until `eventId` is loaded, then name something the list can
+   * actually scroll to.
    *
-   * Stops early when the server runs out of history — without that check a room whose
-   * start has been reached would burn every remaining page on requests that return
-   * nothing.
+   * The server's event id is a POSITION, not necessarily a target. `findEventById` answers
+   * for the raw event, while the timeline renders only the projection — so an id that is
+   * findable is not the same as an id that is on screen. The gap is not exotic: the first
+   * event on a day is often an `m.reaction`, an `m.replace` edit, or a membership line the
+   * user has hidden, and in an encrypted room `scrollback` resolves BEFORE decryption
+   * finishes, so the target is momentarily a raw `m.room.encrypted` that the projection
+   * drops. Returning the raw id in any of those cases produces a jump to an element that
+   * does not exist: the dialog closes, nothing moves, and no error is shown.
+   *
+   * So the raw id is used only to decide how far back to page; the jump target is then the
+   * first RENDERED message at or after the requested midnight, which is what "jump to this
+   * day" means anyway.
+   *
+   * Paging stops early when the server runs out of history — without that check a room
+   * whose start has been reached would burn every remaining page on empty requests.
    */
   private pageBackTo(
     room: Room,
     eventId: string,
+    dayStartMs: number,
   ): Observable<JumpToDateResult> {
     const loaded = (): boolean => room.findEventById(eventId) !== undefined;
     if (loaded()) {
-      return of({ kind: 'found', eventId });
+      return of(this.renderableFrom(dayStartMs));
     }
     return defer(() => {
       this._loadingOlder.set(true);
@@ -559,9 +594,21 @@ export class TimelineService {
       // pagination for the rest of the room's life.
       finalize(() => this._loadingOlder.set(false)),
       map((reached): JumpToDateResult =>
-        reached ? { kind: 'found', eventId } : { kind: 'too-far' },
+        reached ? this.renderableFrom(dayStartMs) : { kind: 'too-far' },
       ),
     );
+  }
+
+  /**
+   * The first projected message at or after `dayStartMs`, or `no-event` when the day and
+   * everything after it holds nothing the list renders. `messages()` is in timeline order,
+   * so the first match is the earliest.
+   */
+  private renderableFrom(dayStartMs: number): JumpToDateResult {
+    const target = this._messages().find((m) => m.timestamp >= dayStartMs);
+    return target
+      ? { kind: 'found', eventId: target.id }
+      : { kind: 'no-event' };
   }
 
   private async pageBackLoop(
@@ -571,6 +618,14 @@ export class TimelineService {
     for (let page = 0; page < MAX_JUMP_PAGES; page++) {
       const before = room.getLiveTimeline().getEvents().length;
       await this.matrix.instance.scrollback(room, SCROLLBACK);
+      // The user can leave while up to 20 sequential requests are in flight. Nothing
+      // unsubscribes this — the subscription is tied to the PAGE, not the open room — so
+      // without this check the loop keeps paginating a room nobody is looking at and its
+      // `finalize` later clears `_loadingOlder` for whichever room is open by then,
+      // stranding that room's viewport-fill loop.
+      if (this.room !== room) {
+        return false;
+      }
       if (loaded()) {
         return true;
       }
