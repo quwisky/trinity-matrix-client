@@ -38,8 +38,15 @@ export class RoomShellNavigationService {
   private readonly timeline = inject(TimelineService);
   private readonly mru = inject(MruRoomsService);
 
-  /** Set by the page; focuses the mobile master-detail pane that just became active. */
-  private focusActiveView?: () => void;
+  /**
+   * Focuses the mobile master-detail pane that just became active.
+   *
+   * Assigned by the page's constructor, and deliberately NOT optional: an unbound
+   * callback throws here instead of silently skipping the focus handoff. It was `?.()`
+   * and bound from `ngOnInit`, which meant a missed binding produced no error, no failing
+   * test and no focus — keyboard and screen-reader users simply landed on `<body>`.
+   */
+  private focusActiveView!: () => void;
 
   bindFocus(focus: () => void): void {
     this.focusActiveView = focus;
@@ -88,7 +95,7 @@ export class RoomShellNavigationService {
     // window — or re-opened after being acked once — would stay flagged for good.
     this.rooms.clearMarkedUnread(id);
     // On mobile, setting activeRoomId switches from the room-list page to the chat.
-    this.focusActiveView?.();
+    this.focusActiveView();
   }
 
   /**

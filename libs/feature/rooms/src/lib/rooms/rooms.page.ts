@@ -197,6 +197,10 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
   private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
   constructor() {
+    // The service cannot read the page's viewChild refs, so hand it the focus call.
+    // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
+    // hooks, so binding there left the callback unset for all 170 unit tests.
+    this.nav.bindFocus(() => this.focusActiveView());
     // Space-management failures (create/leave) have no inline echo in the shell, so
     // surface each new error as a danger toast. runWithBusy captures the message
     // into ShellStatusService.error; this reacts to that signal turning non-null.
@@ -225,8 +229,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    // The service cannot read the page's viewChild refs, so hand it the focus call.
-    this.nav.bindFocus(() => this.focusActiveView());
     this.rooms.connect();
     this.spaces.connect();
     this.invites.connect();

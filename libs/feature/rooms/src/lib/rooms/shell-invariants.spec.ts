@@ -7,6 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { RoomsPage } from './rooms.page';
 import { runWithBusy } from '@trinity/ui';
 import { throwError } from 'rxjs';
 import { MockProvider } from 'ng-mocks';
@@ -210,12 +211,6 @@ describe('the shell coordinators are page-scoped, not root-provided', () => {
   // `providedIn: 'root'` or if RoomsPage lost its `providers:` array — and every
   // runWithBusy subscription in the shell would then outlive the page. These two
   // assertions are what actually hold the design in place.
-  // Only half of this invariant is cheaply pinnable. This test catches a coordinator
-  // gaining `providedIn: 'root'`. The other way it breaks — deleting RoomsPage's
-  // `providers:` array — is NOT covered here: a component's `providersResolver` is set by
-  // `viewProviders` too (this page has one for its icons), so inspecting it cannot tell the
-  // two apart, and a test built on it passes with the array deleted. That case fails at
-  // runtime with NG0201 the moment /rooms loads, which the Playwright suite exercises.
   it('none of them resolves from a bare injector', () => {
     TestBed.configureTestingModule({});
 
@@ -225,5 +220,24 @@ describe('the shell coordinators are page-scoped, not root-provided', () => {
         `${coordinator.name} must not be providedIn: 'root'`,
       ).toBeNull();
     }
+  });
+
+  it('resolves them from the page, not from the environment injector', () => {
+    // The other half of the invariant: deleting RoomsPage's `providers:` array. Inspecting
+    // the component's `providersResolver` cannot detect that — `viewProviders` (the page's
+    // icons) sets it too — but overriding the template to empty PRESERVES `providers:`
+    // while dropping every child component, so the page can be constructed cheaply and
+    // asked what its own node injector holds. Root-registering the same token as well
+    // proves the page is answering, not the environment.
+    TestBed.configureTestingModule({ providers: [RoomShellStore] });
+    TestBed.overrideComponent(RoomsPage, {
+      set: { template: '', imports: [], host: {} },
+    });
+
+    const fixture = TestBed.createComponent(RoomsPage);
+
+    expect(fixture.debugElement.injector.get(RoomShellStore)).not.toBe(
+      TestBed.inject(RoomShellStore),
+    );
   });
 });

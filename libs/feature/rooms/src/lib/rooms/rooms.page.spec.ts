@@ -2415,6 +2415,23 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(toastShow).not.toHaveBeenCalled();
   });
 
+  it('shows the user that failure, rather than only recording it', () => {
+    // The sibling above asserts no toast — true only because nothing has flushed yet. The
+    // page turns `status.error` into a danger toast from a constructor effect, and every
+    // failure test in this file stopped at the signal, so deleting that effect outright
+    // left all 192 tests green: the error was recorded and never shown. What was missing
+    // was a flush AFTER the failure, not a rendered harness.
+    const shell = build();
+    shell.status.error.set('forbidden');
+
+    TestBed.tick();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'forbidden',
+      expect.objectContaining({ variant: 'destructive' }),
+    );
+  });
+
   it('does not invite when the picker is cancelled', async () => {
     const shell = build();
     shell.store.activeRoomId.set('!r:hs');
@@ -3093,7 +3110,9 @@ describe('RoomsPage keyboard room switching', () => {
 
   let keyboardRooms: WritableSignal<RoomSummary[]>;
 
+  const releaseAll = vi.fn();
   function build() {
+    releaseAll.mockClear();
     dialogOpen = false;
     // Display order a, b, c; b and c carry unread.
     keyboardRooms = signal<RoomSummary[]>([
@@ -3114,6 +3133,7 @@ describe('RoomsPage keyboard room switching', () => {
           childRoomIds: vi.fn(() => []),
         }),
         MockProvider(TimelineService),
+        MockProvider(MediaService, { releaseAll }),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -3163,6 +3183,34 @@ describe('RoomsPage keyboard room switching', () => {
     shell.nav.onSelectRoom('!b:hs');
     shell.nav.onSelectRoom('!c:hs');
   }
+
+  it('ignores a shortcut that resolves to the room already open', () => {
+    // Not a no-op for tidiness: re-entering onSelectRoom calls media.releaseAll(), which
+    // revokes the object URLs for images currently on screen. timeline.open() early-returns
+    // on the same id; releaseAll does not. Reachable with a one-room list, because the list
+    // walk wraps around to the room you are already in.
+    const shell = build();
+    keyboardRooms.set([roomSummary('!only:hs')]);
+    shell.nav.onSelectRoom('!only:hs');
+    releaseAll.mockClear();
+
+    shell.page.onGlobalKeydown(key({ key: 'ArrowDown', altKey: true }));
+
+    expect(releaseAll).not.toHaveBeenCalled();
+  });
+
+  it('keeps the keyboard surface wired through the page', () => {
+    // The host binding names a member of the component class, so the page keeps a delegate
+    // nothing else calls. Re-pointing this suite onto the coordinators removed the only
+    // test crossing that seam — emptying the delegate body left 192 tests green, i.e. the
+    // whole keyboard feature could be unplugged from the page unnoticed.
+    const shell = build();
+    visitABC(shell);
+
+    shell.page.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+  });
 
   it('hops back through the visited stack, cycling deeper, without recording mid-cycle', () => {
     const shell = build();
