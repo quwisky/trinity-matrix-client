@@ -801,63 +801,58 @@ describe('sanitizeMatrixHtml mention pills', () => {
     `<a href="https://matrix.to/#/${id}">${label}</a>`;
 
   it('marks a matrix.to user link as a mention', () => {
-    const html = sanitizeMatrixHtml(link('@alice:hs', '@Alice'), '@me:hs');
-
-    expect(html).toContain('class="mention"');
+    // Keyed off the href, which is right for the pill: a link to a user IS a mention of
+    // them, and mentions written in Element render identically.
+    expect(sanitizeMatrixHtml(link('@alice:hs', '@Alice'))).toContain(
+      'class="mention"',
+    );
   });
 
-  it('marks a mention of the viewer as well', () => {
-    const html = sanitizeMatrixHtml(link('@me:hs', '@Me'), '@me:hs');
+  it('marks the pill as addressed to the viewer only when the EVENT says so', () => {
+    const html = link('@me:hs', '@Me');
 
-    expect(html).toContain('mention--self');
-  });
-
-  it('does not mark a mention of someone else as the viewer', () => {
-    const html = sanitizeMatrixHtml(link('@alice:hs', '@Alice'), '@me:hs');
-
-    expect(html).toContain('class="mention"');
-    expect(html).not.toContain('mention--self');
+    expect(sanitizeMatrixHtml(html, true)).toContain('mention--self');
+    expect(sanitizeMatrixHtml(html, false)).not.toContain('mention--self');
   });
 
   it('leaves ordinary links and room links alone', () => {
-    const room = sanitizeMatrixHtml(link('!r:hs', 'the room'), '@me:hs');
-    const web = sanitizeMatrixHtml(
-      '<a href="https://example.test">a link</a>',
-      '@me:hs',
+    // Only a USER link is a mention; a room permalink is a destination.
+    expect(sanitizeMatrixHtml(link('!r:hs', 'the room'), true)).not.toContain(
+      'mention',
     );
-
-    // Only a USER link is a mention. A room permalink is a destination.
-    expect(room).not.toContain('mention');
-    expect(web).not.toContain('mention');
+    expect(
+      sanitizeMatrixHtml('<a href="https://example.test">a link</a>', true),
+    ).not.toContain('mention');
   });
 
-  it('cannot be forged by the sender', () => {
-    // The class allowlist strips anything but `language-*`/`mx-spoiler`, and the marking
-    // pass runs after that — so a sender cannot dress their own text as a mention of you.
-    const hostile = sanitizeMatrixHtml(
+  it('cannot have the mention classes injected by the sender', () => {
+    // The class allowlist strips anything but `language-*`/`mx-spoiler`, and this pass runs
+    // on DOMPurify's output — so the sender's own class attributes never survive. This is
+    // only half the forgery story; the other half is the test below.
+    const hostile =
       '<span class="mention--self">not really you</span>' +
-        '<a class="mention--self" href="https://example.test">nor this</a>',
-      '@me:hs',
-    );
+      '<a class="mention--self" href="https://example.test">nor this</a>';
 
-    expect(hostile).not.toContain('mention--self');
+    expect(sanitizeMatrixHtml(hostile, false)).not.toContain('mention--self');
   });
 
-  it('does not serve one account’s markings to the next', () => {
-    // The sanitized-HTML cache is keyed by html; without the viewer in the key, switching
-    // account would keep highlighting a mention of whoever was signed in before.
+  it('cannot be made to look addressed to you by writing a link to you', () => {
+    // The half that matters, and the reason `--self` is not keyed off the href: the sender
+    // writes `formatted_body`, so anyone can put a link to your id in a message. Only the
+    // event's `m.mentions` decides, and that is what a notification is decided on too.
+    const spoof = link('@me:hs', 'totally addressed to you');
+
+    expect(sanitizeMatrixHtml(spoof, false)).toContain('class="mention"');
+    expect(sanitizeMatrixHtml(spoof, false)).not.toContain('mention--self');
+  });
+
+  it('does not serve one event’s marking to another with the same body', () => {
+    // The sanitized-HTML cache is keyed by html; without the flag in the key, the first
+    // event to render a given body would decide how every later one looks — including
+    // across an account switch.
     const source = link('@me:hs', '@Me');
 
-    expect(sanitizeMatrixHtml(source, '@me:hs')).toContain('mention--self');
-    expect(sanitizeMatrixHtml(source, '@other:hs')).not.toContain(
-      'mention--self',
-    );
-  });
-
-  it('marks nothing as self when the viewer is unknown', () => {
-    const html = sanitizeMatrixHtml(link('@alice:hs', '@Alice'));
-
-    expect(html).toContain('class="mention"');
-    expect(html).not.toContain('mention--self');
+    expect(sanitizeMatrixHtml(source, true)).toContain('mention--self');
+    expect(sanitizeMatrixHtml(source, false)).not.toContain('mention--self');
   });
 });

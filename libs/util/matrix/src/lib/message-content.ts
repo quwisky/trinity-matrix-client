@@ -42,6 +42,17 @@ export interface Mention {
 }
 
 /**
+ * `@room` as a WORD, matching the boundary the legacy `.m.rule.roomnotif` used: matrix-js-sdk
+ * and Synapse wrap a body pattern in `(?<=^|\W)`/`(?=\W|$)`.
+ *
+ * A whitespace-only boundary is the obvious thing to write and is wrong, because sending
+ * `m.mentions` SUPPRESSES the legacy rule — so any phrasing this fails to recognise loses its
+ * room ping entirely rather than falling back to the old behaviour. `@room,` `@room!`
+ * `(@room)` and `**@room**` are all ordinary ways to write it and all miss a `\s` boundary.
+ */
+const ROOM_MENTION = /(^|\W)@room(\W|$)/;
+
+/**
  * A deliberate `@room` in text the sender actually wrote — ignoring quoted lines.
  *
  * Quoting someone who wrote `@room` must not re-ping the room, which is the whole reason
@@ -52,7 +63,7 @@ export function mentionsRoom(body: string): boolean {
   return body
     .split('\n')
     .filter((line) => !line.trimStart().startsWith('>'))
-    .some((line) => /(^|\s)@room(\s|$)/.test(line));
+    .some((line) => ROOM_MENTION.test(line));
 }
 
 /**
@@ -278,7 +289,7 @@ export function renderMarkdown(text: string): RenderedMarkdown {
 export function mediaCaptionFields(
   filename: string,
   caption: string,
-): Record<string, string> {
+): Record<string, unknown> {
   const text = caption.trim();
   if (!text) {
     return { body: filename };
@@ -290,6 +301,9 @@ export function mediaCaptionFields(
     ...(md.formatted
       ? { format: 'org.matrix.custom.html', formatted_body: md.html }
       : {}),
+    // An MSC2530 caption REPLACES the filename as the body, so it is user-authored text a
+    // push rule will match on — the same exposure as a plain message.
+    ...mentionsBlock([], mentionsRoom(text)),
   };
 }
 
@@ -394,6 +408,8 @@ export function spoilerMessageContent(text: string) {
     body: text,
     format: 'org.matrix.custom.html',
     formatted_body: `<span data-mx-spoiler>${escapeInlineText(text)}</span>`,
+    // A spoiler's body is the sender's own text, so it needs the marker like any other.
+    ...mentionsBlock([], mentionsRoom(text)),
   };
 }
 
@@ -422,10 +438,23 @@ export function slashCommandContent(
       // `/me` is the emote path, so carry any @-mentions (pills + `m.mentions`)
       // through — otherwise a `/me waves at @bob` wouldn't notify Bob.
       return arg ? emoteMessageContent(arg, renderHtml(arg), mentions) : null;
+    // The remaining commands emit a body the sender authored, so they need the same
+    // `m.mentions` marker as an ordinary message — otherwise `/plain > @room …` is a hole
+    // straight through the fix.
     case 'shrug':
-      return { msgtype: MsgType.Text, body: arg ? `${arg} ${SHRUG}` : SHRUG };
+      return {
+        msgtype: MsgType.Text,
+        body: arg ? `${arg} ${SHRUG}` : SHRUG,
+        ...mentionsBlock([], mentionsRoom(arg)),
+      };
     case 'plain':
-      return arg ? { msgtype: MsgType.Text, body: arg } : null;
+      return arg
+        ? {
+            msgtype: MsgType.Text,
+            body: arg,
+            ...mentionsBlock([], mentionsRoom(arg)),
+          }
+        : null;
     case 'spoiler':
       return arg ? spoilerMessageContent(arg) : null;
     default:
@@ -435,8 +464,10 @@ export function slashCommandContent(
 
 /**
  * `m.replace` edit content targeting `messageId`, with the leading `* ` fallback.
- * Mentions land in `m.new_content` (the effective content) — not the top-level
- * replace event — so an edit that keeps existing mentions doesn't re-notify.
+ *
+ * `m.mentions` appears BOTH at the top level and in `m.new_content`. The nested copy is the
+ * effective content; the top-level one is what stops the legacy body rules firing on the
+ * `* …` fallback, which they do before `.m.rule.suppress_edits` is reached.
  */
 export function editMessageContent(
   messageId: string,
@@ -448,6 +479,15 @@ export function editMessageContent(
   return {
     msgtype: MsgType.Text,
     body: `* ${text}`,
+    // The TOP-LEVEL body is `* <the whole new text>`, and the legacy body-matching rules are
+    // evaluated against it before `.m.rule.suppress_edits` is ever reached — measured on
+    // Synapse 1.119, where an edit whose body quoted a display name highlighted the reader
+    // until this block was added. Without it, correcting one typo in a quote re-notifies
+    // everyone the quote names.
+    ...mentionsBlock(
+      mentions.map((m) => m.userId),
+      mentionsRoom(text),
+    ),
     ...(rich
       ? {
           format: 'org.matrix.custom.html',

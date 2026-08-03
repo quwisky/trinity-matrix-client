@@ -532,7 +532,11 @@ describe('TimelineService', () => {
 
     await firstValueFrom(svc.send('/shrug'));
 
-    expect(sent[0][1]).toEqual({ msgtype: 'm.text', body: '¯\\_(ツ)_/¯' });
+    expect(sent[0][1]).toEqual({
+      msgtype: 'm.text',
+      body: '¯\\_(ツ)_/¯',
+      'm.mentions': {},
+    });
   });
 
   it('forwards a message content to another room, dropping any relation', async () => {

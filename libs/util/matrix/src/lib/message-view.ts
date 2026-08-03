@@ -898,12 +898,17 @@ export function setCodeHighlighter(highlighter: CodeHighlighter | null): void {
  * Also applies render-only normalisation — spoiler tagging and syntax highlighting —
  * which is why {@link sanitizeOutgoingHtml} exists separately for the send path.
  */
-export function sanitizeMatrixHtml(html: string, selfUserId = ''): string {
-  // The viewer's id is part of the OUTPUT (it decides which pills are marked as you), so it
-  // has to be part of the key. Keying on the html alone would hand the previous account's
-  // markings to the next one after a switch — every message would keep highlighting a
-  // mention of somebody you are no longer signed in as.
-  const cacheKey = `${selfUserId}\u0000${html}`;
+export function sanitizeMatrixHtml(
+  html: string,
+  /** Set only when the event's `m.mentions` actually names the viewer — see
+   * {@link markMentionPills} for why the href alone is not enough. */
+  addressesViewer = false,
+): string {
+  // Whether this event addresses the viewer is part of the OUTPUT, so it has to be part of
+  // the key. Keying on the html alone would hand one event's marking to another with the
+  // same body — and, across an account switch, keep highlighting a mention of somebody you
+  // are no longer signed in as.
+  const cacheKey = `${addressesViewer ? '1' : '0'}\u0000${html}`;
   const memoized = sanitizedHtmlCache.get(cacheKey);
   if (memoized !== undefined) {
     return memoized;
@@ -923,7 +928,7 @@ export function sanitizeMatrixHtml(html: string, selfUserId = ''): string {
   normaliseSpoilers(body);
   normaliseTaskItems(body);
   renderCodeBlocks(body);
-  markMentionPills(body, selfUserId);
+  markMentionPills(body, addressesViewer);
   const clean = body.innerHTML;
   if (sanitizedHtmlCache.size >= SANITIZED_HTML_CACHE_MAX) {
     const oldest = sanitizedHtmlCache.keys().next().value;
@@ -937,28 +942,33 @@ export function sanitizeMatrixHtml(html: string, selfUserId = ''): string {
 
 /**
  * Tag `matrix.to` user links so a mention reads as a mention rather than as an ordinary
- * link, and mark the one that refers to the viewer.
+ * link, and mark them as addressed to the viewer when the event says so.
  *
- * A render-only pass, deliberately here rather than in the `afterSanitizeAttributes` hook:
- * attributes set in that hook are not re-filtered and would ride out onto the wire, so a
- * sent message would carry viewer-specific classes to everyone else.
+ * `.mention` is keyed off the href, which is right: a link to a user IS a mention of them,
+ * and it makes mentions written in Element and other clients render the same as ours.
  *
- * Running AFTER DOMPurify is also what makes it safe. `class` is filtered to
- * {@link ALLOWED_CLASS}, so a sender cannot put `mention--self` in their own
- * `formatted_body` and forge a highlight — by the time this adds the class, anything the
- * sender wrote has already been stripped.
+ * `.mention--self` is NOT keyed off the href, and that is the point. `formatted_body` is
+ * written by the sender, so anyone can put `<a href="…/@you">whatever</a>` in a message and
+ * would otherwise get the solid "this is addressed to you" treatment without addressing you
+ * at all. It is gated on the event's `m.mentions` instead, so the strong visual means
+ * exactly what a notification means — which is the whole point of intentional mentions.
  *
- * Keyed off the href, so mentions from any client (Element sends the same matrix.to links)
- * are styled the same as our own.
+ * A render-only pass, deliberately not in the `afterSanitizeAttributes` hook: attributes set
+ * there are not re-filtered and would ride out onto the wire, so a sent message would carry
+ * viewer-specific classes to everyone else.
+ *
+ * Running AFTER DOMPurify is what stops the CLASS being injected directly: `class` is
+ * filtered to {@link ALLOWED_CLASS}, so by the time this adds one, anything the sender wrote
+ * is already gone.
  */
-function markMentionPills(body: HTMLElement, selfUserId: string): void {
+function markMentionPills(body: HTMLElement, addressesViewer: boolean): void {
   for (const anchor of body.querySelectorAll('a[href]')) {
     const target = parseMatrixToLink(anchor.getAttribute('href') ?? '');
     if (target?.kind !== 'user') {
       continue;
     }
     anchor.classList.add('mention');
-    if (selfUserId !== '' && target.userId === selfUserId) {
+    if (addressesViewer) {
       anchor.classList.add('mention--self');
     }
   }
@@ -1167,6 +1177,23 @@ interface RenderedBody {
   location?: LocationView | null;
 }
 
+/** Whether an event's `m.mentions` names the viewer — the only trustworthy "this is for
+ * you" signal, since everything else in the content is written by the sender. */
+function mentionsViewer(
+  content: Record<string, unknown>,
+  selfUserId: string,
+): boolean {
+  if (selfUserId === '') {
+    return false;
+  }
+  const mentions = content['m.mentions'];
+  if (typeof mentions !== 'object' || mentions === null) {
+    return false;
+  }
+  const ids = (mentions as { user_ids?: unknown }).user_ids;
+  return Array.isArray(ids) && ids.includes(selfUserId);
+}
+
 /** The text of a message body, rendered every way the msgtype branches need it. */
 export interface RenderedText {
   /** Plain text, with any reply fallback stripped. */
@@ -1202,8 +1229,13 @@ export function renderTextBody(
       : null;
   const strippedHtml =
     isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
+  // From `m.mentions`, never from the body: the sender writes the body, so a link in it
+  // proves only that they typed your id, not that they addressed you.
+  const addressesViewer = mentionsViewer(content, selfUserId);
   const html =
-    strippedHtml === null ? null : sanitizeMatrixHtml(strippedHtml, selfUserId);
+    strippedHtml === null
+      ? null
+      : sanitizeMatrixHtml(strippedHtml, addressesViewer);
 
   // Plain text (no formatted_body) still gets bare URLs linkified so they're clickable.
   return { text, html, textHtml: html ?? linkifyText(text) };
