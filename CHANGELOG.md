@@ -137,6 +137,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **You can pinch to zoom again.** The app told mobile browsers and both native WebViews that
+  it could not be zoomed, so pinch-zoom did nothing — on the two platforms where there is no
+  text-size setting to fall back on, that left anyone who needs larger text with no way to get
+  it. The lock is gone. Nothing else about the layout changes: the app still opens at the right
+  size and still fills the notch area.
+
 - **Leaving encryption setup half-way no longer costs you your recovery key.** Setting up
   encryption shows your recovery key exactly once. Pressing the browser's back button — or
   Android's — while that key was on screen closed the page without a word, and the key was
