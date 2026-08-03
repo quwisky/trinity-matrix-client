@@ -208,6 +208,74 @@ type-stripping loader, and is touched only by Prettier.
     what it says. For `.mts` files under `e2e/`, run `tsc --noEmit` against them
     yourself.
 
+For a library spec the equivalent is `tsc --noEmit -p libs/<lib>/tsconfig.json`. It is
+worth running after any refactor that moves code between files, because two of this
+workspace's gates are blind to different halves of the problem: ESLint does not flag an
+undefined identifier in TypeScript (`no-undef` is off, since the compiler owns that), and
+Vitest does not type-check at all. A method extracted without its free-function import
+fails at runtime with `ReferenceError`; a delegate written with the wrong parameter type
+passes every test. Only `tsc` names either one.
+
+## A green-looking run can still exit 1
+
+**Read the exit code, not the summary.** Vitest reports unhandled errors separately from
+failing assertions, so a run can print `984 passed` and exit `1` on the same line-count.
+Nothing in the output says "failed" next to a test name.
+
+The usual cause is an Observable that errors with no error handler on the subscription.
+That is sometimes deliberate — `MessageActionsService.onSend` subscribes without one
+because a failed send is surfaced by the local echo's retry state, not a toast — but RxJS
+still reports it through `config.onUnhandledError` and rethrows it asynchronously, where
+Vitest counts it against the run.
+
+```bash
+pnpm exec nx test feature-rooms --skip-nx-cache; echo "exit=$?"
+```
+
+If a test deliberately drives such a path, capture the report rather than leaking it, and
+assert it happened — the escape is part of the contract:
+
+```ts
+const previous = config.onUnhandledError;
+config.onUnhandledError = (error) => unhandled.push(error);
+try {
+  actions.onSend({ body: 'x', mentions: [] });
+  // RxJS reports on a macrotask, so the handler must stay installed across one tick.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+} finally {
+  config.onUnhandledError = previous;
+}
+```
+
+## TestBed.inject of a component is not the component
+
+`TestBed.inject(SomePage)` constructs the class through DI. It does **not** create a
+component instance, and two consequences bite:
+
+- **Lifecycle hooks never run.** Anything wired in `ngOnInit` is unwired for the whole
+  spec. If a page hands a callback to a collaborator there, the collaborator holds
+  `undefined` in every test — silently, if the call site is optional.
+- **A component's `providers:` array is not applied.** Page-scoped services have to be
+  handed to the TestBed by hand, which means they resolve from the environment injector
+  instead: their `inject(DestroyRef)` is the environment's, so no such spec can observe
+  teardown. To test cancellation, build a host component that provides the service and
+  call `fixture.destroy()`.
+
+To assert that a component really declares its own providers, override the template rather
+than inspecting metadata — `providersResolver` is also set by `viewProviders`, so it
+cannot tell the two apart:
+
+```ts
+TestBed.configureTestingModule({ providers: [RoomShellStore] });
+TestBed.overrideComponent(RoomsPage, { set: { template: '', imports: [], host: {} } });
+const fixture = TestBed.createComponent(RoomsPage);
+// Resolves through the component's node injector, so it is NOT the root instance.
+expect(fixture.debugElement.injector.get(RoomShellStore)).not.toBe(TestBed.inject(RoomShellStore));
+```
+
+Emptying the template keeps `providers:` intact while dropping every child component, so
+the page constructs cheaply.
+
 ## Tests that cannot fail
 
 Every item below is a real shape this repository has shipped. They are worth
@@ -243,6 +311,28 @@ through an asynchronous `classes()` manager built on an effect and a global
 MutationObserver, so asserting on the rendered `class` string is flaky. The smoke
 tests in `libs/spartan/overlay` assert the `cva` functions directly instead, because
 those are pure and synchronous.
+
+**An effect that nothing flushed after the interesting moment.** The rooms shell turns
+one error signal into a danger toast from a single effect. Every failure test asserted
+`status.error()` held the message and stopped there, so deleting the effect outright left
+the whole suite green — the error was recorded and never shown. The effect was running;
+what was missing was a `TestBed.tick()` _after_ the failure. When the behaviour under test
+is "the user is told", assert the toast, not the signal that feeds it.
+
+**A guard asserted where it cannot bite.** An e2e checked that pressing Escape a second
+time "does nothing" — but the drawer was already closed by then, so a handler with its
+guard deleted would have called the same close on an already-closed drawer and looked
+identical. The guard only becomes observable on the wide layout, where the member column
+starts open. Before writing a negative assertion, name the mutation it should catch and
+check that the mutation would actually change what you are asserting.
+
+!!! tip "Mutate the method, not a line of text"
+
+    When you verify a test by mutation, anchor the edit to the enclosing method.
+    `action.pipe(takeUntilDestroyed(this.destroyRef))` appears twice in one service; a
+    text-anchored replace hit the other occurrence, the suite stayed green, and a
+    perfectly good teardown test looked vacuous. A mutation that does not fail is only
+    evidence once you have confirmed it landed where you meant.
 
 ## Playwright: the app journeys
 
