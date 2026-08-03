@@ -375,6 +375,9 @@ describe('mentions in content builders', () => {
     expect(textMessageContent(text, renderMarkdown(text))).toEqual({
       msgtype: 'm.text',
       body: 'just text',
+      // Present but EMPTY, deliberately: its presence is what makes the homeserver skip
+      // the legacy body-matching push rules. See the m.mentions describe block below.
+      'm.mentions': {},
     });
   });
 
@@ -592,5 +595,89 @@ describe('messagePreview', () => {
   it("returns '…' for an empty or whitespace-only body", () => {
     expect(messagePreview(fakeEvent({ body: '' }))).toBe('…');
     expect(messagePreview(fakeEvent({ body: '   \n  ' }))).toBe('…');
+  });
+});
+
+/**
+ * `m.mentions` is always sent, which is what stops a message notifying people it merely
+ * NAMES rather than addresses. Verified against Synapse 1.119: an identical quoted body
+ * highlights the named user when the key is absent and is silent when it is present.
+ */
+describe('m.mentions is always present', () => {
+  it('emits an empty block for a message that mentions nobody', () => {
+    const text = 'hello';
+    const content = textMessageContent(text, renderMarkdown(text)) as Record<
+      string,
+      unknown
+    >;
+
+    // The KEY has to exist. Omitting it when there is nothing to say is what let a quoted
+    // display name re-fire `.m.rule.contains_display_name` on the reader's account.
+    expect(content).toHaveProperty('m.mentions');
+    expect(content['m.mentions']).toEqual({});
+  });
+
+  it('still carries deliberate mentions', () => {
+    const text = 'hi @Alice';
+    const content = textMessageContent(text, renderMarkdown(text), [
+      { userId: '@alice:hs', display: '@Alice' },
+    ]) as Record<string, unknown>;
+
+    expect(content['m.mentions']).toEqual({ user_ids: ['@alice:hs'] });
+  });
+
+  it('marks a room mention the sender actually wrote', () => {
+    const text = '@room standup in five';
+    const content = textMessageContent(text, renderMarkdown(text)) as Record<
+      string,
+      unknown
+    >;
+
+    // Without this, always sending m.mentions would silently remove @room entirely: the
+    // legacy `.m.rule.roomnotif` is the only thing that made a typed @room work before.
+    expect(content['m.mentions']).toEqual({ room: true });
+  });
+
+  it('does NOT mark a room mention that is only being quoted', () => {
+    const text = '> @room heads up\n\nseen it';
+    const content = textMessageContent(text, renderMarkdown(text)) as Record<
+      string,
+      unknown
+    >;
+
+    // The whole point: carrying someone else's words must not re-ping everyone.
+    expect(content['m.mentions']).toEqual({});
+  });
+
+  it('reads @room as a word, not a substring', () => {
+    for (const text of ['mail me @roomservice', 'the @rooms list', 'a@room']) {
+      const content = textMessageContent(text, renderMarkdown(text)) as Record<
+        string,
+        unknown
+      >;
+      expect(content['m.mentions'], text).toEqual({});
+    }
+  });
+
+  it('scans a reply’s OWN words, not the message it quotes', () => {
+    // `replyMessageContent`'s fallback body starts `> <sender> …`, so scanning the BODY
+    // would re-ping the room for anyone replying to a message that contained @room.
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => ({
+        getSender: () => '@bob:hs',
+        getContent: () => ({ body: '@room everyone look' }),
+      }),
+    } as unknown as Room;
+    const text = 'thanks';
+    const reply = replyMessageContent(
+      room,
+      '$t',
+      text,
+      renderMarkdown(text),
+    ) as Record<string, unknown>;
+
+    expect(reply.body).toContain('@room'); // the quoted fallback really does carry it
+    expect(reply['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
   });
 });

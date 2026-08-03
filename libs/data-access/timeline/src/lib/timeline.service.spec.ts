@@ -489,7 +489,13 @@ describe('TimelineService', () => {
 
     // Both go through sendMessage(content) now so mentions can add m.mentions.
     expect(sent[0][0]).toBe('message');
-    expect(sent[0][1]).toEqual({ msgtype: 'm.text', body: 'hello there' });
+    // `m.mentions` rides along on EVERY message, empty when there is nothing to say — its
+    // presence is what makes the server skip the legacy body-matching push rules.
+    expect(sent[0][1]).toEqual({
+      msgtype: 'm.text',
+      body: 'hello there',
+      'm.mentions': {},
+    });
     expect(sent[1][0]).toBe('message');
     const rich = sent[1][1] as Record<string, unknown>;
     expect(rich['body']).toBe('**bold**');

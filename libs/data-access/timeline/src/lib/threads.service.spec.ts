@@ -587,7 +587,11 @@ describe('ThreadsService', () => {
     expect(room.getThread('$missing')).not.toBeNull();
     // ...and only then is the threaded reply sent.
     expect(sent).toEqual([
-      ['message', '$missing', { msgtype: 'm.text', body: 'hi' }],
+      [
+        'message',
+        '$missing',
+        { msgtype: 'm.text', body: 'hi', 'm.mentions': {} },
+      ],
     ]);
   });
 
@@ -706,7 +710,12 @@ describe('ThreadsService', () => {
       // adds the m.thread relation from the threadId, so the message stays in-thread.
       expect(sent[0][0]).toBe('message');
       expect(sent[0][1]).toBe('$root'); // threadId
-      expect(sent[0][2]).toEqual({ msgtype: 'm.text', body: 'hello thread' });
+      // Empty `m.mentions` rides along on every message — see message-content.ts.
+      expect(sent[0][2]).toEqual({
+        msgtype: 'm.text',
+        body: 'hello thread',
+        'm.mentions': {},
+      });
     });
 
     it('sends markdown as formatted HTML into the thread', async () => {

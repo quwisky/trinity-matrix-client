@@ -6,7 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Added
+### Changed
+
+- **Mentions now have to be meant.** Quoting a message put the quoted words into the
+  message you sent, so quoting "Bob, can you look at this?" notified Bob a second time for
+  a message that addressed nobody — and quoting anything containing `@room` pinged the
+  whole room again. Trinity now marks every message with who it actually addresses, which
+  is what tells your homeserver to stop matching on the text. The effect is that mentioning
+  someone is deliberate: pick them from the autocomplete and they are notified, as before,
+  but merely writing a name in passing — or carrying it along inside a quote — no longer
+  is. `@room` still notifies everyone when you type it yourself and still needs the
+  permission it always did; it just no longer fires from words you were quoting.
 
 - **Jump to a date in a conversation.** Finding what someone said last Tuesday meant
   scrolling and waiting, over and over. **Jump to date** in a room's ⋯ menu asks for a day
