@@ -100,7 +100,7 @@ export class ShellShortcutsService {
     }
   }
 
-  hopRoom(direction: 'back' | 'forward'): void {
+  private hopRoom(direction: 'back' | 'forward'): void {
     // Across every mixed account, not just the active one — otherwise hopping back to a
     // room you opened on another account silently does nothing.
     const known = new Set(this.nav.knownRooms().map((room) => room.id));
@@ -110,7 +110,7 @@ export class ShellShortcutsService {
     );
   }
 
-  walkList(direction: 'next' | 'previous'): void {
+  private walkList(direction: 'next' | 'previous'): void {
     this.openShortcutTarget(
       stepList(
         this.vm.visibleRooms().map((room) => room.id),
@@ -121,7 +121,7 @@ export class ShellShortcutsService {
     );
   }
 
-  walkUnread(direction: 'next' | 'previous'): void {
+  private walkUnread(direction: 'next' | 'previous'): void {
     this.openShortcutTarget(
       stepUnread(this.vm.visibleRooms(), this.store.activeRoomId(), direction),
       'user',
@@ -134,7 +134,10 @@ export class ShellShortcutsService {
    * current scope holds (it was unticked, or signed out) — opening that would tear down the
    * timeline and leave a blank chat pane, so drop it instead.
    */
-  openShortcutTarget(roomId: string | null, source: 'user' | 'hop'): void {
+  private openShortcutTarget(
+    roomId: string | null,
+    source: 'user' | 'hop',
+  ): void {
     if (!roomId || roomId === this.store.activeRoomId()) {
       return;
     }

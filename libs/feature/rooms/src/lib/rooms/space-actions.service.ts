@@ -40,7 +40,7 @@ export class SpaceActionsService {
   private readonly store = inject(RoomShellStore);
   private readonly vm = inject(RoomShellViewModel);
   private readonly nav = inject(RoomShellNavigationService);
-  private readonly members_ = inject(MemberActionsService);
+  private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomsService);
   private readonly spaces = inject(SpacesService);
@@ -127,7 +127,7 @@ export class SpaceActionsService {
     }
   }
 
-  applyCreateSpace(name: string): void {
+  private applyCreateSpace(name: string): void {
     if (!name.trim()) {
       return; // empty name — dismiss the prompt without creating
     }
@@ -144,7 +144,7 @@ export class SpaceActionsService {
    * is why the error is surfaced rather than swallowed: the user can add it to the parent
    * from "Add existing rooms" without having lost anything.
    */
-  applyCreateSubspace(parentId: string, name: string): void {
+  private applyCreateSubspace(parentId: string, name: string): void {
     if (!name.trim()) {
       return;
     }
@@ -162,7 +162,7 @@ export class SpaceActionsService {
     ).subscribe((spaceId) => this.nav.onSelectSpace(spaceId));
   }
 
-  applyCreateChannel(spaceId: string, name: string): void {
+  private applyCreateChannel(spaceId: string, name: string): void {
     if (!name.trim()) {
       return;
     }
@@ -173,7 +173,7 @@ export class SpaceActionsService {
     ).subscribe();
   }
 
-  applyLeaveSpace(spaceId: string): void {
+  private applyLeaveSpace(spaceId: string): void {
     runWithBusy(this.spaces.leaveSpace(spaceId), this.status).subscribe(() =>
       this.nav.onSelectSpace(null),
     );
@@ -212,7 +212,7 @@ export class SpaceActionsService {
     }
   }
 
-  applyRemoveFromSpace(spaceId: string, childId: string): void {
+  private applyRemoveFromSpace(spaceId: string, childId: string): void {
     runWithBusy(
       this.spaces.removeRoomFromSpace(spaceId, childId),
       this.status,
@@ -315,7 +315,7 @@ export class SpaceActionsService {
       )
       .then((member) => {
         if (member) {
-          void this.members_.openMemberInfo(member, spaceId);
+          void this.memberActions.openMemberInfo(member, spaceId);
         }
       });
   }

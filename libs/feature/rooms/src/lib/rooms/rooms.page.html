@@ -365,7 +365,7 @@
               class="chat-members"
               [members]="vm.members()"
               [direct]="vm.activeRoomIsDirect()"
-              (selectMember)="members_.onSelectMember($event)"
+              (selectMember)="memberActions.onSelectMember($event)"
             />
           }
         } @else {

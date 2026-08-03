@@ -40,7 +40,7 @@ export class AccountRoutingService {
   private readonly destroyRef = inject(DestroyRef);
 
   /** Switch to `accountId`, then run `then` once the switch has landed. */
-  runOnAccount(accountId: string, then: () => void): void {
+  private runOnAccount(accountId: string, then: () => void): void {
     this.nav.closeOpenRoom();
     this.nav.resetViewScope();
     this.auth

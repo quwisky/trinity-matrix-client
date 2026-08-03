@@ -10,6 +10,19 @@ import { TestBed } from '@angular/core/testing';
 import { runWithBusy, type BusyState } from '@trinity/ui';
 import { throwError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
+import { RoomShellStore } from './room-shell-store';
+import { ShellStatusService } from './shell-status.service';
+import { RoomShellViewModel } from './room-shell-view-model';
+import { RoomShellNavigationService } from './room-shell-navigation.service';
+import { AccountRoutingService } from './account-routing.service';
+import { MemberActionsService } from './member-actions.service';
+import { InviteActionsService } from './invite-actions.service';
+import { SpaceActionsService } from './space-actions.service';
+import { RoomActionsService } from './room-actions.service';
+import { ReadStateService } from './read-state.service';
+import { MessageActionsService } from './message-actions.service';
+import { ShellShortcutsService } from './shell-shortcuts.service';
+import { SessionActionsService } from './session-actions.service';
 
 /**
  * The two framework behaviours the #62 decomposition rests on, pinned before anything
@@ -159,5 +172,48 @@ describe('one error channel produces one toast per flush', () => {
     // value twice and the effect re-runs. Without that reset the second failure would
     // be swallowed as a no-op write.
     expect(host.toasts).toEqual(['same', 'same']);
+  });
+});
+
+/**
+ * The thirteen classes that must be page-scoped rather than root-provided.
+ */
+const COORDINATORS = [
+  RoomShellStore,
+  ShellStatusService,
+  RoomShellViewModel,
+  RoomShellNavigationService,
+  AccountRoutingService,
+  MemberActionsService,
+  InviteActionsService,
+  SpaceActionsService,
+  RoomActionsService,
+  ReadStateService,
+  MessageActionsService,
+  ShellShortcutsService,
+  SessionActionsService,
+];
+
+describe('the shell coordinators are page-scoped, not root-provided', () => {
+  // rooms.page.spec.ts registers all thirteen at the TestBed root so its 170 tests can
+  // reach them, which means that suite would stay green if any of them became
+  // `providedIn: 'root'` or if RoomsPage lost its `providers:` array — and every
+  // runWithBusy subscription in the shell would then outlive the page. These two
+  // assertions are what actually hold the design in place.
+  // Only half of this invariant is cheaply pinnable. This test catches a coordinator
+  // gaining `providedIn: 'root'`. The other way it breaks — deleting RoomsPage's
+  // `providers:` array — is NOT covered here: a component's `providersResolver` is set by
+  // `viewProviders` too (this page has one for its icons), so inspecting it cannot tell the
+  // two apart, and a test built on it passes with the array deleted. That case fails at
+  // runtime with NG0201 the moment /rooms loads, which the Playwright suite exercises.
+  it('none of them resolves from a bare injector', () => {
+    TestBed.configureTestingModule({});
+
+    for (const coordinator of COORDINATORS) {
+      expect(
+        TestBed.inject(coordinator, null, { optional: true }),
+        `${coordinator.name} must not be providedIn: 'root'`,
+      ).toBeNull();
+    }
   });
 });

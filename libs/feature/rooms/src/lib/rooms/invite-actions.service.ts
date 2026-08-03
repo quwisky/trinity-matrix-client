@@ -76,7 +76,7 @@ export class InviteActionsService {
   }
 
   /** Pending invites across the mixed accounts, or the active account's when not mixing. */
-  knownInvites(): readonly PendingInvite[] {
+  private knownInvites(): readonly PendingInvite[] {
     return this.accountScope.mixing()
       ? this.mixedInvites.invites()
       : this.invites.pendingInvites();

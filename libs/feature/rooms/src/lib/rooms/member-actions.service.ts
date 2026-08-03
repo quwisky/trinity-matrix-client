@@ -61,7 +61,7 @@ export class MemberActionsService {
   }
 
   /** Open (or reuse) a direct message with `userId` and navigate to it. */
-  startDirectMessage(userId: string): void {
+  private startDirectMessage(userId: string): void {
     runWithBusy(this.rooms.createDirectMessage(userId), this.status).subscribe(
       (roomId) => this.nav.onSelectRoom(roomId),
     );

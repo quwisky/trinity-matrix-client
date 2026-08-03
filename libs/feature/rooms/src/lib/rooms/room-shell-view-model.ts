@@ -34,8 +34,8 @@ import { type AccountSummary } from '../channel-sidebar/channel-sidebar.componen
 @Injectable()
 export class RoomShellViewModel {
   private readonly store = inject(RoomShellStore);
-  readonly rooms = inject(RoomsService);
-  readonly spaces = inject(SpacesService);
+  private readonly rooms = inject(RoomsService);
+  private readonly spaces = inject(SpacesService);
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly mixedSpaces = inject(MixedSpacesService);

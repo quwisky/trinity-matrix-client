@@ -7,7 +7,6 @@ import '@trinity/util/matrix/code-highlight';
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   ElementRef,
   Injector,
   OnDestroy,
@@ -37,54 +36,28 @@ import {
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import {
-  TrnActionSheetService,
-  TrnAlertService,
-  TrnDialogService,
-  TrnToastService,
-} from '@trinity/helm/overlay';
-import { AuthService } from '@trinity/data-access/auth';
 import { CryptoService } from '@trinity/data-access/crypto';
 import {
   InvitesService,
   MixedInvitesService,
 } from '@trinity/data-access/invites';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MediaService } from '@trinity/data-access/media';
 import {
   NotificationService,
   PushService,
-  RoomNotificationsService,
 } from '@trinity/data-access/notifications';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { PresenceService } from '@trinity/data-access/profile';
 import {
   RoomsService,
-  RoomSettingsService,
-  RoomModerationService,
-  RoomAliasesService,
-  PublicRoomsService,
-  SpaceChildrenService,
   SpacesService,
   AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
-  UnreadAggregatorService,
-  SpaceRoomOrderService,
 } from '@trinity/data-access/rooms';
-import { MemberInfoService } from '../member-info/member-info.service';
 import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
-import {
-  FeatureFlagsService,
-  KeyboardShortcutsService,
-} from '@trinity/platform-native';
+import { FeatureFlagsService } from '@trinity/platform-native';
 import { AvatarComponent, PageHeaderComponent } from '@trinity/ui';
-import { AccountBadgesService } from '../shared/account-badges.service';
-import { UserPickerService } from '../user-picker/user-picker.service';
-import { UserCardService } from '../user-card/user-card.service';
-import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MruRoomsService } from '../shortcuts/mru-rooms.service';
-import { MessageSearchService } from '../message-search/message-search.service';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { MemberListComponent } from '../member-list/member-list.component';
@@ -93,8 +66,6 @@ import { VirtualMessageListComponent } from '../message-list/virtual-message-lis
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
-import { ThreadPanelService } from '../thread/thread-panel.service';
-import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
@@ -182,52 +153,27 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);
   readonly spaces = inject(SpacesService);
-  private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly mixedSpaces = inject(MixedSpacesService);
   private readonly accountScope = inject(AccountScopeService);
-  private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly mixedInvites = inject(MixedInvitesService);
-  private readonly accountBadgesSvc = inject(AccountBadgesService);
   readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
   readonly threads = inject(ThreadsService);
   readonly pinned = inject(PinnedMessagesService);
   readonly flags = inject(FeatureFlagsService);
-  private readonly threadPanel = inject(ThreadPanelService);
-  private readonly pinnedPanel = inject(PinnedPanelService);
-  private readonly userPicker = inject(UserPickerService);
-  private readonly userCard = inject(UserCardService);
-  private readonly memberInfo = inject(MemberInfoService);
-  private readonly switcher = inject(QuickSwitcherService);
-  private readonly mru = inject(MruRoomsService);
-  private readonly shortcuts = inject(KeyboardShortcutsService);
-  private readonly messageSearch = inject(MessageSearchService);
-  private readonly media = inject(MediaService);
-  private readonly unreadAgg = inject(UnreadAggregatorService);
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
   private readonly presence = inject(PresenceService);
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
-  private readonly roomNotifications = inject(RoomNotificationsService);
-  private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-  private readonly dialog = inject(TrnDialogService);
-  private readonly roomSettings = inject(RoomSettingsService);
-  private readonly moderation = inject(RoomModerationService);
-  private readonly aliases = inject(RoomAliasesService);
-  private readonly publicRooms = inject(PublicRoomsService);
-  private readonly toast = inject(TrnToastService);
-  private readonly alert = inject(TrnAlertService);
-  private readonly actionSheet = inject(TrnActionSheetService);
-  private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   readonly store = inject(RoomShellStore);
   readonly status = inject(ShellStatusService);
   readonly vm = inject(RoomShellViewModel);
   readonly nav = inject(RoomShellNavigationService);
-  readonly members_ = inject(MemberActionsService);
+  readonly memberActions = inject(MemberActionsService);
   readonly routing = inject(AccountRoutingService);
   readonly inviteActions = inject(InviteActionsService);
   readonly spaceActions = inject(SpaceActionsService);
@@ -236,14 +182,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   readonly messageActions = inject(MessageActionsService);
   readonly shortcutActions = inject(ShellShortcutsService);
   readonly session = inject(SessionActionsService);
-
-  /**
-   * Whether the Recent activity view is active — the default on launch. It lists every
-   * joined DM + room (space-owned included), mixed by recency, so it overrides the
-   * Home/Rooms/space scoping below. Cleared by selecting Home, Rooms, or a space.
-   */
-  /** Whether the Rooms view is active — filters the sidebar to non-DM rooms. Home (no
-   * space) shows direct messages only; Recent, a space, or this view clears the others. */
 
   /**
    * The accounts the view draws from — the user's picker selection, persisted and always
@@ -258,32 +196,10 @@ export class RoomsPage implements OnInit, OnDestroy {
   // so keyboard/screen-reader focus follows to the newly-shown page (see focusActiveView).
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
   private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
-  /**
-   * Whether the member list is shown. At the wide (≥1100px) layout it's the static
-   * right column, shown by default; below that it's an overlay drawer that must start
-   * closed. Seeded from the viewport so the drawer doesn't render open on a mobile
-   * load, while the wide layout keeps the column visible by default.
-   */
-  /**
-   * Event id the message list should scroll to, set by in-room search, a reply
-   * preview, or the pinned panel. Bound to the list's `jumpToId`, paired with
-   * {@link jumpRequest} so re-selecting the SAME message still re-triggers the jump.
-   */
-  /** Bumped on every jump request so the list re-jumps even to an unchanged target. */
-  /** Attachment upload fraction in [0, 1] while a send is uploading, else null. */
-
-  /** A create-space / create-channel / leave-space action is in flight. */
-  /** Last space-management failure (surfaced as a toast); null when clear. */
-
-  /**
-   * Derived shell state. Each field is the SAME signal object the view model exposes,
-   * aliased here so the template and the spec keep reading it off the page.
-   */
-
   constructor() {
     // Space-management failures (create/leave) have no inline echo in the shell, so
     // surface each new error as a danger toast. runWithBusy captures the message
-    // into spaceError; this reacts to that signal turning non-null.
+    // into ShellStatusService.error; this reacts to that signal turning non-null.
     effect(() => {
       const message = this.status.error();
       if (message) {

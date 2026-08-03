@@ -39,7 +39,7 @@ export class ReadStateService {
 
   /** Apply a notification level on every account joined to the row — a merged row shows one
    * menu, so muting it must actually mute the room everywhere it is contributing. */
-  setNotifyMode(
+  private setNotifyMode(
     roomId: string,
     mode: RoomNotifyMode,
     accountIds?: readonly string[],
@@ -104,7 +104,10 @@ export class ReadStateService {
    * carrying the loudest unread of the two, so acking only one leaves a badge the user has
    * no way to clear.
    */
-  ackRead(roomId: string, accountIds?: readonly string[]): Observable<unknown> {
+  private ackRead(
+    roomId: string,
+    accountIds?: readonly string[],
+  ): Observable<unknown> {
     const targets = accountIds?.length ? accountIds : [undefined];
     return forkJoin(
       targets.map((accountId) => this.rooms.markRead(roomId, accountId)),

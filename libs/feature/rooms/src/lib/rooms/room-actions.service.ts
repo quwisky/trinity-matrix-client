@@ -198,7 +198,7 @@ export class RoomActionsService {
     }
   }
 
-  applyCreateRoom(name: string): void {
+  private applyCreateRoom(name: string): void {
     if (!name.trim()) {
       return; // empty name — dismiss without creating
     }
@@ -208,7 +208,7 @@ export class RoomActionsService {
   }
 
   /** Shared invite flow for a room or space: pick a user, invite, then toast. */
-  async invitePeople(targetId: string, label: string): Promise<void> {
+  private async invitePeople(targetId: string, label: string): Promise<void> {
     this.status.error.set(null);
     const userId = await this.userPicker.pick({
       title: `Invite to ${label}`,

@@ -25,7 +25,7 @@ import { ShellStatusService } from './shell-status.service';
 export class MessageActionsService {
   private readonly store = inject(RoomShellStore);
   private readonly routing = inject(AccountRoutingService);
-  private readonly members_ = inject(MemberActionsService);
+  private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomsService);
   private readonly timeline = inject(TimelineService);
@@ -46,7 +46,7 @@ export class MessageActionsService {
    */
   onMatrixLink(target: MatrixLinkTarget): void {
     if (target.kind === 'user') {
-      void this.members_.openUserCard(target.userId);
+      void this.memberActions.openUserCard(target.userId);
       return;
     }
     this.rooms
