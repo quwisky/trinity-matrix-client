@@ -328,11 +328,6 @@ export class RoomShellViewModel {
   );
 
   /**
-   * Whether "Space settings" is offered for the active space. False for another account's
-   * space in mixed mode: `RoomSettingsService` resolves the ACTIVE client, so the dialog
-   * would seed blank and every write would land on the wrong account — or nowhere.
-   */
-  /**
    * Whether the active space's child list may be curated. A separate power level from
    * renaming the space, so this is not {@link canConfigureSpace} — a moderator can hold
    * one without the other — but it carries the same mixed-account guard, since the write
@@ -357,6 +352,11 @@ export class RoomShellViewModel {
     return !!space && space.accountId === this.matrix.activeUserId();
   });
 
+  /**
+   * Whether "Space settings" is offered for the active space. False for another account's
+   * space in mixed mode: `RoomSettingsService` resolves the ACTIVE client, so the dialog
+   * would seed blank and every write would land on the wrong account — or nowhere.
+   */
   readonly canConfigureSpace = computed(
     () => !!this.store.activeSpaceId() && this.ownsActiveSpace(),
   );

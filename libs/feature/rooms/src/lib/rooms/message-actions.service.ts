@@ -190,7 +190,7 @@ export class MessageActionsService {
   }
 
   /** Run a fire-and-forget timeline action, surfacing a failure as a toast. */
-  runAction(action: Observable<void>, failureMessage: string): void {
+  private runAction(action: Observable<void>, failureMessage: string): void {
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       error: () => void this.status.showError(failureMessage),
     });

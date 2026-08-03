@@ -1,5 +1,4 @@
 import { Injectable, inject } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService } from '@trinity/data-access/media';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
@@ -33,7 +32,6 @@ export class RoomShellNavigationService {
   private readonly spaces = inject(SpacesService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly accountScope = inject(AccountScopeService);
-  private readonly matrix = inject(MatrixClientService);
   private readonly media = inject(MediaService);
   private readonly pinned = inject(PinnedMessagesService);
   private readonly threads = inject(ThreadsService);

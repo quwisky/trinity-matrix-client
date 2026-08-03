@@ -69,11 +69,6 @@ export class AccountRoutingService {
   }
 
   /**
-   * Open a room. `source` distinguishes a normal open (the default — records the visit,
-   * committing any hop cycle) from a hop-driven one (leaves the MRU stack frozen so
-   * repeated hops keep cycling deeper). Every existing caller uses the default.
-   */
-  /**
    * Open a room chosen from the sidebar list. In mixed-account mode the row may belong to
    * a different signed-in account — switch to that account first (so every downstream
    * action runs on its client), then open the room; otherwise open it directly.

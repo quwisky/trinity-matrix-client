@@ -168,7 +168,7 @@ export class ShellShortcutsService {
     this.jumpTo(selection);
   }
 
-  jumpTo(selection: SwitcherSelection): void {
+  private jumpTo(selection: SwitcherSelection): void {
     switch (selection.kind) {
       case 'room':
       case 'dm':

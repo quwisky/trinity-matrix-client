@@ -6,9 +6,11 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
-import { runWithBusy, type BusyState } from '@trinity/ui';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { runWithBusy } from '@trinity/ui';
 import { throwError } from 'rxjs';
+import { MockProvider } from 'ng-mocks';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { describe, expect, it } from 'vitest';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
@@ -94,23 +96,21 @@ describe('page-scoped providers own the component lifetime', () => {
  * The error channel as the page builds it today: one writable error signal fed by
  * `runWithBusy`, and exactly one effect reading it.
  */
-@Component({ template: '' })
+/**
+ * A host that provides the REAL ShellStatusService and wires the same effect RoomsPage
+ * wires, so the dedupe below is a property of the shipped error channel rather than of a
+ * signal declared in this file.
+ */
+@Component({ template: '', providers: [ShellStatusService] })
 class ErrorChannelHostComponent {
-  readonly busy = signal(false);
-  readonly error = signal<string | null>(null);
-  readonly toasts: string[] = [];
-
-  readonly state: BusyState = {
-    busy: this.busy,
-    error: this.error,
-    destroyRef: inject(DestroyRef),
-  };
+  readonly status = inject(ShellStatusService);
 
   constructor() {
+    // Mirrors rooms.page.ts: one effect, reading the one error signal.
     effect(() => {
-      const message = this.error();
+      const message = this.status.error();
       if (message) {
-        this.toasts.push(message);
+        void this.status.showError(message);
       }
     });
   }
@@ -118,9 +118,28 @@ class ErrorChannelHostComponent {
   fail(message: string): void {
     runWithBusy(
       throwError(() => new Error(message)),
-      this.state,
+      this.status,
     ).subscribe();
   }
+}
+
+function buildErrorChannel(): {
+  host: ErrorChannelHostComponent;
+  toasts: () => string[];
+  fixture: ComponentFixture<ErrorChannelHostComponent>;
+} {
+  const shown: string[] = [];
+  TestBed.configureTestingModule({
+    providers: [
+      MockProvider(TrnToastService, {
+        show: (m: string) => void shown.push(m),
+      }),
+    ],
+  });
+  const fixture = TestBed.createComponent(ErrorChannelHostComponent);
+  fixture.detectChanges();
+  shown.length = 0;
+  return { host: fixture.componentInstance, toasts: () => shown, fixture };
 }
 
 describe('one error channel produces one toast per flush', () => {
@@ -129,10 +148,7 @@ describe('one error channel produces one toast per flush', () => {
   // extracted coordinator its own pair would turn one effect into N. The dedupe below is
   // the property that would silently break.
   it('toasts once for two failures that land in the same flush', () => {
-    const fixture = TestBed.createComponent(ErrorChannelHostComponent);
-    fixture.detectChanges();
-    const host = fixture.componentInstance;
-    host.toasts.length = 0;
+    const { host, toasts, fixture } = buildErrorChannel();
 
     host.fail('first');
     host.fail('second');
@@ -140,28 +156,22 @@ describe('one error channel produces one toast per flush', () => {
 
     // A signal read in an effect sees only the latest value per flush, so two failures
     // in one turn surface as one toast carrying the second message.
-    expect(host.toasts).toEqual(['second']);
+    expect(toasts()).toEqual(['second']);
   });
 
   it('toasts twice for two failures in separate flushes', () => {
-    const fixture = TestBed.createComponent(ErrorChannelHostComponent);
-    fixture.detectChanges();
-    const host = fixture.componentInstance;
-    host.toasts.length = 0;
+    const { host, toasts, fixture } = buildErrorChannel();
 
     host.fail('first');
     fixture.detectChanges();
     host.fail('second');
     fixture.detectChanges();
 
-    expect(host.toasts).toEqual(['first', 'second']);
+    expect(toasts()).toEqual(['first', 'second']);
   });
 
   it('clears the error before each run, so an identical failure toasts again', () => {
-    const fixture = TestBed.createComponent(ErrorChannelHostComponent);
-    fixture.detectChanges();
-    const host = fixture.componentInstance;
-    host.toasts.length = 0;
+    const { host, toasts, fixture } = buildErrorChannel();
 
     host.fail('same');
     fixture.detectChanges();
@@ -171,7 +181,7 @@ describe('one error channel produces one toast per flush', () => {
     // `runWithBusy` nulls `error` synchronously at call time, so the signal changes
     // value twice and the effect re-runs. Without that reset the second failure would
     // be swallowed as a no-op write.
-    expect(host.toasts).toEqual(['same', 'same']);
+    expect(toasts()).toEqual(['same', 'same']);
   });
 });
 

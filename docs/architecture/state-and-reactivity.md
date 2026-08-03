@@ -206,7 +206,7 @@ multi-account design.
     The re-projection runs from an effect, which flushes *after* the switch Observable completes. A
     space hierarchy requested in the `subscribe` callback is wiped by that flush, and the symptom
     is a sidebar whose sub-space sections stay empty until the account pill is clicked a second
-    time. `RoomsPage.runOnAccount` therefore wraps its follow-up in
+    time. `AccountRoutingService.runOnAccount` therefore wraps its follow-up in
     `afterNextRender(() => then(), { injector })` — defer past the render that follows the switch,
     not just past the Observable.
 
@@ -344,8 +344,15 @@ does not re-run on every read receipt), and coalesce it when the events are per-
 `PinnedMessagesService` does — a bump per backfilled event is the difference between per-message
 and per-turn work in a busy room.
 
-The other recorded strain is the rooms shell itself. `libs/feature/rooms/src/lib/rooms/rooms.page.ts`
-is over 2,000 lines with more than forty `inject()` calls and ten selection and UI signals, well
-past the workspace's own refactor threshold. It is also the single place the client projections are
-started — `ngOnInit` calls `connect()` on rooms, spaces, invites, crypto, presence and
-notifications — so read it before adding another projection to the shell.
+The rooms shell used to be the other recorded strain — a single 2,000-line page holding every
+room and space workflow. It was decomposed into thirteen page-scoped classes beside it: a
+`RoomShellStore` for the shell's own signals, a `ShellStatusService` owning one busy/error
+channel, a `RoomShellViewModel` for the derived state, and ten workflow coordinators. The page
+itself is now the wiring layer, and `libs/feature/rooms/src/lib/rooms/` is where the pieces live.
+
+Two things about that layout matter when adding to it. The coordinators are `@Injectable()` with
+no `providedIn`, listed in `RoomsPage`'s `providers:` array, because `runWithBusy` ties its
+subscriptions to the injected `DestroyRef` — a root-provided coordinator's never fires, so every
+one of those subscriptions would outlive the page. And the page is still the single place the
+client projections are started: `ngOnInit` calls `connect()` on rooms, spaces, invites, crypto,
+presence and notifications, so read it before adding another projection to the shell.
