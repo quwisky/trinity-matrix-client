@@ -681,6 +681,7 @@ describe('RoomsPage action error feedback', () => {
         lastMessage: '',
         activityTs: 0,
         favourite: false,
+        lowPriority: false,
       },
     ]);
     shell.store.activeRoomId.set('!r:hs');

@@ -72,6 +72,19 @@
   />
 }
 
+@if (lowPriorityRooms().length) {
+  @if (otherRooms().length || favouriteRooms().length) {
+    <div class="sidebar__divider" role="separator"></div>
+  }
+  <div class="category">Low priority</div>
+  @for (room of lowPriorityRooms(); track room.id) {
+    <ng-container
+      [ngTemplateOutlet]="roomRow"
+      [ngTemplateOutletContext]="{ $implicit: room }"
+    />
+  }
+}
+
 @if (!rooms().length) {
   <p class="empty">No channels here yet.</p>
 }
@@ -143,6 +156,14 @@
       >
         <ng-icon name="lucideStar" />
         {{ room.favourite ? 'Unfavourite' : 'Favourite' }}
+      </button>
+      <button
+        hlmDropdownMenuItem
+        (triggered)="toggleLowPriority(room)"
+        data-testid="room-low-priority"
+      >
+        <ng-icon name="lucideArrowDownWideNarrow" />
+        {{ room.lowPriority ? 'Restore to list' : 'Low priority' }}
       </button>
       @if (room.hasUnread) {
         <button

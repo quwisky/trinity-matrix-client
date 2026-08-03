@@ -91,6 +91,11 @@ export interface RoomSummary {
   /** Whether the room carries the `m.favourite` tag — favourite to the top of the list. */
   favourite: boolean;
   /**
+   * Whether the room carries the `m.lowpriority` tag — sunk to the bottom of the list, into
+   * its own group. A room may hold this and `m.favourite` at once; favourite wins.
+   */
+  lowPriority: boolean;
+  /**
    * For a direct message, the other participant's user id (from the `m.direct` map);
    * undefined for a non-DM room. Lets the sidebar show the counterpart's online status.
    */
@@ -341,6 +346,35 @@ export class RoomsService {
       .catch((err: unknown) =>
         console.error(
           `Failed to ${favourite ? 'favourite' : 'unfavourite'} room ${roomId}`,
+          err,
+        ),
+      );
+  }
+
+  /**
+   * Add or remove the room's `m.lowpriority` tag, on the account that owns the row.
+   *
+   * Mirrors {@link setFavourite} exactly, including writing an empty tag body: Matrix tags
+   * carry an optional `order`, and Trinity does not use it — ordering within the group comes
+   * from the active sort mode, not from the tag.
+   */
+  setLowPriority(
+    roomId: string,
+    lowPriority: boolean,
+    accountId?: string,
+  ): void {
+    const client = this.clientOwning(accountId);
+    if (!client) {
+      return;
+    }
+    const write = lowPriority
+      ? client.setRoomTag(roomId, 'm.lowpriority', {})
+      : client.deleteRoomTag(roomId, 'm.lowpriority');
+    write
+      .then(() => this.refresh())
+      .catch((err: unknown) =>
+        console.error(
+          `Failed to ${lowPriority ? 'demote' : 'restore'} room ${roomId}`,
           err,
         ),
       );

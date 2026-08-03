@@ -9,6 +9,7 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  lucideArrowDownWideNarrow,
   lucideBell,
   lucideBellOff,
   lucideBellRing,
@@ -78,6 +79,7 @@ import { type PendingInvite } from '@trinity/data-access/invites';
   ],
   viewProviders: [
     provideIcons({
+      lucideArrowDownWideNarrow,
       lucideBell,
       lucideBellOff,
       lucideBellRing,
@@ -134,9 +136,20 @@ export class SidebarRoomListComponent {
     this.rooms().filter((r) => r.favourite),
   );
 
-  /** The rest of the rooms, rendered below the favourite group. */
+  /**
+   * Low-priority rooms (`m.lowpriority`), rendered last under their own header.
+   *
+   * Favourite wins when a room carries both tags, matching `compareRoomSummaries` — the
+   * partition and the sort have to agree, or a room would render in one group while the
+   * keyboard walk found it in another.
+   */
+  readonly lowPriorityRooms = computed(() =>
+    this.rooms().filter((r) => r.lowPriority && !r.favourite),
+  );
+
+  /** The rest of the rooms, rendered between the two groups. */
   readonly otherRooms = computed(() =>
-    this.rooms().filter((r) => !r.favourite),
+    this.rooms().filter((r) => !r.favourite && !r.lowPriority),
   );
 
   readonly badgeLabel = unreadBadgeLabel;
@@ -157,6 +170,14 @@ export class SidebarRoomListComponent {
       return null;
     }
     return this.presence.presenceFor(room.directUserId)();
+  }
+
+  /** Fire-and-forget: flip the room's `m.lowpriority` tag on every account joined to the
+   * row, so a merged row's group does not depend on which account is active. */
+  toggleLowPriority(room: RoomSummary): void {
+    for (const accountId of room.accountIds) {
+      this.roomsSvc.setLowPriority(room.id, !room.lowPriority, accountId);
+    }
   }
 
   /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service, on the

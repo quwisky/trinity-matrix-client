@@ -16,6 +16,7 @@ function fakeRoom(
     membership?: string;
     activityTs?: number;
     favourite?: boolean;
+    lowPriority?: boolean;
     unread?: number;
     highlight?: number;
     markedUnread?: boolean;
@@ -43,7 +44,10 @@ function fakeRoom(
       getEvents: () => [],
       getState: () => undefined, // no topic state in the fake
     }),
-    tags: opts.favourite ? { 'm.favourite': {} } : {},
+    tags: {
+      ...(opts.favourite ? { 'm.favourite': {} } : {}),
+      ...(opts.lowPriority ? { 'm.lowpriority': {} } : {}),
+    },
   };
 }
 
@@ -418,6 +422,49 @@ describe('MixedRoomsService', () => {
 
     const row = svc.rooms().find((r) => r.id === '!shared:hs');
     expect(row).toMatchObject({ markedUnread: true, hasUnread: true });
+  });
+
+  it('demotes a merged row when either account demoted it', async () => {
+    // The decision this encodes: one account demoting a room demotes the merged row for
+    // both. The alternative — taking it from the winner — would move the row between the
+    // low-priority group and the main list as you switch active account, which reads as a
+    // bug rather than a preference. Deliberately unlike `favourite`, which does ride the
+    // winner; the test below pins that they differ on purpose.
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom('!shared:hs')]));
+    clients.set(
+      '@b:hs',
+      fakeClient([fakeRoom('!shared:hs', { lowPriority: true })]),
+    );
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@a:hs'); // the UNdemoted copy wins the merge identity
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+
+    await flush();
+
+    expect(svc.rooms().find((r) => r.id === '!shared:hs')).toMatchObject({
+      lowPriority: true,
+    });
+  });
+
+  it('leaves favourite riding the winning copy, unlike low-priority', async () => {
+    // Not an oversight: favourite has always come from the winner, and this pins that the
+    // two flags merge differently so nobody "fixes" one to match the other by accident.
+    const { svc, accountIds, activeUserId, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom('!shared:hs')]));
+    clients.set(
+      '@b:hs',
+      fakeClient([fakeRoom('!shared:hs', { favourite: true })]),
+    );
+    accountIds.set(['@a:hs', '@b:hs']);
+    activeUserId.set('@a:hs'); // the UNstarred copy wins
+    svc.setAccounts(new Set(['@a:hs', '@b:hs']));
+
+    await flush();
+
+    expect(svc.rooms().find((r) => r.id === '!shared:hs')).toMatchObject({
+      favourite: false,
+    });
   });
 
   it('stays flagged when the WINNING copy is the flagged one', async () => {

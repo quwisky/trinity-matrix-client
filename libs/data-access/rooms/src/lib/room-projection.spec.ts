@@ -26,6 +26,7 @@ function room(over: Partial<RoomSummary> & { id: string }): RoomSummary {
     lastMessage: '',
     activityTs: 0,
     favourite: false,
+    lowPriority: false,
     ...over,
   };
 }
@@ -124,6 +125,41 @@ describe('comparatorFor', () => {
     });
     for (const mode of TRINITY_ROOM_SORTS) {
       expect(sorted([...rooms, starred], mode.id, CURATED)[0]).toBe('quebec');
+    }
+  });
+
+  it('sinks low-priority rooms below everything in every mode', () => {
+    // The mirror of the favourite test, and it has to hold in all three modes for the same
+    // reason: the array order is what the keyboard walk and mark-all-read iterate, so a
+    // mode that sank the room only visually would walk a different order from the rendered
+    // one.
+    const demoted = room({
+      id: '!q:hs',
+      name: 'quebec',
+      activityTs: Number.MAX_SAFE_INTEGER,
+      lowPriority: true,
+    });
+    for (const mode of TRINITY_ROOM_SORTS) {
+      const order = sorted([demoted, ...rooms], mode.id, CURATED);
+      expect(order[order.length - 1], mode.id).toBe('quebec');
+    }
+  });
+
+  it('keeps a room that is both favourite and low-priority with the favourites', () => {
+    // Matrix allows both tags at once and says nothing about precedence. Favouriting is the
+    // deliberate act, so it wins — pinned here because the alternative is equally arguable
+    // and the two terms are applied in a fixed order to get this result.
+    const both = room({
+      id: '!q:hs',
+      name: 'quebec',
+      activityTs: 1,
+      favourite: true,
+      lowPriority: true,
+    });
+    for (const mode of TRINITY_ROOM_SORTS) {
+      expect(sorted([...rooms, both], mode.id, CURATED)[0], mode.id).toBe(
+        'quebec',
+      );
     }
   });
 

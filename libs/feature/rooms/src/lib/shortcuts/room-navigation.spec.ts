@@ -19,6 +19,7 @@ function room(id: string, hasUnread = false): RoomSummary {
     lastMessage: '',
     activityTs: 0,
     favourite: false,
+    lowPriority: false,
   };
 }
 

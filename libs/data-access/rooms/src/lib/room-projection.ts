@@ -143,14 +143,24 @@ export function buildRoomSummary(
     lastMessage: lastMessageOf(room),
     activityTs: room.getLastActiveTimestamp(),
     favourite: room.tags?.['m.favourite'] !== undefined,
+    lowPriority: room.tags?.['m.lowpriority'] !== undefined,
     directUserId,
   };
 }
 
-/** Favourite-first, then most recently active, then name — the room list ordering. */
+/**
+ * Favourite-first, low-priority-last, then most recently active, then name — the room list
+ * ordering.
+ *
+ * A room tagged BOTH `m.favourite` and `m.lowpriority` sorts as a favourite. Matrix permits
+ * both tags at once and says nothing about precedence, so this is a choice: favouriting is
+ * the deliberate act, and a room you have starred should not sink out of sight because it
+ * was demoted at some point.
+ */
 export function compareRoomSummaries(a: RoomSummary, b: RoomSummary): number {
   return (
-    Number(b.favourite) - Number(a.favourite) ||
+    favouriteFirst(a, b) ||
+    lowPriorityLast(a, b) ||
     b.activityTs - a.activityTs ||
     a.name.localeCompare(b.name)
   );
@@ -247,6 +257,19 @@ function favouriteFirst(a: RoomSummary, b: RoomSummary): number {
 }
 
 /**
+ * Low-priority-last, shared by every ordering, and applied AFTER {@link favouriteFirst} so a
+ * room carrying both tags stays with the favourites.
+ *
+ * Same reason as favouriteFirst for existing at all: the sidebar renders low-priority as its
+ * own group, so this term does not change what is on screen — but the keyboard walk and
+ * "mark all read" iterate the array, and without it they would walk a different order from
+ * the one rendered.
+ */
+function lowPriorityLast(a: RoomSummary, b: RoomSummary): number {
+  return Number(a.lowPriority) - Number(b.lowPriority);
+}
+
+/**
  * Position lookup for {@link comparatorFor}'s `'space'` mode: room id → index in the space's
  * curated child order.
  *
@@ -295,11 +318,15 @@ export function comparatorFor(
       const rank = spaceRankOf(childIds);
       return (a, b) =>
         favouriteFirst(a, b) ||
+        lowPriorityLast(a, b) ||
         (rank.get(a.id) ?? UNRANKED) - (rank.get(b.id) ?? UNRANKED) ||
         a.name.localeCompare(b.name);
     }
     case 'alphabetical':
-      return (a, b) => favouriteFirst(a, b) || a.name.localeCompare(b.name);
+      return (a, b) =>
+        favouriteFirst(a, b) ||
+        lowPriorityLast(a, b) ||
+        a.name.localeCompare(b.name);
     case 'recent':
     default:
       // The app-wide comparator itself, so a space in this mode reads exactly like the

@@ -71,6 +71,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     lastMessage: '',
     activityTs: 0,
     favourite: false,
+    lowPriority: false,
     ...over,
   };
 }
@@ -827,6 +828,92 @@ describe('ChannelSidebarComponent', () => {
     favouriteItem?.click();
 
     expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', true, '@me:hs');
+  });
+
+  it('renders low-priority rooms last, under their own header', async () => {
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!f:hs', name: 'favourite-room', favourite: true }),
+          room({ id: '!a:hs', name: 'alpha' }),
+          room({ id: '!q:hs', name: 'quiet', lowPriority: true }),
+        ],
+      },
+    });
+
+    const categories = [...container.querySelectorAll('.category')].map(
+      (c) => c.textContent,
+    );
+    expect(categories).toEqual(['Favourites', 'Low priority']);
+
+    const channels = [...container.querySelectorAll('.channel__name')].map(
+      (n) => n.textContent,
+    );
+    expect(channels).toEqual(['favourite-room', 'alpha', 'quiet']);
+  });
+
+  it('keeps a room that is both favourite and low-priority in Favourites', async () => {
+    // The partition has to agree with compareRoomSummaries, which resolves the same clash
+    // the same way. If they disagreed a room would render in one group while the keyboard
+    // walk found it in the other.
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!a:hs', name: 'alpha' }),
+          room({
+            id: '!b:hs',
+            name: 'both',
+            favourite: true,
+            lowPriority: true,
+          }),
+        ],
+      },
+    });
+
+    const categories = [...container.querySelectorAll('.category')].map(
+      (c) => c.textContent,
+    );
+    expect(categories).toEqual(['Favourites']);
+    expect(
+      [...container.querySelectorAll('.channel__name')].map(
+        (n) => n.textContent,
+      ),
+    ).toEqual(['both', 'alpha']);
+  });
+
+  it('demotes a room via the kebab menu, on every account joined to the row', async () => {
+    const { fixture, container, roomsSvc } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({
+            id: '!a:hs',
+            name: 'general',
+            accountIds: ['@me:hs', '@alt:hs'],
+          }),
+        ],
+      },
+    });
+
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+
+    const item = document.querySelector<HTMLElement>(
+      '[data-testid="room-low-priority"]',
+    );
+    expect(item?.textContent).toContain('Low priority');
+    item?.click();
+
+    // Both accounts, so the merged row cannot flip back when the other one syncs.
+    expect(roomsSvc.setLowPriority).toHaveBeenCalledWith(
+      '!a:hs',
+      true,
+      '@me:hs',
+    );
+    expect(roomsSvc.setLowPriority).toHaveBeenCalledWith(
+      '!a:hs',
+      true,
+      '@alt:hs',
+    );
   });
 
   it('unfavourites a favourite room via the kebab menu', async () => {

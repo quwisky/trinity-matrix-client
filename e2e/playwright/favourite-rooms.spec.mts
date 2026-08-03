@@ -7,14 +7,18 @@ import {
 } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
-// Covers the "favourite rooms" feature: ChannelSidebarComponent renders a
-// hover-revealed kebab (`.channel__menu`) on each room row, opening a Helm
-// dropdown-menu (CDK overlay) with a Favourite/Unfavourite item
-// (`data-testid="room-favourite"`, RoomsService.setFavourite) that
-// writes/clears the standard Matrix `m.favourite` room tag. RoomsService.refresh
-// sorts favourite-first (then most-recently-active, then name), and
-// ChannelSidebarComponent partitions favourited rooms under a "Favourites"
-// `.category` header above the rest of the list.
+// Covers the two room-tag features, which share one fixture and one menu:
+// SidebarRoomListComponent renders a hover-revealed kebab (`.channel__menu`) on
+// each room row, opening a Helm dropdown-menu (CDK overlay) with a
+// Favourite/Unfavourite item (`data-testid="room-favourite"`,
+// RoomsService.setFavourite) and a Low priority/Restore item
+// (`data-testid="room-low-priority"`, RoomsService.setLowPriority), which
+// write/clear the standard Matrix `m.favourite` and `m.lowpriority` room tags.
+// RoomsService.refresh sorts favourite-first then low-priority-last (then
+// most-recently-active, then name), and the component partitions the list into
+// "Favourites" / untagged / "Low priority" `.category` groups in that order.
+// A room carrying both tags counts as a favourite in both the sort and the
+// partition.
 //
 // Seeds a single fresh reader via Synapse's shared-secret admin endpoint (same
 // trick as room-list.spec.mts/room-filter-spaceless.spec.mts/
@@ -120,7 +124,8 @@ async function seedTwoRooms(
 }
 
 /**
- * Open a room row's kebab menu and return the `room-favourite` dropdown item.
+ * Open a room row's kebab menu and return one of its dropdown items
+ * (`room-favourite` by default, `room-low-priority` for the sibling tag).
  *
  * The kebab (`.channel__menu`) lives in the same `.channel-row` as the room's
  * `.channel` button but is only opacity-revealed on hover/focus (see
@@ -130,7 +135,11 @@ async function seedTwoRooms(
  * confused. The dropdown itself renders in a CDK overlay at the page root
  * (not nested under the row), so the returned item is located at page scope.
  */
-async function openRoomMenu(page: Page, roomName: string) {
+async function openRoomMenu(
+  page: Page,
+  roomName: string,
+  itemTestId = 'room-favourite',
+) {
   const row = page.locator('.channel-row', {
     has: page.locator('.channel', { hasText: roomName }),
   });
@@ -138,12 +147,12 @@ async function openRoomMenu(page: Page, roomName: string) {
   await row.first().hover();
   await row.first().locator('.channel__menu').click();
 
-  const favouriteItem = page.getByTestId('room-favourite');
-  await favouriteItem.waitFor({ state: 'visible', timeout: 10_000 });
-  return favouriteItem;
+  const item = page.getByTestId(itemTestId);
+  await item.waitFor({ state: 'visible', timeout: 10_000 });
+  return item;
 }
 
-test.describe('Favourite rooms', () => {
+test.describe('Room tags: favourite and low priority', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
   test('favouriting a room surfaces a Favourites section and moves it to the top; unfavouriting reverses it', async ({
@@ -212,5 +221,84 @@ test.describe('Favourite rooms', () => {
     // flat, activity-sorted list — again waiting on the tag-clear round trip
     // rather than a sleep.
     await expect(favouritesHeader).toHaveCount(0, { timeout: 30_000 });
+  });
+
+  test('demoting a room sinks it under a Low priority section, and favouriting it there pulls it back to the top', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}l`;
+
+    const { reader, alphaName, bravoName } = await seedTwoRooms(
+      request,
+      hs,
+      runId,
+    );
+
+    await login(page, reader);
+    await page.getByTestId('rail-rooms').click();
+
+    const alphaRow = page.locator('.channel', { hasText: alphaName });
+    const bravoRow = page.locator('.channel', { hasText: bravoName });
+    await alphaRow.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await bravoRow.first().waitFor({ state: 'visible', timeout: 30_000 });
+
+    const lowPriorityHeader = page.locator('.category', {
+      hasText: 'Low priority',
+    });
+    await expect(lowPriorityHeader).toHaveCount(0);
+
+    // Bravo leads: the list is most-recently-active first and it was created
+    // second, so the name tiebreak never gets consulted. Pin that before
+    // demoting — demoting the room that is already last would prove nothing.
+    await expect(
+      page.locator('.channel').first().locator('.channel__name'),
+    ).toHaveText(bravoName, { timeout: 30_000 });
+
+    const demoteItem = await openRoomMenu(page, bravoName, 'room-low-priority');
+    await expect(demoteItem).toHaveText(/^\s*Low priority\s*$/);
+    await demoteItem.click();
+
+    // Same round trip as favouriting: RoomsService.setLowPriority writes the
+    // `m.lowpriority` tag, refreshes, and the RoomEvent.Tags rebuild
+    // repartitions the list. The header is the first observable sign.
+    await lowPriorityHeader.waitFor({ state: 'visible', timeout: 30_000 });
+
+    // Bravo crosses the whole list: first before, last after — `lowPriorityLast`
+    // sinks it below every untagged room, and Alpha inherits the top.
+    await expect(
+      page.locator('.channel').last().locator('.channel__name'),
+    ).toHaveText(bravoName, { timeout: 30_000 });
+    await expect(
+      page.locator('.channel').first().locator('.channel__name'),
+    ).toHaveText(alphaName);
+
+    // Both tags at once: favourite wins. The partition and the comparator have
+    // to agree on that, or a room would render in one group while the keyboard
+    // walk found it in the other — so this is the assertion worth paying a
+    // round trip for.
+    const favouriteItem = await openRoomMenu(page, bravoName);
+    await favouriteItem.click();
+
+    await expect(lowPriorityHeader).toHaveCount(0, { timeout: 30_000 });
+    await expect(
+      page.locator('.category', { hasText: 'Favourites' }),
+    ).toBeVisible();
+    await expect(
+      page.locator('.channel').first().locator('.channel__name'),
+    ).toHaveText(bravoName, { timeout: 30_000 });
+
+    // Reads "Restore to list" now — confirms `m.lowpriority` survived the
+    // favourite rather than being cleared by it, so the room really is
+    // double-tagged and Favourites won on merit.
+    const restoreItem = await openRoomMenu(
+      page,
+      bravoName,
+      'room-low-priority',
+    );
+    await expect(restoreItem).toHaveText(/^\s*Restore to list\s*$/, {
+      timeout: 10_000,
+    });
   });
 });
