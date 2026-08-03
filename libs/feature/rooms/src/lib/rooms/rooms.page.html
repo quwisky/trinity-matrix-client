@@ -214,13 +214,16 @@
               <ng-icon class="text-xl" name="lucideUsers" />
             </button>
 
-            <!-- Below md the demoted actions collapse into this overflow menu; at md+
-               it is removed (md:hidden) and the buttons above are shown instead. -->
+            <!-- Present at EVERY breakpoint. Below md it also absorbs the demoted header
+               actions (each marked md:hidden inside), which are shown as their own buttons
+               above at md+. Actions that are rare rather than demoted — Jump to date — live
+               here at all widths rather than spending a permanent slot in a header that
+               already carries six. -->
             <button
               hlmBtn
               variant="ghost"
               size="icon"
-              class="header-pin md:hidden"
+              class="header-pin"
               [hlmDropdownMenuTrigger]="roomActionsMenu"
               align="end"
               aria-label="More actions"
@@ -236,6 +239,7 @@
             <ng-template #roomActionsMenu>
               <div hlmDropdownMenu>
                 <button
+                  class="md:hidden"
                   hlmDropdownMenuItem
                   (triggered)="roomActions.onInviteToRoom()"
                   data-testid="overflow-invite-people"
@@ -244,6 +248,7 @@
                   Invite people
                 </button>
                 <button
+                  class="md:hidden"
                   hlmDropdownMenuItem
                   (triggered)="roomActions.onOpenRoomSettings()"
                   data-testid="overflow-open-room-settings"
@@ -252,6 +257,7 @@
                   Room settings
                 </button>
                 <button
+                  class="md:hidden"
                   hlmDropdownMenuItem
                   (triggered)="messageActions.openPinnedPanel()"
                   data-testid="overflow-open-pinned"
@@ -265,6 +271,15 @@
                   }
                 </button>
                 <button
+                  hlmDropdownMenuItem
+                  (triggered)="messageActions.jumpToDate()"
+                  data-testid="overflow-jump-to-date"
+                >
+                  <ng-icon name="lucideCalendarSearch" />
+                  Jump to date
+                </button>
+                <button
+                  class="md:hidden"
                   hlmDropdownMenuItem
                   (triggered)="toggleMembers()"
                   data-testid="overflow-toggle-members"

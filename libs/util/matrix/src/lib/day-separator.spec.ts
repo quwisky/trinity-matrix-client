@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   dayLabel,
   hasUsableTimestamp,
+  isoDateOf,
+  localDayStartFromIso,
   startOfLocalDay,
   startOfNextLocalDay,
 } from './day-separator';
@@ -247,5 +249,68 @@ describe('dayLabel', () => {
     expect(
       dayLabel(startOfLocalDay(noon(2026, 6, 25)), today, SYSTEM),
     ).not.toBe('Today');
+  });
+});
+
+describe('localDayStartFromIso', () => {
+  it('returns LOCAL midnight, not the UTC instant', () => {
+    const ms = localDayStartFromIso('2026-08-03');
+
+    const local = new Date(ms!);
+    expect(local.getFullYear()).toBe(2026);
+    expect(local.getMonth()).toBe(7); // August
+    expect(local.getDate()).toBe(3);
+    expect(local.getHours()).toBe(0);
+    expect(local.getMinutes()).toBe(0);
+  });
+
+  it('lands on the right calendar day WEST of Greenwich', () => {
+    // The assertion above cannot catch the real bug on its own, and finding that out is
+    // why this exists. `new Date('2026-08-03')` parses as UTC; a following
+    // setHours(0,0,0,0) then repairs it in any POSITIVE-offset zone, because UTC midnight
+    // is still the same local calendar day there. West of Greenwich it is the previous
+    // evening, so normalising gives midnight of the WRONG day — and the whole jump lands
+    // a day early for the Americas while passing for everyone who wrote or reviewed it in
+    // Europe. Pinned with an explicit zone so the result does not depend on the machine.
+    const original = process.env.TZ;
+    try {
+      process.env.TZ = 'America/New_York';
+      const local = new Date(localDayStartFromIso('2026-08-03')!);
+      expect(local.getDate()).toBe(3);
+      expect(local.getHours()).toBe(0);
+    } finally {
+      // DELETE when it was unset. `process.env.TZ = undefined` stores the STRING
+      // "undefined", which ICU cannot resolve and silently falls back to UTC — leaving
+      // every later test in this file running in a different zone than it thinks.
+      if (original === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = original;
+      }
+    }
+  });
+
+  it('round-trips with isoDateOf', () => {
+    expect(isoDateOf(localDayStartFromIso('2026-02-28')!)).toBe('2026-02-28');
+    expect(isoDateOf(localDayStartFromIso('2024-02-29')!)).toBe('2024-02-29');
+  });
+
+  it('agrees with startOfLocalDay for a timestamp on that day', () => {
+    const noon = new Date(2026, 7, 3, 12, 34, 56).getTime();
+    expect(localDayStartFromIso('2026-08-03')).toBe(startOfLocalDay(noon));
+  });
+
+  it('rejects a date that is not real, including one that would roll over', () => {
+    // `new Date(2026, 1, 30)` is 2 March — it does not throw, so without the check a user
+    // asking for 30 February would silently be sent to a different day.
+    expect(localDayStartFromIso('2026-02-30')).toBeNull();
+    expect(localDayStartFromIso('2026-13-01')).toBeNull();
+    expect(localDayStartFromIso('2025-02-29')).toBeNull(); // not a leap year
+  });
+
+  it('rejects anything that is not YYYY-MM-DD', () => {
+    for (const bad of ['', '2026-8-3', '03/08/2026', 'yesterday', '2026-08']) {
+      expect(localDayStartFromIso(bad), bad).toBeNull();
+    }
   });
 });

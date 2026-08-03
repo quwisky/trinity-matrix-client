@@ -1,0 +1,27 @@
+// Layout only. The card surface (border, background, radius, shadow, padding) comes from
+// the same Tailwind utilities every other small dialog here uses — a CDK overlay is a bare
+// positioned box, so without them the controls float on the dimmed room with the timeline
+// showing through between them.
+.jump {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jump__title {
+  color: var(--trinity-text-bright);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.jump__label {
+  color: var(--trinity-text-muted);
+  font-size: 13px;
+}
+
+.jump__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
