@@ -1,5 +1,7 @@
 import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
@@ -30,6 +32,20 @@ import {
   ChannelSidebarComponent,
   type AccountSummary,
 } from './channel-sidebar.component';
+
+/**
+ * The room-list child, resolved from a rendered sidebar.
+ *
+ * `presenceOf`, `badgeLabel` and `notifyMode` moved to SidebarRoomListComponent when the
+ * room-list body was extracted. They are unit-tested here rather than through the parent
+ * because the parent no longer has them — asserting on the owner is the point of the split.
+ */
+function roomList(
+  fixture: ComponentFixture<ChannelSidebarComponent>,
+): SidebarRoomListComponent {
+  return fixture.debugElement.query(By.directive(SidebarRoomListComponent))
+    .componentInstance as SidebarRoomListComponent;
+}
 
 // Stub presence: @bob is online, everyone else offline.
 const presenceStub = {
@@ -167,7 +183,7 @@ describe('ChannelSidebarComponent', () => {
         ],
       },
     });
-    const sidebar = fixture.componentInstance;
+    const sidebar = roomList(fixture);
     // Presence tracks the DM's other participant; a non-DM room gets null (no dot).
     expect(sidebar.presenceOf(room({ directUserId: '@bob:hs' }))).toBe(
       'online',
@@ -261,8 +277,8 @@ describe('ChannelSidebarComponent', () => {
   it('caps badgeLabel exactly at the 99/100 boundary', async () => {
     const { fixture } = await renderSidebar();
 
-    expect(fixture.componentInstance.badgeLabel(99)).toBe('99');
-    expect(fixture.componentInstance.badgeLabel(100)).toBe('99+');
+    expect(roomList(fixture).badgeLabel(99)).toBe('99');
+    expect(roomList(fixture).badgeLabel(100)).toBe('99+');
   });
 
   it('shows the exact uncapped unread count on a muted badge', async () => {
@@ -1136,7 +1152,7 @@ describe('ChannelSidebarComponent', () => {
     });
 
     const foreign = room({ id: '!a:hs', accountId: '@alt:hs' });
-    expect(fixture.componentInstance.notifyMode(foreign)).toBe('mentions');
+    expect(roomList(fixture).notifyMode(foreign)).toBe('mentions');
     // A mixed-in row's push rules live on ITS account; reading them from the active client
     // would report the wrong level and silently mute/unmute the wrong account.
     expect(modeForSpy).toHaveBeenCalledWith('!a:hs', '@alt:hs');
