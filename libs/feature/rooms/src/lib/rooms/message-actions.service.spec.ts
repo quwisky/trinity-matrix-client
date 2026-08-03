@@ -5,7 +5,7 @@ import { RoomsService } from '@trinity/data-access/rooms';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of, throwError } from 'rxjs';
+import { Subject, config, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
@@ -98,13 +98,30 @@ describe('MessageActionsService', () => {
       expect(send).toHaveBeenCalledWith('hello', []);
     });
 
-    it('does not toast when a send fails, because the local echo shows it', () => {
+    it('does not toast when a send fails, because the local echo shows it', async () => {
+      // `onSend` subscribes with no error callback on purpose: a failed send is surfaced
+      // by the local echo's failed/retry state, not by a toast. RxJS therefore reports the
+      // error as unhandled and rethrows it asynchronously, where the app's global
+      // ErrorHandler takes it. Capturing it here is not cosmetic — left uncaptured it
+      // fails the whole Vitest run as an unhandled error while every test still passes,
+      // which is how this reached CI.
       const { actions } = build();
-      send.mockReturnValueOnce(throwError(() => new Error('offline')));
+      const unhandled: unknown[] = [];
+      const previous = config.onUnhandledError;
+      config.onUnhandledError = (error) => unhandled.push(error);
 
-      expect(() => actions.onSend({ body: 'x', mentions: [] })).not.toThrow();
+      try {
+        send.mockReturnValueOnce(throwError(() => new Error('offline')));
+        actions.onSend({ body: 'x', mentions: [] });
+        // RxJS reports an unhandled error on a macrotask, not inline, so the handler has
+        // to stay installed across one tick or the report lands on the real one.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        config.onUnhandledError = previous;
+      }
 
       expect(toastShow).not.toHaveBeenCalled();
+      expect(unhandled).toHaveLength(1);
     });
 
     it('replies against the event being answered', () => {
