@@ -58,6 +58,7 @@ function fakeRoom(opts: {
   activity?: number;
   encrypted?: boolean;
   favourite?: boolean;
+  lowPriority?: boolean;
   /** Widened past `timelineEvent`: markRead also reads an event's id and send status. */
   events?: (ReturnType<typeof timelineEvent> & {
     getId?: () => string;
@@ -75,8 +76,12 @@ function fakeRoom(opts: {
   return {
     roomId: opts.roomId,
     name: opts.name,
-    // Mirror matrix-js-sdk's `Room.tags`; `m.favourite` drives the favourite flag.
-    tags: opts.favourite ? { 'm.favourite': {} } : {},
+    // Mirror matrix-js-sdk's `Room.tags`; `m.favourite` and `m.lowpriority` drive the
+    // favourite and low-priority flags.
+    tags: {
+      ...(opts.favourite ? { 'm.favourite': {} } : {}),
+      ...(opts.lowPriority ? { 'm.lowpriority': {} } : {}),
+    },
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getMxcAvatarUrl: () => null,
@@ -1357,6 +1362,47 @@ describe('RoomsService setFavourite', () => {
     expect(deleteRoomTag).toHaveBeenCalledWith('!a:hs', 'm.favourite');
     expect(setRoomTag).not.toHaveBeenCalled();
     expect(svc.rooms()[0].favourite).toBe(false);
+  });
+
+  it('demoting a room writes the m.lowpriority tag and refreshes on resolve', async () => {
+    const { svc, setRoomTag, deleteRoomTag, setRooms } = setup(false);
+    setRooms([
+      fakeRoom({ roomId: '!a:hs', name: 'general', lowPriority: true }),
+    ]);
+
+    svc.setLowPriority('!a:hs', true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setRoomTag).toHaveBeenCalledWith('!a:hs', 'm.lowpriority', {});
+    expect(deleteRoomTag).not.toHaveBeenCalled();
+    expect(svc.rooms()[0].lowPriority).toBe(true);
+  });
+
+  it('restoring a room deletes the m.lowpriority tag and refreshes on resolve', async () => {
+    const { svc, setRoomTag, deleteRoomTag, setRooms, handlers } = setup(false);
+
+    // Get the projection to actually HOLD `true` first. Seeding the post-restore state and
+    // then asserting `false` — which is what this test used to do — cannot fail: false is
+    // also the value before the call, so it passed whether or not `refresh()` ever ran.
+    setRooms([
+      fakeRoom({ roomId: '!a:hs', name: 'general', lowPriority: true }),
+    ]);
+    handlers.get(RoomEvent.Tags)?.();
+    await Promise.resolve();
+    expect(svc.rooms()[0].lowPriority).toBe(true);
+
+    // Now the tag is gone server-side, and only the post-write refresh can pick that up.
+    setRooms([
+      fakeRoom({ roomId: '!a:hs', name: 'general', lowPriority: false }),
+    ]);
+    svc.setLowPriority('!a:hs', false);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(deleteRoomTag).toHaveBeenCalledWith('!a:hs', 'm.lowpriority');
+    expect(setRoomTag).not.toHaveBeenCalled();
+    expect(svc.rooms()[0].lowPriority).toBe(false);
   });
 
   it('rebuilds the list on a RoomEvent.Tags (remote favourite change from another device)', async () => {

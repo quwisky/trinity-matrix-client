@@ -116,6 +116,13 @@ export class RoomShellNavigationService {
       this.store.roomsView.set(false);
       this.store.activeSpaceId.set(null);
     }
+    // The sidebar's filter resets itself when the VIEW changes, and the branch above
+    // deliberately leaves Recent / Direct Messages / Rooms alone — so on those three the
+    // view key is unchanged and the query would survive into the new account's list,
+    // pre-narrowing it (or emptying it) for no reason the user asked for. The rooms
+    // underneath changed even though the view did not, which is exactly what the reset is
+    // for, so clear it here rather than widening the store's key.
+    this.store.roomFilter.set('');
     this.spaces.openSpace(null);
   }
 

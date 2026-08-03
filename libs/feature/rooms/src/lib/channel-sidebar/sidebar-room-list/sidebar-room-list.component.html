@@ -1,0 +1,290 @@
+@if (invites().length) {
+  <div class="category">Invites</div>
+  @for (invite of invites(); track invite.roomId) {
+    <div class="invite">
+      <trn-avatar
+        class="invite__avatar"
+        [mxc]="invite.avatarMxc"
+        [accountId]="invite.accountId"
+        [accountBadge]="badgeFor(invite.accountId)"
+        [initial]="invite.initial"
+        [name]="invite.name"
+        [size]="32"
+      />
+      <div class="invite__text">
+        <span class="invite__name" [title]="invite.name">{{
+          invite.name
+        }}</span>
+        <span class="invite__meta"
+          >{{ invite.isSpace ? 'Space' : invite.isDirect ? 'DM' : 'Room' }} ·
+          from {{ invite.inviterName }}</span
+        >
+      </div>
+      <div class="invite__actions">
+        <button
+          class="invite__btn accept"
+          (click)="
+            acceptInvite.emit({
+              roomId: invite.roomId,
+              accountId: invite.accountId,
+            })
+          "
+          [attr.aria-label]="'Accept invite to ' + invite.name"
+          title="Accept"
+        >
+          <ng-icon name="lucideCheck" aria-hidden="true" />
+        </button>
+        <button
+          class="invite__btn decline"
+          (click)="
+            declineInvite.emit({
+              roomId: invite.roomId,
+              accountId: invite.accountId,
+            })
+          "
+          [attr.aria-label]="'Decline invite to ' + invite.name"
+          title="Decline"
+        >
+          <ng-icon name="lucideX" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  }
+}
+
+@if (favouriteRooms().length) {
+  <div class="category">Favourites</div>
+  @for (room of favouriteRooms(); track room.id) {
+    <ng-container
+      [ngTemplateOutlet]="roomRow"
+      [ngTemplateOutletContext]="{ $implicit: room }"
+    />
+  }
+  @if (otherRooms().length) {
+    <div class="sidebar__divider" role="separator"></div>
+  }
+}
+
+@for (room of otherRooms(); track room.id) {
+  <ng-container
+    [ngTemplateOutlet]="roomRow"
+    [ngTemplateOutletContext]="{ $implicit: room }"
+  />
+}
+
+@if (lowPriorityRooms().length) {
+  @if (otherRooms().length || favouriteRooms().length) {
+    <div class="sidebar__divider" role="separator"></div>
+  }
+  <div class="category">Low priority</div>
+  @for (room of lowPriorityRooms(); track room.id) {
+    <ng-container
+      [ngTemplateOutlet]="roomRow"
+      [ngTemplateOutletContext]="{ $implicit: room }"
+    />
+  }
+}
+
+<!-- Two different statements, so they have two different conditions. "No channels here yet"
+     is about the room list alone and shows under a pending invite exactly as it always did.
+     "Nothing matched" is about the filter, and an invite that DID match is a match — saying
+     nothing matched above a visible result would be a plain contradiction. -->
+@if (filterActive() ? !rooms().length && !invites().length : !rooms().length) {
+  <p class="empty" data-testid="room-list-empty">
+    {{
+      filterActive() ? 'No rooms match your filter.' : 'No channels here yet.'
+    }}
+  </p>
+}
+
+<ng-template #roomRow let-room>
+  <div class="channel-row">
+    <button
+      class="channel"
+      [class.active]="activeRoomId() === room.id"
+      [class.unread]="room.hasUnread"
+      (click)="selectRoom.emit(room.id)"
+      [title]="room.name"
+    >
+      <trn-avatar
+        class="channel__avatar"
+        [mxc]="room.avatarMxc"
+        [accountId]="room.accountId"
+        [initial]="room.initial"
+        [name]="room.name"
+        [size]="36"
+        [presence]="presenceOf(room)"
+        [accountBadge]="badgeFor(room.accountId)"
+      />
+      <div class="channel__text">
+        <span class="channel__name">{{ room.name }}</span>
+        @if (room.lastMessage) {
+          <span class="channel__preview">{{ room.lastMessage }}</span>
+        }
+      </div>
+      @if (room.highlightCount > 0) {
+        <span
+          class="channel__badge"
+          [attr.aria-label]="room.highlightCount + ' unread mentions'"
+          >{{ badgeLabel(room.highlightCount) }}</span
+        >
+      } @else if (room.unreadCount > 0) {
+        <span
+          class="channel__badge channel__badge--muted"
+          [attr.aria-label]="room.unreadCount + ' unread messages'"
+          >{{ badgeLabel(room.unreadCount) }}</span
+        >
+      } @else if (room.markedUnread) {
+        <!-- Flagged with nothing new in it: a count would read "0", so it is a dot. -->
+        <span
+          class="channel__badge channel__badge--dot"
+          role="img"
+          aria-label="Marked unread"
+          data-testid="room-unread-dot"
+        ></span>
+      }
+    </button>
+    <button
+      class="channel__menu"
+      [hlmDropdownMenuTrigger]="roomMenu"
+      align="end"
+      [attr.aria-label]="'Options for ' + room.name"
+      title="Room options"
+    >
+      <ng-icon name="lucideEllipsisVertical" aria-hidden="true" />
+    </button>
+  </div>
+
+  <ng-template #roomMenu>
+    <div hlmDropdownMenu>
+      <button
+        hlmDropdownMenuItem
+        (triggered)="toggleFavourite(room)"
+        data-testid="room-favourite"
+      >
+        <ng-icon name="lucideStar" />
+        {{ room.favourite ? 'Unfavourite' : 'Favourite' }}
+      </button>
+      <button
+        hlmDropdownMenuItem
+        (triggered)="toggleLowPriority(room)"
+        data-testid="room-low-priority"
+      >
+        <ng-icon name="lucideArrowDownWideNarrow" />
+        {{ room.lowPriority ? 'Restore to list' : 'Low priority' }}
+      </button>
+      @if (room.hasUnread) {
+        <button
+          hlmDropdownMenuItem
+          (triggered)="
+            markRead.emit({ roomId: room.id, accountIds: room.accountIds })
+          "
+          data-testid="room-mark-read"
+        >
+          <ng-icon name="lucideCheckCheck" />
+          Mark as read
+        </button>
+      } @else if (room.id !== activeRoomId()) {
+        <!-- Not offered for the room being read: the flag is cleared when a room is
+           opened, and this one already is, so it would stick until you left. -->
+        <button
+          hlmDropdownMenuItem
+          (triggered)="
+            markUnread.emit({ roomId: room.id, accountIds: room.accountIds })
+          "
+          data-testid="room-mark-unread"
+        >
+          <ng-icon name="lucideMailOpen" />
+          Mark as unread
+        </button>
+      }
+      <div hlmDropdownMenuSeparator></div>
+      <button
+        hlmDropdownMenuItem
+        [hlmDropdownMenuSubTrigger]="notifyMenu"
+        data-testid="room-notify"
+      >
+        <ng-icon name="lucideBell" />
+        Notifications
+        <hlm-dropdown-menu-item-sub-indicator />
+      </button>
+      <div hlmDropdownMenuSeparator></div>
+      @if (spaceActive()) {
+        <button
+          hlmDropdownMenuItem
+          variant="destructive"
+          (triggered)="removeRoom.emit(room.id)"
+          data-testid="room-remove"
+        >
+          <ng-icon name="lucideCircleMinus" />
+          Remove from space
+        </button>
+      }
+      <button
+        hlmDropdownMenuItem
+        variant="destructive"
+        (triggered)="
+          leaveRoom.emit({ roomId: room.id, accountId: room.accountId })
+        "
+        data-testid="room-leave"
+      >
+        <ng-icon name="lucideLogOut" />
+        Leave room
+      </button>
+    </div>
+
+    <ng-template #notifyMenu>
+      <div hlmDropdownMenuSub>
+        @let mode = notifyMode(room);
+        <button
+          hlmDropdownMenuRadio
+          [checked]="mode === 'all'"
+          [keepOpen]="false"
+          (triggered)="
+            setNotifyMode.emit({
+              roomId: room.id,
+              mode: 'all',
+              accountIds: room.accountIds,
+            })
+          "
+          data-testid="room-notify-all"
+        >
+          <hlm-dropdown-menu-radio-indicator />
+          All messages
+        </button>
+        <button
+          hlmDropdownMenuRadio
+          [checked]="mode === 'mentions'"
+          [keepOpen]="false"
+          (triggered)="
+            setNotifyMode.emit({
+              roomId: room.id,
+              mode: 'mentions',
+              accountIds: room.accountIds,
+            })
+          "
+          data-testid="room-notify-mentions"
+        >
+          <hlm-dropdown-menu-radio-indicator />
+          Mentions &amp; keywords only
+        </button>
+        <button
+          hlmDropdownMenuRadio
+          [checked]="mode === 'mute'"
+          [keepOpen]="false"
+          (triggered)="
+            setNotifyMode.emit({
+              roomId: room.id,
+              mode: 'mute',
+              accountIds: room.accountIds,
+            })
+          "
+          data-testid="room-notify-mute"
+        >
+          <hlm-dropdown-menu-radio-indicator />
+          Mute
+        </button>
+      </div>
+    </ng-template>
+  </ng-template>
+</ng-template>

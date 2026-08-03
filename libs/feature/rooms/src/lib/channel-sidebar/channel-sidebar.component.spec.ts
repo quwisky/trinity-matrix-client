@@ -1,5 +1,7 @@
 import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
@@ -31,6 +33,20 @@ import {
   type AccountSummary,
 } from './channel-sidebar.component';
 
+/**
+ * The room-list child, resolved from a rendered sidebar.
+ *
+ * `presenceOf`, `badgeLabel` and `notifyMode` moved to SidebarRoomListComponent when the
+ * room-list body was extracted. They are unit-tested here rather than through the parent
+ * because the parent no longer has them — asserting on the owner is the point of the split.
+ */
+function roomList(
+  fixture: ComponentFixture<ChannelSidebarComponent>,
+): SidebarRoomListComponent {
+  return fixture.debugElement.query(By.directive(SidebarRoomListComponent))
+    .componentInstance as SidebarRoomListComponent;
+}
+
 // Stub presence: @bob is online, everyone else offline.
 const presenceStub = {
   presenceFor: (userId: string) =>
@@ -55,6 +71,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     lastMessage: '',
     activityTs: 0,
     favourite: false,
+    lowPriority: false,
     ...over,
   };
 }
@@ -101,6 +118,8 @@ async function renderSidebar(
   opts: {
     inputs?: {
       rooms?: RoomSummary[];
+      hasAnyUnread?: boolean;
+      filterQuery?: string;
       spaceActive?: boolean;
       activeRoomId?: string | null;
       user?: UserProfile;
@@ -167,7 +186,7 @@ describe('ChannelSidebarComponent', () => {
         ],
       },
     });
-    const sidebar = fixture.componentInstance;
+    const sidebar = roomList(fixture);
     // Presence tracks the DM's other participant; a non-DM room gets null (no dot).
     expect(sidebar.presenceOf(room({ directUserId: '@bob:hs' }))).toBe(
       'online',
@@ -261,8 +280,8 @@ describe('ChannelSidebarComponent', () => {
   it('caps badgeLabel exactly at the 99/100 boundary', async () => {
     const { fixture } = await renderSidebar();
 
-    expect(fixture.componentInstance.badgeLabel(99)).toBe('99');
-    expect(fixture.componentInstance.badgeLabel(100)).toBe('99+');
+    expect(roomList(fixture).badgeLabel(99)).toBe('99');
+    expect(roomList(fixture).badgeLabel(100)).toBe('99+');
   });
 
   it('shows the exact uncapped unread count on a muted badge', async () => {
@@ -310,6 +329,7 @@ describe('ChannelSidebarComponent', () => {
       inputs: {
         spaceActive: true,
         rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        hasAnyUnread: true,
       },
     });
     expect(
@@ -328,6 +348,7 @@ describe('ChannelSidebarComponent', () => {
       inputs: {
         spaceActive: true,
         rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        hasAnyUnread: true,
       },
     });
     let marked = false;
@@ -813,6 +834,92 @@ describe('ChannelSidebarComponent', () => {
     expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', true, '@me:hs');
   });
 
+  it('renders low-priority rooms last, under their own header', async () => {
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!f:hs', name: 'favourite-room', favourite: true }),
+          room({ id: '!a:hs', name: 'alpha' }),
+          room({ id: '!q:hs', name: 'quiet', lowPriority: true }),
+        ],
+      },
+    });
+
+    const categories = [...container.querySelectorAll('.category')].map(
+      (c) => c.textContent,
+    );
+    expect(categories).toEqual(['Favourites', 'Low priority']);
+
+    const channels = [...container.querySelectorAll('.channel__name')].map(
+      (n) => n.textContent,
+    );
+    expect(channels).toEqual(['favourite-room', 'alpha', 'quiet']);
+  });
+
+  it('keeps a room that is both favourite and low-priority in Favourites', async () => {
+    // The partition has to agree with compareRoomSummaries, which resolves the same clash
+    // the same way. If they disagreed a room would render in one group while the keyboard
+    // walk found it in the other.
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!a:hs', name: 'alpha' }),
+          room({
+            id: '!b:hs',
+            name: 'both',
+            favourite: true,
+            lowPriority: true,
+          }),
+        ],
+      },
+    });
+
+    const categories = [...container.querySelectorAll('.category')].map(
+      (c) => c.textContent,
+    );
+    expect(categories).toEqual(['Favourites']);
+    expect(
+      [...container.querySelectorAll('.channel__name')].map(
+        (n) => n.textContent,
+      ),
+    ).toEqual(['both', 'alpha']);
+  });
+
+  it('demotes a room via the kebab menu, on every account joined to the row', async () => {
+    const { fixture, container, roomsSvc } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({
+            id: '!a:hs',
+            name: 'general',
+            accountIds: ['@me:hs', '@alt:hs'],
+          }),
+        ],
+      },
+    });
+
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+
+    const item = document.querySelector<HTMLElement>(
+      '[data-testid="room-low-priority"]',
+    );
+    expect(item?.textContent).toContain('Low priority');
+    item?.click();
+
+    // Both accounts, so the merged row cannot flip back when the other one syncs.
+    expect(roomsSvc.setLowPriority).toHaveBeenCalledWith(
+      '!a:hs',
+      true,
+      '@me:hs',
+    );
+    expect(roomsSvc.setLowPriority).toHaveBeenCalledWith(
+      '!a:hs',
+      true,
+      '@alt:hs',
+    );
+  });
+
   it('unfavourites a favourite room via the kebab menu', async () => {
     const { fixture, container, roomsSvc } = await renderSidebar({
       inputs: {
@@ -1093,6 +1200,7 @@ describe('ChannelSidebarComponent', () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
         rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        hasAnyUnread: true,
       },
     });
     let all = false;
@@ -1136,7 +1244,7 @@ describe('ChannelSidebarComponent', () => {
     });
 
     const foreign = room({ id: '!a:hs', accountId: '@alt:hs' });
-    expect(fixture.componentInstance.notifyMode(foreign)).toBe('mentions');
+    expect(roomList(fixture).notifyMode(foreign)).toBe('mentions');
     // A mixed-in row's push rules live on ITS account; reading them from the active client
     // would report the wrong level and silently mute/unmute the wrong account.
     expect(modeForSpy).toHaveBeenCalledWith('!a:hs', '@alt:hs');
@@ -1520,5 +1628,240 @@ describe('ChannelSidebarComponent space sort menu', () => {
     row('space-sort-default')?.click();
 
     expect(emitted).toEqual([null]);
+  });
+});
+
+/**
+ * The filter BOX. The narrowing of joined rooms lives in the shell (`RoomShellStore`
+ * owns the query, `RoomShellViewModel.filteredRooms` applies it) so the Alt+↑/↓ room walk
+ * steps through the same list — see room-shell-view-model.spec.ts. What is left here is
+ * what the sidebar itself still owns: the control, and the lists the shell does not know
+ * about (invites and a space's children).
+ */
+describe('ChannelSidebarComponent room filter', () => {
+  function filterInput(
+    fixture: ComponentFixture<ChannelSidebarComponent>,
+  ): HTMLInputElement {
+    return fixture.nativeElement.querySelector(
+      '[data-testid=sidebar-filter]',
+    ) as HTMLInputElement;
+  }
+
+  function type(
+    fixture: ComponentFixture<ChannelSidebarComponent>,
+    value: string,
+  ): void {
+    const input = filterInput(fixture);
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+  }
+
+  it('publishes what is typed, so the shell can narrow the list and the walk together', async () => {
+    const { fixture } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })] },
+    });
+    const seen: string[] = [];
+    fixture.componentInstance.filterQuery.subscribe((q) => seen.push(q));
+
+    type(fixture, 'des');
+
+    expect(seen).toEqual(['des']);
+  });
+
+  it('narrows invites and the space’s child lists itself — the shell does not see those', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })], spaceActive: true },
+      invites: [
+        invite({ roomId: '!i1:hs', name: 'design crit' }),
+        invite({ roomId: '!i2:hs', name: 'random' }),
+      ],
+      joinableRooms: [
+        child({ roomId: '!j1:hs', name: 'design docs' }),
+        child({ roomId: '!j2:hs', name: 'ops' }),
+      ],
+      childSpaces: [
+        child({ roomId: '!s1:hs', name: 'design org', isSpace: true }),
+        child({ roomId: '!s2:hs', name: 'infra', isSpace: true }),
+      ],
+    });
+
+    type(fixture, 'design');
+
+    // The box sits above the whole scroll area, so everything under it narrows — a list
+    // that visibly ignored the filter would read as broken.
+    expect(
+      [...container.querySelectorAll('.invite__name')].map((el) =>
+        el.textContent!.trim(),
+      ),
+    ).toEqual(['design crit']);
+    expect(
+      [...container.querySelectorAll('.joinable__name')].map((el) =>
+        el.textContent!.trim(),
+      ),
+    ).toEqual(['design docs', 'design org']);
+  });
+
+  it('says nothing matched rather than claiming the space is empty', async () => {
+    // The shell has already filtered every room away; only the sidebar knows why.
+    const { container } = await renderSidebar({
+      inputs: { rooms: [], filterQuery: 'zzz' },
+    });
+
+    // Telling someone with 40 rooms that they have none is worse than saying nothing.
+    expect(
+      container.querySelector('[data-testid=room-list-empty]')!.textContent,
+    ).toContain('No rooms match');
+  });
+
+  it('still says the space is empty when nothing is filtered', async () => {
+    const { container } = await renderSidebar({ inputs: { rooms: [] } });
+
+    expect(
+      container.querySelector('[data-testid=room-list-empty]')!.textContent,
+    ).toContain('No channels here yet');
+  });
+
+  it('offers a clear button only while filtering, and clearing publishes the empty query', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })] },
+    });
+    const clear = () =>
+      container.querySelector<HTMLElement>(
+        '[data-testid=sidebar-filter-clear]',
+      );
+
+    expect(clear()).toBeNull();
+
+    type(fixture, 'design');
+    expect(clear()).not.toBeNull();
+
+    const seen: string[] = [];
+    fixture.componentInstance.filterQuery.subscribe((q) => seen.push(q));
+    clear()!.click();
+    fixture.detectChanges();
+
+    expect(seen).toEqual(['']);
+    expect(filterInput(fixture).value).toBe('');
+    expect(clear()).toBeNull();
+  });
+
+  it('treats an all-whitespace query as no filter at all', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })] },
+    });
+
+    type(fixture, '   ');
+
+    // No clear button: there is nothing meaningful to clear.
+    expect(
+      container.querySelector('[data-testid=sidebar-filter-clear]'),
+    ).toBeNull();
+  });
+
+  it('clears on Escape, and lets Escape through once the box is empty', async () => {
+    const { fixture } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })] },
+    });
+
+    type(fixture, 'zzz');
+
+    const escape = () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      const stop = vi.spyOn(event, 'stopPropagation');
+      filterInput(fixture).dispatchEvent(event);
+      fixture.detectChanges();
+      return stop;
+    };
+
+    expect(escape()).toHaveBeenCalled();
+    expect(filterInput(fixture).value).toBe('');
+
+    // Second Escape has nothing to clear, so it must reach the shell's own handler
+    // instead of being swallowed — otherwise focus in this box would trap it.
+    expect(escape()).not.toHaveBeenCalled();
+  });
+
+  it('still says the space is empty under an unrelated pending invite', async () => {
+    // Regression: the empty state was gated on invites too, so one invite to an unrelated
+    // room silenced "No channels here yet." for a space you had joined no channels in.
+    const { container } = await renderSidebar({
+      inputs: { rooms: [] },
+      invites: [invite({ roomId: '!i1:hs', name: 'somewhere else' })],
+    });
+
+    expect(
+      container.querySelector('[data-testid=room-list-empty]')!.textContent,
+    ).toContain('No channels here yet');
+  });
+
+  it('says nothing about matching while an invite still matches', async () => {
+    // The other half: an invite that DID match is a visible result, so claiming nothing
+    // matched above it would contradict what is on screen.
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [] },
+      invites: [invite({ roomId: '!i1:hs', name: 'design crit' })],
+    });
+
+    type(fixture, 'design');
+
+    expect(container.querySelector('[data-testid=room-list-empty]')).toBeNull();
+  });
+
+  it('returns focus to the box when the clear button removes itself', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })] },
+    });
+
+    type(fixture, 'design');
+    container
+      .querySelector<HTMLElement>('[data-testid=sidebar-filter-clear]')!
+      .click();
+    fixture.detectChanges();
+
+    // The button unmounts on click, so without an explicit hand-off focus falls to <body>
+    // and the next Tab restarts from the top of the document.
+    expect(document.activeElement).toBe(filterInput(fixture));
+  });
+
+  it('announces the result count only while filtering', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!a:hs', name: 'design' }),
+          room({ id: '!b:hs', name: 'design docs' }),
+        ],
+      },
+    });
+    const status = () =>
+      container
+        .querySelector('[data-testid=sidebar-filter-status]')!
+        .textContent!.trim();
+
+    // Silent when nothing is typed — the unfiltered list is not news.
+    expect(status()).toBe('');
+
+    type(fixture, 'design');
+    expect(status()).toBe('2 results');
+  });
+
+  it('keeps Mark all as read while the filter hides the unread room', async () => {
+    // `rooms` arrives filtered, so the affordance can only be right if it is gated on the
+    // shell's unfiltered signal rather than on what is rendered.
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [room({ id: '!a:hs', name: 'design' })],
+        hasAnyUnread: true,
+        filterQuery: 'design',
+      },
+    });
+
+    expect(
+      container.querySelector('[data-testid=mark-all-read]'),
+    ).not.toBeNull();
   });
 });

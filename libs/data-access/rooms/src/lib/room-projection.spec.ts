@@ -26,6 +26,7 @@ function room(over: Partial<RoomSummary> & { id: string }): RoomSummary {
     lastMessage: '',
     activityTs: 0,
     favourite: false,
+    lowPriority: false,
     ...over,
   };
 }
@@ -124,6 +125,49 @@ describe('comparatorFor', () => {
     });
     for (const mode of TRINITY_ROOM_SORTS) {
       expect(sorted([...rooms, starred], mode.id, CURATED)[0]).toBe('quebec');
+    }
+  });
+
+  it('sinks low-priority rooms below everything in every mode', () => {
+    // The mirror of the favourite test, and it has to hold in all three modes for the same
+    // reason: the array order is what the keyboard walk and mark-all-read iterate, so a
+    // mode that sank the room only visually would walk a different order from the rendered
+    // one.
+    // The demoted room has to be one that would otherwise sort FIRST in EVERY mode, or a
+    // mode's leg proves nothing. The first version used an id outside CURATED, so in
+    // 'space' mode it fell to UNRANKED and sorted last whether or not the rule existed —
+    // deleting `lowPriorityLast` from that branch kept the whole suite green.
+    // So: curated index 0, alphabetically first, and the most recent activity.
+    const demoted = room({
+      id: '!z:hs',
+      name: 'aaa-first',
+      activityTs: Number.MAX_SAFE_INTEGER,
+      lowPriority: true,
+    });
+    for (const mode of TRINITY_ROOM_SORTS) {
+      const order = sorted([demoted, ALPHA, MIKE], mode.id, CURATED);
+      expect(order[0], `${mode.id}: would lead without the rule`).not.toBe(
+        'aaa-first',
+      );
+      expect(order[order.length - 1], mode.id).toBe('aaa-first');
+    }
+  });
+
+  it('keeps a room that is both favourite and low-priority with the favourites', () => {
+    // Matrix allows both tags at once and says nothing about precedence. Favouriting is the
+    // deliberate act, so it wins — pinned here because the alternative is equally arguable
+    // and the two terms are applied in a fixed order to get this result.
+    const both = room({
+      id: '!q:hs',
+      name: 'quebec',
+      activityTs: 1,
+      favourite: true,
+      lowPriority: true,
+    });
+    for (const mode of TRINITY_ROOM_SORTS) {
+      expect(sorted([...rooms, both], mode.id, CURATED)[0], mode.id).toBe(
+        'quebec',
+      );
     }
   });
 

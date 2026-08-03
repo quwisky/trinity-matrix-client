@@ -191,6 +191,12 @@ export class MixedRoomsService {
           // leave the row reading as unread while claiming it is not flagged, which is
           // both the wrong menu item and a badge with no count behind it.
           markedUnread: existing.markedUnread || summary.markedUnread,
+          // OR'd deliberately: demoting a room on one account demotes the merged row for
+          // both. Taking it from the winner instead would move the row between groups as
+          // you switch active account, which reads as a bug rather than a preference.
+          // `favourite` is NOT merged this way — it rides the winner, as it always has —
+          // so the two flags disagree on purpose; see the note on RoomSummary.lowPriority.
+          lowPriority: existing.lowPriority || summary.lowPriority,
         });
       }
     }

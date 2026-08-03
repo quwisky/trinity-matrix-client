@@ -4,9 +4,9 @@ import {
   computed,
   inject,
   input,
+  model,
   output,
 } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
@@ -19,6 +19,7 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
+import { HlmInput } from '@trinity/helm/input';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowDownWideNarrow,
@@ -69,13 +70,13 @@ import {
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
-import { type PresenceState } from '@trinity/util/matrix';
-import { unreadBadgeLabel } from '../shared/unread-badge';
+import { matchesRoomFilter, normalizeRoomFilter } from './room-filter';
 import { AccountPickerService } from '../account-picker/account-picker.service';
 import {
   SidebarUserPanelComponent,
   type AccountSummary,
 } from './sidebar-user-panel/sidebar-user-panel.component';
+import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 
 export type { AccountSummary };
 
@@ -85,9 +86,10 @@ export type { AccountSummary };
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     SidebarUserPanelComponent,
+    SidebarRoomListComponent,
     AvatarComponent,
     NgIcon,
-    NgTemplateOutlet,
+    HlmInput,
     HlmDropdownMenuTrigger,
     HlmDropdownMenu,
     HlmDropdownMenuItem,
@@ -157,21 +159,68 @@ export class ChannelSidebarComponent {
    * hold it without being able to rename the space, and vice versa.
    */
   readonly canCurateSpace = input(false);
+  /** Already narrowed by {@link filterQuery} — the shell filters, so that the Alt+↑/↓ room
+   * walk steps through exactly what is on screen (`RoomShellStore.roomFilter`). */
   readonly rooms = input<RoomSummary[]>([]);
+
   /**
-   * Favourite rooms (`m.favourite`), rendered under a "Favourite" header. The service
-   * already sorts favourite-first, so a stable partition keeps activity order within
-   * each group.
+   * Whether any room has unread messages — gates the "Mark all as read" affordance.
+   *
+   * An input rather than a computed over {@link rooms}, because that list arrives filtered:
+   * the button marks EVERY room read, so hiding it because the current filter excludes the
+   * unread ones would misrepresent what it does.
    */
-  readonly favouriteRooms = computed(() =>
-    this.rooms().filter((r) => r.favourite),
+  readonly hasAnyUnread = input(false);
+
+  /**
+   * The sidebar's in-place filter, two-way bound to the shell. Separate from the Ctrl/Cmd+K
+   * switcher, which closes on selection: this one narrows the list and stays out of the way
+   * while you work through the result.
+   *
+   * The shell owns the value (and resets it on a view change) because the room walk has to
+   * see the same narrowing; this component owns the box that edits it.
+   */
+  readonly filterQuery = model('');
+
+  /** The folded query, computed once per keystroke rather than once per row below. */
+  private readonly normalizedFilter = computed(() =>
+    normalizeRoomFilter(this.filterQuery()),
   );
-  /** The rest of the rooms, rendered below the favourite group. */
-  readonly otherRooms = computed(() =>
-    this.rooms().filter((r) => !r.favourite),
+
+  /** Whether a filter is actually narrowing anything (an all-whitespace query is not). */
+  protected readonly filterActive = computed(
+    () => this.normalizedFilter() !== '',
   );
-  /** Whether any room has unread messages — gates the "Mark all as read" affordance. */
-  readonly hasAnyUnread = computed(() => this.rooms().some((r) => r.hasUnread));
+
+  /**
+   * What the filter's live region announces. Counts everything the box narrows, not just
+   * joined rooms, because that is what changed on screen.
+   */
+  protected readonly filterStatus = computed(() => {
+    const count =
+      this.rooms().length +
+      this.filteredInvites().length +
+      this.filteredJoinableRooms().length +
+      this.filteredChildSpaces().length;
+    return count === 1 ? '1 result' : `${count} results`;
+  });
+
+  protected clearFilter(): void {
+    this.filterQuery.set('');
+  }
+
+  /**
+   * Escape clears the box, and only then. Left to bubble when the box is already empty so
+   * the shell's own Escape handling (closing the panel behind it) still works — swallowing
+   * it unconditionally would strand a user whose focus happens to sit here.
+   */
+  protected onFilterEscape(event: Event): void {
+    if (!this.filterQuery()) {
+      return;
+    }
+    event.stopPropagation();
+    this.clearFilter();
+  }
 
   /** The account badge for a room row (mixed view), or null when not badged. */
   /**
@@ -188,13 +237,24 @@ export class ChannelSidebarComponent {
     });
   }
 
-  badgeFor(accountId: string): AccountBadge | null {
-    return this.accountBadges().get(accountId) ?? null;
-  }
   /** Not-yet-joined channels of the active space (the "More Channels" list). */
   readonly joinableRooms = this.spacesSvc.notJoinedRooms;
   /** Sub-spaces of the active space (joined → Open, otherwise Join). */
   readonly childSpaces = this.spacesSvc.childSpaces;
+
+  // The filter box sits above the whole scroll area, so it narrows everything under it —
+  // not just the joined rooms. A box that visibly ignored the two lists below the fold
+  // would read as broken.
+  protected readonly filteredJoinableRooms = computed(() =>
+    this.joinableRooms().filter((child) =>
+      matchesRoomFilter(child.name, this.normalizedFilter()),
+    ),
+  );
+  protected readonly filteredChildSpaces = computed(() =>
+    this.childSpaces().filter((child) =>
+      matchesRoomFilter(child.name, this.normalizedFilter()),
+    ),
+  );
   /** Whether the active space's child hierarchy is still loading. */
   readonly childrenLoading = this.spacesSvc.childrenLoading;
   /** Non-null when the active space's child hierarchy failed to load. */
@@ -205,6 +265,12 @@ export class ChannelSidebarComponent {
     this.accountScope.mixing()
       ? this.mixedInvites.invites()
       : this.invitesSvc.pendingInvites(),
+  );
+
+  protected readonly filteredInvites = computed(() =>
+    this.invites().filter((invite) =>
+      matchesRoomFilter(invite.name, this.normalizedFilter()),
+    ),
   );
   readonly activeRoomId = input<string | null>(null);
   /** The signed-in user (name + handle + avatar) for the bottom user panel. */
@@ -320,42 +386,4 @@ export class ChannelSidebarComponent {
   }
 
   /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
-  readonly badgeLabel = unreadBadgeLabel;
-
-  /**
-   * Live online status for a direct message's other participant, or null for a non-DM
-   * room (which gets no presence dot). Reads the memoized per-user presence signal, so
-   * the row updates when that user's presence changes.
-   */
-  presenceOf(room: RoomSummary): PresenceState | null {
-    // Presence is projected from the ACTIVE client only, so a mixed-in account's DM partner
-    // has no entry there and would render a grey dot — indistinguishable from genuinely
-    // offline. Show nothing rather than something false.
-    const active = this.activeUserId();
-    if (
-      !room.directUserId ||
-      (active && room.accountId && room.accountId !== active)
-    ) {
-      return null;
-    }
-    return this.presence.presenceFor(room.directUserId)();
-  }
-
-  /** Fire-and-forget: flip the room's `m.favourite` tag via the rooms service, on the
-   * account that owns the row (not necessarily the active one). */
-  toggleFavourite(room: RoomSummary): void {
-    // Across every account joined to the row, so a merged row's star doesn't flip back.
-    for (const accountId of room.accountIds) {
-      this.roomsSvc.setFavourite(room.id, !room.favourite, accountId);
-    }
-  }
-
-  /**
-   * The room's current notification level, read fresh from its push rules to seed the
-   * ⋮ menu's radio checks. Re-read each time the submenu opens (the write is delegated to
-   * the host via {@link setNotifyMode}), so the check reflects the persisted preference.
-   */
-  notifyMode(room: RoomSummary): RoomNotifyMode {
-    return this.roomNotifications.modeFor(room.id, room.accountId);
-  }
 }
