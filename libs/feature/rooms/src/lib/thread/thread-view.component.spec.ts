@@ -1,4 +1,6 @@
 import { signal } from '@angular/core';
+import { type ComponentFixture } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { DialogRef } from '@angular/cdk/dialog';
 import { render } from '@trinity/testing';
 import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
@@ -7,6 +9,7 @@ import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
+import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageSourceService } from '../message-source/message-source.service';
 import type { MessageRow } from '../message-row/message-row.component';
 
@@ -33,6 +36,14 @@ function msg(id: string, senderId: string, body: string): MessageView {
     readReceipts: [],
     poll: null,
   };
+}
+
+/** The composer this panel renders, for asserting what a quote put into it. */
+function composerOf(
+  fixture: ComponentFixture<ThreadViewComponent>,
+): MessageComposerComponent {
+  return fixture.debugElement.query(By.directive(MessageComposerComponent))
+    .componentInstance as MessageComposerComponent;
 }
 
 function row(id: string, senderId: string, body: string): MessageRow {
@@ -201,6 +212,33 @@ describe('ThreadViewComponent', () => {
     expect(replyInThread).toHaveBeenCalledWith('$r1', 'replying', []);
     expect(sendToThread).not.toHaveBeenCalled();
     expect(cmp.replyingToId()).toBeNull();
+  });
+
+  it('quotes a thread message into the thread’s own composer', async () => {
+    const { fixture } = await build([msg('$r1', '@b:hs', 'a reply')]);
+    const cmp = fixture.componentInstance;
+
+    cmp.onRowAction(row('$r1', '@b:hs', 'a reply'), { type: 'quote' });
+
+    // The thread panel has its own composer; a quote raised here must not reach the
+    // room's.
+    expect(composerOf(fixture).text()).toBe('> a reply\n\n');
+  });
+
+  it('keeps a thread quote that interrupts an edit', async () => {
+    // Same ordering trap as the room list: the composer restores its draft when it leaves
+    // edit mode, and that restore would land after a same-tick insert.
+    const { fixture } = await build([msg('$r1', '@me:hs', 'mine')]);
+    const cmp = fixture.componentInstance;
+
+    cmp.startEdit(row('$r1', '@me:hs', 'mine'));
+    fixture.detectChanges();
+
+    cmp.startQuote(row('$r1', '@me:hs', 'mine'));
+    fixture.detectChanges();
+    await Promise.resolve();
+
+    expect(composerOf(fixture).text()).toBe('> mine\n\n');
   });
 
   it('toggles a reaction on a thread message', async () => {

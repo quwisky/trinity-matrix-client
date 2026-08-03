@@ -606,6 +606,31 @@ export class MessageComposerComponent {
     if (!block) {
       return;
     }
+    // Quoting out of an edit has to wait for the edit to actually end.
+    //
+    // The host clears its `editingId` and calls this in the SAME tick, so `editing()` is
+    // still true here — the input only changes on the next change detection. The effect
+    // above then takes its `!editing && wasEditing` branch and does an unconditional
+    // `text.set(draft)`, which would land AFTER this insert and silently discard the
+    // quote. afterNextRender runs after that effect, so the quote survives.
+    //
+    // afterNextRender, NOT queueMicrotask: the app is zoneless, so the host's signal write
+    // only schedules change detection (rAF) and a microtask would still run before the
+    // effect. Same reason `onTogglePreview` uses it.
+    if (this.editing()) {
+      afterNextRender(() => this.insertQuoteNow(block), {
+        injector: this.injector,
+      });
+      return;
+    }
+    this.insertQuoteNow(block);
+  }
+
+  private insertQuoteNow(block: string): void {
+    // A preview hides the textarea, and `applyEdit` focuses it — on a `display: none`
+    // element that is a no-op, stranding the caret on <body>. Quoting means you are about
+    // to write, so drop back to the editor first.
+    this.previewing.set(false);
     const existing = this.text();
     const text = existing ? block + existing : block;
     this.applyEdit({

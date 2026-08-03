@@ -765,6 +765,35 @@ describe('SimpleMessageListComponent', () => {
       expect(cmp.replyingToId()).toBe('$7');
     });
 
+    it('keeps the quote when it interrupts an edit', async () => {
+      // The composer restores the compose draft when it LEAVES edit mode, and that
+      // restore is an unconditional `text.set(...)`. startQuote clears editingId and
+      // inserts in the same tick, so the input only flips on the next change detection —
+      // after the insert. Without ordering the two, the restore lands last and the quote
+      // is silently discarded.
+      const { fixture } = await render(SimpleMessageListComponent, {
+        providers: [MockProvider(TrnAlertService)],
+        inputs: {
+          roomId: '!r:hs',
+          messages: [msg('$1', '@a:hs', 'Alice', 1000)],
+        },
+      });
+      const cmp = fixture.componentInstance;
+
+      cmp.startEdit({ ...msg('$1', '@a:hs', 'Alice', 1000), showHeader: true });
+      fixture.detectChanges();
+      expect(composerOf(fixture).text()).toBe('body $1');
+
+      cmp.startQuote({
+        ...msg('$1', '@a:hs', 'Alice', 1000),
+        showHeader: true,
+      });
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      expect(composerOf(fixture).text()).toBe('> body $1\n\n');
+    });
+
     it('makes startEdit and startReply mutually exclusive', async () => {
       const cmp = await make();
       cmp.replyingToId.set('$1');

@@ -1569,6 +1569,26 @@ describe('MessageComposerComponent', () => {
       expect(seen).toEqual([true]);
     });
 
+    it('drops out of preview, so the caret lands somewhere real', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      cmp.onTogglePreview();
+      fixture.detectChanges();
+      expect(cmp.previewing()).toBe(true);
+
+      cmp.insertQuote('> theirs\n\n');
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      // A preview hides the textarea, and focus() on a display:none element is a no-op —
+      // the user would type their answer into nothing.
+      expect(cmp.previewing()).toBe(false);
+      const ta = fixture.nativeElement.querySelector(
+        'textarea',
+      ) as HTMLTextAreaElement;
+      expect(document.activeElement).toBe(ta);
+    });
+
     it('does nothing at all for an empty block', async () => {
       const { fixture } = await renderComposer();
       const cmp = fixture.componentInstance;
