@@ -66,6 +66,7 @@
        control that produced it has to stay visible too. -->
   <div class="sidebar__filter">
     <input
+      #filterBox
       hlmInput
       class="h-8 w-full pr-8 text-sm"
       type="text"
@@ -79,9 +80,12 @@
       data-testid="sidebar-filter"
     />
     @if (filterActive()) {
+      <!-- Focus goes back to the box: this button removes ITSELF from the DOM, so without
+           that the active element falls back to <body> and the next Tab restarts from the
+           top of the document. -->
       <button
         class="sidebar__filter-clear"
-        (click)="clearFilter()"
+        (click)="clearFilter(); filterBox.focus()"
         aria-label="Clear filter"
         title="Clear filter"
         data-testid="sidebar-filter-clear"
@@ -90,6 +94,17 @@
       </button>
     }
   </div>
+  <!-- The list narrows visually with no announcement, so a screen-reader user gets no
+       feedback at all from typing. Polite, and only while filtering, so it never speaks
+       over the unfiltered list. -->
+  <p
+    class="sr-only"
+    role="status"
+    aria-live="polite"
+    data-testid="sidebar-filter-status"
+  >
+    {{ filterActive() ? filterStatus() : '' }}
+  </p>
 
   <div class="sidebar__scroll">
     <trn-sidebar-room-list

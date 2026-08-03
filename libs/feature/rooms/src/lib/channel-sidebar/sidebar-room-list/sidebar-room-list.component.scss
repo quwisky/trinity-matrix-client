@@ -202,3 +202,34 @@
     color: var(--trinity-text-bright);
   }
 }
+
+// This component's empty state ("No channels here yet." / "No rooms match your filter.").
+// The parent renders its own `.empty` lines and styles them in its stylesheet; emulated
+// encapsulation scopes each rule to its own component's elements, so both need a copy.
+.empty {
+  color: var(--trinity-text-muted);
+  font-size: 13px;
+  padding: 8px;
+}
+
+// Touch devices have no hover, so the kebab — the only way into a room's options and its
+// Notifications submenu — would be invisible. Keep it shown there. (Keyboard users still
+// reveal it via the :focus-within rule on .channel-row above.)
+// Lives here rather than in the parent stylesheet: `.channel__menu` is rendered by THIS
+// component, and under emulated encapsulation the parent's copy was attributed to the
+// parent's elements and silently matched nothing.
+@media (hover: none) {
+  .channel__menu {
+    opacity: 1;
+  }
+}
+
+// Touch targets: the invite and room-kebab buttons are below the touch minimum — lift them
+// to 44px on touch only (desktop keeps 26–30px). Same encapsulation reason as above.
+@media (pointer: coarse) {
+  .invite__btn,
+  .channel__menu {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

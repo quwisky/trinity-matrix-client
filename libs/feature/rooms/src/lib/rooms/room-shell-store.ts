@@ -1,4 +1,4 @@
-import { Injectable, computed, linkedSignal, signal } from '@angular/core';
+import { Injectable, linkedSignal, signal } from '@angular/core';
 import { membersColumnDefaultsOpen } from './shell-layout';
 
 /**
@@ -50,9 +50,6 @@ export class RoomShellStore {
       `${this.recentView()}|${this.roomsView()}|${this.activeSpaceId() ?? ''}`,
     computation: () => '',
   });
-
-  /** Whether {@link roomFilter} is actually narrowing anything (whitespace alone is not). */
-  readonly roomFilterActive = computed(() => this.roomFilter().trim() !== '');
 
   /**
    * Whether the member list is shown. At the wide (≥1100px) layout it's the static

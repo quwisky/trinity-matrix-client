@@ -1380,11 +1380,22 @@ describe('RoomsService setFavourite', () => {
   });
 
   it('restoring a room deletes the m.lowpriority tag and refreshes on resolve', async () => {
-    const { svc, setRoomTag, deleteRoomTag, setRooms } = setup(false);
+    const { svc, setRoomTag, deleteRoomTag, setRooms, handlers } = setup(false);
+
+    // Get the projection to actually HOLD `true` first. Seeding the post-restore state and
+    // then asserting `false` — which is what this test used to do — cannot fail: false is
+    // also the value before the call, so it passed whether or not `refresh()` ever ran.
+    setRooms([
+      fakeRoom({ roomId: '!a:hs', name: 'general', lowPriority: true }),
+    ]);
+    handlers.get(RoomEvent.Tags)?.();
+    await Promise.resolve();
+    expect(svc.rooms()[0].lowPriority).toBe(true);
+
+    // Now the tag is gone server-side, and only the post-write refresh can pick that up.
     setRooms([
       fakeRoom({ roomId: '!a:hs', name: 'general', lowPriority: false }),
     ]);
-
     svc.setLowPriority('!a:hs', false);
     await Promise.resolve();
     await Promise.resolve();

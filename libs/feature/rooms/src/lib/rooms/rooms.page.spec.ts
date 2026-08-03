@@ -1585,7 +1585,6 @@ describe('RoomsPage space filtering', () => {
 
     // A filter typed in one view must not silently narrow the next one.
     expect(shell.store.roomFilter()).toBe('');
-    expect(shell.store.roomFilterActive()).toBe(false);
   });
 
   it('treats an all-whitespace query as no filter', () => {
@@ -1593,7 +1592,6 @@ describe('RoomsPage space filtering', () => {
 
     shell.store.roomFilter.set('   ');
 
-    expect(shell.store.roomFilterActive()).toBe(false);
     expect(shell.vm.filteredRooms()).toBe(shell.vm.visibleRooms());
   });
 });
@@ -2141,6 +2139,19 @@ describe('RoomsPage space actions', () => {
 
     shell.session.switchAccount('@other:hs');
     expect(auth.switchAccount).toHaveBeenCalledWith('@other:hs');
+  });
+
+  it('drops the sidebar filter when switching accounts', () => {
+    // The filter resets itself on a VIEW change, and resetViewScope deliberately leaves
+    // Recent / Direct Messages / Rooms alone — so on those three the view key never
+    // changes and a query typed against one account's rooms would silently narrow the
+    // next account's list.
+    const shell = build();
+    shell.store.roomFilter.set('design');
+
+    shell.session.switchAccount('@other:hs');
+
+    expect(shell.store.roomFilter()).toBe('');
   });
 
   it('tears the open room down when switching accounts', () => {

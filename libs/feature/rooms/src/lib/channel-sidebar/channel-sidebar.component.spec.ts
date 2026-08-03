@@ -1786,6 +1786,69 @@ describe('ChannelSidebarComponent room filter', () => {
     expect(escape()).not.toHaveBeenCalled();
   });
 
+  it('still says the space is empty under an unrelated pending invite', async () => {
+    // Regression: the empty state was gated on invites too, so one invite to an unrelated
+    // room silenced "No channels here yet." for a space you had joined no channels in.
+    const { container } = await renderSidebar({
+      inputs: { rooms: [] },
+      invites: [invite({ roomId: '!i1:hs', name: 'somewhere else' })],
+    });
+
+    expect(
+      container.querySelector('[data-testid=room-list-empty]')!.textContent,
+    ).toContain('No channels here yet');
+  });
+
+  it('says nothing about matching while an invite still matches', async () => {
+    // The other half: an invite that DID match is a visible result, so claiming nothing
+    // matched above it would contradict what is on screen.
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [] },
+      invites: [invite({ roomId: '!i1:hs', name: 'design crit' })],
+    });
+
+    type(fixture, 'design');
+
+    expect(container.querySelector('[data-testid=room-list-empty]')).toBeNull();
+  });
+
+  it('returns focus to the box when the clear button removes itself', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [room({ name: 'design' })] },
+    });
+
+    type(fixture, 'design');
+    container
+      .querySelector<HTMLElement>('[data-testid=sidebar-filter-clear]')!
+      .click();
+    fixture.detectChanges();
+
+    // The button unmounts on click, so without an explicit hand-off focus falls to <body>
+    // and the next Tab restarts from the top of the document.
+    expect(document.activeElement).toBe(filterInput(fixture));
+  });
+
+  it('announces the result count only while filtering', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({ id: '!a:hs', name: 'design' }),
+          room({ id: '!b:hs', name: 'design docs' }),
+        ],
+      },
+    });
+    const status = () =>
+      container
+        .querySelector('[data-testid=sidebar-filter-status]')!
+        .textContent!.trim();
+
+    // Silent when nothing is typed — the unfiltered list is not news.
+    expect(status()).toBe('');
+
+    type(fixture, 'design');
+    expect(status()).toBe('2 results');
+  });
+
   it('keeps Mark all as read while the filter hides the unread room', async () => {
     // `rooms` arrives filtered, so the affordance can only be right if it is gated on the
     // shell's unfiltered signal rather than on what is rendered.

@@ -91,15 +91,6 @@
 // Row wrapper so a joined channel can carry a (hover-revealed) options menu
 // alongside the selectable channel button without nesting buttons.
 
-// Touch devices have no hover, so the kebab — the only way into a room's options and
-// its Notifications submenu — would be invisible and unreachable. Keep it shown there.
-// (Keyboard users still reveal it via the :focus-within rule on .channel-row above.)
-@media (hover: none) {
-  .channel__menu {
-    opacity: 1;
-  }
-}
-
 // Not-yet-joined child rooms / sub-spaces: muted rows with a Join (or Open) action.
 .joinable {
   display: flex;
@@ -151,6 +142,20 @@
   }
 }
 
+// The space-children section headers ("More Channels", "Spaces"). Duplicated from
+// SidebarRoomListComponent's stylesheet rather than shared, because emulated encapsulation
+// scopes each rule to its own component's elements: these two headers are rendered HERE,
+// the Favourites/Low priority ones there, and neither stylesheet can reach the other's.
+// The shared `category-label` mixin is what keeps them identical.
+.category {
+  @include category-label;
+
+  padding: 12px 8px 4px;
+}
+
+// Used by this component's "Loading channels…" / "Couldn’t load…" lines. The room list's
+// own empty state carries the same class and is styled in ITS stylesheet, for the same
+// encapsulation reason as `.category` above.
 .empty {
   color: var(--trinity-text-muted);
   font-size: 13px;
@@ -161,13 +166,15 @@
   color: var(--trinity-danger);
 }
 
-// Touch targets: the small sidebar action / invite / room-kebab buttons are below
-// the touch minimum — lift them to 44px on touch only (desktop keeps 26–30px). The
-// kebab is already revealed on touch by the @media (hover: none) rule above.
+// Touch targets: the small sidebar action / filter-clear buttons are below the touch
+// minimum — lift them to 44px on touch only (desktop keeps 22–30px).
+// The invite and room-kebab buttons used to be listed here too. They moved out with the
+// markup: they are rendered by SidebarRoomListComponent, and under emulated encapsulation
+// a rule in THIS stylesheet is attributed to this component's elements only, so it could
+// never have matched them from here. Their copy lives in that component's stylesheet.
 @media (pointer: coarse) {
   .sidebar__action,
-  .invite__btn,
-  .channel__menu {
+  .sidebar__filter-clear {
     min-width: 44px;
     min-height: 44px;
   }

@@ -85,7 +85,11 @@
   }
 }
 
-@if (!rooms().length && !invites().length) {
+<!-- Two different statements, so they have two different conditions. "No channels here yet"
+     is about the room list alone and shows under a pending invite exactly as it always did.
+     "Nothing matched" is about the filter, and an invite that DID match is a match — saying
+     nothing matched above a visible result would be a plain contradiction. -->
+@if (filterActive() ? !rooms().length && !invites().length : !rooms().length) {
   <p class="empty" data-testid="room-list-empty">
     {{
       filterActive() ? 'No rooms match your filter.' : 'No channels here yet.'

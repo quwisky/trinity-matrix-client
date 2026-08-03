@@ -133,15 +133,23 @@ describe('comparatorFor', () => {
     // reason: the array order is what the keyboard walk and mark-all-read iterate, so a
     // mode that sank the room only visually would walk a different order from the rendered
     // one.
+    // The demoted room has to be one that would otherwise sort FIRST in EVERY mode, or a
+    // mode's leg proves nothing. The first version used an id outside CURATED, so in
+    // 'space' mode it fell to UNRANKED and sorted last whether or not the rule existed —
+    // deleting `lowPriorityLast` from that branch kept the whole suite green.
+    // So: curated index 0, alphabetically first, and the most recent activity.
     const demoted = room({
-      id: '!q:hs',
-      name: 'quebec',
+      id: '!z:hs',
+      name: 'aaa-first',
       activityTs: Number.MAX_SAFE_INTEGER,
       lowPriority: true,
     });
     for (const mode of TRINITY_ROOM_SORTS) {
-      const order = sorted([demoted, ...rooms], mode.id, CURATED);
-      expect(order[order.length - 1], mode.id).toBe('quebec');
+      const order = sorted([demoted, ALPHA, MIKE], mode.id, CURATED);
+      expect(order[0], `${mode.id}: would lead without the rule`).not.toBe(
+        'aaa-first',
+      );
+      expect(order[order.length - 1], mode.id).toBe('aaa-first');
     }
   });
 

@@ -192,6 +192,19 @@ export class ChannelSidebarComponent {
     () => this.normalizedFilter() !== '',
   );
 
+  /**
+   * What the filter's live region announces. Counts everything the box narrows, not just
+   * joined rooms, because that is what changed on screen.
+   */
+  protected readonly filterStatus = computed(() => {
+    const count =
+      this.rooms().length +
+      this.filteredInvites().length +
+      this.filteredJoinableRooms().length +
+      this.filteredChildSpaces().length;
+    return count === 1 ? '1 result' : `${count} results`;
+  });
+
   protected clearFilter(): void {
     this.filterQuery.set('');
   }
