@@ -7,70 +7,72 @@
 
   <div
     class="flex min-h-0 flex-1"
-    [attr.data-mobile-view]="activeRoomId() ? 'chat' : 'list'"
+    [attr.data-mobile-view]="store.activeRoomId() ? 'chat' : 'list'"
   >
     <!-- Below md the rail + sidebar (room list) and the chat are separate full-screen
          pages, shown one at a time based on whether a room is open (rooms.page.scss).
          At md+ both are static columns side by side. -->
     <aside #listView tabindex="-1" class="shell-side w-full shrink-0 md:w-88">
       <trn-server-rail
-        [spaces]="railSpaces()"
-        [activeSpaceId]="activeSpaceId()"
-        [recentActive]="recentView()"
-        [roomsActive]="roomsView()"
-        [unread]="railUnread()"
-        [accountBadges]="accountBadges()"
-        (selectSpace)="onSelectSpaceRow($event)"
-        (createSpace)="onCreateSpace()"
-        (showRecent)="onShowRecent()"
-        (showRooms)="onShowRooms()"
+        [spaces]="vm.railSpaces()"
+        [activeSpaceId]="store.activeSpaceId()"
+        [recentActive]="store.recentView()"
+        [roomsActive]="store.roomsView()"
+        [unread]="vm.railUnread()"
+        [accountBadges]="vm.accountBadges()"
+        (selectSpace)="routing.onSelectSpaceRow($event)"
+        (createSpace)="spaceActions.onCreateSpace()"
+        (showRecent)="nav.onShowRecent()"
+        (showRooms)="nav.onShowRooms()"
       />
       <trn-channel-sidebar
-        [spaceName]="sidebarTitle()"
+        [spaceName]="vm.sidebarTitle()"
         [spaceActive]="
-          !recentView() && !roomsView() && activeSpaceId() !== null
+          !store.recentView() &&
+          !store.roomsView() &&
+          store.activeSpaceId() !== null
         "
-        [canConfigureSpace]="canConfigureSpace()"
-        [canCurateSpace]="canCurateSpace()"
-        [rooms]="visibleRooms()"
-        [activeRoomId]="activeRoomId()"
-        [user]="userProfile()"
-        [accounts]="accounts()"
-        [activeUserId]="activeAccountId()"
-        [reauthAccounts]="reauthAccounts()"
-        [accountBadges]="accountBadges()"
+        [canConfigureSpace]="vm.canConfigureSpace()"
+        [canCurateSpace]="vm.canCurateSpace()"
+        [rooms]="vm.visibleRooms()"
+        [activeRoomId]="store.activeRoomId()"
+        [user]="vm.userProfile()"
+        [accounts]="vm.accounts()"
+        [activeUserId]="vm.activeAccountId()"
+        [reauthAccounts]="vm.reauthAccounts()"
+        [accountBadges]="vm.accountBadges()"
         [shownAccountIds]="shownAccountIds()"
-        [sortMode]="spaceSortMode()"
-        [sortOverridden]="spaceSortOverridden()"
-        [defaultSortMode]="defaultSpaceSortMode()"
-        (toggleAccountShown)="onToggleAccountShown($event)"
-        (selectRoom)="onSelectRoomRow($event)"
-        (switchAccount)="switchAccount($event)"
-        (reauthAccount)="reauthAccount($event)"
-        (addAccount)="addAccount()"
-        (openSwitcher)="openSwitcher()"
-        (newChat)="onNewChat()"
-        (createRoom)="onCreateChannel()"
-        (inviteToSpace)="onInviteToSpace()"
-        (addToSpace)="onAddToSpace()"
-        (manageSpaceRooms)="onManageSpaceRooms()"
-        (createSubspace)="onCreateSubspace()"
-        (openSpaceMembers)="onOpenSpaceMembers()"
-        (openSpaceSettings)="onOpenSpaceSettings()"
-        (leaveSpace)="onLeaveSpace()"
-        (joinRoom)="onJoinChild($event)"
-        (removeRoom)="onRemoveFromSpace($event)"
-        (leaveRoom)="onLeaveRoom($event)"
-        (openChildSpace)="onSelectSpace($event)"
-        (acceptInvite)="onAcceptInvite($event)"
-        (declineInvite)="onDeclineInvite($event)"
-        (openSettings)="goToSettings()"
-        (logout)="logout($event)"
-        (setNotifyMode)="onSetNotifyMode($event)"
-        (markRead)="onMarkRead($event)"
-        (markUnread)="onMarkUnread($event)"
-        (markAllRead)="onMarkAllRead()"
-        (setSortMode)="onSetSpaceSort($event)"
+        [sortMode]="vm.spaceSortMode()"
+        [sortOverridden]="vm.spaceSortOverridden()"
+        [defaultSortMode]="vm.defaultSpaceSortMode()"
+        (toggleAccountShown)="routing.onToggleAccountShown($event)"
+        (selectRoom)="routing.onSelectRoomRow($event)"
+        (switchAccount)="session.switchAccount($event)"
+        (reauthAccount)="session.reauthAccount($event)"
+        (addAccount)="session.addAccount()"
+        (openSwitcher)="shortcutActions.openSwitcher()"
+        (newChat)="roomActions.onNewChat()"
+        (createRoom)="spaceActions.onCreateChannel()"
+        (inviteToSpace)="roomActions.onInviteToSpace()"
+        (addToSpace)="spaceActions.onAddToSpace()"
+        (manageSpaceRooms)="spaceActions.onManageSpaceRooms()"
+        (createSubspace)="spaceActions.onCreateSubspace()"
+        (openSpaceMembers)="spaceActions.onOpenSpaceMembers()"
+        (openSpaceSettings)="spaceActions.onOpenSpaceSettings()"
+        (leaveSpace)="spaceActions.onLeaveSpace()"
+        (joinRoom)="spaceActions.onJoinChild($event)"
+        (removeRoom)="spaceActions.onRemoveFromSpace($event)"
+        (leaveRoom)="roomActions.onLeaveRoom($event)"
+        (openChildSpace)="nav.onSelectSpace($event)"
+        (acceptInvite)="inviteActions.onAcceptInvite($event)"
+        (declineInvite)="inviteActions.onDeclineInvite($event)"
+        (openSettings)="session.goToSettings()"
+        (logout)="session.logout($event)"
+        (setNotifyMode)="readState.onSetNotifyMode($event)"
+        (markRead)="readState.onMarkRead($event)"
+        (markUnread)="readState.onMarkUnread($event)"
+        (markAllRead)="readState.onMarkAllRead()"
+        (setSortMode)="spaceActions.onSetSpaceSort($event)"
       />
     </aside>
 
@@ -93,7 +95,7 @@
         <!-- Projected into the shell's single <h1>: inline spans + icon only, no
            nested heading. rooms' scoped .title-hash/.title-lock still apply. -->
         <ng-container trnHeaderTitle>
-          @if (activeRoom(); as room) {
+          @if (vm.activeRoom(); as room) {
             <span class="truncate">
               <span class="title-hash">#</span>{{ room.name }}
             </span>
@@ -113,17 +115,17 @@
               <span
                 class="title-account"
                 data-testid="active-account-chip"
-                [attr.aria-label]="'Acting as ' + userName()"
-                [title]="userId()"
+                [attr.aria-label]="'Acting as ' + vm.userName()"
+                [title]="vm.userId()"
               >
                 <trn-avatar
-                  [mxc]="userAvatarMxc()"
-                  [accountId]="userId()"
-                  [initial]="userInitial()"
-                  [name]="userName()"
+                  [mxc]="vm.userAvatarMxc()"
+                  [accountId]="vm.userId()"
+                  [initial]="vm.userInitial()"
+                  [name]="vm.userName()"
                   [size]="18"
                 />
-                <span class="title-account__name">{{ userName() }}</span>
+                <span class="title-account__name">{{ vm.userName() }}</span>
               </span>
             }
           } @else {
@@ -132,12 +134,12 @@
         </ng-container>
 
         <ng-container trnHeaderActions>
-          @if (activeRoom()) {
+          @if (vm.activeRoom()) {
             <button
               hlmBtn
               variant="ghost"
               size="icon"
-              (click)="openMessageSearch()"
+              (click)="messageActions.openMessageSearch()"
               hlmTooltip="Search messages in this room"
               aria-label="Search messages in this room"
               data-testid="search-messages"
@@ -149,7 +151,7 @@
               variant="ghost"
               size="icon"
               class="max-md:hidden"
-              (click)="onInviteToRoom()"
+              (click)="roomActions.onInviteToRoom()"
               hlmTooltip="Invite people"
               aria-label="Invite people"
               data-testid="invite-people"
@@ -161,7 +163,7 @@
               variant="ghost"
               size="icon"
               class="max-md:hidden"
-              (click)="onOpenRoomSettings()"
+              (click)="roomActions.onOpenRoomSettings()"
               hlmTooltip="Room settings"
               aria-label="Room settings"
               data-testid="open-room-settings"
@@ -172,7 +174,7 @@
               hlmBtn
               variant="ghost"
               size="icon"
-              (click)="openThreadsList()"
+              (click)="messageActions.openThreadsList()"
               hlmTooltip="Threads"
               aria-label="Threads"
               data-testid="open-threads"
@@ -184,7 +186,7 @@
               variant="ghost"
               size="icon"
               class="header-pin max-md:hidden"
-              (click)="openPinnedPanel()"
+              (click)="messageActions.openPinnedPanel()"
               hlmTooltip="Pinned messages"
               aria-label="Pinned messages"
               data-testid="open-pinned"
@@ -202,7 +204,7 @@
               size="icon"
               class="max-md:hidden"
               (click)="toggleMembers()"
-              [attr.aria-pressed]="membersOpen()"
+              [attr.aria-pressed]="store.membersOpen()"
               hlmTooltip="Members"
               aria-label="Members"
               data-testid="toggle-members"
@@ -233,7 +235,7 @@
               <div hlmDropdownMenu>
                 <button
                   hlmDropdownMenuItem
-                  (triggered)="onInviteToRoom()"
+                  (triggered)="roomActions.onInviteToRoom()"
                   data-testid="overflow-invite-people"
                 >
                   <ng-icon name="lucideUserPlus" />
@@ -241,7 +243,7 @@
                 </button>
                 <button
                   hlmDropdownMenuItem
-                  (triggered)="onOpenRoomSettings()"
+                  (triggered)="roomActions.onOpenRoomSettings()"
                   data-testid="overflow-open-room-settings"
                 >
                   <ng-icon name="lucideSettings" />
@@ -249,7 +251,7 @@
                 </button>
                 <button
                   hlmDropdownMenuItem
-                  (triggered)="openPinnedPanel()"
+                  (triggered)="messageActions.openPinnedPanel()"
                   data-testid="overflow-open-pinned"
                 >
                   <ng-icon name="lucidePin" />
@@ -275,8 +277,10 @@
       </trn-page-header>
 
       <div class="chat-body">
-        @if (activeRoom(); as room) {
-          <trn-tombstone-banner (goToRoom)="onGoToUpgradedRoom($event)" />
+        @if (vm.activeRoom(); as room) {
+          <trn-tombstone-banner
+            (goToRoom)="roomActions.onGoToUpgradedRoom($event)"
+          />
           <!-- The experimental flag swaps in the windowed timeline. Both take the
              same inputs/outputs (MessageListBase); flipping the flag re-creates the
              chosen component fresh. -->
@@ -290,28 +294,28 @@
               [loadingOlder]="timeline.loadingOlder()"
               [canLoadOlder]="timeline.canLoadOlder()"
               [oldestEventId]="timeline.oldestEventId()"
-              [roomId]="activeRoomId()"
-              [members]="members()"
+              [roomId]="store.activeRoomId()"
+              [members]="vm.members()"
               [typingNames]="timeline.typingNames()"
               [firstUnreadId]="timeline.firstUnreadId()"
               [roomName]="room.name"
-              [uploadProgress]="uploadProgress()"
-              [jumpToId]="messageSearchTarget()"
-              [jumpToNonce]="jumpRequest()"
-              (loadOlder)="loadOlder()"
-              (openThread)="onOpenThread($event)"
-              (togglePin)="onTogglePin($event)"
-              (send)="onSend($event)"
-              (sendMedia)="onSendMedia($event)"
+              [uploadProgress]="messageActions.uploadProgress()"
+              [jumpToId]="store.messageSearchTarget()"
+              [jumpToNonce]="store.jumpRequest()"
+              (loadOlder)="messageActions.loadOlder()"
+              (openThread)="messageActions.onOpenThread($event)"
+              (togglePin)="messageActions.onTogglePin($event)"
+              (send)="messageActions.onSend($event)"
+              (sendMedia)="messageActions.onSendMedia($event)"
               (retry)="timeline.retry($event)"
-              (editMessage)="onEdit($event)"
-              (deleteMessage)="onDelete($event)"
-              (react)="onReact($event)"
-              (reply)="onReply($event)"
-              (typing)="onTyping($event)"
-              (matrixLink)="onMatrixLink($event)"
-              (pollVote)="onPollVote($event)"
-              (pollEnd)="onPollEnd($event)"
+              (editMessage)="messageActions.onEdit($event)"
+              (deleteMessage)="messageActions.onDelete($event)"
+              (react)="messageActions.onReact($event)"
+              (reply)="messageActions.onReply($event)"
+              (typing)="messageActions.onTyping($event)"
+              (matrixLink)="messageActions.onMatrixLink($event)"
+              (pollVote)="messageActions.onPollVote($event)"
+              (pollEnd)="messageActions.onPollEnd($event)"
             />
           } @else {
             <trn-simple-message-list
@@ -323,31 +327,31 @@
               [loadingOlder]="timeline.loadingOlder()"
               [canLoadOlder]="timeline.canLoadOlder()"
               [oldestEventId]="timeline.oldestEventId()"
-              [roomId]="activeRoomId()"
-              [members]="members()"
+              [roomId]="store.activeRoomId()"
+              [members]="vm.members()"
               [typingNames]="timeline.typingNames()"
               [firstUnreadId]="timeline.firstUnreadId()"
               [roomName]="room.name"
-              [uploadProgress]="uploadProgress()"
-              [jumpToId]="messageSearchTarget()"
-              [jumpToNonce]="jumpRequest()"
-              (loadOlder)="loadOlder()"
-              (openThread)="onOpenThread($event)"
-              (togglePin)="onTogglePin($event)"
-              (send)="onSend($event)"
-              (sendMedia)="onSendMedia($event)"
+              [uploadProgress]="messageActions.uploadProgress()"
+              [jumpToId]="store.messageSearchTarget()"
+              [jumpToNonce]="store.jumpRequest()"
+              (loadOlder)="messageActions.loadOlder()"
+              (openThread)="messageActions.onOpenThread($event)"
+              (togglePin)="messageActions.onTogglePin($event)"
+              (send)="messageActions.onSend($event)"
+              (sendMedia)="messageActions.onSendMedia($event)"
               (retry)="timeline.retry($event)"
-              (editMessage)="onEdit($event)"
-              (deleteMessage)="onDelete($event)"
-              (react)="onReact($event)"
-              (reply)="onReply($event)"
-              (typing)="onTyping($event)"
-              (matrixLink)="onMatrixLink($event)"
-              (pollVote)="onPollVote($event)"
-              (pollEnd)="onPollEnd($event)"
+              (editMessage)="messageActions.onEdit($event)"
+              (deleteMessage)="messageActions.onDelete($event)"
+              (react)="messageActions.onReact($event)"
+              (reply)="messageActions.onReply($event)"
+              (typing)="messageActions.onTyping($event)"
+              (matrixLink)="messageActions.onMatrixLink($event)"
+              (pollVote)="messageActions.onPollVote($event)"
+              (pollEnd)="messageActions.onPollEnd($event)"
             />
           }
-          @if (membersOpen()) {
+          @if (store.membersOpen()) {
             <!-- Below 1100px the member list is an overlay drawer; a backdrop (shown
                only at that width) dismisses it. At ≥1100px it stays a static column
                and the backdrop is display:none. -->
@@ -359,9 +363,9 @@
             ></div>
             <trn-member-list
               class="chat-members"
-              [members]="members()"
-              [direct]="activeRoomIsDirect()"
-              (selectMember)="onSelectMember($event)"
+              [members]="vm.members()"
+              [direct]="vm.activeRoomIsDirect()"
+              (selectMember)="memberActions.onSelectMember($event)"
             />
           }
         } @else {
@@ -370,7 +374,7 @@
               <div class="hero__badge">#</div>
               <!-- h2, not h1: the toolbar (trn-page-header) already owns the page's
                  single <h1> ("Trinity" here when no room is active). -->
-              <h2 class="hero__title">{{ syncLabel() }}</h2>
+              <h2 class="hero__title">{{ vm.syncLabel() }}</h2>
               <p class="hero__meta">
                 Select a channel on the left to get started.
               </p>

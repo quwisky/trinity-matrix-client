@@ -502,7 +502,13 @@ More on the workspace-wide rules is in [conventions](../contributing/conventions
 ## Overlay presentation
 
 Nearly every dialog in `@trinity/feature/rooms` follows the same shape: a thin `*Service` owns
-presentation and resolves a value, and the page performs the action. `UserPickerService`
+presentation and resolves a value, and the caller performs the action. In the rooms shell that
+caller is one of the page-scoped coordinators beside `rooms.page.ts` rather than the page
+itself — `RoomActionsService` drives `UserPickerService`, `ShellShortcutsService` drives
+`QuickSwitcherService`, `MessageActionsService` drives `MessageSearchService` and
+`PinnedPanelService`, and `MemberActionsService` drives `MemberInfoService` and
+`UserCardService`. `EditHistoryDialogService` is the exception and always was: it is driven
+from the message list and the thread view. `UserPickerService`
 resolves an MXID and never invites anyone itself; `QuickSwitcherService` resolves a
 selection; `MessageSearchService`, `PinnedPanelService` and `EditHistoryDialogService` each
 resolve an event id to jump to; `MemberInfoService` and `UserCardService` resolve a user id

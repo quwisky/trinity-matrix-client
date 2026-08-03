@@ -206,7 +206,7 @@ multi-account design.
     The re-projection runs from an effect, which flushes *after* the switch Observable completes. A
     space hierarchy requested in the `subscribe` callback is wiped by that flush, and the symptom
     is a sidebar whose sub-space sections stay empty until the account pill is clicked a second
-    time. `RoomsPage.runOnAccount` therefore wraps its follow-up in
+    time. `AccountRoutingService.runOnAccount` therefore wraps its follow-up in
     `afterNextRender(() => then(), { injector })` — defer past the render that follows the switch,
     not just past the Observable.
 
@@ -344,8 +344,50 @@ does not re-run on every read receipt), and coalesce it when the events are per-
 `PinnedMessagesService` does — a bump per backfilled event is the difference between per-message
 and per-turn work in a busy room.
 
-The other recorded strain is the rooms shell itself. `libs/feature/rooms/src/lib/rooms/rooms.page.ts`
-is over 2,000 lines with more than forty `inject()` calls and ten selection and UI signals, well
-past the workspace's own refactor threshold. It is also the single place the client projections are
-started — `ngOnInit` calls `connect()` on rooms, spaces, invites, crypto, presence and
-notifications — so read it before adding another projection to the shell.
+## Page-scoped coordinators
+
+The rooms shell used to be the other recorded strain — a single 2,000-line page holding every
+room and space workflow. It is now about 310 lines, and the workflows live in thirteen classes
+beside it in `libs/feature/rooms/src/lib/rooms/`. The shape is worth copying, because the cut is
+not the obvious one.
+
+The obvious cut is by domain: a service for spaces, one for rooms, one for messages. That does
+not work here, and the reason generalises. Every domain workflow ends by changing which room is
+open, and most of them report failure through the same channel — so domain-first services all
+reach back into the page, or into each other, on day one. Cutting horizontally instead removes
+the collision before it can happen:
+
+| Layer                     | What it holds                                          | Depends on      |
+| ------------------------- | ------------------------------------------------------ | --------------- |
+| `RoomShellStore`          | The shell's own signals: selection, panes, jump target | nothing         |
+| `ShellStatusService`      | One busy/error pair, and the toasts it drives          | nothing         |
+| `RoomShellViewModel`      | Every `computed()` the shell derives                   | the store       |
+| Ten workflow coordinators | Prompts, confirmations, writes, terminal navigation    | the three above |
+
+The store and the view model are pure — no writes, no subscriptions, no side effects. That
+purity is what lets the coordinators and the view model both depend on the store without a
+cycle: derived state reads the selection, workflows write it, and neither sees the other.
+
+!!! warning "Never `providedIn: 'root'` for one of these"
+
+    They are `@Injectable()` with no `providedIn`, listed in the page's `providers:` array, so
+    they share the page's lifetime and its `DestroyRef`. That is not stylistic. `runWithBusy`
+    ties its subscription to the injected `DestroyRef`, and a root-provided service's never
+    fires — every one of those subscriptions would outlive the page, toasting into a screen the
+    user has navigated away from. A root-provided store would also keep selection alive across
+    navigations, so returning to `/rooms` would show a room marked active whose panes
+    `ngOnDestroy` already closed.
+
+    `shell-invariants.spec.ts` pins both halves: that none of the thirteen resolves from a bare
+    injector, and that the page really declares them itself.
+
+Two things stay on the component because they cannot leave it. A `viewChild` query only exists
+on a component, so the mobile focus handoff is a callback the page hands to the navigation
+coordinator in its constructor — not `ngOnInit`, because `TestBed.inject(RoomsPage)` never runs
+lifecycle hooks and that left the callback unset for every unit test. And a `host` binding can
+only name a member of the component class, so the global keydown listener keeps a one-line
+delegate.
+
+The page is also still the single place the client projections are started: `ngOnInit` calls
+`connect()` on rooms, spaces, invites, crypto, presence and notifications, so read it before
+adding another projection to the shell.

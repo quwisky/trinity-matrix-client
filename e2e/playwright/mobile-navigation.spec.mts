@@ -227,4 +227,63 @@ test.describe('Mobile room navigation', () => {
     await expect(page.getByTestId('member-info')).toBeVisible();
     await expect(page.locator('.chat-members')).toBeHidden();
   });
+
+  test('Escape dismisses the member drawer, and only when it is open', async ({
+    page,
+    request,
+  }) => {
+    // The drawer's backdrop is mouse-only, so Escape is the keyboard path to dismissing
+    // it — and it had no coverage of any kind: it is reachable only through a `host`
+    // binding, which the unit spec cannot drive because it never renders the page.
+    const runId = `${Date.now().toString(36)}e`;
+    const { reader, roomName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+
+    await openOverflowMenu(page);
+    await page.getByTestId('overflow-toggle-members').click();
+    await expect(page.locator('.chat-members')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.chat-members')).toBeHidden();
+    await expect(page.getByTestId('members-backdrop')).toBeHidden();
+
+    // Deliberately NOT asserting that a second Escape "does nothing" here. On this
+    // viewport the drawer is already closed, so an unguarded handler would call
+    // closeMembers() on a closed drawer and look identical — the assertion could not
+    // fail. The guard is pinned on the wide layout below, where it is observable.
+  });
+
+  test('Escape leaves the wide layout member column alone', async ({
+    page,
+    request,
+  }) => {
+    // This is the half that actually pins `onEscapeKey`'s guard. Above the 1100px
+    // breakpoint the member list is a static column that starts OPEN, so a handler that
+    // closed it unconditionally would hide it here. Verified by mutation: dropping the
+    // `membersOpen() && membersShownAsDrawer()` guard fails this test and only this test.
+    const runId = `${Date.now().toString(36)}w`;
+    const { reader, roomName } = await seedRoom(
+      request,
+      session.hs as string,
+      runId,
+    );
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await login(page, reader);
+
+    const channel = page.locator('.channel', { hasText: roomName });
+    await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await channel.first().click();
+    await expect(page.locator('.chat-members')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+
+    await expect(page.locator('.chat-members')).toBeVisible();
+  });
 });
