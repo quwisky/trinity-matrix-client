@@ -29,16 +29,24 @@ const DEFAULT_PALETTE: Palette = 'trinity';
  * How large text is, as a multiplier on the ROOT font size.
  *
  * Applied as a percentage rather than a pixel value on purpose: a percentage is relative to
- * whatever the browser (or the OS, on mobile) is already set to, so someone who has raised
- * their default to 20px keeps it and gets a proportional bump. A px value would quietly
- * override an accessibility setting they had already made — the opposite of the point.
+ * whatever the BROWSER is already set to, so someone who has raised their default to 20px
+ * keeps it and gets a proportional bump. A px value would quietly override a setting they
+ * had already made. (On iOS this composes with the browser default only — the app opts into
+ * nothing that lets Dynamic Type reach a WKWebView, so the OS text size does not feed in.)
  *
- * Everything that inherits from the root scales: message bodies (`.msg__text` sets no size
- * of its own), all rendered markdown (its stylesheet is `%`/`em` throughout), and the whole
- * settings area (Tailwind's type scale is rem). Chrome that hard-codes px does NOT scale, so
- * it stays internally consistent at its own size rather than breaking — the failure mode of
- * a partial conversion is "chrome looks small next to content", not a broken layout.
- * Converting those surfaces is follow-up work, highest-traffic first.
+ * What scales is everything inheriting from the root: message bodies (`.msg__text` sets no
+ * size of its own), rendered markdown (its stylesheet is `%`/`em` apart from one pinned
+ * code-block caption), the composer, and every rem-based Tailwind size — which is TYPE AND
+ * SPACING both, so page chrome gains proportional height as well.
+ *
+ * That last part is the trap. Tailwind's `w-*`/`h-*` are rem, so a rem LAYOUT slot scales
+ * while hand-authored px panels inside it do not: `rooms.page.html`'s list column had to be
+ * pinned to px, because as `md:w-88` it shrank below its own 352px of contents at the Small
+ * setting and let the chat column paint over the room list. Any container sized in rem whose
+ * children are px is the same bug — `text-scaling.spec.mts` pins the one that mattered.
+ *
+ * The ~147 remaining hard-coded px font sizes do NOT scale. Converting those is follow-up
+ * work, highest-traffic surface first.
  */
 export const TRINITY_TEXT_SCALES = [
   { id: 'small', label: 'Small', percent: 87.5 },

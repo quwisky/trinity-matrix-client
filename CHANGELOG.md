@@ -20,9 +20,9 @@ All notable changes to this project are documented here. The format is based on
   scales message text and everything written in it, all rendered markdown, and the settings
   area itself. Parts of the app's chrome still keep a fixed size for now, so they stay
   readable and consistent at their own size while the rest grows; those surfaces are being
-  converted one at a time. The size is a proportion of whatever your browser or phone is
-  already set to, so if you have already made text larger system-wide, this adds to it
-  rather than overriding it.
+  converted one at a time. The size is a proportion of whatever your browser is already set
+  to, so if you have already made text larger there, this adds to it rather than overriding
+  it.
 
 - **Jump to a date in a conversation.** Finding what someone said last Tuesday meant
   scrolling and waiting, over and over. **Jump to date** in a room's ⋯ menu asks for a day

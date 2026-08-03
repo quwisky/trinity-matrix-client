@@ -75,6 +75,22 @@ async function choose(
 const px = (locator: ReturnType<Page['locator']>) =>
   locator.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
 
+/**
+ * The room-list column and the chat column must butt up against each other: no overlap
+ * (which hides controls) and no gap (which is just wrong). Measured from the live boxes
+ * rather than from the CSS, because the bug was a unit mismatch between a rem slot and its
+ * px contents — something no stylesheet reading makes obvious.
+ */
+async function expectColumnsMeet(page: Page, label = 'larger'): Promise<void> {
+  const list = await page.locator('.sidebar').first().boundingBox();
+  const chat = await page.locator('.main').first().boundingBox();
+  if (!list || !chat) {
+    throw new Error(`columns not rendered at ${label}`);
+  }
+  // A sub-pixel tolerance only: fractional layout is fine, 44px of overlap is not.
+  expect(Math.abs(list.x + list.width - chat.x), label).toBeLessThan(2);
+}
+
 test.describe('Text size', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
@@ -146,6 +162,32 @@ test.describe('Text size', () => {
 
     // The documented limit: sidebar chrome hard-codes px and deliberately does not scale.
     expect(await px(page.locator('.channel__name').first())).toBe(chromeBefore);
+
+    // The columns still MEET. Tailwind's `w-*` are rem, so the list column's slot scales
+    // with the root while the rail (72px) and sidebar (280px) inside it do not — as
+    // `md:w-88` the slot shrank to 308px at Small and the chat column painted over the room
+    // list, clipping the filter box and every row's ⋮ out of reach. Asserting font sizes
+    // alone would never have seen it.
+    await expectColumnsMeet(page);
+
+    // Every step, not just the one above: the overlap was worst at Small, which a test that
+    // only ever picked Larger would have missed entirely.
+    for (const step of ['small', 'default', 'large'] as const) {
+      await page.getByTestId('open-settings').click();
+      await page.getByTestId('settings-nav-appearance').click();
+      await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+      await choose(page, 'text-scale-select', `text-scale-${step}`);
+      await page.goto('/rooms');
+      await openRoom(page, roomName);
+      await expectColumnsMeet(page, step);
+    }
+
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-appearance').click();
+    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await choose(page, 'text-scale-select', 'text-scale-larger');
+    await page.goto('/rooms');
+    await openRoom(page, roomName);
 
     // Persisted, not session state.
     await page.reload();

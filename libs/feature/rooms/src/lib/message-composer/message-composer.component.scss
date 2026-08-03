@@ -365,7 +365,12 @@
   background: var(--trinity-sidebar);
   color: var(--trinity-text);
   font: inherit;
-  font-size: 15px;
+
+  // rem, not px: this is the one surface where a fixed size is indefensible under the text
+  // size setting — you would read other people's messages at 20px and type your own at 15px.
+  // 0.9375rem is exactly the 15px it used to be at the default root, so nothing moves until
+  // the user asks it to.
+  font-size: 0.9375rem;
   line-height: 1.4;
 
   &::placeholder {

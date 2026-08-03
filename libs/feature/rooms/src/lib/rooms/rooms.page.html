@@ -12,7 +12,17 @@
     <!-- Below md the rail + sidebar (room list) and the chat are separate full-screen
          pages, shown one at a time based on whether a room is open (rooms.page.scss).
          At md+ both are static columns side by side. -->
-    <aside #listView tabindex="-1" class="shell-side w-full shrink-0 md:w-88">
+    <!-- 352px, NOT `md:w-88` (22rem). The rail (72px) and the sidebar (280px) inside are
+         hand-authored px, so a rem slot scales with the root font size while its contents do
+         not: at the Small text setting the slot shrank to 308px and the chat column painted
+         over the room list, clipping the filter box and each row's ⋮ button; at Larger it
+         left an 88px dead strip. Keep this equal to `.rail` + `.sidebar` — text-scaling.spec.mts
+         asserts the two edges meet at every text size. -->
+    <aside
+      #listView
+      tabindex="-1"
+      class="shell-side w-full shrink-0 md:w-[352px]"
+    >
       <trn-server-rail
         [spaces]="vm.railSpaces()"
         [activeSpaceId]="store.activeSpaceId()"
