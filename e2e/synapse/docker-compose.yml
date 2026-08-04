@@ -11,7 +11,7 @@
 # DB are generated into ./data on first run and removed by stop.sh.
 services:
   synapse:
-    image: matrixdotorg/synapse:v1.119.0
+    image: matrixdotorg/synapse:v1.157.2
     container_name: trinity-e2e-synapse
     restart: 'no'
     environment:
