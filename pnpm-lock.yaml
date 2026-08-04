@@ -36,8 +36,8 @@ importers:
         specifier: ^8.0.0
         version: 8.0.0
       '@capacitor/android':
-        specifier: ^8.4.2
-        version: 8.4.2(@capacitor/core@8.5.0)
+        specifier: ^8.5.0
+        version: 8.5.0(@capacitor/core@8.5.0)
       '@capacitor/app':
         specifier: 8.1.1
         version: 8.1.1(@capacitor/core@8.5.0)
@@ -57,8 +57,8 @@ importers:
         specifier: 8.0.2
         version: 8.0.2(@capacitor/core@8.5.0)
       '@capacitor/ios':
-        specifier: ^8.4.2
-        version: 8.4.2(@capacitor/core@8.5.0)
+        specifier: ^8.5.0
+        version: 8.5.0(@capacitor/core@8.5.0)
       '@capacitor/keyboard':
         specifier: 8.0.5
         version: 8.0.5(@capacitor/core@8.5.0)
@@ -1654,10 +1654,10 @@ packages:
   '@cacheable/utils@2.5.0':
     resolution: {integrity: sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA==}
 
-  '@capacitor/android@8.4.2':
-    resolution: {integrity: sha512-bzf8XZ9C+ePgOQ+e+T0fnhHGH4aCNY494vvSQIF5w4AY07RwEmkFqZs1678DDSMH0hLSQpxEwXGFNUVcXO6bBA==}
+  '@capacitor/android@8.5.0':
+    resolution: {integrity: sha512-Rb3prJeQiTp0pQhSSOReJuG9VgibOGMG4ECs+UhMwr6TCCHZ3NCZO811bDA0HxD0xrT/gCrJAsY5yfEATu84JQ==}
     peerDependencies:
-      '@capacitor/core': ^8.4.0
+      '@capacitor/core': ^8.5.0
 
   '@capacitor/app@8.1.1':
     resolution: {integrity: sha512-xM2ZTX5jK60tFtmjsmJv+Cdj1Qsb6NcavkqmdEnCPQBeya9oKhamZJxYOnQNj1ZvcJM7sWfG6BEtSLx42pisbA==}
@@ -1692,10 +1692,10 @@ packages:
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
-  '@capacitor/ios@8.4.2':
-    resolution: {integrity: sha512-ClVzIjK++yRjsRPOpdEzhsZfbHfoEc0f4M6vD0v7sWh0qcoF6NkxNAeHpWTn4OPJpJfpGGoYsq+IfEHrYyBiWA==}
+  '@capacitor/ios@8.5.0':
+    resolution: {integrity: sha512-7k1TfohJu5BzRXc1F3g04Q8QQ0fyQgms6h1AvhnHb04VaNr9EdHOx03hL8O+OigEKMQnyJd1ZOjTPPNHCqL5Yw==}
     peerDependencies:
-      '@capacitor/core': ^8.4.0
+      '@capacitor/core': ^8.5.0
 
   '@capacitor/keyboard@8.0.5':
     resolution: {integrity: sha512-oFXygC4eKYA5l2MdpTR06L2M/4x6e2SLD5yS1T9+UBDKTkzyvhWKEhbYLUaTIBPpLKqlfGudJw1X73S1H9eUzQ==}
@@ -9663,10 +9663,10 @@ snapshots:
 
   '@aparajita/capacitor-secure-storage@8.0.0':
     dependencies:
-      '@capacitor/android': 8.4.2(@capacitor/core@8.5.0)
+      '@capacitor/android': 8.5.0(@capacitor/core@8.5.0)
       '@capacitor/app': 8.1.1(@capacitor/core@8.5.0)
       '@capacitor/core': 8.5.0
-      '@capacitor/ios': 8.4.2(@capacitor/core@8.5.0)
+      '@capacitor/ios': 8.5.0(@capacitor/core@8.5.0)
       '@capacitor/keyboard': 8.0.5(@capacitor/core@8.5.0)
 
   '@asamuzakjp/css-color@6.0.5':
@@ -11070,7 +11070,7 @@ snapshots:
       hashery: 1.5.1
       keyv: 5.6.0
 
-  '@capacitor/android@8.4.2(@capacitor/core@8.5.0)':
+  '@capacitor/android@8.5.0(@capacitor/core@8.5.0)':
     dependencies:
       '@capacitor/core': 8.5.0
 
@@ -11122,7 +11122,7 @@ snapshots:
     dependencies:
       '@capacitor/core': 8.5.0
 
-  '@capacitor/ios@8.4.2(@capacitor/core@8.5.0)':
+  '@capacitor/ios@8.5.0(@capacitor/core@8.5.0)':
     dependencies:
       '@capacitor/core': 8.5.0
 

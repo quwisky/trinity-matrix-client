@@ -65,7 +65,7 @@ major rather than editing numbers by hand.
 | `@sanity/diff-match-patch`            | 3.2.0   | Character-level diff behind the edit-history highlights. Apache-2.0, no dependencies                        |
 | `luxon`                               | 3.7.2   | Date and time arithmetic, including the day-separator rollover                                              |
 | `@ctrl/ngx-emoji-mart`                | 9.3.0   | Emoji picker for the composer and reactions                                                                 |
-| `@capacitor/core`                     | 8.4.2   | Capacitor 8. `@capacitor/android` and `@capacitor/ios` track it exactly                                     |
+| `@capacitor/core`                     | 8.5.0   | Capacitor 8. `@capacitor/android` and `@capacitor/ios` track it exactly                                     |
 | `@capacitor/app`                      | 8.1.1   | App URL-open events; the native deep-link callback for SSO and OIDC                                         |
 | `@capacitor/browser`                  | 8.0.4   | System browser for native sign-in, which keeps the app WebView alive                                        |
 | `@capacitor/camera`                   | 8.2.2   | Native photo and gallery picker, with a web `<input>` fallback                                              |
