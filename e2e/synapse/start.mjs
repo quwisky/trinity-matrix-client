@@ -271,6 +271,21 @@ async function ensureConfig() {
     );
   }
 
+  // Newer Synapse defaults room_list_publication_rules to deny-all, and it fails
+  // *silently*: createRoom with visibility "public" still answers 200, but the room is
+  // recorded private and never reaches /publicRooms (an explicit PUT to the directory
+  // is what admits it, with 403 M_UNKNOWN "Not allowed to publish room"). That is why
+  // the two directory specs broke on their assertion rather than on their setup when
+  // the image moved v1.119 -> v1.157.2, and why nothing in the harness logs said so.
+  //
+  // Guarded on its own key rather than folded into the extras block above: that block
+  // is written once and skipped forever after, so a stack someone already has running
+  // would never pick this up. Here the rewrite trips the fingerprint check below, which
+  // restarts Synapse so the new rule is actually loaded.
+  if (!yaml.includes('room_list_publication_rules')) {
+    additions.push('room_list_publication_rules:', '  - "action": "allow"');
+  }
+
   if (additions.length) {
     yaml += `\n\n# === appended by e2e/synapse/start.mjs ===\n${additions.join('\n')}\n`;
   }

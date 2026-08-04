@@ -18,11 +18,15 @@
          over the room list, clipping the filter box and each row's ⋮ button; at Larger it
          left an 88px dead strip. Keep this equal to `.rail` + `.sidebar` — text-scaling.spec.mts
          asserts the two edges meet at every text size. -->
+    <!-- The rule below only sees that 352px equals w-88's 22rem at the default root size;
+         the paragraph above is why the two are not interchangeable here. -->
+    <!-- eslint-disable tailwindcss/no-unnecessary-arbitrary-value -->
     <aside
       #listView
       tabindex="-1"
       class="shell-side w-full shrink-0 md:w-[352px]"
     >
+      <!-- eslint-enable tailwindcss/no-unnecessary-arbitrary-value -->
       <trn-server-rail
         [spaces]="vm.railSpaces()"
         [activeSpaceId]="store.activeSpaceId()"

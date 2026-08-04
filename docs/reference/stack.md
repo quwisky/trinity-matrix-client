@@ -26,8 +26,8 @@ correction itself leaving another row stale.
 
 | Runtime | Pin                      | Where it is set                                                   |
 | ------- | ------------------------ | ----------------------------------------------------------------- |
-| Node.js | `^24.15.0 \|\| >=26.0.0` | `package.json` `engines`, `.nvmrc` (`24.15.0`), CI `node-version` |
-| pnpm    | `11.15.1`                | `package.json` `packageManager`, enforced by corepack             |
+| Node.js | `^24.15.0 \|\| >=26.0.0` | `package.json` `engines`, `.nvmrc` (`24.18.1`), CI `node-version` |
+| pnpm    | `11.19.0`                | `package.json` `packageManager`, enforced by corepack             |
 
 Node 25 is excluded, and that is not arbitrary: the range is Angular 22's own engines
 window. matrix-js-sdk only asks for `>=22`, so "newer is fine" does not hold here.
@@ -58,17 +58,17 @@ major rather than editing numbers by hand.
 | `@matrix-org/matrix-sdk-crypto-wasm`  | 18.3.1  | Rust crypto backend. Its `.wasm` needs an explicit URL, see below                                           |
 | `rxjs`                                | 7.8.2   | One-shot actions return cold Observables; state is signals                                                  |
 | `marked`                              | 18.0.7  | Markdown to HTML for the composer and the timeline                                                          |
-| `dompurify`                           | 3.4.12  | Sanitizes `formatted_body` against the Matrix allowlist, inbound and outbound, from one config              |
-| `@shikijs/core`                       | 4.3.1   | Syntax highlighting for fenced code blocks                                                                  |
-| `@shikijs/engine-javascript`          | 4.3.1   | Pure-JS RegExp engine, chosen over the default Oniguruma WASM to avoid a second wasm asset and its loader   |
-| `@shikijs/langs`                      | 4.3.1   | TextMate grammars; 13 languages imported explicitly. Must move in lockstep with the two rows above          |
+| `dompurify`                           | 3.4.13  | Sanitizes `formatted_body` against the Matrix allowlist, inbound and outbound, from one config              |
+| `@shikijs/core`                       | 4.4.1   | Syntax highlighting for fenced code blocks                                                                  |
+| `@shikijs/engine-javascript`          | 4.4.1   | Pure-JS RegExp engine, chosen over the default Oniguruma WASM to avoid a second wasm asset and its loader   |
+| `@shikijs/langs`                      | 4.4.1   | TextMate grammars; 13 languages imported explicitly. Must move in lockstep with the two rows above          |
 | `@sanity/diff-match-patch`            | 3.2.0   | Character-level diff behind the edit-history highlights. Apache-2.0, no dependencies                        |
 | `luxon`                               | 3.7.2   | Date and time arithmetic, including the day-separator rollover                                              |
 | `@ctrl/ngx-emoji-mart`                | 9.3.0   | Emoji picker for the composer and reactions                                                                 |
 | `@capacitor/core`                     | 8.4.2   | Capacitor 8. `@capacitor/android` and `@capacitor/ios` track it exactly                                     |
 | `@capacitor/app`                      | 8.1.1   | App URL-open events; the native deep-link callback for SSO and OIDC                                         |
 | `@capacitor/browser`                  | 8.0.4   | System browser for native sign-in, which keeps the app WebView alive                                        |
-| `@capacitor/camera`                   | 8.2.1   | Native photo and gallery picker, with a web `<input>` fallback                                              |
+| `@capacitor/camera`                   | 8.2.2   | Native photo and gallery picker, with a web `<input>` fallback                                              |
 | `@capacitor/filesystem`               | 8.1.2   | Writes a downloaded attachment to cache before handing it to the share sheet                                |
 | `@capacitor/share`                    | 8.0.1   | Native save and share sheet, with a web `<a download>` fallback                                             |
 | `@capacitor/status-bar`               | 8.0.3   | Matches the native status bar to the light or dark theme                                                    |
@@ -93,7 +93,7 @@ since 2022, and its logic is ported into `attachment-crypto.ts` in `@trinity/uti
 | `@analogjs/vite-plugin-angular` | 2.6.4   | Compiles Angular for Vite. `@analogjs/vitest-angular` moves with it                                 |
 | `jsdom`                         | 30.0.1  | DOM environment for unit tests                                                                      |
 | `@testing-library/angular`      | 19.4.1  | Component tests. Import `render` from `@trinity/testing`, not from here, see below                  |
-| `ng-mocks`                      | 14.15.3 | `MockProvider` and `MockComponent` for isolating a component under test                             |
+| `ng-mocks`                      | 14.16.0 | `MockProvider` and `MockComponent` for isolating a component under test                             |
 | `@playwright/test`              | 1.62.1  | The `trinity-e2e` app-journey suite and the Electron suite. `playwright` standalone tracks it       |
 | `eslint`                        | 10.8.0  | Flat config in `eslint.config.mjs`                                                                  |
 | `typescript-eslint`             | 8.65.0  | Supplies the type-aware `no-deprecated` rule                                                        |

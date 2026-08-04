@@ -1,0 +1,1108 @@
+import {
+  SHARED_MOCKS,
+  clientStub,
+  invitesProvider,
+  shellFrom,
+  stubNarrowLayout,
+} from './rooms-page.spec-harness';
+import { computed, signal, type WritableSignal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { KeyboardShortcutsService } from '@trinity/platform-native';
+import { AuthService } from '@trinity/data-access/auth';
+import {
+  MixedInvitesService,
+  type PendingInvite,
+} from '@trinity/data-access/invites';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { MediaService } from '@trinity/data-access/media';
+import { PinnedMessagesService } from '@trinity/data-access/pinned';
+import {
+  RoomsService,
+  SpacesService,
+  AccountScopeService,
+  MixedRoomsService,
+  MixedSpacesService,
+  UnreadAggregatorService,
+  type RoomSummary,
+  type SpaceSummary,
+} from '@trinity/data-access/rooms';
+import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import {
+  TrnAlertService,
+  TrnDialogService,
+  TrnToastService,
+} from '@trinity/helm/overlay';
+import { MockProvider } from 'ng-mocks';
+import { of } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { RoomsPage } from './rooms.page';
+import { UserPickerService } from '../user-picker/user-picker.service';
+import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
+import { MessageSearchService } from '../message-search/message-search.service';
+
+// The quick switcher (Ctrl/Cmd+K) presents a modal and, on a selection, jumps per
+// kind: room/dm open the room, space selects it in the rail, a directory person
+// opens a DM, an invite runs the page's accept path.
+describe('RoomsPage quick switcher', () => {
+  let pick: ReturnType<typeof vi.fn>;
+  let messageSearch: ReturnType<typeof vi.fn>;
+  let createDirectMessage: ReturnType<typeof vi.fn>;
+  let acceptInvite: ReturnType<typeof vi.fn>;
+  let openSpace: ReturnType<typeof vi.fn>;
+  let timelineOpen: ReturnType<typeof vi.fn>;
+  let pending: WritableSignal<PendingInvite[]>;
+  let dialogHasOpen: ReturnType<typeof vi.fn>;
+
+  function build() {
+    pick = vi.fn();
+    messageSearch = vi.fn();
+    createDirectMessage = vi.fn(() => of('!dm:hs'));
+    acceptInvite = vi.fn(() => of(undefined));
+    openSpace = vi.fn();
+    timelineOpen = vi.fn();
+    pending = signal<PendingInvite[]>([]);
+    dialogHasOpen = vi.fn().mockReturnValue(false);
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        ...SHARED_MOCKS,
+        MockProvider(RoomsService, {
+          createDirectMessage,
+          // The jump resolves the row's owning account from the known room set.
+          rooms: signal<RoomSummary[]>([]),
+          directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
+        }),
+        MockProvider(SpacesService, {
+          openSpace,
+          spaces: signal<SpaceSummary[]>([]),
+          childRoomIds: vi.fn(() => []),
+        }),
+        invitesProvider({
+          pendingInvites: pending,
+          acceptInvite,
+        }),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService, { pick }),
+        MockProvider(MessageSearchService, { search: messageSearch }),
+        MockProvider(TimelineService, { open: timelineOpen }),
+        MockProvider(MediaService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => clientStub(),
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
+        }),
+        MockProvider(ThreadsService),
+        MockProvider(AuthService),
+        MockProvider(TrnDialogService, { hasOpen: dialogHasOpen }),
+        MockProvider(TrnAlertService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return shellFrom();
+  }
+
+  it('opens the selected room', async () => {
+    const shell = build();
+    pick.mockResolvedValue({ kind: 'room', id: '!r:hs' });
+
+    await shell.shortcuts.openSwitcher();
+
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
+    expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
+  });
+
+  it('opens a DM result like a room', async () => {
+    const shell = build();
+    pick.mockResolvedValue({ kind: 'dm', id: '!d:hs' });
+
+    await shell.shortcuts.openSwitcher();
+
+    expect(shell.store.activeRoomId()).toBe('!d:hs');
+  });
+
+  it('selects a space in the rail (loading its hierarchy)', async () => {
+    const shell = build();
+    pick.mockResolvedValue({ kind: 'space', id: '!s:hs' });
+
+    await shell.shortcuts.openSwitcher();
+
+    expect(shell.store.activeSpaceId()).toBe('!s:hs');
+    expect(openSpace).toHaveBeenCalledWith('!s:hs');
+    expect(shell.store.activeRoomId()).toBeNull();
+  });
+
+  it('opens (or reuses) a DM for a directory person', async () => {
+    const shell = build();
+    pick.mockResolvedValue({ kind: 'user', id: '@bob:hs' });
+
+    await shell.shortcuts.openSwitcher();
+
+    expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
+    expect(shell.store.activeRoomId()).toBe('!dm:hs');
+  });
+
+  it('runs the accept path for an invite result', async () => {
+    const shell = build();
+    pending.set([
+      {
+        roomId: '!i:hs',
+        name: 'Invited',
+        initial: 'I',
+        avatarMxc: null,
+        inviterName: 'Alice',
+        isSpace: false,
+        isDirect: false,
+      },
+    ]);
+    pick.mockResolvedValue({ kind: 'invite', id: '!i:hs' });
+
+    await shell.shortcuts.openSwitcher();
+
+    expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
+    expect(shell.store.activeRoomId()).toBe('!i:hs');
+  });
+
+  it('does nothing when the switcher is cancelled', async () => {
+    const shell = build();
+    pick.mockResolvedValue(null);
+
+    await shell.shortcuts.openSwitcher();
+
+    expect(shell.store.activeRoomId()).toBeNull();
+    expect(timelineOpen).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl/Cmd+K prevents default and opens the switcher', async () => {
+    const shell = build();
+    pick.mockResolvedValue(null);
+    const preventDefault = vi.fn();
+
+    // Cmd+K resolves to the `switcher.open` shortcut through the registry.
+    shell.shortcuts.onGlobalKeydown({
+      key: 'k',
+      code: 'KeyK',
+      metaKey: true,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      preventDefault,
+    } as unknown as KeyboardEvent);
+
+    expect(preventDefault).toHaveBeenCalled(); // sync — stops the browser's Cmd+K
+    await new Promise((resolve) => setTimeout(resolve)); // settle the async openSwitcher()
+    expect(pick).toHaveBeenCalled();
+  });
+
+  it('does not open the switcher over an existing overlay', async () => {
+    const shell = build();
+    dialogHasOpen.mockReturnValue(true);
+
+    await shell.shortcuts.openSwitcher();
+
+    // A thread/search/verification modal owns the screen — the switcher must not
+    // stack over it (picking a result would releaseAll() its pinned media).
+    expect(pick).not.toHaveBeenCalled();
+  });
+
+  it('opens in-room message search for the active room and jumps to the hit', async () => {
+    const shell = build();
+    shell.nav.onSelectRoom('!r:hs');
+    messageSearch.mockResolvedValue('$evt:hs');
+
+    await shell.messages.openMessageSearch();
+
+    expect(messageSearch).toHaveBeenCalledWith('!r:hs');
+    expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
+    expect(shell.store.jumpRequest()).toBe(1);
+  });
+
+  it('in-room search bumps jumpRequest again when the SAME hit is re-picked', async () => {
+    // Same crux as the pinned panel: picking the identical hit twice must still
+    // re-fire the jump, which only happens because jumpRequest keeps incrementing.
+    const shell = build();
+    shell.nav.onSelectRoom('!r:hs');
+    messageSearch.mockResolvedValue('$evt:hs');
+
+    await shell.messages.openMessageSearch();
+    expect(shell.store.jumpRequest()).toBe(1);
+
+    await shell.messages.openMessageSearch();
+
+    expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
+    expect(shell.store.jumpRequest()).toBe(2);
+  });
+
+  it('does not jump when in-room search is cancelled', async () => {
+    const shell = build();
+    shell.nav.onSelectRoom('!r:hs');
+    messageSearch.mockResolvedValue(null);
+
+    await shell.messages.openMessageSearch();
+
+    expect(shell.store.messageSearchTarget()).toBeNull();
+    expect(shell.store.jumpRequest()).toBe(0);
+  });
+
+  it('does not open in-room search when no room is active', async () => {
+    const shell = build();
+    messageSearch.mockResolvedValue('$evt:hs');
+
+    await shell.messages.openMessageSearch();
+
+    expect(messageSearch).not.toHaveBeenCalled();
+    expect(shell.store.messageSearchTarget()).toBeNull();
+  });
+});
+
+// Below md the rail + sidebar (room list) and the chat are separate full-screen
+// pages keyed off `activeRoomId`: picking a room opens the chat page, and the back
+// button (`backToList`) returns to the list. At md+ both columns are static columns.
+
+// Below md the rail + sidebar (room list) and the chat are separate full-screen
+// pages keyed off `activeRoomId`: picking a room opens the chat page, and the back
+// button (`backToList`) returns to the list. At md+ both columns are static columns.
+describe('RoomsPage mobile navigation', () => {
+  let timelineOpen: ReturnType<typeof vi.fn>;
+  let threadsOpen: ReturnType<typeof vi.fn>;
+  let releaseAll: ReturnType<typeof vi.fn>;
+
+  function build() {
+    timelineOpen = vi.fn();
+    threadsOpen = vi.fn();
+    releaseAll = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        ...SHARED_MOCKS,
+        MockProvider(RoomsService),
+        MockProvider(SpacesService),
+        MockProvider(TimelineService, { open: timelineOpen }),
+        MockProvider(MediaService, { releaseAll }),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => clientStub(),
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
+        }),
+        MockProvider(ThreadsService, { open: threadsOpen }),
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(AuthService),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return shellFrom();
+  }
+
+  it('backToList closes the open room, returning to the list page', () => {
+    const shell = build();
+    shell.nav.onSelectRoom('!r:hs');
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
+
+    shell.page.backToList();
+
+    expect(shell.store.activeRoomId()).toBeNull();
+    expect(TestBed.inject(TimelineService).close).toHaveBeenCalled();
+    expect(TestBed.inject(ThreadsService).close).toHaveBeenCalled();
+    expect(TestBed.inject(PinnedMessagesService).close).toHaveBeenCalled();
+  });
+
+  it('closing a room resets an open members drawer so it does not carry to the next room', () => {
+    // Force the narrow (drawer) layout so the member list reads as an overlay.
+    const restore = stubNarrowLayout();
+    try {
+      const shell = build();
+      shell.nav.onSelectRoom('!a:hs');
+      shell.store.membersOpen.set(true); // the drawer is open in room A
+      expect(shell.store.membersOpen()).toBe(true);
+
+      shell.page.backToList();
+
+      // The drawer state is dropped, so it won't slide in over the next room.
+      expect(shell.store.membersOpen()).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it('seeds the members list open as the wide static column and toggleMembers flips it', () => {
+    // The base stub reports non-drawer (matches:false) — the wide layout — so the static
+    // members column shows by default; toggleMembers hides and re-shows it.
+    const shell = build();
+    expect(shell.store.membersOpen()).toBe(true);
+
+    shell.page.toggleMembers();
+    expect(shell.store.membersOpen()).toBe(false);
+
+    shell.page.toggleMembers();
+    expect(shell.store.membersOpen()).toBe(true);
+  });
+
+  it('seeds the members drawer closed on the narrow layout', () => {
+    // At/below the drawer cutoff the list is the overlay drawer, which starts closed
+    // rather than defaulting open like the wide static column.
+    const restore = stubNarrowLayout();
+    try {
+      expect(build().store.membersOpen()).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it('closeMembers closes the member list (the mobile drawer backdrop)', () => {
+    const shell = build();
+    shell.store.membersOpen.set(true);
+    expect(shell.store.membersOpen()).toBe(true);
+
+    shell.page.closeMembers();
+    expect(shell.store.membersOpen()).toBe(false);
+  });
+
+  it('onSelectRoom opens the room (switching to the mobile chat page)', () => {
+    const shell = build();
+
+    shell.nav.onSelectRoom('!r:hs');
+
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
+    expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
+    expect(threadsOpen).toHaveBeenCalledWith('!r:hs');
+    expect(releaseAll).toHaveBeenCalled();
+  });
+});
+
+// The user-panel switcher summarises every signed-in account: each row is that
+// account's own client profile (display name + avatar) with a fallback to the raw
+// MXID, plus its unread total — and it tolerates an account whose client isn't
+// live yet (clientFor → null), which still shows as a row with a zero badge.
+
+// The user-panel switcher summarises every signed-in account: each row is that
+// account's own client profile (display name + avatar) with a fallback to the raw
+// MXID, plus its unread total — and it tolerates an account whose client isn't
+// live yet (clientFor → null), which still shows as a row with a zero badge.
+describe('RoomsPage account switcher summary', () => {
+  const meAvatar = 'mxc://hs/me';
+
+  function build() {
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        ...SHARED_MOCKS,
+        MockProvider(RoomsService, { revision: signal(0).asReadonly() }),
+        MockProvider(SpacesService),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>([
+            '@me:hs',
+            '@alt:hs',
+          ]).asReadonly(),
+          // '@me:hs' has a live client with a hydrated profile; '@alt:hs' isn't
+          // live yet (no client created), so clientFor → null for it.
+          clientFor: (userId: string) =>
+            userId === '@me:hs'
+              ? ({
+                  getUser: () => ({ displayName: 'Me', avatarUrl: meAvatar }),
+                } as never)
+              : null,
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map([['@me:hs', 4]]),
+          ).asReadonly(),
+        }),
+        MockProvider(ThreadsService),
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(AuthService),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return shellFrom();
+  }
+
+  it('summarises each account by its client profile, MXID fallback, and unread total', () => {
+    const shell = build();
+
+    // '@me:hs': live profile (name + avatar) with its unread total from the
+    // aggregator. '@alt:hs': no live client, so name falls back to the MXID, the
+    // avatar is null, and its unread defaults to 0 (absent from the map).
+    expect(shell.vm.accounts()).toEqual([
+      { userId: '@me:hs', displayName: 'Me', avatarMxc: meAvatar, unread: 4 },
+      { userId: '@alt:hs', displayName: '@alt:hs', avatarMxc: null, unread: 0 },
+    ]);
+  });
+});
+
+// Keyboard room switching (issue #12): the single `onGlobalKeydown` dispatcher. The MRU
+// service and the pure nav helpers have their own specs; these assert the wiring — which
+// chord opens what, the desktop gate, and the overlay guard.
+
+// Keyboard room switching (issue #12): the single `onGlobalKeydown` dispatcher. The MRU
+// service and the pure nav helpers have their own specs; these assert the wiring — which
+// chord opens what, the desktop gate, and the overlay guard.
+describe('RoomsPage keyboard room switching', () => {
+  function roomSummary(id: string, unread = 0): RoomSummary {
+    return {
+      id,
+      name: id,
+      initial: id[1].toUpperCase(),
+      avatarMxc: null,
+      topic: '',
+      memberCount: 0,
+      encrypted: false,
+      unreadCount: unread,
+      highlightCount: 0,
+      hasUnread: unread > 0,
+      markedUnread: false,
+      lastMessage: '',
+      activityTs: 0,
+      favourite: false,
+    };
+  }
+
+  let dialogOpen = false;
+
+  let keyboardRooms: WritableSignal<RoomSummary[]>;
+
+  const releaseAll = vi.fn();
+  function build() {
+    releaseAll.mockClear();
+    dialogOpen = false;
+    // Display order a, b, c; b and c carry unread.
+    keyboardRooms = signal<RoomSummary[]>([
+      roomSummary('!a:hs'),
+      roomSummary('!b:hs', 3),
+      roomSummary('!c:hs', 1),
+    ]);
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        ...SHARED_MOCKS,
+        MockProvider(RoomsService, {
+          rooms: keyboardRooms,
+          directRoomIds: signal<ReadonlySet<string>>(new Set()),
+        }),
+        MockProvider(SpacesService, {
+          spaces: signal([]),
+          childRoomIds: vi.fn(() => []),
+        }),
+        MockProvider(TimelineService),
+        MockProvider(MediaService, { releaseAll }),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => clientStub(),
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
+        }),
+        MockProvider(ThreadsService),
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(AuthService),
+        MockProvider(TrnDialogService, { hasOpen: () => dialogOpen }),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return shellFrom();
+  }
+
+  /** A minimal KeyboardEvent-like with a preventDefault spy, for the host handler. */
+  function key(init: Partial<KeyboardEvent>): KeyboardEvent {
+    return {
+      key: '',
+      code: '',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      preventDefault: vi.fn(),
+      ...init,
+    } as unknown as KeyboardEvent;
+  }
+
+  afterEach(() => {
+    delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+  });
+
+  /** Visit a → b → c so the MRU is [c, b, a] and we're in c. */
+  function visitABC(shell: ReturnType<typeof shellFrom>): void {
+    shell.nav.onSelectRoom('!a:hs');
+    shell.nav.onSelectRoom('!b:hs');
+    shell.nav.onSelectRoom('!c:hs');
+  }
+
+  it('ignores a shortcut that resolves to the room already open', () => {
+    // Not a no-op for tidiness: re-entering onSelectRoom calls media.releaseAll(), which
+    // revokes the object URLs for images currently on screen. timeline.open() early-returns
+    // on the same id; releaseAll does not. Reachable with a one-room list, because the list
+    // walk wraps around to the room you are already in.
+    const shell = build();
+    keyboardRooms.set([roomSummary('!only:hs')]);
+    shell.nav.onSelectRoom('!only:hs');
+    releaseAll.mockClear();
+
+    shell.page.onGlobalKeydown(key({ key: 'ArrowDown', altKey: true }));
+
+    expect(releaseAll).not.toHaveBeenCalled();
+  });
+
+  it('keeps the keyboard surface wired through the page', () => {
+    // The host binding names a member of the component class, so the page keeps a delegate
+    // nothing else calls. Re-pointing this suite onto the coordinators removed the only
+    // test crossing that seam — emptying the delegate body left 192 tests green, i.e. the
+    // whole keyboard feature could be unplugged from the page unnoticed.
+    const shell = build();
+    visitABC(shell);
+
+    shell.page.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+  });
+
+  it('hops back through the visited stack, cycling deeper, without recording mid-cycle', () => {
+    const shell = build();
+    visitABC(shell);
+
+    shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!b:hs'); // previous room
+
+    shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!a:hs'); // two back — cycling deeper
+
+    // Shift reverses.
+    shell.shortcuts.onGlobalKeydown(
+      key({ key: "'", ctrlKey: true, shiftKey: true }),
+    );
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+  });
+
+  it('consumes the chord it handles and ignores an unmodified quote', () => {
+    const shell = build();
+    visitABC(shell);
+
+    const handled = key({ key: "'", metaKey: true });
+    shell.shortcuts.onGlobalKeydown(handled);
+    expect(handled.preventDefault).toHaveBeenCalled();
+
+    const typed = key({ key: "'" }); // no modifier → plain typing
+    shell.shortcuts.onGlobalKeydown(typed);
+    expect(typed.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('walks the visible list with Alt+Arrow, wrapping', () => {
+    const shell = build(); // list order a, b, c; in c after visiting
+    visitABC(shell);
+
+    shell.shortcuts.onGlobalKeydown(key({ key: 'ArrowDown', altKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!a:hs'); // c → wrap to a
+
+    shell.shortcuts.onGlobalKeydown(key({ key: 'ArrowUp', altKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // a → wrap back to c
+  });
+
+  it('jumps to the next unread room with Alt+Shift+Arrow', () => {
+    const shell = build(); // b(3) and c(1) are unread
+    shell.nav.onSelectRoom('!a:hs'); // in a read room
+
+    shell.shortcuts.onGlobalKeydown(
+      key({ key: 'ArrowDown', altKey: true, shiftKey: true }),
+    );
+    expect(shell.store.activeRoomId()).toBe('!b:hs'); // first unread
+  });
+
+  it('ignores Ctrl/Cmd+1…9 and Ctrl+Tab on the web (browser-reserved)', () => {
+    const shell = build(); // no desktop marker
+    visitABC(shell);
+
+    shell.shortcuts.onGlobalKeydown(
+      key({ code: 'Digit1', key: '1', metaKey: true }),
+    );
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // unchanged
+    shell.shortcuts.onGlobalKeydown(key({ key: 'Tab', ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // unchanged
+  });
+
+  it('jumps to the Nth most-recent room with Ctrl/Cmd+1…9 on the desktop shell', () => {
+    // The marker must be present before the page reads it at construction.
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const shell = build();
+    visitABC(shell); // MRU [c, b, a], in c
+
+    shell.shortcuts.onGlobalKeydown(
+      key({ code: 'Digit2', key: '2', ctrlKey: true }),
+    );
+    expect(shell.store.activeRoomId()).toBe('!a:hs'); // 2 = two rooms back
+  });
+
+  it('hops with Ctrl+Tab on the desktop shell', () => {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const shell = build();
+    visitABC(shell); // in c
+
+    shell.shortcuts.onGlobalKeydown(key({ key: 'Tab', ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!b:hs'); // Tab hops like the quote
+  });
+
+  // The MRU outlives account switches and unticks, so a numbered jump can name a room no
+  // account in scope still holds — unlike hop, nth() filters against nothing. Opening it
+  // would tear the timeline down and leave a blank chat pane, so it must decline.
+  it('ignores a numbered jump to a room the list no longer knows', () => {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const shell = build();
+    visitABC(shell); // MRU [c, b, a], in c
+    // '!b:hs' leaves the scope (its account was unticked, or signed out).
+    keyboardRooms.set([roomSummary('!a:hs'), roomSummary('!c:hs')]);
+
+    shell.shortcuts.onGlobalKeydown(
+      key({ code: 'Digit1', key: '1', ctrlKey: true }),
+    );
+
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // stayed put rather than opening a ghost
+  });
+
+  it('still jumps to a room that is in scope', () => {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      isElectron: true,
+    };
+    const shell = build();
+    visitABC(shell);
+
+    shell.shortcuts.onGlobalKeydown(
+      key({ code: 'Digit1', key: '1', ctrlKey: true }),
+    );
+
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+  });
+
+  it('stays quiet while an overlay owns the screen', () => {
+    const shell = build();
+    visitABC(shell);
+    dialogOpen = true;
+
+    const event = key({ key: "'", ctrlKey: true });
+    shell.shortcuts.onGlobalKeydown(event);
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // no hop
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('follows a rebound chord, not the old one', () => {
+    const shell = build();
+    visitABC(shell); // in c, MRU [c, b, a]
+    // Move "hop back" from Ctrl+' to Alt+J through the registry.
+    TestBed.inject(KeyboardShortcutsService).rebind('room.hop.back', {
+      accel: false,
+      alt: true,
+      shift: false,
+      key: 'j',
+    });
+
+    shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!c:hs'); // old chord no longer hops
+
+    shell.shortcuts.onGlobalKeydown(key({ key: 'j', altKey: true }));
+    expect(shell.store.activeRoomId()).toBe('!b:hs'); // the new chord does
+
+    TestBed.inject(KeyboardShortcutsService).resetAll(); // don't leak into other specs
+  });
+});
+
+// Mixed-account view (issue #10): the global "All accounts" scope spans every signed-in
+// account across ALL surfaces — Recent, Home's DMs, the Rooms list and the rail spaces —
+// and opening a foreign-account item switches to that account first.
+
+// Mixed-account view (issue #10): the global "All accounts" scope spans every signed-in
+// account across ALL surfaces — Recent, Home's DMs, the Rooms list and the rail spaces —
+// and opening a foreign-account item switches to that account first.
+describe('RoomsPage mixed-account view', () => {
+  function room(
+    id: string,
+    accountId: string,
+    opts: { directUserId?: string; unread?: number } = {},
+  ): RoomSummary {
+    return {
+      id,
+      accountId,
+      accountIds: [accountId],
+      name: id,
+      initial: id[1].toUpperCase(),
+      avatarMxc: null,
+      topic: '',
+      memberCount: 0,
+      encrypted: false,
+      unreadCount: opts.unread ?? 0,
+      highlightCount: 0,
+      hasUnread: (opts.unread ?? 0) > 0,
+      markedUnread: false,
+      lastMessage: '',
+      activityTs: 0,
+      favourite: false,
+      directUserId: opts.directUserId,
+    };
+  }
+
+  function space(
+    id: string,
+    accountId: string,
+    childRoomIds: string[] = [],
+  ): SpaceSummary {
+    return {
+      id,
+      accountId,
+      name: id,
+      initial: 'S',
+      avatarMxc: null,
+      childRoomIds,
+    };
+  }
+
+  // Cross-account rooms the aggregator projects while "All accounts" is on: two plain
+  // rooms, two DMs (one per account), and one non-DM room that is a child of @alt's space.
+  const mixedRoomList = (): RoomSummary[] => [
+    room('!mine:hs', '@me:hs'),
+    room('!theirs:hs', '@alt:hs', { unread: 7 }),
+    room('!dm-mine:hs', '@me:hs', { directUserId: '@x:hs' }),
+    room('!dm-theirs:hs', '@alt:hs', { directUserId: '@y:hs', unread: 3 }),
+    room('!child-theirs:hs', '@alt:hs', { unread: 5 }),
+  ];
+
+  let switchAccount: ReturnType<typeof vi.fn>;
+  let setMixedRoomsAccounts: ReturnType<typeof vi.fn>;
+  /** The picker's current selection, driven directly by the tests. */
+  let shownAccounts: WritableSignal<ReadonlySet<string>>;
+  let toggleAccount: ReturnType<typeof vi.fn>;
+
+  function build(
+    accountIds: string[],
+    avatars: Record<string, string | null> = {},
+  ) {
+    switchAccount = vi.fn(() => of(undefined));
+    setMixedRoomsAccounts = vi.fn();
+    shownAccounts = signal<ReadonlySet<string>>(new Set(['@me:hs']));
+    toggleAccount = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        ...SHARED_MOCKS,
+        MockProvider(RoomsService, {
+          rooms: signal([room('!mine:hs', '@me:hs')]),
+          directRoomIds: signal<ReadonlySet<string>>(new Set()),
+          revision: signal(0).asReadonly(),
+        }),
+        MockProvider(SpacesService, {
+          spaces: signal([space('!s-mine:hs', '@me:hs')]),
+          childRoomIds: vi.fn(() => []),
+        }),
+        MockProvider(AccountScopeService, {
+          selected: shownAccounts.asReadonly(),
+          mixing: computed(() => shownAccounts().size > 1),
+          toggle: toggleAccount,
+        }),
+        MockProvider(MixedRoomsService, {
+          rooms: signal(mixedRoomList()),
+          setAccounts: setMixedRoomsAccounts,
+        }),
+        MockProvider(MixedSpacesService, {
+          spaces: signal([
+            space('!s-mine:hs', '@me:hs'),
+            space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
+          ]),
+          setAccounts: vi.fn(),
+        }),
+        MockProvider(MixedInvitesService, {
+          invites: signal<PendingInvite[]>([]),
+          setAccounts: vi.fn(),
+        }),
+        MockProvider(TimelineService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(accountIds).asReadonly(),
+          clientFor: (id: string) =>
+            clientStub({
+              getUser: () => ({ avatarUrl: avatars[id] ?? null }),
+            }),
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
+        }),
+        MockProvider(ThreadsService),
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(AuthService, { switchAccount }),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return shellFrom();
+  }
+
+  it('scopes Recent + rail spaces to the active account by default', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    // Default 'this' — the active account only.
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
+    expect(shell.vm.railSpaces().map((s) => s.id)).toEqual(['!s-mine:hs']);
+    expect(shell.vm.accountBadges().size).toBe(0); // no badges outside mixed mode
+  });
+
+  it('Recent spans every account when the toggle is "All accounts"', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.tick(); // run the enable effect
+
+    // Recent lists every account's rooms unfiltered, in the aggregator's order.
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!mine:hs',
+      '!theirs:hs',
+      '!dm-mine:hs',
+      '!dm-theirs:hs',
+      '!child-theirs:hs',
+    ]);
+    expect(shell.vm.railSpaces().map((s) => s.id)).toEqual([
+      '!s-mine:hs',
+      '!s-alt:hs',
+    ]);
+    expect(setMixedRoomsAccounts).toHaveBeenCalledWith(
+      new Set(['@me:hs', '@alt:hs']),
+    );
+    expect(shell.vm.accountBadges().size).toBeGreaterThan(0);
+  });
+
+  it('carries each account’s real avatar into the badge lookup', () => {
+    const shell = build(['@me:hs', '@alt:hs'], {
+      '@alt:hs': 'mxc://hs/alt-avatar',
+    });
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+
+    // The badge exposes the account's own avatar (resolved to the real image downstream)…
+    expect(shell.vm.accountBadges().get('@alt:hs')?.avatarMxc).toBe(
+      'mxc://hs/alt-avatar',
+    );
+    // …and null for an account with no avatar, so the badge falls back to its initial.
+    expect(shell.vm.accountBadges().get('@me:hs')?.avatarMxc).toBeNull();
+  });
+
+  it('Home shows every account’s DMs in mixed mode', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    shell.nav.onSelectSpace(null); // Home — leaves Recent
+
+    // Both accounts' DMs (classified by each row's own-account m.direct), nothing else.
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!dm-mine:hs',
+      '!dm-theirs:hs',
+    ]);
+    expect(shell.vm.sidebarTitle()).toBe('Direct Messages');
+  });
+
+  it('Rooms shows every account’s non-DM, non-space rooms in mixed mode', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    shell.nav.onShowRooms();
+
+    // Non-DM rooms from both accounts, excluding DMs and @alt's space child.
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!mine:hs',
+      '!theirs:hs',
+    ]);
+    expect(shell.vm.sidebarTitle()).toBe('Rooms');
+  });
+
+  it('switches to the owning account before opening a foreign room', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+
+    shell.routing.onSelectRoomRow('!theirs:hs'); // belongs to @alt:hs
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+
+    // A room on the active account opens without a switch.
+    switchAccount.mockClear();
+    shell.routing.onSelectRoomRow('!mine:hs');
+    expect(switchAccount).not.toHaveBeenCalled();
+    expect(shell.store.activeRoomId()).toBe('!mine:hs');
+  });
+
+  it('switches to the owning account before selecting a foreign space', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+
+    shell.routing.onSelectSpaceRow('!s-alt:hs'); // belongs to @alt:hs
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+
+    // The active account's own space selects without a switch; Home (null) too.
+    switchAccount.mockClear();
+    shell.routing.onSelectSpaceRow('!s-mine:hs');
+    shell.routing.onSelectSpaceRow(null);
+    expect(switchAccount).not.toHaveBeenCalled();
+  });
+
+  it('narrows the projections back down when an account is unticked', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.tick();
+    expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(
+      new Set(['@me:hs', '@alt:hs']),
+    );
+
+    shownAccounts.set(new Set(['@me:hs']));
+    TestBed.tick();
+    // One account is not a mix — the projection is told so and empties itself.
+    expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(new Set(['@me:hs']));
+    // Recent falls back to the active account's rooms only.
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
+  });
+
+  // The rail badges must count what their view renders: before this they summed the ACTIVE
+  // account's rooms while the list below showed every mixed account's.
+  it('sums the rail unread badges across the mixed accounts', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+
+    expect(shell.vm.recentUnread()).toBe(15); // 7 + 3 + 5 across both accounts
+    expect(shell.vm.homeUnread()).toBe(3); // the foreign account's DM
+    expect(shell.vm.roomsUnread()).toBe(7); // non-DM, minus @alt's space child
+    expect(shell.vm.spaceUnread()['!s-alt:hs']).toBe(5); // the foreign space's child
+
+    // Unticking drops back to the active account's own totals (all zero here).
+    shownAccounts.set(new Set(['@me:hs']));
+    expect(shell.vm.recentUnread()).toBe(0);
+  });
+
+  // A shortcut/MRU target is routinely OUTSIDE the current view (Home lists DMs only, a
+  // space lists its children), so resolving the owning account from visibleRooms() would
+  // miss and open the room on whatever client happens to be active.
+  it('resolves a foreign room’s account even when the current view filters it out', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    shell.nav.onSelectSpace(null); // Home — DMs only, so '!theirs:hs' is not visible
+    expect(shell.vm.visibleRooms().map((r) => r.id)).not.toContain(
+      '!theirs:hs',
+    );
+
+    shell.routing.onSelectRoomRow('!theirs:hs');
+
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+  });
+
+  // The switcher searches every mixed account, so a jump can land on a room owned by an
+  // account that isn't active — it must switch first, exactly like clicking the row.
+  it('switches accounts when jumping to a foreign room from the quick switcher', async () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
+      Promise.resolve({ kind: 'room' as const, id: '!theirs:hs' }),
+    );
+
+    await shell.shortcuts.openSwitcher();
+    TestBed.tick(); // the follow-up open is deferred past the re-projection render
+
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+    expect(shell.store.activeRoomId()).toBe('!theirs:hs');
+  });
+
+  it('switches accounts when jumping to a foreign space from the quick switcher', async () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
+      Promise.resolve({ kind: 'space' as const, id: '!s-alt:hs' }),
+    );
+
+    await shell.shortcuts.openSwitcher();
+
+    expect(switchAccount).toHaveBeenCalledWith('@alt:hs');
+  });
+
+  // A room that is top-level for the account you are ACTING AS must not vanish from the
+  // Rooms view just because a different mixed account files it inside one of its spaces.
+  it('keeps a room that only another account files under a space', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    shell.nav.onShowRooms();
+
+    // '!child-theirs:hs' is a child of @alt's space, so it is excluded for @alt…
+    expect(shell.vm.visibleRooms().map((r) => r.id)).not.toContain(
+      '!child-theirs:hs',
+    );
+    // …while @me's own spaceless room stays, even though @alt's space claims a room id.
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toContain('!mine:hs');
+  });
+
+  // The pill's unread badge is summed over the mixed union, so the space it opens must
+  // list that same union — otherwise the badge counts rooms the view never renders.
+  it('lists a mixed space’s children from the same union its badge counts', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    shell.nav.onSelectSpace('!s-alt:hs');
+
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!child-theirs:hs',
+    ]);
+  });
+
+  // The space scope belongs to the outgoing account; the Recent/DMs/Rooms filter does not.
+  it('keeps the Rooms filter across an account switch but drops the space', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    shell.nav.onShowRooms();
+
+    shell.routing.onSelectRoomRow('!theirs:hs'); // switches to @alt
+
+    expect(shell.store.roomsView()).toBe(true); // the user's filter survives
+    expect(shell.store.activeSpaceId()).toBeNull();
+  });
+
+  it('returns to Recent when the switch happened from inside a space', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    shell.nav.onSelectSpace('!s-mine:hs');
+
+    shell.routing.onSelectRoomRow('!theirs:hs');
+
+    expect(shell.store.activeSpaceId()).toBeNull();
+    expect(shell.store.recentView()).toBe(true);
+  });
+
+  it('forwards a picker tick to the account scope', () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shell.routing.onToggleAccountShown('@alt:hs');
+    expect(toggleAccount).toHaveBeenCalledWith('@alt:hs');
+  });
+});

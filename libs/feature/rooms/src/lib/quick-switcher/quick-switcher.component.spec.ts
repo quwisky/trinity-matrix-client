@@ -69,6 +69,13 @@ describe('QuickSwitcherComponent', () => {
           activeUserId: signal<string | null>(
             opts.activeUserId ?? '@me:hs',
           ).asReadonly(),
+          // Declared even though nothing here reads it: UnreadAggregatorService sits in
+          // this tree and its constructor effect iterates accountIds(). ng-mocks 14.16
+          // stopped auto-stubbing it into something callable, so leaving it out makes
+          // the effect throw "ids is not iterable" and fails all 14 rendering tests.
+          accountIds: signal<readonly string[]>([
+            opts.activeUserId ?? '@me:hs',
+          ]).asReadonly(),
         }),
         MockProvider(AccountBadgesService, {
           forAccount: (id?: string) =>

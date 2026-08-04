@@ -15,7 +15,7 @@ runs:
   steps:
     # Must come BEFORE setup-node: its `cache: pnpm` resolves the store path by shelling
     # out to pnpm, which is not on the runner yet. The version comes from package.json's
-    # `packageManager` field (pnpm@11.15.1) — passing a `version:` input as well is an
+    # `packageManager` field (pnpm@11.19.0) — passing a `version:` input as well is an
     # error, not an override.
     - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 

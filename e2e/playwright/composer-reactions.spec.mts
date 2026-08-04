@@ -115,13 +115,18 @@ test.describe('Full emoji reaction picker', () => {
     // first click (a hover/render race), which a bigger timeout can't fix. Retry the
     // open until react-more actually appears (only ever re-clicks a *closed* popover,
     // since react-more is visible iff the popover is open).
+    // The click on react-more belongs INSIDE the retry, not after it. Asserting
+    // visibility and then clicking are two moments: the popover can close between them
+    // (the row re-renders, the pointer has not moved, so :hover no longer applies), and
+    // the click then waits out the whole 120s test timeout on an element that is never
+    // coming back. Bounding it at 5s turns that hang into another attempt instead.
     const reactMore = page.getByTestId('react-more');
     await expect(async () => {
       await row.first().hover();
       await row.first().getByRole('button', { name: 'Add reaction' }).click();
       await expect(reactMore).toBeVisible({ timeout: 5_000 });
+      await reactMore.click({ timeout: 5_000 });
     }).toPass({ timeout: 30_000 });
-    await reactMore.click();
 
     // The full picker opens in a dialog; drive it through its search box (emoji-mart
     // lazy-renders, so search first) and pick the first result.
