@@ -41,10 +41,58 @@ export interface Mention {
   display: string;
 }
 
-/** An `m.mentions` block for the given user ids, or `{}` when there are none. */
-function mentionsBlock(userIds: string[]): Record<string, unknown> {
+/**
+ * `@room` as a WORD, matching the boundary the legacy `.m.rule.roomnotif` used: matrix-js-sdk
+ * and Synapse wrap a body pattern in `(?<=^|\W)`/`(?=\W|$)`.
+ *
+ * A whitespace-only boundary is the obvious thing to write and is wrong, because sending
+ * `m.mentions` SUPPRESSES the legacy rule — so any phrasing this fails to recognise loses its
+ * room ping entirely rather than falling back to the old behaviour. `@room,` `@room!`
+ * `(@room)` and `**@room**` are all ordinary ways to write it and all miss a `\s` boundary.
+ */
+const ROOM_MENTION = /(^|\W)@room(\W|$)/;
+
+/**
+ * A deliberate `@room` in text the sender actually wrote — ignoring quoted lines.
+ *
+ * Quoting someone who wrote `@room` must not re-ping the room, which is the whole reason
+ * `m.mentions` is now always sent (see {@link mentionsBlock}). Lines beginning with `>` are
+ * somebody else's words being carried along, so they are not the quoter's intent.
+ */
+export function mentionsRoom(body: string): boolean {
+  return body
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('>'))
+    .some((line) => ROOM_MENTION.test(line));
+}
+
+/**
+ * The `m.mentions` block — ALWAYS present, even when it is empty.
+ *
+ * Its presence is what makes a homeserver skip the legacy body-matching push rules
+ * (`.m.rule.contains_display_name`, `.m.rule.roomnotif`), which match on the plain-text
+ * `body` and therefore fire on words the sender merely QUOTED. Verified against Synapse
+ * 1.119: an identical quoted body highlights the named user without this key and is silent
+ * with it. Note the server's own rule JSON still lists those rules as enabled with their
+ * original conditions — the exclusion lives in its push evaluator, so reading the rules
+ * suggests the opposite of what actually happens.
+ *
+ * The trade is that mentioning someone now has to be deliberate: typing a display name in
+ * passing no longer notifies them, and `@room` only counts when the sender wrote it
+ * themselves. That is the intended shape of intentional mentions (MSC3952), and it is the
+ * only way to stop a quote from notifying people who were never addressed.
+ */
+function mentionsBlock(
+  userIds: string[],
+  room = false,
+): Record<string, unknown> {
   const ids = [...new Set(userIds)].filter(Boolean);
-  return ids.length > 0 ? { 'm.mentions': { user_ids: ids } } : {};
+  return {
+    'm.mentions': {
+      ...(ids.length > 0 ? { user_ids: ids } : {}),
+      ...(room ? { room: true } : {}),
+    },
+  };
 }
 
 /**
@@ -241,7 +289,7 @@ export function renderMarkdown(text: string): RenderedMarkdown {
 export function mediaCaptionFields(
   filename: string,
   caption: string,
-): Record<string, string> {
+): Record<string, unknown> {
   const text = caption.trim();
   if (!text) {
     return { body: filename };
@@ -253,6 +301,9 @@ export function mediaCaptionFields(
     ...(md.formatted
       ? { format: 'org.matrix.custom.html', formatted_body: md.html }
       : {}),
+    // An MSC2530 caption REPLACES the filename as the body, so it is user-authored text a
+    // push rule will match on — the same exposure as a plain message.
+    ...mentionsBlock([], mentionsRoom(text)),
   };
 }
 
@@ -270,7 +321,10 @@ export function textMessageContent(
   // the people named, and it has to outlive a message whose markup sanitized away to nothing
   // (or whose parse threw — `renderMarkdown` returns `html: ''` for both). Dropping it with
   // the empty `formatted_body` sent the message and quietly notified nobody.
-  const notified = mentionsBlock(mentions.map((m) => m.userId));
+  const notified = mentionsBlock(
+    mentions.map((m) => m.userId),
+    mentionsRoom(text),
+  );
   if (md.html !== '' && (md.formatted || mentions.length > 0)) {
     return {
       msgtype: MsgType.Text,
@@ -314,7 +368,10 @@ export function emoteMessageContent(
   mentions: Mention[] = [],
 ) {
   // As in `textMessageContent`: the notification outlives the markup.
-  const notified = mentionsBlock(mentions.map((m) => m.userId));
+  const notified = mentionsBlock(
+    mentions.map((m) => m.userId),
+    mentionsRoom(text),
+  );
   if (md.html !== '' && (md.formatted || mentions.length > 0)) {
     return {
       msgtype: MsgType.Emote,
@@ -351,6 +408,8 @@ export function spoilerMessageContent(text: string) {
     body: text,
     format: 'org.matrix.custom.html',
     formatted_body: `<span data-mx-spoiler>${escapeInlineText(text)}</span>`,
+    // A spoiler's body is the sender's own text, so it needs the marker like any other.
+    ...mentionsBlock([], mentionsRoom(text)),
   };
 }
 
@@ -379,10 +438,23 @@ export function slashCommandContent(
       // `/me` is the emote path, so carry any @-mentions (pills + `m.mentions`)
       // through — otherwise a `/me waves at @bob` wouldn't notify Bob.
       return arg ? emoteMessageContent(arg, renderHtml(arg), mentions) : null;
+    // The remaining commands emit a body the sender authored, so they need the same
+    // `m.mentions` marker as an ordinary message — otherwise `/plain > @room …` is a hole
+    // straight through the fix.
     case 'shrug':
-      return { msgtype: MsgType.Text, body: arg ? `${arg} ${SHRUG}` : SHRUG };
+      return {
+        msgtype: MsgType.Text,
+        body: arg ? `${arg} ${SHRUG}` : SHRUG,
+        ...mentionsBlock([], mentionsRoom(arg)),
+      };
     case 'plain':
-      return arg ? { msgtype: MsgType.Text, body: arg } : null;
+      return arg
+        ? {
+            msgtype: MsgType.Text,
+            body: arg,
+            ...mentionsBlock([], mentionsRoom(arg)),
+          }
+        : null;
     case 'spoiler':
       return arg ? spoilerMessageContent(arg) : null;
     default:
@@ -392,8 +464,10 @@ export function slashCommandContent(
 
 /**
  * `m.replace` edit content targeting `messageId`, with the leading `* ` fallback.
- * Mentions land in `m.new_content` (the effective content) — not the top-level
- * replace event — so an edit that keeps existing mentions doesn't re-notify.
+ *
+ * `m.mentions` appears BOTH at the top level and in `m.new_content`. The nested copy is the
+ * effective content; the top-level one is what stops the legacy body rules firing on the
+ * `* …` fallback, which they do before `.m.rule.suppress_edits` is reached.
  */
 export function editMessageContent(
   messageId: string,
@@ -405,6 +479,15 @@ export function editMessageContent(
   return {
     msgtype: MsgType.Text,
     body: `* ${text}`,
+    // The TOP-LEVEL body is `* <the whole new text>`, and the legacy body-matching rules are
+    // evaluated against it before `.m.rule.suppress_edits` is ever reached — measured on
+    // Synapse 1.119, where an edit whose body quoted a display name highlighted the reader
+    // until this block was added. Without it, correcting one typo in a quote re-notifies
+    // everyone the quote names.
+    ...mentionsBlock(
+      mentions.map((m) => m.userId),
+      mentionsRoom(text),
+    ),
     ...(rich
       ? {
           format: 'org.matrix.custom.html',
@@ -457,8 +540,13 @@ export function replyMessageContent(
     format: 'org.matrix.custom.html',
     formatted_body: `${mxReply}${replyHtml}`,
     'm.relates_to': { 'm.in_reply_to': { event_id: messageId } },
-    // A reply pings the message's author, plus anyone @-mentioned in the reply.
-    ...mentionsBlock([sender, ...mentions.map((m) => m.userId)]),
+    // A reply pings the message's author, plus anyone @-mentioned in the reply. `text` is
+    // the reply's own words — deliberately NOT the `body` above, whose `> <sender> …`
+    // fallback quotes the message being answered and would re-ping its @room.
+    ...mentionsBlock(
+      [sender, ...mentions.map((m) => m.userId)],
+      mentionsRoom(text),
+    ),
   };
 }
 

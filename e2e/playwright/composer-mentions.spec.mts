@@ -154,9 +154,28 @@ test.describe('Composer @-mentions', () => {
 
     // The sent message renders the mention as a matrix.to link to the member,
     // i.e. it carries m.mentions and will ping them.
-    await expect(
-      page.locator(`.scroll a[href*="${memberId}"]`).first(),
-    ).toBeVisible({ timeout: 20_000 });
+    const pill = page.locator(`.scroll a[href*="${memberId}"]`).first();
+    await expect(pill).toBeVisible({ timeout: 20_000 });
+
+    // ...and it READS as a mention rather than as a URL. The class is unit-tested; what
+    // only a real browser can show is that the rule reached the bundle and matched — the
+    // styles live in a global stylesheet, so a selector that never applies would leave the
+    // class present and the pill looking exactly like an ordinary link.
+    await expect(pill).toHaveClass(/\bmention\b/);
+    const painted = await pill.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const channels = style.backgroundColor.match(/[\d.]+/g) ?? [];
+      return {
+        backgroundColor: style.backgroundColor,
+        // An unstyled inline link is rgba(0, 0, 0, 0).
+        tinted: channels.length === 4 ? Number(channels[3]) > 0 : true,
+        weight: Number(style.fontWeight),
+      };
+    });
+    expect(painted.tinted, `background was ${painted.backgroundColor}`).toBe(
+      true,
+    );
+    expect(painted.weight).toBeGreaterThanOrEqual(600);
   });
 
   test('accepts a mention with the keyboard', async ({ page, request }) => {

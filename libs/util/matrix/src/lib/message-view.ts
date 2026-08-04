@@ -11,6 +11,7 @@ import DOMPurify from 'dompurify';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { buildPollView, isPollStart, type PollView } from './poll';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
+import { parseMatrixToLink } from './matrix-to';
 
 /**
  * Shared, framework-free projection of a `matrix-js-sdk` {@link MatrixEvent} into a
@@ -370,7 +371,7 @@ export function buildMessageView(
         captionHtml: null,
         location: null,
       }
-    : renderBody(event, decryptionFailed);
+    : renderBody(event, decryptionFailed, client.getUserId() ?? '');
   return {
     id: event.getId() ?? '',
     senderId,
@@ -897,8 +898,18 @@ export function setCodeHighlighter(highlighter: CodeHighlighter | null): void {
  * Also applies render-only normalisation — spoiler tagging and syntax highlighting —
  * which is why {@link sanitizeOutgoingHtml} exists separately for the send path.
  */
-export function sanitizeMatrixHtml(html: string): string {
-  const memoized = sanitizedHtmlCache.get(html);
+export function sanitizeMatrixHtml(
+  html: string,
+  /** Set only when the event's `m.mentions` actually names the viewer — see
+   * {@link markMentionPills} for why the href alone is not enough. */
+  addressesViewer = false,
+): string {
+  // Whether this event addresses the viewer is part of the OUTPUT, so it has to be part of
+  // the key. Keying on the html alone would hand one event's marking to another with the
+  // same body — and, across an account switch, keep highlighting a mention of somebody you
+  // are no longer signed in as.
+  const cacheKey = `${addressesViewer ? '1' : '0'}\u0000${html}`;
+  const memoized = sanitizedHtmlCache.get(cacheKey);
   if (memoized !== undefined) {
     return memoized;
   }
@@ -917,6 +928,7 @@ export function sanitizeMatrixHtml(html: string): string {
   normaliseSpoilers(body);
   normaliseTaskItems(body);
   renderCodeBlocks(body);
+  markMentionPills(body, addressesViewer);
   const clean = body.innerHTML;
   if (sanitizedHtmlCache.size >= SANITIZED_HTML_CACHE_MAX) {
     const oldest = sanitizedHtmlCache.keys().next().value;
@@ -924,8 +936,42 @@ export function sanitizeMatrixHtml(html: string): string {
       sanitizedHtmlCache.delete(oldest);
     }
   }
-  sanitizedHtmlCache.set(html, clean);
+  sanitizedHtmlCache.set(cacheKey, clean);
   return clean;
+}
+
+/**
+ * Tag `matrix.to` user links so a mention reads as a mention rather than as an ordinary
+ * link, and mark them as addressed to the viewer when the event says so.
+ *
+ * `.mention` is keyed off the href, which is right: a link to a user IS a mention of them,
+ * and it makes mentions written in Element and other clients render the same as ours.
+ *
+ * `.mention--self` is NOT keyed off the href, and that is the point. `formatted_body` is
+ * written by the sender, so anyone can put `<a href="…/@you">whatever</a>` in a message and
+ * would otherwise get the solid "this is addressed to you" treatment without addressing you
+ * at all. It is gated on the event's `m.mentions` instead, so the strong visual means
+ * exactly what a notification means — which is the whole point of intentional mentions.
+ *
+ * A render-only pass, deliberately not in the `afterSanitizeAttributes` hook: attributes set
+ * there are not re-filtered and would ride out onto the wire, so a sent message would carry
+ * viewer-specific classes to everyone else.
+ *
+ * Running AFTER DOMPurify is what stops the CLASS being injected directly: `class` is
+ * filtered to {@link ALLOWED_CLASS}, so by the time this adds one, anything the sender wrote
+ * is already gone.
+ */
+function markMentionPills(body: HTMLElement, addressesViewer: boolean): void {
+  for (const anchor of body.querySelectorAll('a[href]')) {
+    const target = parseMatrixToLink(anchor.getAttribute('href') ?? '');
+    if (target?.kind !== 'user') {
+      continue;
+    }
+    anchor.classList.add('mention');
+    if (addressesViewer) {
+      anchor.classList.add('mention--self');
+    }
+  }
 }
 
 /**
@@ -1131,6 +1177,23 @@ interface RenderedBody {
   location?: LocationView | null;
 }
 
+/** Whether an event's `m.mentions` names the viewer — the only trustworthy "this is for
+ * you" signal, since everything else in the content is written by the sender. */
+function mentionsViewer(
+  content: Record<string, unknown>,
+  selfUserId: string,
+): boolean {
+  if (selfUserId === '') {
+    return false;
+  }
+  const mentions = content['m.mentions'];
+  if (typeof mentions !== 'object' || mentions === null) {
+    return false;
+  }
+  const ids = (mentions as { user_ids?: unknown }).user_ids;
+  return Array.isArray(ids) && ids.includes(selfUserId);
+}
+
 /** The text of a message body, rendered every way the msgtype branches need it. */
 export interface RenderedText {
   /** Plain text, with any reply fallback stripped. */
@@ -1153,6 +1216,8 @@ export interface RenderedText {
 export function renderTextBody(
   content: Record<string, unknown>,
   isReply: boolean,
+  /** The viewer, so a mention OF them can be marked. Omitted where it is unknown. */
+  selfUserId = '',
 ): RenderedText {
   const raw = (content['body'] as string) ?? '';
   const text = isReply ? stripReplyFallbackText(raw) : raw;
@@ -1164,7 +1229,13 @@ export function renderTextBody(
       : null;
   const strippedHtml =
     isReply && rawHtml ? stripReplyFallbackHtml(rawHtml) : rawHtml;
-  const html = strippedHtml === null ? null : sanitizeMatrixHtml(strippedHtml);
+  // From `m.mentions`, never from the body: the sender writes the body, so a link in it
+  // proves only that they typed your id, not that they addressed you.
+  const addressesViewer = mentionsViewer(content, selfUserId);
+  const html =
+    strippedHtml === null
+      ? null
+      : sanitizeMatrixHtml(strippedHtml, addressesViewer);
 
   // Plain text (no formatted_body) still gets bare URLs linkified so they're clickable.
   return { text, html, textHtml: html ?? linkifyText(text) };
@@ -1173,6 +1244,7 @@ export function renderTextBody(
 function renderBody(
   event: MatrixEvent,
   decryptionFailed: boolean,
+  selfUserId: string,
 ): RenderedBody {
   if (decryptionFailed) {
     return {
@@ -1194,6 +1266,7 @@ function renderBody(
   const { text, html, textHtml } = renderTextBody(
     content,
     !!event.replyEventId,
+    selfUserId,
   );
   switch (content.msgtype) {
     case MsgType.Text:

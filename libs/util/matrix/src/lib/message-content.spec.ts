@@ -91,6 +91,8 @@ describe('slashCommandContent', () => {
     expect(slashCommandContent('/plain **not bold**', render)).toEqual({
       msgtype: 'm.text',
       body: '**not bold**',
+      // Every user-authored body carries the marker, or the command is a hole through it.
+      'm.mentions': {},
     });
   });
 
@@ -322,6 +324,8 @@ describe('mediaCaptionFields', () => {
     expect(mediaCaptionFields('pic.png', 'a caption')).toEqual({
       body: 'a caption',
       filename: 'pic.png',
+      // A caption REPLACES the filename as the body, so a push rule matches it.
+      'm.mentions': {},
     });
   });
 
@@ -329,6 +333,7 @@ describe('mediaCaptionFields', () => {
     expect(mediaCaptionFields('pic.png', '  hi  ')).toEqual({
       body: 'hi',
       filename: 'pic.png',
+      'm.mentions': {},
     });
   });
 
@@ -375,17 +380,24 @@ describe('mentions in content builders', () => {
     expect(textMessageContent(text, renderMarkdown(text))).toEqual({
       msgtype: 'm.text',
       body: 'just text',
+      // Present but EMPTY, deliberately: its presence is what makes the homeserver skip
+      // the legacy body-matching push rules. See the m.mentions describe block below.
+      'm.mentions': {},
     });
   });
 
-  it("keeps an edit's mentions in m.new_content, off the top-level replace", () => {
+  it("carries an edit's mentions at BOTH levels", () => {
     const text = 'fixed @Alice';
     const content = editMessageContent('$m', text, renderMarkdown(text), [
       ALICE,
     ]) as Record<string, unknown>;
 
-    // No top-level m.mentions → editing keeps existing pings from re-notifying.
-    expect(mentionIds(content)).toEqual([]);
+    // The top-level block used to be omitted, on the reasoning that `.m.rule.suppress_edits`
+    // would stop an edit re-notifying. Measured against Synapse 1.119, it does not: the
+    // legacy body rules fire on the `* …` fallback FIRST, so an edit that merely corrects a
+    // typo in a quote re-highlighted everyone the quote named. The nested copy is the
+    // effective content; the top-level one is what suppresses the legacy rules.
+    expect(mentionIds(content)).toEqual(['@alice:hs']);
     const newContent = content['m.new_content'];
     expect(mentionIds(newContent)).toEqual(['@alice:hs']);
     expect((newContent as Record<string, string>)['formatted_body']).toContain(
@@ -592,5 +604,134 @@ describe('messagePreview', () => {
   it("returns '…' for an empty or whitespace-only body", () => {
     expect(messagePreview(fakeEvent({ body: '' }))).toBe('…');
     expect(messagePreview(fakeEvent({ body: '   \n  ' }))).toBe('…');
+  });
+});
+
+/**
+ * `m.mentions` is always sent, which is what stops a message notifying people it merely
+ * NAMES rather than addresses. Verified against Synapse 1.119: an identical quoted body
+ * highlights the named user when the key is absent and is silent when it is present.
+ */
+describe('m.mentions is always present', () => {
+  it('emits an empty block for a message that mentions nobody', () => {
+    const text = 'hello';
+    const content = textMessageContent(text, renderMarkdown(text)) as Record<
+      string,
+      unknown
+    >;
+
+    // The KEY has to exist. Omitting it when there is nothing to say is what let a quoted
+    // display name re-fire `.m.rule.contains_display_name` on the reader's account.
+    expect(content).toHaveProperty('m.mentions');
+    expect(content['m.mentions']).toEqual({});
+  });
+
+  it('still carries deliberate mentions', () => {
+    const text = 'hi @Alice';
+    const content = textMessageContent(text, renderMarkdown(text), [
+      { userId: '@alice:hs', display: '@Alice' },
+    ]) as Record<string, unknown>;
+
+    expect(content['m.mentions']).toEqual({ user_ids: ['@alice:hs'] });
+  });
+
+  it('marks a room mention the sender actually wrote', () => {
+    const text = '@room standup in five';
+    const content = textMessageContent(text, renderMarkdown(text)) as Record<
+      string,
+      unknown
+    >;
+
+    // Without this, always sending m.mentions would silently remove @room entirely: the
+    // legacy `.m.rule.roomnotif` is the only thing that made a typed @room work before.
+    expect(content['m.mentions']).toEqual({ room: true });
+  });
+
+  it('does NOT mark a room mention that is only being quoted', () => {
+    const text = '> @room heads up\n\nseen it';
+    const content = textMessageContent(text, renderMarkdown(text)) as Record<
+      string,
+      unknown
+    >;
+
+    // The whole point: carrying someone else's words must not re-ping everyone.
+    expect(content['m.mentions']).toEqual({});
+  });
+
+  it('recognises @room however it is punctuated', () => {
+    // A whitespace-only boundary was the first attempt and is a trap: sending m.mentions
+    // SUPPRESSES the legacy `.m.rule.roomnotif`, so any phrasing the client fails to
+    // recognise loses its room ping entirely rather than falling back to the old rule.
+    // These all matched the legacy word-boundary rule and must keep working.
+    for (const text of [
+      '@room standup in five',
+      '@room, standup in five',
+      '@room! now',
+      'please review @room.',
+      '(@room) heads up',
+      '**@room** heads up',
+      'ping @room',
+    ]) {
+      const content = textMessageContent(text, renderMarkdown(text)) as Record<
+        string,
+        unknown
+      >;
+      expect(content['m.mentions'], text).toEqual({ room: true });
+    }
+  });
+
+  it('marks an edited @room, and an edited quote of one', () => {
+    const own = 'heads up @room!';
+    expect(
+      (
+        editMessageContent('$m', own, renderMarkdown(own)) as Record<
+          string,
+          unknown
+        >
+      )['m.mentions'],
+    ).toEqual({ room: true });
+
+    // And the case the top-level block exists for: an edit whose body quotes an @room.
+    const quoted = '> @room heads up\n\nseen it';
+    expect(
+      (
+        editMessageContent('$m', quoted, renderMarkdown(quoted)) as Record<
+          string,
+          unknown
+        >
+      )['m.mentions'],
+    ).toEqual({});
+  });
+
+  it('reads @room as a word, not a substring', () => {
+    for (const text of ['mail me @roomservice', 'the @rooms list', 'a@room']) {
+      const content = textMessageContent(text, renderMarkdown(text)) as Record<
+        string,
+        unknown
+      >;
+      expect(content['m.mentions'], text).toEqual({});
+    }
+  });
+
+  it('scans a reply’s OWN words, not the message it quotes', () => {
+    // `replyMessageContent`'s fallback body starts `> <sender> …`, so scanning the BODY
+    // would re-ping the room for anyone replying to a message that contained @room.
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => ({
+        getSender: () => '@bob:hs',
+        getContent: () => ({ body: '@room everyone look' }),
+      }),
+    } as unknown as Room;
+    const text = 'thanks';
+    const reply = replyMessageContent(
+      room,
+      '$t',
+      text,
+      renderMarkdown(text),
+    ) as Record<string, unknown>;
+
+    expect(reply.body).toContain('@room'); // the quoted fallback really does carry it
+    expect(reply['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
   });
 });
