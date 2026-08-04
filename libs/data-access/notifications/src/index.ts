@@ -1,4 +1,5 @@
 export * from './lib/notification.service';
+export * from './lib/notification-sound.service';
 export * from './lib/push-config';
 export * from './lib/push.service';
 export * from './lib/push-gateway-url';

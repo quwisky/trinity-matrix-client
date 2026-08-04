@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  OnDestroy,
   OnInit,
   inject,
   signal,
@@ -10,6 +11,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { TrnToastService } from '@trinity/helm/overlay';
 import {
+  NotificationSoundService,
   PushRulesService,
   type PushRuleToggle,
 } from '@trinity/data-access/notifications';
@@ -28,8 +30,9 @@ import { PushGatewayBlockComponent } from './push-gateway-block.component';
   templateUrl: './notifications-section.component.html',
   imports: [HlmCheckbox, KeywordRulesBlockComponent, PushGatewayBlockComponent],
 })
-export class NotificationsSectionComponent implements OnInit {
+export class NotificationsSectionComponent implements OnInit, OnDestroy {
   private readonly push = inject(PushRulesService);
+  private readonly sound = inject(NotificationSoundService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -40,12 +43,63 @@ export class NotificationsSectionComponent implements OnInit {
   /** Rule ids whose write is in flight. */
   private readonly pending = signal<ReadonlySet<string>>(new Set());
 
+  /**
+   * Key for the sound switch in the same optimistic state/pending maps as the rule toggles.
+   * Not a rule id: it stands for the `sound` tweak across SEVEN predefined rules at once, so
+   * it cannot borrow any single one of theirs.
+   */
+  protected readonly soundKey = 'trinity.notification-sound';
+
   ngOnInit(): void {
     const seeded = new Map<string, boolean>();
     for (const toggle of this.toggles) {
       seeded.set(toggle.id, this.push.isOn(toggle));
     }
     this.state.set(seeded);
+    // Tracks account data, so a value that arrives after this page has rendered (a cold
+    // load, or a change made on another device) still shows.
+    this.sound.connect();
+  }
+
+  ngOnDestroy(): void {
+    this.sound.disconnect();
+  }
+
+  /**
+   * The optimistic value while a write is in flight, otherwise whatever the account says.
+   * Seeding once was not enough: on a cold load this page can render before the initial
+   * sync delivers account data.
+   */
+  soundChecked(): boolean {
+    return this.soundPending()
+      ? (this.state().get(this.soundKey) ?? this.sound.enabled())
+      : this.sound.enabled();
+  }
+
+  soundPending(): boolean {
+    return this.pending().has(this.soundKey);
+  }
+
+  /** Optimistically flip the sound switch and persist it; revert + toast on failure. */
+  toggleSound(on: boolean): void {
+    if (this.soundPending()) {
+      return;
+    }
+    this.setState(this.soundKey, on);
+    this.setPending(this.soundKey, true);
+    this.sound
+      .setOn(on)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.setPending(this.soundKey, false),
+        error: () => {
+          this.setState(this.soundKey, !on);
+          this.setPending(this.soundKey, false);
+          this.toast.show('Could not update your notification settings.', {
+            variant: 'destructive',
+          });
+        },
+      });
   }
 
   checked(toggle: PushRuleToggle): boolean {

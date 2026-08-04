@@ -12,6 +12,7 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { SessionStorageService } from '@trinity/platform-native';
+import { NotificationSoundService } from './notification-sound.service';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
 
 /** Max characters of message body shown in a notification. */
@@ -70,6 +71,7 @@ interface AccountNotifier {
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly sound = inject(NotificationSoundService);
   private readonly router = inject(Router);
   private readonly timeline = inject(TimelineService);
   private readonly storage = inject(SessionStorageService);
@@ -350,7 +352,18 @@ export class NotificationService {
       // Desktop (Electron): hand off to the main process. The click is delivered
       // back via onNotificationClick (subscribed in connect()) with the userId so a
       // tap can switch accounts before opening the room.
-      desktop.showNotification({ title, body, tag, roomId, userId });
+      desktop.showNotification({
+        title,
+        body,
+        tag,
+        roomId,
+        userId,
+        // The desktop shell builds a native notification in the main process, so it never
+        // sees the Web NotificationOptions below — it needs telling separately. Keyed on the
+        // OWNING account: this notification may belong to a background account whose
+        // preference differs from the active one's.
+        silent: !this.sound.isOn(userId),
+      });
       return;
     }
 
@@ -358,6 +371,9 @@ export class NotificationService {
       body,
       tag,
       data: { roomId, userId },
+      // Keyed on the OWNING account, not the active one — this notification may belong to a
+      // background account whose preference differs.
+      silent: !this.sound.isOn(userId),
     };
 
     // Mobile browsers (Android Chrome, etc.) only allow notifications through

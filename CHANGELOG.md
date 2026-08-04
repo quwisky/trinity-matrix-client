@@ -24,6 +24,16 @@ All notable changes to this project are documented here. The format is based on
   to, so if you have already made text larger there, this adds to it rather than overriding
   it.
 
+- **Turn notification sounds off.** There was no way to stop Trinity's notifications making
+  a sound short of silencing the whole app in your operating system. Settings →
+  Notifications gains **Play a sound**, which covers every notification Trinity shows you on
+  this computer. It is stored with your account rather than on this device, so it follows you
+  to Trinity elsewhere, and each account you are signed in to keeps its own setting. Two
+  limits worth knowing: it does not change the sound your **phone** makes for a pushed
+  notification — that is chosen by the phone, not by Trinity — and it is Trinity's own
+  setting, so other Matrix apps such as Element are unaffected and keep whatever they were
+  set to.
+
 - **Jump to a date in a conversation.** Finding what someone said last Tuesday meant
   scrolling and waiting, over and over. **Jump to date** in a room's ⋯ menu asks for a day
   and takes you to the first message on it, loading the history in between for you. It
