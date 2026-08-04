@@ -1,202 +1,124 @@
-import { Injectable, inject } from '@angular/core';
-import {
-  PushRuleActionName,
-  TweakName,
-  type IPushRule,
-  type PushRuleAction,
-  type PushRuleKind,
-} from 'matrix-js-sdk';
-import { Observable, defer, forkJoin, from, map, of, throwError } from 'rxjs';
+import { Injectable, inject, signal } from '@angular/core';
+import { ClientEvent } from 'matrix-js-sdk';
+import { projectFromClient } from '@trinity/data-access/matrix-client';
+import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /**
- * The predefined rules that ship with a `sound` tweak, and the tone each ships with.
+ * Account-data type holding the global "play a sound" preference.
  *
- * Measured against Synapse 1.119 rather than assumed — the spec lists more rules than
- * actually carry a sound, and `.m.rule.call` is the one that is NOT `default`. Silencing
- * notifications means removing the tweak from exactly these; any other rule has no sound to
- * remove and rewriting it would be a change the user did not ask for.
- *
- * `contains_display_name` / `contains_user_name` are the legacy mention rules. They are kept
- * in the list because a homeserver still serves them and they still fire for clients that do
- * not send `m.mentions`; leaving them out would let a mention from an older client ring
- * after the user asked for silence.
+ * Cast at the call sites because the SDK types account-data keys as a closed union of the
+ * events it knows about; a client-namespaced type is by definition not in it.
  */
-const SOUNDED_RULES: readonly {
-  id: string;
-  kind: PushRuleKind;
-  sound: string;
-}[] = [
-  {
-    id: '.m.rule.invite_for_me',
-    kind: 'override' as PushRuleKind,
-    sound: 'default',
-  },
-  {
-    id: '.m.rule.is_user_mention',
-    kind: 'override' as PushRuleKind,
-    sound: 'default',
-  },
-  {
-    id: '.m.rule.contains_display_name',
-    kind: 'override' as PushRuleKind,
-    sound: 'default',
-  },
-  {
-    id: '.m.rule.contains_user_name',
-    kind: 'content' as PushRuleKind,
-    sound: 'default',
-  },
-  { id: '.m.rule.call', kind: 'underride' as PushRuleKind, sound: 'ring' },
-  {
-    id: '.m.rule.encrypted_room_one_to_one',
-    kind: 'underride' as PushRuleKind,
-    sound: 'default',
-  },
-  {
-    id: '.m.rule.room_one_to_one',
-    kind: 'underride' as PushRuleKind,
-    sound: 'default',
-  },
-];
+export const NOTIFICATION_SOUND_EVENT = 'eu.qwky.trinity.notification_sound';
+
+/** Sound is on unless the account says otherwise — the Matrix default is audible. */
+const DEFAULT_ON = true;
 
 /**
- * The single global "play a sound" preference, expressed as push rules rather than as a
- * local setting.
+ * The single global "play a sound" preference.
  *
- * Doing it in push rules is the point: the choice travels with the account, so silencing on
- * the desktop also silences the phone (the push gateway reads the same tweak) and shows up
- * in Element, which reads and writes the same rules. A local flag would only ever have
- * silenced the window it was set in.
+ * Stored in ACCOUNT DATA, not in the push rules. The push-rule route was built first and
+ * then measured against Synapse 1.119, where it turned out to cost more than it delivered:
  *
- * Deliberately ONE switch, not a per-room or per-tone picker. Trinity plays no audio of its
- * own — the tweak asks the platform to make its notification sound — so a tone chooser would
- * need a bundled asset, an autoplay story and four platform paths, none of which this
- * delivers. Per-room sounds and an in-app player are separate work.
+ *  - It does not silence the phone. Trinity registers its pusher with
+ *    `format: 'event_id_only'` to keep message content off the gateway, and Synapse
+ *    explicitly blanks the tweaks for that format before dispatching — so a `sound` tweak
+ *    never reaches Sygnal at all.
+ *  - It actively HARMS the phone. Synapse marks a push `high` priority only when the event
+ *    is encrypted or carries a truthy `highlight` or `sound` tweak. `.m.rule.call`,
+ *    `.m.rule.invite_for_me` and `.m.rule.room_one_to_one` all ship `highlight: false`
+ *    (verified on the live server), so removing their sound tweak demotes call and invite
+ *    pushes to LOW priority — delaying exactly the notifications that are urgent.
+ *  - It can destroy a deliberate choice. Element models "notify without a sound" as a rule
+ *    carrying `notify` and no sound tweak, which is indistinguishable from one this switch
+ *    silenced; turning the switch back on would force a sound onto it.
+ *
+ * Account data keeps the good half — the choice still follows the account to Trinity on
+ * another machine — without rewriting rules the user may have configured elsewhere. What is
+ * given up is that Element cannot see this particular switch; and the sound a PHONE makes
+ * for a pushed notification is chosen by the phone either way.
+ *
+ * The preference is applied by passing `silent` on every notification Trinity raises itself:
+ * the Web constructor, the service-worker registration, and the Electron main process (which
+ * builds a native notification and never sees `NotificationOptions`).
  */
 @Injectable({ providedIn: 'root' })
 export class NotificationSoundService {
   private readonly matrix = inject(MatrixClientService);
 
+  private readonly _enabled = signal(DEFAULT_ON);
   /**
-   * Whether notifications are currently allowed to make a sound.
+   * The preference as a signal, for the settings UI.
    *
-   * True when ANY of the sounded rules still carries its tweak, so a half-applied state (a
-   * failed write, or another client that silenced only some) reads as "on" and the next
-   * toggle-off completes the job rather than reporting success over a partial result.
+   * A one-shot read at component init is not enough: on a cold load the settings page can
+   * render BEFORE the initial sync has delivered account data, so the switch would show the
+   * default and never correct itself — which is exactly what the e2e caught. This tracks
+   * `ClientEvent.AccountData`, so a value arriving late (or changed on another device) lands
+   * without a reload.
    */
-  isOn(): boolean {
-    return this.presentRules().some(
-      ({ rule }) => soundTweakOf(rule) !== undefined,
-    );
+  readonly enabled = this._enabled.asReadonly();
+
+  private readonly onAccountData = (): void => this._enabled.set(this.isOn());
+
+  private readonly projection = projectFromClient({
+    matrix: this.matrix,
+    rebuild: () => this._enabled.set(this.isOn()),
+    bind: (client) => client.on(ClientEvent.AccountData, this.onAccountData),
+    unbind: (client) => client.off(ClientEvent.AccountData, this.onAccountData),
+  });
+
+  /** Track the account's preference; pair with {@link disconnect}. */
+  connect(): void {
+    this.projection.connect();
+  }
+
+  disconnect(): void {
+    this.projection.disconnect();
   }
 
   /**
-   * Add or remove the `sound` tweak across every predefined rule that has one. Cold — runs
-   * on subscribe.
+   * Whether notifications may make a sound.
    *
-   * Turning sound back on restores the tone the SPEC ships for each rule, not whatever was
-   * there before: `.m.rule.call` returns to `ring` and the rest to `default`. A custom tone
-   * set in another client is therefore not preserved across an off/on cycle — the honest
-   * cost of not keeping a shadow copy of every rule's previous actions, and the reason this
-   * is a global switch rather than a tone picker.
+   * Read from the LOCAL account-data store, which sync keeps current — so a change made on
+   * another device lands here without a round trip. Optional all the way down because this
+   * is called while BUILDING a notification: a throw would not surface as a broken setting,
+   * it would stop the notification appearing at all. Unknown state degrades to the default.
+   */
+  isOn(): boolean {
+    if (!this.matrix.isInitialized) {
+      return DEFAULT_ON;
+    }
+    const content = this.matrix.instance
+      ?.getAccountData?.(NOTIFICATION_SOUND_EVENT as never)
+      ?.getContent?.() as { enabled?: unknown } | undefined;
+    return typeof content?.enabled === 'boolean' ? content.enabled : DEFAULT_ON;
+  }
+
+  /**
+   * Persist the preference to account data. Cold — runs on subscribe.
+   *
+   * `setAccountData` rather than `setAccountDataRaw`: it retries, and its one quirk — it
+   * short-circuits when the local store already deep-equals the new content — is exactly
+   * right for a toggle, where "already in that state" means there is nothing to write.
    */
   setOn(on: boolean): Observable<void> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
-      const targets = this.presentRules();
-      if (targets.length === 0) {
-        // A homeserver that defines none of them: nothing to write, and reporting success
-        // is honest — there is no sound to turn on or off.
-        return of(void 0);
-      }
-      return forkJoin(
-        targets.map(({ rule, spec }) =>
-          from(
-            this.matrix.instance.setPushRuleActions(
-              'global',
-              spec.kind,
-              spec.id,
-              actionsWithSound(rule, on ? spec.sound : undefined),
-            ),
-          ),
+      return from(
+        this.matrix.instance.setAccountData(
+          NOTIFICATION_SOUND_EVENT as never,
+          { enabled: on } as never,
         ),
-      ).pipe(map(() => void 0));
+      ).pipe(
+        map(() => {
+          // The local store is updated by the echo, but reflect it now so the UI does not
+          // depend on a round trip it does not need.
+          this._enabled.set(on);
+        }),
+      );
     });
   }
-
-  /** The sounded rules the synced ruleset actually defines, paired with their spec entry. */
-  private presentRules(): {
-    rule: IPushRule;
-    spec: (typeof SOUNDED_RULES)[number];
-  }[] {
-    if (!this.matrix.isInitialized) {
-      return [];
-    }
-    // Optional all the way down, because {@link isOn} is read while BUILDING a notification:
-    // a throw here would not surface as a broken setting, it would silently stop every
-    // notification from being shown at all. "No rules visible" degrades to "no sound", which
-    // is the safe direction.
-    const rules = this.matrix.instance?.pushRules?.global;
-    if (!rules) {
-      return [];
-    }
-    const found: { rule: IPushRule; spec: (typeof SOUNDED_RULES)[number] }[] =
-      [];
-    for (const spec of SOUNDED_RULES) {
-      const rule = (rules[spec.kind] ?? []).find((r) => r.rule_id === spec.id);
-      if (rule) {
-        found.push({ rule, spec });
-      }
-    }
-    return found;
-  }
-}
-
-/**
- * The rule's actions with the `sound` tweak set to `sound`, or removed when it is undefined.
- *
- * Every OTHER action is carried through untouched, unlike the keyword rules which regenerate
- * their list wholesale. These are rules the user may have adjusted elsewhere — a highlight
- * tweak, a `dont_notify` someone set deliberately — and this switch is only about sound.
- */
-export function actionsWithSound(
-  rule: IPushRule,
-  sound: string | undefined,
-): PushRuleAction[] {
-  const kept = rule.actions.filter(
-    (action) =>
-      !(
-        !!action &&
-        typeof action === 'object' &&
-        action.set_tweak === TweakName.Sound
-      ),
-  );
-  if (sound === undefined) {
-    return kept;
-  }
-  // After `notify` if it is there, so the list reads the way the spec's examples do.
-  const at = kept.indexOf(PushRuleActionName.Notify);
-  const tweak: PushRuleAction = { set_tweak: TweakName.Sound, value: sound };
-  if (at === -1) {
-    return [...kept, tweak];
-  }
-  return [...kept.slice(0, at + 1), tweak, ...kept.slice(at + 1)];
-}
-
-/** The rule's sound tweak value, or undefined when it has none. Null-safe. */
-export function soundTweakOf(rule: IPushRule): string | undefined {
-  for (const action of rule.actions) {
-    if (
-      !!action &&
-      typeof action === 'object' &&
-      action.set_tweak === TweakName.Sound
-    ) {
-      const value: unknown = action.value;
-      return typeof value === 'string' ? value : 'default';
-    }
-  }
-  return undefined;
 }

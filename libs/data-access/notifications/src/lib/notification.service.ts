@@ -352,7 +352,16 @@ export class NotificationService {
       // Desktop (Electron): hand off to the main process. The click is delivered
       // back via onNotificationClick (subscribed in connect()) with the userId so a
       // tap can switch accounts before opening the room.
-      desktop.showNotification({ title, body, tag, roomId, userId });
+      desktop.showNotification({
+        title,
+        body,
+        tag,
+        roomId,
+        userId,
+        // The desktop shell builds a native notification in the main process, so it never
+        // sees the Web NotificationOptions below — it needs telling separately.
+        silent: !this.sound.isOn(),
+      });
       return;
     }
 

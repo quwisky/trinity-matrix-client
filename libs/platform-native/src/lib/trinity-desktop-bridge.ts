@@ -108,6 +108,13 @@ export interface DesktopNotification {
   /** Body / message preview. */
   body: string;
   /**
+   * Suppress the OS notification sound. The desktop shell builds its own native
+   * notification in the main process, so it never sees the Web `NotificationOptions` the
+   * browser paths carry `silent` on — without this the "Play a sound" setting would be a
+   * no-op on Electron.
+   */
+  silent?: boolean;
+  /**
    * Collapse key: a newer notification with the same tag replaces an earlier
    * still-open one. Mirrors the Web `Notification` `tag`. Trinity uses
    * `userId|roomId` so messages from one room collapse per account (and the same

@@ -42,6 +42,8 @@ interface ShowNotificationPayload {
   tag?: string;
   roomId: string;
   userId?: string;
+  /** Suppress the OS notification sound (the user's "Play a sound" setting is off). */
+  silent?: boolean;
 }
 
 // Listen at preload load (before any page JS), buffering URLs that arrive before
@@ -88,7 +90,7 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
     if (typeof payload !== 'object' || payload === null) {
       return;
     }
-    const { title, body, tag, roomId, userId } =
+    const { title, body, tag, roomId, userId, silent } =
       payload as Partial<ShowNotificationPayload>;
     if (typeof roomId !== 'string') {
       return;
@@ -99,6 +101,7 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
       tag: typeof tag === 'string' ? tag : undefined,
       roomId,
       userId: typeof userId === 'string' ? userId : undefined,
+      silent: silent === true,
     });
   },
 

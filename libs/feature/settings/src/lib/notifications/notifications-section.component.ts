@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  OnDestroy,
   OnInit,
   inject,
   signal,
@@ -29,7 +30,7 @@ import { PushGatewayBlockComponent } from './push-gateway-block.component';
   templateUrl: './notifications-section.component.html',
   imports: [HlmCheckbox, KeywordRulesBlockComponent, PushGatewayBlockComponent],
 })
-export class NotificationsSectionComponent implements OnInit {
+export class NotificationsSectionComponent implements OnInit, OnDestroy {
   private readonly push = inject(PushRulesService);
   private readonly sound = inject(NotificationSoundService);
   private readonly toast = inject(TrnToastService);
@@ -54,12 +55,25 @@ export class NotificationsSectionComponent implements OnInit {
     for (const toggle of this.toggles) {
       seeded.set(toggle.id, this.push.isOn(toggle));
     }
-    seeded.set(this.soundKey, this.sound.isOn());
     this.state.set(seeded);
+    // Tracks account data, so a value that arrives after this page has rendered (a cold
+    // load, or a change made on another device) still shows.
+    this.sound.connect();
   }
 
+  ngOnDestroy(): void {
+    this.sound.disconnect();
+  }
+
+  /**
+   * The optimistic value while a write is in flight, otherwise whatever the account says.
+   * Seeding once was not enough: on a cold load this page can render before the initial
+   * sync delivers account data.
+   */
   soundChecked(): boolean {
-    return this.state().get(this.soundKey) ?? false;
+    return this.soundPending()
+      ? (this.state().get(this.soundKey) ?? this.sound.enabled())
+      : this.sound.enabled();
   }
 
   soundPending(): boolean {

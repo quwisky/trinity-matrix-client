@@ -2,16 +2,17 @@ import { createHmac } from 'node:crypto';
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { login, synapseSession, type SynapseSession } from './support/app.mts';
 
-// Covers the global "Play a sound" switch (Settings → Notifications). It is implemented as
-// the `sound` tweak on the predefined push rules, NOT as a local flag — so the assertion is
-// what the SERVER holds afterwards, read straight back from /pushrules. That is the whole
-// claim: the choice travels with the account, so silencing here silences the phone too and
-// shows up in Element, which reads the same rules.
+// Covers the global "Play a sound" switch (Settings → Notifications). The preference lives in
+// ACCOUNT DATA, so the assertion is what the SERVER holds afterwards, read straight back —
+// that is the claim worth testing: the choice follows the account rather than the window.
 //
-// Asserted against the real ruleset rather than a fixture because the set of rules that even
-// HAVE a sound is a property of the homeserver: measured on Synapse 1.119 there are seven,
-// and `.m.rule.call` is the only one whose tone is `ring` rather than `default`. A fixture
-// would have encoded my assumption instead of the server's behaviour.
+// It is deliberately NOT implemented by rewriting push rules. That was built first and
+// measured against Synapse 1.119: `format: 'event_id_only'` (which Trinity uses to keep
+// message content off the push gateway) makes Synapse blank the tweaks before dispatch, so a
+// sound tweak never reaches the gateway — while REMOVING one demotes call and invite pushes
+// from high to low priority, because those rules ship `highlight: false` and the sound tweak
+// was the only thing keeping them urgent. It also could not be distinguished from Element's
+// own "notify without a sound" state, so restoring would have overwritten it.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
 const session = synapseSession();
@@ -41,45 +42,24 @@ async function registerUser(
   }
 }
 
-interface Rule {
-  rule_id: string;
-  actions: unknown[];
-}
-
-/** Every rule the account has that still carries a `sound` tweak, with its tone. */
-async function soundedRules(
+/** The stored preference as the SERVER holds it, or undefined when never written. */
+async function storedSound(
   request: APIRequestContext,
   hs: string,
+  userId: string,
   token: string,
-): Promise<Record<string, string>> {
-  const rules = await request
-    .get(`${hs}/_matrix/client/v3/pushrules/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    .then((r) => r.json());
-  const found: Record<string, string> = {};
-  for (const kind of ['override', 'content', 'room', 'sender', 'underride']) {
-    for (const rule of (rules.global?.[kind] ?? []) as Rule[]) {
-      for (const action of rule.actions) {
-        if (
-          !!action &&
-          typeof action === 'object' &&
-          (action as { set_tweak?: string }).set_tweak === 'sound'
-        ) {
-          found[rule.rule_id] = String(
-            (action as { value?: unknown }).value ?? 'default',
-          );
-        }
-      }
-    }
-  }
-  return found;
+): Promise<{ enabled?: boolean } | undefined> {
+  const res = await request.get(
+    `${hs}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/eu.qwky.trinity.notification_sound`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return res.ok() ? ((await res.json()) as { enabled?: boolean }) : undefined;
 }
 
 test.describe('Notification sound', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('silences every sounded push rule, and restores each one’s own tone', async ({
+  test('stores the choice on the account, and survives a reload', async ({
     page,
     request,
   }) => {
@@ -89,7 +69,7 @@ test.describe('Notification sound', () => {
     const pass = `${user}-pass`;
 
     await registerUser(request, user, pass);
-    const token = await request
+    const login1 = await request
       .post(`${hs}/_matrix/client/v3/login`, {
         data: {
           type: 'm.login.password',
@@ -97,15 +77,12 @@ test.describe('Notification sound', () => {
           password: pass,
         },
       })
-      .then((r) => r.json())
-      .then((j) => j.access_token as string);
+      .then((r) => r.json());
+    const token = login1.access_token as string;
+    const userId = login1.user_id as string;
 
-    // What the server ships with, before Trinity touches anything.
-    const before = await soundedRules(request, hs, token);
-    expect(Object.keys(before).length).toBeGreaterThan(0);
-    // The one that is not `default` — restoring a single tone for all of them would
-    // quietly replace the ring with the message chime.
-    expect(before['.m.rule.call']).toBe('ring');
+    // Nothing stored to begin with: the app defaults to audible without writing anything.
+    expect(await storedSound(request, hs, userId, token)).toBeUndefined();
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await page.getByTestId('open-settings').click();
@@ -114,24 +91,34 @@ test.describe('Notification sound', () => {
 
     const sound = page.getByTestId('notif-sound');
     await expect(sound).toBeVisible({ timeout: 15_000 });
+    const box = sound.locator('button, input').first();
+    await expect(box).toHaveAttribute('aria-checked', 'true');
+
     await sound.click();
 
-    // Silenced on the SERVER, not just in this window.
+    // Written to the SERVER, not just to this window.
     await expect
       .poll(
-        async () => Object.keys(await soundedRules(request, hs, token)).length,
+        async () => (await storedSound(request, hs, userId, token))?.enabled,
         { timeout: 30_000 },
       )
-      .toBe(0);
+      .toBe(false);
 
-    // Back on: each rule gets ITS tone back, not one tone for all of them.
-    await sound.click();
+    // And it is what the app shows after a reload — the setting is state, not a toggle
+    // that only lived in the page that set it.
+    await page.reload();
+    await page.waitForURL(/\/settings\/notifications$/, { timeout: 20_000 });
+    await expect(
+      page.getByTestId('notif-sound').locator('button, input').first(),
+    ).toHaveAttribute('aria-checked', 'false', { timeout: 20_000 });
+
+    // Back on again.
+    await page.getByTestId('notif-sound').click();
     await expect
       .poll(
-        async () => (await soundedRules(request, hs, token))['.m.rule.call'],
+        async () => (await storedSound(request, hs, userId, token))?.enabled,
         { timeout: 30_000 },
       )
-      .toBe('ring');
-    expect(await soundedRules(request, hs, token)).toEqual(before);
+      .toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
+import { signal } from '@angular/core';
 import { NEVER, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
@@ -20,14 +21,17 @@ const TOGGLES = [
 
 // Module-level so a test can set their behaviour BEFORE build() constructs the component —
 // the sound switch is seeded in ngOnInit, so configuring it afterwards would be too late.
-const soundIsOn = vi.fn(() => true);
+const soundEnabled = signal(true);
 const soundSetOn = vi.fn(() => of(undefined));
+const soundConnect = vi.fn();
+const soundDisconnect = vi.fn();
 
 beforeEach(() => {
-  soundIsOn.mockReset();
-  soundIsOn.mockReturnValue(true);
+  soundEnabled.set(true);
   soundSetOn.mockReset();
   soundSetOn.mockReturnValue(of(undefined));
+  soundConnect.mockReset();
+  soundDisconnect.mockReset();
 });
 
 async function build(over: { setOn?: ReturnType<typeof vi.fn> } = {}) {
@@ -38,8 +42,10 @@ async function build(over: { setOn?: ReturnType<typeof vi.fn> } = {}) {
     providers: [
       MockProvider(PushRulesService, { toggles: TOGGLES, isOn, setOn }),
       MockProvider(NotificationSoundService, {
-        isOn: soundIsOn,
+        enabled: soundEnabled.asReadonly(),
         setOn: soundSetOn,
+        connect: soundConnect,
+        disconnect: soundDisconnect,
       }),
       // The section renders the keyword block, which would otherwise reach the real
       // MatrixClientService — harmless today only because it reports uninitialised.
@@ -79,21 +85,39 @@ describe('NotificationsSectionComponent', () => {
     expect(boxes[1].componentInstance.checked()).toBe(false);
   });
 
-  it('seeds the sound switch from the sound service, independently', async () => {
-    soundIsOn.mockReturnValue(false);
+  it('shows the account’s stored preference', async () => {
+    soundEnabled.set(false);
     const { cmp } = await build();
 
     expect(cmp.soundChecked()).toBe(false);
   });
 
-  it('optimistically flips the sound switch and persists it', async () => {
+  it('follows the account when the value arrives AFTER the page rendered', async () => {
+    // A cold load renders this page before the initial sync delivers account data. Seeding
+    // once left the switch showing the default forever; the e2e caught it after a reload.
+    const { cmp, fixture } = await build();
+    expect(cmp.soundChecked()).toBe(true);
+
+    soundEnabled.set(false);
+    fixture.detectChanges();
+
+    expect(cmp.soundChecked()).toBe(false);
+  });
+
+  it('shows the new value while the write is still in flight', async () => {
+    // NEVER, so the write stays pending: the optimistic value only exists during that
+    // window. With an instantly-resolving mock the switch falls straight through to the
+    // account's value and the assertion would be measuring nothing.
+    soundSetOn.mockReturnValue(
+      NEVER as unknown as ReturnType<typeof soundSetOn>,
+    );
     const { cmp, fixture } = await build();
 
     cmp.toggleSound(false);
     fixture.detectChanges();
 
     expect(soundSetOn).toHaveBeenCalledWith(false);
-    expect(cmp.soundChecked()).toBe(false); // optimistic
+    expect(cmp.soundChecked()).toBe(false);
   });
 
   it('reverts the sound switch and toasts when its write fails', async () => {
