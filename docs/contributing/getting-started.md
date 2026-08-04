@@ -8,8 +8,8 @@ harnesses. Once you are running, [Commands](commands.md) is the full reference.
 
 | Tool   | Required version         | Where it is pinned                                                       |
 | ------ | ------------------------ | ------------------------------------------------------------------------ |
-| Node   | `^24.15.0 \|\| >=26.0.0` | `engines` in `package.json`; `.nvmrc` pins `24.15.0`; CI runs Node 24    |
-| pnpm   | `>=11`                   | `packageManager: "pnpm@11.15.1"` in `package.json`, enforced by corepack |
+| Node   | `^24.15.0 \|\| >=26.0.0` | `engines` in `package.json`; `.nvmrc` pins `24.18.1`; CI runs Node 24    |
+| pnpm   | `>=11`                   | `packageManager: "pnpm@11.19.0"` in `package.json`, enforced by corepack |
 | Docker | Any recent version       | Only needed for the Synapse-backed end-to-end suites                     |
 
 ### Why Node 25 is excluded
