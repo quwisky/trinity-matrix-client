@@ -93,9 +93,9 @@ the Electron shell's copy step both read that exact path. See
 
 ## Extra setup for the desktop shell
 
-The Electron shell lives in `electron/` with its own `package.json`, its own
-lockfile, and its own TypeScript version (5.9, against the root's 6.x). It is not
-installed by the root `pnpm install`.
+The Electron shell lives in `electron/` with its own `package.json` and its own
+lockfile, and is not installed by the root `pnpm install`. Its TypeScript is pinned to
+the same exact version as the root workspace; Renovate keeps the two in lockstep.
 
 ```bash
 pnpm electron:install    # installs electron/ deps and downloads the Electron binary
