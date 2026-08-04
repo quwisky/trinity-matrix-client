@@ -75,7 +75,7 @@ jobs:
       # .github/renovate.json, which Renovate discovers by itself when it processes the
       # repository. Passing it as the global file makes repo-level options like
       # baseBranches behave in confusing ways.
-      - uses: renovatebot/github-action@3064367f740a1a91cca218698a63902689cce200 # v46.1.20
+      - uses: renovatebot/github-action@973d3e5a68e735a444e8c03432b66eedb343c302 # v46.2.0
         with:
           # The App installation token — NOT the default GITHUB_TOKEN. Pull requests
           # opened with GITHUB_TOKEN do not trigger other workflows, so every Renovate
