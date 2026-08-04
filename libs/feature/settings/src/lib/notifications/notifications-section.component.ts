@@ -10,6 +10,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { TrnToastService } from '@trinity/helm/overlay';
 import {
+  NotificationSoundService,
   PushRulesService,
   type PushRuleToggle,
 } from '@trinity/data-access/notifications';
@@ -30,6 +31,7 @@ import { PushGatewayBlockComponent } from './push-gateway-block.component';
 })
 export class NotificationsSectionComponent implements OnInit {
   private readonly push = inject(PushRulesService);
+  private readonly sound = inject(NotificationSoundService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -40,12 +42,50 @@ export class NotificationsSectionComponent implements OnInit {
   /** Rule ids whose write is in flight. */
   private readonly pending = signal<ReadonlySet<string>>(new Set());
 
+  /**
+   * Key for the sound switch in the same optimistic state/pending maps as the rule toggles.
+   * Not a rule id: it stands for the `sound` tweak across SEVEN predefined rules at once, so
+   * it cannot borrow any single one of theirs.
+   */
+  protected readonly soundKey = 'trinity.notification-sound';
+
   ngOnInit(): void {
     const seeded = new Map<string, boolean>();
     for (const toggle of this.toggles) {
       seeded.set(toggle.id, this.push.isOn(toggle));
     }
+    seeded.set(this.soundKey, this.sound.isOn());
     this.state.set(seeded);
+  }
+
+  soundChecked(): boolean {
+    return this.state().get(this.soundKey) ?? false;
+  }
+
+  soundPending(): boolean {
+    return this.pending().has(this.soundKey);
+  }
+
+  /** Optimistically flip the sound switch and persist it; revert + toast on failure. */
+  toggleSound(on: boolean): void {
+    if (this.soundPending()) {
+      return;
+    }
+    this.setState(this.soundKey, on);
+    this.setPending(this.soundKey, true);
+    this.sound
+      .setOn(on)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.setPending(this.soundKey, false),
+        error: () => {
+          this.setState(this.soundKey, !on);
+          this.setPending(this.soundKey, false);
+          this.toast.show('Could not update your notification settings.', {
+            variant: 'destructive',
+          });
+        },
+      });
   }
 
   checked(toggle: PushRuleToggle): boolean {

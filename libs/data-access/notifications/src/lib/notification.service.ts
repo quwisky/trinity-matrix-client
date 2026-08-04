@@ -12,6 +12,7 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { SessionStorageService } from '@trinity/platform-native';
+import { NotificationSoundService } from './notification-sound.service';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
 
 /** Max characters of message body shown in a notification. */
@@ -70,6 +71,7 @@ interface AccountNotifier {
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly sound = inject(NotificationSoundService);
   private readonly router = inject(Router);
   private readonly timeline = inject(TimelineService);
   private readonly storage = inject(SessionStorageService);
@@ -358,6 +360,10 @@ export class NotificationService {
       body,
       tag,
       data: { roomId, userId },
+      // The push rules decide whether a notification is ALLOWED to make a sound; this is
+      // what stops the browser making one anyway. Without it, silencing sound in settings
+      // would still leave the OS chiming on every message on platforms that default to it.
+      silent: !this.sound.isOn(),
     };
 
     // Mobile browsers (Android Chrome, etc.) only allow notifications through

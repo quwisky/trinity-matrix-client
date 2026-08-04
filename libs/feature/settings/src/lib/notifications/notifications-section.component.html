@@ -22,6 +22,22 @@
     </label>
   }
 
+  <label
+    class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
+    data-testid="notif-sound"
+  >
+    <hlm-checkbox
+      [checked]="soundChecked()"
+      (checkedChange)="toggleSound($event)"
+    />
+    Play a sound
+  </label>
+  <p class="px-4 pb-2 text-13 text-muted-foreground">
+    Applies to mentions, invites, calls and direct messages — the notifications
+    that make a sound. Like the rules above, it follows your account to every
+    device.
+  </p>
+
   <trn-keyword-rules />
 
   <trn-push-gateway-block />

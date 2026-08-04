@@ -40,7 +40,15 @@ function fakeClient(userId: string) {
   };
 }
 
-function setup(opts: { accounts?: string[]; active?: string } = {}) {
+function setup(
+  opts: {
+    accounts?: string[];
+    active?: string;
+    /** Push rules for NotificationSoundService; omitted means "no rule has a sound". */
+    pushRules?: unknown;
+  } = {},
+) {
+  const pushRules = opts.pushRules;
   const accounts = opts.accounts ?? ['@me:hs'];
   const active = opts.active ?? accounts[0];
   const clients = new Map(accounts.map((id) => [id, fakeClient(id)]));
@@ -53,6 +61,8 @@ function setup(opts: { accounts?: string[]; active?: string } = {}) {
       NotificationService,
       MockProvider(MatrixClientService, {
         isInitialized: true,
+        // Read by NotificationSoundService to decide the `silent` flag.
+        instance: { pushRules } as never,
         accountIds: accountIds.asReadonly(),
         activeUserId: activeUserId.asReadonly(),
         clientFor: (id: string) =>
@@ -185,6 +195,46 @@ describe('NotificationService', () => {
     expect(MockNotification.instances[0].options).toMatchObject({
       body: 'hello there',
       tag: '@me:hs !r:hs',
+    });
+  });
+
+  it('marks the notification silent when no rule carries a sound tweak', () => {
+    const { svc, client } = setup();
+    svc.connect();
+
+    timelineHandler(client)(event(), room, false, false, live);
+
+    // The push rules say whether a sound is ALLOWED; `silent` is what stops the browser
+    // making one regardless of that decision.
+    expect(MockNotification.instances[0].options).toMatchObject({
+      silent: true,
+    });
+  });
+
+  it('leaves the notification audible once a sounded rule is present', () => {
+    const { svc, client } = setup({
+      pushRules: {
+        global: {
+          override: [
+            {
+              rule_id: '.m.rule.is_user_mention',
+              enabled: true,
+              actions: ['notify', { set_tweak: 'sound', value: 'default' }],
+            },
+          ],
+          content: [],
+          room: [],
+          sender: [],
+          underride: [],
+        },
+      },
+    });
+    svc.connect();
+
+    timelineHandler(client)(event(), room, false, false, live);
+
+    expect(MockNotification.instances[0].options).toMatchObject({
+      silent: false,
     });
   });
 
@@ -569,6 +619,9 @@ describe('NotificationService', () => {
         body: 'hello there',
         tag: '@me:hs !r:hs',
         data: { roomId: '!r:hs', userId: '@me:hs' },
+        // The push rules say whether a sound is allowed; `silent` is what stops the
+        // platform making one anyway. This fixture defines no sounded rules, so: silent.
+        silent: true,
       });
       // Did NOT fall back to the renderer Notification constructor.
       expect(MockNotification.instances).toHaveLength(0);

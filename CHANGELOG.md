@@ -24,6 +24,14 @@ All notable changes to this project are documented here. The format is based on
   to, so if you have already made text larger there, this adds to it rather than overriding
   it.
 
+- **Turn notification sounds off.** There was no way to stop Trinity's notifications making
+  a sound short of silencing the whole app in your operating system. Settings →
+  Notifications gains **Play a sound**, covering the notifications that actually make one —
+  mentions, invites, calls and direct messages. It is stored with your account rather than
+  on this device, so silencing it here silences your phone too, and Element reads the same
+  setting. One deliberate limit: turning it off and on again restores the standard tones, so
+  a custom sound picked in another client is not preserved.
+
 - **Jump to a date in a conversation.** Finding what someone said last Tuesday meant
   scrolling and waiting, over and over. **Jump to date** in a room's ⋯ menu asks for a day
   and takes you to the first message on it, loading the history in between for you. It

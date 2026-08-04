@@ -2,10 +2,11 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import {
   KeywordRulesService,
+  NotificationSoundService,
   PushRulesService,
   type PushRuleToggle,
 } from '@trinity/data-access/notifications';
@@ -17,6 +18,18 @@ const TOGGLES = [
   { id: '.m.rule.roomnotif', kind: 'override', label: '@room' },
 ] as unknown as PushRuleToggle[];
 
+// Module-level so a test can set their behaviour BEFORE build() constructs the component —
+// the sound switch is seeded in ngOnInit, so configuring it afterwards would be too late.
+const soundIsOn = vi.fn(() => true);
+const soundSetOn = vi.fn(() => of(undefined));
+
+beforeEach(() => {
+  soundIsOn.mockReset();
+  soundIsOn.mockReturnValue(true);
+  soundSetOn.mockReset();
+  soundSetOn.mockReturnValue(of(undefined));
+});
+
 async function build(over: { setOn?: ReturnType<typeof vi.fn> } = {}) {
   const setOn = over.setOn ?? vi.fn(() => of(undefined));
   const isOn = vi.fn((t: PushRuleToggle) => t.id === '.m.rule.master');
@@ -24,6 +37,10 @@ async function build(over: { setOn?: ReturnType<typeof vi.fn> } = {}) {
   const { fixture } = await render(NotificationsSectionComponent, {
     providers: [
       MockProvider(PushRulesService, { toggles: TOGGLES, isOn, setOn }),
+      MockProvider(NotificationSoundService, {
+        isOn: soundIsOn,
+        setOn: soundSetOn,
+      }),
       // The section renders the keyword block, which would otherwise reach the real
       // MatrixClientService — harmless today only because it reports uninitialised.
       MockProvider(KeywordRulesService, { keywords: () => [] }),
@@ -31,6 +48,16 @@ async function build(over: { setOn?: ReturnType<typeof vi.fn> } = {}) {
     ],
   });
   return { cmp: fixture.componentInstance, fixture, setOn, toastShow };
+}
+
+/** Only the checkboxes rendered for push-rule toggles (excludes the sound switch). */
+function ruleCheckboxes(fixture: {
+  debugElement: {
+    queryAll: (p: unknown) => { componentInstance: HlmCheckbox }[];
+  };
+  nativeElement: HTMLElement;
+}) {
+  return checkboxes(fixture).slice(0, TOGGLES.length);
 }
 
 function checkboxes(fixture: {
@@ -44,10 +71,48 @@ function checkboxes(fixture: {
 describe('NotificationsSectionComponent', () => {
   it('seeds each toggle from the service’s on/off state', async () => {
     const { fixture } = await build();
-    const boxes = checkboxes(fixture);
+    // Scoped to the RULE toggles: the sound switch is a third checkbox in the same list
+    // but is not one of them, so counting every checkbox would couple this to it.
+    const boxes = ruleCheckboxes(fixture);
     expect(boxes).toHaveLength(2);
     expect(boxes[0].componentInstance.checked()).toBe(true); // master isOn → true
     expect(boxes[1].componentInstance.checked()).toBe(false);
+  });
+
+  it('seeds the sound switch from the sound service, independently', async () => {
+    soundIsOn.mockReturnValue(false);
+    const { cmp } = await build();
+
+    expect(cmp.soundChecked()).toBe(false);
+  });
+
+  it('optimistically flips the sound switch and persists it', async () => {
+    const { cmp, fixture } = await build();
+
+    cmp.toggleSound(false);
+    fixture.detectChanges();
+
+    expect(soundSetOn).toHaveBeenCalledWith(false);
+    expect(cmp.soundChecked()).toBe(false); // optimistic
+  });
+
+  it('reverts the sound switch and toasts when its write fails', async () => {
+    soundSetOn.mockReturnValue(
+      throwError(() => new Error('nope')) as unknown as ReturnType<
+        typeof soundSetOn
+      >,
+    );
+    const { cmp, fixture, toastShow } = await build();
+    const before = cmp.soundChecked();
+
+    cmp.toggleSound(!before);
+    fixture.detectChanges();
+
+    expect(cmp.soundChecked()).toBe(before);
+    expect(toastShow).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ variant: 'destructive' }),
+    );
   });
 
   it('optimistically flips a toggle and persists it', async () => {
