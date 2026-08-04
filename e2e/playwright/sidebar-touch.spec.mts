@@ -98,18 +98,24 @@ test.describe('Sidebar on a touch device', () => {
 
     const kebab = row.first().locator('.channel__menu');
     // Visible without any hover — there is no hover on this device to give.
-    const shown = await kebab.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return {
-        opacity: Number(style.opacity),
-        width: el.getBoundingClientRect().width,
-        height: el.getBoundingClientRect().height,
-      };
-    });
-    expect(shown.opacity).toBe(1);
-    // And large enough to hit: the coarse-pointer bump has to reach it too.
-    expect(shown.width).toBeGreaterThanOrEqual(44);
-    expect(shown.height).toBeGreaterThanOrEqual(44);
+    //
+    // Polled, not read once. The row is visible as soon as it is laid out, but the ⋮ is
+    // revealed through opacity, so a single getComputedStyle can sample the reveal
+    // mid-transition and read something like 0.4. That is what made this spec flaky in
+    // CI: it failed on the first attempt and passed on the retry, which looks like a
+    // product bug and is really a missing wait.
+    await expect
+      .poll(
+        () => kebab.evaluate((el) => Number(getComputedStyle(el).opacity)),
+        { timeout: 10_000 },
+      )
+      .toBe(1);
+
+    // And large enough to hit: the coarse-pointer bump has to reach it too. Measured
+    // only once the opacity above has settled, so the box is its final one.
+    const box = await kebab.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
 
     // It really opens the menu — an opacity check alone would not prove the row is usable.
     await kebab.click();

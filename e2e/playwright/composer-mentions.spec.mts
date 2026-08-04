@@ -162,20 +162,29 @@ test.describe('Composer @-mentions', () => {
     // styles live in a global stylesheet, so a selector that never applies would leave the
     // class present and the pill looking exactly like an ordinary link.
     await expect(pill).toHaveClass(/\bmention\b/);
-    const painted = await pill.evaluate((el) => {
-      const style = getComputedStyle(el);
-      const channels = style.backgroundColor.match(/[\d.]+/g) ?? [];
-      return {
-        backgroundColor: style.backgroundColor,
-        // An unstyled inline link is rgba(0, 0, 0, 0).
-        tinted: channels.length === 4 ? Number(channels[3]) > 0 : true,
-        weight: Number(style.fontWeight),
-      };
-    });
-    expect(painted.tinted, `background was ${painted.backgroundColor}`).toBe(
-      true,
+
+    // Polled rather than read once. The timeline can re-render between the class
+    // assertion and this measurement, and getComputedStyle on a node that has just been
+    // detached returns empty strings — so `Number(style.fontWeight)` comes back as 0 and
+    // the spec reports "expected >= 600, received 0", which reads as the stylesheet
+    // having failed to load rather than as a stale element handle.
+    await expect
+      .poll(
+        () => pill.evaluate((el) => Number(getComputedStyle(el).fontWeight)),
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThanOrEqual(600);
+
+    // Read once the weight above proves the element is attached and styled.
+    const background = await pill.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
     );
-    expect(painted.weight).toBeGreaterThanOrEqual(600);
+    const channels = background.match(/[\d.]+/g) ?? [];
+    // An unstyled inline link is rgba(0, 0, 0, 0).
+    expect(
+      channels.length === 4 ? Number(channels[3]) > 0 : true,
+      `background was ${background}`,
+    ).toBe(true);
   });
 
   test('accepts a mention with the keyboard', async ({ page, request }) => {

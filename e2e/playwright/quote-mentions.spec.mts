@@ -133,8 +133,17 @@ test.describe('Quoting does not notify the people it quotes', () => {
 
     const row = page.locator('.scroll .msg', { hasText: named });
     await expect(row.first()).toBeVisible({ timeout: 30_000 });
-    await row.first().hover();
-    await row.first().getByTestId('msg-more').click();
+    // Hover and click as one retried step, rather than two statements. The ⋮ is
+    // hover-revealed, and this room has a second member still syncing, so the timeline can
+    // re-render underneath: Angular replaces the row element, the pointer has not moved,
+    // and CSS :hover no longer applies to the new node. click() then waits out its whole
+    // timeout on a button that will never become visible — which is exactly how this
+    // spec flaked in CI ("215 × waiting for element to be visible, enabled and stable").
+    // Retrying re-hovers whatever row is current.
+    await expect(async () => {
+      await row.first().hover();
+      await row.first().getByTestId('msg-more').click({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
     await page.getByTestId('msg-quote').click();
 
     const composer = page.getByTestId('composer-input');

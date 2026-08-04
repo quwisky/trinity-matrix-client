@@ -104,29 +104,46 @@ test.describe('Timeline virtualization', () => {
       )
       .toBeGreaterThan(0);
 
+    // Everything below is polled rather than read once. The poll above stops the moment
+    // message 0 appears, and the virtualizer keeps re-windowing for a frame or two after
+    // that — so a single count() can land on the window mid-update. That is what made
+    // this spec flaky in CI, and it read as a virtualization bug rather than a race.
+
     // The core guarantee: with all SEED messages loaded, the DOM holds only a
     // window of rows — and the scroll container is far taller than the viewport
     // (the spacers stand in for the off-screen rows).
-    expect(await rows.count()).toBeLessThan(MAX_RENDERED);
-    expect(
-      await page.evaluate(() => {
-        const s = document.querySelector('.scroll') as HTMLElement | null;
-        return s ? s.scrollHeight > s.clientHeight * 3 : false;
-      }),
-    ).toBe(true);
+    await expect
+      .poll(() => rows.count(), { timeout: 10_000 })
+      .toBeLessThan(MAX_RENDERED);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const s = document.querySelector('.scroll') as HTMLElement | null;
+            return s ? s.scrollHeight > s.clientHeight * 3 : false;
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
 
     // At the top, the newest is windowed out of the DOM…
-    expect(
-      await timeline
-        .getByText(`seeded message ${SEED - 1}`, { exact: true })
-        .count(),
-    ).toBe(0);
+    await expect
+      .poll(
+        () =>
+          timeline
+            .getByText(`seeded message ${SEED - 1}`, { exact: true })
+            .count(),
+        { timeout: 10_000 },
+      )
+      .toBe(0);
 
     // …and scrolling back to the bottom brings it back (and drops the oldest).
     await timeline.evaluate((el) => (el.scrollTop = el.scrollHeight));
     await expect(
       timeline.getByText(`seeded message ${SEED - 1}`, { exact: true }),
     ).toBeVisible();
-    expect(await rows.count()).toBeLessThan(MAX_RENDERED);
+    await expect
+      .poll(() => rows.count(), { timeout: 10_000 })
+      .toBeLessThan(MAX_RENDERED);
   });
 });

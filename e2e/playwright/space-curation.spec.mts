@@ -182,7 +182,14 @@ test.describe('Space curation', () => {
     await page.getByTestId('space-actions-overflow').click();
     await page.getByTestId('space-create-subspace').click();
 
-    const nameField = page.getByRole('textbox').last();
+    // Target the prompt's own field by its placeholder, not `getByRole('textbox').last()`.
+    // That form does not wait for the dialog — it resolves against whatever textboxes are
+    // on the page at that instant, and the shell always has some (the sidebar filter, the
+    // composer). If the prompt has not opened yet it fills one of those instead, `Create`
+    // then submits an empty name, no subspace is ever created, and the failure surfaces
+    // 60s later as "no m.space.child link appeared on the parent" — pointing at the
+    // server rather than at the typing. Waiting on the placeholder waits for the dialog.
+    const nameField = page.getByPlaceholder('Space name');
     await nameField.waitFor({ state: 'visible', timeout: 10_000 });
     await nameField.fill(childName);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
