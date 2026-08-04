@@ -359,8 +359,10 @@ export class NotificationService {
         roomId,
         userId,
         // The desktop shell builds a native notification in the main process, so it never
-        // sees the Web NotificationOptions below — it needs telling separately.
-        silent: !this.sound.isOn(),
+        // sees the Web NotificationOptions below — it needs telling separately. Keyed on the
+        // OWNING account: this notification may belong to a background account whose
+        // preference differs from the active one's.
+        silent: !this.sound.isOn(userId),
       });
       return;
     }
@@ -369,10 +371,9 @@ export class NotificationService {
       body,
       tag,
       data: { roomId, userId },
-      // The push rules decide whether a notification is ALLOWED to make a sound; this is
-      // what stops the browser making one anyway. Without it, silencing sound in settings
-      // would still leave the OS chiming on every message on platforms that default to it.
-      silent: !this.sound.isOn(),
+      // Keyed on the OWNING account, not the active one — this notification may belong to a
+      // background account whose preference differs.
+      silent: !this.sound.isOn(userId),
     };
 
     // Mobile browsers (Android Chrome, etc.) only allow notifications through

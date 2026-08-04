@@ -30,9 +30,15 @@ class MockNotification {
 }
 
 /** A client shaped like the bits NotificationService reads, keyed to one account. */
-function fakeClient(userId: string) {
+function fakeClient(userId: string, soundEnabled?: boolean) {
   return {
     getUserId: () => userId,
+    // The sound preference is read from the account that OWNS the notification, so it
+    // lives on the per-account client rather than on the active-client stand-in.
+    getAccountData: () =>
+      soundEnabled === undefined
+        ? undefined
+        : { getContent: () => ({ enabled: soundEnabled }) },
     getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
     getRoom: vi.fn(() => room),
     on: vi.fn(),
@@ -46,16 +52,15 @@ function setup(
     active?: string;
     /** Stored "play a sound" preference; omitted means "not set" (defaults to on). */
     soundEnabled?: boolean;
+    /** Pre-built per-account clients, for cases where two accounts must differ. */
+    clients?: Map<string, ReturnType<typeof fakeClient>>;
   } = {},
 ) {
-  const getAccountData = vi.fn(() =>
-    opts.soundEnabled === undefined
-      ? undefined
-      : { getContent: () => ({ enabled: opts.soundEnabled }) },
-  );
   const accounts = opts.accounts ?? ['@me:hs'];
   const active = opts.active ?? accounts[0];
-  const clients = new Map(accounts.map((id) => [id, fakeClient(id)]));
+  const clients =
+    opts.clients ??
+    new Map(accounts.map((id) => [id, fakeClient(id, opts.soundEnabled)]));
   const accountIds = signal<readonly string[]>(accounts);
   const activeUserId = signal<string | null>(active);
   const setActive = vi.fn((id: string) => activeUserId.set(id));
@@ -65,8 +70,8 @@ function setup(
       NotificationService,
       MockProvider(MatrixClientService, {
         isInitialized: true,
-        // Read by NotificationSoundService to decide the `silent` flag.
-        instance: { getAccountData } as never,
+        // Read by NotificationSoundService when no owning account is supplied.
+        instance: { getAccountData: () => undefined } as never,
         accountIds: accountIds.asReadonly(),
         activeUserId: activeUserId.asReadonly(),
         clientFor: (id: string) =>
@@ -218,6 +223,32 @@ describe('NotificationService', () => {
     svc.connect();
 
     timelineHandler(client)(event(), room, false, false, live);
+
+    expect(MockNotification.instances[0].options).toMatchObject({
+      silent: true,
+    });
+  });
+
+  it('uses the BACKGROUND account’s sound preference, not the active one', () => {
+    // Trinity notifies for accounts that are not in the foreground. Reading the active
+    // account's preference applied one account's choice to another's messages — chiming on
+    // an account the user silenced. Two accounts with opposite settings is the only shape
+    // that can catch it.
+    const accounts = ['@me:hs', '@other:hs'];
+    const clients = new Map([
+      ['@me:hs', fakeClient('@me:hs', true)], // active: sound ON
+      ['@other:hs', fakeClient('@other:hs', false)], // background: silenced
+    ]);
+    const { svc } = setup({ accounts, active: '@me:hs', clients });
+    svc.connect();
+
+    timelineHandler(clients.get('@other:hs')!)(
+      event(),
+      room,
+      false,
+      false,
+      live,
+    );
 
     expect(MockNotification.instances[0].options).toMatchObject({
       silent: true,

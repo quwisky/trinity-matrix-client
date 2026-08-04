@@ -78,18 +78,28 @@ export class NotificationSoundService {
   }
 
   /**
-   * Whether notifications may make a sound.
+   * Whether notifications for `userId` may make a sound.
    *
-   * Read from the LOCAL account-data store, which sync keeps current — so a change made on
-   * another device lands here without a round trip. Optional all the way down because this
-   * is called while BUILDING a notification: a throw would not surface as a broken setting,
-   * it would stop the notification appearing at all. Unknown state degrades to the default.
+   * Takes the OWNING account, because Trinity raises notifications for accounts that are not
+   * the active one and this preference is per-account: reading `matrix.instance` would apply
+   * whichever account happens to be in the foreground to every other account's messages —
+   * chiming on one the user silenced, or silencing one they never touched. Every other
+   * per-account decision in `NotificationService` is already made against the client it was
+   * handed; this now matches.
+   *
+   * Read from the LOCAL account-data store, which sync keeps current, so a change made on
+   * another device lands without a round trip. Optional all the way down because this runs
+   * while BUILDING a notification: a throw would not surface as a broken setting, it would
+   * stop the notification appearing at all. Unknown state degrades to the default.
    */
-  isOn(): boolean {
+  isOn(userId?: string): boolean {
     if (!this.matrix.isInitialized) {
       return DEFAULT_ON;
     }
-    const content = this.matrix.instance
+    const client = userId
+      ? this.matrix.clientFor(userId)
+      : this.matrix.instance;
+    const content = client
       ?.getAccountData?.(NOTIFICATION_SOUND_EVENT as never)
       ?.getContent?.() as { enabled?: unknown } | undefined;
     return typeof content?.enabled === 'boolean' ? content.enabled : DEFAULT_ON;

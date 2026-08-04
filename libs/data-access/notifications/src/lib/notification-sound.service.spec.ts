@@ -9,7 +9,13 @@ import {
 } from './notification-sound.service';
 
 function setup(
-  opts: { stored?: unknown; initialized?: boolean; instance?: unknown } = {},
+  opts: {
+    stored?: unknown;
+    initialized?: boolean;
+    instance?: unknown;
+    /** Per-account stored values, keyed by user id, for the multi-account cases. */
+    perAccount?: Record<string, unknown>;
+  } = {},
 ) {
   // Several tests build more than one service, and TestBed refuses to be reconfigured once
   // instantiated.
@@ -28,6 +34,14 @@ function setup(
         instance: ('instance' in opts
           ? opts.instance
           : { getAccountData, setAccountData }) as never,
+        clientFor: ((userId: string) => {
+          const stored = opts.perAccount?.[userId];
+          return stored === undefined
+            ? null
+            : ({
+                getAccountData: () => ({ getContent: () => stored }),
+              } as never);
+        }) as never,
       }),
     ],
   });
@@ -70,6 +84,32 @@ describe('NotificationSoundService', () => {
     expect(setup({ initialized: false }).svc.isOn()).toBe(true);
     expect(setup({ instance: undefined }).svc.isOn()).toBe(true);
     expect(setup({ instance: {} }).svc.isOn()).toBe(true);
+  });
+
+  it('reads the OWNING account, not whichever one is active', () => {
+    // Trinity raises notifications for background accounts, and this preference is
+    // per-account. Reading the active client applied the foreground account's choice to
+    // every other account's messages — chiming on one the user silenced, or silencing one
+    // they never touched.
+    const { svc } = setup({
+      stored: { enabled: true }, // the ACTIVE account: sound on
+      perAccount: {
+        '@silenced:hs': { enabled: false },
+        '@untouched:hs': {},
+      },
+    });
+
+    expect(svc.isOn('@silenced:hs')).toBe(false);
+    expect(svc.isOn('@untouched:hs')).toBe(true);
+    // No argument still means the active account, for callers with no event in hand.
+    expect(svc.isOn()).toBe(true);
+  });
+
+  it('falls back to the default for an account it cannot resolve', () => {
+    const { svc } = setup({ stored: { enabled: false }, perAccount: {} });
+
+    // A signed-out or unknown account must not inherit the active account's silence.
+    expect(svc.isOn('@gone:hs')).toBe(true);
   });
 
   it('refuses to write when signed out', async () => {
