@@ -222,3 +222,85 @@ describe('ThemeService', () => {
     expect(paletteAttr()).toBe('amethyst');
   });
 });
+
+/**
+ * Text size. The lever is the ROOT font size, so everything that inherits from it scales —
+ * message bodies, all rendered markdown, and the Tailwind-typed settings area.
+ */
+describe('ThemeService text scale', () => {
+  function service(): ThemeService {
+    TestBed.configureTestingModule({});
+    return TestBed.inject(ThemeService);
+  }
+  const rootSize = () => document.documentElement.style.fontSize;
+
+  beforeEach(() => {
+    get.mockReset();
+    set.mockReset();
+    get.mockResolvedValue({ value: null });
+    // The service does `Preferences.set(...).catch(...)`, so the mock has to return a
+    // promise — a bare mockReset leaves it returning undefined and the call throws.
+    set.mockResolvedValue(undefined);
+    document.documentElement.style.removeProperty('font-size');
+  });
+  afterEach(() => document.documentElement.style.removeProperty('font-size'));
+
+  it('leaves the root untouched at the default size', async () => {
+    const svc = service();
+    await svc.init();
+
+    expect(svc.textScale()).toBe('default');
+    // No inline style at all, rather than an explicit 100%: an unscaled app must leave
+    // whatever the browser or a user stylesheet says alone.
+    expect(rootSize()).toBe('');
+  });
+
+  it('applies and persists a larger size as a PERCENTAGE', async () => {
+    const svc = service();
+    await svc.init();
+
+    svc.setTextScale('larger');
+
+    // A percentage, not px: it is relative to whatever the browser is already set to, so
+    // someone who has raised their default keeps it. A px value would silently override an
+    // accessibility setting they had already made.
+    expect(rootSize()).toBe('125%');
+    expect(set).toHaveBeenCalledWith({
+      key: 'trinity.text-scale',
+      value: 'larger',
+    });
+  });
+
+  it('restores a saved size on init', async () => {
+    get.mockImplementation(({ key }: { key: string }) =>
+      Promise.resolve({ value: key === 'trinity.text-scale' ? 'small' : null }),
+    );
+    const svc = service();
+    await svc.init();
+
+    expect(svc.textScale()).toBe('small');
+    expect(rootSize()).toBe('87.5%');
+  });
+
+  it('clears the inline size when going back to default', async () => {
+    const svc = service();
+    await svc.init();
+    svc.setTextScale('large');
+    expect(rootSize()).toBe('112.5%');
+
+    svc.setTextScale('default');
+
+    expect(rootSize()).toBe('');
+  });
+
+  it('ignores a stored value that is not a registered scale', async () => {
+    get.mockImplementation(({ key }: { key: string }) =>
+      Promise.resolve({ value: key === 'trinity.text-scale' ? 'huge' : null }),
+    );
+    const svc = service();
+    await svc.init();
+
+    expect(svc.textScale()).toBe('default');
+    expect(rootSize()).toBe('');
+  });
+});

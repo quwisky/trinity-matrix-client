@@ -37,6 +37,41 @@
 </p>
 
 <h2
+  id="appearance-text-size-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Text size
+</h2>
+<div class="px-4 py-2">
+  <hlm-select
+    class="block"
+    data-testid="text-scale-select"
+    aria-labelledby="appearance-text-size-heading"
+    [value]="theme.textScale()"
+    [itemToString]="textScaleLabel"
+    (valueChange)="onTextScaleChange($event)"
+  >
+    <hlm-select-trigger class="w-full">
+      <hlm-select-value placeholder="Select a text size" />
+    </hlm-select-trigger>
+    <hlm-select-content *hlmSelectPortal>
+      @for (scale of theme.textScales; track scale.id) {
+        <hlm-select-item
+          [value]="scale.id"
+          [attr.data-testid]="'text-scale-' + scale.id"
+        >
+          {{ scale.label }}
+        </hlm-select-item>
+      }
+    </hlm-select-content>
+  </hlm-select>
+</div>
+<p class="block px-4 py-2 text-13 text-muted-foreground">
+  Scales message text and most of what is written around it. Some parts of the
+  app keep a fixed size for now.
+</p>
+
+<h2
   id="appearance-palette-heading"
   class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 >

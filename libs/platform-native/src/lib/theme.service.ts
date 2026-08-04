@@ -25,8 +25,42 @@ export const TRINITY_PALETTES = [
 export type Palette = (typeof TRINITY_PALETTES)[number]['id'];
 const DEFAULT_PALETTE: Palette = 'trinity';
 
+/**
+ * How large text is, as a multiplier on the ROOT font size.
+ *
+ * Applied as a percentage rather than a pixel value on purpose: a percentage is relative to
+ * whatever the BROWSER is already set to, so someone who has raised their default to 20px
+ * keeps it and gets a proportional bump. A px value would quietly override a setting they
+ * had already made. (On iOS this composes with the browser default only — the app opts into
+ * nothing that lets Dynamic Type reach a WKWebView, so the OS text size does not feed in.)
+ *
+ * What scales is everything inheriting from the root: message bodies (`.msg__text` sets no
+ * size of its own), rendered markdown (its stylesheet is `%`/`em` apart from one pinned
+ * code-block caption), the composer, and every rem-based Tailwind size — which is TYPE AND
+ * SPACING both, so page chrome gains proportional height as well.
+ *
+ * That last part is the trap. Tailwind's `w-*`/`h-*` are rem, so a rem LAYOUT slot scales
+ * while hand-authored px panels inside it do not: `rooms.page.html`'s list column had to be
+ * pinned to px, because as `md:w-88` it shrank below its own 352px of contents at the Small
+ * setting and let the chat column paint over the room list. Any container sized in rem whose
+ * children are px is the same bug — `text-scaling.spec.mts` pins the one that mattered.
+ *
+ * The ~147 remaining hard-coded px font sizes do NOT scale. Converting those is follow-up
+ * work, highest-traffic surface first.
+ */
+export const TRINITY_TEXT_SCALES = [
+  { id: 'small', label: 'Small', percent: 87.5 },
+  { id: 'default', label: 'Default', percent: 100 },
+  { id: 'large', label: 'Large', percent: 112.5 },
+  { id: 'larger', label: 'Larger', percent: 125 },
+] as const;
+/** The id of a registered text scale. */
+export type TextScale = (typeof TRINITY_TEXT_SCALES)[number]['id'];
+const DEFAULT_TEXT_SCALE: TextScale = 'default';
+
 const THEME_KEY = 'trinity.theme';
 const PALETTE_KEY = 'trinity.palette';
+const TEXT_SCALE_KEY = 'trinity.text-scale';
 /**
  * Class toggled on <html>; its PRESENCE means dark. Light is the `:root` default and
  * dark is layered under `.dark` (see apps/trinity/src/theme/variables.scss), so a
@@ -53,6 +87,12 @@ export class ThemeService {
   private readonly _resolved = signal<ResolvedTheme>('dark');
   /** The mode actually applied right now (system resolved to light/dark). */
   readonly resolved = this._resolved.asReadonly();
+
+  private readonly _textScale = signal<TextScale>(DEFAULT_TEXT_SCALE);
+  /** The user's chosen text size. */
+  readonly textScale = this._textScale.asReadonly();
+  /** The registered scales, for the settings picker. */
+  readonly textScales = TRINITY_TEXT_SCALES;
 
   private readonly _palette = signal<Palette>(DEFAULT_PALETTE);
   /** The active colour palette. */
@@ -92,8 +132,17 @@ export class ThemeService {
     } catch {
       // No stored palette → keep the default.
     }
+    try {
+      const { value } = await Preferences.get({ key: TEXT_SCALE_KEY });
+      if (isTextScale(value)) {
+        this._textScale.set(value);
+      }
+    } catch {
+      // No stored text scale → keep the default.
+    }
     this.apply();
     this.applyPalette();
+    this.applyTextScale();
   }
 
   /** Change + persist the mode preference, applying it immediately. */
@@ -101,6 +150,15 @@ export class ThemeService {
     this._preference.set(pref);
     this.apply();
     void Preferences.set({ key: THEME_KEY, value: pref }).catch(
+      () => undefined,
+    );
+  }
+
+  /** Change + persist the text size, applying it immediately. */
+  setTextScale(scale: TextScale): void {
+    this._textScale.set(scale);
+    this.applyTextScale();
+    void Preferences.set({ key: TEXT_SCALE_KEY, value: scale }).catch(
       () => undefined,
     );
   }
@@ -128,6 +186,28 @@ export class ThemeService {
       );
     }
     this.applyNativeChrome(resolved);
+  }
+
+  /**
+   * Reflect the active text scale on the document root.
+   *
+   * The DEFAULT clears the inline style rather than writing `100%`, so an unscaled app leaves
+   * no footprint on <html> at all and whatever the browser or a user stylesheet says wins.
+   */
+  private applyTextScale(): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const scale = this._textScale();
+    const entry = TRINITY_TEXT_SCALES.find((s) => s.id === scale);
+    if (!entry || entry.id === DEFAULT_TEXT_SCALE) {
+      document.documentElement.style.removeProperty('font-size');
+      return;
+    }
+    document.documentElement.style.setProperty(
+      'font-size',
+      `${entry.percent}%`,
+    );
   }
 
   /** Reflect the active palette on the document root (default palette = no attribute). */
@@ -167,6 +247,10 @@ function isPreference(value: string | null): value is ThemePreference {
 
 function isPalette(value: string | null): value is Palette {
   return TRINITY_PALETTES.some((p) => p.id === value);
+}
+
+function isTextScale(value: string | null): value is TextScale {
+  return TRINITY_TEXT_SCALES.some((s) => s.id === value);
 }
 
 function systemMedia(): MediaQueryList | null {

@@ -18,7 +18,9 @@ import {
   ComposerSettingsService,
   SystemLineSettingsService,
   ThemeService,
+  TRINITY_TEXT_SCALES,
   type Palette,
+  type TextScale,
   type ThemePreference,
 } from '@trinity/platform-native';
 import {
@@ -75,6 +77,21 @@ export class AppearanceSettingsComponent {
   onPaletteChange(value: string | null | undefined): void {
     if (value) {
       this.theme.setPalette(value as Palette);
+    }
+  }
+
+  /**
+   * Label for a text-scale id. `hlm-select` renders the collapsed trigger from the bound
+   * VALUE rather than the chosen option's markup, so without this the control would read
+   * "larger" instead of "Larger". An unknown id falls through rather than blanking it.
+   */
+  readonly textScaleLabel = (scale: string): string =>
+    TRINITY_TEXT_SCALES.find((entry) => entry.id === scale)?.label ?? scale;
+
+  /** Apply + persist how large text is. */
+  onTextScaleChange(value: string | null | undefined): void {
+    if (this.theme.textScales.some((scale) => scale.id === value)) {
+      this.theme.setTextScale(value as TextScale);
     }
   }
 
