@@ -76,16 +76,6 @@
       ]
     },
     {
-      "description": [
-        "TypeScript follows Angular, not npm's latest. @angular/compiler-cli peer-depends on a single minor window — `>=6.0 <6.1` on Angular 22 — and pnpm only warns about an unmet peer rather than refusing to install, so a TypeScript minor bumped on its own would install cleanly and then fail in ngtsc, where it reads as an Angular bug rather than a dependency one.",
-        "This ceiling has to be widened BY HAND when an Angular major lands, and the Angular group's own PR is the moment to do it: read the new window off `pnpm view @angular/compiler-cli@<version> peerDependencies`. Until then, the Angular PR is what fails, not this one — Angular 23 requiring a TypeScript this rule still forbids shows up as a red Angular PR, not as a silently skipped update.",
-        "Scoped to the root manifest so electron/'s deliberate TypeScript 5.9 pin is untouched: that package has no Angular in it and answers to a different toolchain."
-      ],
-      "matchPackageNames": ["typescript"],
-      "matchFileNames": ["package.json"],
-      "allowedVersions": "<6.1.0"
-    },
-    {
       "description": "Nx and its plugins are released in lockstep and share a workspace version.",
       "groupName": "nx",
       "matchPackageNames": ["nx", "@nx/**"]
@@ -140,9 +130,24 @@
       ]
     },
     {
-      "description": "The desktop shell is a separate package with its own lockfile and its own toolchain — it deliberately pins TypeScript 5.9 against the workspace's 6.x, so its updates must never be merged into a root group.",
+      "description": "The desktop shell is a separate package with its own lockfile and its own toolchain, so its updates must never be merged into a root group. TypeScript is the one exception, carved back out by the rule immediately below.",
       "groupName": "electron shell",
       "matchFileNames": ["electron/package.json"]
+    },
+    {
+      "description": [
+        "TypeScript follows Angular, not npm's latest, and electron/ follows the workspace. @angular/compiler-cli peer-depends on a single minor window — `>=6.0 <6.1` on Angular 22 — and pnpm only warns about an unmet peer rather than refusing to install, so a TypeScript minor bumped on its own would install cleanly and then fail in ngtsc, where it reads as an Angular bug rather than a dependency one.",
+        "This ceiling has to be widened BY HAND when an Angular major lands, and the Angular group's own PR is the moment to do it: read the new window off `pnpm view @angular/compiler-cli@<version> peerDependencies`. Until then, the Angular PR is what fails, not this one — Angular 23 requiring a TypeScript this rule still forbids shows up as a red Angular PR, not as a silently skipped update.",
+        "The desktop shell used to pin its own TypeScript 5.9 against the workspace's 6.x. That divergence was not free: @nx/js ships tsconfig codemods on every root TypeScript bump, they glob electron/tsconfig.json along with everything else, and the rewritten file then failed to parse under the older compiler — a breakage that arrived through a migration nobody ran against electron/, in a package CI builds separately. Both manifests now move as one version, in one branch.",
+        "ORDER IS LOAD-BEARING: this rule must stay BELOW the electron shell rule. Renovate merges every matching packageRule in array order and the last one wins each key, so electron/'s TypeScript picks up groupName 'typescript' here only because this rule comes second. Move it above and the shell rule silently reclaims it into the 'electron shell' group — two branches, two versions, and the divergence is back with nothing to show it.",
+        "rangeStrategy pin keeps both manifests on an exact, textually identical version rather than a caret that could drift apart within the allowed window.",
+        "electron/tsconfig.json must stay on `module`/`moduleResolution` Node16 for this to hold. TypeScript 6 rejects the old node10 resolution outright (TS5107), so a revert to `Node` there breaks the desktop build the next time this rule fires."
+      ],
+      "groupName": "typescript",
+      "matchPackageNames": ["typescript"],
+      "matchFileNames": ["package.json", "electron/package.json"],
+      "allowedVersions": "<6.1.0",
+      "rangeStrategy": "pin"
     },
     {
       "description": [

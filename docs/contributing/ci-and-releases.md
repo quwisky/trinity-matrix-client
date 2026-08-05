@@ -347,11 +347,18 @@ And GitHub Actions digest bumps stay behind a human: a `v7.0.1` to `v7.0.2` bump
 technically a patch, but it repoints a SHA at third-party code that runs inside CI,
 including the release workflow that holds the signing certificates.
 
-Root TypeScript is capped below 6.1 and scoped to the root manifest, because
-`@angular/compiler-cli` peer-depends on a single minor window and pnpm only warns
-about an unmet peer. The ceiling has to be widened by hand at every Angular major —
-read the new window off `pnpm view @angular/compiler-cli@<version> peerDependencies`.
-The scope keeps the desktop package's deliberate TypeScript 5.9 pin untouched.
+TypeScript is capped below 6.1, because `@angular/compiler-cli` peer-depends on a
+single minor window and pnpm only warns about an unmet peer. The ceiling has to be
+widened by hand at every Angular major — read the new window off
+`pnpm view @angular/compiler-cli@<version> peerDependencies`.
+
+The cap covers both manifests: the root workspace and `electron/` share one exact
+TypeScript version, grouped into a single branch. The shell used to pin its own 5.9,
+which cost more than it saved — `@nx/js` tsconfig codemods glob `electron/tsconfig.json`
+on every root bump, and the rewritten file then failed under the older compiler. That
+rule must stay below the `electron shell` rule in `packageRules`: Renovate merges
+matching rules in array order and the last one wins, so reordering them silently hands
+electron's TypeScript back to the shell group and restores the divergence.
 
 `renovate.yml` runs on a daily UTC cron with `timeout-minutes: 55`, because a GitHub
 App installation token lives exactly one hour and a 60-minute job could outlive its

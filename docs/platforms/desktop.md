@@ -19,7 +19,8 @@ delivered through a preload bridge instead, described below.
   `pnpm -C electron install` from walking up to the repository-root workspace. Without it
   the root workspace swallows the directory and the `electron` types that `tsc` needs are
   never installed.
-- Its own TypeScript. The shell pins `~5.9.0` while the root workspace is on 6.0.3.
+- Its own TypeScript install, but not its own TypeScript version — both manifests pin the
+  same exact 6.0.3, and Renovate moves them together in one branch.
 - Zero production dependencies, which is why `node_modules` is absent from the packaged
   bundle.
 
@@ -30,10 +31,11 @@ main-process specs; `pnpm -C electron test` does, and CI runs it explicitly.
 !!! warning "Repository-wide TypeScript codemods hit this file"
 
     `nx migrate` runs `@nx/js` codemods that glob every `tsconfig*.json`, including
-    `electron/tsconfig.json` — which answers to a different, older TypeScript. A root TS
-    bump can leave options in it that TS 5.9 rejects with TS5103. After any root
-    TypeScript upgrade, `git checkout -- electron/tsconfig.json` and re-verify with
-    `pnpm -C electron run compile`.
+    `electron/tsconfig.json`. Both manifests now share one TypeScript, so a rewrite no
+    longer lands on a compiler that cannot read it — but the file still has to keep the
+    Node16 `module`/`moduleResolution` pair, because TypeScript 6 rejects the older node10
+    resolution outright with TS5107. Check it in the diff of any migration and re-verify
+    with `pnpm -C electron run compile`.
 
 ## Building and running
 

@@ -110,11 +110,11 @@ The Electron shell in `electron/` is a separate package with its own `package.js
 its own `node_modules` and its own TypeScript. Its versions are therefore not visible
 to the guard above, which only reads the workspace root's `node_modules`.
 
-| Package            | Version | Notes                                                                           |
-| ------------------ | ------- | ------------------------------------------------------------------------------- |
-| `electron`         | 43.2.0  | Declared in `electron/package.json`                                             |
-| `electron-builder` | 26.15.7 | Packaging: macOS dmg and zip, Linux AppImage and deb, Windows nsis              |
-| `typescript`       | ~5.9.0  | Deliberately behind the root TypeScript; `pnpm -C electron run compile` uses it |
+| Package            | Version | Notes                                                                  |
+| ------------------ | ------- | ---------------------------------------------------------------------- |
+| `electron`         | 43.2.0  | Declared in `electron/package.json`                                    |
+| `electron-builder` | 26.15.7 | Packaging: macOS dmg and zip, Linux AppImage and deb, Windows nsis     |
+| `typescript`       | 6.0.3   | Same exact version as the root workspace, kept in lockstep by Renovate |
 
 See [the desktop platform page](../platforms/desktop.md) for what that shell does.
 
@@ -214,14 +214,14 @@ blocks `electron-winstaller`.
 
 ## Version-specific traps
 
-| Trap                                                                    | What to do                                                                                                                                                                                                                                                              |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A root TypeScript bump rewrites `electron/tsconfig.json`                | `@nx/js` codemods glob every `tsconfig*.json`. The TS 6 migration adds `ignoreDeprecations: "6.0"`, which the shell's TS 5.9 rejects with TS5103. Run `git checkout -- electron/tsconfig.json`, then `cd electron && ./node_modules/.bin/tsc -p tsconfig.json --noEmit` |
-| A Playwright bump invalidates the downloaded browsers                   | Each release pins its own browser build. Run `pnpm exec playwright install chromium webkit` after the bump. The 1.61 to 1.62 bump failed 165 of 167 specs this way                                                                                                      |
-| A Capacitor bump strands the checked-in native projects                 | `cap sync` writes pnpm content-addressed absolute paths into `android/capacitor.settings.gradle` and `ios/App/CapApp-SPM/Package.swift`. Re-run `pnpm android:sync` and `pnpm ios:sync` and commit the regenerated files                                                |
-| A matrix-js-sdk bump can change `resetEncryption` without changing ours | Trinity owns a hand-written copy of that flow. Diff `rust-crypto.js`'s `resetEncryption` on every bump; see [Matrix and encryption](../architecture/matrix-and-encryption.md)                                                                                           |
-| An Angular major moves the browserslist baseline                        | Re-resolve rather than editing numbers: `node -e "console.log(require('browserslist')('baseline widely available on <DATE>').join('\n'))"`                                                                                                                              |
-| An Angular major moves the TypeScript peer window                       | `@angular/compiler-cli` peer-depends on one minor window and pnpm only warns about an unmet peer, so the root TypeScript ceiling is capped by hand in the dependency-bot config                                                                                         |
+| Trap                                                                    | What to do                                                                                                                                                                                                                                              |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A TypeScript bump rewrites `electron/tsconfig.json`                     | `@nx/js` codemods glob every `tsconfig*.json`, the shell's included. It must keep the Node16 `module`/`moduleResolution` pair — TypeScript 6 rejects node10 with TS5107. Verify with `cd electron && ./node_modules/.bin/tsc -p tsconfig.json --noEmit` |
+| A Playwright bump invalidates the downloaded browsers                   | Each release pins its own browser build. Run `pnpm exec playwright install chromium webkit` after the bump. The 1.61 to 1.62 bump failed 165 of 167 specs this way                                                                                      |
+| A Capacitor bump strands the checked-in native projects                 | `cap sync` writes pnpm content-addressed absolute paths into `android/capacitor.settings.gradle` and `ios/App/CapApp-SPM/Package.swift`. Re-run `pnpm android:sync` and `pnpm ios:sync` and commit the regenerated files                                |
+| A matrix-js-sdk bump can change `resetEncryption` without changing ours | Trinity owns a hand-written copy of that flow. Diff `rust-crypto.js`'s `resetEncryption` on every bump; see [Matrix and encryption](../architecture/matrix-and-encryption.md)                                                                           |
+| An Angular major moves the browserslist baseline                        | Re-resolve rather than editing numbers: `node -e "console.log(require('browserslist')('baseline widely available on <DATE>').join('\n'))"`                                                                                                              |
+| An Angular major moves the TypeScript peer window                       | `@angular/compiler-cli` peer-depends on one minor window and pnpm only warns about an unmet peer, so the root TypeScript ceiling is capped by hand in the dependency-bot config                                                                         |
 
 ## Related pages
 

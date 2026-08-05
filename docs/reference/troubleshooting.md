@@ -34,22 +34,25 @@ never sees it. The cache key only moves when a file under `scripts/` changes.
 **Fix.** `pnpm exec nx test scripts --skip-nx-cache`. CI is unaffected — its runners are
 always cold, because the setup action deliberately caches nothing for Nx.
 
-### The Electron compile fails with TS5103 after a root TypeScript bump
+### The Electron compile fails with TS5107 on `moduleResolution`
 
-**Symptom.** `pnpm -C electron run compile` errors with TS5103, having worked before you
-ran `nx migrate`.
+**Symptom.** `pnpm -C electron run compile` errors with
+`Option 'moduleResolution=node10' is deprecated`.
 
-**Cause.** `@nx/js`'s TypeScript codemods glob every `tsconfig*.json` in the repo,
-including `electron/tsconfig.json` — which answers to the shell's own TypeScript (`~5.9.0`),
-not the root one. The TS 6 migration adds `ignoreDeprecations: "6.0"`, which TS 5.9
-rejects.
+**Cause.** `electron/tsconfig.json` is back on `"moduleResolution": "Node"`. TypeScript 6
+rejects node10 resolution outright, and the shell is on the same TypeScript as the root
+workspace, so there is no older compiler to fall back on.
 
-**Fix.** After any root TypeScript bump:
+**Fix.** The shell needs the Node16 pair — `"module": "Node16"` with
+`"moduleResolution": "Node16"`, which emits byte-identical CommonJS for this package:
 
 ```bash
-git checkout -- electron/tsconfig.json
 cd electron && ./node_modules/.bin/tsc -p tsconfig.json --noEmit
 ```
+
+This most often arrives through `nx migrate`: `@nx/js`'s codemods glob every
+`tsconfig*.json` in the repo, `electron/tsconfig.json` included. Check that file in the
+diff of any migration.
 
 ### A native build points at a pnpm path that does not exist
 
