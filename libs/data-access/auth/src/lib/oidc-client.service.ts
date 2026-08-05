@@ -169,15 +169,21 @@ export class OidcClientService {
           // session IS the Matrix device. The code is spent and the caller has already
           // cleared the stash, so this grant is unrecoverable; without a revocation the
           // provider is left holding a ghost device and a long-lived refresh token that
-          // nothing will ever use, one more per retry. Best-effort, and the ORIGINAL
-          // failure is what propagates: a revocation error must not displace it.
-          catchError((err: unknown) =>
-            from(
-              this.revokeGranted(metadata, context, token).catch(
-                () => undefined,
-              ),
-            ).pipe(switchMap(() => throwError(() => err))),
-          ),
+          // nothing will ever use, one more per retry.
+          //
+          // DETACHED on purpose. These POSTs go to the provider — a different host from
+          // the homeserver that just failed — through the SDK's fetch helper, which sets
+          // no AbortSignal and no timeout. Gating the error on them would hold the
+          // callback page on its spinner (whose only exit lives in the error branch) for
+          // a full TCP connect timeout, or forever against a host that black-holes the
+          // connection. Nothing consumes the result, so the user gets the real failure now
+          // and the cleanup finishes on its own.
+          catchError((err: unknown) => {
+            void this.revokeGranted(metadata, context, token).catch(
+              () => undefined,
+            );
+            return throwError(() => err);
+          }),
         ),
       ),
     );

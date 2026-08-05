@@ -387,12 +387,36 @@ describe('OidcClientService', () => {
       ]);
     });
 
+    it('reports the failure without waiting for the revocation to settle', async () => {
+      // The revocation POSTs go to the PROVIDER, a different host from the homeserver
+      // that just failed, through `OAuth2.fetch` — which passes no AbortSignal and no
+      // timeout. Gating the error on them would leave the callback page on its spinner,
+      // whose only exit ("Back to sign in") lives in the error branch, for a full TCP
+      // connect timeout — or forever against a host that black-holes the connection.
+      stubClient({ whoami: new Error('homeserver unavailable') });
+      const fetchMock = stubFetch({
+        token: () => jsonResponse(TOKEN),
+        revocation: () => new Promise(() => undefined), // never settles
+      });
+
+      await expect(
+        firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+      ).rejects.toThrow(/homeserver unavailable/);
+
+      // Still fired, just not awaited.
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url]) => url === AUTH_METADATA.revocation_endpoint,
+        ),
+      ).toHaveLength(2);
+    });
+
     it('still surfaces the original failure when the revocation also fails', async () => {
       // Best-effort, and it genuinely does fail against a compliant provider: RFC 7009
       // mandates an empty 200 body, which the SDK's shared `res.json()` chokes on. A
       // revocation error must never displace the error the user needs to see.
       stubClient({ whoami: new Error('homeserver unavailable') });
-      stubFetch({
+      const fetchMock = stubFetch({
         token: () => jsonResponse(TOKEN),
         revocation: () => {
           throw new Error('revocation down');
@@ -402,6 +426,13 @@ describe('OidcClientService', () => {
       await expect(
         firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
       ).rejects.toThrow(/homeserver unavailable/);
+      // Assert the revocation was actually attempted, or this passes just as happily
+      // against no revocation at all — which is the thing the sibling test exists for.
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url]) => url === AUTH_METADATA.revocation_endpoint,
+        ).length,
+      ).toBeGreaterThan(0);
     });
 
     it('derives the expiry from expires_in, stamped before the token request', async () => {
