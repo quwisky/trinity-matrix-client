@@ -17,14 +17,23 @@ and the storage backends in
 
 ## SDK version and the deep-import rule
 
-| Package                              | Version in `package.json`   |
-| ------------------------------------ | --------------------------- |
-| `matrix-js-sdk`                      | `^41.9.0` (41.9.0 resolves) |
-| `@matrix-org/matrix-sdk-crypto-wasm` | `^18.3.1`                   |
+| Package                              | Version |
+| ------------------------------------ | ------- |
+| `matrix-js-sdk`                      | 42.1.0  |
+| `@matrix-org/matrix-sdk-crypto-wasm` | 18.4.0  |
+
+Bare installed versions, not the `package.json` ranges, so that
+[`scripts/stack-versions.spec.mjs`](https://github.com/quwisky/trinity-matrix-client/blob/develop/scripts/stack-versions.spec.mjs)
+checks this table too. It previously wrote them as `` `^41.9.0` (41.9.0 resolves) ``, which
+the guard's complete-semver filter skipped — so this page drifted silently while
+[the stack reference](../reference/stack.md) stayed honest.
+
+The two packages are **coupled**: matrix-js-sdk 42.1.0 depends on
+`@matrix-org/matrix-sdk-crypto-wasm@^18.4.0`, so they move together or not at all.
 
 The SDK requires Node 22 or newer (`engines.node: >=22.0.0`).
 
-Crypto types are **not** re-exported from the package root in 41.x. `CryptoApi`,
+Crypto types are **not** re-exported from the package root — still true in 42.x. `CryptoApi`,
 `CryptoEvent`, `decodeRecoveryKey`, `deriveRecoveryKeyFromPassphrase` and
 `EventShieldColour` come from `matrix-js-sdk/lib/crypto-api`; `ServerSideSecretStorage`
 and `SecretStorageKeyDescriptionAesV1` come from `matrix-js-sdk/lib/secret-storage`.

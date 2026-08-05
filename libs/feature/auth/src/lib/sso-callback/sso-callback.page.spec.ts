@@ -4,7 +4,7 @@ import { render } from '@trinity/testing';
 import { AuthService } from '@trinity/data-access/auth';
 import { MockProvider } from 'ng-mocks';
 import { from, of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SsoCallbackPage } from './sso-callback.page';
 import { SsoStateStore, type SsoStateStash } from '../sso-state.store';
 import { OidcStateStore, type OidcStateStash } from '../oidc-state.store';
@@ -21,8 +21,9 @@ const EMPTY_OIDC: OidcStateStash = {
   mode: 'replace',
   redirectUri: null,
   issuer: null,
-  sessionStateKey: null,
-  sessionStateBlob: null,
+  clientId: null,
+  deviceId: null,
+  codeVerifier: null,
 };
 
 function paramMap(params: Record<string, string | null>): ParamMap {
@@ -87,8 +88,6 @@ async function renderPage(opts: {
 }
 
 describe('SsoCallbackPage', () => {
-  beforeEach(() => sessionStorage.clear());
-
   describe('legacy SSO (loginToken)', () => {
     it('completes login when the state matches, clearing storage + URL', async () => {
       const completeSsoLogin = vi.fn(() => of({}));
@@ -176,16 +175,21 @@ describe('SsoCallbackPage', () => {
       mode: 'replace',
       redirectUri: 'https://app/sso-callback',
       issuer: 'https://op.example',
-      sessionStateKey: 'mx_oidc_STATE1',
-      sessionStateBlob: 'SIGNIN_BLOB',
+      clientId: 'CLIENT1',
+      deviceId: 'DEVICE1',
+      codeVerifier: 'VERIFIER1',
+    };
+    /** What the stash must be handed to the exchange as (matrix-js-sdk 42 keeps none of it). */
+    const GRANT_CONTEXT = {
+      baseUrl: 'https://hs.example',
+      redirectUri: 'https://app/sso-callback',
+      clientId: 'CLIENT1',
+      deviceId: 'DEVICE1',
+      codeVerifier: 'VERIFIER1',
     };
 
-    it('re-seeds the PKCE state, completes the grant, then clears the key + URL', async () => {
-      let seededAtCall: string | null = null;
-      const completeOidcLogin = vi.fn(() => {
-        seededAtCall = sessionStorage.getItem('mx_oidc_STATE1');
-        return of(undefined);
-      });
+    it('completes the grant with the stashed PKCE context, then clears the stash + URL', async () => {
+      const completeOidcLogin = vi.fn(() => of(undefined));
       const { navigateByUrl, replaceState, oidcClear } = await renderPage({
         auth: { completeOidcLogin } as unknown as Partial<AuthService>,
         params: { code: 'CODE', state: 'STATE1' },
@@ -193,15 +197,14 @@ describe('SsoCallbackPage', () => {
       });
 
       expect(replaceState).toHaveBeenCalledWith('/sso-callback');
-      expect(seededAtCall).toBe('SIGNIN_BLOB'); // re-seeded before the exchange
+      // The SDK no longer persists the sign-in state anywhere, so the whole PKCE context
+      // must be fed back in-band from the stash — nothing is re-seeded into sessionStorage.
       expect(completeOidcLogin).toHaveBeenCalledWith(
         'CODE',
-        'STATE1',
-        'https://app/sso-callback',
+        GRANT_CONTEXT,
         'replace',
       );
       expect(oidcClear).toHaveBeenCalledTimes(1); // consumed only after state matched
-      expect(sessionStorage.getItem('mx_oidc_STATE1')).toBeNull(); // spent verifier scrubbed
       expect(navigateByUrl).toHaveBeenCalledWith('/rooms', {
         replaceUrl: true,
       });
@@ -266,8 +269,7 @@ describe('SsoCallbackPage', () => {
       expect(completeOidcLogin).toHaveBeenCalledTimes(1);
       expect(completeOidcLogin).toHaveBeenCalledWith(
         'REAL',
-        'STATE1',
-        'https://app/sso-callback',
+        GRANT_CONTEXT,
         'replace',
       );
       expect(oidcClear).toHaveBeenCalledTimes(1); // consumed once, by the genuine callback
@@ -288,9 +290,23 @@ describe('SsoCallbackPage', () => {
       expect(cmp.error()).toMatch(/missing/i);
     });
 
+    it('errors when the PKCE verifier is missing from the stash', async () => {
+      // The stash is now the ONLY custodian of the code_verifier; without it the token
+      // exchange can only fail at the provider, so refuse before sending the code.
+      const completeOidcLogin = vi.fn();
+      const { cmp } = await renderPage({
+        auth: { completeOidcLogin } as unknown as Partial<AuthService>,
+        params: { code: 'CODE', state: 'STATE1' },
+        oidcStash: { ...OIDC_STASH, codeVerifier: null },
+      });
+
+      expect(completeOidcLogin).not.toHaveBeenCalled();
+      expect(cmp.error()).toMatch(/missing/i);
+    });
+
     it('forgets the cached client id on invalid_client, then surfaces the error', async () => {
       const forgetOidcClientId = vi.fn(() => of(undefined));
-      const { cmp } = await renderPage({
+      const { cmp, oidcClear } = await renderPage({
         auth: {
           completeOidcLogin: vi.fn(() =>
             throwError(() => new Error('invalid_client: unknown client')),
@@ -303,7 +319,8 @@ describe('SsoCallbackPage', () => {
 
       expect(forgetOidcClientId).toHaveBeenCalledWith('https://op.example');
       expect(cmp.error()).toMatch(/invalid_client/i);
-      expect(sessionStorage.getItem('mx_oidc_STATE1')).toBeNull(); // verifier scrubbed
+      // The spent verifier is scrubbed even on failure: the stash was consumed up front.
+      expect(oidcClear).toHaveBeenCalledTimes(1);
     });
   });
 });

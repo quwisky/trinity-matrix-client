@@ -1,12 +1,11 @@
 import { Injectable } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 import {
-  completeAuthorizationCodeGrant,
+  OAuth2,
   createClient,
-  generateOidcAuthorizationUrl,
-  registerOidcClient,
-  type OidcClientConfig,
-  type OidcRegistrationClientMetadata,
+  type BearerTokenResponse,
+  type OAuthRegistrationRequest,
+  type ValidatedAuthMetadata,
 } from 'matrix-js-sdk';
 import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
 import type { OidcSessionBinding } from '@trinity/util/matrix';
@@ -24,13 +23,6 @@ const CLIENT_URI = 'https://trinity.qwky.eu';
  * the registered metadata to force a clean re-registration.
  */
 const CLIENT_ID_KEY_PREFIX = 'oidc.clientId.v2:';
-/**
- * sessionStorage key prefix oidc-client-ts (via matrix-js-sdk) uses to persist the
- * PKCE sign-in state (`mx_oidc_<state>`). We harvest that entry so it can be re-seeded
- * for a callback that returns to a different browsing context (native/Electron) or
- * after a cold-start relaunch, where sessionStorage would otherwise be empty.
- */
-const SIGNIN_STATE_PREFIX = 'mx_oidc_';
 
 /** What platform this build registers as (drives redirect-uri + registration policy). */
 export type OidcApplicationType = 'web' | 'native';
@@ -38,28 +30,41 @@ export type OidcApplicationType = 'web' | 'native';
 /** Inputs for building an OIDC authorization request. */
 export interface OidcAuthorizationParams {
   baseUrl: string;
-  config: OidcClientConfig;
+  metadata: ValidatedAuthMetadata;
   redirectUri: string;
   applicationType: OidcApplicationType;
-  /** A single-use nonce (also used as the id_token nonce). */
-  nonce: string;
   /** OIDC `prompt` (e.g. `create` for registration); omitted for a normal login. */
   prompt?: string;
 }
 
 /**
- * The authorization URL to redirect to, plus the PKCE sign-in state the SDK persisted
- * in sessionStorage — returned so the caller can durably stash it (Preferences) and
- * re-seed it before completing the grant on a fresh/off-origin callback context.
+ * The authorization URL to redirect to, plus the PKCE context needed to complete the
+ * grant afterwards.
+ *
+ * The SDK used to keep this itself, in a `mx_oidc_<state>` sessionStorage entry written
+ * by oidc-client-ts. matrix-js-sdk 42 dropped that dependency and persists nothing, so
+ * the context is handed back here and the caller is now its sole custodian: it must be
+ * stashed durably (Preferences) and fed back to {@link OidcClientService.completeGrant},
+ * which is what lets a callback complete in a different browsing context (native /
+ * Electron) or after a cold-start relaunch.
  */
 export interface OidcAuthorizationRequest {
   url: string;
-  /** The provider-facing OAuth `state` oidc-client-ts generated (verified on callback). */
+  /** The provider-facing OAuth `state`, echoed on callback and verified against the stash. */
   state: string;
-  /** The exact sessionStorage key holding the sign-in state (`mx_oidc_<state>`). */
-  sessionStateKey: string;
-  /** The serialized sign-in state (contains the PKCE code_verifier), or null if absent. */
-  sessionStateBlob: string | null;
+  clientId: string;
+  deviceId: string;
+  /** SECRET. The PKCE code_verifier; single-use, and never logged. */
+  codeVerifier: string;
+}
+
+/** The PKCE context recovered from the stash, needed to exchange the code for tokens. */
+export interface OidcGrantContext {
+  baseUrl: string;
+  redirectUri: string;
+  clientId: string;
+  deviceId: string;
+  codeVerifier: string;
 }
 
 /** A completed OIDC login: tokens + resolved identity + the provider binding to persist. */
@@ -89,28 +94,30 @@ export class OidcClientService {
   buildAuthorizationRequest(
     params: OidcAuthorizationParams,
   ): Observable<OidcAuthorizationRequest> {
-    return this.ensureClientId(params.config, params.applicationType, [
+    return this.ensureClientId(params.metadata, params.applicationType, [
       params.redirectUri,
     ]).pipe(switchMap((clientId) => from(this.buildUrl(params, clientId))));
   }
 
   /**
    * Exchange the authorization `code` for tokens and resolve the account identity.
-   * The caller MUST have re-seeded sessionStorage with the stashed sign-in state first,
-   * so the SDK can read back the PKCE code_verifier. OIDC token responses carry no
-   * user/device id, so we resolve them via `whoami`.
+   *
+   * `context` is the stash written when the request was built: the SDK no longer keeps
+   * the PKCE verifier anywhere, so rebuilding an {@link OAuth2} around the same context
+   * is what makes the exchange possible at all. `baseUrl` is passed rather than recovered
+   * from the grant because v42 no longer round-trips the homeserver through OAuth state.
+   *
+   * Token responses carry no user/device id, so identity comes from `whoami`.
    */
   completeGrant(
     code: string,
-    state: string,
-    redirectUri: string,
+    context: OidcGrantContext,
   ): Observable<OidcGrant> {
-    return defer(() => from(completeAuthorizationCodeGrant(code, state))).pipe(
-      switchMap((grant) => {
-        const token = grant.tokenResponse;
-        return from(
+    return defer(() => from(this.exchange(code, context))).pipe(
+      switchMap(({ token, issuer, requestedAt }) =>
+        from(
           createClient({
-            baseUrl: grant.homeserverUrl,
+            baseUrl: context.baseUrl,
             accessToken: token.access_token,
           }).whoami(),
         ).pipe(
@@ -120,9 +127,9 @@ export class OidcClientService {
                 'The provider returned no device for this session.',
               );
             }
-            const expiresAt = this.expiresAt(token);
+            const expiresAt = this.expiresAt(token, requestedAt);
             const result: OidcGrant = {
-              homeserverUrl: grant.homeserverUrl,
+              homeserverUrl: context.baseUrl,
               userId: who.user_id,
               deviceId: who.device_id,
               accessToken: token.access_token,
@@ -133,17 +140,40 @@ export class OidcClientService {
                 ? { accessTokenExpiresAt: expiresAt }
                 : {}),
               oidc: {
-                issuer: grant.oidcClientSettings.issuer,
-                clientId: grant.oidcClientSettings.clientId,
-                redirectUri,
-                idTokenClaims: grant.idTokenClaims,
+                issuer,
+                clientId: context.clientId,
+                redirectUri: context.redirectUri,
               },
             };
             return result;
           }),
-        );
-      }),
+        ),
+      ),
     );
+  }
+
+  private async exchange(
+    code: string,
+    context: OidcGrantContext,
+  ): Promise<{
+    token: BearerTokenResponse;
+    issuer: string;
+    requestedAt: number;
+  }> {
+    const metadata = await createClient({
+      baseUrl: context.baseUrl,
+    }).getAuthMetadata();
+    const auth = new OAuth2(metadata, {
+      clientId: context.clientId,
+      redirectUri: context.redirectUri,
+      codeVerifier: context.codeVerifier,
+      deviceId: context.deviceId,
+    });
+    // Stamped BEFORE the POST: `expires_in` is relative to when the provider issued the
+    // token, so measuring from after a slow round-trip would over-state the lifetime.
+    const requestedAt = Date.now();
+    const token = await auth.completeAuthorizationCodeGrant(code);
+    return { token, issuer: metadata.issuer, requestedAt };
   }
 
   /**
@@ -182,29 +212,22 @@ export class OidcClientService {
     binding: OidcSessionBinding,
     tokens: { accessToken?: string; refreshToken?: string },
   ): Promise<void> {
-    const config = await createClient({
+    const metadata = await createClient({
       baseUrl: homeserverUrl,
     }).getAuthMetadata();
-    const endpoint = config.revocation_endpoint;
-    if (!endpoint) {
-      return;
-    }
-    const revokeOne = (token: string, hint: string): Promise<unknown> =>
-      fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          token,
-          token_type_hint: hint,
-          client_id: binding.clientId,
-        }).toString(),
-      });
-    const calls: Promise<unknown>[] = [];
+    // The RFC 7009 POST used to be hand-rolled here because the SDK exposed no revocation
+    // helper. It does now, and `revocation_endpoint` is required on ValidatedAuthMetadata,
+    // so the old "no endpoint, give up quietly" guard is gone with it.
+    const auth = new OAuth2(metadata, {
+      clientId: binding.clientId,
+      redirectUri: binding.redirectUri,
+    });
+    const calls: Promise<void>[] = [];
     if (tokens.refreshToken) {
-      calls.push(revokeOne(tokens.refreshToken, 'refresh_token'));
+      calls.push(auth.revokeToken(tokens.refreshToken, 'refresh_token'));
     }
     if (tokens.accessToken) {
-      calls.push(revokeOne(tokens.accessToken, 'access_token'));
+      calls.push(auth.revokeToken(tokens.accessToken, 'access_token'));
     }
     await Promise.all(calls);
   }
@@ -215,36 +238,36 @@ export class OidcClientService {
    * minting a fresh registration each time.
    */
   private ensureClientId(
-    config: OidcClientConfig,
+    metadata: ValidatedAuthMetadata,
     applicationType: OidcApplicationType,
     redirectUris: string[],
   ): Observable<string> {
     return defer(() =>
-      from(this.resolveClientId(config, applicationType, redirectUris)),
+      from(this.resolveClientId(metadata, applicationType, redirectUris)),
     );
   }
 
   private async resolveClientId(
-    config: OidcClientConfig,
+    metadata: ValidatedAuthMetadata,
     applicationType: OidcApplicationType,
     redirectUris: string[],
   ): Promise<string> {
-    const key = CLIENT_ID_KEY_PREFIX + config.issuer;
+    const key = CLIENT_ID_KEY_PREFIX + metadata.issuer;
     const cached = (await Preferences.get({ key })).value;
     if (cached) {
       return cached;
     }
-    const metadata: OidcRegistrationClientMetadata = {
-      clientName: CLIENT_NAME,
-      clientUri: CLIENT_URI,
-      applicationType,
-      redirectUris:
-        redirectUris as OidcRegistrationClientMetadata['redirectUris'],
-      contacts: undefined,
-      tosUri: undefined,
-      policyUri: undefined,
+    // snake_case in v42 (the registration request is now the wire shape verbatim);
+    // v41 took a camelCase wrapper. The fields a provider pins a later authorization
+    // against — redirect_uris, application_type, client_uri — are otherwise unchanged,
+    // which is why the cache key above does NOT need a version bump.
+    const request: OAuthRegistrationRequest = {
+      client_name: CLIENT_NAME,
+      client_uri: CLIENT_URI,
+      application_type: applicationType,
+      redirect_uris: redirectUris as OAuthRegistrationRequest['redirect_uris'],
     };
-    const clientId = await registerOidcClient(config, metadata);
+    const clientId = await OAuth2.registerClient(metadata, request);
     await Preferences.set({ key, value: clientId });
     return clientId;
   }
@@ -253,72 +276,45 @@ export class OidcClientService {
     params: OidcAuthorizationParams,
     clientId: string,
   ): Promise<OidcAuthorizationRequest> {
-    const url = await generateOidcAuthorizationUrl({
-      metadata: params.config,
+    const auth = new OAuth2(params.metadata, {
       clientId,
-      homeserverUrl: params.baseUrl,
       redirectUri: params.redirectUri,
-      nonce: params.nonce,
-      ...(params.prompt ? { prompt: params.prompt } : {}),
     });
-    // oidc-client-ts mints its OWN `state` (not our nonce); read it back from the URL —
-    // it both keys the stored sign-in state and is what the provider echoes on callback.
-    const state = new URL(url).searchParams.get('state');
-    if (!state) {
-      throw new Error(
-        'The OIDC authorization URL is missing a state parameter.',
-      );
-    }
-    const harvested = this.harvestSigninState(state);
+    // The `state` is ours to mint now — v41 let oidc-client-ts generate one and we read
+    // it back out of the URL. It is what the provider echoes on callback and what the
+    // stash is keyed on.
+    const state = crypto.randomUUID();
+    // 'query' is LOAD-BEARING. v42 defaults responseMode to 'fragment'; v41 defaulted to
+    // 'query'. Every callback reader here takes query params only (sso-callback.page.ts
+    // via queryParamMap, app.component.ts via searchParams), so accepting the default
+    // would put the code somewhere nothing looks and hang the login on every platform.
+    // Moving to 'fragment' (it keeps the code out of server logs) means teaching both
+    // readers to parse a fragment first — a separate change.
+    const url = await auth.generateAuthorizationCodeGrantUrl(
+      state,
+      'query',
+      params.prompt,
+    );
     return {
       url,
       state,
-      sessionStateKey: harvested?.key ?? SIGNIN_STATE_PREFIX + state,
-      sessionStateBlob: harvested?.blob ?? null,
+      clientId,
+      deviceId: auth.context.deviceId,
+      codeVerifier: auth.context.codeVerifier,
     };
   }
 
   /**
-   * Read back the sign-in state the SDK just wrote to sessionStorage for `state`. Prefers
-   * the deterministic `mx_oidc_<state>` key but falls back to scanning for any `mx_oidc_*`
-   * entry ending in the state, so a future change to the SDK's prefix can't silently break
-   * the durable stash the cross-context callback depends on.
+   * Absolute epoch-ms access-token expiry, measured from `requestedAt` (stamped before
+   * the token POST). v42's BearerTokenResponse carries only the relative `expires_in`;
+   * the old absolute `expires_at` branch went with oidc-client-ts.
    */
-  private harvestSigninState(
-    state: string,
-  ): { key: string; blob: string } | null {
-    const store = globalThis.sessionStorage;
-    if (!store) {
-      return null;
-    }
-    const exactKey = SIGNIN_STATE_PREFIX + state;
-    const exact = store.getItem(exactKey);
-    if (exact !== null) {
-      return { key: exactKey, blob: exact };
-    }
-    for (let i = 0; i < store.length; i++) {
-      const key = store.key(i);
-      if (key?.startsWith(SIGNIN_STATE_PREFIX) && key.endsWith(state)) {
-        const blob = store.getItem(key);
-        if (blob !== null) {
-          return { key, blob };
-        }
-      }
-    }
-    return null;
-  }
-
-  /** Absolute epoch-ms access-token expiry: `expires_at` (epoch seconds) preferred. */
-  private expiresAt(token: {
-    expires_at?: number;
-    expires_in?: number;
-  }): number | undefined {
-    if (typeof token.expires_at === 'number') {
-      return token.expires_at * 1000;
-    }
-    if (typeof token.expires_in === 'number') {
-      return Date.now() + token.expires_in * 1000;
-    }
-    return undefined;
+  private expiresAt(
+    token: BearerTokenResponse,
+    requestedAt: number,
+  ): number | undefined {
+    return typeof token.expires_in === 'number'
+      ? requestedAt + token.expires_in * 1000
+      : undefined;
   }
 }

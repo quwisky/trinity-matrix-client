@@ -46,16 +46,26 @@ export interface OidcSessionBinding {
   clientId: string;
   /** The redirect URI registered for this platform; needed to rebuild the refresher. */
   redirectUri: string;
-  /** id_token claims from the authorization grant, used to validate refreshed tokens. */
-  idTokenClaims: OidcIdTokenClaims;
+  /**
+   * @deprecated Not written since matrix-js-sdk 42. That release dropped `oidc-client-ts`
+   * and with it the id_token entirely, so there are no claims to capture and nothing reads
+   * these any more. The field stays optional rather than deleted because sessions written
+   * before the upgrade still carry it on disk, and the registry is parsed with a bare
+   * `JSON.parse ... as AccountRegistry` — the type's job is to describe what is actually
+   * stored. Remove once those records have aged out.
+   */
+  idTokenClaims?: OidcIdTokenClaims;
 }
 
 /**
- * The subset of OIDC id_token claims we persist. Structurally compatible with the
- * SDK's `IdTokenClaims` (from `oidc-client-ts`) — the mandatory JWT claims plus an
- * open index signature — so it round-trips into and out of the token refresher
- * without a direct dependency on `oidc-client-ts` (which is not a resolvable
- * top-level package in this workspace).
+ * The subset of OIDC id_token claims persisted by sessions created before
+ * matrix-js-sdk 42. Structurally compatible with the `IdTokenClaims` the SDK used to
+ * take (from `oidc-client-ts`) — the mandatory JWT claims plus an open index signature.
+ *
+ * Deliberately NOT marked `@deprecated`, even though nothing writes it any more: it is
+ * still the accurate type of data sitting in existing account registries, and the
+ * deprecated member is the field that holds it, not the shape itself. Marking both also
+ * made `no-deprecated` fire on that field's own type annotation.
  */
 export interface OidcIdTokenClaims {
   iss: string;

@@ -3,7 +3,7 @@ import {
   AutoDiscovery,
   createClient,
   type AuthDict,
-  type OidcClientConfig,
+  type ValidatedAuthMetadata,
 } from 'matrix-js-sdk';
 import {
   Observable,
@@ -35,6 +35,7 @@ import {
   OidcClientService,
   type OidcAuthorizationParams,
   type OidcAuthorizationRequest,
+  type OidcGrantContext,
 } from './oidc-client.service';
 
 const DEVICE_DISPLAY_NAME = 'Trinity';
@@ -117,7 +118,9 @@ export class AuthService {
    * probe for OIDC in parallel with {@link getSupportedFlows} without a legacy
    * homeserver ever being slowed or broken by the extra round-trip.
    */
-  getDelegatedAuthConfig(baseUrl: string): Observable<OidcClientConfig | null> {
+  getDelegatedAuthConfig(
+    baseUrl: string,
+  ): Observable<ValidatedAuthMetadata | null> {
     return defer(() => from(createClient({ baseUrl }).getAuthMetadata())).pipe(
       catchError(() => of(null)),
     );
@@ -213,11 +216,10 @@ export class AuthService {
    */
   completeOidcLogin(
     code: string,
-    state: string,
-    redirectUri: string,
+    context: OidcGrantContext,
     mode: LoginMode = 'replace',
   ): Observable<void> {
-    return this.oidc.completeGrant(code, state, redirectUri).pipe(
+    return this.oidc.completeGrant(code, context).pipe(
       switchMap((grant) =>
         this.establish(
           grant.homeserverUrl,

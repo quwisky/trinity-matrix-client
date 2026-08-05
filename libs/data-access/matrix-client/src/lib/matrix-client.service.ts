@@ -353,6 +353,7 @@ export class MatrixClientService {
               ? new TrinityOidcTokenRefresher(
                   this.storage,
                   session.userId,
+                  session.baseUrl,
                   session.oidc,
                   session.deviceId,
                 )
@@ -366,10 +367,7 @@ export class MatrixClientService {
               ? { refreshToken: session.refreshToken }
               : {}),
             ...(refresher
-              ? {
-                  tokenRefreshFunction: (token: string) =>
-                    refresher.doRefreshAccessToken(token),
-                }
+              ? { tokenRefreshFunction: refresher.tokenRefreshFunction }
               : {}),
             ...(store ? { store } : {}),
             // Lets the crypto stack read/write 4S using the recovery key the user

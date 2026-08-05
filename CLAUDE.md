@@ -134,7 +134,7 @@ state, Observables = one-shot actions. (Login pages wrap calls in `runWithBusy()
 `.wasm` relative to bundled JS, which Angular's esbuild doesn't emit → 404. Fix: the build target
 copies the file to `assets/crypto/`, and `crypto-wasm-loader.ts` calls `initAsync(url)` (memoized)
 against that path **before** `initRustCrypto()`. Crypto-api types are a **deep import** —
-`matrix-js-sdk/lib/crypto-api`, not re-exported from the package root in 41.x.
+`matrix-js-sdk/lib/crypto-api`, not re-exported from the package root (checked again in 42.x).
 
 **Routing** — all lazy-loaded standalone routes in `apps/trinity/src/app/app.routes.ts`, most behind
 `authGuard` (restores a persisted session or redirects to `/login`). On wide layouts the

@@ -50,6 +50,18 @@ export function createVitestConfig(
         // vitest's own default, which the plugin overrides. Naming it here wins cleanly via the
         // plugin's own `userConfig` escape hatch — no patching.
         pool: 'forks',
+        // matrix-js-sdk 42.1.0 ships a broken ESM specifier: lib/oauth/authorize.js and
+        // lib/oauth/index.js both `import ... from "../http-api"` — a bare directory. An
+        // index.js is there, so bundlers resolve it and `pnpm build` is unaffected, but
+        // Node's ESM resolver refuses a directory import (ERR_UNSUPPORTED_DIR_IMPORT) and
+        // every spec that reaches the package root dies at import time, before a single
+        // test runs. Inlining hands the module to vite instead of Node, which resolves it
+        // the same way the build does.
+        //
+        // Set here rather than per project because all 22 vite configs delegate to this
+        // factory, and the failure hits any of them that touches the SDK root. Remove once
+        // the specifier is fixed upstream.
+        server: { deps: { inline: ['matrix-js-sdk'] } },
         environment: 'jsdom',
         setupFiles: ['src/test-setup.ts'],
         include: ['src/**/*.spec.ts'],

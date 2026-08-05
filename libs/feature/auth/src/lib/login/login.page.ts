@@ -36,7 +36,7 @@ import {
   type LoginMode,
   type OidcApplicationType,
   type OidcAuthorizationRequest,
-  type OidcClientConfig,
+  type AuthMetadata,
 } from '@trinity/data-access/auth';
 import { SessionStorageService } from '@trinity/platform-native';
 import { runWithBusy } from '@trinity/ui';
@@ -126,7 +126,7 @@ export class LoginPage {
   readonly ssoSupported = signal(false);
   readonly passwordSupported = signal(false);
   /** The delegated OIDC provider config, when the homeserver uses next-gen auth. */
-  readonly oidcMetadata = signal<OidcClientConfig | null>(null);
+  readonly oidcMetadata = signal<AuthMetadata | null>(null);
   readonly oidcSupported = computed(() => this.oidcMetadata() !== null);
   /** Whether the OIDC provider supports account creation (MSC2965 `prompt=create`). */
   readonly oidcRegistrationSupported = computed(
@@ -183,7 +183,7 @@ export class LoginPage {
    */
   private discoverCapabilities(
     baseUrl: string,
-  ): Observable<{ flows: string[]; oidc: OidcClientConfig | null }> {
+  ): Observable<{ flows: string[]; oidc: AuthMetadata | null }> {
     return forkJoin({
       flows: this.auth
         .getSupportedFlows(baseUrl)
@@ -197,7 +197,7 @@ export class LoginPage {
    * provider, so prefer its "Continue" button and suppress the legacy password/SSO ones
    * (a homeserver mid-migration may still advertise m.login.sso for compatibility).
    */
-  private applyFlows(flows: string[], oidc: OidcClientConfig | null): void {
+  private applyFlows(flows: string[], oidc: AuthMetadata | null): void {
     this.oidcMetadata.set(oidc);
     this.passwordSupported.set(!oidc && flows.includes('m.login.password'));
     this.ssoSupported.set(!oidc && flows.includes('m.login.sso'));
@@ -291,10 +291,9 @@ export class LoginPage {
     this.withBusy(
       this.auth.buildOidcAuthorizationRequest({
         baseUrl,
-        config,
+        metadata: config,
         redirectUri,
         applicationType,
-        nonce: this.generateState(),
         ...(prompt ? { prompt } : {}),
       }),
     ).subscribe((request) => {
@@ -321,18 +320,18 @@ export class LoginPage {
     native: boolean,
     electron: boolean,
   ): Promise<void> {
+    // Persisted on every platform. Web used to be skipped because the SDK kept its own
+    // sessionStorage copy of the sign-in state; matrix-js-sdk 42 keeps nothing, so this
+    // stash is the only copy and omitting it on web would simply break web login.
     await this.oidcState.save({
       state: request.state,
       baseUrl,
       mode: this.loginMode(),
       redirectUri,
       issuer,
-      sessionStateKey: request.sessionStateKey,
-      // The blob holds the PKCE code_verifier (a secret). Only native/Electron need it
-      // durably persisted (their callback WebView / cold-start has empty sessionStorage);
-      // on web the SDK's own sessionStorage copy survives the same-tab redirect, so don't
-      // copy the secret into localStorage there.
-      sessionStateBlob: native || electron ? request.sessionStateBlob : null,
+      clientId: request.clientId,
+      deviceId: request.deviceId,
+      codeVerifier: request.codeVerifier,
     });
     this.dispatchRedirect(request.url, native, electron);
   }

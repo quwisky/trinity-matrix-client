@@ -559,7 +559,8 @@ recompute it whenever an account's device id changes, reclaiming the abandoned s
 **Symptom.** Import errors for `CryptoApi`, `CryptoEvent`, `decodeRecoveryKey`,
 `EventShieldColour`, `ServerSideSecretStorage` or `SecretStorageKeyDescriptionAesV1`.
 
-**Cause.** matrix-js-sdk 41.x does not re-export the crypto API from the package root. The
+**Cause.** matrix-js-sdk does not re-export the crypto API from the package root, in 41.x or
+42.x. The
 root does export a `SecretStorage` namespace, which is a different thing.
 
 **Fix.** Deep-import from `matrix-js-sdk/lib/crypto-api` and

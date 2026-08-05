@@ -305,6 +305,18 @@ describe('LoginPage', () => {
   });
 
   describe('OIDC (next-gen auth)', () => {
+    /**
+     * What OidcClientService hands back: the URL plus the PKCE context the caller is now
+     * the sole custodian of (matrix-js-sdk 42 persists none of it itself).
+     */
+    const OIDC_REQUEST = {
+      url: 'https://op/authorize?client_id=abc&state=STATE1',
+      state: 'STATE1',
+      clientId: 'CLIENT1',
+      deviceId: 'DEVICE1',
+      codeVerifier: 'VERIFIER1',
+    };
+
     /** An OIDC-native login page: discovered homeserver + provider metadata. */
     async function renderOidcReady(
       buildOidcAuthorizationRequest: ReturnType<typeof vi.fn>,
@@ -318,13 +330,7 @@ describe('LoginPage', () => {
     }
 
     it('builds the authorization request, stashes the sign-in state, then redirects (web)', async () => {
-      const request = {
-        url: 'https://op/authorize?client_id=abc&state=STATE1',
-        state: 'STATE1',
-        sessionStateKey: 'mx_oidc_STATE1',
-        sessionStateBlob: 'BLOB',
-      };
-      const buildOidcAuthorizationRequest = vi.fn(() => of(request));
+      const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
       const { cmp, oidcStore } = await renderOidcReady(
         buildOidcAuthorizationRequest,
       );
@@ -341,25 +347,25 @@ describe('LoginPage', () => {
       };
       expect(params.applicationType).toBe('web');
       expect(params.redirectUri).toContain('/sso-callback');
-      // State is stashed before redirect, but the PKCE code_verifier blob is NOT copied
-      // into web localStorage (the SDK's own sessionStorage copy survives the same-tab
-      // redirect) — only the non-secret key rides along, for post-exchange cleanup.
+      // The whole PKCE context — including the code_verifier — is stashed before the
+      // redirect ON WEB TOO. matrix-js-sdk 42 persists no sign-in state of its own, so
+      // this stash is the only copy; skipping it on web would simply break web login.
       expect(oidcStore.save).toHaveBeenCalledTimes(1);
       expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
         state: 'STATE1',
         baseUrl: 'https://hs.example',
+        issuer: 'https://op',
         redirectUri: params.redirectUri,
-        sessionStateKey: 'mx_oidc_STATE1',
-        sessionStateBlob: null,
+        clientId: 'CLIENT1',
+        deviceId: 'DEVICE1',
+        codeVerifier: 'VERIFIER1',
       });
     });
 
     it('sends prompt=create for registration when the provider supports it', async () => {
       const request = {
+        ...OIDC_REQUEST,
         url: 'https://op/authorize?state=STATE1',
-        state: 'STATE1',
-        sessionStateKey: 'mx_oidc_STATE1',
-        sessionStateBlob: 'BLOB',
       };
       const buildOidcAuthorizationRequest = vi.fn(() => of(request));
       const { cmp } = await renderLogin({
@@ -388,10 +394,8 @@ describe('LoginPage', () => {
       const open = vi.spyOn(window, 'open').mockImplementation(() => null);
       try {
         const request = {
+          ...OIDC_REQUEST,
           url: 'https://op/authorize?state=STATE1',
-          state: 'STATE1',
-          sessionStateKey: 'mx_oidc_STATE1',
-          sessionStateBlob: 'BLOB',
         };
         const buildOidcAuthorizationRequest = vi.fn(() => of(request));
         const { cmp, oidcStore } = await renderOidcReady(
@@ -412,10 +416,13 @@ describe('LoginPage', () => {
         // authority position, which strict providers reject at dynamic registration.
         expect(params.redirectUri).toBe('eu.qwky.trinity:/sso-callback');
         expect(open).toHaveBeenCalledWith(request.url, '_blank');
-        // Native/Electron DO durably stash the code_verifier blob (their callback
-        // context has empty sessionStorage and must re-seed it).
+        // Native/Electron durably stash the PKCE context against a cold-start callback
+        // in a different browsing context — the same write web now performs.
         expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
-          sessionStateBlob: 'BLOB',
+          redirectUri: 'eu.qwky.trinity:/sso-callback',
+          clientId: 'CLIENT1',
+          deviceId: 'DEVICE1',
+          codeVerifier: 'VERIFIER1',
         });
       } finally {
         open.mockRestore();

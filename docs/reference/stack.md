@@ -54,8 +54,8 @@ major rather than editing numbers by hand.
 | `tailwindcss`                         | 4.3.3   | v4, configured from CSS. Tokens live in `theme/variables.scss`, framework wiring in `theme/spartan.css`     |
 | `tw-animate-css`                      | 1.4.0   | Animation utilities the Helm components expect                                                              |
 | `@ng-icons/lucide`                    | 34.0.0  | Icon set behind `<ng-icon name="lucide…">`; `@ng-icons/core` moves with it                                  |
-| `matrix-js-sdk`                       | 41.9.0  | The single source of truth for rooms, timelines and crypto. Crypto types are a deep import, see below       |
-| `@matrix-org/matrix-sdk-crypto-wasm`  | 18.3.1  | Rust crypto backend. Its `.wasm` needs an explicit URL, see below                                           |
+| `matrix-js-sdk`                       | 42.1.0  | The single source of truth for rooms, timelines and crypto. Crypto types are a deep import, see below       |
+| `@matrix-org/matrix-sdk-crypto-wasm`  | 18.4.0  | Rust crypto backend. Its `.wasm` needs an explicit URL, see below                                           |
 | `rxjs`                                | 7.8.2   | One-shot actions return cold Observables; state is signals                                                  |
 | `marked`                              | 18.0.7  | Markdown to HTML for the composer and the timeline                                                          |
 | `dompurify`                           | 3.4.13  | Sanitizes `formatted_body` against the Matrix allowlist, inbound and outbound, from one config              |
@@ -143,7 +143,7 @@ missing WASM is otherwise only discovered at sign-in.
 
 ### Crypto types are deep imports
 
-matrix-js-sdk 41.x does not re-export the crypto API from the package root. `CryptoApi`,
+matrix-js-sdk does not re-export the crypto API from the package root (still true in 42.x). `CryptoApi`,
 `CryptoEvent`, `decodeRecoveryKey`, `EventShieldColour`, `ServerSideSecretStorage` and
 `SecretStorageKeyDescriptionAesV1` come from `matrix-js-sdk/lib/crypto-api` and
 `matrix-js-sdk/lib/secret-storage`.

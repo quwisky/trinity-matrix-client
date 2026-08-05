@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // In-memory @capacitor/preferences (hoisted so the vi.mock factory can see it).
 const { prefs } = vi.hoisted(() => ({ prefs: new Map<string, string>() }));
@@ -18,257 +18,349 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }));
 
-// Stub only the OIDC SDK entry points the service touches; keep everything else real.
+// Stub ONLY the client factory (the homeserver round-trips: auth-metadata discovery and
+// whoami). `OAuth2` deliberately stays real: since matrix-js-sdk 42 it drives the whole
+// OAuth exchange itself over global `fetch`, so stubbing `fetch` instead lets these specs
+// exercise the actual protocol — the PKCE challenge, the wire parameters and the
+// response_mode — rather than our own idea of it.
 vi.mock('matrix-js-sdk', async (importActual) => {
   const actual = await importActual<typeof import('matrix-js-sdk')>();
-  return {
-    ...actual,
-    createClient: vi.fn(),
-    registerOidcClient: vi.fn(),
-    generateOidcAuthorizationUrl: vi.fn(),
-    completeAuthorizationCodeGrant: vi.fn(),
-  };
+  return { ...actual, createClient: vi.fn() };
 });
 
 import {
-  completeAuthorizationCodeGrant,
   createClient,
-  generateOidcAuthorizationUrl,
-  registerOidcClient,
-  type OidcClientConfig,
+  encodeUnpaddedBase64Url,
+  isValidAuthMetadata,
 } from 'matrix-js-sdk';
-import { OidcClientService } from './oidc-client.service';
+import { AUTH_METADATA } from './auth-metadata.fixture';
+import {
+  OidcClientService,
+  type OidcAuthorizationParams,
+  type OidcGrantContext,
+} from './oidc-client.service';
 
-const registerOidcClientMock = vi.mocked(registerOidcClient);
-const generateUrlMock = vi.mocked(generateOidcAuthorizationUrl);
-const completeGrantMock = vi.mocked(completeAuthorizationCodeGrant);
 const createClientMock = vi.mocked(createClient);
 
+/** The account's own homeserver — discovery goes through its auth metadata. */
+const HOMESERVER = 'https://hs.example';
+const REDIRECT_URI = 'https://app/sso-callback';
+const CLIENT_ID = 'client-123';
+/** Where the dynamic-registration client id is cached (prefix + issuer). */
+const CLIENT_ID_KEY = 'oidc.clientId.v2:https://op.example';
+
+const PARAMS: OidcAuthorizationParams = {
+  baseUrl: HOMESERVER,
+  metadata: AUTH_METADATA,
+  redirectUri: REDIRECT_URI,
+  applicationType: 'web',
+};
+
+/** The stash written when the request was built, replayed to complete the grant. */
+const CONTEXT: OidcGrantContext = {
+  baseUrl: HOMESERVER,
+  redirectUri: REDIRECT_URI,
+  clientId: CLIENT_ID,
+  deviceId: 'DEV42',
+  codeVerifier: 'code-verifier-from-the-stash',
+};
+
+const WHOAMI = { user_id: '@me:hs', device_id: 'DEV42' };
+
+const BINDING = {
+  issuer: AUTH_METADATA.issuer,
+  clientId: CLIENT_ID,
+  redirectUri: REDIRECT_URI,
+};
+
 /**
- * Stub the homeserver auth-metadata lookup `revoke()` discovers through. `metadata` is
- * the resolved provider config; pass an Error to make discovery reject.
+ * Stub the SDK client factory. `getAuthMetadata()` is how both `completeGrant` and
+ * `revokeTokens` discover the provider (pass an Error to make discovery reject);
+ * `whoami()` is how `completeGrant` resolves the account identity.
  */
-const stubAuthMetadata = (metadata: unknown) =>
+function stubClient({
+  metadata = AUTH_METADATA as unknown,
+  whoami,
+}: {
+  metadata?: unknown;
+  whoami?: { user_id: string; device_id?: string };
+} = {}): void {
   createClientMock.mockReturnValue({
     getAuthMetadata:
       metadata instanceof Error
         ? vi.fn().mockRejectedValue(metadata)
         : vi.fn().mockResolvedValue(metadata),
+    whoami: vi.fn().mockResolvedValue(whoami),
   } as never);
+}
 
-const CONFIG = { issuer: 'https://op.example' } as unknown as OidcClientConfig;
-/** The account's own homeserver — revocation discovery goes through its auth metadata. */
-const HOMESERVER = 'https://hs.example';
-const BINDING = {
-  issuer: 'https://op.example',
-  clientId: 'client-123',
-  redirectUri: 'https://app/sso-callback',
-  idTokenClaims: {
-    iss: 'https://op.example',
-    sub: 'u',
-    aud: 'client-123',
-    exp: 1,
-    iat: 0,
-  },
-};
+/** The three provider endpoints the real `OAuth2` POSTs to, keyed by role. */
+const ENDPOINTS = {
+  registration: AUTH_METADATA.registration_endpoint,
+  token: AUTH_METADATA.token_endpoint,
+  revocation: AUTH_METADATA.revocation_endpoint,
+} as const;
+
+type Handler = (init: RequestInit) => unknown;
+
+/** Minimal stand-in for a `Response`: the SDK reads only these three members. */
+const jsonResponse = (body: unknown, status = 200) => ({
+  status,
+  headers: new Headers(),
+  json: async () => body,
+});
+
+/**
+ * Route `globalThis.fetch` to a fake provider so the real `OAuth2` runs end to end.
+ * An unrouted endpoint throws rather than silently resolving, so a stray request can't
+ * hide inside the best-effort `catchError` on the revocation path.
+ */
+function stubFetch(routes: Partial<Record<keyof typeof ENDPOINTS, Handler>>) {
+  const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+    const role = (Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[]).find(
+      (name) => ENDPOINTS[name] === url,
+    );
+    const handler = role && routes[role];
+    if (!handler) {
+      throw new Error(`unexpected fetch to ${url}`);
+    }
+    return handler(init);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+const jsonBody = (init: RequestInit): Record<string, unknown> =>
+  JSON.parse(String(init.body));
+const formBody = (init: RequestInit): URLSearchParams =>
+  new URLSearchParams(String(init.body));
+
+/** The PKCE challenge a given verifier must produce (RFC 7636 S256). */
+async function challengeFor(codeVerifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(codeVerifier),
+  );
+  return encodeUnpaddedBase64Url(new Uint8Array(digest));
+}
 
 describe('OidcClientService', () => {
   let svc: OidcClientService;
+  // Restore only `fetch`: vi.unstubAllGlobals() would also drop the matchMedia /
+  // PointerEvent stubs test-setup.base installs once for the whole file.
+  const realFetch = globalThis.fetch;
 
   beforeEach(() => {
     vi.clearAllMocks();
     prefs.clear();
-    sessionStorage.clear();
     TestBed.configureTestingModule({ providers: [OidcClientService] });
     svc = TestBed.inject(OidcClientService);
   });
 
+  afterEach(() => {
+    vi.stubGlobal('fetch', realFetch);
+  });
+
+  it('uses a fixture the SDK itself accepts as valid auth metadata', () => {
+    // The single highest-value assertion in the matrix-js-sdk 42 migration. Every
+    // metadata object reaching this service in production comes from
+    // `MatrixClient.getAuthMetadata()`, which runs this exact guard and throws on
+    // failure — so if a future release tightens the contract (42 already added
+    // revocation_endpoint, registration_endpoint and the response_modes/grant_types
+    // requirements), this fails here instead of every spec below passing against a
+    // config the app could never be handed.
+    expect(isValidAuthMetadata(AUTH_METADATA)).toBe(true);
+  });
+
   describe('buildAuthorizationRequest', () => {
-    it('registers the client, harvests the SDK state + PKCE blob from sessionStorage', async () => {
-      registerOidcClientMock.mockResolvedValue('client-123');
-      generateUrlMock.mockImplementation(async () => {
-        // The SDK writes the sign-in state (with the code_verifier) to sessionStorage.
-        sessionStorage.setItem('mx_oidc_STATEXYZ', 'SIGNIN_BLOB');
-        return 'https://op.example/authorize?client_id=client-123&state=STATEXYZ';
+    it('registers this client with the provider (snake_case wire shape)', async () => {
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ client_id: CLIENT_ID }),
       });
 
       const request = await firstValueFrom(
-        svc.buildAuthorizationRequest({
-          baseUrl: 'https://hs.example',
-          config: CONFIG,
-          redirectUri: 'https://app/sso-callback',
-          applicationType: 'web',
-          nonce: 'NONCE',
-        }),
+        svc.buildAuthorizationRequest(PARAMS),
       );
 
-      expect(request.state).toBe('STATEXYZ'); // parsed from the URL, not our nonce
-      expect(request.sessionStateKey).toBe('mx_oidc_STATEXYZ');
-      expect(request.sessionStateBlob).toBe('SIGNIN_BLOB');
-      // Registered as `web` with exactly the given redirect uri.
-      expect(registerOidcClientMock).toHaveBeenCalledWith(
-        CONFIG,
-        expect.objectContaining({
-          applicationType: 'web',
-          redirectUris: ['https://app/sso-callback'],
-        }),
+      expect(request.clientId).toBe(CLIENT_ID);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        AUTH_METADATA.registration_endpoint,
       );
+      // Registered as `web` with exactly the given redirect uri. The keys are the v42
+      // break: registration now takes the wire body verbatim, where v41 took a
+      // camelCase wrapper (applicationType / redirectUris).
+      expect(jsonBody(fetchMock.mock.calls[0][1])).toMatchObject({
+        client_name: 'Trinity',
+        client_uri: 'https://trinity.qwky.eu',
+        application_type: 'web',
+        redirect_uris: [REDIRECT_URI],
+      });
+    });
+
+    it('hands back the PKCE context bound to the URL it generated', async () => {
+      // Replaces the old "harvest mx_oidc_<state> out of sessionStorage" coverage:
+      // v42 persists nothing, so the caller is handed the verifier and device id
+      // directly and is their sole custodian. What still has to hold is the binding —
+      // the verifier returned must be the one the challenge in the URL derives from,
+      // or the token exchange later fails at the provider with an opaque PKCE error.
+      stubFetch({ registration: () => jsonResponse({ client_id: CLIENT_ID }) });
+
+      const request = await firstValueFrom(
+        svc.buildAuthorizationRequest(PARAMS),
+      );
+
+      const url = new URL(request.url);
+      expect(`${url.origin}${url.pathname}`).toBe(
+        AUTH_METADATA.authorization_endpoint,
+      );
+      expect(url.searchParams.get('client_id')).toBe(CLIENT_ID);
+      expect(url.searchParams.get('redirect_uri')).toBe(REDIRECT_URI);
+      expect(url.searchParams.get('response_type')).toBe('code');
+      expect(url.searchParams.get('state')).toBe(request.state);
+      expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+      expect(url.searchParams.get('code_challenge')).toBe(
+        await challengeFor(request.codeVerifier),
+      );
+      // The device id is likewise only recoverable from the stash — it is what the
+      // requested scope pins the session to.
+      expect(url.searchParams.get('scope')).toContain(
+        `urn:matrix:client:device:${request.deviceId}`,
+      );
+    });
+
+    it('asks the provider for response_mode=query', async () => {
+      // LOAD-BEARING, and a live regression risk: v42 defaults responseMode to
+      // 'fragment' (v41 defaulted to 'query'), while every callback reader in this app
+      // parses query params only. Taking the default would put the code somewhere
+      // nothing looks and hang login on every platform.
+      stubFetch({ registration: () => jsonResponse({ client_id: CLIENT_ID }) });
+
+      const request = await firstValueFrom(
+        svc.buildAuthorizationRequest(PARAMS),
+      );
+
+      expect(new URL(request.url).searchParams.get('response_mode')).toBe(
+        'query',
+      );
+    });
+
+    it('forwards `prompt` to the provider (account registration)', async () => {
+      // Also pins the positional-argument order of the three-arg
+      // generateAuthorizationCodeGrantUrl(state, responseMode, prompt): a prompt
+      // landing in the responseMode slot would silently un-fix the test above.
+      stubFetch({ registration: () => jsonResponse({ client_id: CLIENT_ID }) });
+
+      const request = await firstValueFrom(
+        svc.buildAuthorizationRequest({ ...PARAMS, prompt: 'create' }),
+      );
+
+      const params = new URL(request.url).searchParams;
+      expect(params.get('prompt')).toBe('create');
+      expect(params.get('response_mode')).toBe('query');
     });
 
     it('caches the registered client id per issuer (no re-registration)', async () => {
-      registerOidcClientMock.mockResolvedValue('client-123');
-      generateUrlMock.mockResolvedValue('https://op.example/authorize?state=S');
-      const params = {
-        baseUrl: 'https://hs.example',
-        config: CONFIG,
-        redirectUri: 'https://app/sso-callback',
-        applicationType: 'web' as const,
-        nonce: 'N',
-      };
-
-      await firstValueFrom(svc.buildAuthorizationRequest(params));
-      await firstValueFrom(svc.buildAuthorizationRequest(params));
-
-      expect(registerOidcClientMock).toHaveBeenCalledTimes(1); // second call used the cache
-      expect(prefs.get('oidc.clientId.v2:https://op.example')).toBe(
-        'client-123',
-      );
-    });
-
-    it('harvests the sign-in state via the fallback scan when the SDK key prefix differs', async () => {
-      registerOidcClientMock.mockResolvedValue('client-123');
-      generateUrlMock.mockImplementation(async () => {
-        // A hypothetical future oidc-client-ts prefix — NOT the exact mx_oidc_<state> key,
-        // so only the prefix-scan fallback (endsWith(state)) can find it.
-        sessionStorage.setItem('mx_oidc_v2_STATEXYZ', 'FALLBACK_BLOB');
-        return 'https://op.example/authorize?state=STATEXYZ';
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ client_id: CLIENT_ID }),
       });
 
-      const request = await firstValueFrom(
-        svc.buildAuthorizationRequest({
-          baseUrl: 'https://hs.example',
-          config: CONFIG,
-          redirectUri: 'https://app/sso-callback',
-          applicationType: 'web',
-          nonce: 'N',
-        }),
-      );
+      await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
+      await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
 
-      expect(request.state).toBe('STATEXYZ');
-      expect(request.sessionStateKey).toBe('mx_oidc_v2_STATEXYZ');
-      expect(request.sessionStateBlob).toBe('FALLBACK_BLOB');
+      expect(fetchMock).toHaveBeenCalledTimes(1); // second call used the cache
+      expect(prefs.get(CLIENT_ID_KEY)).toBe(CLIENT_ID);
     });
   });
 
   describe('completeGrant', () => {
-    const grant = {
-      oidcClientSettings: {
-        clientId: 'client-123',
-        issuer: 'https://op.example',
-      },
-      tokenResponse: {
-        token_type: 'Bearer',
-        access_token: 'access-tok',
-        refresh_token: 'refresh-tok',
-        expires_at: 1_700_000_000, // epoch SECONDS
-        id_token: 'id-tok',
-        scope: 'openid',
-      },
-      homeserverUrl: 'https://hs.example',
-      idTokenClaims: { sub: 'u', iss: 'https://op.example' },
+    const TOKEN = {
+      token_type: 'Bearer',
+      access_token: 'access-tok',
+      refresh_token: 'refresh-tok',
+      expires_in: 300, // seconds, relative — v42 responses carry no expires_at
+      scope: 'urn:matrix:client:api:*',
     };
 
-    it('exchanges the code, resolves identity via whoami, and builds the binding', async () => {
-      completeGrantMock.mockResolvedValue(grant as never);
-      const whoami = vi
-        .fn()
-        .mockResolvedValue({ user_id: '@me:hs', device_id: 'DEV42' });
-      createClientMock.mockReturnValue({ whoami } as never);
+    it('replays the stashed verifier, resolves identity via whoami, and builds the binding', async () => {
+      stubClient({ whoami: WHOAMI });
+      const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
 
-      const result = await firstValueFrom(
-        svc.completeGrant('CODE', 'STATE', 'https://app/sso-callback'),
-      );
+      const result = await firstValueFrom(svc.completeGrant('CODE', CONTEXT));
 
-      expect(completeGrantMock).toHaveBeenCalledWith('CODE', 'STATE');
-      expect(result).toMatchObject({
-        homeserverUrl: 'https://hs.example',
+      // Discovery and whoami both go through the account's OWN homeserver; whoami is
+      // authenticated with the token that was just minted.
+      expect(createClientMock).toHaveBeenCalledWith({ baseUrl: HOMESERVER });
+      expect(createClientMock).toHaveBeenCalledWith({
+        baseUrl: HOMESERVER,
+        accessToken: 'access-tok',
+      });
+      // The token POST carries the PKCE verifier out of the stash — nothing else has a
+      // copy since v42 dropped oidc-client-ts, so this is what makes a callback in a
+      // different browsing context (native / Electron) completable at all.
+      expect(fetchMock.mock.calls[0][0]).toBe(AUTH_METADATA.token_endpoint);
+      expect(Object.fromEntries(formBody(fetchMock.mock.calls[0][1]))).toEqual({
+        grant_type: 'authorization_code',
+        client_id: CLIENT_ID,
+        code_verifier: CONTEXT.codeVerifier,
+        redirect_uri: REDIRECT_URI,
+        code: 'CODE',
+      });
+      // toEqual, not toMatchObject: the binding must NOT carry idTokenClaims any more
+      // (no id_token exists in v42), and the issuer comes from discovery, not the stash.
+      expect(result).toEqual({
+        homeserverUrl: HOMESERVER,
         userId: '@me:hs',
         deviceId: 'DEV42',
         accessToken: 'access-tok',
         refreshToken: 'refresh-tok',
-        accessTokenExpiresAt: 1_700_000_000_000, // seconds → ms
-        oidc: {
-          issuer: 'https://op.example',
-          clientId: 'client-123',
-          redirectUri: 'https://app/sso-callback',
-          idTokenClaims: grant.idTokenClaims,
-        },
+        accessTokenExpiresAt: expect.any(Number),
+        oidc: BINDING,
       });
     });
 
     it('rejects when the provider returns no device for the session', async () => {
-      completeGrantMock.mockResolvedValue(grant as never);
-      createClientMock.mockReturnValue({
-        whoami: vi.fn().mockResolvedValue({ user_id: '@me:hs' }), // no device_id
-      } as never);
+      stubClient({ whoami: { user_id: '@me:hs' } }); // no device_id
+      stubFetch({ token: () => jsonResponse(TOKEN) });
 
       await expect(
-        firstValueFrom(
-          svc.completeGrant('CODE', 'STATE', 'https://app/sso-callback'),
-        ),
+        firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
       ).rejects.toThrow(/no device/i);
     });
 
-    it('computes expiry from expires_in when expires_at is absent', async () => {
-      completeGrantMock.mockResolvedValue({
-        ...grant,
-        tokenResponse: {
-          token_type: 'Bearer',
-          access_token: 'a',
-          refresh_token: 'r',
-          expires_in: 300, // seconds, relative
-          id_token: 'i',
-          scope: 'openid',
+    it('derives the expiry from expires_in, stamped before the token request', async () => {
+      // v42's BearerTokenResponse carries only the relative `expires_in`. Reading the
+      // clock AFTER the round-trip would over-state the lifetime by the round-trip, so
+      // the delay below separates the two bounds: only a timestamp taken before the
+      // POST satisfies the upper one.
+      let tokenRequestAt = 0;
+      stubClient({ whoami: WHOAMI });
+      stubFetch({
+        token: async () => {
+          tokenRequestAt = Date.now();
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return jsonResponse({ ...TOKEN, expires_in: 300 });
         },
-      } as never);
-      createClientMock.mockReturnValue({
-        whoami: vi
-          .fn()
-          .mockResolvedValue({ user_id: '@me:hs', device_id: 'D' }),
-      } as never);
+      });
 
       const before = Date.now();
-      const result = await firstValueFrom(
-        svc.completeGrant('C', 'S', 'https://app/cb'),
-      );
+      const result = await firstValueFrom(svc.completeGrant('CODE', CONTEXT));
 
       expect(result.accessTokenExpiresAt).toBeGreaterThanOrEqual(
         before + 300_000,
       );
       expect(result.accessTokenExpiresAt).toBeLessThanOrEqual(
-        Date.now() + 300_000,
+        tokenRequestAt + 300_000,
       );
     });
 
     it('omits refreshToken and expiry when the provider returns neither', async () => {
-      completeGrantMock.mockResolvedValue({
-        ...grant,
-        tokenResponse: {
-          token_type: 'Bearer',
-          access_token: 'a',
-          id_token: 'i',
-          scope: 'openid',
-        },
-      } as never);
-      createClientMock.mockReturnValue({
-        whoami: vi
-          .fn()
-          .mockResolvedValue({ user_id: '@me:hs', device_id: 'D' }),
-      } as never);
+      stubClient({ whoami: WHOAMI });
+      stubFetch({
+        token: () =>
+          jsonResponse({ token_type: 'Bearer', access_token: 'access-tok' }),
+      });
 
-      const result = await firstValueFrom(
-        svc.completeGrant('C', 'S', 'https://app/cb'),
-      );
+      const result = await firstValueFrom(svc.completeGrant('CODE', CONTEXT));
 
       expect(result.refreshToken).toBeUndefined();
       expect(result.accessTokenExpiresAt).toBeUndefined();
@@ -277,42 +369,95 @@ describe('OidcClientService', () => {
 
   describe('revokeTokens', () => {
     it('POSTs a revocation for each token to the discovered endpoint', async () => {
-      stubAuthMetadata({ revocation_endpoint: 'https://op.example/revoke' });
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-      vi.stubGlobal('fetch', fetchMock);
-      try {
-        await firstValueFrom(
+      stubClient();
+      const fetchMock = stubFetch({ revocation: () => jsonResponse({}) });
+
+      await firstValueFrom(
+        svc.revokeTokens(HOMESERVER, BINDING, {
+          accessToken: 'a',
+          refreshToken: 'r',
+        }),
+      );
+
+      // Discovery goes through the account's OWN homeserver auth metadata.
+      expect(createClientMock).toHaveBeenCalledWith({ baseUrl: HOMESERVER });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        AUTH_METADATA.revocation_endpoint,
+      );
+      const bodies = fetchMock.mock.calls.map(([, init]) => formBody(init));
+      expect(
+        bodies.some(
+          (body) =>
+            body.get('token') === 'r' &&
+            body.get('token_type_hint') === 'refresh_token',
+        ),
+      ).toBe(true);
+      expect(
+        bodies.some(
+          (body) =>
+            body.get('token') === 'a' &&
+            body.get('token_type_hint') === 'access_token',
+        ),
+      ).toBe(true);
+      expect(bodies.every((body) => body.get('client_id') === CLIENT_ID)).toBe(
+        true,
+      );
+    });
+
+    it('resolves void when discovery fails, without POSTing (never blocks logout)', async () => {
+      stubClient({ metadata: new Error('metadata unavailable') });
+      const fetchMock = stubFetch({});
+
+      await expect(
+        firstValueFrom(
+          svc.revokeTokens(HOMESERVER, BINDING, { refreshToken: 'r' }),
+        ),
+      ).resolves.toBeUndefined();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('revokes only the token provided (single-token) with its type hint', async () => {
+      stubClient();
+      const fetchMock = stubFetch({ revocation: () => jsonResponse({}) });
+
+      await firstValueFrom(
+        svc.revokeTokens(HOMESERVER, BINDING, { refreshToken: 'only-refresh' }),
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = formBody(fetchMock.mock.calls[0][1]);
+      expect(body.get('token')).toBe('only-refresh');
+      expect(body.get('token_type_hint')).toBe('refresh_token');
+    });
+
+    it('resolves void when a revocation POST rejects (best-effort)', async () => {
+      stubClient();
+      stubFetch({
+        revocation: () => {
+          throw new Error('down');
+        },
+      });
+
+      await expect(
+        firstValueFrom(
           svc.revokeTokens(HOMESERVER, BINDING, {
             accessToken: 'a',
             refreshToken: 'r',
           }),
-        );
-
-        // Discovery goes through the account's OWN homeserver auth metadata.
-        expect(createClientMock).toHaveBeenCalledWith({ baseUrl: HOMESERVER });
-        expect(fetchMock).toHaveBeenCalledTimes(2);
-        const bodies = fetchMock.mock.calls.map((c) => String(c[1].body));
-        expect(fetchMock.mock.calls[0][0]).toBe('https://op.example/revoke');
-        expect(
-          bodies.some(
-            (b) => b.includes('token=r') && b.includes('refresh_token'),
-          ),
-        ).toBe(true);
-        expect(
-          bodies.some(
-            (b) => b.includes('token=a') && b.includes('access_token'),
-          ),
-        ).toBe(true);
-        expect(bodies.every((b) => b.includes('client_id=client-123'))).toBe(
-          true,
-        );
-      } finally {
-        vi.unstubAllGlobals();
-      }
+        ),
+      ).resolves.toBeUndefined();
     });
 
-    it('resolves void when discovery fails (never blocks logout)', async () => {
-      stubAuthMetadata(new Error('metadata unavailable'));
+    it('resolves void when the provider refuses the revocation (best-effort)', async () => {
+      // The 4xx path is distinct from a rejected fetch: the SDK turns the status into
+      // an HTTPError itself. It is also what replaces the old "no revocation_endpoint,
+      // give up quietly" test — that branch is gone, because the endpoint is required
+      // on ValidatedAuthMetadata and getAuthMetadata() rejects metadata without it.
+      stubClient();
+      stubFetch({
+        revocation: () => jsonResponse({ error: 'invalid_token' }, 400),
+      });
 
       await expect(
         firstValueFrom(
@@ -320,67 +465,15 @@ describe('OidcClientService', () => {
         ),
       ).resolves.toBeUndefined();
     });
-
-    it('does not POST when the provider metadata has no revocation_endpoint', async () => {
-      stubAuthMetadata({}); // no revocation_endpoint
-      const fetchMock = vi.fn();
-      vi.stubGlobal('fetch', fetchMock);
-      try {
-        await expect(
-          firstValueFrom(
-            svc.revokeTokens(HOMESERVER, BINDING, { refreshToken: 'r' }),
-          ),
-        ).resolves.toBeUndefined();
-        expect(fetchMock).not.toHaveBeenCalled();
-      } finally {
-        vi.unstubAllGlobals();
-      }
-    });
-
-    it('revokes only the token provided (single-token) with its type hint', async () => {
-      stubAuthMetadata({ revocation_endpoint: 'https://op.example/revoke' });
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-      vi.stubGlobal('fetch', fetchMock);
-      try {
-        await firstValueFrom(
-          svc.revokeTokens(HOMESERVER, BINDING, {
-            refreshToken: 'only-refresh',
-          }),
-        );
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        const body = String(fetchMock.mock.calls[0][1].body);
-        expect(body).toContain('token=only-refresh');
-        expect(body).toContain('token_type_hint=refresh_token');
-      } finally {
-        vi.unstubAllGlobals();
-      }
-    });
-
-    it('resolves void when a revocation POST rejects (best-effort)', async () => {
-      stubAuthMetadata({ revocation_endpoint: 'https://op.example/revoke' });
-      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')));
-      try {
-        await expect(
-          firstValueFrom(
-            svc.revokeTokens(HOMESERVER, BINDING, {
-              accessToken: 'a',
-              refreshToken: 'r',
-            }),
-          ),
-        ).resolves.toBeUndefined();
-      } finally {
-        vi.unstubAllGlobals();
-      }
-    });
   });
 
   describe('forgetClientId', () => {
     it('removes the cached client id so the next login re-registers', async () => {
-      prefs.set('oidc.clientId.v2:https://op.example', 'client-123');
+      prefs.set(CLIENT_ID_KEY, CLIENT_ID);
 
-      await firstValueFrom(svc.forgetClientId('https://op.example'));
+      await firstValueFrom(svc.forgetClientId(AUTH_METADATA.issuer));
 
-      expect(prefs.get('oidc.clientId.v2:https://op.example')).toBeUndefined();
+      expect(prefs.get(CLIENT_ID_KEY)).toBeUndefined();
     });
   });
 });
