@@ -82,6 +82,14 @@ export class LoginPage {
   private reauthDeviceId: string | null = null;
 
   constructor() {
+    // Sweep an abandoned OIDC stash. `peek()` bins one that has outlived its TTL, and the
+    // TTL is only ever enforced on read — so a login the user walked away from leaves a
+    // PKCE code_verifier on disk until something reads it, and only the callback page
+    // otherwise does. Landing on /login means no round-trip is completing here, so this is
+    // the natural place. It cannot disturb a live login: a stash inside its TTL is left
+    // untouched, including one started in another tab.
+    void this.oidcState.peek();
+
     const reauth = this.reauthUserId();
     if (reauth) {
       // Skip the homeserver step: load the stored record and discover its flows.
@@ -295,6 +303,10 @@ export class LoginPage {
         redirectUri,
         applicationType,
         ...(prompt ? { prompt } : {}),
+        // Re-auth reuses the stored device so the account comes back without needing a
+        // fresh verification — the same reason it is threaded into the password and SSO
+        // paths above.
+        ...(this.reauthDeviceId ? { deviceId: this.reauthDeviceId } : {}),
       }),
     ).subscribe((request) => {
       void this.stashAndRedirect(

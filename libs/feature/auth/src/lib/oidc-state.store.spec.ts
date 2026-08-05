@@ -61,6 +61,20 @@ describe('OidcStateStore', () => {
     expect((await store.peek()).state).toBe('STATE1');
   });
 
+  it('bins a stash stamped in the future rather than trusting it forever', async () => {
+    await store.save(SAVE);
+    // A clock ahead of real time (or nudged forward) makes `now - started` negative. A
+    // one-sided `age <= TTL` reads that as fresh, so the stash — and the live
+    // code_verifier in it — would never expire.
+    prefs.set('oidc.startedAt', String(Date.now() + 60 * 60 * 1000));
+
+    await expect(store.peek()).resolves.toMatchObject({
+      state: null,
+      codeVerifier: null,
+    });
+    expect(prefs.get('oidc.codeVerifier')).toBeUndefined();
+  });
+
   it('is single-use via peek + clear: after clear, peek is empty', async () => {
     await store.save(SAVE);
     await store.clear();

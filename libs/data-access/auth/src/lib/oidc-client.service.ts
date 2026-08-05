@@ -35,6 +35,14 @@ export interface OidcAuthorizationParams {
   applicationType: OidcApplicationType;
   /** OIDC `prompt` (e.g. `create` for registration); omitted for a normal login. */
   prompt?: string;
+  /**
+   * Re-authenticate this existing device instead of minting a new one. Set only by the
+   * re-auth flow, whose whole purpose is to recover a soft-logged-out account WITHOUT
+   * the user having to verify a fresh device again. matrix-js-sdk 41 could not express
+   * this — `generateOidcAuthorizationUrl` took no device id and always generated one —
+   * so an OIDC re-auth silently produced a new device; v42's OAuth2 context accepts one.
+   */
+  deviceId?: string;
 }
 
 /**
@@ -279,6 +287,8 @@ export class OidcClientService {
     const auth = new OAuth2(params.metadata, {
       clientId,
       redirectUri: params.redirectUri,
+      // Omitted for a normal login, where OAuth2 mints one (`?? secureRandomString(10)`).
+      ...(params.deviceId ? { deviceId: params.deviceId } : {}),
     });
     // The `state` is ours to mint now — v41 let oidc-client-ts generate one and we read
     // it back out of the URL. It is what the provider echoes on callback and what the

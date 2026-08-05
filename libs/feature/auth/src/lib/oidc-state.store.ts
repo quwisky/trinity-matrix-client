@@ -133,14 +133,18 @@ export class OidcStateStore {
     ]);
 
     const started = Number(startedAt.value);
-    const fresh = Number.isFinite(started) && Date.now() - started <= TTL_MS;
+    const age = Date.now() - started;
+    // Two-sided on purpose. `age <= TTL_MS` alone treats a FUTURE timestamp as fresh, so a
+    // stash written while the device clock was ahead — or nudged forward by any means —
+    // would never expire and would keep serving a live code_verifier indefinitely. A
+    // negative age is not a young stash, it is an untrustworthy one.
+    const fresh = Number.isFinite(started) && age >= 0 && age <= TTL_MS;
     if (!fresh) {
-      // Bin it rather than just refusing to serve it. On native/Electron the blob holds
-      // the PKCE code_verifier — a secret — in app-private PLAINTEXT, and the TTL was
-      // only ever enforced here at READ time, so an abandoned login left it on disk
-      // until some later save() happened to overwrite it. It is spent either way; a
-      // secret should not outlive its purpose. Best-effort: a failed cleanup must not
-      // turn a "nothing stashed" answer into a rejection.
+      // Bin it rather than just refusing to serve it. The stash holds the PKCE
+      // code_verifier — a secret — in plaintext, and the TTL is only enforced here at READ
+      // time, so an abandoned login leaves it on disk until something reads or overwrites
+      // it. It is spent either way; a secret should not outlive its purpose. Best-effort:
+      // a failed cleanup must not turn a "nothing stashed" answer into a rejection.
       //
       // This does NOT weaken the verify-before-clear contract: that exists so a forged
       // callback cannot wipe a LIVE stash, and this one is already dead.

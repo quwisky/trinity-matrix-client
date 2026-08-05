@@ -244,6 +244,34 @@ describe('OidcClientService', () => {
       );
     });
 
+    it('re-authenticates a supplied device instead of minting a new one', async () => {
+      // The re-auth flow recovers a soft-logged-out account WITHOUT the user verifying a
+      // fresh device. matrix-js-sdk 41 could not express it (its authorize helper took no
+      // device id and always generated one); v42's OAuth2 context accepts one, and the
+      // requested scope is where it actually reaches the provider.
+      stubFetch({ registration: () => jsonResponse({ client_id: CLIENT_ID }) });
+
+      const request = await firstValueFrom(
+        svc.buildAuthorizationRequest({ ...PARAMS, deviceId: 'OLDDEV' }),
+      );
+
+      expect(request.deviceId).toBe('OLDDEV');
+      expect(new URL(request.url).searchParams.get('scope') ?? '').toContain(
+        'urn:matrix:client:device:OLDDEV',
+      );
+    });
+
+    it('mints a device when none is supplied (ordinary login)', async () => {
+      stubFetch({ registration: () => jsonResponse({ client_id: CLIENT_ID }) });
+
+      const request = await firstValueFrom(
+        svc.buildAuthorizationRequest(PARAMS),
+      );
+
+      expect(request.deviceId).toBeTruthy();
+      expect(request.deviceId).not.toBe('OLDDEV');
+    });
+
     it('forwards `prompt` to the provider (account registration)', async () => {
       // Also pins the positional-argument order of the three-arg
       // generateAuthorizationCodeGrantUrl(state, responseMode, prompt): a prompt

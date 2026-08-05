@@ -329,6 +329,40 @@ describe('LoginPage', () => {
       return rendered;
     }
 
+    it('re-authenticates the stored device instead of minting a new one', async () => {
+      const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
+      const { cmp } = await renderLogin(
+        {
+          buildOidcAuthorizationRequest,
+          getDelegatedAuthConfig: vi.fn(() =>
+            of({ issuer: 'https://op' } as never),
+          ),
+          getSupportedFlows: vi.fn(() => of([])),
+        } as unknown as Partial<AuthService>,
+        {
+          reauth: '@bob:hs',
+          record: {
+            baseUrl: 'https://hs.example',
+            userId: '@bob:hs',
+            deviceId: 'OLDDEV',
+          },
+        },
+      );
+      cmp.oidcMetadata.set({ issuer: 'https://op' } as never);
+
+      cmp.startOidc();
+      await Promise.resolve();
+
+      // Re-auth exists to recover a soft-logged-out account WITHOUT the user verifying a
+      // fresh device. matrix-js-sdk 41 could not express this — the authorize helper took
+      // no device id and always generated one — so an OIDC re-auth silently produced a new
+      // device and demanded re-verification. v42's OAuth2 context accepts one.
+      const params = buildOidcAuthorizationRequest.mock.calls[0][0] as {
+        deviceId?: string;
+      };
+      expect(params.deviceId).toBe('OLDDEV');
+    });
+
     it('builds the authorization request, stashes the sign-in state, then redirects (web)', async () => {
       const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
       const { cmp, oidcStore } = await renderOidcReady(
