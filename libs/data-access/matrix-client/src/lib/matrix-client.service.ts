@@ -31,7 +31,7 @@ import {
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
 import { MatrixSession } from '@trinity/util/matrix';
-import { preloadCryptoWasm } from '@trinity/util/matrix';
+import { preloadCryptoWasm, syncStoreDbName } from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { TrinityOidcTokenRefresher } from './oidc-token-refresher';
 
@@ -287,6 +287,27 @@ export class MatrixClientService {
     return defer(() => {
       this.teardownAll();
       return of(void 0);
+    });
+  }
+
+  /**
+   * Ask the homeserver to invalidate every live account's device, best-effort.
+   *
+   * For the factory reset, which must work when the homeserver is unreachable — so each
+   * logout is caught on the RAW promise rather than through `catchError`. The caller races
+   * this against a timeout, and `race` unsubscribes the loser: a promise that rejects after
+   * its subscriber has closed reaches RxJS's unhandled-error reporter, and from there the
+   * global error handler, which would surface a toast in the middle of a deliberate wipe.
+   *
+   * Resolves once every attempt has settled; never errors. Does NOT tear the clients down —
+   * the caller does that first, so the stores are closed before anything is deleted.
+   */
+  signOutAll(): Observable<void> {
+    return defer(() => {
+      const logouts = [...this.clients.values()].map((account) =>
+        account.client.logout(true).catch(() => undefined),
+      );
+      return from(Promise.all(logouts).then(() => undefined));
     });
   }
 
@@ -554,7 +575,9 @@ export class MatrixClientService {
     return new IndexedDBStore({
       indexedDB: globalThis.indexedDB,
       // Per-account database so multiple accounts on one device don't share a cache.
-      dbName: `trinity-sync:${userId}`,
+      // Note the SDK prepends `matrix-js-sdk:` to this — see syncStoreIndexedDbName, which
+      // is what anything deleting the database by name has to use.
+      dbName: syncStoreDbName(userId),
     });
   }
 
