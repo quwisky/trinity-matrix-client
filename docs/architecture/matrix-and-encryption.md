@@ -845,10 +845,16 @@ legacy SSO. Several details defend it:
     in app-private plaintext, and enforcing the TTL only at read time left an abandoned
     login's secret on disk until some later `save()` happened to overwrite it.
 
-    That freshness check is **two-sided** in both stores (`age >= 0 && age <= TTL_MS`).
-    `age <= TTL_MS` alone reads a *future* timestamp as fresh, so a stash written before the
-    device clock was corrected backwards would never expire — and the TTL is precisely what
-    bounds the window in which a leaked nonce still buys an attacker a forged callback.
+    That freshness check is **two-sided** in both stores
+    (`age >= -CLOCK_SKEW_MS && age <= TTL_MS`). `age <= TTL_MS` alone reads a *future*
+    timestamp as fresh, so a stash written before the device clock was corrected backwards
+    would never expire — and the TTL is precisely what bounds the window in which a leaked
+    nonce still buys an attacker a forged callback. The lower bound carries a **one-minute
+    skew allowance** rather than being zero-tolerance: the clock can legitimately step
+    backwards *during* the round-trip (NITZ/NTP after airplane mode, a laptop resuming from
+    sleep, `w32time`), and rejecting on that fails a genuine login with a message that reads
+    like an attack. A minute survives ordinary clock discipline and still bins a stash
+    stamped hours ahead.
 
 ### Token refresh
 
@@ -891,5 +897,29 @@ the grant cannot be turned into a session (`whoami` fails, or returns no `device
 the code is spent and the callback page has cleared the stash, so the attempt is
 unrecoverable — and under MSC3861 the OAuth session _is_ the Matrix device, so dropping it
 silently leaves a ghost device only removable from the provider's account-management page,
-plus one live refresh token per retry. The revocation is best-effort and the **original**
-failure is what propagates.
+plus one live refresh token per retry.
+
+That revocation is **detached, not awaited**. It targets the _provider_ — a different host
+from the homeserver that just failed — through the SDK's fetch helper, which sets no
+`AbortSignal` and no timeout. Awaiting it would hold `SsoCallbackPage` on its spinner, whose
+only exit lives in the error branch, for a full TCP connect timeout or indefinitely against a
+black-holed host. The **original** failure propagates immediately; the cleanup finishes on
+its own.
+
+**Re-auth binds the grant to the account it claims to reconnect.** `/login?reauth=<userId>`
+puts that account's device id in the requested scope and sends no `prompt=login`, so a
+provider already holding a browser session authorizes with no user interaction — on a
+homeserver where the user has two accounts, the grant can come back as the _other_ one, and
+nothing in the token response says whose it is (identity comes from `whoami`). Persisting it
+would file that account under this one's device id, at which point `upsert` sees
+`deviceChanged` and reclaims its live crypto store, forcing re-verification of an account the
+user never touched. `OidcStateSave.expectedUserId` therefore travels in the stash, and
+`AuthService.rejectMismatchedGrant` refuses the grant — revoking what it minted — before
+anything is persisted. Null for an ordinary login, where any account the user picks is
+correct.
+
+!!! note "The legacy SSO path has the same shape, and no such check"
+
+    `completeSsoLogin` also accepts a `deviceId` for re-auth and also derives identity from
+    the login response alone. That predates this work (it is unchanged from `develop`) and is
+    tracked separately; only the OIDC half is guarded here.

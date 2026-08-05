@@ -230,7 +230,8 @@ All notable changes to this project are documented here. The format is based on
   was only ever cleaned up when a sign-in actually came back. It is now cleared the next
   time you open the sign-in screen, and a device whose clock is running ahead can no longer
   keep one alive indefinitely — for the older single-sign-on as well as the provider-based
-  one.
+  one. A clock that merely corrects itself by a few seconds while you are signing in still
+  lets the sign-in through, so ordinary clock adjustments do not fail a genuine attempt.
 
 - **Some providers no longer sign you out minutes after you signed in.** Trinity's session
   is kept alive by quietly renewing it in the background. A provider is allowed to answer
@@ -239,14 +240,30 @@ All notable changes to this project are documented here. The format is based on
   signed the account out, taking a perfectly good credential off the disk with it. Signing
   back in worked, and then it happened again. Providers that issue a fresh credential each
   time — the common case, including Matrix's own authentication service — were never
-  affected.
+  affected. A provider that answers with a blank credential rather than none at all is now
+  treated the same way, and can no longer overwrite the good one already saved.
 
 - **A sign-in that fails at the last step no longer leaves a device behind.** If your
   homeserver became unreachable in the seconds between your provider approving the sign-in
   and Trinity asking who you are, the sign-in failed — but the session your provider had
   just created stayed alive, showing up as a device you could only remove from the
   provider's own account page, and every retry added another. Trinity now hands that session
-  back before reporting the failure.
+  back, and tells you what went wrong straight away rather than waiting on the handover —
+  which reaches your provider, not the server that just failed, and could take minutes.
+
+- **Reconnecting an account can no longer sign you in as a different one.** When a session
+  is signed out by the server, "sign in again to reconnect this account" sends your provider
+  the identity of the account it belongs to. If you have two accounts on the same provider
+  and it still had you signed in as the other one, it could approve without asking you
+  anything — and Trinity would reconnect the wrong account, filing it under the first
+  account's identity on this device. That could force the untouched account to be verified
+  again. Trinity now checks who came back before saving anything, explains the mismatch, and
+  hands the unwanted session back to the provider.
+
+- **A sign-in that cannot be finished says so instead of spinning.** If the app could not
+  read the sign-in it had saved — storage blocked or full, a phone failing to hand the link
+  back — the screen sat on "Completing sign in…" with no message and no way out except
+  force-quitting. It now tells you, and offers the way back.
 
 - **A sign-in callback that arrives twice is only used once.** Some platforms can deliver
   the return-from-provider link more than once. The second one used to be processed as
