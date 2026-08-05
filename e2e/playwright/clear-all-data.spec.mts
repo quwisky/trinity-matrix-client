@@ -1,0 +1,160 @@
+import { test, expect, type Page } from '@playwright/test';
+import { login, synapseSession } from './support/app.mts';
+
+// End-to-end for "Clear all data" (issue #96): the escape hatch on the login page for an
+// install whose local state is wedged, when devtools are not an option — which is to say
+// on iOS, Android and the desktop shell, always.
+//
+// Driven against a real homeserver because the thing being asserted is that real state
+// EXISTED and is then GONE. A wipe test that never proves there was anything to wipe is the
+// classic vacuous pass, so each case snapshots the pre-state first and fails if it is empty.
+//
+// Two coverage gaps, stated rather than implied, both covered by unit tests instead:
+//
+//   1. The Playwright webServer builds the `development` configuration, where
+//      `provideServiceWorker` is disabled (it is gated on `environment.production`), so
+//      nothing here exercises the service-worker/Cache Storage phase.
+//   2. On web the raw `localStorage.clear()` subsumes `Preferences.clear()` — both wipe the
+//      same `CapacitorStorage.`-prefixed keys — so this spec cannot tell them apart, and
+//      deleting the Preferences call alone leaves it green. That call is the ONLY thing
+//      clearing preferences on iOS and Android, where the raw clear is deliberately
+//      skipped, so it is pinned in local-data-wipe.service.spec.ts instead.
+//
+// Both were found by injecting the defect and watching this spec pass anyway.
+const session = synapseSession();
+
+/** Every CapacitorStorage-namespaced key currently in localStorage. */
+function storageKeys(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Object.keys(window.localStorage).filter((k) =>
+      k.startsWith('CapacitorStorage.'),
+    ),
+  );
+}
+
+/** Every IndexedDB database name, or [] where the browser cannot enumerate. */
+function databaseNames(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    if (typeof indexedDB.databases !== 'function') {
+      return [];
+    }
+    const dbs = await indexedDB.databases();
+    return dbs.map((d) => d.name).filter((n): n is string => !!n);
+  });
+}
+
+/**
+ * Wait for our namespace to empty, tolerating the document swap.
+ *
+ * NOT `waitForURL`: the restart replaces `/login` with `/`, which Angular routes straight
+ * back to `/login` — so a URL predicate matching either is already true before anything
+ * happens, and the assertions would run against a page mid-wipe. Poll the outcome instead.
+ * `evaluate` throws while the execution context is being torn down, which is expected here
+ * rather than a failure.
+ */
+async function waitForEmptyStorage(page: Page): Promise<void> {
+  await expect
+    .poll(async () => (await storageKeys(page).catch(() => null))?.length, {
+      timeout: 30_000,
+    })
+    .toBe(0);
+}
+
+/** Type a word into the erase confirmation and press its confirm button. */
+async function confirmErase(page: Page, word: string): Promise<void> {
+  const dialog = page.locator('trn-alert-dialog', {
+    hasText: 'Erase all Trinity data',
+  });
+  await dialog.waitFor({ state: 'visible', timeout: 20_000 });
+  await dialog.locator('input').fill(word);
+  await dialog.getByTestId('alert-confirm').click();
+}
+
+test.describe('Clear all data', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('erases a signed-in install and restarts into an empty app', async ({
+    page,
+  }) => {
+    await login(page, session);
+
+    // Prove there is something to erase. Without this the assertions below would pass just
+    // as happily against an install that had never stored anything.
+    const before = {
+      keys: await storageKeys(page),
+      dbs: await databaseNames(page),
+    };
+    // The key carries the full MXID, not the localpart `session.user` holds.
+    expect(
+      before.keys.some((k) =>
+        k.startsWith('CapacitorStorage.secure.matrix.accessToken:@'),
+      ),
+    ).toBe(true);
+    expect(before.keys).toContain('CapacitorStorage.matrix.accounts');
+    expect(
+      before.dbs.some((n) => n.startsWith('matrix-js-sdk:trinity-sync:@')),
+    ).toBe(true);
+    expect(before.dbs.some((n) => n.endsWith('::matrix-sdk-crypto'))).toBe(
+      true,
+    );
+
+    // Deliberately from ?add: the clients are LIVE, holding open the very databases the
+    // wipe has to delete. That is the state the bounded-delete path exists for, and the
+    // one a signed-out test would never reach.
+    await page.goto('/login?add', { waitUntil: 'networkidle' });
+
+    // A mistyped word must erase nothing at all.
+    await page.getByTestId('clear-all-data').click();
+    await confirmErase(page, 'yes please');
+    await expect(page.getByText(/Type ERASE exactly/)).toBeVisible();
+    expect(await storageKeys(page)).toContain(
+      'CapacitorStorage.matrix.accounts',
+    );
+
+    // Lower case on purpose — the gate normalises before comparing.
+    await page.getByTestId('clear-all-data').click();
+    await confirmErase(page, 'erase');
+
+    // The app replaces itself with a fresh document at the app root.
+    await waitForEmptyStorage(page);
+    await page.waitForLoadState('networkidle');
+
+    // Assert in the NEW document: nothing of ours survived.
+    const after = await databaseNames(page);
+    for (const name of before.dbs) {
+      expect(after).not.toContain(name);
+    }
+    // And it really is a signed-out app, not a cached view of a signed-in one.
+    await expect(page.getByLabel('Homeserver')).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
+  test('erases a signed-out install whose settings are wedged', async ({
+    page,
+  }) => {
+    // The case the issue is actually about: cannot sign in, so there is no account to read
+    // — but a bad preference (here a dead push gateway) is still on disk with no way to
+    // reach it from the UI.
+    await page.goto('/login', { waitUntil: 'networkidle' });
+    await page.evaluate(() =>
+      window.localStorage.setItem(
+        'CapacitorStorage.trinity.push.gateway',
+        'https://dead.example/_matrix/push/v1/notify',
+      ),
+    );
+    expect(await storageKeys(page)).toContain(
+      'CapacitorStorage.trinity.push.gateway',
+    );
+
+    await page.getByTestId('clear-all-data').click();
+    await confirmErase(page, 'ERASE');
+
+    await waitForEmptyStorage(page);
+    await page.waitForLoadState('networkidle');
+
+    expect(await storageKeys(page)).not.toContain(
+      'CapacitorStorage.trinity.push.gateway',
+    );
+  });
+});

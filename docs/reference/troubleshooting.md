@@ -737,6 +737,36 @@ because `finalize` never runs.
 **Fix.** Put failure handling in the template, subscribe to everything you call, and do not
 use it on a path that must triage its own errors.
 
+### The app is wedged and there is no way to clear its data
+
+**Symptom.** Trinity will not start, will not sign in, or renders wrongly, and signing out
+does not help — because sign-out only removes tokens and the account registry. On iOS,
+Android and the desktop shell there is no devtools "clear site data" to fall back on.
+
+**Cause.** The app's local state spans four surfaces, and nothing cleared them all: ~20
+`trinity.*` preferences, the account registry and secrets under `matrix.*` / `secure.*`, the
+OIDC and SSO round-trip stashes under `oidc.*` / `sso.*`, two IndexedDB families (the message
+sync store and the Rust crypto store, per account and per device), and the service-worker
+caches on web. A bad `trinity.push.gateway`, a stale feature flag or a crypto store that will
+not initialise therefore survives everything the UI offers.
+
+**Fix.** **Clear all data on this device**, at the bottom of the login page — deliberately
+there rather than in Settings, which is behind `authGuard` and so unreachable in exactly this
+situation. It erases all four surfaces and restarts the app. It is irreversible: encryption
+keys not in a server-side backup go with it, so it asks you to type `ERASE`. Nothing on the
+server is deleted.
+
+If it reports that Trinity is open in another window or tab, that is literal — an open
+connection blocks an IndexedDB delete, so the wipe stops _before_ signing out or clearing the
+registry, leaving the install intact and the button retryable. Close the other window and
+press it again.
+
+**See also.** `FactoryResetService` for the phase ordering (every read happens before every
+delete, because the registry is the only map from an account to its database and secret-key
+names), and `LocalDataWipeService.wipeIndexedDb` for why deletion is bounded rather than
+awaited — matrix-js-sdk's own `clearStores()` answers `onblocked` by logging and never
+settling.
+
 ## Related pages
 
 - [Commands](../contributing/commands.md) for what each script actually runs
