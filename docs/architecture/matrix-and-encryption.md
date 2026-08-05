@@ -41,9 +41,20 @@ repo breaks at once.
 
 !!! warning "Components never import matrix-js-sdk"
 
-    All SDK access is wrapped in the `@trinity/data-access/*` services. This is enforced
-    by Nx module boundaries, and it is what keeps the SDK swappable and the UI testable.
-    See [libraries](libraries.md).
+    All SDK access is wrapped in the `@trinity/data-access/*` services. It is what keeps
+    the SDK swappable and the UI testable. See [libraries](libraries.md).
+
+    Enforced by a `@typescript-eslint/no-restricted-imports` rule in `eslint.config.mjs`
+    covering `libs/feature/**`, `libs/ui/**`, `libs/platform-native/**` and `apps/**`.
+    **Not** by Nx module boundaries — this page used to say so, and it was wrong:
+    `@nx/enforce-module-boundaries` polices `@trinity/*` edges between projects and has
+    nothing to say about a third-party package, which is how three spec files had already
+    drifted past the rule. `libs/util/matrix` is the sanctioned exception, because it
+    models the SDK's own types.
+
+    If a layer below needs an SDK symbol, re-export it from the lib that owns the domain
+    — as `data-access/rooms` does for `JoinRule` and `util/matrix` does for `HTTPError` —
+    rather than widening the rule.
 
 ## MatrixClientService is a registry, not a wrapper
 

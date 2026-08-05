@@ -1,5 +1,5 @@
 import { ErrorHandler } from '@angular/core';
-import { ConnectionError, HTTPError } from 'matrix-js-sdk';
+import { ConnectionError, HTTPError } from '@trinity/util/matrix';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrinityErrorHandler } from './trinity-error-handler';
 
