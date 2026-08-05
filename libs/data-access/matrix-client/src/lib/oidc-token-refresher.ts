@@ -78,8 +78,12 @@ export class TrinityOidcTokenRefresher {
     // does `opts.refreshToken = refreshToken` UNCONDITIONALLY — leaving the live client
     // with none, so the next expiry logs the account out and the soft-logout handler
     // deletes the still-valid token from disk. Carry the current one forward instead.
-    // (Storage needs no such guard: updateTokens already skips an undefined.)
-    return { ...tokens, refreshToken: tokens.refreshToken ?? refreshToken };
+    //
+    // `||`, not `??`: the SDK's `hasOptionalStringProperty` short-circuits on falsiness,
+    // so `refresh_token: ''` passes validation and arrives here as an empty string, which
+    // `??` would pass straight through — reproducing the exact soft-logout above.
+    // `updateTokens` guards the disk copy against the same value.
+    return { ...tokens, refreshToken: tokens.refreshToken || refreshToken };
   };
 
   private async build(): Promise<TokenRefresher> {

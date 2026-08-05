@@ -127,6 +127,37 @@ describe('TrinityOidcTokenRefresher', () => {
     expect(tokens.refreshToken).toBe('old-refresh');
   });
 
+  it('treats an empty refresh_token as no rotation, and never persists it', async () => {
+    // The SDK's own validator lets it through: hasOptionalStringProperty short-circuits
+    // on falsiness, so `refresh_token: ''` passes validateBearerTokenResponse. `??`
+    // would carry the empty string forward — nullish coalescing does not fall back on
+    // it — reproducing the exact soft-logout this guard exists to prevent. Worse than
+    // the undefined case: `onRefresh` runs BEFORE this wrapper sees the tokens, and the
+    // storage guard was `!== undefined`, so '' would overwrite a still-valid token on
+    // disk and no restart could recover.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        tokenResponse({
+          token_type: 'Bearer',
+          access_token: 'new-access',
+          refresh_token: '',
+        }),
+      ),
+    );
+    const { refresher, updateTokens } = makeRefresher();
+
+    const tokens = await refresher.tokenRefreshFunction('old-refresh');
+
+    expect(tokens.refreshToken).toBe('old-refresh');
+    expect(updateTokens).toHaveBeenCalledWith(
+      '@me:hs',
+      'new-access',
+      '',
+      undefined,
+    );
+  });
+
   it('discovers through the account homeserver, not the issuer', async () => {
     vi.stubGlobal(
       'fetch',
