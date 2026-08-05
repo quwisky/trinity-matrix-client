@@ -37,6 +37,8 @@ async function renderPage(opts: {
   paramsSequence?: Record<string, string | null>[];
   ssoStash?: Partial<SsoStateStash>;
   oidcStash?: Partial<OidcStateStash>;
+  /** Per-call OIDC peek behaviour, for callbacks that must not read the same stash. */
+  oidcPeek?: () => Promise<OidcStateStash>;
 }): Promise<{
   cmp: SsoCallbackPage;
   navigateByUrl: ReturnType<typeof vi.fn>;
@@ -50,9 +52,9 @@ async function renderPage(opts: {
   const oidcClear = vi.fn().mockResolvedValue(undefined);
   // peek() reads WITHOUT clearing; the page consumes (clear) only once state matches.
   const ssoPeek = vi.fn().mockResolvedValue({ ...EMPTY_SSO, ...opts.ssoStash });
-  const oidcPeek = vi
-    .fn()
-    .mockResolvedValue({ ...EMPTY_OIDC, ...opts.oidcStash });
+  const oidcPeek = opts.oidcPeek
+    ? vi.fn(opts.oidcPeek)
+    : vi.fn().mockResolvedValue({ ...EMPTY_OIDC, ...opts.oidcStash });
 
   const { fixture } = await render(SsoCallbackPage, {
     providers: [
@@ -317,6 +319,39 @@ describe('SsoCallbackPage', () => {
         'replace',
       );
       expect(oidcClear).toHaveBeenCalledTimes(1); // consumed once, by the genuine callback
+      expect(navigateByUrl).toHaveBeenCalledWith('/rooms', {
+        replaceUrl: true,
+      });
+    });
+
+    it('still completes the genuine callback after the first handler throws', async () => {
+      // The callbacks are queued, not fired and forgotten, so that `claimed` is only ever
+      // set after a state match. That queue is shared: if a failing handler is allowed to
+      // reject the chain's tail, every LATER callback is short-circuited away silently —
+      // which is exactly the lock-out the serialization was chosen to prevent, now
+      // reachable by a forged deep link that merely makes the stash read fail.
+      let peeks = 0;
+      const completeOidcLogin = vi.fn(() => of(undefined));
+      const { navigateByUrl } = await renderPage({
+        auth: { completeOidcLogin } as unknown as Partial<AuthService>,
+        paramsSequence: [
+          { code: 'ATTACK', state: 'FORGED' },
+          { code: 'REAL', state: 'STATE1' },
+        ],
+        oidcPeek: () => {
+          peeks += 1;
+          return peeks === 1
+            ? Promise.reject(new Error('storage unavailable'))
+            : Promise.resolve({ ...EMPTY_OIDC, ...OIDC_STASH });
+        },
+      });
+
+      expect(completeOidcLogin).toHaveBeenCalledTimes(1);
+      expect(completeOidcLogin).toHaveBeenCalledWith(
+        'REAL',
+        GRANT_CONTEXT,
+        'replace',
+      );
       expect(navigateByUrl).toHaveBeenCalledWith('/rooms', {
         replaceUrl: true,
       });

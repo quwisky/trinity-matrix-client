@@ -340,6 +340,50 @@ describe('LoginPage', () => {
       return rendered;
     }
 
+    it('sweeps an abandoned stash on landing', async () => {
+      const peek = vi.fn().mockResolvedValue({});
+
+      await renderLogin({} as unknown as Partial<AuthService>, {
+        oidcStore: { peek },
+      });
+
+      // This read IS the sweep — peek() bins a stash past its TTL, and the TTL is only
+      // ever enforced on read. The callback page is the only other reader, so without
+      // this an abandoned sign-in leaves a plaintext PKCE code_verifier on disk until
+      // some later save() happens to overwrite it. Deleting the line breaks a promise
+      // the CHANGELOG makes to users, and nothing else here would notice.
+      expect(peek).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not raise an unhandled rejection when the sweep cannot read storage', async () => {
+      // Nothing on this page depends on the sweep's answer, so a storage read that
+      // rejects must be swallowed at the call site. Asserting the rendered state cannot
+      // see this — the page looks identical either way — so listen for the rejection
+      // itself. Node reports one only after the turn ends with no handler attached,
+      // hence the macrotask below.
+      const rejections: unknown[] = [];
+      const onRejection = (reason: unknown) => rejections.push(reason);
+      process.on('unhandledRejection', onRejection);
+      try {
+        // A plain function, not vi.fn().mockRejectedValue: vitest attaches its own
+        // handler to a mock's returned promise to record settledResults, which marks it
+        // handled and would make this assertion pass no matter what the page does.
+        const peek = (): Promise<never> =>
+          Promise.reject(new Error('storage unavailable'));
+
+        const { cmp } = await renderLogin(
+          {} as unknown as Partial<AuthService>,
+          { oidcStore: { peek } },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(rejections).toEqual([]);
+        expect(cmp.error()).toBeNull();
+      } finally {
+        process.off('unhandledRejection', onRejection);
+      }
+    });
+
     it('re-authenticates the stored device instead of minting a new one', async () => {
       const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
       const { cmp } = await renderLogin(

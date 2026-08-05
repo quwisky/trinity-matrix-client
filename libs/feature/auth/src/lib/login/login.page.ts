@@ -87,8 +87,10 @@ export class LoginPage {
     // PKCE code_verifier on disk until something reads it, and only the callback page
     // otherwise does. Landing on /login means no round-trip is completing here, so this is
     // the natural place. It cannot disturb a live login: a stash inside its TTL is left
-    // untouched, including one started in another tab.
-    void this.oidcState.peek();
+    // untouched, including one started in another tab. Best-effort like every other
+    // cleanup on this path: a storage read that rejects must not take the page down with
+    // an unhandled rejection when nothing here depends on the answer.
+    void this.oidcState.peek().catch(() => undefined);
 
     const reauth = this.reauthUserId();
     if (reauth) {
