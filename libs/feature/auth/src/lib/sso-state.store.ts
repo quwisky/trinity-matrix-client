@@ -72,7 +72,12 @@ export class SsoStateStore {
     ]);
 
     const started = Number(startedAt.value);
-    const fresh = Number.isFinite(started) && Date.now() - started <= TTL_MS;
+    const age = Date.now() - started;
+    // Two-sided, matching {@link OidcStateStore.peek}. `age <= TTL_MS` alone treats a
+    // FUTURE timestamp as fresh, so a stash written before the clock was corrected
+    // backwards would never expire — and the TTL is what bounds the window in which a
+    // leaked `sso_state` nonce still buys an attacker a forged callback.
+    const fresh = Number.isFinite(started) && age >= 0 && age <= TTL_MS;
     if (!fresh) {
       return { state: null, baseUrl: null, mode: 'replace', deviceId: null };
     }
