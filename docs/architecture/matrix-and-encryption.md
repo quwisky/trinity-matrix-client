@@ -53,8 +53,13 @@ repo breaks at once.
     All SDK access is wrapped in the `@trinity/data-access/*` services. It is what keeps
     the SDK swappable and the UI testable. See [libraries](libraries.md).
 
-    Enforced by a `@typescript-eslint/no-restricted-imports` rule in `eslint.config.mjs`
-    covering `libs/feature/**`, `libs/ui/**`, `libs/platform-native/**` and `apps/**`.
+    Enforced in `eslint.config.mjs` by a `@typescript-eslint/no-restricted-imports` rule
+    plus a companion `no-restricted-syntax` rule for the dynamic `import()` form the first
+    one cannot see — both over the same `files` array, currently `libs/feature/**`,
+    `libs/ui/**`, `libs/spartan/**`, `libs/platform-native/**`, `libs/testing/**` and
+    `apps/**`. Read that array rather than trusting this list. `libs/spartan` is included
+    even though it is generated: leaving it out made this rule the one thing `libs/ui` and
+    `libs/spartan` disagreed on, which `scripts/lint-invariants.spec.mjs` correctly failed.
     **Not** by Nx module boundaries — this page used to say so, and it was wrong:
     `@nx/enforce-module-boundaries` polices `@trinity/*` edges between projects and has
     nothing to say about a third-party package, which is how three spec files had already

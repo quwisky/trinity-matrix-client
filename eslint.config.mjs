@@ -14,6 +14,10 @@ const tailwindCssConfigPath = join(
   'apps/trinity/src/theme/spartan.css',
 );
 
+/** Shared by the two rules below, which police the same ban over different AST shapes. */
+const SDK_IMPORT_MESSAGE =
+  'Only libs/data-access/* (and libs/util/matrix, which models the SDK types) may import matrix-js-sdk. Re-export what you need from the data-access lib that owns the domain.';
+
 export default defineConfig([
   globalIgnores([
     '**/dist',
@@ -136,10 +140,21 @@ export default defineConfig([
           patterns: [
             {
               group: ['matrix-js-sdk', 'matrix-js-sdk/*'],
-              message:
-                'Only libs/data-access/* (and libs/util/matrix, which models the SDK types) may import matrix-js-sdk. Re-export what you need from the data-access lib that owns the domain.',
+              message: SDK_IMPORT_MESSAGE,
             },
           ],
+        },
+      ],
+      // no-restricted-imports only sees STATIC import declarations, so
+      // `() => import('matrix-js-sdk/lib/crypto-api')` slips straight through it — and a
+      // lazily-loaded feature component is exactly the shape that would reach for one,
+      // since every route in this app is lazy. Same rule, expressed over the AST node
+      // that form actually produces.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression[source.value=/^matrix-js-sdk/]',
+          message: SDK_IMPORT_MESSAGE,
         },
       ],
     },
