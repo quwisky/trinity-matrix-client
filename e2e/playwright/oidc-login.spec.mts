@@ -22,6 +22,10 @@ const AUTH_METADATA = {
   revocation_endpoint: 'https://provider.oidc.example/revoke',
   registration_endpoint: REGISTRATION_ENDPOINT,
   account_management_uri: 'https://provider.oidc.example/account',
+  // Required by matrix-js-sdk 42's isValidAuthMetadata, which needs BOTH values. Omitting
+  // it makes getAuthMetadata throw, so the app decides this homeserver is not OIDC at all
+  // and this whole spec silently tests the password form instead.
+  response_modes_supported: ['query', 'fragment'],
   response_types_supported: ['code'],
   grant_types_supported: ['authorization_code', 'refresh_token'],
   code_challenge_methods_supported: ['S256'],
@@ -61,12 +65,6 @@ async function mockOidcHomeserver(page: Page): Promise<void> {
   );
   await page.route(
     /hs\.oidc\.example\/_matrix\/client\/v1\/auth_metadata/,
-    (r) => json(r, AUTH_METADATA),
-  );
-  // oidc-client-ts (inside generateOidcAuthorizationUrl) discovers the provider from
-  // the issuer's openid-configuration; without it the authorize URL can't be built.
-  await page.route(
-    /provider\.oidc\.example\/\.well-known\/openid-configuration/,
     (r) => json(r, AUTH_METADATA),
   );
 }
@@ -138,7 +136,14 @@ test.describe('OIDC-native login', () => {
     expect(params.get('code_challenge')).toBeTruthy();
     expect(params.get('state')).toBeTruthy();
     expect(params.get('redirect_uri')).toContain('/sso-callback');
-    expect(params.get('scope') ?? '').toContain('openid');
+    // matrix-js-sdk 42 requests stable Matrix URNs and no longer asks for `openid`
+    // (v41 sent `openid urn:matrix:org.matrix.msc2967.client:api:*`).
+    expect(params.get('scope') ?? '').toContain('urn:matrix:client:api:*');
+    expect(params.get('scope') ?? '').toContain('urn:matrix:client:device:');
+    // Load-bearing: v42 defaults response_mode to `fragment`, and every callback reader in
+    // this app parses query params only. Without this the code lands in the URL fragment
+    // and login hangs on "Missing sign-in details".
+    expect(params.get('response_mode')).toBe('query');
   });
 
   test('a non-OIDC homeserver still shows the password form', async ({

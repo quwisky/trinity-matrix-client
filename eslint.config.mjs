@@ -116,9 +116,15 @@ export default defineConfig([
     // fix is to re-export it from the lib that owns the domain — as
     // data-access/rooms does for JoinRule and util/matrix does for HTTPError — not to
     // widen this rule.
+    // libs/spartan is included even though it is generated: it is presentational UI that
+    // must never reach the SDK, and leaving it out made this rule the one thing
+    // libs/ui and libs/spartan disagreed on — which scripts/lint-invariants.spec.mjs
+    // correctly failed on, since a widening gap between those two configs is exactly
+    // what that invariant exists to catch.
     files: [
       'libs/feature/**/*.ts',
       'libs/ui/**/*.ts',
+      'libs/spartan/**/*.ts',
       'libs/platform-native/**/*.ts',
       'apps/**/*.ts',
     ],

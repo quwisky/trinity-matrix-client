@@ -758,38 +758,64 @@ is `false` in the hand-rolled Electron shell — desktop is detected through the
 ### Dynamic client registration
 
 `OidcClientService.resolveClientId` caches the DCR client id in Preferences under
-`oidc.clientId.v2:<issuer>`. Registered metadata is
-`{ clientName: 'Trinity', clientUri: 'https://trinity.qwky.eu', applicationType: 'web' | 'native', redirectUris: [one] }`.
+`oidc.clientId.v2:<issuer>`. Registered metadata is the snake_case wire shape the spec
+defines — `{ client_name: 'Trinity', client_uri: 'https://trinity.qwky.eu', application_type:
+'web' | 'native', redirect_uris: [one] }` — passed to `OAuth2.registerClient`.
 
 !!! warning "Bump the cache-key version on any metadata change"
 
     A registration pins the `redirect_uris` it was created with. Changing the redirect URI
     strands every id cached under the old shape, and the provider then fails with a
-    *redirect mismatch* — which is **not** the `invalid_client` that `forgetClientId`
-    recovers from, so login wedges until app storage is wiped. The `v2` in the key prefix
-    exists for exactly this; bump it whenever registered metadata changes.
+    *redirect mismatch*, so login wedges until app storage is wiped. The `v2` in the key
+    prefix exists for exactly this; bump it whenever registered metadata changes.
 
-    On a callback failure whose message matches `/invalid_client/i`, the callback page does
-    call `forgetOidcClientId(issuer)` so the next attempt re-registers.
+    The matrix-js-sdk 42 migration deliberately did **not** bump it. The v42 registration
+    body drops only `id_token_signed_response_alg` and `contacts`, and every field a
+    provider pins a later authorization against is byte-identical — so a bump would have
+    forced needless re-registration against providers that rate-limit DCR.
+
+!!! danger "The `invalid_client` self-heal does not work"
+
+    The callback page still calls `forgetOidcClientId(issuer)` when the failure message
+    matches `/invalid_client/i`, but **no error the SDK can produce carries that text**.
+    `OAuth2.fetch` throws `new HTTPError(OAuth2Error.CodeExchangeFailed, status, headers)`
+    without reading the response body, so the provider's `error` code never reaches the
+    regex. This was equally dead in 41.x, where the same path collapsed to
+    `new Error(OidcError.CodeExchangeFailed)` — the identical string.
+
+    Its spec fabricates `new Error('invalid_client: unknown client')`, an error shape
+    production cannot emit, so the test pins the mock and can never catch the divergence.
+    A working predicate would key off `err instanceof HTTPError && err.httpStatus === 401`.
+    Note the reachable window is narrow: a provider that has already pruned the
+    registration rejects at the *authorization* endpoint and never redirects back, so this
+    only fires if the registration is pruned between the redirect and the token POST.
 
 ### PKCE state has to survive a context change
 
-`generateOidcAuthorizationUrl` makes `oidc-client-ts` mint its own OAuth `state` and persist
+**Trinity is the sole custodian of this state.** Until matrix-js-sdk 42 the SDK kept it for
+us: `generateOidcAuthorizationUrl` had `oidc-client-ts` mint the OAuth `state` and persist
 the sign-in state — which contains the PKCE `code_verifier` — in `sessionStorage` under
-`mx_oidc_<state>`.
+`mx_oidc_<state>`, and Trinity harvested that entry and re-seeded it on callback. v42 dropped
+`oidc-client-ts` and persists **nothing**, so the harvest and re-seed are gone; `OidcStateStore`
+is now the only copy.
 
-That is not good enough off the web. On native the authorization happens in the **system
-browser**, and on Electron in an **external window**; the app WebView's `sessionStorage` is a
-different, empty store, and a cold-start relaunch loses it outright. So Trinity harvests the
-entry at build time (preferring the exact key, falling back to scanning any `mx_oidc_*` key
-ending in the state, so an SDK prefix change cannot silently break the stash), persists it
-through `OidcStateStore` in Capacitor Preferences, and re-seeds `sessionStorage` before
-`completeAuthorizationCodeGrant`. The re-seeded entry is removed afterwards either way — it
-holds a spent verifier.
+`OAuth2` mints the `deviceId` and `codeVerifier`, Trinity mints the `state`, and
+`buildAuthorizationRequest` hands all of them back. `OidcStateStore` stashes them in Capacitor
+Preferences (`oidc.state`, `oidc.clientId`, `oidc.deviceId`, `oidc.codeVerifier`, plus the
+baseUrl/redirectUri/issuer/mode needed to rebuild the client), and the callback reconstructs an
+`OAuth2` around the same context to exchange the code.
 
-On **web** the blob is deliberately not persisted. The SDK's own `sessionStorage` copy
-survives a same-tab redirect, so copying the secret into durable storage would add exposure
-for no benefit.
+That durability is what makes the off-web flows work at all: on native the authorization
+happens in the **system browser**, and on Electron in an **external window**, so the app
+WebView's storage is a different store, and a cold-start relaunch loses anything in-memory.
+
+The verifier is now written on **every** platform, web included — where Preferences means
+`localStorage`. Web previously relied on the SDK's own `sessionStorage` copy; with that copy
+gone, skipping the write would simply break web login. The exposure is accepted because the
+store is single-use (`peek` → verify `state` → `clear`) and time-boxed to 10 minutes, and
+because script that can read `localStorage` can read `sessionStorage` in the same document
+anyway. `clear()` also purges the legacy `oidc.ssKey` / `oidc.ssBlob` keys, so an abandoned
+pre-upgrade stash cannot leave a plaintext verifier behind.
 
 ### The callback page
 
@@ -821,9 +847,23 @@ legacy SSO. Several details defend it:
 
 ### Token refresh
 
-`TrinityOidcTokenRefresher` extends the SDK's `OidcTokenRefresher` and overrides
-`persistTokens` to write rotated tokens through `SessionStorageService.updateTokens` — the
-base class persists nothing.
+`TrinityOidcTokenRefresher` **composes** the SDK's `TokenRefresher` — matrix-js-sdk 42
+replaced the subclassable `OidcTokenRefresher` with a class taking `(auth: OAuth2, onRefresh)`,
+so what used to be a `persistTokens` override is now the `onRefresh` callback, writing rotated
+tokens through `SessionStorageService.updateTokens`.
+
+Composition retired two hazards the old shape carried: a positional
+`ConstructorParameters<typeof OidcTokenRefresher>[4]` index used to reach `IdTokenClaims`
+without depending on `oidc-client-ts`, and an `expiry` field the base passed at runtime but
+omitted from the declared parameter type, read back through a cast — a rename there would have
+persisted `undefined` forever without failing anything. `AccessTokens.expiry` is declared, so
+that cannot recur.
+
+The auth metadata needed to build the `OAuth2` is discovered **lazily** through the account's
+own homeserver (v42 dropped the issuer well-known probe along with the `/auth_issuer`
+fallback), because the client is constructed synchronously while discovery is a network call.
+The _promise_ is memoized, so concurrent 401s cost one discovery, and the memo is cleared on
+rejection so a transient failure cannot wedge refresh for the life of the session.
 
 It closes over only the user id and the storage service, never the client registry or the
 active account, because a refresh can fire on the first authenticated request during crypto

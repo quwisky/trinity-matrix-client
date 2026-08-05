@@ -7,9 +7,10 @@ import { TrinityOidcTokenRefresher } from './oidc-token-refresher';
 // before it can build anything. OAuth2 and TokenRefresher stay REAL, so these tests
 // exercise the actual refresh-token grant rather than a re-description of it.
 const getAuthMetadata = vi.fn();
+const createClientSpy = vi.fn(() => ({ getAuthMetadata }));
 vi.mock('matrix-js-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('matrix-js-sdk')>()),
-  createClient: () => ({ getAuthMetadata }),
+  createClient: (opts: unknown) => createClientSpy(opts as never),
 }));
 
 const BINDING = {
@@ -47,11 +48,15 @@ function tokenResponse(body: Record<string, unknown>): Response {
 describe('TrinityOidcTokenRefresher', () => {
   beforeEach(() => {
     getAuthMetadata.mockReset();
+    createClientSpy.mockClear();
     getAuthMetadata.mockResolvedValue(METADATA);
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    // setSystemTime below freezes the clock process-wide; without this it leaks into every
+    // later test in the file (and vitest does not restore it on its own).
+    vi.useRealTimers();
   });
 
   it('persists a full rotation under its own userId, with the expiry the provider gave', async () => {
@@ -66,6 +71,7 @@ describe('TrinityOidcTokenRefresher', () => {
         }),
       ),
     );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date(1_700_000_000_000));
     const { refresher, updateTokens } = makeRefresher();
 
@@ -100,6 +106,24 @@ describe('TrinityOidcTokenRefresher', () => {
       undefined,
       undefined,
     );
+  });
+
+  it('discovers through the account homeserver, not the issuer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        tokenResponse({ token_type: 'Bearer', access_token: 'a' }),
+      ),
+    );
+    const { refresher } = makeRefresher();
+
+    await refresher.tokenRefreshFunction('r');
+
+    // matrix-js-sdk 42 dropped the issuer well-known probe, so metadata must come from the
+    // account's own homeserver. Nothing else pins this: BINDING.issuer is a URL too, so
+    // reverting to it — exactly what the pre-42 code did — stays type-correct and leaves
+    // every other assertion in this file passing.
+    expect(createClientSpy).toHaveBeenCalledWith({ baseUrl: 'https://hs' });
   });
 
   it('discovers once for two concurrent refreshes', async () => {
