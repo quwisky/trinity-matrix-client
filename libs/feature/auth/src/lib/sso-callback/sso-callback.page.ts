@@ -47,11 +47,25 @@ export class SsoCallbackPage implements OnInit {
   readonly error = signal<string | null>(null);
   /** Set once a callback's state matches and we begin the exchange — ignore further ones. */
   private claimed = false;
+  /** Tail of the serialized handler chain; see the comment in {@link ngOnInit}. */
+  private inFlight: Promise<void> = Promise.resolve();
 
   ngOnInit(): void {
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((params) => void this.handle(params));
+      // Serialized, not fire-and-forget. `claimed` cannot be set until the callback's
+      // state has been verified against the stash — that ordering is what stops a forged
+      // deep-link from latching and locking out the genuine one — but verifying requires
+      // an await, so two emissions delivered in the same tick would BOTH pass the guard
+      // and both redeem the code. Queueing means the second runs only once the first has
+      // finished and set the latch, which preserves the ordering and closes the race.
+      .subscribe((params) => {
+        this.inFlight = this.inFlight
+          .then(() => this.handle(params))
+          // A failure must not poison the queue: later emissions still need to run, and
+          // handle() already reports its own errors through `error`.
+          .catch(() => undefined);
+      });
   }
 
   private async handle(params: ParamMap): Promise<void> {

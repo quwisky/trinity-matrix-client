@@ -115,6 +115,29 @@ describe('SsoCallbackPage', () => {
       });
     });
 
+    it('redeems the login token once when the same callback is delivered twice', async () => {
+      const completeSsoLogin = vi.fn(() => of({}));
+      const { ssoClear } = await renderPage({
+        auth: { completeSsoLogin } as unknown as Partial<AuthService>,
+        paramsSequence: [
+          { loginToken: 'TOKEN', sso_state: 'NONCE' },
+          { loginToken: 'TOKEN', sso_state: 'NONCE' },
+        ],
+        ssoStash: {
+          state: 'NONCE',
+          baseUrl: 'https://hs.example',
+          mode: 'add',
+          deviceId: 'OLDDEV',
+        },
+      });
+
+      // Same single-use hazard as the OIDC code: a Matrix `m.login.token` is consumed on
+      // first use, so the duplicate would fail and surface an error over a session that
+      // had already succeeded.
+      expect(completeSsoLogin).toHaveBeenCalledTimes(1);
+      expect(ssoClear).toHaveBeenCalledTimes(1);
+    });
+
     it('ignores a forged callback without wiping the live stash', async () => {
       const completeSsoLogin = vi.fn();
       const { cmp, ssoClear } = await renderPage({
@@ -208,6 +231,27 @@ describe('SsoCallbackPage', () => {
       expect(navigateByUrl).toHaveBeenCalledWith('/rooms', {
         replaceUrl: true,
       });
+    });
+
+    it('exchanges the code once when the same callback is delivered twice', async () => {
+      const completeOidcLogin = vi.fn(() => of(undefined));
+      const { oidcClear } = await renderPage({
+        auth: { completeOidcLogin } as unknown as Partial<AuthService>,
+        // The identical genuine callback, emitted twice. A deep link can be delivered more
+        // than once (the OS re-firing it, or a repeated navigation), and the `claimed`
+        // latch is what is supposed to make the exchange run at most once.
+        paramsSequence: [
+          { code: 'CODE', state: 'STATE1' },
+          { code: 'CODE', state: 'STATE1' },
+        ],
+        oidcStash: OIDC_STASH,
+      });
+
+      // A second exchange would POST an already-redeemed authorization code. Providers
+      // MUST reject a reused code (RFC 6749 4.1.2) and SHOULD revoke the tokens issued
+      // for it, so the duplicate can invalidate the session the first call just created.
+      expect(completeOidcLogin).toHaveBeenCalledTimes(1);
+      expect(oidcClear).toHaveBeenCalledTimes(1);
     });
 
     it('ignores a forged callback without wiping the live stash', async () => {
