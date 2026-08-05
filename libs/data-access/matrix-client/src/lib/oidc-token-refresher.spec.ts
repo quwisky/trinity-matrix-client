@@ -26,13 +26,13 @@ const METADATA = {
 
 function makeRefresher(updateTokens = vi.fn(() => of(undefined))) {
   const storage = { updateTokens } as unknown as SessionStorageService;
-  const refresher = new TrinityOidcTokenRefresher(
+  const refresher = new TrinityOidcTokenRefresher({
     storage,
-    '@me:hs',
-    'https://hs',
-    BINDING,
-    'DEV',
-  );
+    userId: '@me:hs',
+    baseUrl: 'https://hs',
+    binding: BINDING,
+    deviceId: 'DEV',
+  });
   return { refresher, updateTokens };
 }
 
@@ -106,6 +106,25 @@ describe('TrinityOidcTokenRefresher', () => {
       undefined,
       undefined,
     );
+  });
+
+  it('keeps the current refresh token when the provider rotated only the access token', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        tokenResponse({ token_type: 'Bearer', access_token: 'new-access' }),
+      ),
+    );
+    const { refresher } = makeRefresher();
+
+    const tokens = await refresher.tokenRefreshFunction('old-refresh');
+
+    // Rotation is a SHOULD, not a MUST, so `refresh_token` can legally be absent. The
+    // SDK hands that straight through as `undefined`, and FetchHttpApi then assigns
+    // `opts.refreshToken = undefined` unconditionally — so returning it verbatim would
+    // strip the live client of the token it still needs, and the NEXT expiry would log
+    // the account out and delete the still-valid token from disk.
+    expect(tokens.refreshToken).toBe('old-refresh');
   });
 
   it('discovers through the account homeserver, not the issuer', async () => {

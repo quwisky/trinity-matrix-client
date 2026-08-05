@@ -8,6 +8,17 @@ import { firstValueFrom } from 'rxjs';
 import type { SessionStorageService } from '@trinity/platform-native';
 import type { OidcSessionBinding } from '@trinity/util/matrix';
 
+/** What one account's {@link TrinityOidcTokenRefresher} needs to rebuild its OAuth2 client. */
+export interface TrinityOidcTokenRefresherOptions {
+  storage: SessionStorageService;
+  /** The account whose rotated tokens get persisted. */
+  userId: string;
+  /** The account's homeserver — auth metadata is discovered through it, not the issuer. */
+  baseUrl: string;
+  binding: OidcSessionBinding;
+  deviceId: string;
+}
+
 /**
  * Per-account OIDC token refresher. matrix-js-sdk calls the client's
  * `tokenRefreshFunction` when the access token nears expiry or a request 401s; the SDK's
@@ -44,13 +55,11 @@ import type { OidcSessionBinding } from '@trinity/util/matrix';
 export class TrinityOidcTokenRefresher {
   private pending?: Promise<TokenRefresher>;
 
-  constructor(
-    private readonly storage: SessionStorageService,
-    private readonly userId: string,
-    private readonly baseUrl: string,
-    private readonly binding: OidcSessionBinding,
-    private readonly deviceId: string,
-  ) {}
+  // Named, not positional: `userId`, `baseUrl` and `deviceId` are all plain strings, so a
+  // positional list let any two of them be transposed with the type checker none the wiser
+  // — and swapping the first two would point discovery at a user id, breaking refresh for
+  // every OIDC account until the account soft-logged out.
+  constructor(private readonly options: TrinityOidcTokenRefresherOptions) {}
 
   /** Pass straight to `createClient({ tokenRefreshFunction })`. */
   readonly tokenRefreshFunction: TokenRefreshFunction = async (
@@ -62,24 +71,31 @@ export class TrinityOidcTokenRefresher {
         throw err;
       },
     ));
-    return refresher.tokenRefreshFunction(refreshToken);
+    const tokens = await refresher.tokenRefreshFunction(refreshToken);
+    // Rotating the refresh token is a SHOULD, not a MUST (RFC 6749 §6, and the Matrix
+    // refresh-token grant), so a spec-legal provider may return only a new access token.
+    // The SDK passes that through as `refreshToken: undefined`, and FetchHttpApi then
+    // does `opts.refreshToken = refreshToken` UNCONDITIONALLY — leaving the live client
+    // with none, so the next expiry logs the account out and the soft-logout handler
+    // deletes the still-valid token from disk. Carry the current one forward instead.
+    // (Storage needs no such guard: updateTokens already skips an undefined.)
+    return { ...tokens, refreshToken: tokens.refreshToken ?? refreshToken };
   };
 
   private async build(): Promise<TokenRefresher> {
+    const { storage, userId, baseUrl, binding, deviceId } = this.options;
     // Discovery goes through the homeserver, not the issuer: matrix-js-sdk 42 dropped the
     // issuer well-known probe along with the `/auth_issuer` fallback.
-    const metadata = await createClient({
-      baseUrl: this.baseUrl,
-    }).getAuthMetadata();
+    const metadata = await createClient({ baseUrl }).getAuthMetadata();
     const auth = new OAuth2(metadata, {
-      clientId: this.binding.clientId,
-      redirectUri: this.binding.redirectUri,
-      deviceId: this.deviceId,
+      clientId: binding.clientId,
+      redirectUri: binding.redirectUri,
+      deviceId,
     });
     return new TokenRefresher(auth, (tokens) =>
       firstValueFrom(
-        this.storage.updateTokens(
-          this.userId,
+        storage.updateTokens(
+          userId,
           tokens.accessToken,
           tokens.refreshToken,
           tokens.expiry?.getTime(),

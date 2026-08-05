@@ -350,13 +350,13 @@ export class MatrixClientService {
           // access token and persists the result (see TrinityOidcTokenRefresher).
           const refresher =
             session.refreshToken && session.oidc
-              ? new TrinityOidcTokenRefresher(
-                  this.storage,
-                  session.userId,
-                  session.baseUrl,
-                  session.oidc,
-                  session.deviceId,
-                )
+              ? new TrinityOidcTokenRefresher({
+                  storage: this.storage,
+                  userId: session.userId,
+                  baseUrl: session.baseUrl,
+                  binding: session.oidc,
+                  deviceId: session.deviceId,
+                })
               : null;
           created = createClient({
             baseUrl: session.baseUrl,
