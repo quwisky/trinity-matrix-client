@@ -198,6 +198,15 @@ All notable changes to this project are documented here. The format is based on
   that the account's backup and encryption identity both survive it untouched. That last check
   is what caught the reset destroying the backup before it gave up.
 
+- **Where a sign-in in progress is kept has changed on the web.** Signing in through a
+  provider needs Trinity to remember one short-lived secret while you are away at the
+  provider's page. The Matrix library used to hold that itself, in storage the browser
+  discards when the tab closes; the version Trinity now uses keeps nothing at all, so
+  Trinity keeps it — in the same storage it already uses on phones and on the desktop app,
+  which on the web survives a closed tab. It is used once and thrown away, expires after ten
+  minutes either way, and is now cleared when you return to the sign-in screen. Nothing
+  about how you sign in changes.
+
 - **The space header makes room for the space's name.** A space's sidebar header carried up to
   six icon buttons on one row, which left the name itself about six characters before it was
   cut off — and on a touchscreen, where the buttons grow to a thumb-sized minimum, they needed
@@ -220,7 +229,24 @@ All notable changes to this project are documented here. The format is based on
   the provider — left a short-lived secret from that attempt in local storage, because it
   was only ever cleaned up when a sign-in actually came back. It is now cleared the next
   time you open the sign-in screen, and a device whose clock is running ahead can no longer
-  keep one alive indefinitely.
+  keep one alive indefinitely — for the older single-sign-on as well as the provider-based
+  one.
+
+- **Some providers no longer sign you out minutes after you signed in.** Trinity's session
+  is kept alive by quietly renewing it in the background. A provider is allowed to answer
+  that renewal with a fresh key and nothing else, and when one did, Trinity forgot the thing
+  it needed to renew again — so the next renewal, typically only minutes later, failed and
+  signed the account out, taking a perfectly good credential off the disk with it. Signing
+  back in worked, and then it happened again. Providers that issue a fresh credential each
+  time — the common case, including Matrix's own authentication service — were never
+  affected.
+
+- **A sign-in that fails at the last step no longer leaves a device behind.** If your
+  homeserver became unreachable in the seconds between your provider approving the sign-in
+  and Trinity asking who you are, the sign-in failed — but the session your provider had
+  just created stayed alive, showing up as a device you could only remove from the
+  provider's own account page, and every retry added another. Trinity now hands that session
+  back before reporting the failure.
 
 - **A sign-in callback that arrives twice is only used once.** Some platforms can deliver
   the return-from-provider link more than once. The second one used to be processed as

@@ -845,6 +845,11 @@ legacy SSO. Several details defend it:
     in app-private plaintext, and enforcing the TTL only at read time left an abandoned
     login's secret on disk until some later `save()` happened to overwrite it.
 
+    That freshness check is **two-sided** in both stores (`age >= 0 && age <= TTL_MS`).
+    `age <= TTL_MS` alone reads a *future* timestamp as fresh, so a stash written before the
+    device clock was corrected backwards would never expire — and the TTL is precisely what
+    bounds the window in which a leaked nonce still buys an attacker a forged callback.
+
 ### Token refresh
 
 `TrinityOidcTokenRefresher` **composes** the SDK's `TokenRefresher` — matrix-js-sdk 42
@@ -869,3 +874,22 @@ It closes over only the user id and the storage service, never the client regist
 active account, because a refresh can fire on the first authenticated request during crypto
 bootstrap, before `startClient`, when no client is registered yet. One instance per account
 keeps a rotated token from landing under another account's key.
+
+**Refresh-token rotation is a `SHOULD`, not a `MUST`** (RFC 6749 §6, and the Matrix
+refresh-token grant), so a spec-legal provider may answer a refresh with a new access token
+and no `refresh_token`. The SDK surfaces that as `AccessTokens.refreshToken === undefined`,
+and `FetchHttpApi` assigns `opts.refreshToken = refreshToken` **unconditionally** — so
+passing it through verbatim strips the live client of the token it still needs, and the next
+expiry logs the account out (after which `handleServerLogout` → `invalidateToken` deletes the
+still-valid token from disk, so even a restart cannot recover). `TrinityOidcTokenRefresher`
+therefore carries the incoming token forward when the provider returned none.
+`SessionStorageService.updateTokens` needs no equivalent guard — it already skips an
+`undefined` refresh token rather than overwriting the stored one.
+
+`OidcClientService.completeGrant` **revokes what it minted** when the exchange succeeds but
+the grant cannot be turned into a session (`whoami` fails, or returns no `device_id`). By then
+the code is spent and the callback page has cleared the stash, so the attempt is
+unrecoverable — and under MSC3861 the OAuth session _is_ the Matrix device, so dropping it
+silently leaves a ghost device only removable from the provider's account-management page,
+plus one live refresh token per retry. The revocation is best-effort and the **original**
+failure is what propagates.
