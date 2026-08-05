@@ -58,9 +58,11 @@ export function createVitestConfig(
         // test runs. Inlining hands the module to vite instead of Node, which resolves it
         // the same way the build does.
         //
-        // Set here rather than per project because all 22 vite configs delegate to this
-        // factory, and the failure hits any of them that touches the SDK root. Remove once
-        // the specifier is fixed upstream.
+        // Set here rather than per project because every Angular vite config delegates to
+        // this factory, so any project whose specs reach the SDK root is covered. It does
+        // NOT cover runners outside this factory — the Playwright suites and the scripts
+        // project load the SDK through their own paths. Remove once the specifier is fixed
+        // upstream.
         server: { deps: { inline: ['matrix-js-sdk'] } },
         environment: 'jsdom',
         setupFiles: ['src/test-setup.ts'],

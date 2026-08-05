@@ -126,6 +126,7 @@ export default defineConfig([
       'libs/ui/**/*.ts',
       'libs/spartan/**/*.ts',
       'libs/platform-native/**/*.ts',
+      'libs/testing/**/*.ts',
       'apps/**/*.ts',
     ],
     rules: {

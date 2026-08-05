@@ -208,6 +208,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Signing back in to an account no longer creates a second device.** When a session was
+  signed out by the server and you re-authenticated it, accounts that use the newer
+  provider-based sign-in were given a brand-new device instead of picking their old one
+  back up — so the account came back needing to be verified all over again, which is the
+  one thing that flow exists to avoid. It now reuses the device it already had. Accounts
+  signing in with a password or the older single-sign-on were never affected.
+
+- **A sign-in you walked away from no longer leaves anything behind.** Starting a
+  provider-based sign-in and then abandoning it — closing the tab, never coming back from
+  the provider — left a short-lived secret from that attempt in local storage, because it
+  was only ever cleaned up when a sign-in actually came back. It is now cleared the next
+  time you open the sign-in screen, and a device whose clock is running ahead can no longer
+  keep one alive indefinitely.
+
+- **A sign-in callback that arrives twice is only used once.** Some platforms can deliver
+  the return-from-provider link more than once. The second one used to be processed as
+  well, which could invalidate the session the first one had just established.
+
 - **You can pinch to zoom again.** The app told mobile browsers and both native WebViews that
   it could not be zoomed, so pinch-zoom did nothing — on the two platforms where there is no
   text-size setting to fall back on, that left anyone who needs larger text with no way to get

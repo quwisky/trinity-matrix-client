@@ -12,7 +12,12 @@ import { OidcStateStore } from '../oidc-state.store';
 
 async function renderLogin(
   auth: Partial<AuthService>,
-  opts: { add?: boolean; reauth?: string; record?: unknown } = {},
+  opts: {
+    add?: boolean;
+    reauth?: string;
+    record?: unknown;
+    oidcStore?: Partial<OidcStateStore>;
+  } = {},
 ): Promise<{
   cmp: LoginPage;
   router: Router;
@@ -30,6 +35,8 @@ async function renderLogin(
       MockProvider(SsoStateStore),
       MockProvider(OidcStateStore, {
         save: vi.fn().mockResolvedValue(undefined),
+        peek: vi.fn().mockResolvedValue({}),
+        ...opts.oidcStore,
       }),
       MockProvider(SessionStorageService, {
         record: vi.fn(() => of(opts.record ?? null) as never),
@@ -320,10 +327,14 @@ describe('LoginPage', () => {
     /** An OIDC-native login page: discovered homeserver + provider metadata. */
     async function renderOidcReady(
       buildOidcAuthorizationRequest: ReturnType<typeof vi.fn>,
+      oidcStore?: Partial<OidcStateStore>,
     ) {
-      const rendered = await renderLogin({
-        buildOidcAuthorizationRequest,
-      } as unknown as Partial<AuthService>);
+      const rendered = await renderLogin(
+        {
+          buildOidcAuthorizationRequest,
+        } as unknown as Partial<AuthService>,
+        oidcStore ? { oidcStore } : {},
+      );
       rendered.cmp.baseUrl.set('https://hs.example');
       rendered.cmp.oidcMetadata.set({ issuer: 'https://op' } as never);
       return rendered;
@@ -394,6 +405,47 @@ describe('LoginPage', () => {
         deviceId: 'DEVICE1',
         codeVerifier: 'VERIFIER1',
       });
+    });
+
+    it('redirects on web, and only after the stash is durably written', async () => {
+      // Two gaps this closes. Nothing asserted the web redirect fires at all — emptying
+      // that branch broke web sign-in with the suite green. And nothing asserted the
+      // ORDERING, despite a sibling test named "...stashes the sign-in state, then
+      // redirects": reversing the two left every assertion passing. If the redirect wins
+      // the race, a native cold start or a fast provider can return before the
+      // code_verifier is on disk, and the exchange has nothing to present.
+      const original = Object.getOwnPropertyDescriptor(window, 'location');
+      const locationStub = { href: '' };
+      Object.defineProperty(window, 'location', {
+        value: locationStub,
+        writable: true,
+        configurable: true,
+      });
+      try {
+        let releaseSave: (() => void) | undefined;
+        const savePending = new Promise<void>((resolve) => {
+          releaseSave = resolve;
+        });
+        const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
+        const { cmp } = await renderOidcReady(buildOidcAuthorizationRequest, {
+          save: vi.fn(() => savePending),
+        });
+
+        cmp.startOidc();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // The stash has not settled yet, so nothing may have navigated.
+        expect(locationStub.href).toBe('');
+
+        releaseSave?.();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(locationStub.href).toBe(OIDC_REQUEST.url);
+      } finally {
+        if (original) Object.defineProperty(window, 'location', original);
+      }
     });
 
     it('sends prompt=create for registration when the provider supports it', async () => {

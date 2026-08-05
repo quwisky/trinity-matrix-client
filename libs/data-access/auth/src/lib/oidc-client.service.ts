@@ -97,7 +97,8 @@ export class OidcClientService {
   /**
    * Build the authorization URL to redirect to. Registers this client with the provider
    * (dynamic registration, cached per issuer) if needed, generates a PKCE authorization
-   * request, and harvests the sign-in state the SDK stored in sessionStorage.
+   * request, and returns the context the callback needs to complete it — the SDK keeps
+   * none of it, so the caller must stash what comes back.
    */
   buildAuthorizationRequest(
     params: OidcAuthorizationParams,

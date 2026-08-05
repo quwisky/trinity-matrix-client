@@ -396,6 +396,38 @@ describe('OidcClientService', () => {
   });
 
   describe('revokeTokens', () => {
+    it('still revokes both tokens when the provider answers RFC 7009-style', async () => {
+      // RFC 7009 s2.2 mandates 200 with an EMPTY body, but the SDK's shared fetch helper
+      // ends with `return await res.json()` — so revokeToken always rejects against a
+      // compliant provider. The POSTs are already in flight by then, so the tokens are
+      // genuinely revoked and `revokeTokens` still resolves void via its best-effort
+      // catch. Pinned here because the sibling test stubs a JSON body, which hides this
+      // entirely, and because a future refactor must not start reading the resolution as
+      // proof the revocation succeeded.
+      stubClient();
+      const fetchMock = stubFetch({
+        revocation: () => ({
+          status: 200,
+          headers: new Headers(),
+          json: async () => JSON.parse(''),
+        }),
+      });
+
+      await expect(
+        firstValueFrom(
+          svc.revokeTokens(HOMESERVER, BINDING, {
+            accessToken: 'a',
+            refreshToken: 'r',
+          }),
+        ),
+      ).resolves.toBeUndefined();
+
+      const revocations = fetchMock.mock.calls.filter(([url]) =>
+        String(url).includes('revoke'),
+      );
+      expect(revocations).toHaveLength(2);
+    });
+
     it('POSTs a revocation for each token to the discovered endpoint', async () => {
       stubClient();
       const fetchMock = stubFetch({ revocation: () => jsonResponse({}) });
