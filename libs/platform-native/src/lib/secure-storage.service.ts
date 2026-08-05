@@ -18,6 +18,14 @@ export interface SecureStorageBackend {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
   remove(key: string): Promise<void>;
+  /**
+   * Drop every secret this backend holds, where it can. Optional because only the native
+   * plugin offers it — Electron's IPC bridge exposes per-key deletion only, and the web
+   * fallback needs none (its keys live in Preferences, which the factory reset clears as a
+   * group). A backend without it relies on the caller deleting keys it derived from the
+   * account registry.
+   */
+  clear?(): Promise<void>;
 }
 
 /** Namespace the web fallback's keys so they don't collide with other Preferences. */
@@ -86,6 +94,10 @@ function createNativeBackend(): SecureStorageBackend {
     async remove(key) {
       await SecureStorage.remove(key, false);
     },
+    async clear() {
+      // Scoped to this app's keychain/keystore prefix, not the device's.
+      await SecureStorage.clear(false);
+    },
   };
 }
 
@@ -116,6 +128,28 @@ export class SecureStorageService {
   /** Whether the chosen backend is keychain/keystore-backed (false on web). */
   async isSecure(): Promise<boolean> {
     return (await this.resolve()).isSecure;
+  }
+
+  /**
+   * Best-effort bulk wipe for the factory reset. Resolves `true` only when the backend
+   * actually swept itself; `false` means the caller's registry-derived per-key removals are
+   * the whole story, which is the normal path on Electron and web.
+   *
+   * Worth having even though those removals cover every key a healthy registry knows about:
+   * this is the only thing that reclaims a secret orphaned by an earlier bug, whose account
+   * is no longer listed and whose key nothing can name any more.
+   */
+  async clearAll(): Promise<boolean> {
+    const backend = await this.resolve();
+    if (!backend.clear) {
+      return false;
+    }
+    try {
+      await backend.clear();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private resolve(): Promise<SecureStorageBackend> {

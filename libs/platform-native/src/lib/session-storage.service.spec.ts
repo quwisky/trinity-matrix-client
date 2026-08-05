@@ -290,6 +290,41 @@ describe('SessionStorageService', () => {
       expect(secure.store.get('matrix.refreshToken:@ghost:hs')).toBeUndefined();
     });
 
+    it('clearAll returns the records it removed, and a refresh racing it cannot resurrect them', async () => {
+      // The factory reset needs the records back: the registry is the only map from an
+      // account to its secure-key and IndexedDB names, and Electron's keychain cannot be
+      // enumerated at all. Returning them from inside the same `serialize()` turn as the
+      // delete is what makes that read trustworthy — a separate list()-then-clear() could
+      // report an account the clear then missed, or miss one it removed.
+      //
+      // The concurrent refresh here is a guard against that turn being split, not a new
+      // claim: `updateTokensInternal` already bails when the record is gone (pinned by the
+      // sibling no-op test), so this asserts the two mechanisms compose.
+      const { svc, secure } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(CAROL));
+
+      const [cleared] = await Promise.all([
+        firstValueFrom(svc.clearAll()),
+        firstValueFrom(
+          svc.updateTokens('@carol:hs', 'late-access', 'late-r', 1),
+        ),
+      ]);
+
+      expect(cleared.map((a) => a.userId).sort()).toEqual([
+        '@alice:hs',
+        '@carol:hs',
+      ]);
+      expect(cleared.find((a) => a.userId === '@carol:hs')?.cryptoPrefix).toBe(
+        'trinity-crypto:@carol:hs:DEVC',
+      );
+      expect(prefs.get('matrix.accounts')).toBeUndefined();
+      expect(secure.store.get('matrix.accessToken:@alice:hs')).toBeUndefined();
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBeUndefined();
+      // The straggler wrote nothing: updateTokensInternal bails when the record is gone.
+      expect(secure.store.get('matrix.accessToken:@carol:hs')).toBeUndefined();
+    });
+
     it('a same-device re-login carries the rotated expiry + oidc (no silent staleness)', async () => {
       const { svc } = setup();
       await firstValueFrom(svc.save(CAROL));
@@ -767,11 +802,42 @@ describe('SessionStorageService', () => {
       expect(deleteDatabase).not.toHaveBeenCalled();
     });
 
-    it('ignores non-crypto databases (the message-sync store, unrelated names)', async () => {
+    it('ignores databases that are neither a crypto store nor a sync store', async () => {
       const { svc } = setup();
       const deleteDatabase = stubIndexedDbWith([
-        'trinity-sync:@ghost:hs',
         'some-unrelated-db',
+        // Not a real sync-store name: the SDK prefixes what it is given, so an on-disk
+        // sync store is `matrix-js-sdk:trinity-sync:…`. This bare form belongs to nobody.
+        'trinity-sync:@ghost:hs',
+      ]);
+
+      await firstValueFrom(svc.sweepOrphanedCryptoStores());
+
+      expect(deleteDatabase).not.toHaveBeenCalled();
+    });
+
+    it('deletes an orphaned message-sync store, so a blocked wipe self-heals', async () => {
+      // The factory reset can leave a sync store behind when a second tab holds it open.
+      // A cold start is exactly when nothing holds a connection, so this is where that
+      // residue gets reclaimed — and sync stores were previously never swept at all.
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      const deleteDatabase = stubIndexedDbWith([
+        'matrix-js-sdk:trinity-sync:@ghost:hs',
+      ]);
+
+      await firstValueFrom(svc.sweepOrphanedCryptoStores());
+
+      expect(deleteDatabase).toHaveBeenCalledWith(
+        'matrix-js-sdk:trinity-sync:@ghost:hs',
+      );
+    });
+
+    it("never deletes a signed-in account's own sync store", async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      const deleteDatabase = stubIndexedDbWith([
+        'matrix-js-sdk:trinity-sync:@alice:hs',
       ]);
 
       await firstValueFrom(svc.sweepOrphanedCryptoStores());
