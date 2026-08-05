@@ -195,6 +195,23 @@
             Cancel
           </button>
         }
+
+        <!-- ── The way out of a wedged install ─────────────────
+             Subordinate on purpose: this is the escape hatch for someone who cannot get
+             in, not an alternative to signing in. The destructive styling lives on the
+             dialog's confirm button, where the irreversible act actually happens — a red
+             button here would read as this screen's primary action. -->
+        <button
+          hlmBtn
+          variant="ghost"
+          size="sm"
+          class="mt-4 w-full text-muted-foreground"
+          [disabled]="busy()"
+          (click)="clearAllData()"
+          data-testid="clear-all-data"
+        >
+          Clear all data on this device
+        </button>
       </div>
     </section>
   </div>

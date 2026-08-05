@@ -12,6 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormField, disabled, form } from '@angular/forms/signals';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
@@ -33,14 +34,24 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideEye, lucideEyeOff } from '@ng-icons/lucide';
 import {
   AuthService,
+  FactoryResetService,
   type LoginMode,
   type OidcApplicationType,
   type OidcAuthorizationRequest,
   type AuthMetadata,
 } from '@trinity/data-access/auth';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  AppRestartService,
+  SessionStorageService,
+} from '@trinity/platform-native';
+import { TrnAlertService } from '@trinity/helm/overlay';
 import { runWithBusy } from '@trinity/ui';
 import { SsoStateStore } from '../sso-state.store';
+import {
+  CLEAR_DATA_BLOCKED_MESSAGE,
+  CLEAR_DATA_MISTYPED_MESSAGE,
+  confirmClearDataIntent,
+} from './clear-all-data';
 import { OidcStateStore } from '../oidc-state.store';
 
 @Component({
@@ -66,6 +77,9 @@ export class LoginPage {
   private readonly ssoState = inject(SsoStateStore);
   private readonly oidcState = inject(OidcStateStore);
   private readonly storage = inject(SessionStorageService);
+  private readonly alert = inject(TrnAlertService);
+  private readonly factoryReset = inject(FactoryResetService);
+  private readonly restart = inject(AppRestartService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly usernameInput =
@@ -81,6 +95,13 @@ export class LoginPage {
   /** The device id to re-authenticate (from the stored record), when in re-auth mode. */
   private reauthDeviceId: string | null = null;
 
+  /**
+   * Accounts currently stored on this device, for the erase confirmation to name.
+   * `/login?add` is reachable while accounts are live, and someone who came here to ADD an
+   * account needs to be told what erasing would take with it.
+   */
+  private readonly storedUserIds = signal<readonly string[]>([]);
+
   constructor() {
     // Sweep an abandoned OIDC stash. `peek()` bins one that has outlived its TTL, and the
     // TTL is only ever enforced on read — so a login the user walked away from leaves a
@@ -91,6 +112,16 @@ export class LoginPage {
     // cleanup on this path: a storage read that rejects must not take the page down with
     // an unhandled rejection when nothing here depends on the answer.
     void this.oidcState.peek().catch(() => undefined);
+
+    this.storage
+      .list()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (records) => this.storedUserIds.set(records.map((r) => r.userId)),
+        // A registry too broken to read is itself a reason to erase, so the button stays —
+        // it just cannot name anything.
+        error: () => undefined,
+      });
 
     const reauth = this.reauthUserId();
     if (reauth) {
@@ -389,6 +420,56 @@ export class LoginPage {
     const bytes = new Uint8Array(16);
     crypto.getRandomValues(bytes);
     return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * Erase everything Trinity has stored on this device, then restart into a clean app.
+   *
+   * The way out of a wedged install, which is why it lives on the login page: Settings is
+   * behind `authGuard`, and the whole point is to be reachable when you cannot sign in.
+   *
+   * Deliberately NOT wrapped in `withBusy`. `runWithBusy` turns a failure into `EMPTY`, so
+   * its `next` never runs — here that would mean silently not restarting, leaving the user
+   * looking at an app whose data is already gone. Busy and error are set by hand instead.
+   */
+  async clearAllData(): Promise<void> {
+    const intent = await confirmClearDataIntent(
+      this.alert,
+      this.storedUserIds(),
+    );
+    if (intent === 'cancelled') {
+      return; // they stopped it themselves; saying anything would be nagging
+    }
+    if (intent === 'mistyped') {
+      this.error.set(CLEAR_DATA_MISTYPED_MESSAGE);
+      return;
+    }
+
+    this.error.set(null);
+    this.busy.set(true);
+    this.factoryReset
+      .clearAllData()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((report) => {
+        if (report.blocked.length > 0) {
+          // Nothing was signed out and the registry is intact — the wipe stops at the first
+          // blocked database precisely so this is retryable. Hand back control.
+          this.busy.set(false);
+          this.error.set(CLEAR_DATA_BLOCKED_MESSAGE);
+          return;
+        }
+        if (report.failed.length > 0) {
+          // Not fatal: deleting a database that does not exist errors in some browsers
+          // (Firefox private browsing), which is the common shape here.
+          console.warn(
+            'Trinity: some databases could not be deleted:',
+            report.failed,
+          );
+        }
+        // `busy` stays true: the app is about to be replaced, and releasing the button now
+        // would let a second press race the navigation.
+        this.restart.restart();
+      });
   }
 
   /** Wrap a one-shot action with shared busy/error handling. */

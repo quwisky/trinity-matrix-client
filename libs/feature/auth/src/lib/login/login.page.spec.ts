@@ -1,7 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AuthService } from '@trinity/data-access/auth';
-import { SessionStorageService } from '@trinity/platform-native';
+import { AuthService, FactoryResetService } from '@trinity/data-access/auth';
+import {
+  AppRestartService,
+  SessionStorageService,
+} from '@trinity/platform-native';
+import { TrnAlertService } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
@@ -17,12 +21,21 @@ async function renderLogin(
     reauth?: string;
     record?: unknown;
     oidcStore?: Partial<OidcStateStore>;
+    /** Accounts the registry reports, which the erase confirmation names. */
+    stored?: { userId: string }[];
+    /** What the alert's typed confirmation returns (null = cancelled). */
+    typed?: string | null;
+    /** What the wipe reports back. */
+    report?: { blocked: string[]; failed: string[] };
   } = {},
 ): Promise<{
   cmp: LoginPage;
   router: Router;
   ssoStore: SsoStateStore;
   oidcStore: OidcStateStore;
+  alert: TrnAlertService;
+  reset: FactoryResetService;
+  restart: AppRestartService;
 }> {
   const queryParamMap = {
     has: (key: string) => key === 'add' && !!opts.add,
@@ -40,7 +53,22 @@ async function renderLogin(
       }),
       MockProvider(SessionStorageService, {
         record: vi.fn(() => of(opts.record ?? null) as never),
+        list: vi.fn(() => of(opts.stored ?? []) as never),
       }),
+      MockProvider(TrnAlertService, {
+        prompt: vi.fn().mockResolvedValue(opts.typed ?? null),
+      }),
+      MockProvider(FactoryResetService, {
+        clearAllData: vi.fn(() =>
+          of({
+            blocked: opts.report?.blocked ?? [],
+            failed: opts.report?.failed ?? [],
+            enumerated: true,
+            bulkSecureClear: false,
+          }),
+        ),
+      }),
+      MockProvider(AppRestartService, { restart: vi.fn() }),
       { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap } } },
     ],
   });
@@ -49,6 +77,9 @@ async function renderLogin(
     router: TestBed.inject(Router),
     ssoStore: TestBed.inject(SsoStateStore),
     oidcStore: TestBed.inject(OidcStateStore),
+    alert: TestBed.inject(TrnAlertService),
+    reset: TestBed.inject(FactoryResetService),
+    restart: TestBed.inject(AppRestartService),
   };
 }
 
@@ -286,6 +317,97 @@ describe('LoginPage', () => {
     expect(mode).toBe('add');
     expect(deviceId).toBe('OLDDEV');
     expect(state).toBeTruthy();
+  });
+
+  describe('clear all data', () => {
+    it('erases and restarts once the word is typed', async () => {
+      const { cmp, reset, restart } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { typed: 'ERASE' },
+      );
+
+      await cmp.clearAllData();
+
+      expect(reset.clearAllData).toHaveBeenCalled();
+      expect(restart.restart).toHaveBeenCalled();
+      expect(cmp.error()).toBeNull();
+    });
+
+    it('erases nothing when the word is mistyped, and says so', async () => {
+      // Silence here is indistinguishable from a broken button, and this is the screen
+      // someone reaches when things are already broken.
+      const { cmp, reset, restart } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { typed: 'yes please' },
+      );
+
+      await cmp.clearAllData();
+
+      expect(reset.clearAllData).not.toHaveBeenCalled();
+      expect(restart.restart).not.toHaveBeenCalled();
+      expect(cmp.error()).toMatch(/Type ERASE exactly/);
+    });
+
+    it('erases nothing and stays quiet when cancelled', async () => {
+      const { cmp, reset } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { typed: null },
+      );
+
+      await cmp.clearAllData();
+
+      expect(reset.clearAllData).not.toHaveBeenCalled();
+      expect(cmp.error()).toBeNull(); // they changed their mind; nagging would be rude
+    });
+
+    it('does NOT restart when a database was still open, and explains why', async () => {
+      // The wipe stops at the first blocked database, before signing out or clearing the
+      // registry, so this state is retryable. Restarting anyway would drop the user into a
+      // half-erased app they cannot sign in to — and would claim success falsely.
+      const { cmp, restart } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        {
+          typed: 'ERASE',
+          report: { blocked: ['matrix-js-sdk:trinity-sync:@a:hs'], failed: [] },
+        },
+      );
+
+      await cmp.clearAllData();
+
+      expect(restart.restart).not.toHaveBeenCalled();
+      expect(cmp.error()).toMatch(/another window or tab/i);
+      expect(cmp.busy()).toBe(false); // control handed back so they can retry
+    });
+
+    it('restarts despite a failed delete, which is routine in private browsing', async () => {
+      const { cmp, restart } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { typed: 'ERASE', report: { blocked: [], failed: ['some-db'] } },
+      );
+
+      await cmp.clearAllData();
+
+      expect(restart.restart).toHaveBeenCalled();
+    });
+
+    it('names the signed-in accounts in the confirmation', async () => {
+      // /login?add is reachable while accounts are live, and someone who came here to ADD
+      // an account has to be told what erasing would take with it.
+      const { cmp, alert } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        {
+          add: true,
+          typed: null,
+          stored: [{ userId: '@a:hs' }, { userId: '@b:hs' }],
+        },
+      );
+
+      await cmp.clearAllData();
+
+      const message = vi.mocked(alert.prompt).mock.calls[0][0].message ?? '';
+      expect(message).toContain('@a:hs');
+      expect(message).toContain('@b:hs');
+    });
   });
 
   it('uses the eu.qwky.trinity:// scheme and opens externally on Electron', async () => {
