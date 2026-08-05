@@ -7,7 +7,16 @@ import {
   type OAuthRegistrationRequest,
   type ValidatedAuthMetadata,
 } from 'matrix-js-sdk';
-import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  defer,
+  from,
+  map,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import type { OidcSessionBinding } from '@trinity/util/matrix';
 
 /** How this client identifies itself to an OIDC provider during dynamic registration. */
@@ -123,7 +132,7 @@ export class OidcClientService {
     context: OidcGrantContext,
   ): Observable<OidcGrant> {
     return defer(() => from(this.exchange(code, context))).pipe(
-      switchMap(({ token, issuer, requestedAt }) =>
+      switchMap(({ token, metadata, requestedAt }) =>
         from(
           createClient({
             baseUrl: context.baseUrl,
@@ -149,13 +158,26 @@ export class OidcClientService {
                 ? { accessTokenExpiresAt: expiresAt }
                 : {}),
               oidc: {
-                issuer,
+                issuer: metadata.issuer,
                 clientId: context.clientId,
                 redirectUri: context.redirectUri,
               },
             };
             return result;
           }),
+          // The exchange succeeded, so live tokens exist — and under MSC3861 the OAuth
+          // session IS the Matrix device. The code is spent and the caller has already
+          // cleared the stash, so this grant is unrecoverable; without a revocation the
+          // provider is left holding a ghost device and a long-lived refresh token that
+          // nothing will ever use, one more per retry. Best-effort, and the ORIGINAL
+          // failure is what propagates: a revocation error must not displace it.
+          catchError((err: unknown) =>
+            from(
+              this.revokeGranted(metadata, context, token).catch(
+                () => undefined,
+              ),
+            ).pipe(switchMap(() => throwError(() => err))),
+          ),
         ),
       ),
     );
@@ -166,7 +188,7 @@ export class OidcClientService {
     context: OidcGrantContext,
   ): Promise<{
     token: BearerTokenResponse;
-    issuer: string;
+    metadata: ValidatedAuthMetadata;
     requestedAt: number;
   }> {
     const metadata = await createClient({
@@ -182,7 +204,23 @@ export class OidcClientService {
     // token, so measuring from after a slow round-trip would over-state the lifetime.
     const requestedAt = Date.now();
     const token = await auth.completeAuthorizationCodeGrant(code);
-    return { token, issuer: metadata.issuer, requestedAt };
+    return { token, metadata, requestedAt };
+  }
+
+  /** Hand back tokens from a grant that succeeded but could not be turned into a session. */
+  private revokeGranted(
+    metadata: ValidatedAuthMetadata,
+    context: OidcGrantContext,
+    token: BearerTokenResponse,
+  ): Promise<void> {
+    const auth = new OAuth2(metadata, {
+      clientId: context.clientId,
+      redirectUri: context.redirectUri,
+    });
+    return this.revokeBoth(auth, {
+      accessToken: token.access_token,
+      refreshToken: token.refresh_token,
+    });
   }
 
   /**
@@ -231,6 +269,14 @@ export class OidcClientService {
       clientId: binding.clientId,
       redirectUri: binding.redirectUri,
     });
+    await this.revokeBoth(auth, tokens);
+  }
+
+  /** POST a revocation for each token present. Concurrent: neither gates the other. */
+  private async revokeBoth(
+    auth: OAuth2,
+    tokens: { accessToken?: string; refreshToken?: string },
+  ): Promise<void> {
     const calls: Promise<void>[] = [];
     if (tokens.refreshToken) {
       calls.push(auth.revokeToken(tokens.refreshToken, 'refresh_token'));

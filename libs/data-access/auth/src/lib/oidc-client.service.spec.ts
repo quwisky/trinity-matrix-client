@@ -83,14 +83,17 @@ function stubClient({
   whoami,
 }: {
   metadata?: unknown;
-  whoami?: { user_id: string; device_id?: string };
+  whoami?: { user_id: string; device_id?: string } | Error;
 } = {}): void {
   createClientMock.mockReturnValue({
     getAuthMetadata:
       metadata instanceof Error
         ? vi.fn().mockRejectedValue(metadata)
         : vi.fn().mockResolvedValue(metadata),
-    whoami: vi.fn().mockResolvedValue(whoami),
+    whoami:
+      whoami instanceof Error
+        ? vi.fn().mockRejectedValue(whoami)
+        : vi.fn().mockResolvedValue(whoami),
   } as never);
 }
 
@@ -348,11 +351,57 @@ describe('OidcClientService', () => {
 
     it('rejects when the provider returns no device for the session', async () => {
       stubClient({ whoami: { user_id: '@me:hs' } }); // no device_id
-      stubFetch({ token: () => jsonResponse(TOKEN) });
+      stubFetch({
+        token: () => jsonResponse(TOKEN),
+        revocation: () => jsonResponse({}),
+      });
 
       await expect(
         firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
       ).rejects.toThrow(/no device/i);
+    });
+
+    it('hands back the tokens it just minted when identity lookup fails', async () => {
+      // By the time whoami runs, the code is spent and the callback page has already
+      // cleared the stash — this grant can never be completed. But the tokens are live,
+      // and under MSC3861 the OAuth session IS the Matrix device: dropping them leaves a
+      // ghost device the user can only remove from the provider's own account page, plus
+      // a long-lived refresh token nothing will ever use. Every retry adds another.
+      stubClient({ whoami: new Error('homeserver unavailable') });
+      const fetchMock = stubFetch({
+        token: () => jsonResponse(TOKEN),
+        revocation: () => jsonResponse({}),
+      });
+
+      // The user still gets the real failure, not a revocation error.
+      await expect(
+        firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+      ).rejects.toThrow(/homeserver unavailable/);
+
+      const bodies = fetchMock.mock.calls
+        .filter(([url]) => url === AUTH_METADATA.revocation_endpoint)
+        .map(([, init]) => formBody(init));
+      expect(bodies.map((body) => body.get('token')).sort()).toEqual([
+        'access-tok',
+        'refresh-tok',
+      ]);
+    });
+
+    it('still surfaces the original failure when the revocation also fails', async () => {
+      // Best-effort, and it genuinely does fail against a compliant provider: RFC 7009
+      // mandates an empty 200 body, which the SDK's shared `res.json()` chokes on. A
+      // revocation error must never displace the error the user needs to see.
+      stubClient({ whoami: new Error('homeserver unavailable') });
+      stubFetch({
+        token: () => jsonResponse(TOKEN),
+        revocation: () => {
+          throw new Error('revocation down');
+        },
+      });
+
+      await expect(
+        firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+      ).rejects.toThrow(/homeserver unavailable/);
     });
 
     it('derives the expiry from expires_in, stamped before the token request', async () => {
@@ -422,8 +471,8 @@ describe('OidcClientService', () => {
         ),
       ).resolves.toBeUndefined();
 
-      const revocations = fetchMock.mock.calls.filter(([url]) =>
-        String(url).includes('revoke'),
+      const revocations = fetchMock.mock.calls.filter(
+        ([url]) => url === AUTH_METADATA.revocation_endpoint,
       );
       expect(revocations).toHaveLength(2);
     });
