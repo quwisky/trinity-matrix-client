@@ -148,6 +148,19 @@ describe('SsoStateStore', () => {
     });
   });
 
+  it('peek survives a small backwards clock step mid-round-trip', async () => {
+    // The lower bound must not be zero-tolerance: the clock can step backwards WHILE the
+    // user is typing credentials at the provider, and rejecting on that kills a genuine
+    // login with a message that reads like an attack.
+    getFrom({
+      'sso.state': 'NONCE',
+      'sso.baseUrl': 'https://hs.example',
+      'sso.startedAt': String(Date.now() + 30 * 1000),
+    });
+
+    expect(await store().peek()).toMatchObject({ state: 'NONCE' });
+  });
+
   it('peek returns an empty stash when nothing was stored', async () => {
     getFrom({});
 

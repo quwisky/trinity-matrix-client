@@ -27,6 +27,7 @@ const SAVE = {
   clientId: 'CLIENT1',
   deviceId: 'DEVICE1',
   codeVerifier: 'VERIFIER1',
+  expectedUserId: null,
 };
 
 describe('OidcStateStore', () => {
@@ -50,7 +51,20 @@ describe('OidcStateStore', () => {
       clientId: 'CLIENT1',
       deviceId: 'DEVICE1',
       codeVerifier: 'VERIFIER1',
+      expectedUserId: null,
     });
+  });
+
+  it('round-trips the re-auth expectation, and drops it for an ordinary login', async () => {
+    // The expectation is what binds a re-auth grant to the account it claims to
+    // reconnect. Written as ABSENT rather than empty for an ordinary login, so a stale
+    // one from a previous re-auth can never be read back as an expectation and reject a
+    // perfectly good sign-in.
+    await store.save({ ...SAVE, expectedUserId: '@a:hs' });
+    expect((await store.peek()).expectedUserId).toBe('@a:hs');
+
+    await store.save(SAVE);
+    expect((await store.peek()).expectedUserId).toBeNull();
   });
 
   it('peek returns the stash without clearing it (state can be verified first)', async () => {
@@ -73,6 +87,18 @@ describe('OidcStateStore', () => {
       codeVerifier: null,
     });
     expect(prefs.get('oidc.codeVerifier')).toBeUndefined();
+  });
+
+  it('survives a small backwards clock step mid-round-trip', async () => {
+    await store.save(SAVE);
+    // The lower bound must not be zero-tolerance. The clock can step backwards WHILE the
+    // user is typing at the provider (NITZ/NTP after airplane mode, a laptop resuming
+    // from sleep), and rejecting on that would kill a genuine login with a message that
+    // reads like an attack — for the sake of an attack that needs the same event class
+    // and a leaked nonce.
+    prefs.set('oidc.startedAt', String(Date.now() + 30 * 1000));
+
+    await expect(store.peek()).resolves.toMatchObject({ state: 'STATE1' });
   });
 
   it('is single-use via peek + clear: after clear, peek is empty', async () => {

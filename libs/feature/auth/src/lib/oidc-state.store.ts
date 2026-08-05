@@ -11,6 +11,7 @@ const ISSUER_KEY = 'oidc.issuer';
 const CLIENT_ID_KEY = 'oidc.clientId';
 const DEVICE_ID_KEY = 'oidc.deviceId';
 const CODE_VERIFIER_KEY = 'oidc.codeVerifier';
+const EXPECTED_USER_ID_KEY = 'oidc.expectedUserId';
 /**
  * Written by versions before matrix-js-sdk 42, when the SDK kept the sign-in state in
  * sessionStorage and this store shuttled an opaque copy of it. Nothing writes them now,
@@ -21,6 +22,16 @@ const LEGACY_KEYS = ['oidc.ssKey', 'oidc.ssBlob'] as const;
 
 /** OIDC round-trips are short; reject a stash older than this to limit replay. */
 const TTL_MS = 10 * 60 * 1000; // 10 minutes
+/**
+ * How far the stash may appear to have been written in the FUTURE before it is rejected.
+ * The lower bound exists so a clock nudged forward cannot mint a stash that never expires
+ * — but a zero-tolerance version fails an ordinary login, because the same event class
+ * (a clock stepped backwards: NITZ/NTP after airplane mode, a laptop resuming from sleep,
+ * w32time) can land mid-round-trip while the user is typing at the provider. A minute
+ * survives normal clock discipline and still bins a stash written hours ahead. Kept in
+ * step with {@link SsoStateStore}.
+ */
+const CLOCK_SKEW_MS = 60 * 1000;
 
 /** What {@link OidcStateStore.save} persists across the OIDC authorization round-trip. */
 export interface OidcStateSave {
@@ -39,6 +50,14 @@ export interface OidcStateSave {
   deviceId: string;
   /** SECRET. The PKCE code_verifier the token exchange must present. */
   codeVerifier: string;
+  /**
+   * Re-auth only: the account this round-trip is meant to reconnect. A provider holding
+   * a browser session can authorize with no interaction and return a DIFFERENT account,
+   * and nothing in the token response says whose it is — so the callback compares this
+   * against `whoami` before anything is persisted. Null for an ordinary login, where any
+   * account the user picks is the right answer.
+   */
+  expectedUserId: string | null;
 }
 
 /** The single-use OIDC stash read back on the callback (each field may be absent). */
@@ -51,6 +70,7 @@ export interface OidcStateStash {
   clientId: string | null;
   deviceId: string | null;
   codeVerifier: string | null;
+  expectedUserId: string | null;
 }
 
 const EMPTY_STASH: OidcStateStash = {
@@ -62,6 +82,7 @@ const EMPTY_STASH: OidcStateStash = {
   clientId: null,
   deviceId: null,
   codeVerifier: null,
+  expectedUserId: null,
 };
 
 /**
@@ -100,6 +121,14 @@ export class OidcStateStore {
       Preferences.set({ key: CLIENT_ID_KEY, value: params.clientId }),
       Preferences.set({ key: DEVICE_ID_KEY, value: params.deviceId }),
       Preferences.set({ key: CODE_VERIFIER_KEY, value: params.codeVerifier }),
+      // Absent rather than empty for an ordinary login, so a stale value can never be
+      // read back as an expectation.
+      params.expectedUserId
+        ? Preferences.set({
+            key: EXPECTED_USER_ID_KEY,
+            value: params.expectedUserId,
+          })
+        : Preferences.remove({ key: EXPECTED_USER_ID_KEY }),
     ]);
   }
 
@@ -120,6 +149,7 @@ export class OidcStateStore {
       clientId,
       deviceId,
       codeVerifier,
+      expectedUserId,
     ] = await Promise.all([
       Preferences.get({ key: STATE_KEY }),
       Preferences.get({ key: BASE_URL_KEY }),
@@ -130,6 +160,7 @@ export class OidcStateStore {
       Preferences.get({ key: CLIENT_ID_KEY }),
       Preferences.get({ key: DEVICE_ID_KEY }),
       Preferences.get({ key: CODE_VERIFIER_KEY }),
+      Preferences.get({ key: EXPECTED_USER_ID_KEY }),
     ]);
 
     const started = Number(startedAt.value);
@@ -138,7 +169,8 @@ export class OidcStateStore {
     // stash written while the device clock was ahead — or nudged forward by any means —
     // would never expire and would keep serving a live code_verifier indefinitely. A
     // negative age is not a young stash, it is an untrustworthy one.
-    const fresh = Number.isFinite(started) && age >= 0 && age <= TTL_MS;
+    const fresh =
+      Number.isFinite(started) && age >= -CLOCK_SKEW_MS && age <= TTL_MS;
     if (!fresh) {
       // Bin it rather than just refusing to serve it. The stash holds the PKCE
       // code_verifier — a secret — in plaintext, and the TTL is only enforced here at READ
@@ -160,6 +192,7 @@ export class OidcStateStore {
       clientId: clientId.value ?? null,
       deviceId: deviceId.value ?? null,
       codeVerifier: codeVerifier.value ?? null,
+      expectedUserId: expectedUserId.value ?? null,
     };
   }
 
@@ -175,6 +208,7 @@ export class OidcStateStore {
       Preferences.remove({ key: CLIENT_ID_KEY }),
       Preferences.remove({ key: DEVICE_ID_KEY }),
       Preferences.remove({ key: CODE_VERIFIER_KEY }),
+      Preferences.remove({ key: EXPECTED_USER_ID_KEY }),
       ...LEGACY_KEYS.map((key) => Preferences.remove({ key })),
     ]);
   }
