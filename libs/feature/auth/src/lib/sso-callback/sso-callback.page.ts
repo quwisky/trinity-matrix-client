@@ -62,9 +62,20 @@ export class SsoCallbackPage implements OnInit {
       .subscribe((params) => {
         this.inFlight = this.inFlight
           .then(() => this.handle(params))
-          // A failure must not poison the queue: later emissions still need to run, and
-          // handle() already reports its own errors through `error`.
-          .catch(() => undefined);
+          // A failure must not poison the queue: later emissions still need to run.
+          // handle() reports its own errors through `error` for everything it can
+          // anticipate, but not for a THROW — a rejecting stash read (storage blocked,
+          // quota exhausted, a native deep-link plugin failure) escapes it. Swallowing
+          // that silently leaves the template on its spinner with no Back button, so
+          // surface it — unless a callback already claimed the exchange, in which case
+          // that one owns the outcome and this emission is a straggler.
+          .catch(() => {
+            if (!this.claimed) {
+              this.error.set(
+                'This sign-in could not be completed. Please sign in again.',
+              );
+            }
+          });
       });
   }
 
@@ -106,6 +117,9 @@ export class SsoCallbackPage implements OnInit {
       return;
     }
     this.claimed = true;
+    // A genuine callback is now in charge, so any message an earlier straggler left
+    // behind is obsolete — don't show it alongside a sign-in that is going through.
+    this.error.set(null);
     await this.ssoState.clear();
 
     if (!loginToken || !stash.baseUrl) {
@@ -146,6 +160,9 @@ export class SsoCallbackPage implements OnInit {
       return;
     }
     this.claimed = true;
+    // A genuine callback is now in charge, so any message an earlier straggler left
+    // behind is obsolete — don't show it alongside a sign-in that is going through.
+    this.error.set(null);
     await this.oidcState.clear();
 
     if (authError) {
@@ -179,6 +196,7 @@ export class SsoCallbackPage implements OnInit {
           codeVerifier: stash.codeVerifier,
         },
         stash.mode,
+        stash.expectedUserId,
       )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({

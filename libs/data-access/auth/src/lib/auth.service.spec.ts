@@ -418,6 +418,52 @@ describe('AuthService', () => {
       expect(push.register).toHaveBeenCalled();
       expect(matrix.init).not.toHaveBeenCalled();
     });
+
+    it('refuses a grant for a different account than the one being re-authenticated', async () => {
+      // Re-auth sends the stored account's device id in the requested scope, and a
+      // provider that already holds a browser session authorizes with no interaction —
+      // so on a homeserver with two accounts, "sign in again to reconnect this account"
+      // can silently come back as the OTHER one. Nothing compared the two, so establish()
+      // would persist B under A's device id; upsert then sees deviceChanged and reclaims
+      // B's live crypto store, forcing re-verification of an account never touched.
+      const oidc = TestBed.inject(OidcClientService);
+      const storage = TestBed.inject(SessionStorageService);
+      vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
+      vi.mocked(oidc.revokeTokens).mockReturnValue(of(undefined));
+
+      await expect(
+        firstValueFrom(
+          auth.completeOidcLogin('CODE', context, 'add', '@other:hs'),
+        ),
+      ).rejects.toThrow(/@other:hs/);
+
+      expect(storage.save).not.toHaveBeenCalled();
+      // The grant is unusable and its tokens are live: hand them back rather than
+      // leaving a session the user cannot see or reach.
+      expect(oidc.revokeTokens).toHaveBeenCalledWith(
+        'https://hs',
+        grant.oidc,
+        expect.objectContaining({ accessToken: 'atok', refreshToken: 'rtok' }),
+      );
+    });
+
+    it('accepts a grant that matches the account being re-authenticated', async () => {
+      const oidc = TestBed.inject(OidcClientService);
+      const matrix = TestBed.inject(MatrixClientService);
+      const storage = TestBed.inject(SessionStorageService);
+      const push = TestBed.inject(PushService);
+      vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
+      vi.mocked(storage.save).mockImplementation((s) => of(s));
+      vi.mocked(matrix.add).mockReturnValue(of(undefined));
+      vi.mocked(push.register).mockReturnValue(of(undefined));
+
+      await firstValueFrom(
+        auth.completeOidcLogin('CODE', context, 'add', '@me:hs'),
+      );
+
+      expect(matrix.add).toHaveBeenCalled();
+      expect(oidc.revokeTokens).not.toHaveBeenCalled();
+    });
   });
 
   it('forgets an OIDC client id via the client service', async () => {

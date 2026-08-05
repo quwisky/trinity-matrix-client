@@ -24,6 +24,7 @@ const EMPTY_OIDC: OidcStateStash = {
   clientId: null,
   deviceId: null,
   codeVerifier: null,
+  expectedUserId: null,
 };
 
 function paramMap(params: Record<string, string | null>): ParamMap {
@@ -203,6 +204,7 @@ describe('SsoCallbackPage', () => {
       clientId: 'CLIENT1',
       deviceId: 'DEVICE1',
       codeVerifier: 'VERIFIER1',
+      expectedUserId: null,
     };
     /** What the stash must be handed to the exchange as (matrix-js-sdk 42 keeps none of it). */
     const GRANT_CONTEXT = {
@@ -228,6 +230,7 @@ describe('SsoCallbackPage', () => {
         'CODE',
         GRANT_CONTEXT,
         'replace',
+        null,
       );
       expect(oidcClear).toHaveBeenCalledTimes(1); // consumed only after state matched
       expect(navigateByUrl).toHaveBeenCalledWith('/rooms', {
@@ -317,11 +320,28 @@ describe('SsoCallbackPage', () => {
         'REAL',
         GRANT_CONTEXT,
         'replace',
+        null,
       );
       expect(oidcClear).toHaveBeenCalledTimes(1); // consumed once, by the genuine callback
       expect(navigateByUrl).toHaveBeenCalledWith('/rooms', {
         replaceUrl: true,
       });
+    });
+
+    it('surfaces an error when the only callback cannot read the stash', async () => {
+      // Web delivers exactly one emission. If the Preferences/localStorage read throws,
+      // handle() rejects before it can set `error` itself — and the template's else
+      // branch is a spinner whose only exit ("Back to sign in") lives in the error
+      // branch. Swallowing this stranded the user with no way out but a force-quit.
+      const completeOidcLogin = vi.fn();
+      const { cmp } = await renderPage({
+        auth: { completeOidcLogin } as unknown as Partial<AuthService>,
+        params: { code: 'CODE', state: 'STATE1' },
+        oidcPeek: () => Promise.reject(new Error('storage unavailable')),
+      });
+
+      expect(completeOidcLogin).not.toHaveBeenCalled();
+      expect(cmp.error()).toMatch(/could not be completed/i);
     });
 
     it('still completes the genuine callback after the first handler throws', async () => {
@@ -332,7 +352,7 @@ describe('SsoCallbackPage', () => {
       // reachable by a forged deep link that merely makes the stash read fail.
       let peeks = 0;
       const completeOidcLogin = vi.fn(() => of(undefined));
-      const { navigateByUrl } = await renderPage({
+      const { cmp, navigateByUrl } = await renderPage({
         auth: { completeOidcLogin } as unknown as Partial<AuthService>,
         paramsSequence: [
           { code: 'ATTACK', state: 'FORGED' },
@@ -351,10 +371,32 @@ describe('SsoCallbackPage', () => {
         'REAL',
         GRANT_CONTEXT,
         'replace',
+        null,
       );
       expect(navigateByUrl).toHaveBeenCalledWith('/rooms', {
         replaceUrl: true,
       });
+      // The failed straggler's message must not survive alongside a sign-in that went
+      // through — claiming clears it.
+      expect(cmp.error()).toBeNull();
+    });
+
+    it('forwards the re-auth expectation so the grant can be bound to that account', async () => {
+      // Without this the callback would complete a re-auth as whoever the provider
+      // happened to have a session for, under the account's device id.
+      const completeOidcLogin = vi.fn(() => of(undefined));
+      await renderPage({
+        auth: { completeOidcLogin } as unknown as Partial<AuthService>,
+        params: { code: 'CODE', state: 'STATE1' },
+        oidcStash: { ...OIDC_STASH, mode: 'add', expectedUserId: '@a:hs' },
+      });
+
+      expect(completeOidcLogin).toHaveBeenCalledWith(
+        'CODE',
+        GRANT_CONTEXT,
+        'add',
+        '@a:hs',
+      );
     });
 
     it('errors when the redirect is missing from the stash', async () => {

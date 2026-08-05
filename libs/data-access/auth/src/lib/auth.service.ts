@@ -35,6 +35,7 @@ import {
   OidcClientService,
   type OidcAuthorizationParams,
   type OidcAuthorizationRequest,
+  type OidcGrant,
   type OidcGrantContext,
 } from './oidc-client.service';
 
@@ -213,13 +214,18 @@ export class AuthService {
    * the provider redirects back (and after the stashed sign-in state was re-seeded).
    * `redirectUri` is the one used to build the request — needed to rebuild the token
    * refresher on restore.
+   *
+   * `expectedUserId` is set only by re-auth, and is what binds the grant to the account
+   * the user asked to reconnect — see {@link rejectMismatchedGrant}.
    */
   completeOidcLogin(
     code: string,
     context: OidcGrantContext,
     mode: LoginMode = 'replace',
+    expectedUserId: string | null = null,
   ): Observable<void> {
     return this.oidc.completeGrant(code, context).pipe(
+      switchMap((grant) => this.rejectMismatchedGrant(grant, expectedUserId)),
       switchMap((grant) =>
         this.establish(
           grant.homeserverUrl,
@@ -234,6 +240,43 @@ export class AuthService {
           mode,
         ),
       ),
+    );
+  }
+
+  /**
+   * Refuse a grant that came back as someone other than the account being re-authenticated.
+   *
+   * A re-auth puts the stored account's device id in the requested scope, and sends no
+   * `prompt=login` — so a provider already holding a browser session authorizes with no
+   * user interaction at all. On a homeserver where the user has two accounts, "sign in
+   * again to reconnect this account" can therefore return the OTHER one, and nothing in
+   * the token response identifies who it belongs to (identity comes from `whoami`).
+   * Persisting it would file that account under this one's device id, at which point
+   * `upsert` sees the device change and reclaims its live crypto store — forcing
+   * re-verification of an account the user never touched.
+   *
+   * The tokens are already live, so hand them back. Detached: revocation reaches the
+   * provider with no timeout, and the user needs the explanation now, not after it.
+   */
+  private rejectMismatchedGrant(
+    grant: OidcGrant,
+    expectedUserId: string | null,
+  ): Observable<OidcGrant> {
+    if (!expectedUserId || grant.userId === expectedUserId) {
+      return of(grant);
+    }
+    this.oidc
+      .revokeTokens(grant.homeserverUrl, grant.oidc, {
+        accessToken: grant.accessToken,
+        refreshToken: grant.refreshToken,
+      })
+      .subscribe({ error: () => undefined });
+    return throwError(
+      () =>
+        new Error(
+          `Your provider signed you in as ${grant.userId}, not ${expectedUserId}. ` +
+            'Sign in to that account instead.',
+        ),
     );
   }
 

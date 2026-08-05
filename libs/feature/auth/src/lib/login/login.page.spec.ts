@@ -386,7 +386,7 @@ describe('LoginPage', () => {
 
     it('re-authenticates the stored device instead of minting a new one', async () => {
       const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
-      const { cmp } = await renderLogin(
+      const { cmp, oidcStore } = await renderLogin(
         {
           buildOidcAuthorizationRequest,
           getDelegatedAuthConfig: vi.fn(() =>
@@ -416,6 +416,31 @@ describe('LoginPage', () => {
         deviceId?: string;
       };
       expect(params.deviceId).toBe('OLDDEV');
+      // Reusing the device makes the identity check load-bearing: a provider that still
+      // holds a browser session authorizes with no interaction, so on a homeserver with
+      // two accounts this could come back as the other one and inherit OLDDEV. The
+      // callback can only refuse that if the expectation travels in the stash.
+      await Promise.resolve();
+      expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
+        expectedUserId: '@bob:hs',
+      });
+    });
+
+    it('stashes no expectation for an ordinary login', async () => {
+      // Any account the user picks is the right answer here, so an expectation would only
+      // create a way to reject a perfectly good sign-in.
+      const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
+      const { cmp, oidcStore } = await renderOidcReady(
+        buildOidcAuthorizationRequest,
+      );
+
+      cmp.startOidc();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
+        expectedUserId: null,
+      });
     });
 
     it('builds the authorization request, stashes the sign-in state, then redirects (web)', async () => {

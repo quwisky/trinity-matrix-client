@@ -346,6 +346,10 @@ export class LoginPage {
       clientId: request.clientId,
       deviceId: request.deviceId,
       codeVerifier: request.codeVerifier,
+      // Re-auth reuses this account's device id, so the callback must also check the
+      // grant came back as this account — a provider with a live browser session can
+      // authorize silently as a different one.
+      expectedUserId: this.reauthUserId(),
     });
     this.dispatchRedirect(request.url, native, electron);
   }
