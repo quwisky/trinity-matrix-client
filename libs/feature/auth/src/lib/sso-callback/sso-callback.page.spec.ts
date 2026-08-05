@@ -40,6 +40,8 @@ async function renderPage(opts: {
   oidcStash?: Partial<OidcStateStash>;
   /** Per-call OIDC peek behaviour, for callbacks that must not read the same stash. */
   oidcPeek?: () => Promise<OidcStateStash>;
+  /** Per-call legacy-SSO peek behaviour, same purpose. */
+  ssoPeek?: () => Promise<SsoStateStash>;
 }): Promise<{
   cmp: SsoCallbackPage;
   navigateByUrl: ReturnType<typeof vi.fn>;
@@ -52,7 +54,9 @@ async function renderPage(opts: {
   const ssoClear = vi.fn().mockResolvedValue(undefined);
   const oidcClear = vi.fn().mockResolvedValue(undefined);
   // peek() reads WITHOUT clearing; the page consumes (clear) only once state matches.
-  const ssoPeek = vi.fn().mockResolvedValue({ ...EMPTY_SSO, ...opts.ssoStash });
+  const ssoPeek = opts.ssoPeek
+    ? vi.fn(opts.ssoPeek)
+    : vi.fn().mockResolvedValue({ ...EMPTY_SSO, ...opts.ssoStash });
   const oidcPeek = opts.oidcPeek
     ? vi.fn(opts.oidcPeek)
     : vi.fn().mockResolvedValue({ ...EMPTY_OIDC, ...opts.oidcStash });
@@ -176,6 +180,41 @@ describe('SsoCallbackPage', () => {
       });
 
       expect(cmp.error()).toMatch(/could not be verified/i);
+    });
+
+    it('clears a straggler’s message once the genuine callback claims', async () => {
+      // The same `error.set(null)` on claim exists on both callback paths, but only the
+      // OIDC one was pinned — deleting the SSO line left every test green. On native a
+      // forged or replayed emission can arrive first and set "could not be verified"
+      // through reportUnverified; without the clear, a legacy-SSO user would watch that
+      // error render, with a Back button, over a sign-in that is actually going through.
+      let peeks = 0;
+      const completeSsoLogin = vi.fn(() => of({}));
+      const { cmp, navigateByUrl } = await renderPage({
+        auth: { completeSsoLogin } as unknown as Partial<AuthService>,
+        paramsSequence: [
+          { loginToken: 'ATTACK', sso_state: 'FORGED' },
+          { loginToken: 'TOKEN', sso_state: 'NONCE' },
+        ],
+        // The first emission reads an EMPTY stash, which is the only path that reports
+        // without claiming (a mismatch against a LIVE stash stays deliberately silent).
+        ssoPeek: () => {
+          peeks += 1;
+          return Promise.resolve(
+            peeks === 1
+              ? EMPTY_SSO
+              : { ...EMPTY_SSO, state: 'NONCE', baseUrl: 'https://hs.example' },
+          );
+        },
+      });
+
+      expect(peeks).toBe(2);
+
+      expect(completeSsoLogin).toHaveBeenCalledTimes(1);
+      expect(navigateByUrl).toHaveBeenCalledWith('/rooms', {
+        replaceUrl: true,
+      });
+      expect(cmp.error()).toBeNull();
     });
 
     it('surfaces a completion error', async () => {
