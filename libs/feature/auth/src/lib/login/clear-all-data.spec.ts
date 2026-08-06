@@ -3,6 +3,7 @@ import type { TrnAlertService } from '@trinity/helm/overlay';
 import {
   CLEAR_DATA_CONFIRMATION_WORD,
   CLEAR_DATA_CONSEQUENCES,
+  CLEAR_DATA_MISTYPED_MESSAGE,
   clearDataMessage,
   confirmClearDataIntent,
   signedInWarning,
@@ -61,6 +62,14 @@ describe('clear-all-data copy', () => {
     // be noise on the one path where the reset is least frightening.
     expect(signedInWarning([])).toBe('');
     expect(clearDataMessage([])).not.toMatch(/signed in on this device/);
+  });
+
+  it('tells a mistyper exactly what to type, naming the same word', () => {
+    // Only ever asserted through login.page.spec's regex until now, so the message and the
+    // word it must quote could drift apart — leaving someone who fat-fingered it reading
+    // instructions for a word the gate no longer accepts.
+    expect(CLEAR_DATA_MISTYPED_MESSAGE).toContain(CLEAR_DATA_CONFIRMATION_WORD);
+    expect(CLEAR_DATA_MISTYPED_MESSAGE).toMatch(/Nothing was erased/);
   });
 
   it('always asks for the word', () => {

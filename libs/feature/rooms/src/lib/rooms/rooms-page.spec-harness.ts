@@ -40,7 +40,8 @@ import { PinnedPanelService } from '../pinned/pinned-panel.service';
  * Providers every TestBed block across the rooms.page specs supplies identically, with
  * no stub.
  *
- * Only tokens that are bare in ALL twelve blocks live here. The blocks are deliberately
+ * Only tokens that are bare in EVERY block live here — deliberately not stated as a count,
+ * which was already wrong before the specs were split again. The blocks are deliberately
  * divergent elsewhere — RoomsService is richly stubbed in some and bare in others, for
  * instance — so folding a stubbed token in here would silently change what a describe
  * asserts against, and every test would still pass against different data.

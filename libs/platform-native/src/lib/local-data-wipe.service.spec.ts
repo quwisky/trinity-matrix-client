@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // In-memory @capacitor/preferences, hoisted so the vi.mock factory can see it. `calls`
-// records the ordering assertions below depend on.
+// records the phase order, which one test below asserts.
 const { prefs, calls } = vi.hoisted(() => ({
   prefs: new Map<string, string>(),
   calls: [] as string[],
@@ -24,11 +24,6 @@ vi.mock('@capacitor/preferences', () => ({
       prefs.clear();
     },
   },
-}));
-
-const { isNative } = vi.hoisted(() => ({ isNative: { value: false } }));
-vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => isNative.value },
 }));
 
 import { LocalDataWipeService } from './local-data-wipe.service';
@@ -79,7 +74,6 @@ describe('LocalDataWipeService', () => {
   beforeEach(() => {
     prefs.clear();
     calls.length = 0;
-    isNative.value = false;
   });
 
   afterEach(() => vi.unstubAllGlobals());
@@ -181,6 +175,15 @@ describe('LocalDataWipeService', () => {
       expect(prefs.size).toBe(0);
     });
 
+    it('sweeps secure storage before clearing Preferences', async () => {
+      // Order matters on web, where the secure backend's keys ARE Preferences entries
+      // under a `secure.` prefix: clearing the group first would leave the sweep with
+      // nothing to find, and silently turn a two-mechanism wipe into a one-mechanism one.
+      await setup(true).wipeKeyValueStores();
+
+      expect(calls).toEqual(['secure.clearAll', 'preferences.clear']);
+    });
+
     it('asks the secure backend to sweep itself as well', async () => {
       // Secondary to the caller's per-key removals, but the only thing that reaches a
       // secret whose account is no longer in the registry.
@@ -192,11 +195,12 @@ describe('LocalDataWipeService', () => {
       expect(secure.clearAll).toHaveBeenCalled();
     });
 
-    it('clears raw web storage on EVERY platform, including native', async () => {
-      // Native matters here specifically: the OIDC callback re-seeds the sign-in state
-      // into sessionStorage on native, so skipping it there would strand a PKCE
-      // code_verifier — the one actual secret in this surface.
-      isNative.value = true;
+    it('clears raw web storage unconditionally, with no platform branch', async () => {
+      // There is deliberately no `isNativePlatform()` check left to flip: the OIDC callback
+      // re-seeds the sign-in state into sessionStorage ON NATIVE, so a branch that skipped
+      // it there stranded a PKCE code_verifier — the one actual secret in this surface.
+      // Re-introducing any such guard has to fail something, so this asserts the calls
+      // happen with no platform stub in play at all.
       const local = { clear: vi.fn() };
       const session = { clear: vi.fn() };
       vi.stubGlobal('localStorage', local);
@@ -206,6 +210,19 @@ describe('LocalDataWipeService', () => {
 
       expect(session.clear).toHaveBeenCalled();
       expect(local.clear).toHaveBeenCalled();
+    });
+
+    it('survives a Preferences backend that rejects', async () => {
+      // Two layers guard this — here, and `swallow()` in FactoryResetService — and only
+      // the outer one was pinned, so removing this inner guard failed nothing. Both matter:
+      // this method's own contract is that it does not throw, and a caller that forgets the
+      // outer guard should not be able to strand the reset.
+      const { Preferences } = await import('@capacitor/preferences');
+      vi.spyOn(Preferences, 'clear').mockRejectedValueOnce(
+        new Error('storage disabled'),
+      );
+
+      await expect(setup().wipeKeyValueStores()).resolves.toBeUndefined();
     });
 
     it('survives a context where touching web storage throws', async () => {
