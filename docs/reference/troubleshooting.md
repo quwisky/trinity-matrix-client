@@ -750,22 +750,33 @@ sync store and the Rust crypto store, per account and per device), and the servi
 caches on web. A bad `trinity.push.gateway`, a stale feature flag or a crypto store that will
 not initialise therefore survives everything the UI offers.
 
-**Fix.** **Clear all data on this device**, at the bottom of the login page — deliberately
+**Fix.** **Erase all data on this device**, at the bottom of the login page — deliberately
 there rather than in Settings, which is behind `authGuard` and so unreachable in exactly this
 situation. It erases all four surfaces and restarts the app. It is irreversible: encryption
 keys not in a server-side backup go with it, so it asks you to type `ERASE`. Nothing on the
 server is deleted.
 
-If it reports that Trinity is open in another window or tab, that is literal — an open
-connection blocks an IndexedDB delete, so the wipe stops _before_ signing out or clearing the
-registry, leaving the install intact and the button retryable. Close the other window and
-press it again.
+If Trinity is open in a second window, one of the databases may still be held open when the
+wipe runs. It finishes anyway rather than stopping half-way: the deletes run concurrently, so
+by the time one reports blocked the rest are already gone, and aborting there would leave the
+very half-erased install that stopping is meant to avoid. Whatever survives is an orphan no
+account points at, which `sweepOrphanedCryptoStores` reclaims on the next cold start, when
+nothing holds a connection. The names are logged to the console.
 
-**See also.** `FactoryResetService` for the phase ordering (every read happens before every
-delete, because the registry is the only map from an account to its database and secret-key
-names), and `LocalDataWipeService.wipeIndexedDb` for why deletion is bounded rather than
-awaited — matrix-js-sdk's own `clearStores()` answers `onblocked` by logging and never
-settling.
+**See also.** `FactoryResetService` for the phase ordering, where three adjacencies are
+load-bearing: the registry is read before anything is deleted (it is the only map from an
+account to its database and secret-key names, and Electron's keychain cannot be enumerated);
+the server sign-out runs before the clients are stopped (teardown empties the client registry
+it reads, so afterwards it silently signs nothing out); and `SessionStorageService.clearAll()`
+runs before `Preferences.clear()`, because its per-account key removals are the only thing
+reaching Electron's main-process secret store. Also `LocalDataWipeService.wipeIndexedDb` for
+why deletion is bounded rather than awaited — matrix-js-sdk's own `clearStores()` answers
+`onblocked` by logging and never settling.
+
+**Known limits.** Media saved to the device through the native share/save path lives in the
+app's cache directory and is not removed. On desktop, Chromium-level storage for the app's
+own origin (cookies, HTTP cache) is owned by the Electron main process and is likewise
+untouched.
 
 ## Related pages
 

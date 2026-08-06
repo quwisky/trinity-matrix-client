@@ -48,8 +48,8 @@ import { TrnAlertService } from '@trinity/helm/overlay';
 import { runWithBusy } from '@trinity/ui';
 import { SsoStateStore } from '../sso-state.store';
 import {
-  CLEAR_DATA_BLOCKED_MESSAGE,
   CLEAR_DATA_MISTYPED_MESSAGE,
+  CLEAR_DATA_RESIDUE_WARNING,
   confirmClearDataIntent,
 } from './clear-all-data';
 import { OidcStateStore } from '../oidc-state.store';
@@ -100,7 +100,7 @@ export class LoginPage {
    * `/login?add` is reachable while accounts are live, and someone who came here to ADD an
    * account needs to be told what erasing would take with it.
    */
-  private readonly storedUserIds = signal<readonly string[]>([]);
+  private readonly storedUserIds = signal<readonly string[] | null>(null);
 
   constructor() {
     // Sweep an abandoned OIDC stash. `peek()` bins one that has outlived its TTL, and the
@@ -118,8 +118,10 @@ export class LoginPage {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (records) => this.storedUserIds.set(records.map((r) => r.userId)),
-        // A registry too broken to read is itself a reason to erase, so the button stays —
-        // it just cannot name anything.
+        // Stays null on failure, which the confirmation renders as "any accounts signed in
+        // will be signed out" rather than as silence. A registry too broken to read is
+        // itself one of the states this button exists for, and silence there is
+        // indistinguishable from "nothing is signed in".
         error: () => undefined,
       });
 
@@ -177,6 +179,14 @@ export class LoginPage {
 
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
+  /**
+   * The factory reset in flight, separate from {@link busy} on purpose.
+   *
+   * `busy` is the page-wide discovery/login flag, and the escape hatch must stay reachable
+   * exactly when that is stuck — someone whose homeserver is unreachable sits in `busy` for
+   * the whole HTTP timeout, and on `/login?reauth=` it is set from first paint.
+   */
+  readonly erasing = signal(false);
 
   // Form state. Two forms, not one, because the page is two steps: the homeserver is
   // resolved first, and the credentials step only exists once discovery reports a
@@ -446,30 +456,22 @@ export class LoginPage {
     }
 
     this.error.set(null);
-    this.busy.set(true);
-    this.factoryReset
-      .clearAllData()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((report) => {
-        if (report.blocked.length > 0) {
-          // Nothing was signed out and the registry is intact — the wipe stops at the first
-          // blocked database precisely so this is retryable. Hand back control.
-          this.busy.set(false);
-          this.error.set(CLEAR_DATA_BLOCKED_MESSAGE);
-          return;
-        }
-        if (report.failed.length > 0) {
-          // Not fatal: deleting a database that does not exist errors in some browsers
-          // (Firefox private browsing), which is the common shape here.
-          console.warn(
-            'Trinity: some databases could not be deleted:',
-            report.failed,
-          );
-        }
-        // `busy` stays true: the app is about to be replaced, and releasing the button now
-        // would let a second press race the navigation.
-        this.restart.restart();
-      });
+    this.erasing.set(true);
+    // Deliberately NOT `takeUntilDestroyed`: the wipe is an un-cancellable promise, so
+    // unsubscribing would abandon the restart while the data is already gone — leaving the
+    // app running against erased storage with every client torn down. If this page goes
+    // away mid-wipe, the restart is more necessary, not less.
+    this.factoryReset.clearAllData().subscribe((report) => {
+      const residue = [...report.blocked, ...report.failed];
+      if (residue.length > 0) {
+        // Not surfaced to the user: the wipe finished, and what is left is an orphaned
+        // database that the next cold start sweeps, when nothing holds a connection.
+        console.warn(CLEAR_DATA_RESIDUE_WARNING, residue);
+      }
+      // `erasing` stays true: the app is about to be replaced, and releasing the button now
+      // would let a second press race the navigation.
+      this.restart.restart();
+    });
   }
 
   /** Wrap a one-shot action with shared busy/error handling. */

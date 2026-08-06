@@ -12,7 +12,7 @@ All notable changes to this project are documented here. The format is based on
   rendered wrongly, there was nothing you could do about it from inside — signing out does
   not clear what was broken, and the one place with a fix, Settings, is behind the sign-in
   you cannot get past. On a phone or the desktop app there was no equivalent of a browser's
-  "clear site data" either, so the honest answer was "reinstall". **Clear all data on this
+  "clear site data" either, so the honest answer was "reinstall". **Erase all data on this
   device** now sits at the bottom of the sign-in screen and erases everything Trinity keeps
   here — accounts, encryption keys, settings, drafts and cached messages — then restarts
   into a fresh app. It asks you to type `ERASE` first, because it cannot be undone: any
@@ -21,8 +21,8 @@ All notable changes to this project are documented here. The format is based on
   straight back in. Two details worth knowing: it works when your homeserver is unreachable,
   which is one of the reasons you might need it, and because of that your devices may still
   be listed on the server afterwards — remove them from another device or your account
-  settings. If Trinity is open in a second window it will say so and stop without erasing
-  anything, so you can close the other one and try again.
+  settings. And it reloads the app when it finishes, so you need to be online to use Trinity
+  again afterwards.
 
 - **Mentions look like mentions.** Someone's name in a message rendered as an ordinary
   link, indistinguishable from a URL, so a message addressed to you read no differently

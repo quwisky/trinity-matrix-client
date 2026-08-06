@@ -23,12 +23,15 @@ async function renderLogin(
     oidcStore?: Partial<OidcStateStore>;
     /** Accounts the registry reports, which the erase confirmation names. */
     stored?: { userId: string }[];
+    /** Make the registry read fail, as a wedged install would. */
+    listFails?: boolean;
     /** What the alert's typed confirmation returns (null = cancelled). */
     typed?: string | null;
     /** What the wipe reports back. */
     report?: { blocked: string[]; failed: string[] };
   } = {},
 ): Promise<{
+  fixture: Awaited<ReturnType<typeof render<LoginPage>>>['fixture'];
   cmp: LoginPage;
   router: Router;
   ssoStore: SsoStateStore;
@@ -53,7 +56,12 @@ async function renderLogin(
       }),
       MockProvider(SessionStorageService, {
         record: vi.fn(() => of(opts.record ?? null) as never),
-        list: vi.fn(() => of(opts.stored ?? []) as never),
+        list: vi.fn(() =>
+          opts.listFails
+            ? throwError(() => new Error('registry unreadable'))
+            : (of(opts.stored ?? []) as never),
+        ),
+        clearAll: vi.fn(() => of([]) as never),
       }),
       MockProvider(TrnAlertService, {
         prompt: vi.fn().mockResolvedValue(opts.typed ?? null),
@@ -64,7 +72,6 @@ async function renderLogin(
             blocked: opts.report?.blocked ?? [],
             failed: opts.report?.failed ?? [],
             enumerated: true,
-            bulkSecureClear: false,
           }),
         ),
       }),
@@ -73,6 +80,7 @@ async function renderLogin(
     ],
   });
   return {
+    fixture,
     cmp: fixture.componentInstance,
     router: TestBed.inject(Router),
     ssoStore: TestBed.inject(SsoStateStore),
@@ -330,7 +338,25 @@ describe('LoginPage', () => {
 
       expect(reset.clearAllData).toHaveBeenCalled();
       expect(restart.restart).toHaveBeenCalled();
-      expect(cmp.error()).toBeNull();
+    });
+
+    it('renders the button, disabled only while erasing', async () => {
+      // Every other test here calls the method directly, so without this one the button
+      // could be deleted from the template — or wired to a different handler — and the
+      // whole describe block would stay green.
+      const { fixture, cmp } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+      );
+      const button = (): HTMLButtonElement | null =>
+        fixture.nativeElement.querySelector('[data-testid="clear-all-data"]');
+
+      expect(button()).not.toBeNull();
+      expect(button()?.disabled).toBe(false);
+
+      cmp.erasing.set(true);
+      fixture.detectChanges();
+
+      expect(button()?.disabled).toBe(true);
     });
 
     it('erases nothing when the word is mistyped, and says so', async () => {
@@ -360,34 +386,59 @@ describe('LoginPage', () => {
       expect(cmp.error()).toBeNull(); // they changed their mind; nagging would be rude
     });
 
-    it('does NOT restart when a database was still open, and explains why', async () => {
-      // The wipe stops at the first blocked database, before signing out or clearing the
-      // registry, so this state is retryable. Restarting anyway would drop the user into a
-      // half-erased app they cannot sign in to — and would claim success falsely.
-      const { cmp, restart } = await renderLogin(
-        {} as unknown as Partial<AuthService>,
-        {
-          typed: 'ERASE',
-          report: { blocked: ['matrix-js-sdk:trinity-sync:@a:hs'], failed: [] },
-        },
-      );
+    it('restarts even when something could not be deleted', async () => {
+      // Residue is not a reason to strand the user on a page whose data is already gone.
+      // The wipe finished; what is left is an orphan the next cold start sweeps.
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      try {
+        const { cmp, restart } = await renderLogin(
+          {} as unknown as Partial<AuthService>,
+          {
+            typed: 'ERASE',
+            report: {
+              blocked: ['matrix-js-sdk:trinity-sync:@a:hs'],
+              failed: ['other-db'],
+            },
+          },
+        );
 
-      await cmp.clearAllData();
+        await cmp.clearAllData();
 
-      expect(restart.restart).not.toHaveBeenCalled();
-      expect(cmp.error()).toMatch(/another window or tab/i);
-      expect(cmp.busy()).toBe(false); // control handed back so they can retry
+        expect(restart.restart).toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledWith(expect.any(String), [
+          'matrix-js-sdk:trinity-sync:@a:hs',
+          'other-db',
+        ]);
+      } finally {
+        warn.mockRestore();
+      }
     });
 
-    it('restarts despite a failed delete, which is routine in private browsing', async () => {
-      const { cmp, restart } = await renderLogin(
+    it('stays reachable while the page is busy discovering a dead homeserver', async () => {
+      // The failure this button exists for puts the page in `busy` for a full HTTP
+      // timeout — and on /login?reauth= from first paint. Sharing that signal would
+      // disable the escape hatch exactly when it is needed.
+      const { cmp } = await renderLogin({} as unknown as Partial<AuthService>);
+      cmp.busy.set(true);
+
+      expect(cmp.erasing()).toBe(false);
+    });
+
+    it('warns that accounts may be signed out when the registry cannot be read', async () => {
+      // A registry too broken to read is one of the states this button is for. Saying
+      // nothing would read as "no accounts signed in" and let someone erase live ones
+      // having seen the gentlest version of the dialog.
+      const { cmp, alert } = await renderLogin(
         {} as unknown as Partial<AuthService>,
-        { typed: 'ERASE', report: { blocked: [], failed: ['some-db'] } },
+        { typed: null, listFails: true },
       );
 
       await cmp.clearAllData();
 
-      expect(restart.restart).toHaveBeenCalled();
+      const message = vi.mocked(alert.prompt).mock.calls[0][0].message ?? '';
+      expect(message).toMatch(/Any accounts signed in on this device/);
     });
 
     it('names the signed-in accounts in the confirmation', async () => {

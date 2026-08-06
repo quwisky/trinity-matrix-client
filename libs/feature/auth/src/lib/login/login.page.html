@@ -206,11 +206,11 @@
           variant="ghost"
           size="sm"
           class="mt-4 w-full text-muted-foreground"
-          [disabled]="busy()"
+          [disabled]="erasing()"
           (click)="clearAllData()"
           data-testid="clear-all-data"
         >
-          Clear all data on this device
+          Erase all data on this device
         </button>
       </div>
     </section>

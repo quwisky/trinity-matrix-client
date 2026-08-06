@@ -22,10 +22,22 @@ describe('clear-all-data copy', () => {
   it('leads with the permanent loss and ends with what survives', () => {
     const paragraphs = CLEAR_DATA_CONSEQUENCES.split('\n\n');
 
-    expect(paragraphs).toHaveLength(3);
+    expect(paragraphs).toHaveLength(4);
     expect(paragraphs[0]).toMatch(/permanently unreadable/i);
+    // The service worker is unregistered, so the next load comes from the network — and
+    // the person most likely to erase is the one whose app is broken, possibly offline.
+    expect(CLEAR_DATA_CONSEQUENCES).toMatch(/online to use it again/i);
     // Someone doing this while panicking needs to know their conversations are not deleted.
-    expect(paragraphs[2]).toMatch(/Nothing on the server is deleted/i);
+    expect(paragraphs[3]).toMatch(/Nothing on the server is deleted/i);
+  });
+
+  it('warns about accounts it could not enumerate, rather than staying silent', () => {
+    // null = the registry could not be read, which is one of the wedged states this
+    // feature targets. Silence there is indistinguishable from "nothing is signed in".
+    expect(signedInWarning(null)).toMatch(
+      /Any accounts signed in on this device/,
+    );
+    expect(clearDataMessage(null)).toMatch(/will be signed out here/);
   });
 
   it('never claims to sign the user out everywhere', () => {
