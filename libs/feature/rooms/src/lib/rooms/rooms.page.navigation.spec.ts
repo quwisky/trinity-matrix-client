@@ -258,10 +258,6 @@ describe('RoomsPage quick switcher', () => {
 // Below md the rail + sidebar (room list) and the chat are separate full-screen
 // pages keyed off `activeRoomId`: picking a room opens the chat page, and the back
 // button (`backToList`) returns to the list. At md+ both columns are static columns.
-
-// Below md the rail + sidebar (room list) and the chat are separate full-screen
-// pages keyed off `activeRoomId`: picking a room opens the chat page, and the back
-// button (`backToList`) returns to the list. At md+ both columns are static columns.
 describe('RoomsPage mobile navigation', () => {
   let timelineOpen: ReturnType<typeof vi.fn>;
   let threadsOpen: ReturnType<typeof vi.fn>;
@@ -384,11 +380,6 @@ describe('RoomsPage mobile navigation', () => {
 // account's own client profile (display name + avatar) with a fallback to the raw
 // MXID, plus its unread total — and it tolerates an account whose client isn't
 // live yet (clientFor → null), which still shows as a row with a zero badge.
-
-// The user-panel switcher summarises every signed-in account: each row is that
-// account's own client profile (display name + avatar) with a fallback to the raw
-// MXID, plus its unread total — and it tolerates an account whose client isn't
-// live yet (clientFor → null), which still shows as a row with a zero badge.
 describe('RoomsPage account switcher summary', () => {
   const meAvatar = 'mxc://hs/me';
 
@@ -447,10 +438,6 @@ describe('RoomsPage account switcher summary', () => {
     ]);
   });
 });
-
-// Keyboard room switching (issue #12): the single `onGlobalKeydown` dispatcher. The MRU
-// service and the pure nav helpers have their own specs; these assert the wiring — which
-// chord opens what, the desktop gate, and the overlay guard.
 
 // Keyboard room switching (issue #12): the single `onGlobalKeydown` dispatcher. The MRU
 // service and the pure nav helpers have their own specs; these assert the wiring — which

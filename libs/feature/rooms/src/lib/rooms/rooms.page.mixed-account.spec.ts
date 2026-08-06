@@ -36,11 +36,15 @@ import { MessageSearchService } from '../message-search/message-search.service';
 // account across ALL surfaces — Recent, Home's DMs, the Rooms list and the rail spaces —
 // and opening a foreign-account item switches to that account first.
 //
-// Split out of rooms.page.navigation.spec.ts. An Angular TestBed spec retains tens of MB
-// per test that no afterEach reclaims, so a file's peak RSS scales with its test count: at
-// 49 tests that file peaked near 1.3 GB and its worker fork was being OOM-killed mid-run on
-// a loaded machine — surfacing as a different failing test each run with the executed-test
-// count silently short, which reads exactly like an ordinary flake. Keep these under ~50.
+// Split out of rooms.page.navigation.spec.ts, whose worker fork was being OOM-killed
+// mid-run on a loaded machine — surfacing as a different failing test each run with the
+// executed-test count silently short, which reads exactly like an ordinary flake.
+//
+// The split was worth making because that file measured 1298 MB against a ~950 MB floor,
+// NOT because it had 49 tests: peak RSS tracks the component a file mounts, not its test
+// count (a 24-test spec here costs the same as a 116-test one). See the measurements in
+// docs/reference/troubleshooting.md before splitting anything else — both halves of this
+// one landed on the floor, so there is nothing further to win here.
 
 describe('RoomsPage mixed-account view', () => {
   function room(

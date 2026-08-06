@@ -16,9 +16,9 @@ import { login, synapseSession } from './support/app.mts';
 //      nothing here exercises the service-worker/Cache Storage phase.
 //   2. On web the raw `localStorage.clear()` subsumes `Preferences.clear()` — both wipe the
 //      same `CapacitorStorage.`-prefixed keys — so this spec cannot tell them apart, and
-//      deleting the Preferences call alone leaves it green. That call is the ONLY thing
-//      clearing preferences on iOS and Android, where the raw clear is deliberately
-//      skipped, so it is pinned in local-data-wipe.service.spec.ts instead.
+//      deleting the Preferences call alone leaves it green. It still matters on iOS and
+//      Android, where Preferences is UserDefaults/SharedPreferences rather than the
+//      WebView's localStorage, so it is pinned in local-data-wipe.service.spec.ts instead.
 //
 // Both were found by injecting the defect and watching this spec pass anyway.
 const session = synapseSession();
@@ -150,11 +150,9 @@ test.describe('Clear all data', () => {
     await page.getByTestId('clear-all-data').click();
     await confirmErase(page, 'ERASE');
 
+    // waitForEmptyStorage already proves the namespace is empty, which subsumes any
+    // not.toContain on a single key.
     await waitForEmptyStorage(page);
     await page.waitForLoadState('networkidle');
-
-    expect(await storageKeys(page)).not.toContain(
-      'CapacitorStorage.trinity.push.gateway',
-    );
   });
 });

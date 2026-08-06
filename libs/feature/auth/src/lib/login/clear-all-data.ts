@@ -72,22 +72,20 @@ export type ClearDataIntent = 'confirmed' | 'cancelled' | 'mistyped';
 export const CLEAR_DATA_MISTYPED_MESSAGE = `Nothing was erased. Type ${CLEAR_DATA_CONFIRMATION_WORD} exactly to confirm.`;
 
 /**
- * Shown when a database could not be deleted because something still has it open.
- *
- * Names the cause, because it is one the user can act on — and the wipe deliberately stops
- * before signing out when this happens, so they really can just close the other window and
- * press the button again.
- */
-/**
  * Logged (not shown) when something could not be deleted.
  *
- * Deliberately NOT user-facing: the wipe finishes regardless, the app restarts, and what is
- * left behind is an orphaned database the next cold start sweeps. Telling someone their
- * data might still be there — when the actionable part is already done and the residue is
- * self-healing — would be alarming and unactionable in equal measure.
+ * Deliberately NOT user-facing: the wipe finishes regardless and the app restarts, so the
+ * actionable part is already done. Telling someone their data might still be there would be
+ * alarming and unactionable in equal measure.
+ *
+ * Most residue self-heals — a crypto or sync store left behind has no account pointing at
+ * it after the reset, and `sweepOrphanedCryptoStores` reclaims it on the next cold start.
+ * That is not a guarantee, which is why this says nothing about cleanup: the sweep only
+ * recognises those two name shapes, and it no-ops entirely where `indexedDB.databases()` is
+ * unavailable (Firefox) — the same browser where the wipe could not enumerate either.
  */
 export const CLEAR_DATA_RESIDUE_WARNING =
-  'Trinity: some databases could not be deleted and will be cleaned up on next launch:';
+  'Trinity: some local databases could not be deleted:';
 
 /**
  * Ask for the confirmation word before anything is destroyed.

@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -52,6 +53,23 @@ describe('type-to-confirm words', () => {
   it('never reuses a word between two irreversible actions', () => {
     const words = GATES.map(readWord);
 
+    // Guard the guard: with one entry left in GATES the uniqueness check below is
+    // vacuously true, and deleting an entry is a small enough edit to pass review. Any
+    // new type-to-confirm word must be added here — nothing discovers them automatically.
+    expect(GATES.length).toBeGreaterThanOrEqual(2);
     expect(new Set(words).size).toBe(words.length);
+  });
+
+  it('knows about every confirmation word in the workspace', () => {
+    // The list above is hand-maintained, so a third gate added elsewhere would simply
+    // never be checked. Grep for the naming convention and fail if the counts diverge.
+    const found = execSync(
+      'grep -rlE "export const [A-Z_]*CONFIRMATION_WORD" libs || true',
+      { cwd: workspaceRoot, encoding: 'utf8' },
+    )
+      .split('\n')
+      .filter(Boolean);
+
+    expect(found.sort()).toEqual(GATES.map((g) => g.file).sort());
   });
 });
