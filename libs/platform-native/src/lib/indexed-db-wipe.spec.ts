@@ -73,15 +73,15 @@ describe('deleteDatabase', () => {
     await expect(deleteDatabase(idb, 'db')).resolves.toBe('failed');
   });
 
-  it('ignores a late second event once it has settled', async () => {
-    // A blocked delete can still succeed later, after the holder closes. Resolving twice
-    // would be harmless for the promise but would hide a double-count in the caller's report.
-    const idb = fakeFactory((r) => {
-      r['onblocked']?.();
-      r['onsuccess']?.();
-    });
+  it('clears its timer once the request settles', async () => {
+    // Otherwise every delete leaves a 5s timer holding the event loop open, which turns a
+    // fast wipe into a five-second pause before the restart.
+    vi.useFakeTimers();
+    const idb = fakeFactory((r) => r['onsuccess']?.());
 
-    await expect(deleteDatabase(idb, 'db')).resolves.toBe('blocked');
+    await deleteDatabase(idb, 'db', 5_000);
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

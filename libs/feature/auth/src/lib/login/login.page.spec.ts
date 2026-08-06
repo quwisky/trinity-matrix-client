@@ -416,14 +416,23 @@ describe('LoginPage', () => {
       }
     });
 
-    it('stays reachable while the page is busy discovering a dead homeserver', async () => {
+    it('stays clickable while the page is busy discovering a dead homeserver', async () => {
       // The failure this button exists for puts the page in `busy` for a full HTTP
-      // timeout — and on /login?reauth= from first paint. Sharing that signal would
+      // timeout — and on /login?reauth= from first paint. Asserted through the RENDERED
+      // button, not by comparing the two signals: `erasing` is independent of `busy` by
+      // construction, so a signal-level assertion cannot fail, while re-adding
+      // `|| busy()` to the template binding is the one-line change that would actually
       // disable the escape hatch exactly when it is needed.
-      const { cmp } = await renderLogin({} as unknown as Partial<AuthService>);
-      cmp.busy.set(true);
+      const { fixture, cmp } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+      );
+      const button = (): HTMLButtonElement | null =>
+        fixture.nativeElement.querySelector('[data-testid="clear-all-data"]');
 
-      expect(cmp.erasing()).toBe(false);
+      cmp.busy.set(true);
+      fixture.detectChanges();
+
+      expect(button()?.disabled).toBe(false);
     });
 
     it('warns that accounts may be signed out when the registry cannot be read', async () => {

@@ -36,6 +36,12 @@ export function deleteDatabase(
   return new Promise<IdbDeleteOutcome>((resolve) => {
     let settled = false;
     const settle = (outcome: IdbDeleteOutcome): void => {
+      // `onblocked` is not terminal, so a blocked request can still fire `onsuccess` once
+      // the holder closes — settle() genuinely runs twice. The guard has no observable
+      // effect today (resolving a promise twice is a no-op, and clearTimeout is
+      // idempotent), so it is deliberately NOT covered by a test; it exists so that adding
+      // anything with a side effect here — a counter, a log, a push into the caller's
+      // report — does not silently double-count.
       if (settled) {
         return;
       }
