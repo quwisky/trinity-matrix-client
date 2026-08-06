@@ -214,6 +214,47 @@ describe('FactoryResetService', () => {
     }
   });
 
+  it('still restarts when a wipe phase rejects, rather than stranding the page', async () => {
+    // The contract is "never errors", and it is load-bearing: the caller subscribes with a
+    // `next` handler only, so a rejection escaping here skips the restart and leaves the
+    // login page disabled on top of storage that is already erased. `Preferences.clear()`
+    // rejects in a storage-blocked context, which is one of the states people reset from.
+    const { svc } = setup();
+    const wipe = TestBed.inject(LocalDataWipeService);
+    vi.mocked(wipe.wipeKeyValueStores).mockRejectedValue(
+      new Error('storage unavailable'),
+    );
+
+    await expect(firstValueFrom(svc.clearAllData())).resolves.toMatchObject({
+      blocked: [],
+    });
+    expect(wipe.wipeServiceWorker).toHaveBeenCalled(); // later phases still ran
+  });
+
+  it('reports an empty wipe rather than rejecting when IndexedDB itself throws', async () => {
+    const { svc } = setup();
+    const wipe = TestBed.inject(LocalDataWipeService);
+    vi.mocked(wipe.wipeIndexedDb).mockRejectedValue(new Error('boom'));
+
+    await expect(firstValueFrom(svc.clearAllData())).resolves.toEqual({
+      blocked: [],
+      failed: [],
+      enumerated: false,
+    });
+    expect(wipe.wipeKeyValueStores).toHaveBeenCalled();
+  });
+
+  it('hands the read registry to the IndexedDB wipe, not an empty list', async () => {
+    // Nothing else observes this argument, and on a browser without
+    // `indexedDB.databases()` (Firefox) those records are the ONLY source of the database
+    // names — passing [] there deletes nothing at all while every other test stays green.
+    const { svc, wipe } = setup();
+
+    await firstValueFrom(svc.clearAllData());
+
+    expect(wipe.wipeIndexedDb).toHaveBeenCalledWith([ALICE]);
+  });
+
   it('wipes a signed-out install with an empty registry', async () => {
     // The common wedged case: cannot sign in, so there is no account to read.
     const { svc, wipe, oidc } = setup({ records: [] });

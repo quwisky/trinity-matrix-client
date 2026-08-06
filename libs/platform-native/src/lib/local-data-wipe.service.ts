@@ -39,12 +39,13 @@ export class LocalDataWipeService {
   /**
    * Delete every IndexedDB database this app could own.
    *
-   * Runs BEFORE any key/value wipe, and the order is load-bearing. `records` is the only
+   * Runs BEFORE any key/value wipe, and the order is load-bearing: `records` is the only
    * source of these names on a browser without `indexedDB.databases()` (Firefox), so
-   * clearing Preferences first would make a blocked delete permanently unrecoverable —
-   * nothing left could name what survived. It also puts the one phase that can partially
-   * fail before the point of no return, so aborting leaves the user signed in rather than
-   * signed out with their data still present.
+   * clearing the registry first would leave nothing able to name what survived.
+   *
+   * It does NOT abort on a partial failure — the caller finishes the reset regardless, see
+   * FactoryResetService.run. Deletes are concurrent, so a `blocked` report always arrives
+   * after the rest are already gone; stopping there would strand the user half-erased.
    */
   async wipeIndexedDb(records: readonly AccountRecord[]): Promise<WipeReport> {
     const idb = globalThis.indexedDB;
@@ -108,7 +109,10 @@ export class LocalDataWipeService {
     // which is what covers Electron and web. This only reclaims secrets orphaned by an
     // earlier bug, whose account is no longer listed and whose key nothing can name.
     await this.secure.clearAll();
-    await Preferences.clear();
+    // Guarded like every other step here. A rejection escaping this method would reject
+    // the whole reset, and the caller's subscriber has no error path to catch it — the
+    // page would sit on a disabled button with its data already deleted.
+    await safelyAsync(() => Preferences.clear());
 
     // Every platform, not just web. `sessionStorage` in particular is written on NATIVE by
     // the OIDC callback re-seed, so skipping it there would leave a PKCE `code_verifier`

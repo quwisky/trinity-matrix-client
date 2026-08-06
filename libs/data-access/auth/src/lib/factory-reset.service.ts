@@ -81,17 +81,19 @@ export class FactoryResetService {
     // the app restarts to a clean login, and whatever could not be deleted is an orphan
     // that `sweepOrphanedCryptoStores` reclaims on the next cold start, when nothing holds
     // a connection.
-    const idb = await this.wipe.wipeIndexedDb(records);
+    const idb = await this.wipe
+      .wipeIndexedDb(records)
+      .catch(() => ({ blocked: [], failed: [], enumerated: false }));
 
     // E. Key/value. `storage.clearAll()` first, for its per-account secure-key removals:
     // that is the ONLY thing that reaches Electron's main-process secret store, whose
     // backend exposes no bulk clear. `Preferences.clear()` inside `wipeKeyValueStores`
     // cannot touch it, and afterwards the registry naming those keys is gone.
     await settled(this.storage.clearAll(), []);
-    await this.wipe.wipeKeyValueStores();
+    await swallow(this.wipe.wipeKeyValueStores());
 
     // F. Service worker last: unregistering it is what makes the restart fetch fresh code.
-    await this.wipe.wipeServiceWorker();
+    await swallow(this.wipe.wipeServiceWorker());
 
     return idb;
   }
@@ -156,5 +158,20 @@ export class FactoryResetService {
 function settled<T>(source: Observable<T>, fallback: T): Promise<T> {
   return firstValueFrom(source, { defaultValue: fallback }).catch(
     () => fallback,
+  );
+}
+
+/**
+ * Await a best-effort phase without letting it reject the reset.
+ *
+ * "Never errors" is this service's contract, and it is load-bearing rather than tidy: the
+ * caller subscribes with a `next` handler only, so a rejection here would skip the restart
+ * and leave the page disabled on top of storage that is already erased — the exact dead end
+ * the phases are ordered to avoid.
+ */
+function swallow(step: Promise<unknown>): Promise<void> {
+  return step.then(
+    () => undefined,
+    () => undefined,
   );
 }
