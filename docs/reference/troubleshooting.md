@@ -822,20 +822,10 @@ very half-erased install that stopping is meant to avoid. Whatever survives is a
 account points at, which `sweepOrphanedCryptoStores` reclaims on the next cold start, when
 nothing holds a connection. The names are logged to the console.
 
-**See also.** `FactoryResetService` for the phase ordering, where three adjacencies are
-load-bearing: the registry is read before anything is deleted (it is the only map from an
-account to its database and secret-key names, and Electron's keychain cannot be enumerated);
-the server sign-out runs before the clients are stopped (teardown empties the client registry
-it reads, so afterwards it silently signs nothing out); and `SessionStorageService.clearAll()`
-runs before `Preferences.clear()`, because its per-account key removals are the only thing
-reaching Electron's main-process secret store. Also `LocalDataWipeService.wipeIndexedDb` for
-why deletion is bounded rather than awaited — matrix-js-sdk's own `clearStores()` answers
-`onblocked` by logging and never settling.
-
-**Known limits.** Media saved to the device through the native share/save path lives in the
-app's cache directory and is not removed. On desktop, Chromium-level storage for the app's
-own origin (cookies, HTTP cache) is owned by the Electron main process and is likewise
-untouched.
+**See also.** [The factory reset](../architecture/matrix-and-encryption.md#the-factory-reset)
+for the mechanism — which phase orderings are load-bearing and why, why deletion is bounded
+rather than awaited, and the three surfaces it deliberately cannot reach. The user-facing
+version is in [Signing in](../users/signing-in.md#starting-over-when-trinity-will-not-work).
 
 ## Related pages
 
