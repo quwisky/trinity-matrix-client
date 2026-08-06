@@ -299,8 +299,10 @@ export class MatrixClientService {
    * its subscriber has closed reaches RxJS's unhandled-error reporter, and from there the
    * global error handler, which would surface a toast in the middle of a deliberate wipe.
    *
-   * Resolves once every attempt has settled; never errors. Does NOT tear the clients down —
-   * the caller does that first, so the stores are closed before anything is deleted.
+   * Resolves once every attempt has settled; never errors. Does NOT tear the clients down,
+   * so it must be called while they are still LIVE — `stop()` empties the registry this
+   * reads, and calling it afterwards signs nothing out at all while looking identical from
+   * the outside. Sequence it before the teardown, not after.
    */
   signOutAll(): Observable<void> {
     return defer(() => {

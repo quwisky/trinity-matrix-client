@@ -62,28 +62,38 @@ export class FactoryResetService {
     const records = await settled(this.storage.list(), []);
     const accounts = await this.readOidcAccounts(records);
 
-    // B. Stop every client. This closes the crypto stores' IndexedDB connections, which is
-    // what keeps the deletes in C from blocking.
+    // B. Courtesy sign-out, BEFORE the clients are torn down. `signOutAll` logs out the
+    // live clients, so it has to run while they still exist — doing this after `stop()`
+    // silently signs nothing out, because teardown empties the registry it reads.
+    await this.signOutWithinBudget(accounts);
+
+    // C. Stop every client. This closes the crypto stores' IndexedDB connections, which is
+    // what keeps the deletes in D from blocking.
     await settled(this.matrix.stop(), undefined);
 
-    // C. IndexedDB, before any key/value wipe — see LocalDataWipeService.wipeIndexedDb for
+    // D. IndexedDB, before any key/value wipe — see LocalDataWipeService.wipeIndexedDb for
     // why this order is not interchangeable.
+    //
+    // There is deliberately NO abort on a blocked delete. Deletes run concurrently, so by
+    // the time one reports blocked the others are already gone — stopping there would leave
+    // the very half-erased install an abort is meant to avoid, AND leave the account
+    // registry pointing at stores that no longer exist. Finishing is the coherent outcome:
+    // the app restarts to a clean login, and whatever could not be deleted is an orphan
+    // that `sweepOrphanedCryptoStores` reclaims on the next cold start, when nothing holds
+    // a connection.
     const idb = await this.wipe.wipeIndexedDb(records);
 
-    // C→D gate. A blocked delete means data the user asked to erase is still on disk, and
-    // the cause (usually a second tab) is something they can fix. Stop BEFORE signing out or
-    // clearing the registry, so a retry starts from a coherent state instead of a
-    // half-erased one they can no longer sign in to.
-    if (idb.blocked.length > 0) {
-      return { ...idb, bulkSecureClear: false };
-    }
+    // E. Key/value. `storage.clearAll()` first, for its per-account secure-key removals:
+    // that is the ONLY thing that reaches Electron's main-process secret store, whose
+    // backend exposes no bulk clear. `Preferences.clear()` inside `wipeKeyValueStores`
+    // cannot touch it, and afterwards the registry naming those keys is gone.
+    await settled(this.storage.clearAll(), []);
+    await this.wipe.wipeKeyValueStores();
 
-    // D. Courtesy sign-out, then the point of no return.
-    await this.signOutWithinBudget(accounts);
-    const bulkSecureClear = await this.wipe.wipeKeyValueStores();
+    // F. Service worker last: unregistering it is what makes the restart fetch fresh code.
     await this.wipe.wipeServiceWorker();
 
-    return { ...idb, bulkSecureClear };
+    return idb;
   }
 
   /** Load each OIDC account's provider binding and tokens while the registry still exists. */
