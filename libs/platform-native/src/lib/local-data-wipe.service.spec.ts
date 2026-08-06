@@ -181,15 +181,22 @@ describe('LocalDataWipeService', () => {
       expect(prefs.size).toBe(0);
     });
 
-    it('reports a backend that cannot sweep itself (Electron, web)', async () => {
-      await expect(setup(false).wipeKeyValueStores()).resolves.toBe(false);
+    it('asks the secure backend to sweep itself as well', async () => {
+      // Secondary to the caller's per-key removals, but the only thing that reaches a
+      // secret whose account is no longer in the registry.
+      const svc = setup(true);
+      const secure = TestBed.inject(SecureStorageService);
+
+      await svc.wipeKeyValueStores();
+
+      expect(secure.clearAll).toHaveBeenCalled();
     });
 
-    it('reports a backend that swept itself (native keychain/keystore)', async () => {
-      await expect(setup(true).wipeKeyValueStores()).resolves.toBe(true);
-    });
-
-    it('clears raw web storage on web, where keys can live outside our namespace', async () => {
+    it('clears raw web storage on EVERY platform, including native', async () => {
+      // Native matters here specifically: the OIDC callback re-seeds the sign-in state
+      // into sessionStorage on native, so skipping it there would strand a PKCE
+      // code_verifier — the one actual secret in this surface.
+      isNative.value = true;
       const local = { clear: vi.fn() };
       const session = { clear: vi.fn() };
       vi.stubGlobal('localStorage', local);
@@ -197,22 +204,19 @@ describe('LocalDataWipeService', () => {
 
       await setup().wipeKeyValueStores();
 
-      // matrix-js-sdk writes mx_pending_events_* here, and every throwaway createClient()
-      // gets a localStorage-backed MemoryStore — neither is under CapacitorStorage.
-      expect(local.clear).toHaveBeenCalled();
       expect(session.clear).toHaveBeenCalled();
+      expect(local.clear).toHaveBeenCalled();
     });
 
-    it('leaves the WebView’s own storage alone on native', async () => {
-      isNative.value = true;
-      const local = { clear: vi.fn() };
-      vi.stubGlobal('localStorage', local);
+    it('survives a context where touching web storage throws', async () => {
+      // Safari with storage blocked throws on property access alone.
+      vi.stubGlobal('localStorage', {
+        get clear(): never {
+          throw new Error('SecurityError');
+        },
+      });
 
-      await setup().wipeKeyValueStores();
-
-      // Preferences is native there and holds everything of ours; the WebView's storage is
-      // a separate, empty surface.
-      expect(local.clear).not.toHaveBeenCalled();
+      await expect(setup().wipeKeyValueStores()).resolves.toBeUndefined();
     });
   });
 

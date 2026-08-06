@@ -55,8 +55,11 @@ export function deleteDatabase(
     }
     request.onsuccess = () => settle('deleted');
     request.onerror = () => settle('failed');
-    // Resolve immediately rather than waiting out the timer: the holder is another tab or a
-    // store that did not close, and neither resolves itself while we wait.
+    // Resolve immediately rather than waiting out the timer. Note `blocked` is NOT terminal
+    // for the request itself: per spec the delete stays queued and still fires `onsuccess`
+    // once the other connection closes, which for a close-pending store is milliseconds
+    // away. So `blocked` means "not deleted YET, and possibly deleted a moment later" —
+    // a caller must not read it as "this database survived".
     request.onblocked = () => settle('blocked');
   });
 }

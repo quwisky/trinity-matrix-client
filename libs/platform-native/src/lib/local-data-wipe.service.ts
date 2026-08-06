@@ -1,5 +1,4 @@
 import { Injectable, inject } from '@angular/core';
-import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import {
   rustCryptoStoreDbNames,
@@ -17,13 +16,6 @@ export interface WipeReport {
   readonly failed: readonly string[];
   /** Whether `indexedDB.databases()` was available, i.e. whether orphans could be found. */
   readonly enumerated: boolean;
-  /** Whether the secure backend swept itself, rather than relying on per-key removal. */
-  readonly bulkSecureClear: boolean;
-}
-
-/** Nothing was left behind that we know of. */
-export function isCleanWipe(report: WipeReport): boolean {
-  return report.blocked.length === 0 && report.failed.length === 0;
 }
 
 /**
@@ -54,9 +46,7 @@ export class LocalDataWipeService {
    * fail before the point of no return, so aborting leaves the user signed in rather than
    * signed out with their data still present.
    */
-  async wipeIndexedDb(
-    records: readonly AccountRecord[],
-  ): Promise<Pick<WipeReport, 'blocked' | 'failed' | 'enumerated'>> {
+  async wipeIndexedDb(records: readonly AccountRecord[]): Promise<WipeReport> {
     const idb = globalThis.indexedDB;
     if (typeof idb === 'undefined') {
       return { blocked: [], failed: [], enumerated: false };
@@ -84,6 +74,9 @@ export class LocalDataWipeService {
       names.add(name);
     }
 
+    // Deletes run concurrently and none of them aborts the others. A caller that treats
+    // `blocked` as a reason to stop would therefore be stopping AFTER the rest are already
+    // gone — see FactoryResetService.run, which deliberately finishes instead.
     const blocked: string[] = [];
     const failed: string[] = [];
     await Promise.all(
@@ -92,8 +85,6 @@ export class LocalDataWipeService {
         if (outcome === 'blocked') {
           blocked.push(name);
         } else if (outcome === 'failed') {
-          // Deleting a database that does not exist errors in some browsers (Firefox
-          // private browsing), so this is expected noise on a partly-populated origin.
           failed.push(name);
         }
       }),
@@ -111,19 +102,21 @@ export class LocalDataWipeService {
    * `CapacitorStorage` group on every backend: prefixed localStorage keys on web/Electron,
    * the app-private group file on Android, prefixed `UserDefaults` keys on iOS.
    */
-  async wipeKeyValueStores(): Promise<boolean> {
-    const bulkSecureClear = await this.secure.clearAll();
+  async wipeKeyValueStores(): Promise<void> {
+    // Best-effort bulk sweep where the backend has one (native keychain/keystore). It is
+    // NOT the primary mechanism: the caller removes each account's keys by name first,
+    // which is what covers Electron and web. This only reclaims secrets orphaned by an
+    // earlier bug, whose account is no longer listed and whose key nothing can name.
+    await this.secure.clearAll();
     await Preferences.clear();
 
-    // Web/Electron only: the WebView's own storage on native holds nothing of ours, and
-    // Preferences is native there. On web this catches what lives outside our namespace —
-    // matrix-js-sdk's `mx_pending_events_*`, and the localStorage-backed MemoryStore every
-    // throwaway `createClient()` gets by default.
-    if (!Capacitor.isNativePlatform()) {
-      safely(() => globalThis.localStorage?.clear());
-      safely(() => globalThis.sessionStorage?.clear());
-    }
-    return bulkSecureClear;
+    // Every platform, not just web. `sessionStorage` in particular is written on NATIVE by
+    // the OIDC callback re-seed, so skipping it there would leave a PKCE `code_verifier`
+    // behind — the one secret in this whole surface. On native the WebView's own storage
+    // otherwise holds nothing of ours (Preferences is native), so clearing it costs
+    // nothing; on web it catches anything living outside the `CapacitorStorage` namespace.
+    safely(() => globalThis.localStorage?.clear());
+    safely(() => globalThis.sessionStorage?.clear());
   }
 
   /**

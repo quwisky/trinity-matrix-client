@@ -131,13 +131,17 @@ export class SecureStorageService {
   }
 
   /**
-   * Best-effort bulk wipe for the factory reset. Resolves `true` only when the backend
-   * actually swept itself; `false` means the caller's registry-derived per-key removals are
-   * the whole story, which is the normal path on Electron and web.
+   * Best-effort bulk wipe. Resolves `true` only when the backend actually swept itself —
+   * only the native keychain/keystore backend can.
    *
-   * Worth having even though those removals cover every key a healthy registry knows about:
-   * this is the only thing that reclaims a secret orphaned by an earlier bug, whose account
-   * is no longer listed and whose key nothing can name any more.
+   * This is NOT how the factory reset clears secrets. It removes each account's keys by
+   * name first (`SessionStorageService.clearAll`), which is what covers Electron, whose
+   * bridge exposes no bulk clear, and web, whose keys live in Preferences. Losing that
+   * per-key pass would leave Electron's main-process store fully populated AND unreachable,
+   * because the registry naming its keys is deleted moments later.
+   *
+   * What this adds on native is the residue that pass cannot reach: a secret orphaned by an
+   * earlier bug, whose account is no longer listed and whose key nothing can name.
    */
   async clearAll(): Promise<boolean> {
     const backend = await this.resolve();
