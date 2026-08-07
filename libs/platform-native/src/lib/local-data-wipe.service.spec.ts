@@ -147,6 +147,27 @@ describe('LocalDataWipeService', () => {
       expect(report.blocked).toContain('matrix-js-sdk:trinity-sync:@alice:hs');
     });
 
+    it('reports a database that errored separately from a blocked one', async () => {
+      // `blocked` and `failed` mean different things to the caller — blocked is "not yet,
+      // probably a moment later", failed is "this one did not go". They are accumulated by
+      // two sibling branches over the same result, and the branch that matters is the one
+      // that drops the name entirely: the wipe then reports a clean run over a database
+      // that is still there. (Misfiling it as `blocked` is merely wrong, not silent.)
+      const factory = {
+        deleteDatabase: () => {
+          const request: Record<string, (() => void) | null> = {};
+          queueMicrotask(() => request['onerror']?.());
+          return request as unknown as IDBOpenDBRequest;
+        },
+      } as unknown as IDBFactory;
+      vi.stubGlobal('indexedDB', factory);
+
+      const report = await setup().wipeIndexedDb([ALICE]);
+
+      expect(report.failed).toContain('matrix-js-sdk:trinity-sync:@alice:hs');
+      expect(report.blocked).toEqual([]);
+    });
+
     it('is a no-op off-browser rather than throwing', async () => {
       vi.stubGlobal('indexedDB', undefined);
 
