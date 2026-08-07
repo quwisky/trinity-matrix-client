@@ -871,6 +871,31 @@ let codeHighlighter: CodeHighlighter | null = null;
  */
 const MAX_HIGHLIGHT_CHARS_PER_MESSAGE = 20_000;
 
+/** Class on each wrapped line of a code block; the numbering gutter hangs off it. */
+const CODE_LINE_CLASS = 'code-line';
+
+/**
+ * Lines a block must EXCEED before it is marked for numbering.
+ *
+ * A gutter on a two-line snippet is noise, and most code in a conversation is a snippet.
+ * The line-number setting's automatic mode — its default — shows numbers only past this;
+ * "Always" ignores it, in CSS, since a preference must not reach the memoized markup.
+ */
+const LINE_NUMBER_THRESHOLD = 5;
+
+/**
+ * Lines beyond which a block is left unwrapped entirely.
+ *
+ * Wrapping runs on every block of every message, including a back-pagination's worth, and a
+ * sender controls block size up to the event limit. Past this the block renders normally,
+ * just without numbers — cheaper than thousands of synchronous DOM nodes for a listing
+ * nobody is counting lines in.
+ */
+const MAX_NUMBERED_LINES = 500;
+
+/** `Node.TEXT_NODE`, spelled out because this module never touches a live `Node` global. */
+const NODE_TYPE_TEXT = 3;
+
 /**
  * Install (or clear) the syntax highlighter used by {@link sanitizeMatrixHtml}.
  *
@@ -1137,29 +1162,131 @@ function renderCodeBlocks(root: ParentNode): void {
       if (lang) {
         pre.setAttribute('language', lang);
       }
-
-      // Only ever tokenize plain text. The Matrix allowlist permits inline markup inside
-      // <code> (a link, bold, a spoiler), and replacing the children would silently delete
-      // it — worse, only for languages we happen to have a grammar for, so the same body
-      // would render differently depending on its fence tag.
       const source = code.textContent ?? '';
-      if (!lang || !codeHighlighter || !source || code.children.length > 0) {
-        continue;
-      }
-      // `continue`, not `break`: a later block small enough to fit should still be coloured
-      // rather than being starved by one oversized listing earlier in the message.
-      if (source.length > budget) {
-        continue;
-      }
-      const highlighted = codeHighlighter(source, lang, code.ownerDocument);
-      if (highlighted) {
-        // Charged only when tokenization actually happened. The highlighter declines
-        // oversized blocks and unknown languages without doing the work, and charging for
-        // those would starve blocks that could have been highlighted.
-        budget -= source.length;
-        code.replaceChildren(highlighted);
-      }
+      // Charged only when tokenization actually happened. The highlighter declines
+      // oversized blocks and unknown languages without doing the work, and charging for
+      // those would starve blocks that could have been highlighted.
+      const charged = highlightBlock(code, lang, source, budget);
+      budget -= charged;
+      markCodeLines(pre, code, source, charged > 0);
     }
+  }
+}
+
+/**
+ * Tokenize one block in place, returning the characters to charge against the message
+ * budget — 0 when nothing was highlighted.
+ *
+ * Extracted from the loop so declining a block does not skip the passes after it: the
+ * blocks this refuses (no language, no grammar, oversized, budget exhausted) are exactly
+ * the long listings most worth numbering.
+ */
+function highlightBlock(
+  code: Element,
+  lang: string | null,
+  source: string,
+  budget: number,
+): number {
+  // Only ever tokenize plain text. The Matrix allowlist permits inline markup inside
+  // <code> (a link, bold, a spoiler), and replacing the children would silently delete
+  // it — worse, only for languages we happen to have a grammar for, so the same body
+  // would render differently depending on its fence tag.
+  if (!lang || !codeHighlighter || !source || code.children.length > 0) {
+    return 0;
+  }
+  // Declining, not aborting: a later block small enough to fit should still be coloured
+  // rather than being starved by one oversized listing earlier in the message.
+  if (source.length > budget) {
+    return 0;
+  }
+  const highlighted = codeHighlighter(source, lang, code.ownerDocument);
+  if (!highlighted) {
+    return 0;
+  }
+  code.replaceChildren(highlighted);
+  return source.length;
+}
+
+/**
+ * Wrap each line of a block in `<span class="code-line">` and record how many there are, so
+ * CSS can number them.
+ *
+ * The numbers themselves are generated content keyed off these wrappers, never text — the
+ * same rule the language caption follows, and for the same reasons: digits in the DOM would
+ * be selectable, would land in the clipboard when someone copies a pasted file, and would
+ * be read by the edit-history diff, which compares the *text* of two rendered revisions.
+ * The wrappers add no characters, so `textContent` is byte-identical to the sender's source.
+ *
+ * The newlines stay OUTSIDE the wrappers, as siblings. Under `pre`'s `white-space: pre` they
+ * are what break the lines, so the wrappers can remain inline and this becomes a
+ * zero-layout-change transform; block-level wrappers would turn every one of those newlines
+ * into a blank line of its own.
+ *
+ * `rows` rather than an invented attribute name: Angular's `[innerHTML]` sanitizer runs
+ * again at the render leaf against a fixed allowlist, which admits `rows` and `language` but
+ * would silently drop `numbered` or `data-lines`. It carries no meaning on `<pre>`, and the
+ * count is what a threshold rule would want anyway. The threshold is applied HERE, from the
+ * content, rather than in CSS, because `:has()` is below this app's browser floor — and
+ * because a preference must never reach the markup, which is memoized per message and not
+ * per viewer.
+ */
+function markCodeLines(
+  pre: Element,
+  code: Element,
+  source: string,
+  highlighted: boolean,
+): void {
+  if (!source) {
+    return;
+  }
+  // A newline inside a child element would put two visual lines in one wrapper, and the
+  // numbering would then lie. The highlighter guarantees no token spans a newline, so a
+  // block it tokenized is safe; otherwise only a block with no element children is.
+  if (!highlighted && code.children.length > 0) {
+    return;
+  }
+  const lines = source.split('\n');
+  // A sender controls block size up to the event limit, and this pass runs on every block
+  // in every message of a back-pagination. Past the cap the block simply goes unnumbered
+  // rather than costing thousands of synchronous DOM nodes.
+  if (lines.length > MAX_NUMBERED_LINES) {
+    return;
+  }
+
+  const doc = code.ownerDocument;
+  const wrapped: Node[] = [];
+  let current: Node[] = [];
+  const flush = (): void => {
+    const line = doc.createElement('span');
+    line.className = CODE_LINE_CLASS;
+    // An empty wrapper on a blank line is deliberate: it still takes a number.
+    line.append(...current);
+    wrapped.push(line);
+    current = [];
+  };
+
+  for (const node of [...code.childNodes]) {
+    const text =
+      node.nodeType === NODE_TYPE_TEXT ? (node.textContent ?? '') : '';
+    if (!text.includes('\n')) {
+      current.push(node);
+      continue;
+    }
+    text.split('\n').forEach((segment, index) => {
+      if (index > 0) {
+        flush();
+        wrapped.push(doc.createTextNode('\n'));
+      }
+      if (segment) {
+        current.push(doc.createTextNode(segment));
+      }
+    });
+  }
+  flush();
+
+  code.replaceChildren(...wrapped);
+  if (lines.length > LINE_NUMBER_THRESHOLD) {
+    pre.setAttribute('rows', String(lines.length));
   }
 }
 

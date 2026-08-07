@@ -16,9 +16,23 @@ function highlight(lang: string, source: string): HTMLElement {
   return el.querySelector('code') as HTMLElement;
 }
 
-/** Every individual class token across the highlighted spans (a span may carry two). */
-const roles = (code: HTMLElement) =>
+/** The line wrapper renderCodeBlocks adds; structural, not a colouring role. */
+const CODE_LINE = 'code-line';
+
+/** Every individual class token across the spans in a block (a span may carry two). */
+const allClasses = (code: HTMLElement) =>
   [...code.querySelectorAll('span')].flatMap((s) => s.className.split(' '));
+
+/**
+ * The COLOURING roles only.
+ *
+ * Every block is wrapped line by line so the numbering gutter has something to hang off, so
+ * "no spans at all" stopped being the same statement as "nothing was highlighted". Filtering
+ * the wrapper keeps the tests below saying what they mean; the injection guard checks the
+ * unfiltered list, so an unexpected class still has nowhere to hide.
+ */
+const roles = (code: HTMLElement) =>
+  allClasses(code).filter((token) => token !== CODE_LINE);
 
 describe('code highlighting', () => {
   afterAll(() => {
@@ -95,10 +109,12 @@ describe('code highlighting', () => {
   it('emits only token classes, never anything the sender could have injected', () => {
     const code = highlight('typescript', 'const a = 1;');
 
-    for (const className of roles(code)) {
-      for (const token of className.split(' ')) {
-        expect(token).toMatch(/^tok-[a-z]+$/);
-      }
+    // Deliberately the UNFILTERED list. Two class families are ours and both are added
+    // after DOMPurify, which is why neither is in ALLOWED_CLASS: `tok-*` from the
+    // highlighter and `code-line` from the line-wrapping pass. Anything else appearing here
+    // came from the sender's markup and must not have survived.
+    for (const token of allClasses(code)) {
+      expect(token).toMatch(/^(?:tok-[a-z]+|code-line)$/);
     }
   });
 });
