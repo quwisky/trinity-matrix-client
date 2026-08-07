@@ -1128,34 +1128,37 @@ function renderCodeBlocks(root: ParentNode): void {
   // message. It does NOT bound a whole back-pagination, where each event is sanitized
   // separately — see the note on MAX_HIGHLIGHT_CHARS_PER_MESSAGE.
   let budget = MAX_HIGHLIGHT_CHARS_PER_MESSAGE;
-  for (const code of root.querySelectorAll('pre > code[class]')) {
-    const lang = fencedLanguage(code);
-    const pre = code.parentElement;
-    if (!lang || !pre) {
-      continue;
-    }
-    pre.setAttribute('language', lang);
+  // Iterating `pre` rather than `pre > code[class]` because not every pass below needs a
+  // language: a bare fence produces a `<code>` with no class at all, so a code-first query
+  // cannot see it. Captioning and highlighting stay gated on the language individually.
+  for (const pre of root.querySelectorAll('pre')) {
+    for (const code of pre.querySelectorAll(':scope > code')) {
+      const lang = fencedLanguage(code);
+      if (lang) {
+        pre.setAttribute('language', lang);
+      }
 
-    // Only ever tokenize plain text. The Matrix allowlist permits inline markup inside
-    // <code> (a link, bold, a spoiler), and replacing the children would silently delete
-    // it — worse, only for languages we happen to have a grammar for, so the same body
-    // would render differently depending on its fence tag.
-    const source = code.textContent ?? '';
-    if (!codeHighlighter || !source || code.children.length > 0) {
-      continue;
-    }
-    // `continue`, not `break`: a later block small enough to fit should still be coloured
-    // rather than being starved by one oversized listing earlier in the message.
-    if (source.length > budget) {
-      continue;
-    }
-    const highlighted = codeHighlighter(source, lang, code.ownerDocument);
-    if (highlighted) {
-      // Charged only when tokenization actually happened. The highlighter declines
-      // oversized blocks and unknown languages without doing the work, and charging for
-      // those would starve blocks that could have been highlighted.
-      budget -= source.length;
-      code.replaceChildren(highlighted);
+      // Only ever tokenize plain text. The Matrix allowlist permits inline markup inside
+      // <code> (a link, bold, a spoiler), and replacing the children would silently delete
+      // it — worse, only for languages we happen to have a grammar for, so the same body
+      // would render differently depending on its fence tag.
+      const source = code.textContent ?? '';
+      if (!lang || !codeHighlighter || !source || code.children.length > 0) {
+        continue;
+      }
+      // `continue`, not `break`: a later block small enough to fit should still be coloured
+      // rather than being starved by one oversized listing earlier in the message.
+      if (source.length > budget) {
+        continue;
+      }
+      const highlighted = codeHighlighter(source, lang, code.ownerDocument);
+      if (highlighted) {
+        // Charged only when tokenization actually happened. The highlighter declines
+        // oversized blocks and unknown languages without doing the work, and charging for
+        // those would starve blocks that could have been highlighted.
+        budget -= source.length;
+        code.replaceChildren(highlighted);
+      }
     }
   }
 }
