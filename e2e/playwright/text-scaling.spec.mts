@@ -197,3 +197,113 @@ test.describe('Text size', () => {
     expect(await px(afterReload)).toBeGreaterThan(before);
   });
 });
+
+/**
+ * Code size (Settings → Appearance → Code size) — a second, independent axis.
+ *
+ * The point of the setting is that it moves code WITHOUT moving anything else, and that it
+ * composes with Text size rather than replacing it. Neither claim can be read off the
+ * stylesheet: both are properties of how two relative values multiply at runtime, so this
+ * measures real rendered elements at each combination, as the Text size test above does.
+ */
+test.describe('Code size', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('sizes code without moving prose, and composes with Text size', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}cs`;
+    const user = `code-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Code ${runId}`;
+    const body = `prose ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.access_token as string);
+    const headers = { Authorization: `Bearer ${token}` };
+    const roomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers,
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((r) => r.json())
+      .then((j) => j.room_id as string);
+    // Prose and a fenced block in ONE message, so both are measured in the same inherited
+    // context and the ratio between them means something.
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${roomId}/send/m.room.message/${runId}`,
+      {
+        headers,
+        data: {
+          msgtype: 'm.text',
+          body: `${body}\n\n    def greet(n):`,
+          format: 'org.matrix.custom.html',
+          formatted_body: `<p>${body}</p><pre><code class="language-python">def greet(n):</code></pre>`,
+        },
+      },
+    );
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+
+    const prose = page.locator('.msg__text--html p', { hasText: body }).first();
+    const code = page.locator('.msg__text--html pre code').first();
+    await expect(code).toBeVisible({ timeout: 20_000 });
+
+    const proseDefault = await px(prose);
+    const codeDefault = await px(code);
+    // The optical correction, and the default leaving no footprint on <html>.
+    expect(codeDefault / proseDefault).toBeCloseTo(0.85, 2);
+    expect(
+      await page.evaluate(() =>
+        document.documentElement.style.getPropertyValue('--trinity-code-scale'),
+      ),
+    ).toBe('');
+
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-appearance').click();
+    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await choose(page, 'code-scale-select', 'code-scale-larger');
+    await page.goto('/rooms');
+    await openRoom(page, roomName);
+
+    const proseLarger = await px(prose);
+    const codeLarger = await px(code);
+    // The whole point: code grew, and the prose beside it did not budge. A setting that
+    // moved both would be Text size wearing a different label.
+    expect(codeLarger).toBeGreaterThan(codeDefault);
+    expect(proseLarger).toBe(proseDefault);
+
+    // Now the composition. Text size moves the root; code must follow it AND keep the
+    // enlargement, so the ratio between the two survives. If the code size were absolute,
+    // this ratio would collapse back towards the correction.
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-appearance').click();
+    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await choose(page, 'text-scale-select', 'text-scale-larger');
+    await page.goto('/rooms');
+    await openRoom(page, roomName);
+
+    const proseBoth = await px(prose);
+    const codeBoth = await px(code);
+    expect(proseBoth).toBeGreaterThan(proseDefault);
+    expect(codeBoth / proseBoth).toBeCloseTo(codeLarger / proseLarger, 2);
+
+    // Persisted, not session state.
+    await page.reload();
+    await openRoom(page, roomName);
+    await expect(code).toBeVisible({ timeout: 20_000 });
+    expect(await px(code)).toBeCloseTo(codeBoth, 1);
+  });
+});
