@@ -117,10 +117,15 @@
       }
     }
 
+    // Deliberately no `font-size` here. The 85% above is an OPTICAL correction, not a
+    // preference: a monospace face reads larger than the proportional UI font at the same
+    // computed size, so an uncorrected block towers over the prose around it even though
+    // both measure 16px. Restoring 100% here applied that correction to inline code and
+    // then cancelled it inside a fence, which is what made pasted listings dominate the
+    // timeline.
     code {
       padding: 0;
       background: none;
-      font-size: 100%;
       color: var(--trinity-syntax-plain);
     }
 

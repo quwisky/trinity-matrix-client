@@ -241,6 +241,14 @@ All notable changes to this project are documented here. The format is based on
   of these reads the same wherever it is used. Nothing looks different in the places they are
   used today.
 
+- **Code blocks no longer tower over the conversation.** A pasted snippet rendered
+  noticeably larger than the message text around it, and a pasted class of a few dozen lines
+  dominated the timeline. Both were in fact the same size — the cause is that a monospace
+  face simply reads bigger than the surrounding font at an equal size. Trinity already
+  corrected for that on code written inside a sentence and then undid the correction inside
+  a fenced block. Blocks now carry it too, so they sit at the same visual weight as the text
+  around them. Nothing to turn on, and the code itself is untouched.
+
 - **Signing back in to an account no longer creates a second device.** When a session was
   signed out by the server and you re-authenticated it, accounts that use the newer
   provider-based sign-in were given a brand-new device instead of picking their old one
