@@ -38,7 +38,7 @@ Everything lives under [`docs/`](docs/index.md), grouped by who is reading.
   aliased `@trinity/helm/*`) on **Tailwind CSS v4**
 - **Native:** Capacitor 8 (iOS via SPM, Android) + a hand-rolled Electron desktop
   shell (`electron/`) for Windows/macOS/Linux
-- **Protocol:** `matrix-js-sdk` 41
+- **Protocol:** `matrix-js-sdk` 42
 - **E2EE:** `@matrix-org/matrix-sdk-crypto-wasm` (Rust crypto / Vodozemac)
 - **State:** Angular signals (UI state) + RxJS Observables (async service APIs)
 - **Offline/PWA:** persistent IndexedDB sync store + Angular Service Worker

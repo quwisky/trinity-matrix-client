@@ -4,10 +4,15 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 // homeserver + provider. Unlike the other app-journey specs this needs no Synapse/MAS,
 // so it does NOT self-skip on Docker absence — page.route stubs the homeserver's
 // discovery + auth-metadata and the provider's registration + authorize endpoints, so
-// the whole delegated login journey is deterministic and offline. The token exchange
-// itself (a signed id_token bound to a runtime nonce) can't be mocked usefully, so the
-// happy path is exercised up to the provider redirect; the callback is driven end-to-end
-// via the provider-error path (which needs no id_token).
+// the whole delegated login journey is deterministic and offline.
+//
+// The token exchange IS covered here now. It used to be skipped because it returned a
+// signed id_token bound to a runtime nonce — matrix-js-sdk 42 dropped oidc-client-ts and
+// the id_token with it, so the token endpoint is a plain JSON POST a route stub can
+// satisfy. What these specs still stop short of is the client BOOT that follows a
+// successful exchange: sync, push rules and Rust crypto against a fully mocked homeserver
+// is a different and much larger fixture, and the Synapse-backed specs cover that ground.
+// So the exchange is asserted on the wire, not by arriving at /rooms.
 
 const HS_DOMAIN = 'oidc.example';
 const HS_BASE = 'https://hs.oidc.example';
@@ -22,6 +27,10 @@ const AUTH_METADATA = {
   revocation_endpoint: 'https://provider.oidc.example/revoke',
   registration_endpoint: REGISTRATION_ENDPOINT,
   account_management_uri: 'https://provider.oidc.example/account',
+  // Required by matrix-js-sdk 42's isValidAuthMetadata, which needs BOTH values. Omitting
+  // it makes getAuthMetadata throw, so the app decides this homeserver is not OIDC at all
+  // and this whole spec silently tests the password form instead.
+  response_modes_supported: ['query', 'fragment'],
   response_types_supported: ['code'],
   grant_types_supported: ['authorization_code', 'refresh_token'],
   code_challenge_methods_supported: ['S256'],
@@ -61,12 +70,6 @@ async function mockOidcHomeserver(page: Page): Promise<void> {
   );
   await page.route(
     /hs\.oidc\.example\/_matrix\/client\/v1\/auth_metadata/,
-    (r) => json(r, AUTH_METADATA),
-  );
-  // oidc-client-ts (inside generateOidcAuthorizationUrl) discovers the provider from
-  // the issuer's openid-configuration; without it the authorize URL can't be built.
-  await page.route(
-    /provider\.oidc\.example\/\.well-known\/openid-configuration/,
     (r) => json(r, AUTH_METADATA),
   );
 }
@@ -138,7 +141,80 @@ test.describe('OIDC-native login', () => {
     expect(params.get('code_challenge')).toBeTruthy();
     expect(params.get('state')).toBeTruthy();
     expect(params.get('redirect_uri')).toContain('/sso-callback');
-    expect(params.get('scope') ?? '').toContain('openid');
+    // matrix-js-sdk 42 requests stable Matrix URNs and no longer asks for `openid`
+    // (v41 sent `openid urn:matrix:org.matrix.msc2967.client:api:*`).
+    expect(params.get('scope') ?? '').toContain('urn:matrix:client:api:*');
+    expect(params.get('scope') ?? '').toContain('urn:matrix:client:device:');
+    // Load-bearing: v42 defaults response_mode to `fragment`, and every callback reader in
+    // this app parses query params only. Without this the code lands in the URL fragment
+    // and login hangs on "Missing sign-in details".
+    expect(params.get('response_mode')).toBe('query');
+  });
+
+  test('redeems the code with the stashed PKCE verifier', async ({ page }) => {
+    // The one thing no other test can see end to end: matrix-js-sdk 42 persists no
+    // sign-in state, so the code_verifier the token POST presents can only have come out
+    // of OidcStateStore, written before the redirect and read back in a fresh navigation.
+    // If that round-trip breaks, the provider rejects the exchange with an opaque PKCE
+    // error and login dies — this asserts the two halves actually match.
+    await mockOidcHomeserver(page);
+    await page.route(/provider\.oidc\.example\/register/, (r) =>
+      json(r, { client_id: 'e2e-client-id' }, 201),
+    );
+
+    let challenge: string | null = null;
+    await page.route(/provider\.oidc\.example\/authorize/, async (route) => {
+      const url = new URL(route.request().url());
+      challenge = url.searchParams.get('code_challenge');
+      const back = `${url.searchParams.get('redirect_uri') ?? ''}?code=E2E_CODE&state=${encodeURIComponent(url.searchParams.get('state') ?? '')}`;
+      await route.fulfill({ status: 302, headers: { location: back } });
+    });
+
+    let tokenBody: URLSearchParams | null = null;
+    await page.route(/provider\.oidc\.example\/token/, async (route) => {
+      if (route.request().method() !== 'OPTIONS') {
+        tokenBody = new URLSearchParams(route.request().postData() ?? '');
+      }
+      return json(route, {
+        token_type: 'Bearer',
+        access_token: 'e2e-access',
+        refresh_token: 'e2e-refresh',
+        expires_in: 300,
+      });
+    });
+    await page.route(
+      /hs\.oidc\.example\/_matrix\/client\/v3\/account\/whoami/,
+      (r) => json(r, { user_id: '@e2e:oidc.example', device_id: 'E2EDEV' }),
+    );
+
+    await discover(page);
+    await page.getByTestId('oidc-continue').click();
+
+    await expect.poll(() => tokenBody !== null, { timeout: 20_000 }).toBe(true);
+    const body = tokenBody as unknown as URLSearchParams;
+    expect(body.get('grant_type')).toBe('authorization_code');
+    expect(body.get('code')).toBe('E2E_CODE');
+    expect(body.get('client_id')).toBe('e2e-client-id');
+    // The verifier the exchange presents must be the one the authorize challenge was
+    // derived from (RFC 7636 S256) — the whole point of the durable stash.
+    const verifier = body.get('code_verifier') ?? '';
+    expect(verifier).toBeTruthy();
+    const digest = await page.evaluate(async (v) => {
+      const hash = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(v),
+      );
+      return btoa(String.fromCharCode(...new Uint8Array(hash)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+    }, verifier);
+    expect(digest).toBe(challenge);
+
+    // The callback got past verification: no "could not be verified" / "missing details".
+    await expect(
+      page.getByText(/could not be verified|Missing sign-in details/),
+    ).toHaveCount(0);
   });
 
   test('a non-OIDC homeserver still shows the password form', async ({

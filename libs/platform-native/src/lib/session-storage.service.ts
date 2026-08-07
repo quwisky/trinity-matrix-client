@@ -272,7 +272,11 @@ export class SessionStorageService {
       return; // signed out mid-refresh — drop the rotated tokens on the floor
     }
     await this.secure.set(this.tokenKey(userId), accessToken);
-    if (refreshToken !== undefined) {
+    // Truthiness, not `!== undefined`. A provider that rotated nothing may answer with
+    // `refresh_token: ''` — which the SDK's validator accepts — and writing that over the
+    // stored token would destroy a still-valid credential that no restart could recover.
+    // Absent and empty mean the same thing here: keep what we already have.
+    if (refreshToken) {
       await this.secure.set(this.refreshTokenKey(userId), refreshToken);
     }
     record.accessTokenExpiresAt = accessTokenExpiresAt;

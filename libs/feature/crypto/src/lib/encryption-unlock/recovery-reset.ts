@@ -8,7 +8,7 @@ import type { TrnAlertService } from '@trinity/helm/overlay';
 /**
  * The MSC2965 account-management action for resetting cross-signing.
  *
- * Hand-rolled: matrix-js-sdk 41.x types `account_management_actions_supported` as a bare
+ * Hand-rolled: matrix-js-sdk types `account_management_actions_supported` as a bare
  * `string[]` and ships no enum for its members — `cross_signing_reset` appears nowhere in
  * the SDK. If one is added later, this constant is the single place to swap.
  */

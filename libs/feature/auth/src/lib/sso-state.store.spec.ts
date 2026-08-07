@@ -128,6 +128,39 @@ describe('SsoStateStore', () => {
     });
   });
 
+  it('peek discards a stash whose timestamp is in the future', async () => {
+    // `Date.now() - started <= TTL_MS` alone reads a NEGATIVE age as fresh, so a stash
+    // written before the clock was corrected backwards (an NTP sync after a dead-RTC
+    // boot, a manual correction) would never expire. The nonce is the primary control,
+    // but the TTL is what bounds a leaked one — an unexpiring stash removes that bound
+    // entirely. Its sibling OidcStateStore fixed this; the same expression lived here.
+    getFrom({
+      'sso.state': 'NONCE',
+      'sso.baseUrl': 'https://hs.example',
+      'sso.startedAt': String(Date.now() + 60 * 60 * 1000),
+    });
+
+    expect(await store().peek()).toEqual({
+      state: null,
+      baseUrl: null,
+      mode: 'replace',
+      deviceId: null,
+    });
+  });
+
+  it('peek survives a small backwards clock step mid-round-trip', async () => {
+    // The lower bound must not be zero-tolerance: the clock can step backwards WHILE the
+    // user is typing credentials at the provider, and rejecting on that kills a genuine
+    // login with a message that reads like an attack.
+    getFrom({
+      'sso.state': 'NONCE',
+      'sso.baseUrl': 'https://hs.example',
+      'sso.startedAt': String(Date.now() + 30 * 1000),
+    });
+
+    expect(await store().peek()).toMatchObject({ state: 'NONCE' });
+  });
+
   it('peek returns an empty stash when nothing was stored', async () => {
     getFrom({});
 

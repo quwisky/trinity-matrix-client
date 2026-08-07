@@ -16,8 +16,12 @@ vi.mock('matrix-js-sdk', async (importActual) => {
 });
 
 import { AutoDiscovery, MatrixError, createClient } from 'matrix-js-sdk';
+import { AUTH_METADATA } from './auth-metadata.fixture';
 import { AuthService } from './auth.service';
-import { OidcClientService } from './oidc-client.service';
+import {
+  OidcClientService,
+  type OidcGrantContext,
+} from './oidc-client.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
 import { AvatarService } from '@trinity/data-access/media';
@@ -158,16 +162,14 @@ describe('AuthService', () => {
 
   describe('getDelegatedAuthConfig', () => {
     it('returns the validated OIDC config when the homeserver delegates auth', async () => {
-      const config = {
-        issuer: 'https://op.hs',
-        token_endpoint: 'https://op.hs/t',
-      };
-      const getAuthMetadata = vi.fn().mockResolvedValue(config);
+      // The shared fixture, not an ad-hoc partial: getAuthMetadata() only ever resolves
+      // metadata that passed the SDK's own isValidAuthMetadata guard.
+      const getAuthMetadata = vi.fn().mockResolvedValue(AUTH_METADATA);
       createClientMock.mockReturnValue({ getAuthMetadata } as never);
 
       expect(
         await firstValueFrom(auth.getDelegatedAuthConfig('https://hs')),
-      ).toBe(config);
+      ).toBe(AUTH_METADATA);
     });
 
     it('resolves null when the homeserver is not OIDC-native (getAuthMetadata throws)', async () => {
@@ -346,6 +348,16 @@ describe('AuthService', () => {
   });
 
   describe('completeOidcLogin', () => {
+    // The PKCE stash the callback route recovers and feeds back: since matrix-js-sdk 42
+    // nothing else holds the verifier, so it travels as one context object rather than
+    // the old (code, state, redirectUri) triple.
+    const context: OidcGrantContext = {
+      baseUrl: 'https://hs',
+      redirectUri: 'https://app/cb',
+      clientId: 'c1',
+      deviceId: 'DEV',
+      codeVerifier: 'verifier',
+    };
     const grant = {
       homeserverUrl: 'https://hs',
       userId: '@me:hs',
@@ -353,17 +365,11 @@ describe('AuthService', () => {
       accessToken: 'atok',
       refreshToken: 'rtok',
       accessTokenExpiresAt: 1234,
+      // No idTokenClaims: v42 dropped the id_token, so a fresh grant never carries them.
       oidc: {
         issuer: 'https://op',
         clientId: 'c1',
         redirectUri: 'https://app/cb',
-        idTokenClaims: {
-          iss: 'https://op',
-          sub: 'u',
-          aud: 'c1',
-          exp: 1,
-          iat: 0,
-        },
       },
     };
 
@@ -377,15 +383,9 @@ describe('AuthService', () => {
       vi.mocked(storage.save).mockImplementation((s) => of(s));
       vi.mocked(matrix.init).mockReturnValue(of(undefined));
 
-      await firstValueFrom(
-        auth.completeOidcLogin('CODE', 'STATE', 'https://app/cb'),
-      );
+      await firstValueFrom(auth.completeOidcLogin('CODE', context));
 
-      expect(oidc.completeGrant).toHaveBeenCalledWith(
-        'CODE',
-        'STATE',
-        'https://app/cb',
-      );
+      expect(oidc.completeGrant).toHaveBeenCalledWith('CODE', context);
       // establish() persisted the full OIDC session, then brought the client up (replace).
       expect(storage.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -412,13 +412,57 @@ describe('AuthService', () => {
       vi.mocked(matrix.add).mockReturnValue(of(undefined));
       vi.mocked(push.register).mockReturnValue(of(undefined));
 
-      await firstValueFrom(
-        auth.completeOidcLogin('CODE', 'STATE', 'https://app/cb', 'add'),
-      );
+      await firstValueFrom(auth.completeOidcLogin('CODE', context, 'add'));
 
       expect(matrix.add).toHaveBeenCalled();
       expect(push.register).toHaveBeenCalled();
       expect(matrix.init).not.toHaveBeenCalled();
+    });
+
+    it('refuses a grant for a different account than the one being re-authenticated', async () => {
+      // Re-auth sends the stored account's device id in the requested scope, and a
+      // provider that already holds a browser session authorizes with no interaction —
+      // so on a homeserver with two accounts, "sign in again to reconnect this account"
+      // can silently come back as the OTHER one. Nothing compared the two, so establish()
+      // would persist B under A's device id; upsert then sees deviceChanged and reclaims
+      // B's live crypto store, forcing re-verification of an account never touched.
+      const oidc = TestBed.inject(OidcClientService);
+      const storage = TestBed.inject(SessionStorageService);
+      vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
+      vi.mocked(oidc.revokeTokens).mockReturnValue(of(undefined));
+
+      await expect(
+        firstValueFrom(
+          auth.completeOidcLogin('CODE', context, 'add', '@other:hs'),
+        ),
+      ).rejects.toThrow(/@other:hs/);
+
+      expect(storage.save).not.toHaveBeenCalled();
+      // The grant is unusable and its tokens are live: hand them back rather than
+      // leaving a session the user cannot see or reach.
+      expect(oidc.revokeTokens).toHaveBeenCalledWith(
+        'https://hs',
+        grant.oidc,
+        expect.objectContaining({ accessToken: 'atok', refreshToken: 'rtok' }),
+      );
+    });
+
+    it('accepts a grant that matches the account being re-authenticated', async () => {
+      const oidc = TestBed.inject(OidcClientService);
+      const matrix = TestBed.inject(MatrixClientService);
+      const storage = TestBed.inject(SessionStorageService);
+      const push = TestBed.inject(PushService);
+      vi.mocked(oidc.completeGrant).mockReturnValue(of(grant) as never);
+      vi.mocked(storage.save).mockImplementation((s) => of(s));
+      vi.mocked(matrix.add).mockReturnValue(of(undefined));
+      vi.mocked(push.register).mockReturnValue(of(undefined));
+
+      await firstValueFrom(
+        auth.completeOidcLogin('CODE', context, 'add', '@me:hs'),
+      );
+
+      expect(matrix.add).toHaveBeenCalled();
+      expect(oidc.revokeTokens).not.toHaveBeenCalled();
     });
   });
 

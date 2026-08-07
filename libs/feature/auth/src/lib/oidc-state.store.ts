@@ -8,11 +8,30 @@ const STARTED_KEY = 'oidc.startedAt';
 const MODE_KEY = 'oidc.mode';
 const REDIRECT_URI_KEY = 'oidc.redirectUri';
 const ISSUER_KEY = 'oidc.issuer';
-const SESSION_STATE_KEY_KEY = 'oidc.ssKey';
-const SESSION_STATE_BLOB_KEY = 'oidc.ssBlob';
+const CLIENT_ID_KEY = 'oidc.clientId';
+const DEVICE_ID_KEY = 'oidc.deviceId';
+const CODE_VERIFIER_KEY = 'oidc.codeVerifier';
+const EXPECTED_USER_ID_KEY = 'oidc.expectedUserId';
+/**
+ * Written by versions before matrix-js-sdk 42, when the SDK kept the sign-in state in
+ * sessionStorage and this store shuttled an opaque copy of it. Nothing writes them now,
+ * and the blob held a PKCE code_verifier in plaintext — so {@link OidcStateStore.clear}
+ * purges them rather than leaving an abandoned one on disk forever. Drop in a later release.
+ */
+const LEGACY_KEYS = ['oidc.ssKey', 'oidc.ssBlob'] as const;
 
 /** OIDC round-trips are short; reject a stash older than this to limit replay. */
 const TTL_MS = 10 * 60 * 1000; // 10 minutes
+/**
+ * How far the stash may appear to have been written in the FUTURE before it is rejected.
+ * The lower bound exists so a clock nudged forward cannot mint a stash that never expires
+ * — but a zero-tolerance version fails an ordinary login, because the same event class
+ * (a clock stepped backwards: NITZ/NTP after airplane mode, a laptop resuming from sleep,
+ * w32time) can land mid-round-trip while the user is typing at the provider. A minute
+ * survives normal clock discipline and still bins a stash written hours ahead. Kept in
+ * step with {@link SsoStateStore}.
+ */
+const CLOCK_SKEW_MS = 60 * 1000;
 
 /** What {@link OidcStateStore.save} persists across the OIDC authorization round-trip. */
 export interface OidcStateSave {
@@ -25,10 +44,20 @@ export interface OidcStateSave {
   redirectUri: string;
   /** The OIDC issuer; lets the callback forget a stale client registration on failure. */
   issuer: string;
-  /** The sessionStorage key the SDK stored the sign-in state under (`mx_oidc_<state>`). */
-  sessionStateKey: string;
-  /** The serialized sign-in state to re-seed before the token exchange, or null. */
-  sessionStateBlob: string | null;
+  /** The registered client id this request was built with. */
+  clientId: string;
+  /** The device id the SDK minted for this request. */
+  deviceId: string;
+  /** SECRET. The PKCE code_verifier the token exchange must present. */
+  codeVerifier: string;
+  /**
+   * Re-auth only: the account this round-trip is meant to reconnect. A provider holding
+   * a browser session can authorize with no interaction and return a DIFFERENT account,
+   * and nothing in the token response says whose it is — so the callback compares this
+   * against `whoami` before anything is persisted. Null for an ordinary login, where any
+   * account the user picks is the right answer.
+   */
+  expectedUserId: string | null;
 }
 
 /** The single-use OIDC stash read back on the callback (each field may be absent). */
@@ -38,8 +67,10 @@ export interface OidcStateStash {
   mode: LoginMode;
   redirectUri: string | null;
   issuer: string | null;
-  sessionStateKey: string | null;
-  sessionStateBlob: string | null;
+  clientId: string | null;
+  deviceId: string | null;
+  codeVerifier: string | null;
+  expectedUserId: string | null;
 }
 
 const EMPTY_STASH: OidcStateStash = {
@@ -48,22 +79,33 @@ const EMPTY_STASH: OidcStateStash = {
   mode: 'replace',
   redirectUri: null,
   issuer: null,
-  sessionStateKey: null,
-  sessionStateBlob: null,
+  clientId: null,
+  deviceId: null,
+  codeVerifier: null,
+  expectedUserId: null,
 };
 
 /**
  * Persists the OIDC PKCE round-trip state across the authorization redirect via Capacitor
- * Preferences (localStorage on web, native key-value on device). Unlike `sessionStorage` —
- * where matrix-js-sdk/oidc-client-ts natively keeps the sign-in state — Preferences
- * survives a native/Electron process eviction and reaches the app's WebView after a
- * system-browser round-trip, so a cold-start deep-link callback can re-seed sessionStorage
- * and complete the token exchange.
+ * Preferences (localStorage on web, native key-value on device).
  *
- * SECURITY: unlike {@link SsoStateStore} (which holds only a non-secret nonce), the
- * `sessionStateBlob` here contains the PKCE **code_verifier** — a short-lived secret. It
- * is single-use ({@link peek} then {@link clear}, only once the callback's state matches),
+ * **This store is now the sole custodian of that state.** matrix-js-sdk 42 dropped
+ * `oidc-client-ts`, and its replacement persists nothing at all — where this store
+ * previously shuttled a copy of the SDK's `mx_oidc_<state>` sessionStorage entry, there is
+ * no longer anything to copy. Preferences also survives a native/Electron process eviction
+ * and reaches the app's WebView after a system-browser round-trip, so a cold-start
+ * deep-link callback can still complete the token exchange.
+ *
+ * SECURITY: unlike {@link SsoStateStore} (which holds only a non-secret nonce),
+ * `codeVerifier` here is the PKCE **code_verifier** — a short-lived secret. It is
+ * single-use ({@link peek} then {@link clear}, only once the callback's state matches),
  * time-boxed (10 min), and never logged. Do not extend the TTL or reuse the stash.
+ *
+ * It is now written on **every** platform, not just native/Electron. Before, web relied on
+ * the SDK's own sessionStorage copy; with that gone, skipping the write would simply break
+ * web login. On web that means localStorage — accepted, because the single-use + TTL
+ * discipline above is the mitigation, and script that can read localStorage can read
+ * sessionStorage in the same document anyway.
  */
 @Injectable({ providedIn: 'root' })
 export class OidcStateStore {
@@ -76,18 +118,17 @@ export class OidcStateStore {
       Preferences.set({ key: MODE_KEY, value: params.mode }),
       Preferences.set({ key: REDIRECT_URI_KEY, value: params.redirectUri }),
       Preferences.set({ key: ISSUER_KEY, value: params.issuer }),
-      Preferences.set({
-        key: SESSION_STATE_KEY_KEY,
-        value: params.sessionStateKey,
-      }),
-      // Set the blob, or REMOVE any residue from a prior un-consumed attempt — never
-      // leave a stale code_verifier paired with this attempt's fresh state/key.
-      params.sessionStateBlob !== null
+      Preferences.set({ key: CLIENT_ID_KEY, value: params.clientId }),
+      Preferences.set({ key: DEVICE_ID_KEY, value: params.deviceId }),
+      Preferences.set({ key: CODE_VERIFIER_KEY, value: params.codeVerifier }),
+      // Absent rather than empty for an ordinary login, so a stale value can never be
+      // read back as an expectation.
+      params.expectedUserId
         ? Preferences.set({
-            key: SESSION_STATE_BLOB_KEY,
-            value: params.sessionStateBlob,
+            key: EXPECTED_USER_ID_KEY,
+            value: params.expectedUserId,
           })
-        : Preferences.remove({ key: SESSION_STATE_BLOB_KEY }),
+        : Preferences.remove({ key: EXPECTED_USER_ID_KEY }),
     ]);
   }
 
@@ -105,8 +146,10 @@ export class OidcStateStore {
       mode,
       redirectUri,
       issuer,
-      ssKey,
-      ssBlob,
+      clientId,
+      deviceId,
+      codeVerifier,
+      expectedUserId,
     ] = await Promise.all([
       Preferences.get({ key: STATE_KEY }),
       Preferences.get({ key: BASE_URL_KEY }),
@@ -114,19 +157,26 @@ export class OidcStateStore {
       Preferences.get({ key: MODE_KEY }),
       Preferences.get({ key: REDIRECT_URI_KEY }),
       Preferences.get({ key: ISSUER_KEY }),
-      Preferences.get({ key: SESSION_STATE_KEY_KEY }),
-      Preferences.get({ key: SESSION_STATE_BLOB_KEY }),
+      Preferences.get({ key: CLIENT_ID_KEY }),
+      Preferences.get({ key: DEVICE_ID_KEY }),
+      Preferences.get({ key: CODE_VERIFIER_KEY }),
+      Preferences.get({ key: EXPECTED_USER_ID_KEY }),
     ]);
 
     const started = Number(startedAt.value);
-    const fresh = Number.isFinite(started) && Date.now() - started <= TTL_MS;
+    const age = Date.now() - started;
+    // Two-sided on purpose. `age <= TTL_MS` alone treats a FUTURE timestamp as fresh, so a
+    // stash written while the device clock was ahead — or nudged forward by any means —
+    // would never expire and would keep serving a live code_verifier indefinitely. A
+    // negative age is not a young stash, it is an untrustworthy one.
+    const fresh =
+      Number.isFinite(started) && age >= -CLOCK_SKEW_MS && age <= TTL_MS;
     if (!fresh) {
-      // Bin it rather than just refusing to serve it. On native/Electron the blob holds
-      // the PKCE code_verifier — a secret — in app-private PLAINTEXT, and the TTL was
-      // only ever enforced here at READ time, so an abandoned login left it on disk
-      // until some later save() happened to overwrite it. It is spent either way; a
-      // secret should not outlive its purpose. Best-effort: a failed cleanup must not
-      // turn a "nothing stashed" answer into a rejection.
+      // Bin it rather than just refusing to serve it. The stash holds the PKCE
+      // code_verifier — a secret — in plaintext, and the TTL is only enforced here at READ
+      // time, so an abandoned login leaves it on disk until something reads or overwrites
+      // it. It is spent either way; a secret should not outlive its purpose. Best-effort:
+      // a failed cleanup must not turn a "nothing stashed" answer into a rejection.
       //
       // This does NOT weaken the verify-before-clear contract: that exists so a forged
       // callback cannot wipe a LIVE stash, and this one is already dead.
@@ -139,8 +189,10 @@ export class OidcStateStore {
       mode: mode.value === 'add' ? 'add' : 'replace',
       redirectUri: redirectUri.value ?? null,
       issuer: issuer.value ?? null,
-      sessionStateKey: ssKey.value ?? null,
-      sessionStateBlob: ssBlob.value ?? null,
+      clientId: clientId.value ?? null,
+      deviceId: deviceId.value ?? null,
+      codeVerifier: codeVerifier.value ?? null,
+      expectedUserId: expectedUserId.value ?? null,
     };
   }
 
@@ -153,8 +205,11 @@ export class OidcStateStore {
       Preferences.remove({ key: MODE_KEY }),
       Preferences.remove({ key: REDIRECT_URI_KEY }),
       Preferences.remove({ key: ISSUER_KEY }),
-      Preferences.remove({ key: SESSION_STATE_KEY_KEY }),
-      Preferences.remove({ key: SESSION_STATE_BLOB_KEY }),
+      Preferences.remove({ key: CLIENT_ID_KEY }),
+      Preferences.remove({ key: DEVICE_ID_KEY }),
+      Preferences.remove({ key: CODE_VERIFIER_KEY }),
+      Preferences.remove({ key: EXPECTED_USER_ID_KEY }),
+      ...LEGACY_KEYS.map((key) => Preferences.remove({ key })),
     ]);
   }
 }

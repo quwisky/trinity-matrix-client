@@ -1,6 +1,12 @@
 import { ConnectionError, HTTPError, MatrixError } from 'matrix-js-sdk';
 import { type MonoTypeOperatorFunction, retry, throwError, timer } from 'rxjs';
 
+// Re-exported because they are this module's implicit public surface: the predicate below
+// answers questions *about* these classes, so a caller testing or narrowing against it
+// needs the constructors — and nothing outside data-access may import matrix-js-sdk
+// itself. Same reasoning as the enum re-export in data-access/rooms' room-settings service.
+export { ConnectionError, HTTPError, MatrixError } from 'matrix-js-sdk';
+
 /** How many times a transient failure is retried before giving up. */
 const MAX_RETRIES = 3;
 /** First backoff step (ms); doubles each attempt up to {@link MAX_BACKOFF_MS}. */

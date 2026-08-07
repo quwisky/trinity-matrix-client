@@ -14,6 +14,10 @@ const tailwindCssConfigPath = join(
   'apps/trinity/src/theme/spartan.css',
 );
 
+/** Shared by the two rules below, which police the same ban over different AST shapes. */
+const SDK_IMPORT_MESSAGE =
+  'Only libs/data-access/* (and libs/util/matrix, which models the SDK types) may import matrix-js-sdk. Re-export what you need from the data-access lib that owns the domain.';
+
 export default defineConfig([
   globalIgnores([
     '**/dist',
@@ -98,6 +102,59 @@ export default defineConfig([
               onlyDependOnLibsWithTags: ['type:util'],
             },
           ],
+        },
+      ],
+    },
+  },
+  {
+    // "Components never import matrix-js-sdk directly" is the core architectural rule
+    // (CLAUDE.md), and until this block existed nothing enforced it:
+    // `@nx/enforce-module-boundaries` only polices `@trinity/*` edges between projects
+    // and has nothing to say about a third-party package, so the rule survived on review
+    // discipline alone — and three spec files had already drifted past it.
+    //
+    // The allowed importers are deliberately absent from `files` below rather than
+    // carved out here: `libs/data-access/**` owns all SDK access, and `libs/util/matrix`
+    // is the sanctioned exception because it models the SDK's own types
+    // (docs/architecture/index.md). If a layer below genuinely needs an SDK symbol, the
+    // fix is to re-export it from the lib that owns the domain — as
+    // data-access/rooms does for JoinRule and util/matrix does for HTTPError — not to
+    // widen this rule.
+    // libs/spartan is included even though it is generated: it is presentational UI that
+    // must never reach the SDK, and leaving it out made this rule the one thing
+    // libs/ui and libs/spartan disagreed on — which scripts/lint-invariants.spec.mjs
+    // correctly failed on, since a widening gap between those two configs is exactly
+    // what that invariant exists to catch.
+    files: [
+      'libs/feature/**/*.ts',
+      'libs/ui/**/*.ts',
+      'libs/spartan/**/*.ts',
+      'libs/platform-native/**/*.ts',
+      'libs/testing/**/*.ts',
+      'apps/**/*.ts',
+    ],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['matrix-js-sdk', 'matrix-js-sdk/*'],
+              message: SDK_IMPORT_MESSAGE,
+            },
+          ],
+        },
+      ],
+      // no-restricted-imports only sees STATIC import declarations, so
+      // `() => import('matrix-js-sdk/lib/crypto-api')` slips straight through it — and a
+      // lazily-loaded feature component is exactly the shape that would reach for one,
+      // since every route in this app is lazy. Same rule, expressed over the AST node
+      // that form actually produces.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression[source.value=/^matrix-js-sdk/]',
+          message: SDK_IMPORT_MESSAGE,
         },
       ],
     },

@@ -47,11 +47,36 @@ export class SsoCallbackPage implements OnInit {
   readonly error = signal<string | null>(null);
   /** Set once a callback's state matches and we begin the exchange — ignore further ones. */
   private claimed = false;
+  /** Tail of the serialized handler chain; see the comment in {@link ngOnInit}. */
+  private inFlight: Promise<void> = Promise.resolve();
 
   ngOnInit(): void {
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((params) => void this.handle(params));
+      // Serialized, not fire-and-forget. `claimed` cannot be set until the callback's
+      // state has been verified against the stash — that ordering is what stops a forged
+      // deep-link from latching and locking out the genuine one — but verifying requires
+      // an await, so two emissions delivered in the same tick would BOTH pass the guard
+      // and both redeem the code. Queueing means the second runs only once the first has
+      // finished and set the latch, which preserves the ordering and closes the race.
+      .subscribe((params) => {
+        this.inFlight = this.inFlight
+          .then(() => this.handle(params))
+          // A failure must not poison the queue: later emissions still need to run.
+          // handle() reports its own errors through `error` for everything it can
+          // anticipate, but not for a THROW — a rejecting stash read (storage blocked,
+          // quota exhausted, a native deep-link plugin failure) escapes it. Swallowing
+          // that silently leaves the template on its spinner with no Back button, so
+          // surface it — unless a callback already claimed the exchange, in which case
+          // that one owns the outcome and this emission is a straggler.
+          .catch(() => {
+            if (!this.claimed) {
+              this.error.set(
+                'This sign-in could not be completed. Please sign in again.',
+              );
+            }
+          });
+      });
   }
 
   private async handle(params: ParamMap): Promise<void> {
@@ -92,6 +117,9 @@ export class SsoCallbackPage implements OnInit {
       return;
     }
     this.claimed = true;
+    // A genuine callback is now in charge, so any message an earlier straggler left
+    // behind is obsolete — don't show it alongside a sign-in that is going through.
+    this.error.set(null);
     await this.ssoState.clear();
 
     if (!loginToken || !stash.baseUrl) {
@@ -117,7 +145,7 @@ export class SsoCallbackPage implements OnInit {
       });
   }
 
-  /** OIDC ("next-gen auth"): verify state, re-seed the PKCE state, then exchange the code. */
+  /** OIDC ("next-gen auth"): verify the state, then exchange the code for tokens. */
   private async completeOidc(
     params: ParamMap,
     code: string | null,
@@ -132,6 +160,9 @@ export class SsoCallbackPage implements OnInit {
       return;
     }
     this.claimed = true;
+    // A genuine callback is now in charge, so any message an earlier straggler left
+    // behind is obsolete — don't show it alongside a sign-in that is going through.
+    this.error.set(null);
     await this.oidcState.clear();
 
     if (authError) {
@@ -140,30 +171,39 @@ export class SsoCallbackPage implements OnInit {
       );
       return;
     }
-    if (!code || !stash.baseUrl || !stash.redirectUri) {
+    // Every field below is required to rebuild the OAuth2 client for the exchange —
+    // matrix-js-sdk 42 keeps no sign-in state of its own, so the stash is the only source.
+    if (
+      !code ||
+      !stash.baseUrl ||
+      !stash.redirectUri ||
+      !stash.clientId ||
+      !stash.deviceId ||
+      !stash.codeVerifier
+    ) {
       this.error.set('Missing sign-in details. Please sign in again.');
       return;
     }
-    // Re-seed the PKCE sign-in state the SDK persisted in sessionStorage: it is empty in
-    // a native/Electron WebView after a system-browser round-trip or a cold-start
-    // relaunch (harmless on web, where it survived the same-tab redirect).
-    if (stash.sessionStateKey && stash.sessionStateBlob) {
-      globalThis.sessionStorage?.setItem(
-        stash.sessionStateKey,
-        stash.sessionStateBlob,
-      );
-    }
 
     this.auth
-      .completeOidcLogin(code, stash.state, stash.redirectUri, stash.mode)
+      .completeOidcLogin(
+        code,
+        {
+          baseUrl: stash.baseUrl,
+          redirectUri: stash.redirectUri,
+          clientId: stash.clientId,
+          deviceId: stash.deviceId,
+          codeVerifier: stash.codeVerifier,
+        },
+        stash.mode,
+        stash.expectedUserId,
+      )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
-          this.clearSigninState(stash.sessionStateKey);
           void this.router.navigateByUrl('/rooms', { replaceUrl: true });
         },
         error: (err) => {
-          this.clearSigninState(stash.sessionStateKey);
           // A provider that pruned our dynamic registration fails with invalid_client
           // forever; forget the cached client id so the next attempt re-registers.
           if (stash.issuer && /invalid_client/i.test(this.messageOf(err))) {
@@ -192,13 +232,6 @@ export class SsoCallbackPage implements OnInit {
 
   private messageOf(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
-  }
-
-  /** Drop the spent re-seeded sign-in state — it holds the now-used code_verifier. */
-  private clearSigninState(key: string | null): void {
-    if (key) {
-      globalThis.sessionStorage?.removeItem(key);
-    }
   }
 
   back(): void {

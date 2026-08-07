@@ -263,6 +263,24 @@ describe('SessionStorageService', () => {
       );
     });
 
+    it('updateTokens keeps the existing refresh token when the provider sent an empty one', async () => {
+      // Not a hypothetical shape: the SDK's `hasOptionalStringProperty` short-circuits on
+      // falsiness, so a refresh response carrying `refresh_token: ''` validates and
+      // reaches here. Writing it would destroy a still-valid credential — and the SDK
+      // calls this BEFORE the refresher can substitute one, so nothing upstream can
+      // save it, and no restart would recover.
+      const { svc, secure } = setup();
+      await firstValueFrom(svc.save(CAROL));
+
+      await firstValueFrom(
+        svc.updateTokens('@carol:hs', 'new-access', '', 8888),
+      );
+
+      expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBe(
+        'carol-refresh',
+      );
+    });
+
     it('updateTokens is a no-op for an account no longer registered (signed out mid-refresh)', async () => {
       const { svc, secure } = setup();
 

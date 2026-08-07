@@ -36,7 +36,7 @@ import {
   type LoginMode,
   type OidcApplicationType,
   type OidcAuthorizationRequest,
-  type OidcClientConfig,
+  type AuthMetadata,
 } from '@trinity/data-access/auth';
 import { SessionStorageService } from '@trinity/platform-native';
 import { runWithBusy } from '@trinity/ui';
@@ -82,6 +82,16 @@ export class LoginPage {
   private reauthDeviceId: string | null = null;
 
   constructor() {
+    // Sweep an abandoned OIDC stash. `peek()` bins one that has outlived its TTL, and the
+    // TTL is only ever enforced on read — so a login the user walked away from leaves a
+    // PKCE code_verifier on disk until something reads it, and only the callback page
+    // otherwise does. Landing on /login means no round-trip is completing here, so this is
+    // the natural place. It cannot disturb a live login: a stash inside its TTL is left
+    // untouched, including one started in another tab. Best-effort like every other
+    // cleanup on this path: a storage read that rejects must not take the page down with
+    // an unhandled rejection when nothing here depends on the answer.
+    void this.oidcState.peek().catch(() => undefined);
+
     const reauth = this.reauthUserId();
     if (reauth) {
       // Skip the homeserver step: load the stored record and discover its flows.
@@ -126,7 +136,7 @@ export class LoginPage {
   readonly ssoSupported = signal(false);
   readonly passwordSupported = signal(false);
   /** The delegated OIDC provider config, when the homeserver uses next-gen auth. */
-  readonly oidcMetadata = signal<OidcClientConfig | null>(null);
+  readonly oidcMetadata = signal<AuthMetadata | null>(null);
   readonly oidcSupported = computed(() => this.oidcMetadata() !== null);
   /** Whether the OIDC provider supports account creation (MSC2965 `prompt=create`). */
   readonly oidcRegistrationSupported = computed(
@@ -183,7 +193,7 @@ export class LoginPage {
    */
   private discoverCapabilities(
     baseUrl: string,
-  ): Observable<{ flows: string[]; oidc: OidcClientConfig | null }> {
+  ): Observable<{ flows: string[]; oidc: AuthMetadata | null }> {
     return forkJoin({
       flows: this.auth
         .getSupportedFlows(baseUrl)
@@ -197,7 +207,7 @@ export class LoginPage {
    * provider, so prefer its "Continue" button and suppress the legacy password/SSO ones
    * (a homeserver mid-migration may still advertise m.login.sso for compatibility).
    */
-  private applyFlows(flows: string[], oidc: OidcClientConfig | null): void {
+  private applyFlows(flows: string[], oidc: AuthMetadata | null): void {
     this.oidcMetadata.set(oidc);
     this.passwordSupported.set(!oidc && flows.includes('m.login.password'));
     this.ssoSupported.set(!oidc && flows.includes('m.login.sso'));
@@ -291,11 +301,14 @@ export class LoginPage {
     this.withBusy(
       this.auth.buildOidcAuthorizationRequest({
         baseUrl,
-        config,
+        metadata: config,
         redirectUri,
         applicationType,
-        nonce: this.generateState(),
         ...(prompt ? { prompt } : {}),
+        // Re-auth reuses the stored device so the account comes back without needing a
+        // fresh verification — the same reason it is threaded into the password and SSO
+        // paths above.
+        ...(this.reauthDeviceId ? { deviceId: this.reauthDeviceId } : {}),
       }),
     ).subscribe((request) => {
       void this.stashAndRedirect(
@@ -321,18 +334,22 @@ export class LoginPage {
     native: boolean,
     electron: boolean,
   ): Promise<void> {
+    // Persisted on every platform. Web used to be skipped because the SDK kept its own
+    // sessionStorage copy of the sign-in state; matrix-js-sdk 42 keeps nothing, so this
+    // stash is the only copy and omitting it on web would simply break web login.
     await this.oidcState.save({
       state: request.state,
       baseUrl,
       mode: this.loginMode(),
       redirectUri,
       issuer,
-      sessionStateKey: request.sessionStateKey,
-      // The blob holds the PKCE code_verifier (a secret). Only native/Electron need it
-      // durably persisted (their callback WebView / cold-start has empty sessionStorage);
-      // on web the SDK's own sessionStorage copy survives the same-tab redirect, so don't
-      // copy the secret into localStorage there.
-      sessionStateBlob: native || electron ? request.sessionStateBlob : null,
+      clientId: request.clientId,
+      deviceId: request.deviceId,
+      codeVerifier: request.codeVerifier,
+      // Re-auth reuses this account's device id, so the callback must also check the
+      // grant came back as this account — a provider with a live browser session can
+      // authorize silently as a different one.
+      expectedUserId: this.reauthUserId(),
     });
     this.dispatchRedirect(request.url, native, electron);
   }

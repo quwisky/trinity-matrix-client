@@ -412,15 +412,21 @@ needs the client-id cache-key version bumped, or every cached client id is stran
 **Symptom.** Native and Electron sign-in fails at the exchange; on a cold-start relaunch it
 fails everywhere.
 
-**Cause.** `oidc-client-ts` writes the sign-in state, which contains the PKCE code
-verifier, into `sessionStorage`. On native the authorization happens in the system browser
-and on Electron in an external window, so the app's WebView `sessionStorage` is a
-different, empty store. A process eviction loses it outright.
+**Cause.** The PKCE code verifier did not survive the redirect. Nothing in matrix-js-sdk
+persists it: 42 dropped `oidc-client-ts`, which used to keep the sign-in state in
+`sessionStorage` under `mx_oidc_<state>`. `OidcStateStore` is the only copy, and the
+callback needs `oidc.clientId`, `oidc.deviceId` and `oidc.codeVerifier` to rebuild the
+`OAuth2` client — missing any one of them dead-ends at "Missing sign-in details".
 
-**Fix.** The state is harvested at build time, stashed in Capacitor Preferences, and
-re-seeded into `sessionStorage` before completing the grant. This is deliberately not done
-on web, where the same-tab redirect preserves `sessionStorage` and copying would only put
-the secret in `localStorage` for no benefit.
+Off the web the in-memory route was never viable anyway: on native the authorization happens
+in the system browser and on Electron in an external window, so the app's WebView storage is
+a different store, and a process eviction loses it outright.
+
+**Fix.** Check the stash actually reached Preferences before the redirect, and that it has
+not aged out — it is single-use and expires after 10 minutes, and `peek()` bins an expired
+stash rather than serving it. Note the verifier is persisted on **every** platform including
+web (where Preferences means `localStorage`); it used to be skipped there, and re-introducing
+that skip would break web login outright.
 
 ## UI and theming
 
@@ -559,7 +565,8 @@ recompute it whenever an account's device id changes, reclaiming the abandoned s
 **Symptom.** Import errors for `CryptoApi`, `CryptoEvent`, `decodeRecoveryKey`,
 `EventShieldColour`, `ServerSideSecretStorage` or `SecretStorageKeyDescriptionAesV1`.
 
-**Cause.** matrix-js-sdk 41.x does not re-export the crypto API from the package root. The
+**Cause.** matrix-js-sdk does not re-export the crypto API from the package root, in 41.x or
+42.x. The
 root does export a `SecretStorage` namespace, which is a different thing.
 
 **Fix.** Deep-import from `matrix-js-sdk/lib/crypto-api` and

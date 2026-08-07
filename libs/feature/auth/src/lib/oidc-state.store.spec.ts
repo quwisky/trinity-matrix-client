@@ -24,8 +24,10 @@ const SAVE = {
   mode: 'add' as const,
   redirectUri: 'https://app/sso-callback',
   issuer: 'https://op.example',
-  sessionStateKey: 'mx_oidc_STATE1',
-  sessionStateBlob: 'SIGNIN_BLOB',
+  clientId: 'CLIENT1',
+  deviceId: 'DEVICE1',
+  codeVerifier: 'VERIFIER1',
+  expectedUserId: null,
 };
 
 describe('OidcStateStore', () => {
@@ -37,7 +39,7 @@ describe('OidcStateStore', () => {
     store = TestBed.inject(OidcStateStore);
   });
 
-  it('round-trips the full stash (including the sign-in blob) through save → peek', async () => {
+  it('round-trips the full stash (including the PKCE verifier) through save → peek', async () => {
     await store.save(SAVE);
 
     expect(await store.peek()).toEqual({
@@ -46,9 +48,23 @@ describe('OidcStateStore', () => {
       mode: 'add',
       redirectUri: 'https://app/sso-callback',
       issuer: 'https://op.example',
-      sessionStateKey: 'mx_oidc_STATE1',
-      sessionStateBlob: 'SIGNIN_BLOB',
+      clientId: 'CLIENT1',
+      deviceId: 'DEVICE1',
+      codeVerifier: 'VERIFIER1',
+      expectedUserId: null,
     });
+  });
+
+  it('round-trips the re-auth expectation, and drops it for an ordinary login', async () => {
+    // The expectation is what binds a re-auth grant to the account it claims to
+    // reconnect. Written as ABSENT rather than empty for an ordinary login, so a stale
+    // one from a previous re-auth can never be read back as an expectation and reject a
+    // perfectly good sign-in.
+    await store.save({ ...SAVE, expectedUserId: '@a:hs' });
+    expect((await store.peek()).expectedUserId).toBe('@a:hs');
+
+    await store.save(SAVE);
+    expect((await store.peek()).expectedUserId).toBeNull();
   });
 
   it('peek returns the stash without clearing it (state can be verified first)', async () => {
@@ -59,6 +75,32 @@ describe('OidcStateStore', () => {
     expect((await store.peek()).state).toBe('STATE1');
   });
 
+  it('bins a stash stamped in the future rather than trusting it forever', async () => {
+    await store.save(SAVE);
+    // A clock ahead of real time (or nudged forward) makes `now - started` negative. A
+    // one-sided `age <= TTL` reads that as fresh, so the stash — and the live
+    // code_verifier in it — would never expire.
+    prefs.set('oidc.startedAt', String(Date.now() + 60 * 60 * 1000));
+
+    await expect(store.peek()).resolves.toMatchObject({
+      state: null,
+      codeVerifier: null,
+    });
+    expect(prefs.get('oidc.codeVerifier')).toBeUndefined();
+  });
+
+  it('survives a small backwards clock step mid-round-trip', async () => {
+    await store.save(SAVE);
+    // The lower bound must not be zero-tolerance. The clock can step backwards WHILE the
+    // user is typing at the provider (NITZ/NTP after airplane mode, a laptop resuming
+    // from sleep), and rejecting on that would kill a genuine login with a message that
+    // reads like an attack — for the sake of an attack that needs the same event class
+    // and a leaked nonce.
+    prefs.set('oidc.startedAt', String(Date.now() + 30 * 1000));
+
+    await expect(store.peek()).resolves.toMatchObject({ state: 'STATE1' });
+  });
+
   it('is single-use via peek + clear: after clear, peek is empty', async () => {
     await store.save(SAVE);
     await store.clear();
@@ -66,7 +108,19 @@ describe('OidcStateStore', () => {
     expect(await store.peek()).toMatchObject({
       state: null,
       baseUrl: null,
-      sessionStateBlob: null,
+      codeVerifier: null,
+    });
+  });
+
+  it('reads back an empty stash when nothing was ever saved', async () => {
+    expect(await store.peek()).toMatchObject({
+      state: null,
+      baseUrl: null,
+      mode: 'replace',
+      redirectUri: null,
+      clientId: null,
+      deviceId: null,
+      codeVerifier: null,
     });
   });
 
@@ -84,41 +138,51 @@ describe('OidcStateStore', () => {
   });
 
   it('bins an expired stash instead of leaving the code_verifier on disk', async () => {
-    // The blob holds the PKCE code_verifier — a secret — and on native/Electron it sits
+    // The stash holds the PKCE code_verifier — a secret — and on native/Electron it sits
     // in app-private PLAINTEXT. The TTL was only enforced at read time, so an abandoned
     // login left it there until some later save() happened to overwrite it.
     await store.save(SAVE);
-    expect(prefs.get('oidc.ssBlob')).toBeDefined(); // stashed…
+    expect(prefs.get('oidc.codeVerifier')).toBe('VERIFIER1'); // stashed…
     prefs.set('oidc.startedAt', '0'); // …then abandoned past the TTL
 
     await store.peek();
 
-    expect(prefs.get('oidc.ssBlob')).toBeUndefined(); // gone, not just refused
+    expect(prefs.get('oidc.codeVerifier')).toBeUndefined(); // gone, not just refused
     expect(prefs.get('oidc.state')).toBeUndefined();
   });
 
-  it('persists no blob when there is none to stash', async () => {
-    await store.save({ ...SAVE, sessionStateBlob: null });
+  it('clear purges the pre-42 sign-in-state keys too (no orphaned plaintext verifier)', async () => {
+    // Versions before matrix-js-sdk 42 stashed an opaque copy of the SDK's sessionStorage
+    // sign-in state, whose blob embedded a PKCE code_verifier in plaintext. Nothing writes
+    // those keys now, so an abandoned pre-upgrade stash would otherwise sit on disk
+    // forever — never overwritten, never TTL'd, because save() no longer touches it.
+    prefs.set('oidc.ssKey', 'mx_oidc_OLDSTATE');
+    prefs.set('oidc.ssBlob', 'LEGACY_BLOB_WITH_VERIFIER');
+    await store.save(SAVE);
 
-    const stash = await store.peek();
-    expect(stash.sessionStateKey).toBe('mx_oidc_STATE1');
-    expect(stash.sessionStateBlob).toBeNull();
+    await store.clear();
+
+    expect(prefs.get('oidc.ssKey')).toBeUndefined();
+    expect(prefs.get('oidc.ssBlob')).toBeUndefined();
+    expect(prefs.get('oidc.codeVerifier')).toBeUndefined();
   });
 
-  it('clears a prior attempt’s blob when a new attempt has none (no stale verifier)', async () => {
-    // Attempt A stashes a blob but is abandoned (never consumed)…
+  it('a new attempt overwrites the previous one’s verifier (no stale secret)', async () => {
+    // Attempt A stashes a verifier but is abandoned (never consumed)…
     await store.save(SAVE);
-    // …then attempt B starts with no blob and a fresh state: B must not inherit A's blob.
+    // …then attempt B starts with its own PKCE context: B must not inherit any of A's.
     await store.save({
       ...SAVE,
       state: 'STATE2',
-      sessionStateKey: 'mx_oidc_STATE2',
-      sessionStateBlob: null,
+      clientId: 'CLIENT2',
+      deviceId: 'DEVICE2',
+      codeVerifier: 'VERIFIER2',
     });
 
     const stash = await store.peek();
     expect(stash.state).toBe('STATE2');
-    expect(stash.sessionStateKey).toBe('mx_oidc_STATE2');
-    expect(stash.sessionStateBlob).toBeNull(); // NOT the stale 'SIGNIN_BLOB'
+    expect(stash.clientId).toBe('CLIENT2');
+    expect(stash.deviceId).toBe('DEVICE2');
+    expect(stash.codeVerifier).toBe('VERIFIER2'); // NOT the stale 'VERIFIER1'
   });
 });

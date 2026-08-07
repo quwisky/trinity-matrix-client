@@ -12,7 +12,12 @@ import { OidcStateStore } from '../oidc-state.store';
 
 async function renderLogin(
   auth: Partial<AuthService>,
-  opts: { add?: boolean; reauth?: string; record?: unknown } = {},
+  opts: {
+    add?: boolean;
+    reauth?: string;
+    record?: unknown;
+    oidcStore?: Partial<OidcStateStore>;
+  } = {},
 ): Promise<{
   cmp: LoginPage;
   router: Router;
@@ -30,6 +35,8 @@ async function renderLogin(
       MockProvider(SsoStateStore),
       MockProvider(OidcStateStore, {
         save: vi.fn().mockResolvedValue(undefined),
+        peek: vi.fn().mockResolvedValue({}),
+        ...opts.oidcStore,
       }),
       MockProvider(SessionStorageService, {
         record: vi.fn(() => of(opts.record ?? null) as never),
@@ -305,26 +312,139 @@ describe('LoginPage', () => {
   });
 
   describe('OIDC (next-gen auth)', () => {
+    /**
+     * What OidcClientService hands back: the URL plus the PKCE context the caller is now
+     * the sole custodian of (matrix-js-sdk 42 persists none of it itself).
+     */
+    const OIDC_REQUEST = {
+      url: 'https://op/authorize?client_id=abc&state=STATE1',
+      state: 'STATE1',
+      clientId: 'CLIENT1',
+      deviceId: 'DEVICE1',
+      codeVerifier: 'VERIFIER1',
+    };
+
     /** An OIDC-native login page: discovered homeserver + provider metadata. */
     async function renderOidcReady(
       buildOidcAuthorizationRequest: ReturnType<typeof vi.fn>,
+      oidcStore?: Partial<OidcStateStore>,
     ) {
-      const rendered = await renderLogin({
-        buildOidcAuthorizationRequest,
-      } as unknown as Partial<AuthService>);
+      const rendered = await renderLogin(
+        {
+          buildOidcAuthorizationRequest,
+        } as unknown as Partial<AuthService>,
+        oidcStore ? { oidcStore } : {},
+      );
       rendered.cmp.baseUrl.set('https://hs.example');
       rendered.cmp.oidcMetadata.set({ issuer: 'https://op' } as never);
       return rendered;
     }
 
-    it('builds the authorization request, stashes the sign-in state, then redirects (web)', async () => {
-      const request = {
-        url: 'https://op/authorize?client_id=abc&state=STATE1',
-        state: 'STATE1',
-        sessionStateKey: 'mx_oidc_STATE1',
-        sessionStateBlob: 'BLOB',
+    it('sweeps an abandoned stash on landing', async () => {
+      const peek = vi.fn().mockResolvedValue({});
+
+      await renderLogin({} as unknown as Partial<AuthService>, {
+        oidcStore: { peek },
+      });
+
+      // This read IS the sweep — peek() bins a stash past its TTL, and the TTL is only
+      // ever enforced on read. The callback page is the only other reader, so without
+      // this an abandoned sign-in leaves a plaintext PKCE code_verifier on disk until
+      // some later save() happens to overwrite it. Deleting the line breaks a promise
+      // the CHANGELOG makes to users, and nothing else here would notice.
+      expect(peek).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not raise an unhandled rejection when the sweep cannot read storage', async () => {
+      // Nothing on this page depends on the sweep's answer, so a storage read that
+      // rejects must be swallowed at the call site. Asserting the rendered state cannot
+      // see this — the page looks identical either way — so listen for the rejection
+      // itself. Node reports one only after the turn ends with no handler attached,
+      // hence the macrotask below.
+      const rejections: unknown[] = [];
+      const onRejection = (reason: unknown) => rejections.push(reason);
+      process.on('unhandledRejection', onRejection);
+      try {
+        // A plain function, not vi.fn().mockRejectedValue: vitest attaches its own
+        // handler to a mock's returned promise to record settledResults, which marks it
+        // handled and would make this assertion pass no matter what the page does.
+        const peek = (): Promise<never> =>
+          Promise.reject(new Error('storage unavailable'));
+
+        const { cmp } = await renderLogin(
+          {} as unknown as Partial<AuthService>,
+          { oidcStore: { peek } },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(rejections).toEqual([]);
+        expect(cmp.error()).toBeNull();
+      } finally {
+        process.off('unhandledRejection', onRejection);
+      }
+    });
+
+    it('re-authenticates the stored device instead of minting a new one', async () => {
+      const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
+      const { cmp, oidcStore } = await renderLogin(
+        {
+          buildOidcAuthorizationRequest,
+          getDelegatedAuthConfig: vi.fn(() =>
+            of({ issuer: 'https://op' } as never),
+          ),
+          getSupportedFlows: vi.fn(() => of([])),
+        } as unknown as Partial<AuthService>,
+        {
+          reauth: '@bob:hs',
+          record: {
+            baseUrl: 'https://hs.example',
+            userId: '@bob:hs',
+            deviceId: 'OLDDEV',
+          },
+        },
+      );
+      cmp.oidcMetadata.set({ issuer: 'https://op' } as never);
+
+      cmp.startOidc();
+      await Promise.resolve();
+
+      // Re-auth exists to recover a soft-logged-out account WITHOUT the user verifying a
+      // fresh device. matrix-js-sdk 41 could not express this — the authorize helper took
+      // no device id and always generated one — so an OIDC re-auth silently produced a new
+      // device and demanded re-verification. v42's OAuth2 context accepts one.
+      const params = buildOidcAuthorizationRequest.mock.calls[0][0] as {
+        deviceId?: string;
       };
-      const buildOidcAuthorizationRequest = vi.fn(() => of(request));
+      expect(params.deviceId).toBe('OLDDEV');
+      // Reusing the device makes the identity check load-bearing: a provider that still
+      // holds a browser session authorizes with no interaction, so on a homeserver with
+      // two accounts this could come back as the other one and inherit OLDDEV. The
+      // callback can only refuse that if the expectation travels in the stash.
+      await Promise.resolve();
+      expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
+        expectedUserId: '@bob:hs',
+      });
+    });
+
+    it('stashes no expectation for an ordinary login', async () => {
+      // Any account the user picks is the right answer here, so an expectation would only
+      // create a way to reject a perfectly good sign-in.
+      const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
+      const { cmp, oidcStore } = await renderOidcReady(
+        buildOidcAuthorizationRequest,
+      );
+
+      cmp.startOidc();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
+        expectedUserId: null,
+      });
+    });
+
+    it('builds the authorization request, stashes the sign-in state, then redirects (web)', async () => {
+      const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
       const { cmp, oidcStore } = await renderOidcReady(
         buildOidcAuthorizationRequest,
       );
@@ -341,25 +461,66 @@ describe('LoginPage', () => {
       };
       expect(params.applicationType).toBe('web');
       expect(params.redirectUri).toContain('/sso-callback');
-      // State is stashed before redirect, but the PKCE code_verifier blob is NOT copied
-      // into web localStorage (the SDK's own sessionStorage copy survives the same-tab
-      // redirect) — only the non-secret key rides along, for post-exchange cleanup.
+      // The whole PKCE context — including the code_verifier — is stashed before the
+      // redirect ON WEB TOO. matrix-js-sdk 42 persists no sign-in state of its own, so
+      // this stash is the only copy; skipping it on web would simply break web login.
       expect(oidcStore.save).toHaveBeenCalledTimes(1);
       expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
         state: 'STATE1',
         baseUrl: 'https://hs.example',
+        issuer: 'https://op',
         redirectUri: params.redirectUri,
-        sessionStateKey: 'mx_oidc_STATE1',
-        sessionStateBlob: null,
+        clientId: 'CLIENT1',
+        deviceId: 'DEVICE1',
+        codeVerifier: 'VERIFIER1',
       });
+    });
+
+    it('redirects on web, and only after the stash is durably written', async () => {
+      // Two gaps this closes. Nothing asserted the web redirect fires at all — emptying
+      // that branch broke web sign-in with the suite green. And nothing asserted the
+      // ORDERING, despite a sibling test named "...stashes the sign-in state, then
+      // redirects": reversing the two left every assertion passing. If the redirect wins
+      // the race, a native cold start or a fast provider can return before the
+      // code_verifier is on disk, and the exchange has nothing to present.
+      const original = Object.getOwnPropertyDescriptor(window, 'location');
+      const locationStub = { href: '' };
+      Object.defineProperty(window, 'location', {
+        value: locationStub,
+        writable: true,
+        configurable: true,
+      });
+      try {
+        let releaseSave: (() => void) | undefined;
+        const savePending = new Promise<void>((resolve) => {
+          releaseSave = resolve;
+        });
+        const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
+        const { cmp } = await renderOidcReady(buildOidcAuthorizationRequest, {
+          save: vi.fn(() => savePending),
+        });
+
+        cmp.startOidc();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // The stash has not settled yet, so nothing may have navigated.
+        expect(locationStub.href).toBe('');
+
+        releaseSave?.();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(locationStub.href).toBe(OIDC_REQUEST.url);
+      } finally {
+        if (original) Object.defineProperty(window, 'location', original);
+      }
     });
 
     it('sends prompt=create for registration when the provider supports it', async () => {
       const request = {
+        ...OIDC_REQUEST,
         url: 'https://op/authorize?state=STATE1',
-        state: 'STATE1',
-        sessionStateKey: 'mx_oidc_STATE1',
-        sessionStateBlob: 'BLOB',
       };
       const buildOidcAuthorizationRequest = vi.fn(() => of(request));
       const { cmp } = await renderLogin({
@@ -388,10 +549,8 @@ describe('LoginPage', () => {
       const open = vi.spyOn(window, 'open').mockImplementation(() => null);
       try {
         const request = {
+          ...OIDC_REQUEST,
           url: 'https://op/authorize?state=STATE1',
-          state: 'STATE1',
-          sessionStateKey: 'mx_oidc_STATE1',
-          sessionStateBlob: 'BLOB',
         };
         const buildOidcAuthorizationRequest = vi.fn(() => of(request));
         const { cmp, oidcStore } = await renderOidcReady(
@@ -412,10 +571,13 @@ describe('LoginPage', () => {
         // authority position, which strict providers reject at dynamic registration.
         expect(params.redirectUri).toBe('eu.qwky.trinity:/sso-callback');
         expect(open).toHaveBeenCalledWith(request.url, '_blank');
-        // Native/Electron DO durably stash the code_verifier blob (their callback
-        // context has empty sessionStorage and must re-seed it).
+        // Native/Electron durably stash the PKCE context against a cold-start callback
+        // in a different browsing context — the same write web now performs.
         expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
-          sessionStateBlob: 'BLOB',
+          redirectUri: 'eu.qwky.trinity:/sso-callback',
+          clientId: 'CLIENT1',
+          deviceId: 'DEVICE1',
+          codeVerifier: 'VERIFIER1',
         });
       } finally {
         open.mockRestore();

@@ -20,10 +20,21 @@ import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 
-const stackDoc = readFileSync(
-  join(workspaceRoot, 'docs/reference/stack.md'),
-  'utf8',
-);
+/**
+ * Every doc carrying a version table. `stack.md` is the canonical one; the architecture
+ * page has a second, smaller table for the two Matrix packages that used to write its
+ * cells as `` `^41.9.0` (41.9.0 resolves) ``. That is not a complete semver, so the
+ * filter below skipped it and the page drifted silently through several bumps while
+ * stack.md stayed honest. Both are read here so neither can.
+ */
+const VERSION_DOCS = [
+  'docs/reference/stack.md',
+  'docs/architecture/matrix-and-encryption.md',
+];
+
+const stackDoc = VERSION_DOCS.map((rel) =>
+  readFileSync(join(workspaceRoot, rel), 'utf8'),
+).join('\n');
 
 /** A row like: | `@angular/core` | 22.1.0 | Standalone + signals … | */
 const ROW = /^\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|/;
@@ -67,6 +78,6 @@ describe('docs/reference/stack.md version table', () => {
   // Without this the suite passes just as happily when a table rewrite, a formatting
   // change or a stricter regex leaves nothing to check at all.
   it('checks a meaningful number of rows', () => {
-    expect(checkableRows.length).toBeGreaterThanOrEqual(10);
+    expect(checkableRows.length).toBeGreaterThanOrEqual(12);
   });
 });

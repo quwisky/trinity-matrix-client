@@ -163,6 +163,33 @@ describe('MatrixClientService', () => {
     expect(typeof opts.tokenRefreshFunction).toBe('function');
   });
 
+  it('points the refresher at the account homeserver, not some other session field', async () => {
+    // The refresher takes named options precisely because `userId`, `baseUrl` and
+    // `deviceId` are all plain strings — but naming them does not make a transposition a
+    // type error, and nothing else here observes which session value lands where. Drive
+    // the function far enough to see the discovery target: swapping userId and baseUrl
+    // would send it to '@me:hs', breaking refresh for every OIDC account with a fully
+    // green suite until each one soft-logged out.
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(OIDC_SESSION));
+    const opts = vi.mocked(createClient).mock.calls[0][0];
+
+    vi.mocked(createClient).mockReturnValue({
+      getAuthMetadata: vi
+        .fn()
+        .mockRejectedValue(new Error('discovery stopped')),
+    } as never);
+    await expect(opts.tokenRefreshFunction?.('r')).rejects.toThrow(
+      /discovery stopped/,
+    );
+
+    expect(createClient).toHaveBeenLastCalledWith({
+      baseUrl: OIDC_SESSION.baseUrl,
+    });
+  });
+
   it('passes no refresh wiring for a non-OIDC (password/SSO) session', async () => {
     const client = fakeClient();
     vi.mocked(createClient).mockReturnValue(client as never);
