@@ -18,6 +18,14 @@ export interface SecureStorageBackend {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
   remove(key: string): Promise<void>;
+  /**
+   * Drop every secret this backend holds, where it can. Optional because only the native
+   * plugin offers it — Electron's IPC bridge exposes per-key deletion only, and the web
+   * fallback needs none (its keys live in Preferences, which the factory reset clears as a
+   * group). A backend without it relies on the caller deleting keys it derived from the
+   * account registry.
+   */
+  clear?(): Promise<void>;
 }
 
 /** Namespace the web fallback's keys so they don't collide with other Preferences. */
@@ -86,6 +94,10 @@ function createNativeBackend(): SecureStorageBackend {
     async remove(key) {
       await SecureStorage.remove(key, false);
     },
+    async clear() {
+      // Scoped to this app's keychain/keystore prefix, not the device's.
+      await SecureStorage.clear(false);
+    },
   };
 }
 
@@ -116,6 +128,32 @@ export class SecureStorageService {
   /** Whether the chosen backend is keychain/keystore-backed (false on web). */
   async isSecure(): Promise<boolean> {
     return (await this.resolve()).isSecure;
+  }
+
+  /**
+   * Best-effort bulk wipe. Resolves `true` only when the backend actually swept itself —
+   * only the native keychain/keystore backend can.
+   *
+   * This is NOT how the factory reset clears secrets. It removes each account's keys by
+   * name first (`SessionStorageService.clearAll`), which is what covers Electron, whose
+   * bridge exposes no bulk clear, and web, whose keys live in Preferences. Losing that
+   * per-key pass would leave Electron's main-process store fully populated AND unreachable,
+   * because the registry naming its keys is deleted moments later.
+   *
+   * What this adds on native is the residue that pass cannot reach: a secret orphaned by an
+   * earlier bug, whose account is no longer listed and whose key nothing can name.
+   */
+  async clearAll(): Promise<boolean> {
+    const backend = await this.resolve();
+    if (!backend.clear) {
+      return false;
+    }
+    try {
+      await backend.clear();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private resolve(): Promise<SecureStorageBackend> {

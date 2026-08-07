@@ -302,6 +302,66 @@ without that step a restart could restore a different account than the UI was sh
 best-effort revokes OIDC tokens at the provider (RFC 7009 POST to `revocation_endpoint`
 for both the refresh token and the access token) before the CSAPI `client.logout(true)`.
 
+## The factory reset
+
+`logout` clears an account. **Erase all data on this device** clears the _install_ — the
+escape hatch on the login page for a wedged state that signing out cannot fix, orchestrated by
+[`FactoryResetService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/auth/src/lib/factory-reset.service.ts)
+over
+[`LocalDataWipeService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/local-data-wipe.service.ts).
+
+It is written as a sequential async body rather than a pipeline because **the phase order is
+the design**, and three adjacencies are load-bearing:
+
+| Order                                                               | Why it cannot move                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read the registry **before** deleting anything                      | It is the only map from an account to its IndexedDB names and its secure-storage keys, and Electron's secret store cannot be enumerated at all. OIDC tokens are read here too — revoking after the secrets are gone would have nothing to send. |
+| `signOutAll()` **before** `matrix.stop()`                           | It iterates the live-client registry, and teardown empties it. Calling it afterwards signs nothing out while looking identical from the outside.                                                                                                |
+| `SessionStorageService.clearAll()` **before** `Preferences.clear()` | Its per-account key removals are the only thing that reaches Electron's main-process store, and `Preferences.clear()` deletes the registry naming those keys.                                                                                   |
+
+IndexedDB is deleted before the key/value stores for the same reason as the first row: on a
+browser without `indexedDB.databases()` (Firefox) the registry is the only source of those
+names, so clearing it first would leave nothing able to say what survived.
+
+!!! warning "Never use `clearStores()` on this path"
+
+    matrix-js-sdk's `clearStores()` answers `deleteDatabase`'s `onblocked` by logging and
+    nothing else — the promise never settles and the caller hangs. That is the long stall the
+    comment in `removeInternal` refers to.
+    [`deleteDatabase`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/indexed-db-wipe.ts)
+    here is bounded: `blocked` is a reported outcome, with a timer as the backstop for the
+    case where no event arrives at all. Note `blocked` is not terminal for the request — the
+    delete stays queued and can still succeed once the holder closes.
+
+**Preferences is cleared as a group, never from a key list.** The app's keys are not uniformly
+namespaced — `trinity.*`, `matrix.*`, `oidc.*`, `sso.*`, `secure.*` on web, plus unbounded
+`oidc.clientId.v2:<issuer>` and `trinity.spaces.order.*.<userId>` prefixes — so any enumeration
+would be wrong the day it was written. `clear()` is scoped to the app's own `CapacitorStorage`
+group on every backend, so a preference added later is covered without anyone remembering.
+
+**A blocked delete does not abort the reset.** Deletes run concurrently, so by the time one
+reports blocked the rest are already gone; stopping there would produce exactly the
+half-erased install an abort is meant to prevent, with a registry pointing at stores that no
+longer exist. Finishing leaves a coherent signed-out app, and the residue is an orphan that
+the [orphan sweep](#logout-wipe-and-the-orphan-sweep) reclaims on the next cold start — which
+is why that sweep was widened to cover sync stores as well as crypto stores.
+
+**The service never rejects**, and that is a contract rather than tidiness: the caller
+subscribes with a `next` handler only, so a rejection would skip the restart and leave the
+login page disabled on top of storage that is already erased.
+
+The server sign-out is a courtesy behind a 3-second budget, not a precondition — an
+unreachable homeserver is one of the reasons to reach for this. Consequently the copy never
+claims to sign you out "everywhere".
+
+### What it cannot reach
+
+| Surface                                                 | Why                                                                                                                                                        |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Media saved through the native share/save path          | Written to the app's cache directory by `FileSaveService`; the user put it there deliberately                                                              |
+| Electron's Chromium-level storage (cookies, HTTP cache) | Owned by the main process; the renderer cannot reach `session.clearStorageData()` and no IPC exposes it                                                    |
+| Secrets orphaned on Electron by an earlier bug          | The bridge exposes per-key deletion only, so anything the registry can no longer name is unreachable. A bulk-clear IPC was deferred as new preload surface |
+
 ## Loading the crypto WASM
 
 This is the single most important platform gotcha in the app.

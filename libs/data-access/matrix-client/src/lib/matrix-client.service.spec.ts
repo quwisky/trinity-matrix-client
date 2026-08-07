@@ -190,6 +190,58 @@ describe('MatrixClientService', () => {
     });
   });
 
+  describe('signOutAll', () => {
+    it('logs out every live client', async () => {
+      const a = fakeClient();
+      const b = fakeClient('https://other.example');
+      const logoutA = vi.fn().mockResolvedValue(undefined);
+      const logoutB = vi.fn().mockResolvedValue(undefined);
+      (a as unknown as { logout: unknown }).logout = logoutA;
+      (b as unknown as { logout: unknown }).logout = logoutB;
+      vi.mocked(createClient).mockReturnValueOnce(a as never);
+      vi.mocked(createClient).mockReturnValueOnce(b as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(svc.add(SESSION_B));
+
+      await firstValueFrom(svc.signOutAll());
+
+      // `true` = stop the client from re-authenticating; the device is being discarded.
+      expect(logoutA).toHaveBeenCalledWith(true);
+      expect(logoutB).toHaveBeenCalledWith(true);
+    });
+
+    it('signs nothing out once the clients have been torn down', async () => {
+      // The ordering trap this method carries: it reads the live-client registry, and
+      // `stop()` empties it. Calling this after a teardown is a silent no-op that looks
+      // identical from the outside — a caller that sequences them the wrong way round
+      // ships a sign-out phase that never sends a request.
+      const client = fakeClient();
+      const logout = vi.fn().mockResolvedValue(undefined);
+      (client as unknown as { logout: unknown }).logout = logout;
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(svc.stop());
+
+      await firstValueFrom(svc.signOutAll());
+
+      expect(logout).not.toHaveBeenCalled();
+    });
+
+    it('resolves even when a homeserver refuses the logout', async () => {
+      const client = fakeClient();
+      (client as unknown as { logout: unknown }).logout = vi
+        .fn()
+        .mockRejectedValue(new Error('homeserver down'));
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+
+      await expect(firstValueFrom(svc.signOutAll())).resolves.toBeUndefined();
+    });
+  });
+
   it('passes no refresh wiring for a non-OIDC (password/SSO) session', async () => {
     const client = fakeClient();
     vi.mocked(createClient).mockReturnValue(client as never);

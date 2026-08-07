@@ -13,8 +13,8 @@ shipped code; the things that are not are listed at the bottom of this page.
 - [Installing Trinity](install.md) covers each of the four platforms, what a packaged
   desktop build contains, and the current code-signing state.
 - [Signing in](signing-in.md) covers homeserver discovery and the three sign-in paths a
-  server may offer, plus the one thing Trinity deliberately does not do: create an account
-  for you.
+  server may offer, the one thing Trinity deliberately does not do — create an account for
+  you — and how to erase everything on the device when Trinity itself will not start.
 
 ## Talking
 

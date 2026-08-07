@@ -1,10 +1,12 @@
 import { Injectable, inject } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
-import { Observable, defer, from } from 'rxjs';
+import { Observable, defer, from, map } from 'rxjs';
 import {
   MatrixSession,
   isRustCryptoStoreDbName,
+  isSyncStoreDbName,
   rustCryptoStoreDbNames,
+  syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
 import { SecureStorageService } from './secure-storage.service';
 
@@ -168,6 +170,21 @@ export class SessionStorageService {
 
   /** Remove every account and token (full sign-out / reset). */
   clear(): Observable<void> {
+    return defer(() => from(this.serialize(() => this.clearInternal()))).pipe(
+      map(() => undefined),
+    );
+  }
+
+  /**
+   * Like {@link clear}, but hands back the records it removed.
+   *
+   * The factory reset needs them: the registry is the only map from account to its secure
+   * key names and its IndexedDB names, and on Electron secure storage cannot be enumerated
+   * at all. Returning them from inside the same `serialize()` turn is what makes that read
+   * safe — a token refresh landing between a separate read and the clear could otherwise
+   * rewrite the registry and resurrect an account the wipe had already accounted for.
+   */
+  clearAll(): Observable<readonly AccountRecord[]> {
     return defer(() => from(this.serialize(() => this.clearInternal())));
   }
 
@@ -314,16 +331,26 @@ export class SessionStorageService {
       idb.databases().catch(() => []),
       this.readRegistry(),
     ]);
-    // Every crypto DB a signed-in account legitimately owns (device-scoped stores plus a
-    // legacy account's SDK-default store) — never delete these.
+    // Every database a signed-in account legitimately owns — its device-scoped crypto
+    // stores (or a legacy account's SDK-default pair) and its message sync store. Never
+    // delete these.
     const owned = new Set<string>();
     for (const account of registry.accounts) {
       for (const dbName of rustCryptoStoreDbNames(account.cryptoPrefix)) {
         owned.add(dbName);
       }
+      owned.add(syncStoreIndexedDbName(account.userId));
     }
     for (const { name } of databases) {
-      if (name && !owned.has(name) && isRustCryptoStoreDbName(name)) {
+      // Sync stores are swept as well as crypto stores. They are the other half of an
+      // account's on-disk footprint, and the factory reset can leave one behind when a
+      // second tab holds it open — this is what makes that self-heal on the next cold
+      // start, where nothing holds a connection yet.
+      const orphaned =
+        !!name &&
+        !owned.has(name) &&
+        (isRustCryptoStoreDbName(name) || isSyncStoreDbName(name));
+      if (orphaned) {
         try {
           idb.deleteDatabase(name);
         } catch {
@@ -371,7 +398,7 @@ export class SessionStorageService {
     await this.writeRegistry(registry);
   }
 
-  private async clearInternal(): Promise<void> {
+  private async clearInternal(): Promise<readonly AccountRecord[]> {
     const registry = await this.readRegistry();
     const removals: Promise<void>[] = [];
     for (const account of registry.accounts) {
@@ -383,6 +410,7 @@ export class SessionStorageService {
     // Defensively retire any legacy single-slot residue too.
     await Preferences.remove({ key: LEGACY_SESSION_KEY });
     await this.secure.remove(LEGACY_TOKEN_KEY);
+    return registry.accounts;
   }
 
   private async writeRegistry(registry: AccountRegistry): Promise<void> {

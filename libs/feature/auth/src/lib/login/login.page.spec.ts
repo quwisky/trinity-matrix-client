@@ -1,7 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AuthService } from '@trinity/data-access/auth';
-import { SessionStorageService } from '@trinity/platform-native';
+import { AuthService, FactoryResetService } from '@trinity/data-access/auth';
+import {
+  AppRestartService,
+  SessionStorageService,
+} from '@trinity/platform-native';
+import { TrnAlertService } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
@@ -17,12 +21,24 @@ async function renderLogin(
     reauth?: string;
     record?: unknown;
     oidcStore?: Partial<OidcStateStore>;
+    /** Accounts the registry reports, which the erase confirmation names. */
+    stored?: { userId: string }[];
+    /** Make the registry read fail, as a wedged install would. */
+    listFails?: boolean;
+    /** What the alert's typed confirmation returns (null = cancelled). */
+    typed?: string | null;
+    /** What the wipe reports back. */
+    report?: { blocked: string[]; failed: string[] };
   } = {},
 ): Promise<{
+  fixture: Awaited<ReturnType<typeof render<LoginPage>>>['fixture'];
   cmp: LoginPage;
   router: Router;
   ssoStore: SsoStateStore;
   oidcStore: OidcStateStore;
+  alert: TrnAlertService;
+  reset: FactoryResetService;
+  restart: AppRestartService;
 }> {
   const queryParamMap = {
     has: (key: string) => key === 'add' && !!opts.add,
@@ -40,15 +56,38 @@ async function renderLogin(
       }),
       MockProvider(SessionStorageService, {
         record: vi.fn(() => of(opts.record ?? null) as never),
+        list: vi.fn(() =>
+          opts.listFails
+            ? throwError(() => new Error('registry unreadable'))
+            : (of(opts.stored ?? []) as never),
+        ),
+        clearAll: vi.fn(() => of([]) as never),
       }),
+      MockProvider(TrnAlertService, {
+        prompt: vi.fn().mockResolvedValue(opts.typed ?? null),
+      }),
+      MockProvider(FactoryResetService, {
+        clearAllData: vi.fn(() =>
+          of({
+            blocked: opts.report?.blocked ?? [],
+            failed: opts.report?.failed ?? [],
+            enumerated: true,
+          }),
+        ),
+      }),
+      MockProvider(AppRestartService, { restart: vi.fn() }),
       { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap } } },
     ],
   });
   return {
+    fixture,
     cmp: fixture.componentInstance,
     router: TestBed.inject(Router),
     ssoStore: TestBed.inject(SsoStateStore),
     oidcStore: TestBed.inject(OidcStateStore),
+    alert: TestBed.inject(TrnAlertService),
+    reset: TestBed.inject(FactoryResetService),
+    restart: TestBed.inject(AppRestartService),
   };
 }
 
@@ -286,6 +325,168 @@ describe('LoginPage', () => {
     expect(mode).toBe('add');
     expect(deviceId).toBe('OLDDEV');
     expect(state).toBeTruthy();
+  });
+
+  describe('clear all data', () => {
+    it('erases and restarts once the word is typed', async () => {
+      const { cmp, reset, restart } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { typed: 'ERASE' },
+      );
+
+      await cmp.clearAllData();
+
+      expect(reset.clearAllData).toHaveBeenCalled();
+      expect(restart.restart).toHaveBeenCalled();
+    });
+
+    it('renders the button, disabled only while erasing', async () => {
+      // Every other test here calls the method directly, so without this one the button
+      // could be deleted from the template — or wired to a different handler — and the
+      // whole describe block would stay green.
+      const { fixture, cmp } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+      );
+      const button = (): HTMLButtonElement | null =>
+        fixture.nativeElement.querySelector('[data-testid="clear-all-data"]');
+
+      expect(button()).not.toBeNull();
+      expect(button()?.disabled).toBe(false);
+
+      cmp.erasing.set(true);
+      fixture.detectChanges();
+
+      expect(button()?.disabled).toBe(true);
+    });
+
+    it('does not use the Helm destructive variant, whose tint drops the label under AA', async () => {
+      // The fast canary for the one wrong edit this button attracts: reaching for
+      // `variant="destructive"`. That variant is the only thing in hlm-button that emits
+      // `bg-destructive`, and its hover tint puts the danger label at 4.26-4.29:1 on this
+      // card's --trinity-sidebar surface — under AA. Deliberately a NEGATIVE assertion: any
+      // restyling that keeps the label readable without the tint still passes, so this does
+      // not red on a legitimate refactor. What the label positively renders as is measured
+      // where it can actually be seen, in clear-all-data.spec.mts — jsdom has no Tailwind
+      // and no theme tokens, so nothing here can check a colour.
+      const { fixture } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+      );
+      const button: HTMLButtonElement = fixture.nativeElement.querySelector(
+        '[data-testid="clear-all-data"]',
+      );
+
+      expect(button.className).not.toContain('bg-destructive');
+    });
+
+    it('erases nothing when the word is mistyped, and says so', async () => {
+      // Silence here is indistinguishable from a broken button, and this is the screen
+      // someone reaches when things are already broken.
+      const { cmp, reset, restart } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { typed: 'yes please' },
+      );
+
+      await cmp.clearAllData();
+
+      expect(reset.clearAllData).not.toHaveBeenCalled();
+      expect(restart.restart).not.toHaveBeenCalled();
+      expect(cmp.error()).toMatch(/Type ERASE exactly/);
+    });
+
+    it('erases nothing and stays quiet when cancelled', async () => {
+      const { cmp, reset } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { typed: null },
+      );
+
+      await cmp.clearAllData();
+
+      expect(reset.clearAllData).not.toHaveBeenCalled();
+      expect(cmp.error()).toBeNull(); // they changed their mind; nagging would be rude
+    });
+
+    it('restarts even when something could not be deleted', async () => {
+      // Residue is not a reason to strand the user on a page whose data is already gone.
+      // The wipe finished; what is left is an orphan the next cold start sweeps.
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      try {
+        const { cmp, restart } = await renderLogin(
+          {} as unknown as Partial<AuthService>,
+          {
+            typed: 'ERASE',
+            report: {
+              blocked: ['matrix-js-sdk:trinity-sync:@a:hs'],
+              failed: ['other-db'],
+            },
+          },
+        );
+
+        await cmp.clearAllData();
+
+        expect(restart.restart).toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledWith(expect.any(String), [
+          'matrix-js-sdk:trinity-sync:@a:hs',
+          'other-db',
+        ]);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('stays clickable while the page is busy discovering a dead homeserver', async () => {
+      // The failure this button exists for puts the page in `busy` for a full HTTP
+      // timeout — and on /login?reauth= from first paint. Asserted through the RENDERED
+      // button, not by comparing the two signals: `erasing` is independent of `busy` by
+      // construction, so a signal-level assertion cannot fail, while re-adding
+      // `|| busy()` to the template binding is the one-line change that would actually
+      // disable the escape hatch exactly when it is needed.
+      const { fixture, cmp } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+      );
+      const button = (): HTMLButtonElement | null =>
+        fixture.nativeElement.querySelector('[data-testid="clear-all-data"]');
+
+      cmp.busy.set(true);
+      fixture.detectChanges();
+
+      expect(button()?.disabled).toBe(false);
+    });
+
+    it('warns that accounts may be signed out when the registry cannot be read', async () => {
+      // A registry too broken to read is one of the states this button is for. Saying
+      // nothing would read as "no accounts signed in" and let someone erase live ones
+      // having seen the gentlest version of the dialog.
+      const { cmp, alert } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { typed: null, listFails: true },
+      );
+
+      await cmp.clearAllData();
+
+      const message = vi.mocked(alert.prompt).mock.calls[0][0].message ?? '';
+      expect(message).toMatch(/Any accounts signed in on this device/);
+    });
+
+    it('names the signed-in accounts in the confirmation', async () => {
+      // /login?add is reachable while accounts are live, and someone who came here to ADD
+      // an account has to be told what erasing would take with it.
+      const { cmp, alert } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        {
+          add: true,
+          typed: null,
+          stored: [{ userId: '@a:hs' }, { userId: '@b:hs' }],
+        },
+      );
+
+      await cmp.clearAllData();
+
+      const message = vi.mocked(alert.prompt).mock.calls[0][0].message ?? '';
+      expect(message).toContain('@a:hs');
+      expect(message).toContain('@b:hs');
+    });
   });
 
   it('uses the eu.qwky.trinity:// scheme and opens externally on Electron', async () => {

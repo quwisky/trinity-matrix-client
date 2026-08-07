@@ -32,6 +32,9 @@ vi.mock('@aparajita/capacitor-secure-storage', () => ({
       nativeStore.delete(key);
       return true;
     },
+    clear: async () => {
+      nativeStore.clear();
+    },
   },
 }));
 
@@ -75,5 +78,41 @@ describe('SecureStorageService', () => {
 
     await s.remove('accessToken');
     expect(await s.get('accessToken')).toBeNull();
+  });
+
+  describe('clearAll', () => {
+    it('sweeps the keychain and says it did, on native', async () => {
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(true);
+      const s = service();
+      await s.set('accessToken', 'tok');
+
+      await expect(s.clearAll()).resolves.toBe(true);
+      expect(nativeStore.size).toBe(0);
+    });
+
+    it('reports false on web, where there is nothing to sweep', async () => {
+      // Web keys live in Preferences, which the factory reset clears as a group — and the
+      // `false` is what tells the caller its own per-key removals were the whole story.
+      const s = service();
+      await s.set('accessToken', 'tok');
+
+      await expect(s.clearAll()).resolves.toBe(false);
+      expect(prefs.get('secure.accessToken')).toBe('tok'); // untouched by this call
+    });
+
+    it('reports false rather than throwing when the keychain sweep fails', async () => {
+      // A factory reset must not abort because the OS keyring refused; the caller's
+      // per-key removals still stand.
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(true);
+      const { SecureStorage } =
+        await import('@aparajita/capacitor-secure-storage');
+      vi.spyOn(SecureStorage, 'clear').mockRejectedValueOnce(
+        new Error('keyring locked'),
+      );
+
+      await expect(service().clearAll()).resolves.toBe(false);
+    });
   });
 });

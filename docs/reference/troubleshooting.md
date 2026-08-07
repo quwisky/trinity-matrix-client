@@ -216,6 +216,65 @@ it.
 **Fix.** Run with `--retries=0` when you want the honest first-attempt result, and read the
 flaky count in the summary rather than only the pass or fail line.
 
+### A different test fails each run, and the totals do not add up
+
+**Symptom.** One project's suite fails on a different test every run, and the summary reads
+something like `Tests 42 passed (49)` — seven tests that simply never executed. Sometimes an
+`Unhandled Errors` block appears with `[vitest-pool]: Worker forks emitted error` and
+`emitUnexpectedExit`.
+
+**Cause.** The worker fork was killed by the OS, not by a failing assertion. The `Killed`
+line goes to the fork's own stderr and never reaches the log, which is why this does not look
+like an OOM.
+
+What drives peak RSS is **which component the file mounts, not how many tests it has**.
+Measured across `feature-rooms`:
+
+| Spec                         | Tests | Peak RSS |
+| ---------------------------- | ----- | -------- |
+| `message-composer.component` | 116   | 973 MB   |
+| `channel-sidebar.component`  | 85    | 931 MB   |
+| `edit-history.component`     | 24    | 960 MB   |
+| `rooms.page.actions`         | 46    | 1246 MB  |
+
+A 24-test file costs as much as a 116-test one: roughly 950 MB is a fixed floor for the module
+graph, jsdom and Angular. Files that mount `RoomsPage` sit ~300 MB above it because of the
+service graph they wire up, and those cross the line first. Per-test retention is real — no
+`afterEach` reclaims it, and `vi.clearAllMocks()`, `ngMocks.reset()` and
+`TestBed.resetTestingModule()` all leave the curve unchanged — but at these file sizes it is
+second-order next to the floor.
+
+**Fix.** Measure, do not guess: `/usr/bin/time -f %M pnpm exec vitest run <file>
+--maxWorkers=1` prints peak RSS in KB. Split only files measurably above the floor, at a
+`describe` boundary, and re-measure — a green run on a quiet machine proves nothing. Splitting
+a file already at the floor buys nothing, so test count alone is not a reason to split.
+
+At the floor there is no repo-side fix left: one spec file needs ~1 GB, so the suite needs
+memory more than it needs tuning. Run `--parallel=1 -- --maxWorkers=1`, and do not run `lint`
+alongside it — its type-aware rules are themselves memory-hungry.
+
+**Confirming it is the machine and not your change.** `git diff <base>...HEAD --name-only |
+grep <project>` to show the project is untouched, then repeat the run two or three times: a
+genuine regression fails the same test every time, starvation picks a different one. Do not
+reach for `git worktree` to test the base commit — Nx runs a dependency check that tries to
+purge a symlinked `node_modules` and aborts with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`.
+
+### The e2e web server dies with a Go stack trace
+
+**Symptom.** `nx e2e trinity-e2e` fails before any test runs, with
+`Error: Process from config.webServer was not able to start`, and the `[WebServer]` output
+carries `fatal error: all goroutines are asleep - deadlock!` and a Go stack through
+`esbuild/internal/bundler`. A plain `pnpm build` succeeds moments earlier.
+
+**Cause.** Memory pressure, not a build error. The webServer builds `trinity:build:development`
+in a second process while Playwright, Chromium and the Synapse containers are already resident;
+esbuild's Go runtime deadlocks rather than reporting an allocation failure. Below roughly
+2.3 GB available it reproduces reliably; at ~2.9 GB it does not.
+
+**Fix.** Free memory and re-run — stop the Nx daemon (`pnpm exec nx daemon --stop`) and close
+anything large. There is deliberately no repo-side workaround: capping esbuild's parallelism
+in the config would slow every build to accommodate one constrained machine.
+
 ### A negative assertion in a projection spec proves nothing
 
 **Symptom.** `expect(rebuildSpy).not.toHaveBeenCalled()` passes green, and the rebuild it
@@ -736,6 +795,37 @@ because `finalize` never runs.
 
 **Fix.** Put failure handling in the template, subscribe to everything you call, and do not
 use it on a path that must triage its own errors.
+
+### The app is wedged and there is no way to clear its data
+
+**Symptom.** Trinity will not start, will not sign in, or renders wrongly, and signing out
+does not help — because sign-out only removes tokens and the account registry. On iOS,
+Android and the desktop shell there is no devtools "clear site data" to fall back on.
+
+**Cause.** The app's local state spans four surfaces, and nothing cleared them all: ~20
+`trinity.*` preferences, the account registry and secrets under `matrix.*` / `secure.*`, the
+OIDC and SSO round-trip stashes under `oidc.*` / `sso.*`, two IndexedDB families (the message
+sync store and the Rust crypto store, per account and per device), and the service-worker
+caches on web. A bad `trinity.push.gateway`, a stale feature flag or a crypto store that will
+not initialise therefore survives everything the UI offers.
+
+**Fix.** **Erase all data on this device**, at the bottom of the login page — deliberately
+there rather than in Settings, which is behind `authGuard` and so unreachable in exactly this
+situation. It erases all four surfaces and restarts the app. It is irreversible: encryption
+keys not in a server-side backup go with it, so it asks you to type `ERASE`. Nothing on the
+server is deleted.
+
+If Trinity is open in a second window, one of the databases may still be held open when the
+wipe runs. It finishes anyway rather than stopping half-way: the deletes run concurrently, so
+by the time one reports blocked the rest are already gone, and aborting there would leave the
+very half-erased install that stopping is meant to avoid. Whatever survives is an orphan no
+account points at, which `sweepOrphanedCryptoStores` reclaims on the next cold start, when
+nothing holds a connection. The names are logged to the console.
+
+**See also.** [The factory reset](../architecture/matrix-and-encryption.md#the-factory-reset)
+for the mechanism — which phase orderings are load-bearing and why, why deletion is bounded
+rather than awaited, and the three surfaces it deliberately cannot reach. The user-facing
+version is in [Signing in](../users/signing-in.md#starting-over-when-trinity-will-not-work).
 
 ## Related pages
 

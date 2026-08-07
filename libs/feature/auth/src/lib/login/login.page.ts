@@ -12,6 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormField, disabled, form } from '@angular/forms/signals';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
@@ -33,14 +34,24 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideEye, lucideEyeOff } from '@ng-icons/lucide';
 import {
   AuthService,
+  FactoryResetService,
   type LoginMode,
   type OidcApplicationType,
   type OidcAuthorizationRequest,
   type AuthMetadata,
 } from '@trinity/data-access/auth';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  AppRestartService,
+  SessionStorageService,
+} from '@trinity/platform-native';
+import { TrnAlertService } from '@trinity/helm/overlay';
 import { runWithBusy } from '@trinity/ui';
 import { SsoStateStore } from '../sso-state.store';
+import {
+  CLEAR_DATA_MISTYPED_MESSAGE,
+  CLEAR_DATA_RESIDUE_WARNING,
+  confirmClearDataIntent,
+} from './clear-all-data';
 import { OidcStateStore } from '../oidc-state.store';
 
 @Component({
@@ -66,6 +77,9 @@ export class LoginPage {
   private readonly ssoState = inject(SsoStateStore);
   private readonly oidcState = inject(OidcStateStore);
   private readonly storage = inject(SessionStorageService);
+  private readonly alert = inject(TrnAlertService);
+  private readonly factoryReset = inject(FactoryResetService);
+  private readonly restart = inject(AppRestartService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly usernameInput =
@@ -81,6 +95,13 @@ export class LoginPage {
   /** The device id to re-authenticate (from the stored record), when in re-auth mode. */
   private reauthDeviceId: string | null = null;
 
+  /**
+   * Accounts currently stored on this device, for the erase confirmation to name.
+   * `/login?add` is reachable while accounts are live, and someone who came here to ADD an
+   * account needs to be told what erasing would take with it.
+   */
+  private readonly storedUserIds = signal<readonly string[] | null>(null);
+
   constructor() {
     // Sweep an abandoned OIDC stash. `peek()` bins one that has outlived its TTL, and the
     // TTL is only ever enforced on read — so a login the user walked away from leaves a
@@ -91,6 +112,18 @@ export class LoginPage {
     // cleanup on this path: a storage read that rejects must not take the page down with
     // an unhandled rejection when nothing here depends on the answer.
     void this.oidcState.peek().catch(() => undefined);
+
+    this.storage
+      .list()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (records) => this.storedUserIds.set(records.map((r) => r.userId)),
+        // Stays null on failure, which the confirmation renders as "any accounts signed in
+        // will be signed out" rather than as silence. A registry too broken to read is
+        // itself one of the states this button exists for, and silence there is
+        // indistinguishable from "nothing is signed in".
+        error: () => undefined,
+      });
 
     const reauth = this.reauthUserId();
     if (reauth) {
@@ -146,6 +179,14 @@ export class LoginPage {
 
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
+  /**
+   * The factory reset in flight, separate from {@link busy} on purpose.
+   *
+   * `busy` is the page-wide discovery/login flag, and the escape hatch must stay reachable
+   * exactly when that is stuck — someone whose homeserver is unreachable sits in `busy` for
+   * the whole HTTP timeout, and on `/login?reauth=` it is set from first paint.
+   */
+  readonly erasing = signal(false);
 
   // Form state. Two forms, not one, because the page is two steps: the homeserver is
   // resolved first, and the credentials step only exists once discovery reports a
@@ -389,6 +430,48 @@ export class LoginPage {
     const bytes = new Uint8Array(16);
     crypto.getRandomValues(bytes);
     return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * Erase everything Trinity has stored on this device, then restart into a clean app.
+   *
+   * The way out of a wedged install, which is why it lives on the login page: Settings is
+   * behind `authGuard`, and the whole point is to be reachable when you cannot sign in.
+   *
+   * Deliberately NOT wrapped in `withBusy`. `runWithBusy` turns a failure into `EMPTY`, so
+   * its `next` never runs — here that would mean silently not restarting, leaving the user
+   * looking at an app whose data is already gone. Busy and error are set by hand instead.
+   */
+  async clearAllData(): Promise<void> {
+    const intent = await confirmClearDataIntent(
+      this.alert,
+      this.storedUserIds(),
+    );
+    if (intent === 'cancelled') {
+      return; // they stopped it themselves; saying anything would be nagging
+    }
+    if (intent === 'mistyped') {
+      this.error.set(CLEAR_DATA_MISTYPED_MESSAGE);
+      return;
+    }
+
+    this.error.set(null);
+    this.erasing.set(true);
+    // Deliberately NOT `takeUntilDestroyed`: the wipe is an un-cancellable promise, so
+    // unsubscribing would abandon the restart while the data is already gone — leaving the
+    // app running against erased storage with every client torn down. If this page goes
+    // away mid-wipe, the restart is more necessary, not less.
+    this.factoryReset.clearAllData().subscribe((report) => {
+      const residue = [...report.blocked, ...report.failed];
+      if (residue.length > 0) {
+        // Not surfaced to the user: the wipe finished, and what is left is an orphaned
+        // database that the next cold start sweeps, when nothing holds a connection.
+        console.warn(CLEAR_DATA_RESIDUE_WARNING, residue);
+      }
+      // `erasing` stays true: the app is about to be replaced, and releasing the button now
+      // would let a second press race the navigation.
+      this.restart.restart();
+    });
   }
 
   /** Wrap a one-shot action with shared busy/error handling. */

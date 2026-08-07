@@ -135,3 +135,39 @@ sounds: the device keeps its existing encryption store, its cross-signing trust 
 message keys, so you come back without re-verifying anything. A hard logout, where the
 homeserver has deleted the device outright, does discard the local stores, because the
 device they belong to no longer exists.
+
+## Starting over when Trinity will not work
+
+At the bottom of the sign-in screen there is **Erase all data on this device**. It is the way
+out when Trinity is stuck in a way signing out cannot fix — it will not start, it will not
+sign in, or it renders wrongly — and it is on the sign-in screen on purpose, because Settings
+is behind the sign-in you cannot get past. On a phone or the desktop app there is no browser
+"clear site data" to fall back on, so without it the only answer is reinstalling.
+
+It removes everything Trinity keeps on this device: your accounts, your encryption keys, your
+settings and appearance, your drafts, and the cached copies of your messages.
+
+**It cannot be undone, so it asks you to type `ERASE` first.** The word is deliberately not
+the `RESET` used by the encryption reset — the two guard different things, and typing one out
+of habit should not carry you through the other.
+
+Read this part before you use it:
+
+- **Any message that only this device could decrypt becomes permanently unreadable.** If your
+  encryption keys are backed up on the server, or another device of yours can already read
+  those messages, nothing is lost. If neither is true, they are gone.
+- **Nothing on the server is deleted.** Your account, your rooms and your messages are all
+  still there, and you can sign straight back in.
+- **Your devices may still be listed on your homeserver afterwards.** Trinity tries to sign
+  out properly, but it deliberately does not wait long and does not require it — a server you
+  cannot reach is one of the reasons you might be doing this. Remove any leftover devices from
+  another device, or from your account settings.
+- **Trinity reloads when it finishes, so you need to be online to use it again.**
+
+If Trinity is open in another window as well, some of its stored data can be locked and left
+behind. It does not stop; it finishes, tells the console what it could not remove, and clears
+the rest up the next time you open the app.
+
+Two things it does not remove: files you saved to your device through the share or save
+button, which are yours and stay where you put them, and on the desktop app the browser-level
+cache the shell itself keeps.
