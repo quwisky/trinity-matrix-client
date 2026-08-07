@@ -88,6 +88,7 @@
     border-radius: var(--trinity-radius-sm);
     background: var(--trinity-rail);
     overflow-x: auto;
+    counter-reset: code-line;
 
     // The fenced block's declared language, captioned on hover the way GitHub does it.
     // Generated content from the `language` attribute the sanitizer writes: that keeps the
@@ -174,6 +175,69 @@
     .tok-italic {
       font-style: italic;
     }
+
+    // One wrapper per line of the block (message-view.ts), carrying the line number as
+    // GENERATED CONTENT. Never text: a number in the DOM would be selectable, would land in
+    // the clipboard when someone copies a pasted file, and would be read by the
+    // edit-history diff, which compares the text of two rendered revisions — the same
+    // reasoning as the language caption above.
+    // The wrapper stays INLINE. The newlines the sanitizer leaves between wrappers are what
+    // break the lines under `white-space: pre`, so making these block-level would render a
+    // blank line between every line of code, double-space anything copied out, and give the
+    // diff's `<ins>`-wrapped newline a full-width row of its own.
+    .code-line {
+      counter-increment: code-line;
+
+      // `content` is the ONLY thing the three states below switch, so the counter keeps
+      // incrementing in every state and the numbering cannot drift.
+      &::before {
+        content: none;
+
+        // Sticky so a number survives scrolling a long line sideways: `pre` is the scroll
+        // container, and without this the gutter would scroll out of view exactly when it
+        // is being used. inline-block because sticky on a non-replaced inline box is
+        // under-specified; logical inset so it follows writing direction for free.
+        position: sticky;
+        display: inline-block;
+
+        // -10px, not 0: the offset resolves against the block's CONTENT edge, so a plain 0
+        // leaves the block's own 10px of padding uncovered and the line's text scrolls
+        // through that strip. This pulls the opaque box out to the border edge.
+        inset-inline-start: -10px;
+        z-index: 1;
+        min-width: 2ch;
+
+        // Padding, NOT margin, for the gap before the code: it has to be part of the OPAQUE
+        // box or the text slides through it. Sticky content does not push the line along —
+        // the line passes underneath.
+        padding-inline: 10px 12px;
+        background: var(--trinity-rail);
+        color: var(--trinity-text-muted);
+        text-align: right;
+
+        // The line's text slides UNDER a stuck number rather than pushing it along, so the
+        // background above is load-bearing, and this stops a drag-select over the block
+        // picking the digits up as if they were part of the code.
+        user-select: none;
+      }
+    }
+
+    // Automatic — the default, and why it needs no attribute on <html>. `rows` is set by
+    // the sanitizer from the CONTENT (past the line threshold), never from the preference:
+    // this HTML is memoized per message and shared by every viewer.
+    &[rows] .code-line::before {
+      content: counter(code-line);
+    }
+  }
+
+  // The two non-default states. `:root` rather than a class on the block, because the
+  // preference must not touch the markup at all.
+  :root[data-code-lines='always'] & pre .code-line::before {
+    content: counter(code-line);
+  }
+
+  :root[data-code-lines='off'] & pre .code-line::before {
+    content: none;
   }
 
   // Reachable now that `gfm` is pinned on and outgoing HTML carries these: the file
