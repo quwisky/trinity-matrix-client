@@ -58,9 +58,36 @@ export const TRINITY_TEXT_SCALES = [
 export type TextScale = (typeof TRINITY_TEXT_SCALES)[number]['id'];
 const DEFAULT_TEXT_SCALE: TextScale = 'default';
 
+/**
+ * How large code is, as a multiplier on the optical correction already applied to it.
+ *
+ * A FACTOR, not a size, and deliberately not a second text scale. Code in a message is
+ * sized at 85% of the text around it — a monospace face reads larger than the proportional
+ * UI font at an equal computed size — and this multiplies that percentage
+ * (`apps/trinity/src/rendered-markdown.scss`). Because every step stays relative, the two
+ * preferences compose: Text size moves the root, Code size moves code within it, and the
+ * ratio between code and its surrounding prose is preserved at every text size. An absolute
+ * px value here would pin code and break Text size for it.
+ *
+ * Governs inline `code` and fenced blocks together, so one message never shows two sizes of
+ * code. Scoped to rendered message bodies (`.msg__text--html`) — `<code>` used as app chrome,
+ * such as the recovery key, is deliberately unaffected.
+ */
+export const TRINITY_CODE_SCALES = [
+  { id: 'smaller', label: 'Smaller', factor: 0.875 },
+  { id: 'default', label: 'Default', factor: 1 },
+  { id: 'larger', label: 'Larger', factor: 1.15 },
+] as const;
+/** The id of a registered code scale. */
+export type CodeScale = (typeof TRINITY_CODE_SCALES)[number]['id'];
+const DEFAULT_CODE_SCALE: CodeScale = 'default';
+
 const THEME_KEY = 'trinity.theme';
 const PALETTE_KEY = 'trinity.palette';
 const TEXT_SCALE_KEY = 'trinity.text-scale';
+const CODE_SCALE_KEY = 'trinity.code-scale';
+/** Custom property on <html> the rendered-markdown stylesheet multiplies by. */
+const CODE_SCALE_PROP = '--trinity-code-scale';
 /**
  * Class toggled on <html>; its PRESENCE means dark. Light is the `:root` default and
  * dark is layered under `.dark` (see apps/trinity/src/theme/variables.scss), so a
@@ -71,12 +98,16 @@ const DARK_CLASS = 'dark';
 const PALETTE_ATTR = 'data-theme';
 
 /**
- * Owns the app's appearance across two orthogonal axes:
- *   • mode    — light/dark: persists the user's preference, resolves `system` against
+ * Owns the app's appearance across four orthogonal axes, each reflected on <html>:
+ *   • mode       — light/dark: persists the user's preference, resolves `system` against
  *     `prefers-color-scheme`, and toggles {@link DARK_CLASS} on the document root;
- *   • palette — the named colour scheme: persists the choice and reflects it as the
- *     {@link PALETTE_ATTR} attribute (absent for the default palette).
- * Both are exposed as signals so the settings UI can bind the current choices.
+ *   • palette    — the named colour scheme: persists the choice and reflects it as the
+ *     {@link PALETTE_ATTR} attribute (absent for the default palette);
+ *   • text size  — a percentage written as `font-size` on the root;
+ *   • code size  — a factor written as {@link CODE_SCALE_PROP}, multiplying the size of
+ *     code inside rendered messages.
+ * Each is exposed as a signal so the settings UI can bind the current choice, and each
+ * writes NOTHING at its default, so an untouched app leaves no footprint on <html>.
  */
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
@@ -93,6 +124,12 @@ export class ThemeService {
   readonly textScale = this._textScale.asReadonly();
   /** The registered scales, for the settings picker. */
   readonly textScales = TRINITY_TEXT_SCALES;
+
+  private readonly _codeScale = signal<CodeScale>(DEFAULT_CODE_SCALE);
+  /** The user's chosen code size. */
+  readonly codeScale = this._codeScale.asReadonly();
+  /** The registered code scales, for the settings picker. */
+  readonly codeScales = TRINITY_CODE_SCALES;
 
   private readonly _palette = signal<Palette>(DEFAULT_PALETTE);
   /** The active colour palette. */
@@ -140,9 +177,18 @@ export class ThemeService {
     } catch {
       // No stored text scale → keep the default.
     }
+    try {
+      const { value } = await Preferences.get({ key: CODE_SCALE_KEY });
+      if (isCodeScale(value)) {
+        this._codeScale.set(value);
+      }
+    } catch {
+      // No stored code scale → keep the default.
+    }
     this.apply();
     this.applyPalette();
     this.applyTextScale();
+    this.applyCodeScale();
   }
 
   /** Change + persist the mode preference, applying it immediately. */
@@ -159,6 +205,15 @@ export class ThemeService {
     this._textScale.set(scale);
     this.applyTextScale();
     void Preferences.set({ key: TEXT_SCALE_KEY, value: scale }).catch(
+      () => undefined,
+    );
+  }
+
+  /** Change + persist the code size, applying it immediately. */
+  setCodeScale(scale: CodeScale): void {
+    this._codeScale.set(scale);
+    this.applyCodeScale();
+    void Preferences.set({ key: CODE_SCALE_KEY, value: scale }).catch(
       () => undefined,
     );
   }
@@ -210,6 +265,29 @@ export class ThemeService {
     );
   }
 
+  /**
+   * Reflect the active code scale on the document root.
+   *
+   * The DEFAULT clears the property rather than writing `1`, so an unscaled app leaves no
+   * footprint on <html> and the declaration in variables.scss is what "Default" means —
+   * one place to change it, and nothing to keep in step.
+   */
+  private applyCodeScale(): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const scale = this._codeScale();
+    const entry = TRINITY_CODE_SCALES.find((s) => s.id === scale);
+    if (!entry || entry.id === DEFAULT_CODE_SCALE) {
+      document.documentElement.style.removeProperty(CODE_SCALE_PROP);
+      return;
+    }
+    document.documentElement.style.setProperty(
+      CODE_SCALE_PROP,
+      String(entry.factor),
+    );
+  }
+
   /** Reflect the active palette on the document root (default palette = no attribute). */
   private applyPalette(): void {
     if (typeof document === 'undefined') {
@@ -251,6 +329,10 @@ function isPalette(value: string | null): value is Palette {
 
 function isTextScale(value: string | null): value is TextScale {
   return TRINITY_TEXT_SCALES.some((s) => s.id === value);
+}
+
+function isCodeScale(value: string | null): value is CodeScale {
+  return TRINITY_CODE_SCALES.some((s) => s.id === value);
 }
 
 function systemMedia(): MediaQueryList | null {

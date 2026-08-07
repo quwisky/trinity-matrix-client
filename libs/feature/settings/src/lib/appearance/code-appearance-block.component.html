@@ -1,0 +1,35 @@
+<h2
+  id="appearance-code-size-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Code size
+</h2>
+<div class="px-4 py-2">
+  <hlm-select
+    class="block"
+    data-testid="code-scale-select"
+    aria-labelledby="appearance-code-size-heading"
+    [value]="theme.codeScale()"
+    [itemToString]="codeScaleLabel"
+    (valueChange)="onCodeScaleChange($event)"
+  >
+    <hlm-select-trigger class="w-full">
+      <hlm-select-value placeholder="Select a code size" />
+    </hlm-select-trigger>
+    <hlm-select-content *hlmSelectPortal>
+      @for (scale of theme.codeScales; track scale.id) {
+        <hlm-select-item
+          [value]="scale.id"
+          [attr.data-testid]="'code-scale-' + scale.id"
+        >
+          {{ scale.label }}
+        </hlm-select-item>
+      }
+    </hlm-select-content>
+  </hlm-select>
+</div>
+<p class="block px-4 py-2 text-13 text-muted-foreground">
+  Sizes code in messages — both code written inside a sentence and whole blocks.
+  It is relative to Text size, so the two work together rather than one
+  overriding the other.
+</p>
