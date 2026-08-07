@@ -1,5 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 import { login, synapseSession } from './support/app.mts';
+import {
+  AA_NORMAL_TEXT,
+  measureContrast,
+  resolveTokenSrgb,
+} from './support/contrast.mts';
 
 // End-to-end for "Clear all data" (issue #96): the escape hatch on the login page for an
 // install whose local state is wedged, when devtools are not an option — which is to say
@@ -156,3 +161,83 @@ test.describe('Clear all data', () => {
     await page.waitForLoadState('networkidle');
   });
 });
+
+/**
+ * The escape hatch has to LOOK destructive — deliberately outside the Synapse describe
+ * above, because that is true of a signed-out install with no homeserver at all, so this
+ * runs on every PR rather than only where Docker does.
+ *
+ * The unit test beside this one can only assert class names: jsdom has no Tailwind and no
+ * theme tokens, so a `text-danger` that resolved to nothing, or to the near-black maroon
+ * documented in theme/spartan.css, stays green there. This is the only layer that reads the
+ * colour a person actually gets.
+ *
+ * Both palettes, because the argument for this styling is surface-specific — `amethyst`
+ * overrides `--trinity-sidebar`, the very surface the ratio is measured against, while
+ * leaving `--trinity-danger` alone.
+ */
+const PALETTES = [
+  { id: 'trinity', attribute: null },
+  { id: 'amethyst', attribute: 'amethyst' },
+] as const;
+
+for (const scheme of ['light', 'dark'] as const) {
+  test.describe(`Clear all data — destructive styling (${scheme})`, () => {
+    // Set on the CONTEXT rather than patched onto a live page, so the scheme is already
+    // right when ThemeService runs in provideAppInitializer, before the first paint.
+    test.use({ colorScheme: scheme });
+
+    for (const palette of PALETTES) {
+      test(`stays a legible danger red on ${palette.id}`, async ({ page }) => {
+        // The palette is restored from Preferences on boot, so seed it the way the app
+        // stores it rather than reaching into ThemeService.
+        await page.addInitScript((id) => {
+          window.localStorage.setItem('CapacitorStorage.trinity.palette', id);
+        }, palette.id);
+        await page.goto('/login', { waitUntil: 'networkidle' });
+        const button = page.getByTestId('clear-all-data');
+        await button.waitFor({ state: 'visible', timeout: 20_000 });
+
+        // Without this the theme could silently fail to apply and every assertion below
+        // would re-measure the light/default case twice and still pass — and dark is where
+        // the token trap actually lives.
+        await expect
+          .poll(() =>
+            page.evaluate(() => ({
+              dark: document.documentElement.classList.contains('dark'),
+              theme: document.documentElement.getAttribute('data-theme'),
+            })),
+          )
+          .toEqual({ dark: scheme === 'dark', theme: palette.attribute });
+
+        const danger = await resolveTokenSrgb(
+          page,
+          'clear-all-data',
+          '--trinity-danger',
+        );
+
+        for (const state of ['rest', 'hover'] as const) {
+          if (state === 'hover') {
+            // Ghost's hover paints a translucent `--muted` UNDER a label that
+            // `hover:text-danger` keeps red; both halves only exist at this layer.
+            await button.hover();
+          }
+          const measured = await measureContrast(page, 'clear-all-data');
+          const where = `${palette.id}/${scheme}/${state}`;
+
+          // Legibility alone would not say this looks DESTRUCTIVE: plain `--foreground` is
+          // near-black and clears the ratio comfortably while reading as an ordinary link.
+          // Pinning the label to the danger token is what makes this a styling test.
+          expect(measured.text, `${where}: label is the danger token`).toEqual(
+            danger,
+          );
+
+          expect(
+            measured.ratio,
+            `${where}: ${measured.ratio.toFixed(2)}:1 over ${measured.layers.join(' + ')}`,
+          ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+        }
+      });
+    }
+  });
+}
