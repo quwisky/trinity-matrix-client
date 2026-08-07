@@ -275,17 +275,37 @@ Trinity splits danger into three roles instead:
 `spartan.css` maps `--color-danger: var(--trinity-danger)`, which is what makes the
 `text-danger` utility exist.
 
-Each value was measured against the **worst backdrop the role actually lands on**. Two of
-those are easy to overlook: `--trinity-hover`, because a row that recolours on hover is where
-a danger label is usually read, and the translucent `bg-destructive/10..30` tint Helm paints
-under its own destructive text. `#bf1e24` clears 4.5:1 on chat, sidebar, rail and hover, and
-on every tint, in both palettes — worst case 4.61:1.
+Each value was measured against the **worst backdrop the role actually lands on**. One of
+those is easy to overlook: `--trinity-hover`, because a row that recolours on hover is where a
+danger label is usually read. `#bf1e24` clears 4.5:1 on chat, sidebar, rail and hover in both
+palettes — worst case 4.83:1, on the rail.
 
 `--trinity-active`, the selected-row tone, was **not** swept and reaches only 4.11–4.25:1. No
 danger text lands on a selected row today; do not put one there without re-measuring.
 
-`--destructive` itself is left alone and stays the tint, border and ring source. That is
-exactly what the token is for.
+!!! warning "A translucent tint has no fixed contrast"
+
+    That sweep covers the token drawn straight onto a surface. It does **not** cover the
+    `bg-destructive/10..30` tint Helm paints under its own destructive text, and no choice of
+    colour could: the tint is translucent, so it takes whatever it is placed on. The same
+    button measured **5.37:1 over `--card` and 4.28:1 at rest over `--trinity-rail`**, where
+    the surface is already dark enough in light mode to push the label under AA.
+
+    Nothing was actually failing: every destructive control today is a dropdown-menu item,
+    which renders on `--popover`, or a button on `--card`. What was wrong is that the trap
+    was invisible — putting one on the sidebar or the room list would have shipped a sub-AA
+    label with nothing to catch it, and the token comment positively invited that by claiming
+    the red cleared 4.5:1 "on every tint".
+
+    So the tint is pinned **opaque**, as `--trinity-danger-tint-*` mixed over `--card` — `in
+    srgb`, which reproduces the composited pixels exactly, rather than `in oklab`, which does
+    not. The tokens are named by percentage rather than by role because Helm's strengths are
+    per-component, not per-state. Every destructive control now reads at the value the card
+    was measured at wherever it is placed, so the check that matters is that the ratio is
+    *the same on every surface*, not merely above 4.5 on the one you happened to try.
+
+`--destructive` itself is left alone and stays the border and ring source, and the colour the
+tint is mixed from. That is exactly what the token is for.
 
 #### The unlayered override, and how to regenerate its selector list
 
@@ -306,13 +326,21 @@ without a specificity war.
     menu colours its child icon through a **separate** rule targeting the `ng-icon`
     descendant, so fixing the item alone leaves the glyph behind.
 
-    After running the spartan CLI, re-derive the list mechanically from the built CSS rather
-    than by reading Helm's class strings:
+    After running the spartan CLI, re-derive **both** lists mechanically from the built CSS
+    rather than by reading Helm's class strings — there are two, one for the text and one for
+    the opaque tint, and each must cover every emitted variant:
 
     ```bash
     pnpm exec nx build trinity
     tr '}' '\n' < www/styles-*.css | grep 'text-destructive.*color:var(--destructive)'
+    tr '}' '\n' < www/styles-*.css | grep 'bg-destructive'
     ```
+
+    The tint list has one extra thing to match: Helm gates most of its hover variants behind
+    `@media (hover: hover)` so a touchscreen paints no hover tint, and an ungated override
+    would reinstate one on the sticky `:hover` that follows a tap. Mirror the gating each
+    rule actually has — the button's own `hover:bg-destructive/20` is emitted *ungated*,
+    while `[a]:hover:` and the `data-[variant=destructive]` pair are not.
 
 ### Syntax-highlighting tokens are measured, not picked
 

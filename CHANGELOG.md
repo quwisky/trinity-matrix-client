@@ -233,6 +233,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Destructive buttons and menu items keep their contrast wherever they appear.** The red
+  tint behind "Leave room", "Ban from room" and similar was translucent, so how readable the
+  label was depended on what happened to be behind it — comfortably legible in a dialog or a
+  menu, but close to the accessibility limit on the darker panels, and below it if one had
+  ever been placed on the room-list background. The tint is now a fixed colour, so every one
+  of these reads the same wherever it is used. Nothing looks different in the places they are
+  used today.
+
 - **Signing back in to an account no longer creates a second device.** When a session was
   signed out by the server and you re-authenticated it, accounts that use the newer
   provider-based sign-in were given a brand-new device instead of picking their old one
