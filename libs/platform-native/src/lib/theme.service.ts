@@ -82,12 +82,38 @@ export const TRINITY_CODE_SCALES = [
 export type CodeScale = (typeof TRINITY_CODE_SCALES)[number]['id'];
 const DEFAULT_CODE_SCALE: CodeScale = 'default';
 
+/**
+ * When a code block shows line numbers.
+ *
+ * Three states rather than a checkbox, because the useful default is neither on nor off: a
+ * gutter on a two-line snippet is noise, and most code in a conversation is a snippet, while
+ * a pasted file is exactly what someone wants to point at by line. The label names the
+ * threshold instead of hiding it behind "Automatic", so the behaviour is legible without
+ * opening the docs.
+ *
+ * `auto` is the default and writes no attribute; the stylesheet treats "no attribute" as
+ * automatic and reads the line count the sanitizer records on the block. The threshold
+ * itself lives with the sanitizer (LINE_NUMBER_THRESHOLD in message-view.ts) — keep this
+ * label in step with it.
+ */
+export const TRINITY_CODE_LINE_MODES = [
+  { id: 'off', label: 'Off' },
+  { id: 'auto', label: 'Blocks over 5 lines' },
+  { id: 'always', label: 'Always' },
+] as const;
+/** The id of a registered line-number mode. */
+export type CodeLineMode = (typeof TRINITY_CODE_LINE_MODES)[number]['id'];
+const DEFAULT_CODE_LINE_MODE: CodeLineMode = 'auto';
+
 const THEME_KEY = 'trinity.theme';
 const PALETTE_KEY = 'trinity.palette';
 const TEXT_SCALE_KEY = 'trinity.text-scale';
 const CODE_SCALE_KEY = 'trinity.code-scale';
+const CODE_LINES_KEY = 'trinity.code-lines';
 /** Custom property on <html> the rendered-markdown stylesheet multiplies by. */
 const CODE_SCALE_PROP = '--trinity-code-scale';
+/** Attribute on <html> naming the line-number mode; absent for the automatic default. */
+const CODE_LINES_ATTR = 'data-code-lines';
 /**
  * Class toggled on <html>; its PRESENCE means dark. Light is the `:root` default and
  * dark is layered under `.dark` (see apps/trinity/src/theme/variables.scss), so a
@@ -105,7 +131,9 @@ const PALETTE_ATTR = 'data-theme';
  *     {@link PALETTE_ATTR} attribute (absent for the default palette);
  *   • text size  — a percentage written as `font-size` on the root;
  *   • code size  — a factor written as {@link CODE_SCALE_PROP}, multiplying the size of
- *     code inside rendered messages.
+ *     code inside rendered messages;
+ *   • code line numbers — when a block shows a numbering gutter, as the
+ *     {@link CODE_LINES_ATTR} attribute (absent for the automatic default).
  * Each is exposed as a signal so the settings UI can bind the current choice, and each
  * writes NOTHING at its default, so an untouched app leaves no footprint on <html>.
  */
@@ -130,6 +158,12 @@ export class ThemeService {
   readonly codeScale = this._codeScale.asReadonly();
   /** The registered code scales, for the settings picker. */
   readonly codeScales = TRINITY_CODE_SCALES;
+
+  private readonly _codeLines = signal<CodeLineMode>(DEFAULT_CODE_LINE_MODE);
+  /** When code blocks show line numbers. */
+  readonly codeLines = this._codeLines.asReadonly();
+  /** The registered line-number modes, for the settings picker. */
+  readonly codeLineModes = TRINITY_CODE_LINE_MODES;
 
   private readonly _palette = signal<Palette>(DEFAULT_PALETTE);
   /** The active colour palette. */
@@ -185,10 +219,19 @@ export class ThemeService {
     } catch {
       // No stored code scale → keep the default.
     }
+    try {
+      const { value } = await Preferences.get({ key: CODE_LINES_KEY });
+      if (isCodeLineMode(value)) {
+        this._codeLines.set(value);
+      }
+    } catch {
+      // No stored line-number mode → keep the default.
+    }
     this.apply();
     this.applyPalette();
     this.applyTextScale();
     this.applyCodeScale();
+    this.applyCodeLines();
   }
 
   /** Change + persist the mode preference, applying it immediately. */
@@ -214,6 +257,15 @@ export class ThemeService {
     this._codeScale.set(scale);
     this.applyCodeScale();
     void Preferences.set({ key: CODE_SCALE_KEY, value: scale }).catch(
+      () => undefined,
+    );
+  }
+
+  /** Change + persist when code blocks show line numbers, applying it immediately. */
+  setCodeLines(mode: CodeLineMode): void {
+    this._codeLines.set(mode);
+    this.applyCodeLines();
+    void Preferences.set({ key: CODE_LINES_KEY, value: mode }).catch(
       () => undefined,
     );
   }
@@ -288,6 +340,25 @@ export class ThemeService {
     );
   }
 
+  /**
+   * Reflect the line-number mode on the document root.
+   *
+   * The DEFAULT (`auto`) writes no attribute: the stylesheet's unqualified rule already IS
+   * the automatic behaviour, reading the line count the sanitizer records on each block. So
+   * only the two states that override it leave a footprint.
+   */
+  private applyCodeLines(): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const mode = this._codeLines();
+    if (mode === DEFAULT_CODE_LINE_MODE) {
+      document.documentElement.removeAttribute(CODE_LINES_ATTR);
+    } else {
+      document.documentElement.setAttribute(CODE_LINES_ATTR, mode);
+    }
+  }
+
   /** Reflect the active palette on the document root (default palette = no attribute). */
   private applyPalette(): void {
     if (typeof document === 'undefined') {
@@ -333,6 +404,10 @@ function isTextScale(value: string | null): value is TextScale {
 
 function isCodeScale(value: string | null): value is CodeScale {
   return TRINITY_CODE_SCALES.some((s) => s.id === value);
+}
+
+function isCodeLineMode(value: string | null): value is CodeLineMode {
+  return TRINITY_CODE_LINE_MODES.some((m) => m.id === value);
 }
 
 function systemMedia(): MediaQueryList | null {

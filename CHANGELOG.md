@@ -8,6 +8,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Code in messages has its own size, and long blocks can be numbered.** Until now the only
+  way to shrink a pasted listing was to shrink the whole app with it, because Text size moves
+  everything together. Settings → Appearance gains **Code size** — Smaller, Default, Larger —
+  covering both code written inside a sentence and whole blocks, so a message never shows two
+  sizes of code. It is relative to Text size rather than a fixed size, so the two work
+  together: raising Text size still enlarges code, and this shifts code up or down within
+  that. Code elsewhere in the app, such as your recovery key, is deliberately left alone.
+
+  Alongside it, **Line numbers**: off, on for blocks over five lines (the default), or always.
+  Numbering every snippet would put a gutter beside two-line pastes, so by default they appear
+  only once a block is long enough to be worth pointing at by line. They stay put when you
+  scroll a long line sideways, and they are never part of the message — selecting or copying a
+  block gives you the code alone, and nothing extra is sent.
+
 - **A way out when Trinity gets stuck.** If the app would not start, would not sign in, or
   rendered wrongly, there was nothing you could do about it from inside — signing out does
   not clear what was broken, and the one place with a fix, Settings, is behind the sign-in

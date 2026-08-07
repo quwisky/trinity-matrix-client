@@ -58,6 +58,27 @@ resolved, which matters when you have chosen "system".
 (blurple) and Amethyst (violet). Mode and palette are genuinely orthogonal — each palette
 defines both a light and a dark set.
 
+**Text size.** Small, Default, Large or Larger. It is a proportion of whatever your browser
+or device is already set to, so if you have raised your default text size there, this adds to
+it rather than replacing it. Message text and everything written around it scales; parts of
+the app's chrome still keep a fixed size for now.
+
+**Code size.** Smaller, Default or Larger, for code inside messages — both code written
+inside a sentence and whole blocks. It is _relative_ to Text size, so the two work together
+instead of one overriding the other: raising Text size still enlarges code, and this shifts
+code up or down within that. Code shown elsewhere in the app, such as your recovery key, is
+deliberately left alone.
+
+Code blocks are already set slightly smaller than the text around them. That is not a
+preference but a correction: a monospace face looks bigger than the surrounding font at the
+same size, so without it a pasted listing dominates the conversation.
+
+**Line numbers.** Off, Blocks over 5 lines (the default), or Always. Numbering every snippet
+would put a gutter beside two-line pastes, which is noise, so by default numbers appear only
+once a block is long enough to be worth pointing at by line. The numbers are never part of
+the message: selecting or copying a block gives you the code alone, and they never appear in
+what you send.
+
 **Time format.** Match system, 12-hour, or 24-hour.
 
 **Date format.** Match system, Day first, Month first, or ISO. Every option is previewed

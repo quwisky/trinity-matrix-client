@@ -10,6 +10,8 @@ import {
   TRINITY_PALETTES,
   TRINITY_TEXT_SCALES,
   TRINITY_CODE_SCALES,
+  TRINITY_CODE_LINE_MODES,
+  type CodeLineMode,
   type CodeScale,
   type Palette,
   type ResolvedTheme,
@@ -32,6 +34,7 @@ describe('AppearanceSettingsComponent', () => {
   let palette: ReturnType<typeof signal<Palette>>;
   let textScale: ReturnType<typeof signal<TextScale>>;
   let codeScale: ReturnType<typeof signal<CodeScale>>;
+  let codeLines: ReturnType<typeof signal<CodeLineMode>>;
   let showMembership: ReturnType<typeof signal<boolean>>;
   let showProfile: ReturnType<typeof signal<boolean>>;
   let showRoomChanges: ReturnType<typeof signal<boolean>>;
@@ -49,6 +52,7 @@ describe('AppearanceSettingsComponent', () => {
     palette = signal<Palette>('trinity');
     textScale = signal<TextScale>('default');
     codeScale = signal<CodeScale>('default');
+    codeLines = signal<CodeLineMode>('auto');
     showMembership = signal(true);
     showProfile = signal(true);
     showRoomChanges = signal(true);
@@ -73,6 +77,8 @@ describe('AppearanceSettingsComponent', () => {
           textScales: TRINITY_TEXT_SCALES,
           codeScale,
           codeScales: TRINITY_CODE_SCALES,
+          codeLines,
+          codeLineModes: TRINITY_CODE_LINE_MODES,
         }),
         MockProvider(ComposerSettingsService, {
           showFormattingToolbar,
@@ -127,6 +133,7 @@ describe('AppearanceSettingsComponent', () => {
       container.querySelector('[data-testid=palette-select]'),
       container.querySelector('[data-testid=text-scale-select]'),
       container.querySelector('[data-testid=code-scale-select]'),
+      container.querySelector('[data-testid=code-lines-select]'),
       container.querySelector('[data-testid=time-format-select]'),
       container.querySelector('[data-testid=date-format-select]'),
       container.querySelector('[data-testid=space-order-select]'),

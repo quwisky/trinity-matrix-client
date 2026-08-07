@@ -307,3 +307,134 @@ test.describe('Code size', () => {
     expect(await px(code)).toBeCloseTo(codeBoth, 1);
   });
 });
+
+/**
+ * Line numbers (Settings → Appearance → Line numbers).
+ *
+ * The hard constraint is that the numbers are not text: they must not be selectable, must
+ * not be copied, and must never reach the edit-history diff, which compares the TEXT of two
+ * rendered revisions. That is unobservable in a unit test — the numbers are generated
+ * content, which only exists once a browser has applied a stylesheet.
+ *
+ * The `rows` attribute is the other thing only a browser can confirm. Angular's [innerHTML]
+ * sanitizer runs again at the render leaf against a fixed allowlist, and an attribute it
+ * does not admit is dropped silently; the unit tests parse the sanitizer's own string output
+ * and would stay green through that.
+ */
+test.describe('Code line numbers', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('numbers long blocks only, and never as part of the text', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}ln`;
+    const user = `lines-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Lines ${runId}`;
+    const short = `s${runId} = 1`;
+    const long = Array.from({ length: 8 }, (_, i) => `line_${i} = ${i}`).join(
+      '\n',
+    );
+
+    await registerUser(request, user, pass);
+    const token = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.access_token as string);
+    const headers = { Authorization: `Bearer ${token}` };
+    const roomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers,
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((r) => r.json())
+      .then((j) => j.room_id as string);
+    const send = (txn: string, source: string) =>
+      request.put(
+        `${hs}/_matrix/client/v3/rooms/${roomId}/send/m.room.message/${txn}`,
+        {
+          headers,
+          data: {
+            msgtype: 'm.text',
+            body: source,
+            format: 'org.matrix.custom.html',
+            formatted_body: `<pre><code class="language-python">${source}</code></pre>`,
+          },
+        },
+      );
+    await send(`${runId}a`, short);
+    await send(`${runId}b`, long);
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+
+    const shortBlock = page
+      .locator('.msg__text--html pre', { hasText: short })
+      .first();
+    const longBlock = page
+      .locator('.msg__text--html pre', { hasText: 'line_7' })
+      .first();
+    await expect(longBlock).toBeVisible({ timeout: 20_000 });
+
+    // `rows` survives Angular's second sanitizer pass. An attribute it dropped would leave
+    // every assertion below silently unnumbered.
+    await expect(longBlock).toHaveAttribute('rows', '8');
+    expect(await shortBlock.getAttribute('rows')).toBeNull();
+
+    const firstNumber = (block: ReturnType<Page['locator']>) =>
+      block.evaluate(
+        (el) =>
+          getComputedStyle(
+            el.querySelector('.code-line') as Element,
+            '::before',
+          ).content,
+      );
+
+    // Default: the long block is numbered, the short one is not.
+    expect(await firstNumber(longBlock)).toContain('counter');
+    expect(await firstNumber(shortBlock)).toBe('none');
+
+    // THE constraint. The numbers are generated content, so the block reads as its source
+    // and nothing else — no digits in the text, and the <pre> matches its <code> exactly.
+    const text = await longBlock.evaluate((el) => el.textContent ?? '');
+    expect(text).toBe(long);
+    expect(text).not.toMatch(/^\s*1/);
+
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-appearance').click();
+    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await choose(page, 'code-lines-select', 'code-lines-always');
+    await page.goto('/rooms');
+    await openRoom(page, roomName);
+
+    // `always` reaches the short block, which carries no `rows` — proof the preference is
+    // applied in CSS rather than baked into the memoized markup.
+    await expect(shortBlock).toBeVisible({ timeout: 20_000 });
+    expect(await firstNumber(shortBlock)).toContain('counter');
+    expect(await shortBlock.getAttribute('rows')).toBeNull();
+
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('settings-nav-appearance').click();
+    await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
+    await choose(page, 'code-lines-select', 'code-lines-off');
+    await page.goto('/rooms');
+    await openRoom(page, roomName);
+
+    await expect(longBlock).toBeVisible({ timeout: 20_000 });
+    expect(await firstNumber(longBlock)).toBe('none');
+    // Off is a real state, not the absence of one: the attribute is what overrides `rows`.
+    expect(
+      await page.evaluate(() =>
+        document.documentElement.getAttribute('data-code-lines'),
+      ),
+    ).toBe('off');
+  });
+});

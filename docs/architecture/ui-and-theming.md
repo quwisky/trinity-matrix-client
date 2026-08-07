@@ -1,7 +1,8 @@
 # UI and theming
 
-Trinity's interface is built from four stacked layers and coloured by two orthogonal
-axes. This page covers both: what belongs in each layer, how the vendored spartan-ng
+Trinity's interface is built from four stacked layers, and its appearance from a set of
+orthogonal axes carried on `<html>` — two that colour it, three that size and annotate what
+it renders. This page covers both: what belongs in each layer, how the vendored spartan-ng
 components are generated and where they have deliberately diverged, and how the design
 token system works — including the one token trap that has caused the same bug more than
 once.
@@ -204,17 +205,33 @@ BEM class names with utilities). The remaining rules are warnings.
 Every colour and radius in the app is defined once, in
 [`apps/trinity/src/theme/variables.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/apps/trinity/src/theme/variables.scss).
 
-### Two orthogonal axes
+### Orthogonal axes, all carried on `<html>`
 
-| Axis    | Carrier                                                 | Default                                   |
-| ------- | ------------------------------------------------------- | ----------------------------------------- |
-| Mode    | the `.dark` **class** on `<html>` — presence means dark | light, the bare `:root` block             |
-| Palette | the `data-theme` **attribute** on `<html>`              | `trinity`, which sets no attribute at all |
+| Axis              | Carrier                                                   | Default                                          |
+| ----------------- | --------------------------------------------------------- | ------------------------------------------------ |
+| Mode              | the `.dark` **class** — presence means dark               | light, the bare `:root` block                    |
+| Palette           | the `data-theme` **attribute**                            | `trinity`, which sets no attribute at all        |
+| Text size         | an inline `font-size` **percentage**                      | 100%, written as no inline style at all          |
+| Code size         | the `--trinity-code-scale` **custom property** (a factor) | `1`, declared in `variables.scss` and unset here |
+| Code line numbers | the `data-code-lines` **attribute**                       | `auto`, which sets no attribute at all           |
 
-Both are owned by
+All are owned by
 [`ThemeService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/theme.service.ts)
-and persisted under `trinity.theme` and `trinity.palette`. The axes compose: any palette
-works in either mode.
+and persisted under `trinity.theme`, `trinity.palette`, `trinity.text-scale`,
+`trinity.code-scale` and `trinity.code-lines`. The axes compose: any palette works in either
+mode, and code size multiplies text size rather than replacing it.
+
+**Every axis writes nothing at its default.** An untouched app leaves no footprint on
+`<html>` at all, so the stylesheet is the single definition of what "Default" means and
+whatever the browser or a user stylesheet says still wins. Adding an axis means following
+that rule too — `applyX()` removes the class/attribute/property rather than writing an
+explicit default value.
+
+The last two exist because a rendered message body cannot carry a preference itself: its HTML
+is memoized per message and shared by every viewer (`sanitizedHtmlCache` in `message-view.ts`),
+so anything per-user has to reach it through CSS. What the markup may carry is
+content-derived only — a block records its own line count in `rows`, and the stylesheet
+decides what to do about it.
 
 ### Two token families
 

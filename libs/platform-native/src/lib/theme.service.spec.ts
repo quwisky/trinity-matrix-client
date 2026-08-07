@@ -394,6 +394,55 @@ describe('ThemeService code scale', () => {
     expect(codeScaleProp()).toBe('');
   });
 
+  it('reflects the line-number mode, and writes nothing for the automatic default', async () => {
+    const attr = () => document.documentElement.getAttribute('data-code-lines');
+    const svc = service();
+    await svc.init();
+
+    // The stylesheet's unqualified rule already IS the automatic behaviour, so the default
+    // must leave no attribute — otherwise there would be two places to change it.
+    expect(svc.codeLines()).toBe('auto');
+    expect(attr()).toBeNull();
+
+    svc.setCodeLines('always');
+    expect(attr()).toBe('always');
+    expect(set).toHaveBeenCalledWith({
+      key: 'trinity.code-lines',
+      value: 'always',
+    });
+
+    svc.setCodeLines('off');
+    expect(attr()).toBe('off');
+
+    svc.setCodeLines('auto');
+    expect(attr()).toBeNull();
+    document.documentElement.removeAttribute('data-code-lines');
+  });
+
+  it('restores a saved line-number mode, ignoring an unregistered one', async () => {
+    get.mockImplementation(({ key }: { key: string }) =>
+      Promise.resolve({
+        value: key === 'trinity.code-lines' ? 'always' : null,
+      }),
+    );
+    const restored = service();
+    await restored.init();
+    expect(restored.codeLines()).toBe('always');
+    document.documentElement.removeAttribute('data-code-lines');
+
+    get.mockImplementation(({ key }: { key: string }) =>
+      Promise.resolve({
+        value: key === 'trinity.code-lines' ? 'sometimes' : null,
+      }),
+    );
+    TestBed.resetTestingModule();
+    const ignored = service();
+    await ignored.init();
+
+    expect(ignored.codeLines()).toBe('auto');
+    expect(document.documentElement.getAttribute('data-code-lines')).toBeNull();
+  });
+
   it('is independent of the text scale, which shares the same root element', async () => {
     // Both axes write to <html>. Nothing in either apply path reads the other, and this is
     // the assertion that keeps it that way: a future refactor that resets the element

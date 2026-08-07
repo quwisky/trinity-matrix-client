@@ -9,7 +9,9 @@ import {
 } from '@trinity/helm/select';
 import {
   ThemeService,
+  TRINITY_CODE_LINE_MODES,
   TRINITY_CODE_SCALES,
+  type CodeLineMode,
   type CodeScale,
 } from '@trinity/platform-native';
 
@@ -49,6 +51,17 @@ export class CodeAppearanceBlockComponent {
   onCodeScaleChange(value: string | null | undefined): void {
     if (this.theme.codeScales.some((scale) => scale.id === value)) {
       this.theme.setCodeScale(value as CodeScale);
+    }
+  }
+
+  /** Label for a line-number mode id, for the same reason as {@link codeScaleLabel}. */
+  readonly codeLineLabel = (mode: string): string =>
+    TRINITY_CODE_LINE_MODES.find((entry) => entry.id === mode)?.label ?? mode;
+
+  /** Apply + persist when blocks show line numbers. */
+  onCodeLinesChange(value: string | null | undefined): void {
+    if (this.theme.codeLineModes.some((mode) => mode.id === value)) {
+      this.theme.setCodeLines(value as CodeLineMode);
     }
   }
 }

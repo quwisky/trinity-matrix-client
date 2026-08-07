@@ -33,3 +33,38 @@
   It is relative to Text size, so the two work together rather than one
   overriding the other.
 </p>
+
+<h2
+  id="appearance-code-lines-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Line numbers
+</h2>
+<div class="px-4 py-2">
+  <hlm-select
+    class="block"
+    data-testid="code-lines-select"
+    aria-labelledby="appearance-code-lines-heading"
+    [value]="theme.codeLines()"
+    [itemToString]="codeLineLabel"
+    (valueChange)="onCodeLinesChange($event)"
+  >
+    <hlm-select-trigger class="w-full">
+      <hlm-select-value placeholder="Select when to number lines" />
+    </hlm-select-trigger>
+    <hlm-select-content *hlmSelectPortal>
+      @for (mode of theme.codeLineModes; track mode.id) {
+        <hlm-select-item
+          [value]="mode.id"
+          [attr.data-testid]="'code-lines-' + mode.id"
+        >
+          {{ mode.label }}
+        </hlm-select-item>
+      }
+    </hlm-select-content>
+  </hlm-select>
+</div>
+<p class="block px-4 py-2 text-13 text-muted-foreground">
+  Numbers the lines of a code block, so you can point at one. They are never
+  part of the message: selecting or copying a block gives you the code alone.
+</p>
