@@ -60,12 +60,19 @@
     }
   }
 
+  // 85% is the optical correction (see `pre code` below); --trinity-code-scale is the
+  // user's Code size preference multiplying it. Both are relative, so code tracks
+  // Settings → Appearance → Text size as well, rather than replacing it.
+  // The `, 1` fallback is load-bearing, not defensive habit: an undefined custom property
+  // makes the whole declaration invalid at computed-value time, and because `font-size`
+  // inherits, it would resolve to `inherit` — silently restoring the 100% this very rule
+  // exists to avoid, anywhere this sheet renders without variables.scss.
   code {
     padding: 1px 5px;
     border-radius: var(--trinity-radius-sm);
     background: var(--trinity-rail);
     font-family: ui-monospace, monospace;
-    font-size: 85%;
+    font-size: calc(85% * var(--trinity-code-scale, 1));
   }
 
   // Inline code keeps its literal spacing under the container's `white-space: normal`.
