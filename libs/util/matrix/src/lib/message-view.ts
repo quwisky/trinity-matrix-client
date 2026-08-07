@@ -884,7 +884,7 @@ const CODE_LINE_CLASS = 'code-line';
 const LINE_NUMBER_THRESHOLD = 5;
 
 /**
- * Lines beyond which a block is left unwrapped entirely.
+ * Lines beyond which a single block is left unwrapped entirely.
  *
  * Wrapping runs on every block of every message, including a back-pagination's worth, and a
  * sender controls block size up to the event limit. Past this the block renders normally,
@@ -892,6 +892,17 @@ const LINE_NUMBER_THRESHOLD = 5;
  * nobody is counting lines in.
  */
 const MAX_NUMBERED_LINES = 500;
+
+/**
+ * Lines one message may have wrapped in total.
+ *
+ * The per-block cap above is defeated by splitting, exactly as the tokenization cap is:
+ * 125 blocks each one line under it is 62,000 spans and a two-megabyte serialization from a
+ * single 64 KiB event — and that string is what {@link sanitizedHtmlCache} then retains,
+ * bounded by entry count rather than bytes. This bounds their sum, so how the sender
+ * arranges the lines stops mattering.
+ */
+const MAX_NUMBERED_LINES_PER_MESSAGE = 2_000;
 
 /** `Node.TEXT_NODE`, spelled out because this module never touches a live `Node` global. */
 const NODE_TYPE_TEXT = 3;
@@ -1153,6 +1164,9 @@ function renderCodeBlocks(root: ParentNode): void {
   // message. It does NOT bound a whole back-pagination, where each event is sanitized
   // separately — see the note on MAX_HIGHLIGHT_CHARS_PER_MESSAGE.
   let budget = MAX_HIGHLIGHT_CHARS_PER_MESSAGE;
+  // The same argument applies to line wrapping, which adds DOM rather than spending CPU:
+  // a per-block cap is defeated by splitting just as a per-block tokenization cap is.
+  let lineBudget = MAX_NUMBERED_LINES_PER_MESSAGE;
   // Iterating `pre` rather than `pre > code[class]` because not every pass below needs a
   // language: a bare fence produces a `<code>` with no class at all, so a code-first query
   // cannot see it. Captioning and highlighting stay gated on the language individually.
@@ -1168,7 +1182,7 @@ function renderCodeBlocks(root: ParentNode): void {
       // those would starve blocks that could have been highlighted.
       const charged = highlightBlock(code, lang, source, budget);
       budget -= charged;
-      markCodeLines(pre, code, source, charged > 0);
+      lineBudget -= markCodeLines(pre, code, source, charged > 0, lineBudget);
     }
   }
 }
@@ -1235,22 +1249,23 @@ function markCodeLines(
   code: Element,
   source: string,
   highlighted: boolean,
-): void {
+  lineBudget: number,
+): number {
   if (!source) {
-    return;
+    return 0;
   }
   // A newline inside a child element would put two visual lines in one wrapper, and the
   // numbering would then lie. The highlighter guarantees no token spans a newline, so a
   // block it tokenized is safe; otherwise only a block with no element children is.
   if (!highlighted && code.children.length > 0) {
-    return;
+    return 0;
   }
   const lines = source.split('\n');
-  // A sender controls block size up to the event limit, and this pass runs on every block
-  // in every message of a back-pagination. Past the cap the block simply goes unnumbered
-  // rather than costing thousands of synchronous DOM nodes.
-  if (lines.length > MAX_NUMBERED_LINES) {
-    return;
+  // Two bounds, because a sender controls both the size of a block and how many of them a
+  // message contains. Declining, not truncating: half a numbered listing would be worse
+  // than an unnumbered one, and the block still renders normally either way.
+  if (lines.length > MAX_NUMBERED_LINES || lines.length > lineBudget) {
+    return 0;
   }
 
   const doc = code.ownerDocument;
@@ -1288,6 +1303,7 @@ function markCodeLines(
   if (lines.length > LINE_NUMBER_THRESHOLD) {
     pre.setAttribute('rows', String(lines.length));
   }
+  return lines.length;
 }
 
 /**

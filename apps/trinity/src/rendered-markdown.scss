@@ -88,7 +88,6 @@
     border-radius: var(--trinity-radius-sm);
     background: var(--trinity-rail);
     overflow-x: auto;
-    counter-reset: code-line;
 
     // The fenced block's declared language, captioned on hover the way GitHub does it.
     // Generated content from the `language` attribute the sanitizer writes: that keeps the
@@ -135,6 +134,12 @@
       padding: 0;
       background: none;
       color: var(--trinity-syntax-plain);
+
+      // Reset per `code`, not per `pre`. The Matrix allowlist lets a sender put two `<code>`
+      // children in one `<pre>`; resetting on the block would run one sequence across both,
+      // so the second listing would start at wherever the first ended — and `rows`, which
+      // the sanitizer writes on the `pre`, only records the last one.
+      counter-reset: code-line;
     }
 
     // Syntax tokens, emitted by the sanitizer's highlighter (message-view.ts ->

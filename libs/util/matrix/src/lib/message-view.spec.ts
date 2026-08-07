@@ -688,6 +688,23 @@ describe('sanitizeMatrixHtml — code line wrapping', () => {
     expect(pre.textContent).toBe('x\n'.repeat(600));
   });
 
+  it('bounds the wrapped lines per MESSAGE, not only per block', () => {
+    // The per-block cap is defeated by splitting, exactly as the tokenization budget above
+    // already documents. 125 blocks each one line under the block cap is a single 64 KiB
+    // event carrying ~62,000 spans, and that serialization is what the sanitize memo then
+    // retains — it is bounded by entry count, not by bytes.
+    const many = fence('x\n'.repeat(400)).repeat(10); // 10 blocks x 401 lines
+    const host = document.createElement('div');
+    host.innerHTML = sanitizeMatrixHtml(many);
+    const wrapped = host.querySelectorAll('.code-line').length;
+
+    expect(wrapped).toBeLessThanOrEqual(2_000);
+    // Declined wholesale rather than truncated: every block that IS wrapped is wrapped
+    // completely, so no listing is left half-numbered.
+    expect(wrapped % 401).toBe(0);
+    expect(wrapped).toBeGreaterThan(0);
+  });
+
   it('sends none of it on the wire', () => {
     // Presentation only. The outgoing path applies none of the render passes, and this is
     // the assertion that keeps the wrappers on that side of the line.
