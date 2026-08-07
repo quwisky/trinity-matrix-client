@@ -97,28 +97,44 @@
   // translucent `bg-destructive/10..30` tint Helm paints under its own destructive text:
   // being translucent, that tint takes whatever surface it lands on, so the same button
   // measured 5.37:1 over a card and 4.28:1 at rest over the rail. A colour cannot fix that,
-  // and it is not fixed here — the tint is pinned opaque instead; see --trinity-danger-tint.
+  // and it is not fixed here — the tint is pinned opaque instead; see --trinity-danger-tint-10.
   // The fill only owes 3:1 as a graphic, so it keeps the brighter #d92b31 — 4.02:1
   // against hover, 4.36:1 against the sidebar — with #fff on it at 4.84:1.
   --trinity-danger: #bf1e24;
   --trinity-danger-solid: #d92b31;
   --trinity-danger-solid-foreground: #fff;
 
-  // The backdrop under Helm's destructive buttons and menu items. OPAQUE, mixed over
-  // --card, because the generated `bg-destructive/10..30` is translucent and therefore
-  // takes whatever it is placed on: the same button measured 5.37:1 on a card and 4.28:1
-  // on the rail, where the surface is already dark enough that the tint pushed the label
-  // under AA. Pinning the mix means a destructive control reads identically wherever it
-  // sits, at the value the card was measured at. See spartan.css for how these reach the
-  // generated utilities.
-  --trinity-danger-tint: color-mix(
-    in oklab,
+  // The backdrop under Helm's destructive buttons, badges and menu items. OPAQUE, mixed
+  // over --card, because the generated `bg-destructive/10..30` is translucent and so takes
+  // whatever it is placed on: the same button measured 5.37:1 on a card and 4.28:1 on the
+  // rail, where the surface is already dark enough that the tint pushed the label under AA.
+  // Pinning the mix means a destructive control reads identically wherever it sits.
+  // Named by PERCENTAGE, not by role. Helm's strengths are per-component rather than
+  // per-state — a button lifts /10 to /20 on hover in light and /20 to /30 in dark, while a
+  // menu item and a badge stay put — so a rest/hover pair would have to be re-decided for
+  // every selector, and getting it wrong is invisible. This way each override maps to the
+  // number it literally declares. See spartan.css.
+  // `in srgb`, NOT `in oklab`, and that is the point rather than a detail: mixing a colour
+  // with `transparent` yields that colour at N% alpha, which the browser then composites in
+  // gamma-encoded sRGB. An sRGB mix over --card therefore reproduces today's pixels exactly
+  // — #fdecec / #fcdada / #fac7c7 light, #332b2f / #3c2a2d / #44282b dark — where oklab
+  // lands somewhere perceptually even but visibly different, and drops the dark ratios by
+  // about 0.2. Matches the existing precedent in media-bubble.component.scss.
+  // No dark override: --destructive and --card are both mode-aware, so one definition
+  // serves both modes and there is nothing to keep in step.
+  --trinity-danger-tint-10: color-mix(
+    in srgb,
     var(--destructive) 10%,
     var(--card)
   );
-  --trinity-danger-tint-strong: color-mix(
-    in oklab,
+  --trinity-danger-tint-20: color-mix(
+    in srgb,
     var(--destructive) 20%,
+    var(--card)
+  );
+  --trinity-danger-tint-30: color-mix(
+    in srgb,
+    var(--destructive) 30%,
     var(--card)
   );
 
@@ -216,20 +232,6 @@
   --trinity-danger: #fc8181;
   --trinity-danger-solid: #ef4444; // shadcn's *light* destructive red, reused as a fill
   --trinity-danger-solid-foreground: #1a1a1a;
-
-  // Dark takes the heavier mix Helm already asked for here (/20 and /30 rather than /10
-  // and /20), so the control keeps the weight it was designed with. Opaque for the same
-  // reason as light: the tint must not inherit the surface it lands on.
-  --trinity-danger-tint: color-mix(
-    in oklab,
-    var(--destructive) 20%,
-    var(--card)
-  );
-  --trinity-danger-tint-strong: color-mix(
-    in oklab,
-    var(--destructive) 30%,
-    var(--card)
-  );
 
   // Helm surfaces (dark). Elevated surfaces track the Trinity palette: cards/popovers
   // are the sidebar tone, the muted/secondary/accent layer is one step lighter

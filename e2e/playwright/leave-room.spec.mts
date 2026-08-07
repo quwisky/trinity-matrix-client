@@ -136,8 +136,11 @@ test.describe('Leave a room', () => {
  * Helm paints `bg-destructive/10..30` under its own destructive text, which is translucent
  * and therefore takes the surface beneath it — so the same control measured 5.37:1 over a
  * card and 4.28:1 at rest over the rail, under AA. The tint is pinned opaque against that
- * (`--trinity-danger-tint`), and the property worth guarding is not "above 4.5 here" but
+ * (`--trinity-danger-tint-*`), and the property worth guarding is not "above 4.5 here" but
  * "the same everywhere": a ratio that moves with placement is the bug coming back.
+ *
+ * This item is on `--popover`, which passed even before the fix, so the ratio assertions
+ * below are the weaker half. The opacity check is the one that would have gone red.
  */
 test.describe('Destructive menu item contrast', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -211,6 +214,24 @@ test.describe('Destructive menu item contrast', () => {
         return (hi + 0.05) / (lo + 0.05);
       });
 
+    /** Whether the element's own background is fully opaque, asked of the browser. */
+    const isOpaque = (testId: string) =>
+      page.getByTestId(testId).evaluate((el) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 1;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) {
+          throw new Error('no 2d context');
+        }
+        // Painted rather than string-matched: `backgroundColor` serializes as rgb(), rgba()
+        // or oklab() depending on how it was written, and a regex over the numbers quietly
+        // reports "opaque" for any form it does not recognise.
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = getComputedStyle(el).backgroundColor;
+        ctx.fillRect(0, 0, 1, 1);
+        return ctx.getImageData(0, 0, 1, 1).data[3] === 255;
+      });
+
     for (const scheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme: scheme });
       await expect
@@ -221,6 +242,14 @@ test.describe('Destructive menu item contrast', () => {
         )
         .toBe(scheme === 'dark');
 
+      // Park the pointer off the item first. Playwright leaves it wherever the previous
+      // iteration put it, so without this the second pass measures "rest" while still
+      // hovering — and reports the hover figure as both.
+      await page.mouse.move(0, 0);
+
+      // Deliberately no "and is therefore untinted" assertion here: CDK focuses the first
+      // item when the menu opens, and the focus tint is pinned opaque by this same change,
+      // so the unhovered state is legitimately painted. Whatever it is, it still owes AA.
       const rest = await contrastOf('room-leave');
       expect(
         rest,
@@ -234,15 +263,8 @@ test.describe('Destructive menu item contrast', () => {
       // This item is on --popover either way, where the translucent tint always passed — a
       // ratio alone would have stayed green through the entire bug. What was wrong is that
       // the tint took its surface AT ALL, and opacity states that directly: revert to
-      // `bg-destructive/10` and the alpha here drops below 1.
-      const alpha = await page
-        .getByTestId('room-leave')
-        .evaluate(
-          (el) =>
-            (getComputedStyle(el).backgroundColor.match(/[\d.]+/g) ?? [])[3] ??
-            '1',
-        );
-      expect(Number(alpha), `${scheme}: the hover tint must be opaque`).toBe(1);
+      // `bg-destructive/10` and this goes false.
+      await expect.poll(() => isOpaque('room-leave')).toBe(true);
 
       const hovered = await contrastOf('room-leave');
       expect(

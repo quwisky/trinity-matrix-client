@@ -201,14 +201,16 @@
              message on this device. Kept ghost and `sm` beneath the sign-in actions so it
              reads as the last resort rather than this screen's primary action.
 
-             Deliberately NOT `variant="destructive"`. Its HOVER tint
-             (`hover:bg-destructive/20`) puts the danger label at 4.26-4.29:1 in the light
-             palettes — under AA, and precisely while the label is being read. Its RESTING
-             tint passes at 4.82-4.85:1, so the failure is invisible until the pointer
-             arrives. The 5.37:1 published for that variant in
-             apps/trinity/src/theme/spartan.css was measured over `--card`; this card is
-             `--trinity-sidebar` (see login.page.scss). Untinted, the worst of the eight
-             palette x mode x rest/hover states is 4.99:1 (amethyst, light, hover).
+             Deliberately NOT `variant="destructive"`, but no longer for the reason this
+             comment first gave. That variant's tint used to take whatever surface it sat
+             on, and on this card — `--trinity-sidebar`, not `--card`; see login.page.scss —
+             it put the label at 4.26-4.29:1 on hover, under AA. The tint is pinned opaque
+             now (`--trinity-danger-tint-*`), so it would pass here too.
+             What stands is the weighting: a tinted, filled control reads as this screen's
+             primary action, and the thing someone came here to do is sign in. Ghost keeps
+             the escape hatch unmistakably red without competing with the button above it.
+             Untinted, the worst of the eight palette x mode x rest/hover states is 4.99:1
+             (amethyst, light, hover).
 
              `hover:text-danger` is load-bearing: without it ghost's own
              `hover:text-foreground` wins and repaints the label to rgb(9,9,11) in light and
