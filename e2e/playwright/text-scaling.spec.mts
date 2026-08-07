@@ -406,7 +406,6 @@ test.describe('Code line numbers', () => {
     // and nothing else — no digits in the text, and the <pre> matches its <code> exactly.
     const text = await longBlock.evaluate((el) => el.textContent ?? '');
     expect(text).toBe(long);
-    expect(text).not.toMatch(/^\s*1/);
 
     await page.getByTestId('open-settings').click();
     await page.getByTestId('settings-nav-appearance').click();

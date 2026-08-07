@@ -210,7 +210,12 @@
         // through that strip. This pulls the opaque box out to the border edge.
         inset-inline-start: -10px;
         z-index: 1;
-        min-width: 2ch;
+
+        // 3ch, not 2: each number sizes to its own digits, so a 2ch floor lets the gutter
+        // widen at line 100 and jog the code 8px right mid-block. MAX_NUMBERED_LINES caps a
+        // block at three digits, so this is a uniform column for anything that can be
+        // numbered at all.
+        min-width: 3ch;
 
         // Padding, NOT margin, for the gap before the code: it has to be part of the OPAQUE
         // box or the text slides through it. Sticky content does not push the line along —
@@ -218,7 +223,7 @@
         padding-inline: 10px 12px;
         background: var(--trinity-rail);
         color: var(--trinity-text-muted);
-        text-align: right;
+        text-align: end;
 
         // The line's text slides UNDER a stuck number rather than pushing it along, so the
         // background above is load-bearing, and this stops a drag-select over the block

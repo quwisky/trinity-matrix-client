@@ -688,12 +688,31 @@ describe('sanitizeMatrixHtml — code line wrapping', () => {
     expect(pre.textContent).toBe('x\n'.repeat(600));
   });
 
+  it('does not count the trailing newline every real fence carries', () => {
+    // marked and commonmark both close a fence with a newline inside `<code>`, so this is
+    // the ordinary case rather than an edge one. Counting it numbered a blank row at the
+    // foot of every block and tripped the threshold a line early — a five-line block was
+    // numbered under a setting that says "over 5 lines".
+    const pre = render(fence('1\n2\n3\n4\n5\n'));
+
+    expect(lineCount(pre)).toBe(5);
+    expect(pre.hasAttribute('rows')).toBe(false);
+    expect(pre.textContent).toBe('1\n2\n3\n4\n5\n');
+
+    const six = render(fence('1\n2\n3\n4\n5\n6\n'));
+    expect(six.getAttribute('rows')).toBe('6');
+    expect(lineCount(six)).toBe(6);
+    // No empty wrapper trailing the last real line.
+    const wrappers = [...six.querySelectorAll('.code-line')];
+    expect(wrappers[wrappers.length - 1]?.textContent).toBe('6');
+  });
+
   it('bounds the wrapped lines per MESSAGE, not only per block', () => {
     // The per-block cap is defeated by splitting, exactly as the tokenization budget above
     // already documents. 125 blocks each one line under the block cap is a single 64 KiB
     // event carrying ~62,000 spans, and that serialization is what the sanitize memo then
     // retains — it is bounded by entry count, not by bytes.
-    const many = fence('x\n'.repeat(400)).repeat(10); // 10 blocks x 401 lines
+    const many = fence('x\n'.repeat(400)).repeat(10); // 10 blocks x 400 lines
     const host = document.createElement('div');
     host.innerHTML = sanitizeMatrixHtml(many);
     const wrapped = host.querySelectorAll('.code-line').length;
@@ -701,7 +720,7 @@ describe('sanitizeMatrixHtml — code line wrapping', () => {
     expect(wrapped).toBeLessThanOrEqual(2_000);
     // Declined wholesale rather than truncated: every block that IS wrapped is wrapped
     // completely, so no listing is left half-numbered.
-    expect(wrapped % 401).toBe(0);
+    expect(wrapped % 400).toBe(0);
     expect(wrapped).toBeGreaterThan(0);
   });
 

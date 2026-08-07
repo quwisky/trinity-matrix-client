@@ -73,7 +73,11 @@ Code blocks are already set slightly smaller than the text around them. That is 
 preference but a correction: a monospace face looks bigger than the surrounding font at the
 same size, so without it a pasted listing dominates the conversation.
 
-**Line numbers.** Off, Blocks over 5 lines (the default), or Always. Numbering every snippet
+**Line numbers.** Off, Blocks over 5 lines (the default), or Always. "Always" has two
+limits worth knowing, because they are the cases you are most likely to try it on: a block
+longer than 500 lines is left unnumbered — the gutter would cost more than it is worth on a
+listing nobody is counting by eye — and so is a block whose sender put formatting inside it,
+where the lines cannot be identified reliably enough to number honestly. Numbering every snippet
 would put a gutter beside two-line pastes, which is noise, so by default numbers appear only
 once a block is long enough to be worth pointing at by line. The numbers are never part of
 the message: selecting or copying a block gives you the code alone, and they never appear in

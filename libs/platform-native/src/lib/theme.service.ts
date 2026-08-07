@@ -124,7 +124,7 @@ const DARK_CLASS = 'dark';
 const PALETTE_ATTR = 'data-theme';
 
 /**
- * Owns the app's appearance across four orthogonal axes, each reflected on <html>:
+ * Owns the app's appearance across five orthogonal axes, each reflected on <html>:
  *   • mode       — light/dark: persists the user's preference, resolves `system` against
  *     `prefers-color-scheme`, and toggles {@link DARK_CLASS} on the document root;
  *   • palette    — the named colour scheme: persists the choice and reflects it as the

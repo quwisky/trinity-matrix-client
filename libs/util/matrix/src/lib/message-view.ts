@@ -1261,10 +1261,16 @@ function markCodeLines(
     return 0;
   }
   const lines = source.split('\n');
+  // marked puts a trailing newline inside `<code>`, and so does commonmark, so very nearly
+  // every real fence ends with one — from this client and from Element alike. Counting it
+  // would number a phantom blank row at the end of every block and fire the threshold a
+  // line early, numbering a five-line block under a setting labelled "over 5 lines".
+  const trailingNewline = source.endsWith('\n');
+  const count = trailingNewline ? lines.length - 1 : lines.length;
   // Two bounds, because a sender controls both the size of a block and how many of them a
   // message contains. Declining, not truncating: half a numbered listing would be worse
   // than an unnumbered one, and the block still renders normally either way.
-  if (lines.length > MAX_NUMBERED_LINES || lines.length > lineBudget) {
+  if (count > MAX_NUMBERED_LINES || count > lineBudget) {
     return 0;
   }
 
@@ -1297,13 +1303,18 @@ function markCodeLines(
       }
     });
   }
-  flush();
+  // Skipped for a trailing newline: its final segment is empty, and flushing it would be
+  // the phantom row. The `\n` text node itself has already been emitted, so `textContent`
+  // stays byte-identical either way.
+  if (!trailingNewline) {
+    flush();
+  }
 
   code.replaceChildren(...wrapped);
-  if (lines.length > LINE_NUMBER_THRESHOLD) {
-    pre.setAttribute('rows', String(lines.length));
+  if (count > LINE_NUMBER_THRESHOLD) {
+    pre.setAttribute('rows', String(count));
   }
-  return lines.length;
+  return count;
 }
 
 /**
