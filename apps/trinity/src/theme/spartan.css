@@ -125,3 +125,50 @@
   > ng-icon {
   color: var(--trinity-danger);
 }
+
+/*
+ * Make the destructive TINT opaque, for the other half of the same problem.
+ *
+ * Splitting the text off --destructive fixed the colour but not the arithmetic: Helm paints
+ * `bg-destructive/10..30`, which is TRANSLUCENT, so the contrast a destructive control
+ * achieves depends on whatever it happens to be sitting on. Measured with the same
+ * composited-pixel method as the figures above, one identical button ranged from 5.37:1 on
+ * --card down to 4.28:1 at REST on --trinity-rail and 3.84:1 on hover there — the sidebar
+ * and rail are dark enough in light mode that the tint pushes the label under AA, while the
+ * same button over a card is comfortable. The failures were real: the room-list and
+ * sidebar-panel destructive items sit on exactly those surfaces.
+ *
+ * Retoning --destructive cannot fix that, because the problem is the SURFACE showing
+ * through, not the hue. So the tint is pinned to an opaque mix over --card
+ * (--trinity-danger-tint in variables.scss): every destructive control now reads as it did
+ * on a card, wherever it is placed, and adding one to a new surface can no longer quietly
+ * fail. Dark keeps the heavier /20 and /30 mixes Helm asks for there.
+ *
+ * UNLAYERED for the same reason as the block above, and the list must likewise cover every
+ * emitted variant. Re-derive it after running the spartan CLI:
+ *
+ *   pnpm exec nx build trinity
+ *   tr '}' '\n' < www/styles-*.css | grep 'bg-destructive'
+ */
+.bg-destructive\/10,
+[data-variant='destructive'].data-\[variant\=destructive\]\:focus\:bg-destructive\/10:focus,
+[data-variant='destructive'].data-\[variant\=destructive\]\:hover\:bg-destructive\/10:hover {
+  background-color: var(--trinity-danger-tint);
+}
+
+.hover\:bg-destructive\/20:hover,
+.\[a\]\:hover\:bg-destructive\/20:is(a):hover {
+  background-color: var(--trinity-danger-tint-strong);
+}
+
+.dark .dark\:bg-destructive\/20,
+.dark
+  [data-variant='destructive'].dark\:data-\[variant\=destructive\]\:focus\:bg-destructive\/20:focus {
+  background-color: var(--trinity-danger-tint);
+}
+
+.dark .dark\:hover\:bg-destructive\/30:hover,
+.dark
+  [data-variant='destructive'].dark\:data-\[variant\=destructive\]\:hover\:bg-destructive\/20:hover {
+  background-color: var(--trinity-danger-tint-strong);
+}

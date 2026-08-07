@@ -275,17 +275,31 @@ Trinity splits danger into three roles instead:
 `spartan.css` maps `--color-danger: var(--trinity-danger)`, which is what makes the
 `text-danger` utility exist.
 
-Each value was measured against the **worst backdrop the role actually lands on**. Two of
-those are easy to overlook: `--trinity-hover`, because a row that recolours on hover is where
-a danger label is usually read, and the translucent `bg-destructive/10..30` tint Helm paints
-under its own destructive text. `#bf1e24` clears 4.5:1 on chat, sidebar, rail and hover, and
-on every tint, in both palettes — worst case 4.61:1.
+Each value was measured against the **worst backdrop the role actually lands on**. One of
+those is easy to overlook: `--trinity-hover`, because a row that recolours on hover is where a
+danger label is usually read. `#bf1e24` clears 4.5:1 on chat, sidebar, rail and hover in both
+palettes — worst case 4.83:1, on the rail.
 
 `--trinity-active`, the selected-row tone, was **not** swept and reaches only 4.11–4.25:1. No
 danger text lands on a selected row today; do not put one there without re-measuring.
 
-`--destructive` itself is left alone and stays the tint, border and ring source. That is
-exactly what the token is for.
+!!! warning "A translucent tint has no fixed contrast"
+
+    That sweep covers the token drawn straight onto a surface. It does **not** cover the
+    `bg-destructive/10..30` tint Helm paints under its own destructive text, and no choice of
+    colour could: the tint is translucent, so it takes whatever it is placed on. The same
+    button measured **5.37:1 over `--card` and 4.28:1 at rest over `--trinity-rail`**, where
+    the surface is already dark enough in light mode to push the label under AA — and the
+    room-list and sidebar-panel destructive items sit on exactly those surfaces.
+
+    So the tint is pinned **opaque**, as `--trinity-danger-tint` mixed over `--card`. Every
+    destructive control now reads at the value the card was measured at wherever it is
+    placed, and putting one on a new surface can no longer quietly fail. The check that
+    matters is therefore that the ratio is *the same on every surface*, not merely above 4.5
+    on the one you happened to try.
+
+`--destructive` itself is left alone and stays the border and ring source, and the colour the
+tint is mixed from. That is exactly what the token is for.
 
 #### The unlayered override, and how to regenerate its selector list
 
