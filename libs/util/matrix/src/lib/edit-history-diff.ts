@@ -165,7 +165,16 @@ function markAdded(
   }
 }
 
-/** Put the removed text back, struck through, where it used to sit. */
+/**
+ * Put the removed text back, struck through, where it used to sit.
+ *
+ * Note for code blocks: the removed run is inserted as ONE `<del>` at a single offset, so a
+ * removal spanning several lines lands inside one `<span class="code-line">` and renders as
+ * several lines within a single wrapper. Nothing here re-sanitizes, so the wrappers cannot
+ * be re-derived. Line numbering is therefore suppressed for a diffed revision in
+ * rendered-markdown.scss rather than being allowed to under-count — the wrappers are inline
+ * and contribute nothing else, so the diff renders as it did before numbering existed.
+ */
 function markRemoved(
   root: HTMLElement,
   spans: { node: Text; start: number; end: number }[],

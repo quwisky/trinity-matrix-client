@@ -680,6 +680,14 @@ describe('sanitizeMatrixHtml — code line wrapping', () => {
     expect(pre.hasAttribute('rows')).toBe(false);
   });
 
+  it('wraps exactly at the cap and declines one line past it', () => {
+    // Pinned at the boundary, not merely somewhere beyond it: a regression that tightened
+    // the cap to 50 would silently stop numbering every ordinary listing while a test that
+    // only checked 600 lines stayed green.
+    expect(lineCount(render(fence('x\n'.repeat(500))))).toBe(500);
+    expect(lineCount(render(fence('x\n'.repeat(501))))).toBe(0);
+  });
+
   it('leaves a block past the cap unwrapped rather than building thousands of nodes', () => {
     const pre = render(fence('x\n'.repeat(600)));
 

@@ -1,5 +1,4 @@
 import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -112,12 +111,13 @@ describe('CodeAppearanceBlockComponent', () => {
     expect(setCodeLines).toHaveBeenCalledTimes(1);
   });
 
-  it('offers every registered scale as an option', async () => {
-    await renderBlock();
-
-    // Not the rendered options — those need the overlay. The registry is what the template
-    // iterates, so this pins that a newly registered scale reaches the picker.
-    expect(TestBed.inject(ThemeService).codeScales.map((s) => s.id)).toEqual([
+  it('lists the three sizes smallest first', () => {
+    // The registry only — deliberately NOT rendered. The option list lives in a CDK overlay
+    // that only exists once opened, which jsdom cannot do, so a render() here would assert
+    // nothing about the picker; the earlier version of this test injected the mock and
+    // compared its own input to itself. That the template iterates this registry is covered
+    // in e2e, where the dropdown can actually be opened.
+    expect(TRINITY_CODE_SCALES.map((scale) => scale.id)).toEqual([
       'smaller',
       'default',
       'larger',

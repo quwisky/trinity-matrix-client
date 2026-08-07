@@ -250,6 +250,18 @@
     content: none;
   }
 
+  // Never number a diffed revision, in any of the three states — hence the `:root` here,
+  // which matches the specificity of the `always` rule above and, coming later, wins.
+  // annotateRevision inserts a removed run as one `<del>` at a single offset, so a removal
+  // spanning lines lands inside ONE wrapper and renders as several lines under a single
+  // number. That is exactly the lie markCodeLines refuses to tell when it declines a block
+  // whose newline sits inside a child element — reintroduced downstream by a module that
+  // does not re-sanitize. Suppressing the numbers leaves the diff rendering exactly as it
+  // did before line numbers existed; the wrappers are inline and add nothing.
+  :root &.revision__text pre .code-line::before {
+    content: none;
+  }
+
   // Reachable now that `gfm` is pinned on and outgoing HTML carries these: the file
   // had no rules for them even though the Matrix allowlist has always permitted them.
   table {

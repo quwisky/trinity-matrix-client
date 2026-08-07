@@ -106,6 +106,27 @@ describe('code highlighting', () => {
     expect(code.querySelector('[style]')).toBeNull();
   });
 
+  it('drops a class the sender put on their own markup, on any element', () => {
+    // The guard below cannot express this: `highlight()` escapes < and >, so its input can
+    // never contain sender markup, and it only inspects <span>. This feeds real markup
+    // straight to the sanitizer and checks EVERY element, which is what actually fails if
+    // ALLOWED_CLASS regresses — the defence is DOMPurify's, not the highlighter's.
+    const host = document.createElement('div');
+    host.innerHTML = sanitizeMatrixHtml(
+      '<pre><code class="language-typescript">' +
+        '<span class="evil">const</span> <a class="mx-spoiler evil" href="https://e.example">a</a>' +
+        '</code></pre>',
+    );
+
+    for (const el of host.querySelectorAll('*')) {
+      for (const token of el.className.toString().split(' ').filter(Boolean)) {
+        expect(token).toMatch(
+          /^(?:tok-[a-z]+|code-line|language-[\w-]+|mx-spoiler)$/,
+        );
+      }
+    }
+  });
+
   it('emits only token classes, never anything the sender could have injected', () => {
     const code = highlight('typescript', 'const a = 1;');
 

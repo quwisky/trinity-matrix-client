@@ -428,6 +428,12 @@ describe('ThemeService code scale', () => {
     const restored = service();
     await restored.init();
     expect(restored.codeLines()).toBe('always');
+    // The signal alone is not the point — deleting applyCodeLines() from init() left the
+    // previous version of this test green, because a missing attribute reads the same as a
+    // correctly-absent one.
+    expect(document.documentElement.getAttribute('data-code-lines')).toBe(
+      'always',
+    );
     document.documentElement.removeAttribute('data-code-lines');
 
     get.mockImplementation(({ key }: { key: string }) =>
