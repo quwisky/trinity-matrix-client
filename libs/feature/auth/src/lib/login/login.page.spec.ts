@@ -359,6 +359,25 @@ describe('LoginPage', () => {
       expect(button()?.disabled).toBe(true);
     });
 
+    it('does not use the Helm destructive variant, whose tint drops the label under AA', async () => {
+      // The fast canary for the one wrong edit this button attracts: reaching for
+      // `variant="destructive"`. That variant is the only thing in hlm-button that emits
+      // `bg-destructive`, and its hover tint puts the danger label at 4.26-4.29:1 on this
+      // card's --trinity-sidebar surface — under AA. Deliberately a NEGATIVE assertion: any
+      // restyling that keeps the label readable without the tint still passes, so this does
+      // not red on a legitimate refactor. What the label positively renders as is measured
+      // where it can actually be seen, in clear-all-data.spec.mts — jsdom has no Tailwind
+      // and no theme tokens, so nothing here can check a colour.
+      const { fixture } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+      );
+      const button: HTMLButtonElement = fixture.nativeElement.querySelector(
+        '[data-testid="clear-all-data"]',
+      );
+
+      expect(button.className).not.toContain('bg-destructive');
+    });
+
     it('erases nothing when the word is mistyped, and says so', async () => {
       // Silence here is indistinguishable from a broken button, and this is the screen
       // someone reaches when things are already broken.
