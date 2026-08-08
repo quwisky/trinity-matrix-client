@@ -40,10 +40,11 @@ export interface ManagedChild {
  * the space for *everyone*, and nothing wrote it — so a space owner could curate their own
  * view and had no way to curate the space.
  *
- * The list is driven from synced state via {@link SpaceChildrenService.childLinks}, so a
- * move or a toggle re-renders from the echo rather than from optimistic local edits: what
- * is on screen is what the server has. Names come from the open space's hierarchy where
- * available, since a child the viewer has not joined has no local room to read a name off.
+ * The list is driven from synced state via {@link SpaceChildrenService.linksFor}, so a move
+ * or a toggle re-renders from the echo rather than from optimistic local edits: what is on
+ * screen is what the server has, whoever changed it. Names come from the open space's
+ * hierarchy where available, since a child the viewer has not joined has no local room to
+ * read a name off.
  */
 @Component({
   selector: 'trn-manage-space-rooms',
@@ -65,26 +66,25 @@ export class ManageSpaceRoomsComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** Bumped after every write so the state-derived list re-reads. */
-  private readonly revision = signal(0);
   /** The child currently being written, so its row can show as busy. */
   readonly busyChildId = signal<string | null>(null);
 
   readonly childList = computed<ManagedChild[]>(() => {
-    this.revision();
     const spaceId = this.spaceId();
     const names = this.nameLookup();
-    return this.children.childLinks(spaceId).map((link) => {
-      const known = names.get(link.childId);
-      const name = known?.name ?? link.childId;
-      return {
-        childId: link.childId,
-        name,
-        initial: known?.initial ?? initialOf(name),
-        avatarMxc: known?.avatarMxc ?? null,
-        suggested: link.suggested,
-      };
-    });
+    return this.children
+      .linksFor(spaceId)()
+      .map((link) => {
+        const known = names.get(link.childId);
+        const name = known?.name ?? link.childId;
+        return {
+          childId: link.childId,
+          name,
+          initial: known?.initial ?? initialOf(name),
+          avatarMxc: known?.avatarMxc ?? null,
+          suggested: link.suggested,
+        };
+      });
   });
 
   /**
@@ -173,9 +173,10 @@ export class ManageSpaceRoomsComponent {
     this.busyChildId.set(childId);
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
+        // Nothing to nudge: the list follows the sync echo. A post-write bump could never
+        // have worked anyway — `sendStateEvent` is a bare PUT with no local echo, so at
+        // this instant the room state still holds the PRE-write content.
         this.busyChildId.set(null);
-        // The write has landed but the state echo is a sync away, so nudge the read.
-        this.revision.update((value) => value + 1);
       },
       error: () => {
         this.busyChildId.set(null);

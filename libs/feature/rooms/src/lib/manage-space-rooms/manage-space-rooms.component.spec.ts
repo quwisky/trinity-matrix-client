@@ -31,19 +31,30 @@ async function build(
   const moveChildBefore = over.moveChildBefore ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
+  /**
+   * The links the service is projecting, as a signal a test can DRIVE.
+   *
+   * This was a closure returning a fresh array from a fixture, which no test could change
+   * — so the component's staleness was structurally invisible here. Anything asserting
+   * that the list follows the server needs to be able to move the server.
+   */
+  const links = signal<
+    { childId: string; via: string[]; suggested: boolean; order: string }[]
+  >(
+    (opts.links ?? []).map((link) => ({
+      childId: link.childId,
+      via: ['hs'],
+      suggested: link.suggested ?? false,
+      order: '',
+    })),
+  );
   const { fixture, container } = await render(ManageSpaceRoomsComponent, {
     inputs: { spaceId: '!s:hs', spaceName: 'Design' },
     providers: [
       MockProvider(SpaceChildrenService, {
         setSuggested,
         moveChildBefore,
-        childLinks: () =>
-          (opts.links ?? []).map((link) => ({
-            childId: link.childId,
-            via: ['hs'],
-            suggested: link.suggested ?? false,
-            order: '',
-          })),
+        linksFor: () => links.asReadonly(),
       }),
       MockProvider(RoomsService, {
         rooms: signal(
@@ -73,6 +84,8 @@ async function build(
   return {
     cmp: fixture.componentInstance,
     container,
+    fixture,
+    links,
     setSuggested,
     moveChildBefore,
     close,
@@ -233,5 +246,28 @@ describe('ManageSpaceRoomsComponent', () => {
     cmp.toggleSuggested('!a:hs', true);
 
     expect(cmp.busyChildId()).toBeNull();
+  });
+
+  it('follows the projected links without a write of its own', async () => {
+    // The change arriving from sync — another device, another admin, or this device's own
+    // write echoing back. Before the counter came out, the only thing that re-read the
+    // list was this component's own write callback.
+    const { cmp, links } = await build({
+      links: [{ childId: '!a:hs' }],
+      rooms: [
+        { id: '!a:hs', name: 'Alpha' },
+        { id: '!b:hs', name: 'Bravo' },
+      ],
+    });
+
+    links.update((current) => [
+      ...current,
+      { childId: '!b:hs', via: ['hs'], suggested: false, order: '' },
+    ]);
+
+    expect(cmp.childList().map((child) => child.name)).toEqual([
+      'Alpha',
+      'Bravo',
+    ]);
   });
 });
