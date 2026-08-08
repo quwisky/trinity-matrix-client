@@ -607,6 +607,163 @@ describe('sanitizeMatrixHtml — code highlighting', () => {
   });
 });
 
+describe('sanitizeMatrixHtml — code line wrapping', () => {
+  /** Parse a sanitized block and hand back its `<pre>`. */
+  function render(html: string): HTMLElement {
+    const host = document.createElement('div');
+    host.innerHTML = sanitizeMatrixHtml(html);
+    return host.querySelector('pre') as HTMLElement;
+  }
+
+  const fence = (source: string, lang = '') =>
+    `<pre><code${lang ? ` class="language-${lang}"` : ''}>${source}</code></pre>`;
+
+  const lineCount = (pre: HTMLElement) =>
+    pre.querySelectorAll('.code-line').length;
+
+  /** The `rows` marker now lives on the `code`, so each block answers for itself. */
+  const rowsOf = (pre: HTMLElement) =>
+    pre.querySelector('code')?.getAttribute('rows') ?? null;
+
+  it('reproduces the source character for character', () => {
+    // The invariant everything else here rests on. The wrappers must add no text: the
+    // edit-history diff compares the TEXT of two rendered revisions, so a single stray
+    // character would make every edit of a message containing code read as a change.
+    const source = 'a = 1\n\n  b = 2\n';
+    const pre = render(fence(source));
+
+    expect(pre.textContent).toBe(source);
+  });
+
+  it('keeps the newlines outside the wrappers, as siblings', () => {
+    // Not tidiness. Under `pre`'s `white-space: pre` these newlines are what break the
+    // lines, which is what lets the wrappers stay inline — a block-level wrapper would turn
+    // each one into a blank line of its own.
+    const pre = render(fence('a\nb'));
+    const code = pre.querySelector('code') as HTMLElement;
+
+    const direct = [...code.childNodes].filter((n) => n.nodeType === 3);
+    expect(direct.map((n) => n.textContent)).toEqual(['\n']);
+    expect(lineCount(pre)).toBe(2);
+  });
+
+  it('wraps a block with no language, which the highlighter never sees', () => {
+    // The reason the iteration was restructured: a bare fence carries no class at all, so
+    // the old code-first query could not reach it. Numbering must not depend on whether we
+    // happen to ship a grammar.
+    expect(lineCount(render(fence('one\ntwo\nthree')))).toBe(3);
+  });
+
+  it('marks a block past the threshold, and leaves a short one unmarked', () => {
+    // Content-derived, never preference-derived: the sanitized HTML is memoized per message
+    // and shared by every viewer, so a per-user choice must stay in CSS.
+    expect(rowsOf(render(fence('1\n2\n3\n4\n5')))).toBeNull();
+    expect(rowsOf(render(fence('1\n2\n3\n4\n5\n6')))).toBe('6');
+  });
+
+  it('uses `rows`, an attribute Angular will not strip', () => {
+    // Angular's [innerHTML] sanitizer runs again at the render leaf against a fixed
+    // allowlist. `numbered` and `data-lines` are silently dropped there — invisible to this
+    // spec, which parses the sanitizer's string output, and only visible in a browser.
+    const pre = render(fence('1\n2\n3\n4\n5\n6'));
+
+    expect(rowsOf(pre)).toBe('6');
+    expect(pre.outerHTML).not.toContain('numbered');
+    expect(pre.outerHTML).not.toContain('data-');
+  });
+
+  it('leaves a block whose newline is inside a child element alone', () => {
+    // Grouping between TOP-LEVEL newlines would put two visual lines in one wrapper here,
+    // and the numbering would then lie. The Matrix allowlist permits inline markup inside
+    // <code>, so a sender can produce exactly this.
+    const pre = render(
+      '<pre><code><span class="mx-spoiler">a\nb</span></code></pre>',
+    );
+
+    expect(lineCount(pre)).toBe(0);
+    expect(pre.hasAttribute('rows')).toBe(false);
+  });
+
+  it('wraps exactly at the cap and declines one line past it', () => {
+    // Pinned at the boundary, not merely somewhere beyond it: a regression that tightened
+    // the cap to 50 would silently stop numbering every ordinary listing while a test that
+    // only checked 600 lines stayed green.
+    expect(lineCount(render(fence('x\n'.repeat(500))))).toBe(500);
+    expect(lineCount(render(fence('x\n'.repeat(501))))).toBe(0);
+  });
+
+  it('leaves a block past the cap unwrapped rather than building thousands of nodes', () => {
+    const pre = render(fence('x\n'.repeat(600)));
+
+    expect(lineCount(pre)).toBe(0);
+    expect(rowsOf(pre)).toBeNull();
+    expect(pre.textContent).toBe('x\n'.repeat(600));
+  });
+
+  it('does not count the trailing newline every real fence carries', () => {
+    // marked and commonmark both close a fence with a newline inside `<code>`, so this is
+    // the ordinary case rather than an edge one. Counting it numbered a blank row at the
+    // foot of every block and tripped the threshold a line early — a five-line block was
+    // numbered under a setting that says "over 5 lines".
+    const pre = render(fence('1\n2\n3\n4\n5\n'));
+
+    expect(lineCount(pre)).toBe(5);
+    expect(rowsOf(pre)).toBeNull();
+    expect(pre.textContent).toBe('1\n2\n3\n4\n5\n');
+
+    const six = render(fence('1\n2\n3\n4\n5\n6\n'));
+    expect(rowsOf(six)).toBe('6');
+    expect(lineCount(six)).toBe(6);
+    // No empty wrapper trailing the last real line.
+    const wrappers = [...six.querySelectorAll('.code-line')];
+    expect(wrappers[wrappers.length - 1]?.textContent).toBe('6');
+  });
+
+  it('lets each code child of one pre answer for itself', () => {
+    // Sender-reachable: the Matrix allowlist permits two `<code>` children in one `<pre>`.
+    // With the marker on the block it was last-writer-wins, so the short listing inherited
+    // the long one's count and got numbered despite being under the threshold.
+    const host = document.createElement('div');
+    host.innerHTML = sanitizeMatrixHtml(
+      '<pre><code>a\nb\nc</code><code>1\n2\n3\n4\n5\n6\n7</code></pre>',
+    );
+    const blocks = [...host.querySelectorAll('pre > code')];
+
+    expect(blocks[0]?.getAttribute('rows')).toBeNull();
+    expect(blocks[1]?.getAttribute('rows')).toBe('7');
+    // Each wraps its own lines; the counter is reset per code, so neither continues the
+    // other's numbering.
+    expect(blocks[0]?.querySelectorAll('.code-line').length).toBe(3);
+    expect(blocks[1]?.querySelectorAll('.code-line').length).toBe(7);
+  });
+
+  it('bounds the wrapped lines per MESSAGE, not only per block', () => {
+    // The per-block cap is defeated by splitting, exactly as the tokenization budget above
+    // already documents. 125 blocks each one line under the block cap is a single 64 KiB
+    // event carrying ~62,000 spans, and that serialization is what the sanitize memo then
+    // retains — it is bounded by entry count, not by bytes.
+    const many = fence('x\n'.repeat(400)).repeat(10); // 10 blocks x 400 lines
+    const host = document.createElement('div');
+    host.innerHTML = sanitizeMatrixHtml(many);
+    const wrapped = host.querySelectorAll('.code-line').length;
+
+    expect(wrapped).toBeLessThanOrEqual(2_000);
+    // Declined wholesale rather than truncated: every block that IS wrapped is wrapped
+    // completely, so no listing is left half-numbered.
+    expect(wrapped % 400).toBe(0);
+    expect(wrapped).toBeGreaterThan(0);
+  });
+
+  it('sends none of it on the wire', () => {
+    // Presentation only. The outgoing path applies none of the render passes, and this is
+    // the assertion that keeps the wrappers on that side of the line.
+    const outgoing = sanitizeOutgoingHtml(fence('1\n2\n3\n4\n5\n6'));
+
+    expect(outgoing).not.toContain('code-line');
+    expect(outgoing).not.toContain('rows=');
+  });
+});
+
 /** A reaction (`m.annotation`) event stub: only sender + redaction are read. */
 function reaction(sender: string, redacted = false): MatrixEvent {
   return {

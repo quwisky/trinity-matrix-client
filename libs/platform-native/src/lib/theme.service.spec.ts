@@ -304,3 +304,167 @@ describe('ThemeService text scale', () => {
     expect(rootSize()).toBe('');
   });
 });
+
+/**
+ * Code size — a second, independent axis over the same root element.
+ *
+ * Written as a unitless FACTOR into a custom property rather than a size, because
+ * rendered-markdown.scss multiplies the optical correction on code by it. That is what lets
+ * it compose with the text scale above instead of replacing it, so the ratio between code
+ * and the prose around it holds at every text size.
+ */
+describe('ThemeService code scale', () => {
+  function service(): ThemeService {
+    TestBed.configureTestingModule({});
+    return TestBed.inject(ThemeService);
+  }
+  const codeScaleProp = () =>
+    document.documentElement.style.getPropertyValue('--trinity-code-scale');
+
+  beforeEach(() => {
+    get.mockReset();
+    set.mockReset();
+    get.mockResolvedValue({ value: null });
+    // As above: the fire-and-forget `Preferences.set(...).catch(...)` needs a promise back.
+    set.mockResolvedValue(undefined);
+    document.documentElement.style.removeProperty('--trinity-code-scale');
+  });
+  afterEach(() =>
+    document.documentElement.style.removeProperty('--trinity-code-scale'),
+  );
+
+  it('leaves the root untouched at the default size', async () => {
+    const svc = service();
+    await svc.init();
+
+    expect(svc.codeScale()).toBe('default');
+    // Nothing written, rather than an explicit `1`: the declaration in variables.scss is
+    // what "Default" means, so there is only one place to change it.
+    expect(codeScaleProp()).toBe('');
+  });
+
+  it('applies and persists a larger size as a unitless FACTOR', async () => {
+    const svc = service();
+    await svc.init();
+
+    svc.setCodeScale('larger');
+
+    // Unitless on purpose. The stylesheet multiplies a percentage by this, so a value
+    // carrying a unit would make that calc() invalid and — since font-size inherits —
+    // silently fall back to the surrounding size.
+    expect(codeScaleProp()).toBe('1.15');
+    expect(set).toHaveBeenCalledWith({
+      key: 'trinity.code-scale',
+      value: 'larger',
+    });
+  });
+
+  it('restores a saved size on init', async () => {
+    get.mockImplementation(({ key }: { key: string }) =>
+      Promise.resolve({
+        value: key === 'trinity.code-scale' ? 'smaller' : null,
+      }),
+    );
+    const svc = service();
+    await svc.init();
+
+    expect(svc.codeScale()).toBe('smaller');
+    expect(codeScaleProp()).toBe('0.875');
+  });
+
+  it('clears the property when going back to default', async () => {
+    const svc = service();
+    await svc.init();
+    svc.setCodeScale('smaller');
+    expect(codeScaleProp()).toBe('0.875');
+
+    svc.setCodeScale('default');
+
+    expect(codeScaleProp()).toBe('');
+  });
+
+  it('ignores a stored value that is not a registered scale', async () => {
+    get.mockImplementation(({ key }: { key: string }) =>
+      Promise.resolve({ value: key === 'trinity.code-scale' ? 'huge' : null }),
+    );
+    const svc = service();
+    await svc.init();
+
+    expect(svc.codeScale()).toBe('default');
+    expect(codeScaleProp()).toBe('');
+  });
+
+  it('reflects the line-number mode, and writes nothing for the automatic default', async () => {
+    const attr = () => document.documentElement.getAttribute('data-code-lines');
+    const svc = service();
+    await svc.init();
+
+    // The stylesheet's unqualified rule already IS the automatic behaviour, so the default
+    // must leave no attribute — otherwise there would be two places to change it.
+    expect(svc.codeLines()).toBe('auto');
+    expect(attr()).toBeNull();
+
+    svc.setCodeLines('always');
+    expect(attr()).toBe('always');
+    expect(set).toHaveBeenCalledWith({
+      key: 'trinity.code-lines',
+      value: 'always',
+    });
+
+    svc.setCodeLines('off');
+    expect(attr()).toBe('off');
+
+    svc.setCodeLines('auto');
+    expect(attr()).toBeNull();
+    document.documentElement.removeAttribute('data-code-lines');
+  });
+
+  it('restores a saved line-number mode, ignoring an unregistered one', async () => {
+    get.mockImplementation(({ key }: { key: string }) =>
+      Promise.resolve({
+        value: key === 'trinity.code-lines' ? 'always' : null,
+      }),
+    );
+    const restored = service();
+    await restored.init();
+    expect(restored.codeLines()).toBe('always');
+    // The signal alone is not the point — deleting applyCodeLines() from init() left the
+    // previous version of this test green, because a missing attribute reads the same as a
+    // correctly-absent one.
+    expect(document.documentElement.getAttribute('data-code-lines')).toBe(
+      'always',
+    );
+    document.documentElement.removeAttribute('data-code-lines');
+
+    get.mockImplementation(({ key }: { key: string }) =>
+      Promise.resolve({
+        value: key === 'trinity.code-lines' ? 'sometimes' : null,
+      }),
+    );
+    TestBed.resetTestingModule();
+    const ignored = service();
+    await ignored.init();
+
+    expect(ignored.codeLines()).toBe('auto');
+    expect(document.documentElement.getAttribute('data-code-lines')).toBeNull();
+  });
+
+  it('is independent of the text scale, which shares the same root element', async () => {
+    // Both axes write to <html>. Nothing in either apply path reads the other, and this is
+    // the assertion that keeps it that way: a future refactor that resets the element
+    // wholesale, rather than the one property it owns, would clear its neighbour.
+    const svc = service();
+    await svc.init();
+
+    svc.setTextScale('larger');
+    svc.setCodeScale('smaller');
+
+    expect(document.documentElement.style.fontSize).toBe('125%');
+    expect(codeScaleProp()).toBe('0.875');
+
+    svc.setCodeScale('default');
+
+    expect(document.documentElement.style.fontSize).toBe('125%');
+    expect(codeScaleProp()).toBe('');
+  });
+});

@@ -48,6 +48,15 @@
   --trinity-radius-xl: 0.75rem; // 12px — cards / dialogs / menus
   --trinity-radius-pill: 9999px; // badges, chips, capsules
 
+  // --- Code size (mode- & palette-agnostic) -------------------------------------
+  // A unitless MULTIPLIER, not a size. rendered-markdown.scss multiplies the 85%
+  // optical correction by it, so code stays a proportion of whatever Settings →
+  // Appearance → Text size resolves to — the two compose instead of fighting. An
+  // absolute px value here would pin code and break Text size for it. Written on
+  // <html> by ThemeService.applyCodeScale; the default writes nothing, so this
+  // declaration is what "Default" actually means.
+  --trinity-code-scale: 1;
+
   // --- Mode- & palette-invariant Helm bindings (define once) --------------------
   // Card/popover text tracks the base foreground; the brand tokens track the Trinity
   // accent; the input outline tracks the border. Palettes reset the *source* token

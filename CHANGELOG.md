@@ -8,6 +8,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Code in messages has its own size, and long blocks can be numbered.** Until now the only
+  way to shrink a pasted listing was to shrink the whole app with it, because Text size moves
+  everything together. Settings → Appearance gains **Code size** — Smaller, Default, Larger —
+  covering both code written inside a sentence and whole blocks, so a message never shows two
+  sizes of code. It is relative to Text size rather than a fixed size, so the two work
+  together: raising Text size still enlarges code, and this shifts code up or down within
+  that. Code elsewhere in the app, such as your recovery key, is deliberately left alone.
+
+  Alongside it, **Line numbers**: off, on for blocks over five lines (the default), or always.
+  Numbering every snippet would put a gutter beside two-line pastes, so by default they appear
+  only once a block is long enough to be worth pointing at by line. The gutter is one fixed
+  width, so the code stays in a straight line down the block instead of shifting across as the
+  numbers reach two and three digits. They stay put when you scroll a long line sideways, and
+  they are never part of the message — selecting or copying a block gives you the code alone,
+  and nothing extra is sent.
+
 - **A way out when Trinity gets stuck.** If the app would not start, would not sign in, or
   rendered wrongly, there was nothing you could do about it from inside — signing out does
   not clear what was broken, and the one place with a fix, Settings, is behind the sign-in
@@ -240,6 +256,14 @@ All notable changes to this project are documented here. The format is based on
   ever been placed on the room-list background. The tint is now a fixed colour, so every one
   of these reads the same wherever it is used. Nothing looks different in the places they are
   used today.
+
+- **Code blocks no longer tower over the conversation.** A pasted snippet rendered
+  noticeably larger than the message text around it, and a pasted class of a few dozen lines
+  dominated the timeline. Both were in fact the same size — the cause is that a monospace
+  face simply reads bigger than the surrounding font at an equal size. Trinity already
+  corrected for that on code written inside a sentence and then undid the correction inside
+  a fenced block. Blocks now carry it too, so they sit at the same visual weight as the text
+  around them. Nothing to turn on, and the code itself is untouched.
 
 - **Signing back in to an account no longer creates a second device.** When a session was
   signed out by the server and you re-authenticated it, accounts that use the newer

@@ -29,11 +29,15 @@ import {
   isRoomSortMode,
 } from '@trinity/data-access/rooms';
 import { isDateFormat, isTimeFormat } from '@trinity/util/matrix';
+import { CodeAppearanceBlockComponent } from './code-appearance-block.component';
 
 /**
- * Appearance settings sub-page: light/dark/system mode, colour palette, how dates and times
- * are written, how rooms are ordered inside a space, and which system lines (joins, profile
- * changes, room changes) the timeline shows.
+ * Appearance settings sub-page: light/dark/system mode, colour palette, text and code size,
+ * how dates and times are written, how rooms are ordered inside a space, and which system
+ * lines (joins, profile changes, room changes) the timeline shows.
+ *
+ * Code display lives in its own child block — it is a coherent group, and this template was
+ * already at the size the repo refactors at.
  */
 @Component({
   selector: 'trn-appearance-settings',
@@ -50,6 +54,7 @@ import { isDateFormat, isTimeFormat } from '@trinity/util/matrix';
     HlmSelectPortal,
     HlmSelectItem,
     HlmCheckbox,
+    CodeAppearanceBlockComponent,
   ],
 })
 export class AppearanceSettingsComponent {

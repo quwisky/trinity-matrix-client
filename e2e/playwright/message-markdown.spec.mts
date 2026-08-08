@@ -371,6 +371,23 @@ test.describe('Message markdown', () => {
       await block.evaluate((el) => el.textContent),
     );
 
+    // The block carries the same optical correction inline code does. Both compute to 85%
+    // of the prose around them: a monospace face reads larger than the proportional UI font
+    // at an equal computed size, so an uncorrected block towers over the conversation even
+    // though the numbers match. Asserted as a RATIO against real rendered prose rather than
+    // as a px value, so it holds at every Text size rather than pinning one of them.
+    const correction = await block.evaluate((el) => {
+      const body = el.closest('.msg__text--html');
+      if (!body) {
+        throw new Error('code block is not inside a rendered message body');
+      }
+      const size = (node: Element) =>
+        parseFloat(getComputedStyle(node).fontSize);
+      return size(el) / size(body);
+    });
+
+    expect(correction).toBeCloseTo(0.85, 2);
+
     // An unknown language still renders, just without tokens and without erroring.
     await sendLines(page, ['```nosuchlang', 'anything at all', '```']);
     const unknown = page

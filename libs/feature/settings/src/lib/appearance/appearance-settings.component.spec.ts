@@ -9,6 +9,10 @@ import {
   ThemeService,
   TRINITY_PALETTES,
   TRINITY_TEXT_SCALES,
+  TRINITY_CODE_SCALES,
+  TRINITY_CODE_LINE_MODES,
+  type CodeLineMode,
+  type CodeScale,
   type Palette,
   type ResolvedTheme,
   type TextScale,
@@ -29,6 +33,8 @@ describe('AppearanceSettingsComponent', () => {
   let resolved: ReturnType<typeof signal<ResolvedTheme>>;
   let palette: ReturnType<typeof signal<Palette>>;
   let textScale: ReturnType<typeof signal<TextScale>>;
+  let codeScale: ReturnType<typeof signal<CodeScale>>;
+  let codeLines: ReturnType<typeof signal<CodeLineMode>>;
   let showMembership: ReturnType<typeof signal<boolean>>;
   let showProfile: ReturnType<typeof signal<boolean>>;
   let showRoomChanges: ReturnType<typeof signal<boolean>>;
@@ -45,6 +51,8 @@ describe('AppearanceSettingsComponent', () => {
     resolved = signal<ResolvedTheme>('dark');
     palette = signal<Palette>('trinity');
     textScale = signal<TextScale>('default');
+    codeScale = signal<CodeScale>('default');
+    codeLines = signal<CodeLineMode>('auto');
     showMembership = signal(true);
     showProfile = signal(true);
     showRoomChanges = signal(true);
@@ -67,6 +75,10 @@ describe('AppearanceSettingsComponent', () => {
           palettes: TRINITY_PALETTES,
           textScale,
           textScales: TRINITY_TEXT_SCALES,
+          codeScale,
+          codeScales: TRINITY_CODE_SCALES,
+          codeLines,
+          codeLineModes: TRINITY_CODE_LINE_MODES,
         }),
         MockProvider(ComposerSettingsService, {
           showFormattingToolbar,
@@ -119,10 +131,17 @@ describe('AppearanceSettingsComponent', () => {
     const labelled = [
       container.querySelector('hlm-radio-group'),
       container.querySelector('[data-testid=palette-select]'),
+      container.querySelector('[data-testid=text-scale-select]'),
+      container.querySelector('[data-testid=code-scale-select]'),
+      container.querySelector('[data-testid=code-lines-select]'),
       container.querySelector('[data-testid=time-format-select]'),
       container.querySelector('[data-testid=date-format-select]'),
       container.querySelector('[data-testid=space-order-select]'),
     ];
+    // Every entry must actually be present, or a missing control would pass this sweep by
+    // being null. `text-scale-select` was absent from this list until the code-size block
+    // was added beside it.
+    expect(labelled.every(Boolean)).toBe(true);
     for (const control of labelled) {
       const id = control?.getAttribute('aria-labelledby');
       expect(id).toBeTruthy();
