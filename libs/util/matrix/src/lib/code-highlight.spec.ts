@@ -71,6 +71,53 @@ describe('code highlighting', () => {
     expect(code.textContent).toBe(source);
   });
 
+  it('highlights every registered language', () => {
+    // One sample per grammar, in that grammar's own syntax — a JS-ish sample is a false
+    // negative for diff, ini or makefile, which is exactly how an earlier survey of this
+    // set concluded they were unsupported. A grammar that stops resolving (a renamed
+    // @shikijs/langs entry, a dropped import) shows up here as a language with no tokens
+    // rather than as a silently plain block in someone's room.
+    const samples: [string, string][] = [
+      ['bash', 'echo "hi" # c'],
+      ['c', '#include <stdio.h>\nint main(){return 0;}'],
+      ['csharp', 'public class A { void B() {} }'],
+      ['css', 'a { color: red; }'],
+      ['dart', 'void main() { print("hi"); }'],
+      ['diff', '--- a\n+++ b\n-old\n+new'],
+      ['dockerfile', 'FROM node:24\nRUN echo hi'],
+      ['go', 'func main() {}'],
+      ['html', '<div class="x">hi</div>'],
+      ['ini', '[section]\nkey = value'],
+      ['java', 'class A { void b() {} }'],
+      ['javascript', 'const a = 1;'],
+      ['json', '{"a": 1}'],
+      ['kotlin', 'fun main() { println("hi") }'],
+      ['lua', 'local x = 1 -- c'],
+      ['makefile', 'all:\n\techo hi'],
+      ['markdown', '# Title\n**bold**'],
+      ['perl', 'my $x = 1; # c'],
+      ['php', '<?php echo "hi"; ?>'],
+      ['powershell', '$x = Get-Item -Path .'],
+      ['python', 'def a(): return 1'],
+      ['ruby', 'def a; puts "hi"; end'],
+      ['rust', 'fn main() { let a = 1; }'],
+      ['scala', 'object A { def b = 1 }'],
+      ['shellsession', '$ echo hi'],
+      ['sql', 'SELECT a FROM b;'],
+      ['swift', 'let x = 1 // c'],
+      ['toml', '[a]\nb = 1'],
+      ['typescript', 'const a: number = 1;'],
+      ['xml', '<root attr="v"><child/></root>'],
+      ['yaml', 'a: 1'],
+    ];
+
+    const unhighlighted = samples
+      .filter(([lang, source]) => roles(highlight(lang, source)).length === 0)
+      .map(([lang]) => lang);
+
+    expect(unhighlighted).toEqual([]);
+  });
+
   it('resolves short language aliases', () => {
     // ```js and ```py are far more common in the wild than the canonical names.
     for (const [alias, source] of [

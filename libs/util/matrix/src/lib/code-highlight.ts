@@ -17,6 +17,24 @@ import sql from '@shikijs/langs/sql';
 import typescript from '@shikijs/langs/typescript';
 import xml from '@shikijs/langs/xml';
 import yaml from '@shikijs/langs/yaml';
+import c from '@shikijs/langs/c';
+import csharp from '@shikijs/langs/csharp';
+import dart from '@shikijs/langs/dart';
+import dockerfile from '@shikijs/langs/dockerfile';
+import html from '@shikijs/langs/html';
+import ini from '@shikijs/langs/ini';
+import kotlin from '@shikijs/langs/kotlin';
+import lua from '@shikijs/langs/lua';
+import makefile from '@shikijs/langs/makefile';
+import markdown from '@shikijs/langs/markdown';
+import perl from '@shikijs/langs/perl';
+import php from '@shikijs/langs/php';
+import powershell from '@shikijs/langs/powershell';
+import ruby from '@shikijs/langs/ruby';
+import scala from '@shikijs/langs/scala';
+import shellsession from '@shikijs/langs/shellsession';
+import swift from '@shikijs/langs/swift';
+import toml from '@shikijs/langs/toml';
 import { setCodeHighlighter } from './message-view';
 
 /**
@@ -172,15 +190,33 @@ function instance(): HighlighterCore {
     themes: [THEME],
     langs: [
       bash,
+      c,
+      csharp,
       css,
+      dart,
       diff,
+      dockerfile,
       go,
+      html,
+      ini,
       java,
       javascript,
       json,
+      kotlin,
+      lua,
+      makefile,
+      markdown,
+      perl,
+      php,
+      powershell,
       python,
+      ruby,
       rust,
+      scala,
+      shellsession,
       sql,
+      swift,
+      toml,
       typescript,
       xml,
       yaml,

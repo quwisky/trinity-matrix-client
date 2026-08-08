@@ -24,6 +24,14 @@ All notable changes to this project are documented here. The format is based on
   they are never part of the message — selecting or copying a block gives you the code alone,
   and nothing extra is sent.
 
+- **Code blocks are coloured for eighteen more languages.** Pasting C, C#, Dart, a
+  Dockerfile, HTML, an INI or TOML config, Kotlin, Lua, a Makefile, Markdown, Perl, PHP,
+  PowerShell, Ruby, Scala, a shell session or Swift now highlights the same way Python or
+  Rust already did — thirty-one in total. Common short tags work too, so ` ```rb `,
+  ` ```md ` and ` ```ps1 ` are understood. A block tagged with something still
+  not on the list renders exactly as you wrote it, uncoloured, with the tag shown in the
+  corner as before.
+
 - **A way out when Trinity gets stuck.** If the app would not start, would not sign in, or
   rendered wrongly, there was nothing you could do about it from inside — signing out does
   not clear what was broken, and the one place with a fix, Settings, is behind the sign-in
