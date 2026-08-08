@@ -456,4 +456,78 @@ test.describe('Code line numbers', () => {
       ),
     ).toBe('off');
   });
+
+  test('keeps the gutter one width as the line count gains a digit', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}gw`;
+    const user = `gutter-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Gutter ${runId}`;
+    // Past line 9 on purpose: the gutter used to size to each number's own digits, so the
+    // column — and every line of code after it — stepped right by one character the moment
+    // the count reached two digits. Twelve lines straddles that boundary; the jump at 100
+    // is the same mechanism, and a 100-line block is not worth the round trip.
+    const source = Array.from(
+      { length: 12 },
+      (_, i) => `line_${i} = ${i}`,
+    ).join('\n');
+
+    await registerUser(request, user, pass);
+    const token = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.access_token as string);
+    const headers = { Authorization: `Bearer ${token}` };
+    const roomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers,
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((r) => r.json())
+      .then((j) => j.room_id as string);
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${roomId}/send/m.room.message/${runId}a`,
+      {
+        headers,
+        data: {
+          msgtype: 'm.text',
+          body: source,
+          format: 'org.matrix.custom.html',
+          formatted_body: `<pre><code class="language-python">${source}</code></pre>`,
+        },
+      },
+    );
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+
+    const block = page
+      .locator('.msg__text--html pre', { hasText: 'line_11' })
+      .first();
+    await expect(block).toBeVisible({ timeout: 20_000 });
+    await expect(block.locator('code')).toHaveAttribute('rows', '12');
+
+    // Where each line's own text starts. The digits are generated content and so are not in
+    // the DOM, but a Range over the wrapper's contents begins after them — which makes this
+    // the position the gutter's width actually controls, and the one a reader sees jog.
+    const starts = await block.evaluate((el) =>
+      [...el.querySelectorAll('.code-line')].map((line) => {
+        const range = document.createRange();
+        range.selectNodeContents(line);
+        return Math.round(range.getBoundingClientRect().left);
+      }),
+    );
+
+    expect(starts).toHaveLength(12);
+    expect(new Set(starts).size).toBe(1);
+  });
 });

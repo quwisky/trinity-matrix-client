@@ -18,9 +18,11 @@ All notable changes to this project are documented here. The format is based on
 
   Alongside it, **Line numbers**: off, on for blocks over five lines (the default), or always.
   Numbering every snippet would put a gutter beside two-line pastes, so by default they appear
-  only once a block is long enough to be worth pointing at by line. They stay put when you
-  scroll a long line sideways, and they are never part of the message — selecting or copying a
-  block gives you the code alone, and nothing extra is sent.
+  only once a block is long enough to be worth pointing at by line. The gutter is one fixed
+  width, so the code stays in a straight line down the block instead of shifting across as the
+  numbers reach two and three digits. They stay put when you scroll a long line sideways, and
+  they are never part of the message — selecting or copying a block gives you the code alone,
+  and nothing extra is sent.
 
 - **A way out when Trinity gets stuck.** If the app would not start, would not sign in, or
   rendered wrongly, there was nothing you could do about it from inside — signing out does

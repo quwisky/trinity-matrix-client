@@ -210,10 +210,16 @@
         inset-inline-start: -10px;
         z-index: 1;
 
-        // 3ch, not 2: each number sizes to its own digits, so a 2ch floor lets the gutter
-        // widen at line 100 and jog the code 8px right mid-block. MAX_NUMBERED_LINES caps a
-        // block at three digits, so this is a uniform column for anything that can be
-        // numbered at all.
+        // Reserve three digits' worth of column so the gutter is one fixed width for every
+        // line of every block, rather than each number sizing to its own digits and stepping
+        // the code right at line 10 and again at line 100. MAX_NUMBERED_LINES caps a block
+        // at three digits, so three is the widest this can ever need to be.
+        // content-box is the load-bearing half, and the reason a bare `min-width: 3ch` did
+        // NOT hold the column: Tailwind's preflight sets `box-sizing: border-box` on `*` AND
+        // on `::before`, so 3ch (~25px here) was measured against the 22px of padding below
+        // and reserved ~3px of actual digits — inert. Widening the floor could not have
+        // fixed that; only taking the padding back out of the measurement does.
+        box-sizing: content-box;
         min-width: 3ch;
 
         // Padding, NOT margin, for the gap before the code: it has to be part of the OPAQUE
