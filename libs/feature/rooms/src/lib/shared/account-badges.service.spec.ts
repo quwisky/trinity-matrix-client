@@ -22,7 +22,7 @@ function harness(opts: {
 }) {
   const mixing = signal(opts.mixing ?? true);
   const selected = signal<ReadonlySet<string>>(new Set(opts.selected ?? []));
-  const revision = signal(0);
+  const profileRevision = signal(0);
   const unreadByAccount = signal<ReadonlyMap<string, number>>(new Map());
   const users = opts.users ?? {};
 
@@ -34,7 +34,9 @@ function harness(opts: {
         mixing: mixing.asReadonly(),
         selected: selected.asReadonly(),
       }),
-      MockProvider(RoomsService, { revision: revision.asReadonly() }),
+      MockProvider(RoomsService, {
+        profileRevision: profileRevision.asReadonly(),
+      }),
       MockProvider(UnreadAggregatorService, {
         unreadByAccount: unreadByAccount.asReadonly(),
       }),
@@ -48,7 +50,7 @@ function harness(opts: {
   return {
     svc: TestBed.inject(AccountBadgesService),
     mixing: mixing as WritableSignal<boolean>,
-    revision,
+    profileRevision,
     unreadByAccount,
     users,
   };
@@ -88,7 +90,7 @@ describe('AccountBadgesService', () => {
   });
 
   // The mixed-in account's own sync is what hydrates its profile, and that never touches
-  // RoomsService.revision (the ACTIVE client's signal). Without a cross-account trigger the
+  // RoomsService.profileRevision (the ACTIVE client's signal). Without a cross-account trigger the
   // badge would keep the mxid and a hashed letter until the active account happened to sync.
   it('re-reads a profile that hydrates on another account’s sync', () => {
     const { svc, unreadByAccount, users } = harness({
@@ -104,15 +106,15 @@ describe('AccountBadgesService', () => {
     expect(svc.forAccount('@alt:hs')?.avatarMxc).toBe('mxc://hs/alice');
   });
 
-  it('also re-reads on the active account’s own revision bump', () => {
-    const { svc, revision, users } = harness({
+  it('also re-reads on the active account’s own profile bump', () => {
+    const { svc, profileRevision, users } = harness({
       selected: ['@me:hs'],
       users: {},
     });
     expect(svc.forAccount('@me:hs')?.name).toBe('@me:hs');
 
     users['@me:hs'] = { displayName: 'Me' };
-    revision.set(1);
+    profileRevision.set(1);
 
     expect(svc.forAccount('@me:hs')?.name).toBe('Me');
   });

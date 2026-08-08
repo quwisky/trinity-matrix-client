@@ -138,10 +138,28 @@ export class RoomsService {
   private readonly privacy = inject(PrivacySettingsService);
 
   /**
-   * Bumped only on membership changes (`RoomState.members`/`MyMembership`) so a
-   * member-list projection can stay reactive *without* re-running on every sync
-   * tick or read receipt — those bump {@link revision} (which drives the room list)
-   * but never change a room's membership. See {@link membersOf}.
+   * Bumped on membership changes (`RoomState.members`/`MyMembership`) so a member-list
+   * projection stays reactive. See {@link membersOf}.
+   *
+   * Kept for CORRECTNESS, not as a throttle. `RoomStateEvent.Members` is deliberately left
+   * out of the coalesced `events` list, which makes this the service's ONLY membership
+   * observer: swapping it for {@link profileRevision} would leave the member list stale on
+   * any membership change arriving without one of the coalesced events (`loadMembersIfNeeded`,
+   * `setUnknownStateEvents` on a `/messages` backfill).
+   *
+   * It is not, despite how the split reads, cheaper than the alternative. It is unfiltered
+   * by room and uncoalesced, and `RoomStateEvent.Members` fans out per member — one
+   * `m.room.power_levels` change emits once for every member in the room. What makes a
+   * repeat bump cost nothing is {@link membersOf}'s fingerprint memo, which hands back the
+   * IDENTICAL array reference so Angular's `Object.is` stops the propagation there. That
+   * memo is the load-bearing part; do not "simplify" it away on the assumption that this
+   * counter is what keeps the member list cheap.
+   *
+   * The replacement is `membersFor(roomId): Signal<...>`, memoized per room, `equal`
+   * supplied by the fingerprint that already exists, and dispatched by `state.roomId` so a
+   * member event re-reads exactly the room it happened in — strictly less work than today.
+   * Out of scope here: it reaches three feature components and the spec pinning the
+   * DM-peer half of this split.
    */
   private readonly _memberRevision = signal(0);
   readonly memberRevision = this._memberRevision.asReadonly();
@@ -217,9 +235,25 @@ export class RoomsService {
   private readonly _directRoomIds = signal<ReadonlySet<string>>(new Set());
   readonly directRoomIds = this._directRoomIds.asReadonly();
 
-  /** Bumped on every refresh so member queries can stay reactive. */
-  private readonly _revision = signal(0);
-  readonly revision = this._revision.asReadonly();
+  /**
+   * Bumped on every refresh, so a derivation that resolves a USER PROFILE off the client
+   * (`getUser()`) re-runs as profiles hydrate on sync. Every consumer does exactly that;
+   * despite the old name and comment, no member query reads it.
+   *
+   * A bump counter and not a signal of data, because the thing it stands for — "some
+   * profile somewhere may have changed" — has no value to carry. The honest replacement is
+   * a real projection of `UserEvent.DisplayName`/`AvatarUrl`, which is deferred rather than
+   * unknown: two of the consumers resolve profiles from OTHER accounts' clients, so it
+   * needs the cross-account listener-set shape `MixedRoomsService` has, including its
+   * `held.client === client` identity re-check. `account-badges.service.ts` already
+   * documents that this signal alone is insufficient and pairs it with a second one.
+   *
+   * The name matters: a public signal called `revision` on a service whose room list
+   * rebuilds constantly invites reuse as a generic "something changed" hook, which is the
+   * habit issue #61 was filed about.
+   */
+  private readonly _profileRevision = signal(0);
+  readonly profileRevision = this._profileRevision.asReadonly();
 
   /**
    * The sync projection: listeners keyed to the client instance, rebuilds coalesced into
@@ -724,7 +758,8 @@ export class RoomsService {
     );
     this._directRoomIds.set(direct);
     this.dmPeers = new Set(userByRoom.values());
-    this._revision.update((n) => n + 1);
+    // Profiles hydrate on sync; see the field's own note on why this is a counter.
+    this._profileRevision.update((n) => n + 1);
   }
 
   /** Overlay an in-flight marked-unread write, and forget it once /sync agrees. */
