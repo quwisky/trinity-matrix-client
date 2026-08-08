@@ -30,6 +30,14 @@ async function build(
   const addExistingRoom = over.addExistingRoom ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
+  const links = signal(
+    (opts.existing ?? []).map((childId) => ({
+      childId,
+      via: ['hs'],
+      suggested: false,
+      order: '',
+    })),
+  );
   const { fixture, container } = await render(AddToSpaceComponent, {
     inputs: { spaceId: '!s:hs', spaceName: 'Design' },
     providers: [
@@ -41,18 +49,10 @@ async function build(
       }),
       MockProvider(SpaceChildrenService, {
         addExistingRoom,
-        // A signal, not a closure returning a fresh array: the component depends on the
-        // links reactively now, and a mock that can never change would let a staleness
-        // regression pass here forever.
-        linksFor: () =>
-          signal(
-            (opts.existing ?? []).map((childId) => ({
-              childId,
-              via: ['hs'],
-              suggested: false,
-              order: '',
-            })),
-          ).asReadonly(),
+        // ONE signal, created here and handed back on every call — not a fresh one per
+        // call, which would be a dependency no test could move and would let a staleness
+        // regression pass forever. `linksFor` memoizes per space id for the same reason.
+        linksFor: () => links.asReadonly(),
       }),
       MockProvider(DialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
@@ -61,6 +61,7 @@ async function build(
   return {
     cmp: fixture.componentInstance,
     container,
+    links,
     addExistingRoom,
     close,
     toastShow,
@@ -83,6 +84,21 @@ describe('AddToSpaceComponent', () => {
       rooms: [room('!a:hs', 'Alpha'), room('!b:hs', 'Bravo')],
       existing: ['!a:hs'],
     });
+
+    expect(cmp.candidates().map((c) => c.id)).toEqual(['!b:hs']);
+  });
+
+  it('drops a room from the list as soon as its link echoes back', async () => {
+    // The dialog's docblock promises a room added here disappears "as soon as the write
+    // echoes back, without a round trip". That is only true if the candidate list depends
+    // on the links REACTIVELY — a plain snapshot read looks identical until sync moves
+    // something else. Driving the projection is the only way to tell the two apart.
+    const { cmp, links } = await build({
+      rooms: [room('!a:hs', 'Alpha'), room('!b:hs', 'Bravo')],
+    });
+    expect(cmp.candidates().map((c) => c.id)).toEqual(['!a:hs', '!b:hs']);
+
+    links.set([{ childId: '!a:hs', via: ['hs'], suggested: false, order: '' }]);
 
     expect(cmp.candidates().map((c) => c.id)).toEqual(['!b:hs']);
   });

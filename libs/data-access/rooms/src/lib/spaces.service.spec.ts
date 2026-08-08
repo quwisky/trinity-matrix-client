@@ -544,8 +544,13 @@ function setupHierarchy(opts: {
     getMyMembership: () => 'join',
     isSpaceRoom: () => false,
   }));
-  /** Join a room after the fact, so a test can drive a membership change. */
+  /**
+   * Join a room after the fact, so a test can drive a membership change. Updates BOTH
+   * views the fake client offers, for the same reason the harness seeds both: a room
+   * `getRooms()` lists and `getRoom()` denies is a state the real client cannot be in.
+   */
   const join = (id: string) => {
+    joined.add(id);
     joinedRooms.push({
       roomId: id,
       getMyMembership: () => 'join',

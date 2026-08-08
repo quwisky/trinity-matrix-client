@@ -142,10 +142,12 @@ export class RoomsService {
    * projection stays reactive. See {@link membersOf}.
    *
    * Kept for CORRECTNESS, not as a throttle. `RoomStateEvent.Members` is deliberately left
-   * out of the coalesced `events` list, which makes this the service's ONLY membership
-   * observer: swapping it for {@link profileRevision} would leave the member list stale on
-   * any membership change arriving without one of the coalesced events (`loadMembersIfNeeded`,
-   * `setUnknownStateEvents` on a `/messages` backfill).
+   * out of the coalesced `events` list, so this is the only thing observing OTHER people's
+   * membership — `RoomEvent.MyMembership` is watched twice over (here and in the coalesced
+   * list), but that only covers our own. Swapping this for {@link profileRevision} would
+   * leave the member list stale on any membership change arriving without one of the
+   * coalesced events (`loadMembersIfNeeded`, `setUnknownStateEvents` on a `/messages`
+   * backfill).
    *
    * It is not, despite how the split reads, cheaper than the alternative. It is unfiltered
    * by room and uncoalesced, and `RoomStateEvent.Members` fans out per member — one

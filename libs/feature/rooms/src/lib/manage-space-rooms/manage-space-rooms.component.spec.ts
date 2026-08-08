@@ -300,6 +300,60 @@ describe('ManageSpaceRoomsComponent', () => {
       expect(cmp.childList()[0].suggested).toBe(true);
     });
 
+    it('un-ticks the rendered checkbox, not just the row model', async () => {
+      // At the DOM, because that is where the bug is. `HlmCheckbox.checked` is a
+      // linkedSignal the click handler sets locally, so the row model going back to false
+      // is necessary but not sufficient — the INPUT has to transition for the checkbox to
+      // re-derive. Asserting `childList()[0].suggested` alone passes while the box stays
+      // ticked next to the failure toast.
+      // The rejection is delivered AFTER a render, which is what a server refusal is: the
+      // write goes out, the UI paints the optimistic tick, and the homeserver says no a
+      // round trip later. That gap is load-bearing — see the note on `pendingSuggested`.
+      const rejection = new Subject<void>();
+      const { container, fixture } = await build(
+        { links: [{ childId: '!a:hs', suggested: false }] },
+        { setSuggested: vi.fn(() => rejection.asObservable()) },
+      );
+      const box = container.querySelector(
+        '[data-testid="suggest-!a:hs"] [role="checkbox"]',
+      ) as HTMLElement;
+
+      box.click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(box.getAttribute('aria-checked')).toBe('true');
+
+      rejection.error(new Error('nope'));
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(box.getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('yields to the projection when the echo carries a different value', async () => {
+      // Reachable without a second device: toggle a room suggested, then immediately move
+      // it. The reorder is a read-modify-write against state that still holds the pre-write
+      // link, so it re-sends without `suggested` and the server reverts the tick — and both
+      // state events coalesce into one rebuild, so the value we wrote is never projected.
+      // An overlay that waited to SEE its own value would beat the projection indefinitely.
+      const { cmp, links, fixture } = await build(
+        { links: [{ childId: '!a:hs', suggested: false }] },
+        { setSuggested: vi.fn(() => of(undefined)) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+      expect(cmp.childList()[0].suggested).toBe(true);
+
+      // The echo, carrying the server's actual answer rather than ours.
+      links.set([
+        { childId: '!a:hs', via: ['hs'], suggested: false, order: '' },
+      ]);
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(cmp.childList()[0].suggested).toBe(false);
+    });
+
     it('keeps a successful change on screen until the echo lands', async () => {
       // Clearing the overlay when the write RESOLVES would drive the checkbox
       // true→false→true: the server has taken it, but the state echo is a sync away.
