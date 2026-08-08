@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import {
   EventType,
   MatrixEventEvent,
@@ -56,7 +56,7 @@ export interface PinnedMessageView {
  * against the room's locally-loaded events (`room.findEventById`). A pin that isn't
  * loaded yet, or that resolves to a redacted event, is dropped from
  * {@link pinnedMessages} rather than fetched — the `Timeline`/`Decrypted` listeners
- * bump a revision so a pin resolves as its event later loads or decrypts.
+ * re-resolve, so a pin appears as its event later loads or decrypts.
  *
  * Room-scoped, like {@link TimelineService} and unlike the client projections: it binds to
  * a `Room`, lives for one open room, and so takes the batching primitive (`coalesce`)
@@ -75,24 +75,33 @@ export class PinnedMessagesService {
   /** Whether the current user may pin/unpin in the active room. */
   readonly canPin = this._canPin.asReadonly();
 
-  // Bumped when the timeline changes or an event decrypts, so the derived
-  // pinnedMessages re-resolves previews as pinned events load/decrypt late.
-  private readonly _revision = signal(0);
+  private readonly _pinnedMessages = signal<PinnedMessageView[]>([]);
+  /**
+   * The pinned messages as render-ready view models, each id resolved against the room's
+   * locally-loaded events. Missing (not-yet-loaded) or redacted pins are skipped — a
+   * best-effort, synchronous resolve, re-run whenever a pinned event might have arrived
+   * or decrypted.
+   */
+  readonly pinnedMessages = this._pinnedMessages.asReadonly();
 
   /**
-   * The pinned messages as render-ready view models, resolving each id against the
-   * room's locally-loaded events. Missing (not-yet-loaded) or redacted pins are
-   * skipped — a best-effort, synchronous resolve.
+   * Re-resolve every pin from the room as it stands now.
+   *
+   * This used to be a `computed` reading a bump counter, on the reasoning that late
+   * decryption cannot be expressed as a signal dependency. It can: the SDK's entity-level
+   * "this event changed" signal is `MatrixEventEvent.Decrypted`, this service already
+   * listens to it, and `TimelineService` resolves views out of the same in-place-mutated
+   * `MatrixEvent`s on the same event with no counter at all. What was actually missing was
+   * somewhere to put the answer.
    */
-  readonly pinnedMessages = computed<PinnedMessageView[]>(() => {
-    this._revision();
-    const ids = this._pinnedEventIds();
+  private resolvePinned(): void {
     const room = this.room;
     if (!room) {
-      return [];
+      this._pinnedMessages.set([]);
+      return;
     }
     const views: PinnedMessageView[] = [];
-    for (const id of ids) {
+    for (const id of this._pinnedEventIds()) {
       const event = room.findEventById(id);
       if (!event || event.isRedacted()) {
         continue;
@@ -106,8 +115,8 @@ export class PinnedMessagesService {
         ts: event.getTs(),
       });
     }
-    return views;
-  });
+    this._pinnedMessages.set(views);
+  }
 
   private roomId: string | null = null;
   private room: Room | null = null;
@@ -131,27 +140,25 @@ export class PinnedMessagesService {
     }
   };
   /**
-   * Both bumps below go through one coalescer. `RoomEvent.Timeline` fires for EVERY
-   * event in the open room — every message, and every event of a backfill page — and
-   * each bump re-runs the computeds that resolve pinned previews. Batching them into one
-   * bump per turn is the difference between per-message and per-turn work in a busy room.
+   * Both triggers below go through one coalescer. `RoomEvent.Timeline` fires for EVERY
+   * event in the open room — every message, and every event of a backfill page — and each
+   * re-resolves every pin. Batching them into one resolve per turn is the difference
+   * between per-message and per-turn work in a busy room.
    *
    * This service is room-scoped (see {@link open}), so it takes the batching primitive
    * alone rather than the client projection.
    */
-  private readonly bumpRevision = coalesce(() =>
-    this._revision.update((n) => n + 1),
-  );
-  // A pinned event may decrypt after its id is pinned; bump the revision so its
-  // preview resolves once the plaintext is available.
+  private readonly scheduleResolve = coalesce(() => this.resolvePinned());
+  // A pinned event may decrypt after its id is pinned; re-resolve so its preview appears
+  // once the plaintext is available.
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.roomId) {
-      this.bumpRevision.schedule();
+      this.scheduleResolve.schedule();
     }
   };
-  // A pinned event may load via pagination/backfill after it was pinned; bump so its
-  // preview resolves once the event is in the timeline.
-  private readonly onTimeline = (): void => this.bumpRevision.schedule();
+  // A pinned event may load via pagination/backfill after it was pinned; re-resolve so its
+  // preview appears once the event is in the timeline.
+  private readonly onTimeline = (): void => this.scheduleResolve.schedule();
 
   /** Start projecting a room's pinned messages; attaches live listeners. */
   open(roomId: string): void {
@@ -187,15 +194,15 @@ export class PinnedMessagesService {
     // Detach from the client open() attached to, not `matrix.instance` — that follows
     // the active account and would leak this listener on the old client after a switch.
     this.connectedClient?.off(MatrixEventEvent.Decrypted, this.onDecrypted);
-    // Drop any bump queued for this turn: it would otherwise fire after close() has
-    // returned and tick the revision back up on a closed room.
-    this.bumpRevision.cancel();
+    // Drop any resolve queued for this turn: it would otherwise fire after close() has
+    // returned and re-populate the list for a closed room.
+    this.scheduleResolve.cancel();
     this.connectedClient = null;
     this.room = null;
     this.roomId = null;
     this._pinnedEventIds.set([]);
     this._canPin.set(false);
-    this._revision.set(0);
+    this._pinnedMessages.set([]);
   }
 
   /** Whether `eventId` is currently pinned in the active room. */
@@ -267,5 +274,8 @@ export class PinnedMessagesService {
       !!userId &&
         !!state?.maySendStateEvent(EventType.RoomPinnedEvents, userId),
     );
+    // Synchronously, not through the coalescer: a pin change must be on screen this turn,
+    // and `open()` has to leave the list populated before anything reads it.
+    this.resolvePinned();
   }
 }
