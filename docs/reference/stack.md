@@ -61,7 +61,7 @@ major rather than editing numbers by hand.
 | `dompurify`                           | 3.4.13  | Sanitizes `formatted_body` against the Matrix allowlist, inbound and outbound, from one config              |
 | `@shikijs/core`                       | 4.4.1   | Syntax highlighting for fenced code blocks                                                                  |
 | `@shikijs/engine-javascript`          | 4.4.1   | Pure-JS RegExp engine, chosen over the default Oniguruma WASM to avoid a second wasm asset and its loader   |
-| `@shikijs/langs`                      | 4.4.1   | TextMate grammars; 13 languages imported explicitly. Must move in lockstep with the two rows above          |
+| `@shikijs/langs`                      | 4.4.1   | TextMate grammars; 31 languages imported explicitly. Must move in lockstep with the two rows above          |
 | `@sanity/diff-match-patch`            | 3.2.0   | Character-level diff behind the edit-history highlights. Apache-2.0, no dependencies                        |
 | `luxon`                               | 3.7.2   | Date and time arithmetic, including the day-separator rollover                                              |
 | `@ctrl/ngx-emoji-mart`                | 9.3.0   | Emoji picker for the composer and reactions                                                                 |

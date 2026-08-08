@@ -376,8 +376,15 @@ unchanged. `-plain` and `-punctuation` are `var()` references to `--trinity-text
 A new palette inherits all eight, and nothing checks them. If your rail departs from
 `#e3e5e8` or `#e7e2f0` (light) or `#1e1f22` or `#1c1826` (dark), re-measure.
 
-Highlighting itself is Shiki with thirteen statically imported grammars — roughly 813 KB raw
-and 134 kB gzipped. The module is reachable **only** through the
+Highlighting itself is Shiki with thirty-one statically imported grammars — the chunk they
+land in measures 3.5 MB raw and 513 kB gzipped, against 1.6 MB / 315 kB for the thirteen it
+started with. Grammar payload dominates that chunk and compresses worse than application
+code, so a language is not free: `cpp` alone is 521 KB raw, larger than the original thirteen
+combined, which is why it is deliberately absent. Measure before adding one —
+`gzip -c www/chunk-*.js | wc -c` on a production build, before and after, taking the largest
+chunk each time.
+
+The module is reachable **only** through the
 `@trinity/util/matrix/code-highlight` path alias and is imported for side effect at the top
 of `rooms.page.ts`, so the grammars land in the lazy rooms chunk. Exporting it from the
 `@trinity/util/matrix` barrel would drag every grammar into the eager bundle, because

@@ -23,6 +23,22 @@ The message box takes **Markdown**, rendered before it is sent. A preview button
 formatting toolbar swaps the input for the rendered result, so you can check a table or a
 fenced code block before anyone else sees it.
 
+### Code blocks
+
+A fenced block is coloured when you tag it with a language, and Trinity ships grammars for
+thirty-one:
+
+`bash` (`sh`, `shell`, `zsh`) · `c` · `csharp` (`cs`) · `css` · `dart` · `diff` ·
+`dockerfile` (`docker`) · `go` · `html` · `ini` · `java` · `javascript` (`js`) · `json` ·
+`kotlin` (`kt`) · `lua` · `makefile` · `markdown` (`md`) · `perl` · `php` · `powershell`
+(`ps1`) · `python` (`py`) · `ruby` (`rb`) · `rust` (`rs`) · `scala` · `shellsession` ·
+`sql` · `swift` · `toml` · `typescript` (`ts`) · `xml` · `yaml` (`yml`)
+
+An untagged block, or one tagged with a language not in that list, still renders exactly as
+you wrote it — just without colour. The tag is shown in the corner of the block either way,
+so a reader can tell what it was meant to be. C++ is deliberately not included: its grammar
+alone is larger than the first thirteen put together, and every reader downloads it.
+
 ### The formatting toolbar
 
 The toolbar above the message box carries Bold, Italic, Link and Inline code as buttons,
