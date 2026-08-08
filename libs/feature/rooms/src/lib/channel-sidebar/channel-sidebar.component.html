@@ -149,6 +149,7 @@
                 class="joinable__action"
                 (click)="joinRoom.emit(child)"
                 [attr.aria-label]="'Join ' + child.name"
+                [attr.data-testid]="'join-child-' + child.roomId"
                 title="Join"
               >
                 Join

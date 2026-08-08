@@ -529,9 +529,14 @@ function hroom(opts: HierarchyRoomOpts) {
 function setupHierarchy(opts: {
   rooms: ReturnType<typeof hroom>[];
   joined?: string[];
+  /** Joined ids that are themselves spaces — a child of a space may be either. */
+  joinedSpaces?: string[];
   reject?: unknown;
+  /** Skip `connect()`, to assert what a caller sees before the shell has wired it up. */
+  skipConnect?: boolean;
 }) {
-  const joined = new Set(opts.joined ?? []);
+  const spaceIds = new Set(opts.joinedSpaces ?? []);
+  const joined = new Set([...(opts.joined ?? []), ...spaceIds]);
   const getRoomHierarchy = opts.reject
     ? vi.fn().mockRejectedValue(opts.reject)
     : vi.fn().mockResolvedValue({ rooms: opts.rooms });
@@ -539,11 +544,16 @@ function setupHierarchy(opts: {
   // client knows, so a room the second resolves is always in the first. Returning [] here
   // while `getRoom` answered was a state the real client cannot be in — and the `joined`
   // flag is now derived from the joined-room set that `refresh()` builds off `getRooms()`.
-  const joinedRooms = [...joined].map((id) => ({
+  /** A room as `getRooms()` hands it back. Spaces also flow through `toSpace`. */
+  const joinedRoom = (id: string) => ({
     roomId: id,
+    name: id,
     getMyMembership: () => 'join',
-    isSpaceRoom: () => false,
-  }));
+    isSpaceRoom: () => spaceIds.has(id),
+    getMxcAvatarUrl: () => null,
+    getLiveTimeline: () => ({ getState: () => ({ getStateEvents: () => [] }) }),
+  });
+  const joinedRooms = [...joined].map(joinedRoom);
   /**
    * Join a room after the fact, so a test can drive a membership change. Updates BOTH
    * views the fake client offers, for the same reason the harness seeds both: a room
@@ -551,11 +561,7 @@ function setupHierarchy(opts: {
    */
   const join = (id: string) => {
     joined.add(id);
-    joinedRooms.push({
-      roomId: id,
-      getMyMembership: () => 'join',
-      isSpaceRoom: () => false,
-    });
+    joinedRooms.push(joinedRoom(id));
   };
   const client = {
     getRooms: () => joinedRooms,
@@ -570,7 +576,9 @@ function setupHierarchy(opts: {
   // Connect like the shell does before any space can be opened: the `joined` flag comes
   // from the joined-room set the projection's rebuild fills in, not from a direct client
   // read inside the computed.
-  svc.connect();
+  if (!opts.skipConnect) {
+    svc.connect();
+  }
   return { svc, getRoomHierarchy, client, join };
 }
 
@@ -698,6 +706,86 @@ describe('SpacesService hierarchy', () => {
     expect(svc.notJoinedRooms()).toEqual([]);
     expect(svc.openSpaceChildren()[0].joined).toBe(true);
     expect(getRoomHierarchy.mock.calls.length).toBe(fetches);
+  });
+
+  it('holds the same children when a sync changes no membership', async () => {
+    // The whole justification for the joined-set's structural equality. Without it every
+    // ClientEvent.Sync re-derives openSpaceChildren and, through it, notJoinedRooms,
+    // childSpaces, the channel sidebar and the organise dialog — for no change at all.
+    const { svc, client } = setupHierarchy({
+      rooms: [
+        hroom({
+          roomId: '!s:hs',
+          name: 'Space',
+          isSpace: true,
+          children: [{ childId: '!room:hs', order: '10' }],
+        }),
+        hroom({ roomId: '!room:hs', name: 'open-room' }),
+      ],
+      joined: ['!room:hs'],
+    });
+    svc.openSpace('!s:hs');
+    await flush();
+    const before = svc.openSpaceChildren();
+
+    handlerFor(client, 'sync')?.();
+    await Promise.resolve();
+
+    expect(svc.openSpaceChildren()).toBe(before);
+  });
+
+  it('counts a joined SUB-SPACE as joined, not just a room', async () => {
+    // A child of a space may be either, and the joined set is built by filtering
+    // `getRooms()` on membership alone — nothing there excludes spaces. Every other
+    // fixture here is a plain room, so this is the only case that would notice an
+    // `isSpaceRoom` filter creeping into that pass.
+    const { svc } = setupHierarchy({
+      rooms: [
+        hroom({
+          roomId: '!s:hs',
+          name: 'Space',
+          isSpace: true,
+          children: [{ childId: '!sub:hs', order: '10' }],
+        }),
+        hroom({ roomId: '!sub:hs', name: 'Sub Space', isSpace: true }),
+      ],
+      joinedSpaces: ['!sub:hs'],
+    });
+
+    svc.openSpace('!s:hs');
+    await flush();
+
+    expect(svc.childSpaces().map((c) => c.roomId)).toEqual(['!sub:hs']);
+    expect(svc.childSpaces()[0].joined).toBe(true);
+  });
+
+  it('reports children as not joined until the projection is connected', async () => {
+    // A precondition the joined-set introduced: the flag comes from a set `refresh()`
+    // fills, so an unconnected service says "not joined" about everything rather than
+    // reading the client on the spot. The shell connects in ngOnInit, long before a space
+    // can be opened — but a future caller that opens a space earlier would see this, and
+    // it should be a documented answer rather than a surprise.
+    const { svc } = setupHierarchy({
+      rooms: [
+        hroom({
+          roomId: '!s:hs',
+          name: 'Space',
+          isSpace: true,
+          children: [{ childId: '!room:hs', order: '10' }],
+        }),
+        hroom({ roomId: '!room:hs', name: 'open-room' }),
+      ],
+      joined: ['!room:hs'],
+      skipConnect: true,
+    });
+
+    svc.openSpace('!s:hs');
+    await flush();
+    expect(svc.openSpaceChildren()[0].joined).toBe(false);
+
+    svc.connect();
+
+    expect(svc.openSpaceChildren()[0].joined).toBe(true);
   });
 
   it('clears the open-space children for Home (null) without fetching', () => {

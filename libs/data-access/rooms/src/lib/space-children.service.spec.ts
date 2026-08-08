@@ -72,11 +72,16 @@ function setup(
     on: vi.fn(),
     off: vi.fn(),
   };
+  // A getter, so a test can sign in after the service exists — the real service's
+  // `isInitialized` moves under it too.
+  let signedIn = !opts.signedOut;
   TestBed.configureTestingModule({
     providers: [
       SpaceChildrenService,
       MockProvider(MatrixClientService, {
-        isInitialized: !opts.signedOut,
+        get isInitialized() {
+          return signedIn;
+        },
         instance: client as never,
         activeUserId: activeUserId.asReadonly(),
       }),
@@ -88,6 +93,9 @@ function setup(
     client,
     events,
     getStateEvents,
+    signIn: () => {
+      signedIn = true;
+    },
   };
 }
 
@@ -508,6 +516,44 @@ describe('SpaceChildrenService', () => {
       const { svc } = setup({ children: [{ childId: '!a:hs' }] });
 
       expect(svc.linksFor('!s:hs')).toBe(svc.linksFor('!s:hs'));
+    });
+
+    it('fills in a signal created while signed out, once connected', () => {
+      // The seed is one-shot and memoized, so a signal handed out before there is a client
+      // is empty by necessity. connect() is what has to make it right — otherwise a
+      // surface built during startup would stay blank for the session.
+      const { svc, signIn } = setup({
+        children: [{ childId: '!a:hs' }],
+        signedOut: true,
+      });
+      const links = svc.linksFor('!s:hs');
+      expect(links()).toEqual([]);
+
+      signIn();
+      svc.connect();
+
+      expect(links().map((l) => l.childId)).toEqual(['!a:hs']);
+    });
+
+    it('re-seeds every watched space when it rewires onto a new client', async () => {
+      // A re-login or account switch hands the projection a different client. The links
+      // map is not cleared (see the service), so the rebuild has to walk it — a signal
+      // left holding the previous client's answer is the failure this guards.
+      const { svc, client, events } = setup({
+        children: [{ childId: '!a:hs' }],
+      });
+      const links = svc.linksFor('!s:hs');
+      svc.connect();
+
+      // The same shape the projection sees on a switch: disconnect, then connect again
+      // with the client now reporting different state.
+      svc.disconnect();
+      events.length = 0;
+      events.push(childEvent({ childId: '!b:hs' }));
+      svc.connect();
+
+      expect(links().map((l) => l.childId)).toEqual(['!b:hs']);
+      expect(client.on).toHaveBeenCalledTimes(2);
     });
   });
 });
