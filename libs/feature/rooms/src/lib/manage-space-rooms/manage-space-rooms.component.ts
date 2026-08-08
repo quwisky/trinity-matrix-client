@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   computed,
+  effect,
   inject,
   input,
   signal,
@@ -40,11 +41,12 @@ export interface ManagedChild {
  * the space for *everyone*, and nothing wrote it — so a space owner could curate their own
  * view and had no way to curate the space.
  *
- * The list is driven from synced state via {@link SpaceChildrenService.linksFor}, so a move
- * or a toggle re-renders from the echo rather than from optimistic local edits: what is on
- * screen is what the server has, whoever changed it. Names come from the open space's
- * hierarchy where available, since a child the viewer has not joined has no local room to
- * read a name off.
+ * The list is driven from synced state via {@link SpaceChildrenService.linksFor}, so what is
+ * on screen is what the server has, whoever changed it — a move or a remote edit re-renders
+ * from the echo. The single exception is an in-flight `suggested` write, which is overlaid
+ * until it settles; {@link pendingSuggested} explains why the checkbox leaves no choice.
+ * Names come from the open space's hierarchy where available, since a child the viewer has
+ * not joined has no local room to read a name off.
  */
 @Component({
   selector: 'trn-manage-space-rooms',
@@ -69,9 +71,25 @@ export class ManageSpaceRoomsComponent {
   /** The child currently being written, so its row can show as busy. */
   readonly busyChildId = signal<string | null>(null);
 
+  /**
+   * In-flight `suggested` writes, overlaid on the projected links until the echo lands.
+   *
+   * The one place this dialog is deliberately optimistic, and only because the checkbox
+   * gives it no choice. `HlmCheckbox.checked` is a `linkedSignal` over the `checked` input
+   * which its own click handler sets locally, so it re-derives only when that INPUT
+   * changes value. A rejected write leaves the link at `suggested: false` — the same value
+   * the input already had — so nothing re-derives and the box stays ticked for a change
+   * the server refused. Rolling the overlay back drives the input false→true→false, which
+   * is a real transition and does un-tick it.
+   */
+  private readonly pendingSuggested = signal<ReadonlyMap<string, boolean>>(
+    new Map(),
+  );
+
   readonly childList = computed<ManagedChild[]>(() => {
     const spaceId = this.spaceId();
     const names = this.nameLookup();
+    const pending = this.pendingSuggested();
     return this.children
       .linksFor(spaceId)()
       .map((link) => {
@@ -82,7 +100,7 @@ export class ManageSpaceRoomsComponent {
           name,
           initial: known?.initial ?? initialOf(name),
           avatarMxc: known?.avatarMxc ?? null,
-          suggested: link.suggested,
+          suggested: pending.get(link.childId) ?? link.suggested,
         };
       });
   });
@@ -130,13 +148,57 @@ export class ManageSpaceRoomsComponent {
     return list[list.length - 1]?.childId === childId;
   }
 
+  /**
+   * Drop an overlay once the projection agrees with it.
+   *
+   * Not done on the write callback: the write resolving only means the server took it, and
+   * the echo is a sync away. Clearing there would drive the checkbox true→false→true — a
+   * visible flicker on the happy path. Holding until the link actually says so also stops
+   * a settled overlay masking a later change by someone else.
+   */
+  private readonly pruneSettled = effect(() => {
+    const links = this.children.linksFor(this.spaceId())();
+    const pending = this.pendingSuggested();
+    if (pending.size === 0) {
+      return;
+    }
+    const settled = links.filter(
+      (link) => pending.get(link.childId) === link.suggested,
+    );
+    if (settled.length > 0) {
+      this.pendingSuggested.update((current) => {
+        const next = new Map(current);
+        for (const link of settled) {
+          next.delete(link.childId);
+        }
+        return next;
+      });
+    }
+  });
+
   /** Flag a child as suggested — a hint to members about where to start. */
   toggleSuggested(childId: string, suggested: boolean): void {
+    this.setPending(childId, suggested);
     this.run(
       childId,
       this.children.setSuggested(this.spaceId(), childId, suggested),
       'Could not update that room.',
+      // Only on rejection. Removing the overlay is what drives the input back to the
+      // server's value, which is the transition that un-ticks the box.
+      () => this.setPending(childId, undefined),
     );
+  }
+
+  private setPending(childId: string, suggested: boolean | undefined): void {
+    this.pendingSuggested.update((current) => {
+      const next = new Map(current);
+      if (suggested === undefined) {
+        next.delete(childId);
+      } else {
+        next.set(childId, suggested);
+      }
+      return next;
+    });
   }
 
   move(childId: string, direction: 'up' | 'down'): void {
@@ -169,6 +231,7 @@ export class ManageSpaceRoomsComponent {
     childId: string,
     action: ReturnType<SpaceChildrenService['setSuggested']>,
     failureMessage: string,
+    rejected?: () => void,
   ): void {
     this.busyChildId.set(childId);
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
@@ -180,6 +243,7 @@ export class ManageSpaceRoomsComponent {
       },
       error: () => {
         this.busyChildId.set(null);
+        rejected?.();
         this.toast.show(failureMessage, {
           duration: 4000,
           variant: 'destructive',

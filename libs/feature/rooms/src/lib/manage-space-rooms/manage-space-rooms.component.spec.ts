@@ -7,7 +7,7 @@ import {
   SpacesService,
 } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ManageSpaceRoomsComponent } from './manage-space-rooms.component';
 
@@ -269,5 +269,53 @@ describe('ManageSpaceRoomsComponent', () => {
       'Alpha',
       'Bravo',
     ]);
+  });
+
+  describe('a rejected suggested write', () => {
+    it('puts the row back the way the server has it', async () => {
+      // The checkbox ticks itself on click and only re-derives when its `checked` INPUT
+      // changes value. Leaving the row at the server's `false` is no change at all, so
+      // without the rollback the box stays ticked for a write that was refused.
+      const { cmp } = await build(
+        { links: [{ childId: '!a:hs', suggested: false }] },
+        { setSuggested: vi.fn(() => throwError(() => new Error('nope'))) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+
+      expect(cmp.childList()[0].suggested).toBe(false);
+    });
+
+    it('shows the change while the write is in flight', async () => {
+      // The other half: an overlay that never showed anything would "pass" the test above
+      // by doing nothing at all.
+      const pending = new Subject<void>();
+      const { cmp } = await build(
+        { links: [{ childId: '!a:hs', suggested: false }] },
+        { setSuggested: vi.fn(() => pending.asObservable()) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+
+      expect(cmp.childList()[0].suggested).toBe(true);
+    });
+
+    it('keeps a successful change on screen until the echo lands', async () => {
+      // Clearing the overlay when the write RESOLVES would drive the checkbox
+      // true→false→true: the server has taken it, but the state echo is a sync away.
+      const { cmp, links } = await build(
+        { links: [{ childId: '!a:hs', suggested: false }] },
+        { setSuggested: vi.fn(() => of(undefined)) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+      expect(cmp.childList()[0].suggested).toBe(true);
+
+      links.set([
+        { childId: '!a:hs', via: ['hs'], suggested: true, order: '' },
+      ]);
+
+      expect(cmp.childList()[0].suggested).toBe(true);
+    });
   });
 });
