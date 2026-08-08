@@ -82,14 +82,18 @@ export class AddToSpaceComponent {
    * Everything the user could add: their joined rooms and spaces, minus the target space
    * itself and anything already linked into it.
    *
-   * Reading `childLinks` here rather than the hierarchy fetch is deliberate — it comes
+   * Reading the space's links rather than the hierarchy fetch is deliberate — they come
    * from synced state, so a room added in this dialog disappears from the list as soon as
-   * the write echoes back, without a round trip.
+   * the write echoes back, without a round trip. `linksFor` is what makes that a declared
+   * dependency: the plain `childLinks()` read this used to do is a snapshot, and the list
+   * only refreshed because `rooms()` happened to tick in the same turn.
    */
   readonly candidates = computed<AddCandidate[]>(() => {
     const spaceId = this.spaceId();
     const existing = new Set(
-      this.children.childLinks(spaceId).map((link) => link.childId),
+      this.children
+        .linksFor(spaceId)()
+        .map((link) => link.childId),
     );
     const rooms: AddCandidate[] = this.rooms
       .rooms()

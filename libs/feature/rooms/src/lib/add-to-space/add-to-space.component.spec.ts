@@ -41,13 +41,18 @@ async function build(
       }),
       MockProvider(SpaceChildrenService, {
         addExistingRoom,
-        childLinks: () =>
-          (opts.existing ?? []).map((childId) => ({
-            childId,
-            via: ['hs'],
-            suggested: false,
-            order: '',
-          })),
+        // A signal, not a closure returning a fresh array: the component depends on the
+        // links reactively now, and a mock that can never change would let a staleness
+        // regression pass here forever.
+        linksFor: () =>
+          signal(
+            (opts.existing ?? []).map((childId) => ({
+              childId,
+              via: ['hs'],
+              suggested: false,
+              order: '',
+            })),
+          ).asReadonly(),
       }),
       MockProvider(DialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),

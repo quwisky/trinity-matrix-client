@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { signal } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SpaceChildrenService } from './space-children.service';
 import { compareOrder } from './space-child-order';
@@ -13,6 +14,32 @@ interface ChildFixture {
   order?: string;
 }
 
+/**
+ * Not optional, even though nothing here drives an account switch: `projectFromClient`
+ * calls `reprojectOnAccountSwitch`, whose `effect` reads this. ng-mocks 14.16 stopped
+ * inventing unnamed signal properties, so leaving it off throws inside a field
+ * initializer — and gets blamed on whichever test happens to run first.
+ */
+const activeUserId = signal<string | null>(null);
+
+beforeEach(() => {
+  activeUserId.set(null);
+});
+
+/** One `m.space.child` state event, as the SDK would hand it back. */
+function childEvent(child: ChildFixture) {
+  return {
+    getStateKey: () => child.childId,
+    getContent: () => ({
+      ...(child.via === undefined
+        ? { via: ['hs.example'] }
+        : { via: child.via }),
+      ...(child.suggested === undefined ? {} : { suggested: child.suggested }),
+      ...(child.order === undefined ? {} : { order: child.order }),
+    }),
+  };
+}
+
 function setup(
   opts: {
     children?: ChildFixture[];
@@ -22,41 +49,57 @@ function setup(
   } = {},
 ) {
   const sendStateEvent = vi.fn().mockResolvedValue({});
-  const events = (opts.children ?? []).map((child) => ({
-    getStateKey: () => child.childId,
-    getContent: () => ({
-      ...(child.via === undefined
-        ? { via: ['hs.example'] }
-        : { via: child.via }),
-      ...(child.suggested === undefined ? {} : { suggested: child.suggested }),
-      ...(child.order === undefined ? {} : { order: child.order }),
-    }),
-  }));
+  // Mutable and returned, so a test can change what the space declares and then fire the
+  // listener — the only way to observe that the projection re-reads.
+  const events = (opts.children ?? []).map(childEvent);
+  const getStateEvents = vi.fn((type: string) =>
+    type === 'm.space.child' ? events : [],
+  );
   const room = opts.noRoom
     ? null
     : {
         getLiveTimeline: () => ({
           getState: () => ({
             maySendStateEvent: () => opts.may ?? true,
-            getStateEvents: (type: string) =>
-              type === 'm.space.child' ? events : [],
+            getStateEvents,
           }),
         }),
       };
+  const client = {
+    sendStateEvent,
+    getRoom: () => room,
+    getUserId: () => '@me:hs.example',
+    on: vi.fn(),
+    off: vi.fn(),
+  };
   TestBed.configureTestingModule({
     providers: [
       SpaceChildrenService,
       MockProvider(MatrixClientService, {
         isInitialized: !opts.signedOut,
-        instance: {
-          sendStateEvent,
-          getRoom: () => room,
-          getUserId: () => '@me:hs.example',
-        } as never,
+        instance: client as never,
+        activeUserId: activeUserId.asReadonly(),
       }),
     ],
   });
-  return { svc: TestBed.inject(SpaceChildrenService), sendStateEvent };
+  return {
+    svc: TestBed.inject(SpaceChildrenService),
+    sendStateEvent,
+    client,
+    events,
+    getStateEvents,
+  };
+}
+
+/** Pull a captured client listener by event name (for simulating live updates). */
+function handlerFor(client: { on: ReturnType<typeof vi.fn> }, event: string) {
+  const call = client.on.mock.calls.find(([e]) => e === event);
+  return call?.[1] as ((...args: unknown[]) => void) | undefined;
+}
+
+/** A state event as the `RoomState.events` listener receives it. */
+function stateEvent(type: string, roomId: string) {
+  return { getType: () => type, getRoomId: () => roomId };
 }
 
 /** The content of the nth `sendStateEvent` call. */
@@ -350,6 +393,121 @@ describe('SpaceChildrenService', () => {
         firstValueFrom(svc.moveChildBefore('!s:hs', '!a:hs', '!nope:hs')),
       ).rejects.toThrow(/not in this space/i);
       expect(sendStateEvent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('linksFor', () => {
+    it('seeds from current state before connect', () => {
+      const { svc } = setup({ children: [{ childId: '!a:hs' }] });
+
+      // A caller may read this in a field initializer, before anything has connected.
+      expect(
+        svc
+          .linksFor('!s:hs')()
+          .map((l) => l.childId),
+      ).toEqual(['!a:hs']);
+    });
+
+    it('follows a child link added by someone else', async () => {
+      const { svc, client, events } = setup({
+        children: [{ childId: '!a:hs' }],
+      });
+      const links = svc.linksFor('!s:hs');
+      svc.connect();
+
+      // Exactly what a remote curation change looks like: the space's state gains a child,
+      // and the only notice we get is the state event.
+      // No `order`, so it lands beside !a:hs and sorts by id — this case is about the link
+      // being SEEN, and an ordered child would sort ahead of an unordered one.
+      events.push(childEvent({ childId: '!b:hs' }));
+      handlerFor(
+        client,
+        'RoomState.events',
+      )?.(stateEvent('m.space.child', '!s:hs'));
+      await Promise.resolve();
+
+      expect(links().map((l) => l.childId)).toEqual(['!a:hs', '!b:hs']);
+    });
+
+    it('ignores unrelated state and other rooms', async () => {
+      const { svc, client, events, getStateEvents } = setup({
+        children: [{ childId: '!a:hs' }],
+      });
+      svc.linksFor('!s:hs');
+      svc.connect();
+      const readsAfterConnect = getStateEvents.mock.calls.length;
+      events.push(childEvent({ childId: '!b:hs' }));
+
+      const onState = handlerFor(client, 'RoomState.events');
+      onState?.(stateEvent('m.room.topic', '!s:hs'));
+      onState?.(stateEvent('m.space.child', '!other:hs'));
+      // Flush BEFORE asserting: the rebuild is queued on a microtask, so "did not rebuild"
+      // passes trivially against an unflushed turn and would prove nothing.
+      await Promise.resolve();
+
+      expect(getStateEvents.mock.calls.length).toBe(readsAfterConnect);
+    });
+
+    it('collapses a burst of child events into one rebuild', async () => {
+      const { svc, client, getStateEvents } = setup({
+        children: [{ childId: '!a:hs' }],
+      });
+      svc.linksFor('!s:hs');
+      svc.connect();
+      const readsAfterConnect = getStateEvents.mock.calls.length;
+
+      // A reorder is sent as one state event per sibling, so this is the ordinary case.
+      const onState = handlerFor(client, 'RoomState.events');
+      onState?.(stateEvent('m.space.child', '!s:hs'));
+      onState?.(stateEvent('m.space.child', '!s:hs'));
+      onState?.(stateEvent('m.space.child', '!s:hs'));
+      await Promise.resolve();
+
+      expect(getStateEvents.mock.calls.length).toBe(readsAfterConnect + 1);
+    });
+
+    it('holds the same array when the state says the same thing', async () => {
+      const { svc, client } = setup({ children: [{ childId: '!a:hs' }] });
+      const links = svc.linksFor('!s:hs');
+      svc.connect();
+      const before = links();
+
+      handlerFor(
+        client,
+        'RoomState.events',
+      )?.(stateEvent('m.space.child', '!s:hs'));
+      await Promise.resolve();
+
+      // Structural equality: a rebuild that changes nothing must not tick consumers.
+      expect(links()).toBe(before);
+    });
+
+    it('detaches on disconnect and stops re-reading', async () => {
+      const { svc, client, events, getStateEvents } = setup({
+        children: [{ childId: '!a:hs' }],
+      });
+      const links = svc.linksFor('!s:hs');
+      svc.connect();
+      const onState = handlerFor(client, 'RoomState.events');
+
+      svc.disconnect();
+      expect(client.off).toHaveBeenCalledWith('RoomState.events', onState);
+
+      const readsAfterDisconnect = getStateEvents.mock.calls.length;
+      events.push(childEvent({ childId: '!b:hs' }));
+      onState?.(stateEvent('m.space.child', '!s:hs'));
+      await Promise.resolve();
+
+      expect(getStateEvents.mock.calls.length).toBe(readsAfterDisconnect);
+      // Deliberately NOT cleared: an empty list renders as "this space has no rooms",
+      // which is a wrong answer rather than a missing one.
+      expect(links().map((l) => l.childId)).toEqual(['!a:hs']);
+    });
+
+    it('shares one signal per space', () => {
+      const { svc } = setup({ children: [{ childId: '!a:hs' }] });
+
+      expect(svc.linksFor('!s:hs')).toBe(svc.linksFor('!s:hs'));
     });
   });
 });

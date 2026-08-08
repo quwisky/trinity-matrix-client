@@ -52,6 +52,7 @@ import { PresenceService } from '@trinity/data-access/profile';
 import {
   RoomsService,
   SpacesService,
+  SpaceChildrenService,
   AccountScopeService,
   MixedRoomsService,
   MixedSpacesService,
@@ -167,6 +168,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(CryptoService);
   private readonly presence = inject(PresenceService);
+  private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
   private readonly router = inject(Router);
@@ -236,6 +238,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.invites.connect();
     this.crypto.connect();
     this.presence.connect(); // live online-status for member avatars
+    this.spaceChildren.connect(); // live m.space.child links for the curation surfaces
     // Register for push once the authenticated shell is live (covers both fresh
     // login and a restored session). Best-effort + native-only; no-op elsewhere.
     this.push.register().subscribe({ error: () => undefined });
