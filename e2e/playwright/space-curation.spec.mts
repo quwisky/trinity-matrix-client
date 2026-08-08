@@ -315,5 +315,33 @@ test.describe('Space curation', () => {
     expect((moved?.['via'] as string[])?.length).toBeGreaterThan(0);
     // And the suggestion it already carried survived the reorder.
     expect(moved?.['suggested']).toBe(true);
+
+    // A third room linked into the space from OUTSIDE this browser, with the dialog still
+    // open — the direction every other assertion here is blind to. The rest of this spec
+    // drives the UI and then reads the server, so it catches a UI that writes nothing; it
+    // cannot catch state that was written and never reaches the screen.
+    //
+    // What this does NOT prove is which dependency carries it. `childList` also reads a
+    // name lookup over `rooms()` and `spaces()`, both of which hand back a fresh array on
+    // every rebuild, and `SpacesService` refreshes on `m.space.child` too — so the list
+    // re-reads even when its dependency on the links is severed. Verified, not assumed:
+    // wrapping the link read in `untracked` leaves this test green. The declared
+    // dependency is pinned in space-children.service.spec.ts, where no name lookup exists
+    // to carry it. This assertion guards the user-visible behaviour end to end.
+    const third = await createRoom(request, hs, token, {
+      name: `Ccc ${runId}`,
+      preset: 'private_chat',
+    });
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(third)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { via: ['localhost'], order: 'z' },
+      },
+    );
+
+    await expect(page.getByTestId(`managed-${third}`)).toBeVisible({
+      timeout: 30_000,
+    });
   });
 });
