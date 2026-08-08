@@ -315,34 +315,42 @@ a private `withBusy()` helper backed by page-level `busy` and `error` signals.
     Observable is subscribed, so calling `runWithBusy` and never subscribing leaves `busy` stuck
     true because `finalize` never runs.
 
-## Revision counters are a known strain
+## Revision counters, and what replaced most of them
 
-Four signals in the codebase are bump counters rather than data: `RoomsService.revision`,
-`RoomsService.memberRevision`, a private one in `SpacesService`, and a coalesced one in
-`PinnedMessagesService`. A `computed` reads the counter, discards the value, and re-runs when it
-ticks:
+A bump counter is a signal holding no data: a `computed` reads it, discards the value, and
+re-runs when it ticks. They appear where the underlying data is not in a signal at all — it
+lives in `matrix-js-sdk` objects mutated in place — so there is nothing to depend on.
 
-```ts
-readonly pinnedMessages = computed<PinnedMessageView[]>(() => {
-  this._revision();
-  const ids = this._pinnedEventIds();
-  // …resolve each id against the room's locally-loaded events
-});
-```
+This section used to say there were four and leave it there. Issue #61 audited them; the
+count was wrong, so was one of the justifications, and two turned out to be avoidable. The
+survey, so the next reader inherits the conclusions rather than the puzzle:
 
-They exist because the underlying data is not in a signal at all — it lives in `matrix-js-sdk`
-objects that are mutated in place. `membersOf(roomId)` reads `Room.getJoinedMembers()` directly, so
-there is nothing for a `computed` to depend on except a hand-ticked counter. The alternative, an
-entity store mirroring SDK state into signals, is the thing this architecture deliberately does not
-build.
+| Counter                                               | Verdict                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SpacesService._revision`                             | **Removed.** It stood for "which rooms am I in?", which `refresh()` already knew from its own `getRooms()` pass. Now a `_joinedRoomIds` set with structural equality.                                                                                                                                                                                                |
+| `PinnedMessagesService._revision`                     | **Removed.** It was defended as irreducible — late decryption, no entity-level signal to depend on. But `MatrixEventEvent.Decrypted` _is_ that signal, the service already listened to it, and `TimelineService` solves the same problem on the same event with no counter. `pinnedMessages` is now a signal the resolve writes.                                     |
+| `ManageSpaceRoomsComponent.revision`                  | **Removed.** A _component_ compensating for a service with no reactive surface. `SpaceChildrenService.linksFor` projects `m.space.child` now. It was never in this list.                                                                                                                                                                                             |
+| `RoomsService.profileRevision`                        | **Kept**, renamed from `revision`. Its comment claimed it drove member queries; all four consumers resolve user profiles via `getUser()`. Replacing it needs a cross-account projection of `UserEvent.DisplayName`/`AvatarUrl`, because two consumers read _other_ accounts' clients.                                                                                |
+| `RoomsService.memberRevision`                         | **Kept**, on correctness grounds and not the ones previously written down. It is not a throttle: the recompute it "avoids" is `membersOf`'s fingerprint memo returning the identical array, which `Object.is` stops. It stays because `RoomStateEvent.Members` is deliberately outside the coalesced event list, making this the service's only membership observer. |
+| `heightVersion` (`virtual-message-list.component.ts`) | **Kept**, and not a Matrix problem: it invalidates a `Map` a `ResizeObserver` writes. The alternative allocates per measurement. Never previously listed.                                                                                                                                                                                                            |
 
-Treat them as a documented strain, not a pattern to reach for. Before adding a fifth, check whether
-the value can be projected into a real signal by the service that owns the events. If a counter is
-genuinely the answer, take the two lessons the existing ones encode: keep it separate from the main
-revision when it is bumped by different events (`memberRevision` exists precisely so a member list
-does not re-run on every read receipt), and coalesce it when the events are per-message, as
-`PinnedMessagesService` does — a bump per backfilled event is the difference between per-message
-and per-turn work in a busy room.
+Two general lessons, both learned the hard way here:
+
+**A counter is usually a missing signal, not a missing dependency.** Every one removed above
+turned out to have a real value hiding behind it — a set of ids, a resolved list. Ask what the
+counter _stands for_ and store that instead; it is inspectable in a debugger, it can carry an
+`equal` so an unchanged sync stops there, and it cannot silently drift out of step with the
+thing it was standing in for.
+
+**Undeclared liveness is worse than no liveness.** The Organise-rooms dialog re-read on every
+sync — not through any dependency it declared, but because a _name lookup_ it also read handed
+back a fresh array each rebuild. It worked, it was untested, and severing the real dependency
+still leaves the end-to-end test green. Pin a projection where the accident cannot reach it:
+in the data-access spec, not the component's.
+
+Before adding a new one, check whether the value can be projected by the service that owns the
+events — `projectFromClient` decides listener lifecycle, coalescing and account-switch
+re-projection for you, and the answer has now been "yes, project it" three times running.
 
 ## Page-scoped coordinators
 

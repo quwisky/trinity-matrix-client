@@ -257,6 +257,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A "Suggested" tick that the server rejects no longer sticks.** In Organise, marking a room
+  as suggested left the box ticked even when the change was refused — a toast said it had
+  failed while the row said it had worked, and it stayed that way until you closed and
+  reopened the dialog. The tick now goes back where it was, so what you see is what the space
+  actually has.
+
 - **Destructive buttons and menu items keep their contrast wherever they appear.** The red
   tint behind "Leave room", "Ban from room" and similar was translucent, so how readable the
   label was depended on what happened to be behind it — comfortably legible in a dialog or a
