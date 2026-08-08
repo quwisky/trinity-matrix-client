@@ -1182,7 +1182,7 @@ function renderCodeBlocks(root: ParentNode): void {
       // those would starve blocks that could have been highlighted.
       const charged = highlightBlock(code, lang, source, budget);
       budget -= charged;
-      lineBudget -= markCodeLines(pre, code, source, charged > 0, lineBudget);
+      lineBudget -= markCodeLines(code, source, charged > 0, lineBudget);
     }
   }
 }
@@ -1245,7 +1245,6 @@ function highlightBlock(
  * per viewer.
  */
 function markCodeLines(
-  pre: Element,
   code: Element,
   source: string,
   highlighted: boolean,
@@ -1312,7 +1311,12 @@ function markCodeLines(
 
   code.replaceChildren(...wrapped);
   if (count > LINE_NUMBER_THRESHOLD) {
-    pre.setAttribute('rows', String(count));
+    // On the `code`, not the `pre`. The Matrix allowlist lets a sender put two `<code>`
+    // children in one `<pre>`: writing to the block would be last-writer-wins, so a long
+    // listing followed by a short one kept a stale count, and the threshold gate applied to
+    // both blocks from whichever wrote last. Per-`code` makes each block answer for itself,
+    // and matches where the counter is reset.
+    code.setAttribute('rows', String(count));
   }
   return count;
 }

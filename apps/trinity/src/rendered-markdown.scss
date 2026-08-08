@@ -135,10 +135,9 @@
       background: none;
       color: var(--trinity-syntax-plain);
 
-      // Reset per `code`, not per `pre`. The Matrix allowlist lets a sender put two `<code>`
-      // children in one `<pre>`; resetting on the block would run one sequence across both,
-      // so the second listing would start at wherever the first ended — and `rows`, which
-      // the sanitizer writes on the `pre`, only records the last one.
+      // Reset per `code`, matching where `rows` is written. The Matrix allowlist lets a
+      // sender put two `<code>` children in one `<pre>`; resetting on the block would run
+      // one sequence across both, so the second listing would continue the first's numbers.
       counter-reset: code-line;
     }
 
@@ -235,7 +234,7 @@
     // Automatic — the default, and why it needs no attribute on <html>. `rows` is set by
     // the sanitizer from the CONTENT (past the line threshold), never from the preference:
     // this HTML is memoized per message and shared by every viewer.
-    &[rows] .code-line::before {
+    code[rows] .code-line::before {
       content: counter(code-line);
     }
   }

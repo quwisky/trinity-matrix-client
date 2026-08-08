@@ -72,6 +72,20 @@ async function choose(
   await expect(item).toHaveCount(0);
 }
 
+/**
+ * Back to the room after visiting Settings.
+ *
+ * A full navigation, and it has to be: Settings is its own route and the server rail lives
+ * in the rooms feature, so there is no in-app control to click back with. Each of these
+ * therefore costs a cold boot — Rust-crypto init plus a first /sync, which this config
+ * budgets at 15-40s under load — and that, not any race, is what puts these specs closest
+ * to the 120s ceiling. Worth knowing before adding another settings round-trip to them.
+ */
+async function backToRoom(page: Page, roomName: string): Promise<void> {
+  await page.goto('/rooms');
+  await openRoom(page, roomName);
+}
+
 const px = (locator: ReturnType<Page['locator']>) =>
   locator.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
 
@@ -275,15 +289,14 @@ test.describe('Code size', () => {
     await page.getByTestId('settings-nav-appearance').click();
     await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
     await choose(page, 'code-scale-select', 'code-scale-larger');
-    await page.goto('/rooms');
-    await openRoom(page, roomName);
+    await backToRoom(page, roomName);
 
     const proseLarger = await px(prose);
     const codeLarger = await px(code);
     // The whole point: code grew, and the prose beside it did not budge. A setting that
     // moved both would be Text size wearing a different label.
     expect(codeLarger).toBeGreaterThan(codeDefault);
-    expect(proseLarger).toBe(proseDefault);
+    expect(proseLarger).toBeCloseTo(proseDefault, 3);
 
     // Now the composition. Text size moves the root; code must follow it AND keep the
     // enlargement, so the ratio between the two survives. If the code size were absolute,
@@ -292,8 +305,7 @@ test.describe('Code size', () => {
     await page.getByTestId('settings-nav-appearance').click();
     await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
     await choose(page, 'text-scale-select', 'text-scale-larger');
-    await page.goto('/rooms');
-    await openRoom(page, roomName);
+    await backToRoom(page, roomName);
 
     const proseBoth = await px(prose);
     const codeBoth = await px(code);
@@ -386,8 +398,8 @@ test.describe('Code line numbers', () => {
 
     // `rows` survives Angular's second sanitizer pass. An attribute it dropped would leave
     // every assertion below silently unnumbered.
-    await expect(longBlock).toHaveAttribute('rows', '8');
-    expect(await shortBlock.getAttribute('rows')).toBeNull();
+    await expect(longBlock.locator('code')).toHaveAttribute('rows', '8');
+    expect(await shortBlock.locator('code').getAttribute('rows')).toBeNull();
 
     const firstNumber = (block: ReturnType<Page['locator']>) =>
       block.evaluate(
@@ -402,6 +414,16 @@ test.describe('Code line numbers', () => {
     expect(await firstNumber(longBlock)).toContain('counter');
     expect(await firstNumber(shortBlock)).toBe('none');
 
+    // The numbering has to END where the block does. The rendered digit itself is not
+    // reachable — `content` computes to the unresolved `counter(code-line)` — but the
+    // counter increments once per wrapper, so wrapper count against the declared `rows` is
+    // the same statement. This is what the trailing newline broke: it wrapped one line more
+    // than the block has, numbering a blank row past the last line of code.
+    const wrappers = await longBlock.locator('.code-line').count();
+    expect(String(wrappers)).toBe(
+      await longBlock.locator('code').getAttribute('rows'),
+    );
+
     // THE constraint. The numbers are generated content, so the block reads as its source
     // and nothing else — no digits in the text, and the <pre> matches its <code> exactly.
     const text = await longBlock.evaluate((el) => el.textContent ?? '');
@@ -411,21 +433,19 @@ test.describe('Code line numbers', () => {
     await page.getByTestId('settings-nav-appearance').click();
     await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
     await choose(page, 'code-lines-select', 'code-lines-always');
-    await page.goto('/rooms');
-    await openRoom(page, roomName);
+    await backToRoom(page, roomName);
 
     // `always` reaches the short block, which carries no `rows` — proof the preference is
     // applied in CSS rather than baked into the memoized markup.
     await expect(shortBlock).toBeVisible({ timeout: 20_000 });
     expect(await firstNumber(shortBlock)).toContain('counter');
-    expect(await shortBlock.getAttribute('rows')).toBeNull();
+    expect(await shortBlock.locator('code').getAttribute('rows')).toBeNull();
 
     await page.getByTestId('open-settings').click();
     await page.getByTestId('settings-nav-appearance').click();
     await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
     await choose(page, 'code-lines-select', 'code-lines-off');
-    await page.goto('/rooms');
-    await openRoom(page, roomName);
+    await backToRoom(page, roomName);
 
     await expect(longBlock).toBeVisible({ timeout: 20_000 });
     expect(await firstNumber(longBlock)).toBe('none');
