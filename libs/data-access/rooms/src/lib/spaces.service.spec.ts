@@ -535,8 +535,25 @@ function setupHierarchy(opts: {
   const getRoomHierarchy = opts.reject
     ? vi.fn().mockRejectedValue(opts.reject)
     : vi.fn().mockResolvedValue({ rooms: opts.rooms });
+  // `getRooms()` has to agree with `getRoom()`: the SDK's `getRooms()` is every room the
+  // client knows, so a room the second resolves is always in the first. Returning [] here
+  // while `getRoom` answered was a state the real client cannot be in — and the `joined`
+  // flag is now derived from the joined-room set that `refresh()` builds off `getRooms()`.
+  const joinedRooms = [...joined].map((id) => ({
+    roomId: id,
+    getMyMembership: () => 'join',
+    isSpaceRoom: () => false,
+  }));
+  /** Join a room after the fact, so a test can drive a membership change. */
+  const join = (id: string) => {
+    joinedRooms.push({
+      roomId: id,
+      getMyMembership: () => 'join',
+      isSpaceRoom: () => false,
+    });
+  };
   const client = {
-    getRooms: () => [],
+    getRooms: () => joinedRooms,
     getRoom: (id: string) =>
       joined.has(id) ? { getMyMembership: () => 'join' } : null,
     getRoomHierarchy,
@@ -545,7 +562,11 @@ function setupHierarchy(opts: {
   };
   provideMatrix(client);
   const svc = TestBed.inject(SpacesService);
-  return { svc, getRoomHierarchy };
+  // Connect like the shell does before any space can be opened: the `joined` flag comes
+  // from the joined-room set the projection's rebuild fills in, not from a direct client
+  // read inside the computed.
+  svc.connect();
+  return { svc, getRoomHierarchy, client, join };
 }
 
 /** Let `from(Promise)` settle through its microtask before asserting on signals. */
@@ -640,6 +661,38 @@ describe('SpacesService hierarchy', () => {
     expect(svc.notJoinedRooms().map((c) => c.roomId)).toEqual(['!room:hs']);
     // childSpaces: every sub-space, regardless of membership.
     expect(svc.childSpaces().map((c) => c.roomId)).toEqual(['!sub:hs']);
+  });
+
+  it('flips a child to joined when its membership syncs, without re-fetching', async () => {
+    // What the replaced bump counter existed for: the hierarchy fetch says who the
+    // children are, sync says which of them you are in, and the second must reach the
+    // screen on its own. `getRoomHierarchy` is asserted untouched because re-fetching
+    // would be a different (and much more expensive) way to be right.
+    const { svc, getRoomHierarchy, client, join } = setupHierarchy({
+      rooms: [
+        hroom({
+          roomId: '!s:hs',
+          name: 'Space',
+          isSpace: true,
+          children: [{ childId: '!room:hs', order: '10' }],
+        }),
+        hroom({ roomId: '!room:hs', name: 'open-room' }),
+      ],
+      joined: [],
+    });
+
+    svc.openSpace('!s:hs');
+    await flush();
+    expect(svc.notJoinedRooms().map((c) => c.roomId)).toEqual(['!room:hs']);
+    const fetches = getRoomHierarchy.mock.calls.length;
+
+    join('!room:hs');
+    handlerFor(client, 'sync')?.();
+    await Promise.resolve();
+
+    expect(svc.notJoinedRooms()).toEqual([]);
+    expect(svc.openSpaceChildren()[0].joined).toBe(true);
+    expect(getRoomHierarchy.mock.calls.length).toBe(fetches);
   });
 
   it('clears the open-space children for Home (null) without fetching', () => {

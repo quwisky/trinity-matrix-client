@@ -135,11 +135,18 @@ export class SpacesService {
   readonly spaces = this._spaces.asReadonly();
 
   /**
-   * Ticks on every sync/membership refresh. The hierarchy projection reads it so the
-   * per-child `joined` flag re-derives live (e.g. a not-joined child flips to joined
-   * the moment its membership syncs back), without re-fetching the hierarchy.
+   * Every room this account has joined, as of the last refresh.
+   *
+   * The hierarchy projection reads this to derive each child's `joined` flag live (a
+   * not-joined child flips the moment its membership syncs back) without re-fetching the
+   * hierarchy. It replaces a bump counter that meant the same thing indirectly: this is
+   * the actual question `openSpaceChildren` asks, `refresh()` already has the answer in
+   * hand from its own `getRooms()` pass, and a set of ids is inspectable in a debugger
+   * where an incrementing integer is not.
    */
-  private readonly _revision = signal(0);
+  private readonly _joinedRoomIds = signal<ReadonlySet<string>>(new Set(), {
+    equal: sameIds,
+  });
 
   /** Which space's hierarchy is currently loaded ({@link openSpace}); null on Home. */
   private readonly _openSpaceId = signal<string | null>(null);
@@ -164,11 +171,14 @@ export class SpacesService {
    * against the synced client (so a join/leave is reflected without a re-fetch).
    */
   readonly openSpaceChildren = computed<SpaceChildRoom[]>(() => {
-    this._revision(); // re-derive `joined` on sync/membership changes
-    const client = this.matrix.isInitialized ? this.matrix.instance : null;
+    // Reading the set rather than the client keeps the whole derivation inside signals.
+    // The old form reached for `matrix.instance` here, which during an account switch can
+    // already be the NEXT account's client while `_childrenBase` still holds the previous
+    // account's hierarchy — two sources, one frame apart.
+    const joined = this._joinedRoomIds();
     return this._childrenBase().map((base) => ({
       ...base,
-      joined: client?.getRoom(base.roomId)?.getMyMembership() === 'join',
+      joined: joined.has(base.roomId),
     }));
   });
 
@@ -227,6 +237,7 @@ export class SpacesService {
     unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),
     reset: () => {
       this._spaces.set([]);
+      this._joinedRoomIds.set(new Set());
       this.resetHierarchy();
     },
   });
@@ -550,15 +561,24 @@ export class SpacesService {
       return;
     }
     const client = this.matrix.instance;
+    const rooms = client.getRooms();
     this._spaces.set(
-      client
-        .getRooms()
+      rooms
         .filter((r) => r.isSpaceRoom() && r.getMyMembership() === 'join')
         .map((r) => this.toSpace(client, r))
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
-    // Nudge the hierarchy projection so each child's `joined` flag re-derives.
-    this._revision.update((n) => n + 1);
+    // Every joined room, spaces included: a child of the open space may be either, and
+    // `openSpaceChildren` derives its `joined` flag from this. The signal's structural
+    // equality means an ordinary sync that changed no membership stops here rather than
+    // re-deriving four downstream computeds.
+    this._joinedRoomIds.set(
+      new Set(
+        rooms
+          .filter((r) => r.getMyMembership() === 'join')
+          .map((r) => r.roomId),
+      ),
+    );
   }
 
   private toSpace(client: MatrixClient, room: Room): SpaceSummary {
@@ -572,6 +592,22 @@ export class SpacesService {
       childRoomIds: spaceChildIdsOf(client, room),
     };
   }
+}
+
+/**
+ * Whether two id sets hold the same ids, so a sync that changed no membership does not
+ * re-derive the hierarchy projection and everything downstream of it.
+ */
+function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const id of a) {
+    if (!b.has(id)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallbacks. */
