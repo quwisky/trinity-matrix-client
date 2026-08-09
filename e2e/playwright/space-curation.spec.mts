@@ -315,5 +315,101 @@ test.describe('Space curation', () => {
     expect((moved?.['via'] as string[])?.length).toBeGreaterThan(0);
     // And the suggestion it already carried survived the reorder.
     expect(moved?.['suggested']).toBe(true);
+
+    // A third room linked into the space from OUTSIDE this browser, with the dialog still
+    // open — the direction every other assertion here is blind to. The rest of this spec
+    // drives the UI and then reads the server, so it catches a UI that writes nothing; it
+    // cannot catch state that was written and never reaches the screen.
+    //
+    // What this does NOT prove is which dependency carries it. `childList` also reads a
+    // name lookup over `rooms()` and `spaces()`, both of which hand back a fresh array on
+    // every rebuild, and `SpacesService` refreshes on `m.space.child` too — so the list
+    // re-reads even when its dependency on the links is severed. Verified, not assumed:
+    // wrapping the link read in `untracked` leaves this test green. The declared
+    // dependency is pinned in space-children.service.spec.ts, where no name lookup exists
+    // to carry it. This assertion guards the user-visible behaviour end to end.
+    const third = await createRoom(request, hs, token, {
+      name: `Ccc ${runId}`,
+      preset: 'private_chat',
+    });
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(third)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { via: ['localhost'], order: 'z' },
+      },
+    );
+
+    await expect(page.getByTestId(`managed-${third}`)).toBeVisible({
+      timeout: 30_000,
+    });
+  });
+
+  test('a child moves out of More Channels the moment you join it', async ({
+    page,
+    request,
+  }) => {
+    // The `joined` flag on a space's children is derived from sync, not from the
+    // `/hierarchy` fetch that produced the list — so joining has to move a room from
+    // "More Channels" into the channel list with no re-fetch and no reload. That
+    // derivation is the whole reason SpacesService carried a bump counter.
+    const hs = session.hs as string;
+    const runId = `${Date.now().toString(36)}jn`;
+    const owner = `spacer-${runId}`;
+    const pass = `${owner}-pass`;
+    // A second account, because the room has to be one the viewer is NOT in. Anything
+    // this user creates, they are joined to.
+    const other = `other-${runId}`;
+    const spaceName = `Joinable ${runId}`;
+    const childName = `Lobby ${runId}`;
+
+    await registerUser(request, owner, pass);
+    await registerUser(request, other, pass);
+    const ownerToken = await apiLogin(request, hs, owner, pass);
+    const otherToken = await apiLogin(request, hs, other, pass);
+
+    const spaceId = await createRoom(request, hs, ownerToken, {
+      name: spaceName,
+      preset: 'private_chat',
+      creation_content: { type: 'm.space' },
+    });
+    // Public, so the viewer can actually join it from the sidebar.
+    const childId = await createRoom(request, hs, otherToken, {
+      name: childName,
+      preset: 'public_chat',
+    });
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
+      {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+        data: { via: ['localhost'] },
+      },
+    );
+
+    await login(page, {
+      available: true,
+      hs,
+      user: owner,
+      pass,
+    } as SynapseSession);
+    const pill = page.getByRole('button', { name: spaceName, exact: true });
+    await pill.waitFor({ state: 'visible', timeout: 30_000 });
+    await pill.click();
+
+    // Not joined yet: offered under More Channels rather than listed as a channel.
+    const join = page.getByTestId(`join-child-${childId}`);
+    await expect(join).toBeVisible({ timeout: 30_000 });
+
+    await join.click();
+
+    // Gone from the joinable list, and present as a channel — both halves, because
+    // disappearing without appearing would look the same to a half-broken derivation.
+    await expect(join).toBeHidden({ timeout: 30_000 });
+    // A channel row's accessible name is its avatar initial then its name ("L Lobby …"),
+    // so anchor on that shape: a bare substring match would also hit the row's own
+    // "Options for Lobby …" button and pass without the row existing.
+    await expect(
+      page.getByRole('button', { name: new RegExp(`^\\S+ ${childName}$`) }),
+    ).toBeVisible({ timeout: 30_000 });
   });
 });

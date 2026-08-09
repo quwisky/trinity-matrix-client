@@ -364,7 +364,7 @@ describe('PinnedMessagesService', () => {
       }
     ).findEventById = (id: string) => (id === '$late' ? late : undefined);
     room.emit(RoomEvent.Timeline);
-    // The revision bump is coalesced, so it lands on the next microtask — Timeline
+    // The re-resolve is coalesced, so it lands on the next microtask — Timeline
     // fires for every event in the room and each bump re-resolves every preview.
     await Promise.resolve();
 
@@ -388,12 +388,12 @@ describe('PinnedMessagesService', () => {
       }
     ).findEventById = (id: string) => (id === '$enc' ? decrypted : undefined);
     client.emit(MatrixEventEvent.Decrypted, decrypted);
-    await Promise.resolve(); // coalesced bump
+    await Promise.resolve(); // coalesced re-resolve
 
     expect(svc.pinnedMessages().map((v) => v.id)).toEqual(['$enc']);
   });
 
-  it('does not bump the revision for a Decrypted event from a different room', async () => {
+  it('ignores a Decrypted event from a different room', async () => {
     const enc = fakeEvent({
       id: '$enc',
       sender: '@a:hs',
@@ -418,7 +418,7 @@ describe('PinnedMessagesService', () => {
     // assertion would pass against merely-queued work.
     await Promise.resolve();
 
-    // The revision never moved, so the computed never re-ran — the decrypted event
+    // Nothing was scheduled, so no re-resolve ran — the decrypted event
     // belongs to a different room.
     expect(svc.pinnedMessages()).toEqual([]);
   });

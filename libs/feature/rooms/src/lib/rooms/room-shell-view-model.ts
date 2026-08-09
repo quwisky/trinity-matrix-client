@@ -281,7 +281,7 @@ export class RoomShellViewModel {
 
   readonly members = computed(() => {
     // Recompute only when membership actually changes — not on every sync tick or
-    // read receipt (those bump `revision`, which the member list doesn't depend on).
+    // read receipt (those bump `profileRevision`, which the member list doesn't depend on).
     this.rooms.memberRevision();
     return this.rooms.membersOf(this.store.activeRoomId());
   });
@@ -299,7 +299,7 @@ export class RoomShellViewModel {
   readonly userId = computed(() => this.matrix.activeUserId() ?? '');
 
   readonly userName = computed(() => {
-    this.rooms.revision(); // re-read once the user's profile hydrates on sync
+    this.rooms.profileRevision(); // re-read once the user's profile hydrates on sync
     const uid = this.userId();
     if (!uid || !this.matrix.isInitialized) {
       return uid;
@@ -308,7 +308,7 @@ export class RoomShellViewModel {
   });
 
   readonly userAvatarMxc = computed(() => {
-    this.rooms.revision(); // re-read once the user's profile hydrates on sync
+    this.rooms.profileRevision(); // re-read once the user's profile hydrates on sync
     const uid = this.userId();
     if (!uid || !this.matrix.isInitialized) {
       return null;
@@ -334,7 +334,7 @@ export class RoomShellViewModel {
 
   /** Every signed-in account, for the user-panel switcher (profile + unread total). */
   readonly accounts = computed<AccountSummary[]>(() => {
-    this.rooms.revision(); // re-read each account's profile as it hydrates on sync
+    this.rooms.profileRevision(); // re-read each account's profile as it hydrates on sync
     const unread = this.unreadAgg.unreadByAccount();
     return this.matrix.accountIds().map((userId) => {
       const user = this.matrix.clientFor(userId)?.getUser(userId);

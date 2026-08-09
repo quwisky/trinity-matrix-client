@@ -29,12 +29,12 @@ export class AccountBadgesService {
     if (!this.scope.mixing()) {
       return badges;
     }
-    // Invalidate on ANY mixed account's sync, not just the active one. `rooms.revision()`
+    // Invalidate on ANY mixed account's sync, not just the active one. `rooms.profileRevision()`
     // is bumped only by the active client, so on its own a mixed-in account whose profile
     // hydrates later would keep a stale badge (its mxid and a hashed letter instead of its
     // name and picture) until the active account happened to sync. The unread aggregator is
     // the one signal already fed by every signed-in client.
-    this.rooms.revision();
+    this.rooms.profileRevision();
     this.unreadAgg.unreadByAccount();
     for (const userId of this.scope.selected()) {
       const user = this.matrix.clientFor(userId)?.getUser(userId);

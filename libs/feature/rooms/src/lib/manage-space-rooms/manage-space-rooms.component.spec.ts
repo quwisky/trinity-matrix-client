@@ -7,7 +7,7 @@ import {
   SpacesService,
 } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ManageSpaceRoomsComponent } from './manage-space-rooms.component';
 
@@ -31,19 +31,30 @@ async function build(
   const moveChildBefore = over.moveChildBefore ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
+  /**
+   * The links the service is projecting, as a signal a test can DRIVE.
+   *
+   * This was a closure returning a fresh array from a fixture, which no test could change
+   * — so the component's staleness was structurally invisible here. Anything asserting
+   * that the list follows the server needs to be able to move the server.
+   */
+  const links = signal<
+    { childId: string; via: string[]; suggested: boolean; order: string }[]
+  >(
+    (opts.links ?? []).map((link) => ({
+      childId: link.childId,
+      via: ['hs'],
+      suggested: link.suggested ?? false,
+      order: '',
+    })),
+  );
   const { fixture, container } = await render(ManageSpaceRoomsComponent, {
     inputs: { spaceId: '!s:hs', spaceName: 'Design' },
     providers: [
       MockProvider(SpaceChildrenService, {
         setSuggested,
         moveChildBefore,
-        childLinks: () =>
-          (opts.links ?? []).map((link) => ({
-            childId: link.childId,
-            via: ['hs'],
-            suggested: link.suggested ?? false,
-            order: '',
-          })),
+        linksFor: () => links.asReadonly(),
       }),
       MockProvider(RoomsService, {
         rooms: signal(
@@ -73,6 +84,8 @@ async function build(
   return {
     cmp: fixture.componentInstance,
     container,
+    fixture,
+    links,
     setSuggested,
     moveChildBefore,
     close,
@@ -233,5 +246,130 @@ describe('ManageSpaceRoomsComponent', () => {
     cmp.toggleSuggested('!a:hs', true);
 
     expect(cmp.busyChildId()).toBeNull();
+  });
+
+  it('follows the projected links without a write of its own', async () => {
+    // The change arriving from sync — another device, another admin, or this device's own
+    // write echoing back. Before the counter came out, the only thing that re-read the
+    // list was this component's own write callback.
+    const { cmp, links } = await build({
+      links: [{ childId: '!a:hs' }],
+      rooms: [
+        { id: '!a:hs', name: 'Alpha' },
+        { id: '!b:hs', name: 'Bravo' },
+      ],
+    });
+
+    links.update((current) => [
+      ...current,
+      { childId: '!b:hs', via: ['hs'], suggested: false, order: '' },
+    ]);
+
+    expect(cmp.childList().map((child) => child.name)).toEqual([
+      'Alpha',
+      'Bravo',
+    ]);
+  });
+
+  describe('a rejected suggested write', () => {
+    it('puts the row back the way the server has it', async () => {
+      // The checkbox ticks itself on click and only re-derives when its `checked` INPUT
+      // changes value. Leaving the row at the server's `false` is no change at all, so
+      // without the rollback the box stays ticked for a write that was refused.
+      const { cmp } = await build(
+        { links: [{ childId: '!a:hs', suggested: false }] },
+        { setSuggested: vi.fn(() => throwError(() => new Error('nope'))) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+
+      expect(cmp.childList()[0].suggested).toBe(false);
+    });
+
+    it('shows the change while the write is in flight', async () => {
+      // The other half: an overlay that never showed anything would "pass" the test above
+      // by doing nothing at all.
+      const pending = new Subject<void>();
+      const { cmp } = await build(
+        { links: [{ childId: '!a:hs', suggested: false }] },
+        { setSuggested: vi.fn(() => pending.asObservable()) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+
+      expect(cmp.childList()[0].suggested).toBe(true);
+    });
+
+    it('un-ticks the rendered checkbox, not just the row model', async () => {
+      // At the DOM, because that is where the bug is. `HlmCheckbox.checked` is a
+      // linkedSignal the click handler sets locally, so the row model going back to false
+      // is necessary but not sufficient — the INPUT has to transition for the checkbox to
+      // re-derive. Asserting `childList()[0].suggested` alone passes while the box stays
+      // ticked next to the failure toast.
+      // The rejection is delivered AFTER a render, which is what a server refusal is: the
+      // write goes out, the UI paints the optimistic tick, and the homeserver says no a
+      // round trip later. That gap is load-bearing — see the note on `pendingSuggested`.
+      const rejection = new Subject<void>();
+      const { container, fixture } = await build(
+        { links: [{ childId: '!a:hs', suggested: false }] },
+        { setSuggested: vi.fn(() => rejection.asObservable()) },
+      );
+      const box = container.querySelector(
+        '[data-testid="suggest-!a:hs"] [role="checkbox"]',
+      ) as HTMLElement;
+
+      box.click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(box.getAttribute('aria-checked')).toBe('true');
+
+      rejection.error(new Error('nope'));
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(box.getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('yields to the projection when the echo carries a different value', async () => {
+      // Reachable without a second device: toggle a room suggested, then immediately move
+      // it. The reorder is a read-modify-write against state that still holds the pre-write
+      // link, so it re-sends without `suggested` and the server reverts the tick — and both
+      // state events coalesce into one rebuild, so the value we wrote is never projected.
+      // An overlay that waited to SEE its own value would beat the projection indefinitely.
+      const { cmp, links, fixture } = await build(
+        { links: [{ childId: '!a:hs', suggested: false }] },
+        { setSuggested: vi.fn(() => of(undefined)) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+      expect(cmp.childList()[0].suggested).toBe(true);
+
+      // The echo, carrying the server's actual answer rather than ours.
+      links.set([
+        { childId: '!a:hs', via: ['hs'], suggested: false, order: '' },
+      ]);
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(cmp.childList()[0].suggested).toBe(false);
+    });
+
+    it('keeps a successful change on screen until the echo lands', async () => {
+      // Clearing the overlay when the write RESOLVES would drive the checkbox
+      // true→false→true: the server has taken it, but the state echo is a sync away.
+      const { cmp, links } = await build(
+        { links: [{ childId: '!a:hs', suggested: false }] },
+        { setSuggested: vi.fn(() => of(undefined)) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+      expect(cmp.childList()[0].suggested).toBe(true);
+
+      links.set([
+        { childId: '!a:hs', via: ['hs'], suggested: true, order: '' },
+      ]);
+
+      expect(cmp.childList()[0].suggested).toBe(true);
+    });
   });
 });
