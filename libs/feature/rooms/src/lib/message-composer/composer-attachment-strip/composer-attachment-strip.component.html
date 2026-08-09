@@ -1,0 +1,42 @@
+@if (uploadProgress() !== null) {
+  <div class="composer__upload" data-testid="upload-progress">
+    <hlm-progress
+      [value]="uploadDeterminate() ? (uploadProgress() ?? 0) * 100 : null"
+      aria-label="Uploading attachment"
+    >
+      <hlm-progress-indicator />
+    </hlm-progress>
+    <span class="composer__upload-label" aria-live="polite">
+      Uploading…{{ uploadDeterminate() ? ' ' + uploadPercent() + '%' : '' }}
+    </span>
+  </div>
+}
+
+@if (pendingFile(); as file) {
+  <div class="composer__pending" data-testid="composer-pending">
+    @if (pendingPreview(); as src) {
+      <img
+        decoding="async"
+        class="composer__pending-thumb"
+        [src]="src"
+        alt=""
+      />
+    } @else {
+      <span class="composer__pending-icon" aria-hidden="true">
+        <ng-icon name="lucidePaperclip" />
+      </span>
+    }
+    <span class="composer__pending-name" [title]="file.name">{{
+      file.name
+    }}</span>
+    <button
+      type="button"
+      class="composer__pending-remove"
+      aria-label="Remove attachment"
+      data-testid="composer-pending-remove"
+      (click)="removePending.emit()"
+    >
+      <ng-icon name="lucideX" aria-hidden="true" />
+    </button>
+  </div>
+}

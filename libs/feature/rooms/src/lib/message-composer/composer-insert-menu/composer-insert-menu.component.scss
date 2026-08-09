@@ -1,0 +1,50 @@
+// No box of its own, so the `+` stays a direct flex item of `.composer__row` and the row's
+// `align-items: flex-end` keeps it on the last line as the textarea grows.
+:host {
+  display: contents;
+}
+
+// Sized to the textarea's single-row resting height so the icon centres on one line. Mirrors
+// `.composer__emoji`/`.composer__send` rather than sharing with them — those are a comma group
+// in the composer's own stylesheet, and there is no icon-button mixin in the repo (the same
+// call `composer-toolbar` documents). It carries no background, so the box is just the hit
+// target.
+.composer__attach {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--trinity-radius);
+  background: none;
+  color: var(--trinity-text-muted);
+  font-size: 20px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--trinity-text-bright);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+// The tray's items render through a CDK overlay at the document root, so this is
+// deliberately not nested — Angular still stamps this component's encapsulation
+// attribute on them, but they are not descendants at runtime.
+// Helm's own item padding (`px-3 py-2`) computes to ~36px, under the 44px this
+// project holds itself to on touch; the rest of the composer already does this.
+@media (pointer: coarse) {
+  .composer__insert-item {
+    min-height: 44px;
+  }
+
+  .composer__attach {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
