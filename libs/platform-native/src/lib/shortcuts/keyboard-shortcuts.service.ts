@@ -1,7 +1,13 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
-import { matchesEvent, sameChord, type Chord } from './chord';
+import {
+  hasModifier,
+  isChord,
+  matchesEvent,
+  sameChord,
+  type Chord,
+} from './chord';
 
 const OVERRIDES_KEY = 'trinity.shortcuts.overrides';
 
@@ -207,7 +213,10 @@ export class KeyboardShortcutsService {
     try {
       const { value } = await Preferences.get({ key: OVERRIDES_KEY });
       if (value) {
-        this.overrides.set(JSON.parse(value) as Record<string, Chord | null>);
+        // Checked, not trusted: this used to parse straight into the signal, so a malformed
+        // binding written by an older build (or by hand) reached `resolve` on every keystroke
+        // for the life of the session. Anything unrecognised falls back to its default.
+        this.overrides.set(acceptedOverrides(JSON.parse(value)));
       }
     } catch {
       // Absent or corrupt → start with the defaults.
@@ -307,12 +316,64 @@ export class KeyboardShortcutsService {
     this.persist();
   }
 
+  /**
+   * Replace the whole set of custom bindings at once, and persist it — how an applied
+   * settings document gets its shortcuts in.
+   *
+   * Whole-set rather than per-shortcut because that is what the document says: a binding it
+   * does not mention is back at its default, not left as this device had it. Deliberately
+   * NOT routed through {@link rebind}: rebinding one at a time would let each steal a chord
+   * from the next and leave shortcuts unset that the document binds. The chords are the
+   * user's stated intent, so they are taken as given — the same set the export produced.
+   *
+   * Filtered through the same acceptance rules as {@link init}, so no caller can seat a
+   * binding here that a stored one would have been refused.
+   */
+  setOverrides(overrides: Record<string, Chord | null>): void {
+    this.overrides.set(acceptedOverrides(overrides));
+    this.persist();
+  }
+
   private persist(): void {
     void Preferences.set({
       key: OVERRIDES_KEY,
       value: JSON.stringify(this.overrides()),
     });
   }
+}
+
+/**
+ * The bindings out of an untrusted set that this build will actually honour.
+ *
+ * Drops what `resolve` could only ever mishandle: a shortcut this build does not have, one
+ * that is not rebindable (a fixed chord always wins the first-hit-wins scan, so an override
+ * on it is a binding the settings list would show and nothing would fire), a value that is
+ * not a chord, and a chord with no modifier — which would fire while the user typed. `null`
+ * survives: it is an explicitly unset shortcut, which a missing key cannot express.
+ */
+function acceptedOverrides(value: unknown): Record<string, Chord | null> {
+  const accepted: Record<string, Chord | null> = {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return accepted;
+  }
+  for (const [id, binding] of Object.entries(value)) {
+    const def = SHORTCUTS.find((candidate) => candidate.id === id);
+    if (!def?.rebindable) {
+      continue;
+    }
+    if (binding === null) {
+      accepted[id] = null;
+    } else if (isChord(binding) && hasModifier(binding)) {
+      // Copied field by field so nothing extra rides along into storage.
+      accepted[id] = {
+        accel: binding.accel,
+        alt: binding.alt,
+        shift: binding.shift,
+        key: binding.key,
+      };
+    }
+  }
+  return accepted;
 }
 
 /**

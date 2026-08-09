@@ -7,7 +7,11 @@ import { providePushConfigEntries } from './push-config-entries';
 import { PushGatewayService } from './push-gateway.service';
 import { PushService } from './push.service';
 
-const h = vi.hoisted(() => ({ store: new Map<string, string>() }));
+const h = vi.hoisted(() => ({
+  store: new Map<string, string>(),
+  /** The platform the service reads at construction; a test can move it before `setup()`. */
+  platform: 'ios',
+}));
 
 vi.mock('@capacitor/preferences', () => ({
   Preferences: {
@@ -24,7 +28,7 @@ vi.mock('@capacitor/preferences', () => ({
 }));
 
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { getPlatform: () => 'ios' },
+  Capacitor: { getPlatform: () => h.platform },
 }));
 
 const NOTIFY = 'https://push.example.org/_matrix/push/v1/notify';
@@ -51,6 +55,7 @@ function setup(): { config: AppConfigService; push: PushGatewayService } {
 describe('push config entries', () => {
   beforeEach(() => {
     h.store.clear();
+    h.platform = 'ios';
     TestBed.resetTestingModule();
     unregisterSpy = vi.fn(() => of(undefined));
   });
@@ -82,6 +87,110 @@ describe('push config entries', () => {
 
     expect(config.settings()).toEqual({
       push: { gateway: { gatewayUrl: NOTIFY, appId: null } },
+    });
+  });
+
+  describe('applying a document', () => {
+    const envelope = (gateway: unknown) => ({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings: { push: { gateway } },
+    });
+
+    it('refuses a URL the homeserver would refuse, naming the path', () => {
+      const { config } = setup();
+
+      const plan = config.validate(
+        envelope({ gatewayUrl: 'https://push.example.org/hooks' }),
+      );
+
+      expect(plan.ok).toBe(false);
+      expect(plan.ok === false && plan.problems[0]).toContain('push.gateway:');
+      expect(plan.ok === false && plan.problems[0]).toContain(
+        '/_matrix/push/v1/notify',
+      );
+    });
+
+    it('refuses a gateway that is not a gateway at all', () => {
+      const { config } = setup();
+
+      expect(config.validate(envelope('https://push.example.org')).ok).toBe(
+        false,
+      );
+      expect(config.validate(envelope({ gatewayUrl: 7 })).ok).toBe(false);
+      expect(
+        config.validate(envelope({ gatewayUrl: NOTIFY, appId: 7 })).ok,
+      ).toBe(false);
+    });
+
+    it('normalises a bare origin, and says that is what will be stored', async () => {
+      const { config, push } = setup();
+      const plan = config.validate(
+        envelope({ gatewayUrl: 'https://push.example.org', appId: '  ' }),
+      );
+      if (!plan.ok) {
+        throw new Error(plan.problems.join(' / '));
+      }
+
+      expect(plan.changes).toEqual([
+        {
+          path: 'push.gateway',
+          from: null,
+          to: { gatewayUrl: NOTIFY, appId: null },
+        },
+      ]);
+      await new Promise<void>((resolve, reject) =>
+        config.apply(plan).subscribe({ complete: resolve, error: reject }),
+      );
+
+      expect(push.override()).toEqual({ gatewayUrl: NOTIFY, appId: undefined });
+    });
+
+    it('drops the override when the document says there is none', async () => {
+      const { config, push } = setup();
+      await push.save(NOTIFY, 'eu.qwky.trinity');
+      const plan = config.validate(envelope(null));
+      if (!plan.ok) {
+        throw new Error(plan.problems.join(' / '));
+      }
+
+      await new Promise<void>((resolve, reject) =>
+        config.apply(plan).subscribe({ complete: resolve, error: reject }),
+      );
+
+      expect(push.override()).toBeNull();
+    });
+
+    it('warns that an http gateway sends metadata in the clear, and applies it anyway', () => {
+      const { config } = setup();
+
+      const plan = config.validate(
+        envelope({ gatewayUrl: 'http://push.local/_matrix/push/v1/notify' }),
+      );
+
+      expect(plan.ok).toBe(true);
+      expect(plan.warnings[0]).toContain('push.gateway:');
+      expect(plan.warnings[0]).toContain('plain http');
+    });
+
+    it('names a gateway that cannot do anything on this platform, and keeps it', async () => {
+      // A config written on a phone, applied on the desktop: warn and proceed, rather than
+      // silently dropping a setting the user can see in their own file.
+      h.platform = 'web';
+      const { config, push } = setup();
+
+      const plan = config.validate(envelope({ gatewayUrl: NOTIFY }));
+
+      expect(plan.ok).toBe(true);
+      expect(plan.warnings[0]).toContain('only delivered on iOS and Android');
+      if (!plan.ok) {
+        throw new Error(plan.problems.join(' / '));
+      }
+      await new Promise<void>((resolve, reject) =>
+        config.apply(plan).subscribe({ complete: resolve, error: reject }),
+      );
+
+      expect(push.override()?.gatewayUrl).toBe(NOTIFY);
     });
   });
 

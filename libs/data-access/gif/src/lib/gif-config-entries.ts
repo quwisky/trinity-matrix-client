@@ -1,12 +1,21 @@
 import { inject, type EnvironmentProviders } from '@angular/core';
 import {
+  choiceSetting,
   provideConfigEntries,
+  textSetting,
   type ConfigEntry,
 } from '@trinity/platform-native';
 import {
   DEFAULT_GIF_PROVIDER,
   GifSettingsService,
 } from './gif-settings.service';
+import { GIF_PROVIDERS, isGifProviderId } from './gif.model';
+
+/**
+ * Upper bound on a pasted API key. Tenor and GIPHY keys are ~40 characters; this is well
+ * past any of them and keeps a paste of something that is not a key out of the stored blob.
+ */
+const MAX_API_KEY_LENGTH = 200;
 
 /**
  * The GIF picker's settings, for the config export.
@@ -30,12 +39,25 @@ export function provideGifConfigEntries(): EnvironmentProviders {
         key: 'trinity.gif.config',
         read: () => gif.provider(),
         reset: () => gif.save(DEFAULT_GIF_PROVIDER, gif.apiKey()),
+        ...choiceSetting({
+          isValid: isGifProviderId,
+          options: GIF_PROVIDERS.map((provider) => provider.id),
+          noun: 'a GIF provider Trinity can talk to',
+          // Reads the key back out rather than carrying it: both fields share one blob, so
+          // each setter has to rewrite the other's current value. Whichever of the two
+          // entries applies second sees the first's result, so the pair converges.
+          set: (value) => gif.save(value, gif.apiKey()),
+        }),
       },
       {
         path: 'gif.apiKey',
         key: 'trinity.gif.config',
         read: () => gif.apiKey(),
         reset: () => gif.clear(),
+        ...textSetting({
+          maxLength: MAX_API_KEY_LENGTH,
+          set: (value) => gif.save(gif.provider(), value),
+        }),
       },
     ] satisfies readonly ConfigEntry[];
   });

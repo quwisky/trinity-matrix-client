@@ -1,6 +1,12 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, defer, from, map } from 'rxjs';
 import {
+  planConfigApply,
+  type AcceptedConfigPlan,
+  type ConfigApplyPlan,
+  type ConfigChange,
+} from './config-plan';
+import {
   APP_CONFIG_ENTRIES,
   CONFIG_EXPORT_VERSION,
   type ConfigDocument,
@@ -16,11 +22,16 @@ type ConfigTreeNode = { [key: string]: ConfigValue };
 const INDENT = 2;
 
 /**
- * Reads the whole local preference layer as one document, and puts it back to defaults.
+ * Reads the whole local preference layer as one document, applies an edited one back, and
+ * puts it all to defaults.
  *
- * Both directions go through {@link ConfigEntry}, never through `Preferences`: reads come
+ * Every direction goes through {@link ConfigEntry}, never through `Preferences`: reads come
  * from the owning services' signals, so the document always matches what the app is actually
- * rendering, and resets go through their setters, so the running app follows immediately.
+ * rendering, and writes go through their setters, so the running app follows immediately.
+ *
+ * Applying is two steps on purpose — {@link validate} produces a plan naming what would
+ * change, {@link apply} takes only a plan that came back clean — so nothing is ever written
+ * from a document that was not checked whole.
  *
  * Scope is exactly the registered entries. Anything not registered — drafts, the account
  * registry, the push applied-id ledger, per-account space ordering — is invisible here, so
@@ -83,6 +94,69 @@ export class AppConfigService {
   /** {@link export} pretty-printed — what Copy puts on the clipboard and a file holds. */
   exportJson(): string {
     return JSON.stringify(this.export(), null, INDENT);
+  }
+
+  /**
+   * Check a pasted or imported document, and say what applying it would do — which settings
+   * move and to what, plus anything worth saying first.
+   *
+   * Nothing is written here. A rejected plan cannot be applied at all (see {@link apply}),
+   * so a bad value anywhere takes the whole document down rather than leaving the app in a
+   * state that was never in anyone's file.
+   */
+  validate(document: unknown): ConfigApplyPlan {
+    return planConfigApply(document, this.entries);
+  }
+
+  /**
+   * {@link validate} straight from the text in the editor.
+   *
+   * A syntax error comes back as an ordinary rejected plan rather than an exception, so the
+   * one surface that reports problems reports all of them.
+   */
+  validateJson(json: string): ConfigApplyPlan {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json) as unknown;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'unreadable';
+      return {
+        ok: false,
+        problems: [`This is not valid JSON: ${detail}`],
+        warnings: [],
+      };
+    }
+    return this.validate(parsed);
+  }
+
+  /**
+   * Apply a checked document, through the owning services' setters, so the running app
+   * follows without a reload.
+   *
+   * Takes only an accepted plan — a rejected one is a different type and cannot be passed —
+   * and writes only the settings that actually differ, so re-applying an unmodified export
+   * touches nothing.
+   *
+   * Sequential rather than concurrent: two entries can share one stored blob (the GIF
+   * provider and its key do), and each of those setters rewrites the blob from the other's
+   * current value, so overlapping them would let one write drop the other.
+   *
+   * Cold, like every other one-shot action here: nothing happens until it is subscribed.
+   */
+  apply(plan: AcceptedConfigPlan): Observable<void> {
+    return defer(() => from(this.writeAll(plan.changes))).pipe(
+      map(() => undefined),
+    );
+  }
+
+  private async writeAll(changes: readonly ConfigChange[]): Promise<void> {
+    const byPath = new Map(this.entries.map((entry) => [entry.path, entry]));
+    for (const change of changes) {
+      const entry = byPath.get(change.path);
+      if (entry) {
+        await entry.write(change.to);
+      }
+    }
   }
 
   /**

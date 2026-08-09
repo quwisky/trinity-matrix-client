@@ -1,11 +1,30 @@
 import { inject, type EnvironmentProviders } from '@angular/core';
 import {
+  describeConfigValue,
+  isConfigRecord,
   provideConfigEntries,
   type ConfigEntry,
+  type ConfigValidation,
 } from '@trinity/platform-native';
 import { firstValueFrom } from 'rxjs';
+import {
+  GATEWAY_NOTIFY_PATH,
+  normalizeGatewayUrl,
+  type GatewayUrlProblem,
+} from './push-gateway-url';
 import { PushGatewayService } from './push-gateway.service';
 import { PushService } from './push.service';
+
+/** Why a pasted gateway URL cannot be used, in the words the settings form would use. */
+const URL_PROBLEMS: Record<GatewayUrlProblem, string> = {
+  empty: 'is empty',
+  'too-long': 'is too long to be a gateway URL',
+  malformed: 'is not a URL',
+  'unsupported-scheme': 'is not an http or https URL',
+  'embedded-credentials':
+    'carries a username and password, which would be stored in plain text and handed to your homeserver',
+  'wrong-path': `does not end in ${GATEWAY_NOTIFY_PATH}, the only path a homeserver accepts`,
+};
 
 /**
  * The user's push-gateway override, for the config export.
@@ -53,7 +72,84 @@ export function providePushConfigEntries(): EnvironmentProviders {
           await firstValueFrom(pushers.unregister());
           await push.clear();
         },
+        /**
+         * Checked through {@link normalizeGatewayUrl} — the same rules the settings form
+         * applies and the service re-applies on load, so an imported URL cannot be one a
+         * homeserver would reject with an opaque error days later, when a notification
+         * fails to arrive.
+         */
+        validate: (value) => validateGateway(value, push.supported()),
+        write: async (value) => {
+          if (value === null) {
+            await push.clear();
+            return;
+          }
+          if (!isConfigRecord(value)) {
+            return;
+          }
+          const url = value['gatewayUrl'];
+          const appId = value['appId'];
+          if (typeof url !== 'string') {
+            return;
+          }
+          await push.save(url, typeof appId === 'string' ? appId : undefined);
+        },
       },
     ] satisfies readonly ConfigEntry[];
   });
+}
+
+function validateGateway(value: unknown, supported: boolean): ConfigValidation {
+  if (value === null) {
+    return { ok: true, value: null };
+  }
+  if (!isConfigRecord(value)) {
+    return {
+      ok: false,
+      problem: `${describeConfigValue(value)} is not a push gateway (expected null, or an object with a gatewayUrl and an appId)`,
+    };
+  }
+
+  const url = value['gatewayUrl'];
+  if (typeof url !== 'string') {
+    return {
+      ok: false,
+      problem: `its gatewayUrl is ${describeConfigValue(url)}, not text`,
+    };
+  }
+  const check = normalizeGatewayUrl(url);
+  if (!check.ok) {
+    return {
+      ok: false,
+      problem: `${describeConfigValue(url)} ${URL_PROBLEMS[check.problem]}`,
+    };
+  }
+
+  const appId = value['appId'];
+  if (appId !== null && appId !== undefined && typeof appId !== 'string') {
+    return {
+      ok: false,
+      problem: `its appId is ${describeConfigValue(appId)}, not text`,
+    };
+  }
+  const trimmed = typeof appId === 'string' ? appId.trim() : '';
+
+  // Stored either way, and said out loud either way: a config written on a phone and applied
+  // on the desktop keeps its gateway (so it survives the trip back) but cannot use it, and
+  // an http gateway is accepted by homeservers yet sends notification metadata in the clear.
+  const notes: string[] = [];
+  if (!supported) {
+    notes.push(
+      'push notifications are only delivered on iOS and Android, so this gateway is kept but does nothing here',
+    );
+  }
+  if (check.insecure) {
+    notes.push(
+      'this gateway is plain http, so your homeserver will send notification metadata to it unencrypted',
+    );
+  }
+  const normalized = { gatewayUrl: check.url, appId: trimmed ? trimmed : null };
+  return notes.length > 0
+    ? { ok: true, value: normalized, warning: notes.join('; ') }
+    : { ok: true, value: normalized };
 }
