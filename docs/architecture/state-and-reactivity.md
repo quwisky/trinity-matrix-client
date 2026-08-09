@@ -359,8 +359,11 @@ What is left is two counters, neither over Matrix state: `heightVersion` above, 
 `RoomShellStore.jumpRequest`, which re-fires an effect for a jump to a target that has not
 changed. Before adding another, check
 whether the value can be projected by the service that owns the
-events — `projectFromClient` decides listener lifecycle, coalescing and account-switch
-re-projection for you, and the answer has been "yes, project it" five times running. Where the
+events — the answer has been "yes, project it" five times running. Which projection shape
+depends on what it is keyed on, and only two of those five used `projectFromClient`:
+it decides listener lifecycle, coalescing and account-switch re-projection for a read model
+keyed on ONE active client. `PinnedMessagesService` is room-scoped and takes `coalesce`
+alone; `membersFor` writes per-room signals from the owning service's own listeners. Where the
 projection is keyed on the ACCOUNT SET rather than one active client, reconcile a listener per
 account instead (`AccountProfilesService`, `MixedRoomsService`, `UnreadAggregatorService`) — and
 keep the `held.client === client` identity re-check, or re-adding a signed-in account strands

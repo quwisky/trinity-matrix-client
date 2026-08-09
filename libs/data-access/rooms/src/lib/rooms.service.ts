@@ -30,6 +30,7 @@ import {
   throwError,
 } from 'rxjs';
 import {
+  coalesce,
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
@@ -109,6 +110,16 @@ export interface RoomSummary {
   directUserId?: string;
 }
 
+/**
+ * The answer for a room with no members to report — an unknown room, or no room at all.
+ *
+ * Shared and frozen rather than a fresh `[]` per call, so {@link RoomsService.membersFor}'s
+ * identity invariant holds on these paths too: a fresh array would re-notify every consumer
+ * of the null-room signal on each write, which is the landing state and the state after
+ * every `closeOpenRoom()`.
+ */
+const EMPTY_MEMBERS: readonly MemberSummary[] = Object.freeze([]);
+
 /** A joined member shown in the member list. */
 export interface MemberSummary {
   userId: string;
@@ -166,7 +177,7 @@ export class RoomsService {
    * events carry entirely different arguments: this one names no room, so every watched
    * list has to be re-read rather than one.
    */
-  private readonly onMyMembership = (): void => this.rereadMembers(null);
+  private readonly onMyMembership = (): void => this.scheduleMemberReread(null);
 
   /** Someone in a room joined, left, or changed their profile. */
   private readonly onMemberChanged = (
@@ -177,7 +188,7 @@ export class RoomsService {
     // Dispatched by the room the event happened in. `RoomStateEvent.Members` fans out per
     // member — one `m.room.power_levels` change emits once for every member of the room —
     // and it is unfiltered, so it also fires for rooms nothing is watching.
-    this.rereadMembers(state.roomId);
+    this.scheduleMemberReread(state.roomId);
     // A DM peer's profile can arrive or change without a sync — `loadMembersIfNeeded`
     // from opening a member list, say — and their avatar IS the room's picture. Gated
     // on the DM map so a member event in a large room does not rebuild the whole room
@@ -187,11 +198,53 @@ export class RoomsService {
     }
   };
 
-  /** One signal per room whose member list someone is watching. */
+  /**
+   * One signal per room whose member list someone has watched — never pruned, because
+   * consumers hold the `asReadonly()` handle it returns and dropping the entry would
+   * silently detach them. Bounded in practice by rooms opened in one session.
+   */
   private readonly memberSignals = new Map<
     string,
     WritableSignal<readonly MemberSummary[]>
   >();
+
+  /** Rooms whose member list needs re-reading on the next flush. */
+  private readonly dirtyMemberRooms = new Set<string>();
+  /** Set when an event names no room, so every watched list is re-read. */
+  private allMembersDirty = false;
+
+  /**
+   * Member re-reads are batched, because `RoomStateEvent.Members` fans out PER MEMBER —
+   * `room-state.js` emits it inside a loop, so setting a room's state once emits N times —
+   * and each re-read is O(members): `getJoinedMembers()` plus the fingerprint runs before
+   * the memo can hit. Un-batched, a bulk membership set is O(members squared) on the main
+   * thread. One flush per turn makes it O(members).
+   */
+  private readonly memberFlusher = coalesce(() => {
+    if (this.allMembersDirty) {
+      this.allMembersDirty = false;
+      this.dirtyMemberRooms.clear();
+      this.rereadMembers(null);
+      return;
+    }
+    const rooms = [...this.dirtyMemberRooms];
+    this.dirtyMemberRooms.clear();
+    for (const roomId of rooms) {
+      this.rereadMembers(roomId);
+    }
+  });
+
+  /** Queue a member re-read; `null` means "every watched room" (the event named none). */
+  private scheduleMemberReread(roomId: string | null): void {
+    if (roomId === null) {
+      this.allMembersDirty = true;
+    } else if (this.memberSignals.has(roomId)) {
+      this.dirtyMemberRooms.add(roomId);
+    } else {
+      return; // nothing watching that room — do not wake the flusher for it
+    }
+    this.memberFlusher.schedule();
+  }
 
   /**
    * A room's joined members, live — the read every member surface should use.
@@ -356,13 +409,13 @@ export class RoomsService {
    * {@link membersFor} write on every member event without waking its consumers: an
    * unchanged room re-reads to the same reference and `Object.is` stops there.
    */
-  membersOf(roomId: string | null): MemberSummary[] {
+  membersOf(roomId: string | null): readonly MemberSummary[] {
     if (!roomId || !this.matrix.isInitialized) {
-      return [];
+      return EMPTY_MEMBERS;
     }
     const room = this.matrix.instance.getRoom(roomId);
     if (!room) {
-      return [];
+      return EMPTY_MEMBERS;
     }
     const joined = room.getJoinedMembers();
     // `powerLevel` is part of the fingerprint so a promotion/demotion (which fires

@@ -1694,7 +1694,7 @@ describe('RoomsService membersFor', () => {
     ).toEqual(['@ada:hs']);
   });
 
-  it('re-reads the room a member event names', () => {
+  it('re-reads the room a member event names', async () => {
     // Held here and mutated: fakeRoom reads `members` live on every getJoinedMembers().
     const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
     const room = fakeRoom({
@@ -1707,11 +1707,14 @@ describe('RoomsService membersFor', () => {
 
     roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
     fireMemberChange(client, '!a:hs');
+    // The re-read is batched onto a microtask: RoomState.members fans out per member, so
+    // one bulk change emits N times and each read is O(members).
+    await Promise.resolve();
 
     expect(members().map((m) => m.userId)).toEqual(['@ada:hs', '@bo:hs']);
   });
 
-  it('leaves other rooms alone when a member changes elsewhere', () => {
+  it('leaves other rooms alone when a member changes elsewhere', async () => {
     // The point of dispatching on `state.roomId`. The counter this replaced was
     // unfiltered, so a busy room woke every member list in the app.
     const quietRoster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
@@ -1729,11 +1732,13 @@ describe('RoomsService membersFor', () => {
     // equal — otherwise the memo would make this pass either way.
     quietRoster.push(fakeMember({ userId: '@late:hs', name: 'Late' }));
     fireMemberChange(client, '!busy:hs');
+    // Flushed BEFORE asserting, or "did not re-read" passes against an unflushed turn.
+    await Promise.resolve();
 
     expect(quietMembers()).toBe(before);
   });
 
-  it('holds the same array when the room re-reads unchanged', () => {
+  it('holds the same array when the room re-reads unchanged', async () => {
     const { svc, client } = setup([
       fakeRoom({
         roomId: '!a:hs',
@@ -1745,13 +1750,14 @@ describe('RoomsService membersFor', () => {
     const before = members();
 
     fireMemberChange(client, '!a:hs');
+    await Promise.resolve();
 
     // membersOf's fingerprint memo returns the identical array, so Object.is stops the
     // write propagating. This is what makes writing on every member event cheap.
     expect(members()).toBe(before);
   });
 
-  it('re-reads every watched room when our own membership changes', () => {
+  it('re-reads every watched room when our own membership changes', async () => {
     // MyMembership names no room, so there is nothing to dispatch on.
     const roster: ReturnType<typeof fakeMember>[] = [];
     const room = fakeRoom({
@@ -1771,6 +1777,7 @@ describe('RoomsService membersFor', () => {
       .map((call) => call[1] as () => void);
     expect(handlers.length).toBe(2);
     handlers[handlers.length - 1]();
+    await Promise.resolve();
 
     expect(members().map((m) => m.userId)).toEqual(['@ada:hs']);
   });
@@ -1820,5 +1827,51 @@ describe('RoomsService membersFor', () => {
     const { svc } = setup([fakeRoom({ roomId: '!a:hs', name: 'general' })]);
 
     expect(svc.membersFor(null)()).toEqual([]);
+  });
+
+  it('holds the same empty list for a room it cannot read', async () => {
+    // The identity invariant has to hold on the EMPTY paths too, or the null-room signal —
+    // the landing state, and the state after every closeOpenRoom() — re-notifies its
+    // consumers on every write. `membersOf` returns a shared frozen list for these.
+    const { svc, client } = setup([
+      fakeRoom({ roomId: '!a:hs', name: 'general' }),
+    ]);
+    const none = svc.membersFor(null);
+    const before = none();
+
+    const handlers = client.on.mock.calls
+      .filter(([e]) => e === 'Room.myMembership')
+      .map((call) => call[1] as () => void);
+    handlers[handlers.length - 1]();
+    await Promise.resolve();
+
+    expect(none()).toBe(before);
+  });
+
+  it('collapses a per-member fan-out into one re-read', async () => {
+    // RoomState.members is emitted once PER MEMBER inside a loop, and each read is
+    // O(members) — the fingerprint runs before the memo can hit — so un-batched a bulk
+    // membership set is quadratic on the main thread.
+    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: roster,
+    });
+    const { svc, client } = setup([room]);
+    svc.membersFor('!a:hs');
+    let reads = 0;
+    const original = room.getJoinedMembers;
+    room.getJoinedMembers = () => {
+      reads += 1;
+      return original();
+    };
+
+    fireMemberChange(client, '!a:hs');
+    fireMemberChange(client, '!a:hs');
+    fireMemberChange(client, '!a:hs');
+    await Promise.resolve();
+
+    expect(reads).toBe(1);
   });
 });

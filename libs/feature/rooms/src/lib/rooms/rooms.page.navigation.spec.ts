@@ -377,10 +377,10 @@ describe('RoomsPage mobile navigation', () => {
   });
 });
 
-// The user-panel switcher summarises every signed-in account: each row is that
-// account's own client profile (display name + avatar) with a fallback to the raw
-// MXID, plus its unread total — and it tolerates an account whose client isn't
-// live yet (clientFor → null), which still shows as a row with a zero badge.
+// The user-panel switcher summarises every signed-in account: each row is that account's
+// profile (display name + avatar) from AccountProfilesService with a fallback to the raw
+// MXID, plus its unread total — and it tolerates an account the projection has no entry
+// for yet, which still shows as a row with a zero badge.
 describe('RoomsPage account switcher summary', () => {
   const meAvatar = 'mxc://hs/me';
 
@@ -400,22 +400,16 @@ describe('RoomsPage account switcher summary', () => {
             '@me:hs',
             '@alt:hs',
           ]).asReadonly(),
-          // '@me:hs' has a live client with a hydrated profile; '@alt:hs' isn't
-          // live yet (no client created), so clientFor → null for it.
-          clientFor: (userId: string) =>
-            userId === '@me:hs'
-              ? ({
-                  getUser: () => ({ displayName: 'Me', avatarUrl: meAvatar }),
-                } as never)
-              : null,
+          // Profiles come from the projection below, not from reading clients here.
+          clientFor: () => null,
         }),
         MockProvider(UnreadAggregatorService, {
           unreadByAccount: signal<ReadonlyMap<string, number>>(
             new Map([['@me:hs', 4]]),
           ).asReadonly(),
         }),
-        // '@me:hs' has a hydrated profile; '@alt:hs' is signed in but not live yet, so it
-        // has no entry and the row falls back to its mxid.
+        // '@me:hs' has a hydrated profile; '@alt:hs' is signed in but has no entry yet,
+        // so its row falls back to the mxid.
         MockProvider(AccountProfilesService, {
           profiles: signal(
             new Map([
@@ -446,9 +440,9 @@ describe('RoomsPage account switcher summary', () => {
   it('summarises each account by its client profile, MXID fallback, and unread total', () => {
     const shell = build();
 
-    // '@me:hs': live profile (name + avatar) with its unread total from the
-    // aggregator. '@alt:hs': no live client, so name falls back to the MXID, the
-    // avatar is null, and its unread defaults to 0 (absent from the map).
+    // '@me:hs': hydrated profile (name + avatar) with its unread total from the
+    // aggregator. '@alt:hs': no profile entry yet, so the name falls back to the MXID,
+    // the avatar is null, and its unread defaults to 0 (absent from the map).
     expect(shell.vm.accounts()).toEqual([
       { userId: '@me:hs', displayName: 'Me', avatarMxc: meAvatar, unread: 4 },
       { userId: '@alt:hs', displayName: '@alt:hs', avatarMxc: null, unread: 0 },

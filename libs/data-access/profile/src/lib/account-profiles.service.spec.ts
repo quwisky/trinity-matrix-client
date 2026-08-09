@@ -10,17 +10,31 @@ interface FakeProfile {
   avatarUrl?: string | null;
 }
 
-/** A client stub for one account, with `on`/`off` spies so listeners are assertable. */
-function fakeClient(profile: FakeProfile | null) {
+/**
+ * A client stub for one account, with `on`/`off` spies so listeners are assertable.
+ *
+ * `getUser` RESPECTS its argument: reading a client for the wrong user id is the bug class
+ * this service exists to prevent, and a stub that answers for anyone cannot see it.
+ */
+function fakeClient(ownId: string, profile: FakeProfile | null) {
   return {
-    getUser: () => profile,
+    ownId,
+    getUser: (userId: string) => (userId === ownId ? profile : null),
     on: vi.fn(),
     off: vi.fn(),
   };
 }
 
-function setup(accounts: Record<string, ReturnType<typeof fakeClient>>) {
-  const ids = signal<readonly string[]>(Object.keys(accounts));
+function setup(
+  accounts: Record<string, ReturnType<typeof fakeClient>>,
+  /** Signed-in ids whose client is not created yet — `clientFor` returns null for these. */
+  idsWithoutClients: string[] = [],
+) {
+  const ids = signal<readonly string[]>([
+    ...Object.keys(accounts),
+    ...idsWithoutClients,
+  ]);
+  const active = signal<string | null>(null);
   const clients = new Map(Object.entries(accounts));
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -28,15 +42,15 @@ function setup(accounts: Record<string, ReturnType<typeof fakeClient>>) {
       AccountProfilesService,
       MockProvider(MatrixClientService, {
         accountIds: ids.asReadonly(),
-        activeUserId: signal<string | null>(null).asReadonly(),
+        activeUserId: active.asReadonly(),
         clientFor: (userId: string) => (clients.get(userId) ?? null) as never,
       }),
     ],
   });
   const svc = TestBed.inject(AccountProfilesService);
   // The projection wires itself from a constructor effect, which has not run yet.
-  TestBed.flushEffects();
-  return { svc, ids, clients };
+  TestBed.tick();
+  return { svc, ids, active, clients };
 }
 
 /** Pull a captured listener by event name. */
@@ -51,8 +65,11 @@ function handlerFor(
 describe('AccountProfilesService', () => {
   it('reads every signed-in account through its own client', () => {
     const { svc } = setup({
-      '@me:hs': fakeClient({ displayName: 'Me', avatarUrl: 'mxc://hs/me' }),
-      '@alt:hs': fakeClient({ displayName: 'Alt', avatarUrl: null }),
+      '@me:hs': fakeClient('@me:hs', {
+        displayName: 'Me',
+        avatarUrl: 'mxc://hs/me',
+      }),
+      '@alt:hs': fakeClient('@alt:hs', { displayName: 'Alt', avatarUrl: null }),
     });
 
     expect(svc.profileOf('@me:hs')).toEqual({
@@ -64,7 +81,7 @@ describe('AccountProfilesService', () => {
   });
 
   it('falls back to the user id before a profile has hydrated', () => {
-    const { svc } = setup({ '@alt:hs': fakeClient(null) });
+    const { svc } = setup({ '@alt:hs': fakeClient('@alt:hs', null) });
 
     expect(svc.profileOf('@alt:hs')).toEqual({
       userId: '@alt:hs',
@@ -74,13 +91,14 @@ describe('AccountProfilesService', () => {
   });
 
   it('follows a display-name change on the account it belongs to', async () => {
-    const client = fakeClient(null);
+    const client = fakeClient('@alt:hs', null);
     const { svc } = setup({ '@alt:hs': client });
     expect(svc.profileOf('@alt:hs').displayName).toBe('@alt:hs');
 
     // The profile hydrates on THAT account's sync, which is what the counter this
     // replaced could not see — it was bumped only by the active client.
-    client.getUser = () => ({ displayName: 'Alice', avatarUrl: 'mxc://a' });
+    client.getUser = (id) =>
+      id === '@alt:hs' ? { displayName: 'Alice', avatarUrl: 'mxc://a' } : null;
     handlerFor(client, 'User.displayName')?.({}, { userId: '@alt:hs' });
     await Promise.resolve();
 
@@ -91,11 +109,12 @@ describe('AccountProfilesService', () => {
   it('ignores an event about somebody else on the same client', async () => {
     // The client re-emits these for every user it knows — everyone in every room — so an
     // unfiltered handler would rebuild on other people's profile changes.
-    const client = fakeClient({ displayName: 'Me', avatarUrl: null });
+    const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
     const { svc } = setup({ '@me:hs': client });
     const before = svc.profiles();
 
-    client.getUser = () => ({ displayName: 'Changed', avatarUrl: null });
+    client.getUser = (id) =>
+      id === '@me:hs' ? { displayName: 'Changed', avatarUrl: null } : null;
     handlerFor(client, 'User.displayName')?.({}, { userId: '@someone:hs' });
     // Flushed BEFORE asserting: the rebuild is coalesced onto a microtask, so this would
     // pass against an unflushed turn whether or not the filter works.
@@ -105,7 +124,7 @@ describe('AccountProfilesService', () => {
   });
 
   it('holds the same map when a rebuild changes nothing', async () => {
-    const client = fakeClient({ displayName: 'Me', avatarUrl: null });
+    const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
     const { svc } = setup({ '@me:hs': client });
     const before = svc.profiles();
 
@@ -116,12 +135,12 @@ describe('AccountProfilesService', () => {
   });
 
   it('collapses a burst into one rebuild', async () => {
-    const client = fakeClient({ displayName: 'Me', avatarUrl: null });
+    const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
     const { svc } = setup({ '@me:hs': client });
     let reads = 0;
-    client.getUser = () => {
+    client.getUser = (id) => {
       reads += 1;
-      return { displayName: 'Me', avatarUrl: null };
+      return id === '@me:hs' ? { displayName: 'Me', avatarUrl: null } : null;
     };
 
     const onName = handlerFor(client, 'User.displayName');
@@ -135,12 +154,12 @@ describe('AccountProfilesService', () => {
   });
 
   it('detaches from an account that signs out', () => {
-    const client = fakeClient({ displayName: 'Me', avatarUrl: null });
+    const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
     const { svc, ids, clients } = setup({ '@me:hs': client });
 
     clients.delete('@me:hs');
     ids.set([]);
-    TestBed.flushEffects();
+    TestBed.tick();
 
     expect(client.off).toHaveBeenCalledWith(
       'User.displayName',
@@ -156,19 +175,26 @@ describe('AccountProfilesService', () => {
   it('rebinds when the same account gets a new client object', async () => {
     // Re-adding an already signed-in account stops and re-creates its client. Holding the
     // old one strands the listener on a stopped client and that account silently freezes.
-    const first = fakeClient({ displayName: 'Old', avatarUrl: null });
-    const { svc, ids, clients } = setup({ '@me:hs': first });
+    const first = fakeClient('@me:hs', { displayName: 'Old', avatarUrl: null });
+    const { svc, active, clients } = setup({ '@me:hs': first });
 
-    const second = fakeClient({ displayName: 'New', avatarUrl: null });
+    const second = fakeClient('@me:hs', {
+      displayName: 'New',
+      avatarUrl: null,
+    });
     clients.set('@me:hs', second);
-    // The id list is unchanged, so the switch is what has to trigger the re-check.
-    ids.set(['@me:hs']);
-    TestBed.flushEffects();
+    // Driving the ACTIVE ACCOUNT, not the id list — the id list is genuinely unchanged
+    // when an account is re-added, so `activeUserId` is what has to re-run the effect.
+    // Writing `ids.set([...])` instead would pass on array identity alone and leave that
+    // dependency unpinned.
+    active.set('@me:hs');
+    TestBed.tick();
 
     expect(first.off).toHaveBeenCalled();
     expect(second.on).toHaveBeenCalled();
 
-    second.getUser = () => ({ displayName: 'Newer', avatarUrl: null });
+    second.getUser = (id) =>
+      id === '@me:hs' ? { displayName: 'Newer', avatarUrl: null } : null;
     handlerFor(second, 'User.displayName')?.({}, { userId: '@me:hs' });
     await Promise.resolve();
 
@@ -181,11 +207,15 @@ describe('AccountProfilesService', () => {
     // `User.displayName` never reaches a client-level listener for it. Before the sync
     // trigger existed, the header chip and every account badge showed the raw mxid for the
     // whole session.
-    const client = fakeClient({ displayName: '@me:hs', avatarUrl: null });
+    const client = fakeClient('@me:hs', {
+      displayName: '@me:hs',
+      avatarUrl: null,
+    });
     const { svc } = setup({ '@me:hs': client });
     expect(svc.profileOf('@me:hs').displayName).toBe('@me:hs');
 
-    client.getUser = () => ({ displayName: 'Me', avatarUrl: 'mxc://me' });
+    client.getUser = (id) =>
+      id === '@me:hs' ? { displayName: 'Me', avatarUrl: 'mxc://me' } : null;
     handlerFor(client, 'sync')?.({}, { userId: '' } as never);
     await Promise.resolve();
 
@@ -196,11 +226,12 @@ describe('AccountProfilesService', () => {
   it('hears a BACKGROUND account sync without the active one syncing', async () => {
     // Each account gets its own sync listener, which is the whole point: the counter this
     // replaced was bumped by the active client only.
-    const me = fakeClient({ displayName: 'Me', avatarUrl: null });
-    const alt = fakeClient(null);
+    const me = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
+    const alt = fakeClient('@alt:hs', null);
     const { svc } = setup({ '@me:hs': me, '@alt:hs': alt });
 
-    alt.getUser = () => ({ displayName: 'Alt', avatarUrl: null });
+    alt.getUser = (id) =>
+      id === '@alt:hs' ? { displayName: 'Alt', avatarUrl: null } : null;
     handlerFor(alt, 'sync')?.({}, { userId: '' } as never);
     await Promise.resolve();
 
@@ -208,21 +239,33 @@ describe('AccountProfilesService', () => {
   });
 
   it('detaches the sync listener too', () => {
-    const client = fakeClient({ displayName: 'Me', avatarUrl: null });
+    const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
     const { ids, clients } = setup({ '@me:hs': client });
 
     clients.delete('@me:hs');
     ids.set([]);
-    TestBed.flushEffects();
+    TestBed.tick();
 
     expect(client.off).toHaveBeenCalledWith('sync', expect.any(Function));
   });
 
-  it('skips an account whose client is not live yet', () => {
-    const { svc } = setup({});
-    const ids = TestBed.inject(MatrixClientService).accountIds;
+  it('skips an account whose client is not live yet, and picks it up later', () => {
+    // Signed in but not started — `clientFor` returns null. The account must still appear
+    // (as its mxid) rather than being dropped, and must gain a listener once its client
+    // exists. The earlier version of this test passed no such id at all, so neither loop
+    // body ran and the guard it named was never reached.
+    const { svc, ids, clients } = setup({}, ['@pending:hs']);
+    expect(svc.profileOf('@pending:hs').displayName).toBe('@pending:hs');
 
-    expect(() => ids()).not.toThrow();
-    expect(svc.profileOf('@nobody:hs').displayName).toBe('@nobody:hs');
+    const late = fakeClient('@pending:hs', {
+      displayName: 'Pending',
+      avatarUrl: null,
+    });
+    clients.set('@pending:hs', late);
+    ids.set(['@pending:hs']);
+    TestBed.tick();
+
+    expect(late.on).toHaveBeenCalled();
+    expect(svc.profileOf('@pending:hs').displayName).toBe('Pending');
   });
 });
