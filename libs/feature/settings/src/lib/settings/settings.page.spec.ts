@@ -24,6 +24,7 @@ const SECTIONS = [
   'gifs',
   'shortcuts',
   'experimental',
+  'advanced',
 ];
 
 const ROUTES: Routes = [

@@ -22,6 +22,7 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
   lucideBell,
+  lucideBraces,
   lucideChevronRight,
   lucideCircleDot,
   lucideFlaskConical,
@@ -58,6 +59,7 @@ const MENU: readonly SettingsMenuItem[] = [
   { path: 'gifs', label: 'GIFs', icon: 'lucideImage' },
   { path: 'shortcuts', label: 'Keyboard shortcuts', icon: 'lucideKeyboard' },
   { path: 'experimental', label: 'Experimental', icon: 'lucideFlaskConical' },
+  { path: 'advanced', label: 'Advanced', icon: 'lucideBraces' },
 ];
 
 /** The two-pane / single-pane breakpoint — the same `md` the rooms shell uses. */
@@ -98,6 +100,7 @@ const WIDE_QUERY = '(min-width: 768px)';
       lucideImage,
       lucideKeyboard,
       lucideFlaskConical,
+      lucideBraces,
     }),
   ],
 })

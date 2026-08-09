@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Your settings, readable in one place.** Settings → **Advanced** shows everything Trinity
+  keeps on this device as one formatted JSON document — appearance, privacy, timeline, date
+  and time formats, keyboard shortcuts, GIFs and the push gateway — with **Copy** and, on the
+  web and desktop apps, **Export to file**. Useful for setting a second device up, keeping a
+  copy before experimenting, or answering "what's your config?" without a screenshot tour.
+
+  It is a preferences transfer, not a sign-in transfer: your accounts, access tokens,
+  encryption keys, unsent drafts and anything your homeserver already carries for you are not
+  in it, and the section says so and why. **Reset to defaults** puts every setting in that
+  document back where it started — behind a type-the-word confirmation, and leaving your
+  accounts and drafts untouched. Editing the document and applying it comes next.
+
 - **Code in messages has its own size, and long blocks can be numbered.** Until now the only
   way to shrink a pasted listing was to shrink the whole app with it, because Text size moves
   everything together. Settings → Appearance gains **Code size** — Smaller, Default, Larger —
