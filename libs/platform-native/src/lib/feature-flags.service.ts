@@ -3,6 +3,9 @@ import { Preferences } from '@capacitor/preferences';
 
 const VIRTUAL_TIMELINE_KEY = 'trinity.flags.virtual-timeline';
 
+/** The windowed timeline is on unless the user opts out. */
+export const DEFAULT_VIRTUAL_TIMELINE = true;
+
 /**
  * User-toggleable experimental feature flags, persisted across launches.
  *
@@ -14,7 +17,7 @@ const VIRTUAL_TIMELINE_KEY = 'trinity.flags.virtual-timeline';
  */
 @Injectable({ providedIn: 'root' })
 export class FeatureFlagsService {
-  private readonly _virtualTimeline = signal(true);
+  private readonly _virtualTimeline = signal(DEFAULT_VIRTUAL_TIMELINE);
   /**
    * Windowed (virtualized) message timeline: render only the on-screen rows plus
    * spacers so the DOM stays bounded in long rooms.

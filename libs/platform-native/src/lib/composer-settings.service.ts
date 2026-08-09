@@ -3,6 +3,9 @@ import { Preferences } from '@capacitor/preferences';
 
 const SHOW_TOOLBAR_KEY = 'trinity.composer.show-toolbar';
 
+/** The formatting toolbar is shown unless the user hides it. */
+export const DEFAULT_SHOW_FORMATTING_TOOLBAR = true;
+
 /**
  * How the message composer is presented.
  *
@@ -17,7 +20,9 @@ const SHOW_TOOLBAR_KEY = 'trinity.composer.show-toolbar';
  */
 @Injectable({ providedIn: 'root' })
 export class ComposerSettingsService {
-  private readonly _showFormattingToolbar = signal(true);
+  private readonly _showFormattingToolbar = signal(
+    DEFAULT_SHOW_FORMATTING_TOOLBAR,
+  );
 
   /** Whether the formatting toolbar sits above the message input. */
   readonly showFormattingToolbar = this._showFormattingToolbar.asReadonly();

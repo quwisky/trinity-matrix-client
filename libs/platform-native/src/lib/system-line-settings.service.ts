@@ -5,6 +5,11 @@ const MEMBERSHIP_KEY = 'trinity.timeline.show-membership';
 const PROFILE_KEY = 'trinity.timeline.show-profile';
 const ROOM_CHANGES_KEY = 'trinity.timeline.show-room-changes';
 
+/** Every category of system line is shown unless the user hides it. */
+export const DEFAULT_SHOW_MEMBERSHIP = true;
+export const DEFAULT_SHOW_PROFILE = true;
+export const DEFAULT_SHOW_ROOM_CHANGES = true;
+
 /**
  * Which categories of *system line* the timeline renders between messages — "Bob joined the
  * room", "Bob changed their profile picture", "Mod changed the room topic".
@@ -19,9 +24,9 @@ const ROOM_CHANGES_KEY = 'trinity.timeline.show-room-changes';
  */
 @Injectable({ providedIn: 'root' })
 export class SystemLineSettingsService {
-  private readonly _showMembership = signal(true);
-  private readonly _showProfile = signal(true);
-  private readonly _showRoomChanges = signal(true);
+  private readonly _showMembership = signal(DEFAULT_SHOW_MEMBERSHIP);
+  private readonly _showProfile = signal(DEFAULT_SHOW_PROFILE);
+  private readonly _showRoomChanges = signal(DEFAULT_SHOW_ROOM_CHANGES);
 
   /** Joins, leaves, invites, knocks, kicks/bans/unbans. */
   readonly showMembership = this._showMembership.asReadonly();
@@ -34,9 +39,13 @@ export class SystemLineSettingsService {
 
   /** Read the saved preferences and apply them. Call once at app startup. */
   async init(): Promise<void> {
-    this._showMembership.set(await this.read(MEMBERSHIP_KEY, true));
-    this._showProfile.set(await this.read(PROFILE_KEY, true));
-    this._showRoomChanges.set(await this.read(ROOM_CHANGES_KEY, true));
+    this._showMembership.set(
+      await this.read(MEMBERSHIP_KEY, DEFAULT_SHOW_MEMBERSHIP),
+    );
+    this._showProfile.set(await this.read(PROFILE_KEY, DEFAULT_SHOW_PROFILE));
+    this._showRoomChanges.set(
+      await this.read(ROOM_CHANGES_KEY, DEFAULT_SHOW_ROOM_CHANGES),
+    );
   }
 
   /** Toggle + persist whether membership lines are shown. */

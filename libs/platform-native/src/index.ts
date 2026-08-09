@@ -19,3 +19,6 @@ export * from './lib/shortcuts/chord';
 export * from './lib/shortcuts/keyboard-shortcuts.service';
 export * from './lib/trinity-error-handler';
 export * from './lib/build-info';
+export * from './lib/config-schema';
+export * from './lib/platform-config-entries';
+export * from './lib/app-config.service';

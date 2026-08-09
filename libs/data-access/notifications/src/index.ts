@@ -4,6 +4,7 @@ export * from './lib/push-config';
 export * from './lib/push.service';
 export * from './lib/push-gateway-url';
 export * from './lib/push-gateway.service';
+export * from './lib/push-config-entries';
 export * from './lib/app-badge.service';
 export * from './lib/room-notifications.service';
 export * from './lib/push-rules.service';
