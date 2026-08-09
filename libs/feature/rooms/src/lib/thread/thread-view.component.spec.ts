@@ -76,7 +76,14 @@ async function build(
   // supplied no RoomsService at all, so `return []` in the component went unnoticed — only
   // a `throw` failed, and that was the template crashing rather than an assertion.
   const roster = signal<readonly MemberSummary[]>([
-    { userId: '@ada:hs', name: 'Ada', initial: 'A', avatarMxc: null },
+    {
+      userId: '@ada:hs',
+      name: 'Ada',
+      initial: 'A',
+      avatarMxc: null,
+      powerLevel: 0,
+      isCreator: false,
+    },
   ]);
   const membersFor = vi.fn((roomId: string | null) =>
     roomId === '!r:hs'
@@ -362,8 +369,22 @@ describe('ThreadViewComponent members', () => {
     ).toEqual(['@ada:hs']);
 
     roster.set([
-      { userId: '@ada:hs', name: 'Ada', initial: 'A', avatarMxc: null },
-      { userId: '@bo:hs', name: 'Bo', initial: 'B', avatarMxc: null },
+      {
+        userId: '@ada:hs',
+        name: 'Ada',
+        initial: 'A',
+        avatarMxc: null,
+        powerLevel: 0,
+        isCreator: false,
+      },
+      {
+        userId: '@bo:hs',
+        name: 'Bo',
+        initial: 'B',
+        avatarMxc: null,
+        powerLevel: 0,
+        isCreator: false,
+      },
     ]);
     fixture.detectChanges();
 

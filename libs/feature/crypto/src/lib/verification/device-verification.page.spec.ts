@@ -115,7 +115,7 @@ describe('DeviceVerificationPage', () => {
           stage: 'sas-shown',
           isSelfVerification: false,
           otherUserId: '@mallory:evil.example',
-          emoji: [{ emoji: '🐶', name: 'Dog' }],
+          emoji: [{ glyph: '🐶', name: 'Dog' }],
         }),
       ),
     );

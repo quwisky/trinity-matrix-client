@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import { PushRuleKind } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   KeywordRulesService,
@@ -35,10 +36,36 @@ const keyword = (pattern: string, actions = NOTIFY_LOUD): Rule => ({
 function makeClient(content: Rule[] | null = []) {
   const client = {
     pushRules: content === null ? undefined : { global: { content } },
-    addPushRule: vi.fn(() => Promise.resolve({})),
-    deletePushRule: vi.fn(() => Promise.resolve({})),
-    setPushRuleEnabled: vi.fn(() => Promise.resolve({})),
-    setPushRuleActions: vi.fn(() => Promise.resolve({})),
+    // Parameter lists mirror the SDK's, so the `mock.calls[0][n]` assertions below are
+    // typed against the real argument positions rather than an empty tuple.
+    addPushRule: vi.fn(
+      (
+        _scope: string,
+        _kind: PushRuleKind,
+        _ruleId: string,
+        _body: { actions?: unknown[]; pattern?: string },
+      ) => Promise.resolve({}),
+    ),
+    deletePushRule: vi.fn(
+      (_scope: string, _kind: PushRuleKind, _ruleId: string) =>
+        Promise.resolve({}),
+    ),
+    setPushRuleEnabled: vi.fn(
+      (
+        _scope: string,
+        _kind: PushRuleKind,
+        _ruleId: string,
+        _enabled: boolean,
+      ) => Promise.resolve({}),
+    ),
+    setPushRuleActions: vi.fn(
+      (
+        _scope: string,
+        _kind: PushRuleKind,
+        _ruleId: string,
+        _actions: unknown[],
+      ) => Promise.resolve({}),
+    ),
     // Mirrors the real SDK: getPushRules() assigns client.pushRules itself.
     getPushRules: vi.fn(() => Promise.resolve(client.pushRules)),
   };

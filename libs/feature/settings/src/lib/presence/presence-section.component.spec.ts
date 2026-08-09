@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { PresenceService } from '@trinity/data-access/profile';
 import { type PresenceState } from '@trinity/util/matrix';
 import { PresenceSectionComponent } from './presence-section.component';
@@ -11,7 +11,7 @@ function providers(
   over: {
     presence?: PresenceState;
     status?: string;
-    setOwnPresence?: ReturnType<typeof vi.fn>;
+    setOwnPresence?: Mock;
   } = {},
 ) {
   const setOwnPresence = over.setOwnPresence ?? vi.fn(() => of(undefined));

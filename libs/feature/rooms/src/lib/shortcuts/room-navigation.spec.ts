@@ -7,8 +7,11 @@ const IDS = ['!a', '!b', '!c'];
 function room(id: string, hasUnread = false): RoomSummary {
   return {
     id,
+    accountId: '@me:hs',
+    accountIds: ['@me:hs'],
     name: id,
     initial: id[1].toUpperCase(),
+    markedUnread: false,
     avatarMxc: null,
     topic: '',
     memberCount: 0,

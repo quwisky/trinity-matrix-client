@@ -8,7 +8,7 @@ import {
 } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { ManageSpaceRoomsComponent } from './manage-space-rooms.component';
 
 interface LinkFixture {
@@ -23,8 +23,8 @@ async function build(
     openChildren?: { roomId: string; name: string }[];
   } = {},
   over: {
-    setSuggested?: ReturnType<typeof vi.fn>;
-    moveChildBefore?: ReturnType<typeof vi.fn>;
+    setSuggested?: Mock;
+    moveChildBefore?: Mock;
   } = {},
 ) {
   const setSuggested = over.setSuggested ?? vi.fn(() => of(undefined));

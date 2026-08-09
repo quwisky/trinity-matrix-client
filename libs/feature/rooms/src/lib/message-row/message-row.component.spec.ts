@@ -105,7 +105,7 @@ describe('MessageRowComponent', () => {
       // <trn-link-preview>, which inject these.
       providers: [
         MockProvider(MediaService, {
-          resolveMedia: () => of(null),
+          resolveMedia: () => of(''),
           downloadMedia: () => of({ blob: new Blob(), filename: 'doc.pdf' }),
         }),
         MockProvider(FileSaveService, { save: () => of(undefined) }),

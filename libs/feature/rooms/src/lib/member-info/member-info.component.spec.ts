@@ -18,7 +18,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { VerificationService } from '@trinity/data-access/crypto';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MemberInfoComponent } from './member-info.component';
 
 function member(over: Partial<MemberSummary> = {}): MemberSummary {
@@ -41,16 +41,16 @@ async function build(
     canBan?: boolean;
     canSetPower?: boolean;
     myPower?: number;
-    kick?: ReturnType<typeof vi.fn>;
-    ban?: ReturnType<typeof vi.fn>;
-    setPowerLevel?: ReturnType<typeof vi.fn>;
-    alertPrompt?: ReturnType<typeof vi.fn>;
-    alertConfirm?: ReturnType<typeof vi.fn>;
+    kick?: Mock;
+    ban?: Mock;
+    setPowerLevel?: Mock;
+    alertPrompt?: Mock;
+    alertConfirm?: Mock;
     isIgnored?: boolean;
-    ignore?: ReturnType<typeof vi.fn>;
-    unignore?: ReturnType<typeof vi.fn>;
-    createDirectMessage?: ReturnType<typeof vi.fn>;
-    startUserVerification?: ReturnType<typeof vi.fn>;
+    ignore?: Mock;
+    unignore?: Mock;
+    createDirectMessage?: Mock;
+    startUserVerification?: Mock;
   } = {},
 ) {
   const close = vi.fn();

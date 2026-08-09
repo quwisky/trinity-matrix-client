@@ -7,7 +7,7 @@ import { AvatarComponent } from '@trinity/ui';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { UserPickerComponent } from './user-picker.component';
 
 const RESULTS: UserSearchResult[] = [
@@ -15,8 +15,8 @@ const RESULTS: UserSearchResult[] = [
 ];
 
 describe('UserPickerComponent', () => {
-  let dismiss: ReturnType<typeof vi.fn>;
-  let searchUsers: ReturnType<typeof vi.fn>;
+  let dismiss: Mock;
+  let searchUsers: Mock;
 
   function setInput(value: string, instance: UserPickerComponent): void {
     instance.onInput({ target: { value } } as unknown as Event);

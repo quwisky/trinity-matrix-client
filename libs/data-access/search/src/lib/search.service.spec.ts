@@ -8,7 +8,7 @@ import {
 } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import {
   InvitesService,
   type PendingInvite,
@@ -43,6 +43,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
     lastMessage: '',
     activityTs: 0,
     favourite: false,
+    lowPriority: false,
     ...over,
   };
 }
@@ -62,6 +63,7 @@ function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
 function invite(over: Partial<PendingInvite> = {}): PendingInvite {
   return {
     roomId: '!i:hs',
+    accountId: '@me:hs',
     name: 'invite',
     initial: 'I',
     avatarMxc: null,
@@ -77,13 +79,13 @@ function setup(opts: {
   directRoomIds?: Set<string>;
   spaces?: SpaceSummary[];
   invites?: PendingInvite[];
-  searchUsers?: ReturnType<typeof vi.fn>;
+  searchUsers?: Mock;
   matrix?: Partial<MatrixClientService>;
   /** Mixed-account corpus: when `mixing` is true these replace the single-account lists. */
   mixing?: boolean;
   mixedRooms?: RoomSummary[];
   mixedSpaces?: SpaceSummary[];
-}): { svc: SearchService; searchUsers: ReturnType<typeof vi.fn> } {
+}): { svc: SearchService; searchUsers: Mock } {
   const searchUsers =
     opts.searchUsers ?? vi.fn(() => of<UserSearchResult[]>([]));
   TestBed.configureTestingModule({

@@ -11,8 +11,10 @@ afterAll(() => vi.unstubAllGlobals());
 const bytes = (s: string): ArrayBuffer =>
   new TextEncoder().encode(s).buffer as ArrayBuffer;
 
+// Buffer's backing store is typed `ArrayBuffer | SharedArrayBuffer`; a Node Buffer is
+// never shared, and `slice` copies, so the result really is a plain ArrayBuffer.
 const toArrayBuffer = (b: Buffer): ArrayBuffer =>
-  b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+  b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
 
 describe('attachment-crypto', () => {
   it('round-trips: encryptAttachment then decryptAttachment recovers the plaintext', async () => {

@@ -30,7 +30,10 @@ export default defineConfig([
     '**/.angular',
     'android',
     'ios',
-    'e2e',
+    // `e2e` used to be listed here. It is not any more: the Playwright suite is the only
+    // gate for whole user journeys, and the failure mode it is most exposed to — a
+    // dropped `await` on a locator assertion, which passes vacuously forever — is exactly
+    // what a lint rule catches and review does not. See the scoped block at the bottom.
     '.pnpm-store/',
     '**/.pnpm-store/',
   ]),
@@ -303,6 +306,45 @@ export default defineConfig([
       '@angular-eslint/component-selector': 'off',
       '@angular-eslint/directive-selector': 'off',
       '@angular-eslint/no-input-rename': 'off',
+    },
+  },
+  {
+    // The Playwright suite. Type-aware, against e2e/tsconfig.json — which is what makes
+    // `no-floating-promises` possible, and it is the rule this block exists for: an
+    // `expect(locator).toBeVisible()` missing its `await` resolves to a promise nobody
+    // waits on, so the assertion never runs and the spec passes whatever the app did.
+    // Ninety-seven specs had nothing but review discipline standing between them and that.
+    //
+    // `.mts` only: the harness under e2e/synapse and e2e/features is plain `.mjs` (it is
+    // run by bare `node` for the manual bring-up), carries no types, and would only
+    // produce "not found by the project service" here.
+    files: ['e2e/**/*.mts'],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        project: ['./e2e/tsconfig.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    plugins: { '@typescript-eslint': tseslint.plugin },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+      // The other half of the pair: a committed `test.only` silently reduces the suite to
+      // one spec while still reporting green. Expressed as a syntax ban rather than
+      // `playwright/no-focused-test` deliberately — that rule lives in
+      // eslint-plugin-playwright, which this workspace does not depend on, and one
+      // selector is a smaller thing to own than a plugin for a single rule.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[property.name='only']",
+          message:
+            'Focused test: `.only` runs this spec and silently skips the other ~96, which still reports as a passing E2E job. Remove it before committing.',
+        },
+      ],
+      // The Playwright harness is a Node process driving a browser; console is how a
+      // failing run explains itself in CI logs.
+      'no-console': 'off',
     },
   },
   {

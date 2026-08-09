@@ -19,7 +19,9 @@ function setup(result: unknown = null) {
   TestBed.configureTestingModule({
     providers: [
       EditHistoryDialogService,
-      MockProvider(TrnDialogService, { openAndWait }),
+      MockProvider(TrnDialogService, {
+        openAndWait: openAndWait as TrnDialogService['openAndWait'],
+      }),
     ],
   });
   return {

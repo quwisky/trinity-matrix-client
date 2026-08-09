@@ -43,6 +43,11 @@ function msg(
 // jsdom's 0-height viewport, the window is a handful of rows regardless.
 const EST = 64;
 
+/** `notAtBottom` drives the jump pill and is protected (template-only); read it
+ * through a narrow view rather than widening the component's API for a test. */
+const notAtBottom = (cmp: VirtualMessageListComponent): boolean =>
+  (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
+
 describe('VirtualMessageListComponent', () => {
   beforeEach(() => {
     // Suppress the anchoring effect's async scroll writes (they'd assign
@@ -310,7 +315,7 @@ describe('VirtualMessageListComponent', () => {
     // Scrolled far from the bottom: the list offers the jump pill.
     cmp.onScroll();
     fixture.detectChanges();
-    expect(cmp.notAtBottom()).toBe(true);
+    expect(notAtBottom(cmp)).toBe(true);
     const pill = container.querySelector<HTMLButtonElement>(
       '[data-testid=jump-to-latest]',
     );
@@ -319,7 +324,7 @@ describe('VirtualMessageListComponent', () => {
     // Jumping re-pins to the bottom and hides the pill.
     pill!.click();
     fixture.detectChanges();
-    expect(cmp.notAtBottom()).toBe(false);
+    expect(notAtBottom(cmp)).toBe(false);
     expect(container.querySelector('[data-testid=jump-to-latest]')).toBeNull();
   });
 

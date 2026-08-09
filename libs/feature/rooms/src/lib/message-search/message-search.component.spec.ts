@@ -12,7 +12,7 @@ import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/ui';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
 import { MessageSearchService } from './message-search.service';
 
@@ -41,10 +41,10 @@ function loaded(over: Partial<LoadedMessageSearch> = {}): LoadedMessageSearch {
 }
 
 describe('MessageSearchComponent', () => {
-  let dismiss: ReturnType<typeof vi.fn>;
-  let searchLoadedMessages: ReturnType<typeof vi.fn>;
-  let searchServerMessages: ReturnType<typeof vi.fn>;
-  let loadMoreHistory: ReturnType<typeof vi.fn>;
+  let dismiss: Mock;
+  let searchLoadedMessages: Mock;
+  let searchServerMessages: Mock;
+  let loadMoreHistory: Mock;
 
   async function build(state: LoadedMessageSearch): Promise<{
     fixture: ComponentFixture<MessageSearchComponent>;

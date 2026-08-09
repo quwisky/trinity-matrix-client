@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { Direction, EventType, RelationType } from 'matrix-js-sdk';
-import type { MatrixEvent } from 'matrix-js-sdk';
+import type { MatrixClient, MatrixEvent } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { EditHistoryService } from './edit-history.service';
 
@@ -69,8 +69,16 @@ function setup(
   } = {},
 ) {
   let call = 0;
+  // Parameter list mirrors the SDK's, so the `mock.calls[n][4]` pagination assertions
+  // below are typed against the real argument positions rather than an empty tuple.
   const relations = vi.fn(
-    async () => pages[Math.min(call++, pages.length - 1)],
+    async (
+      _roomId: string,
+      _eventId: string,
+      _relationType: RelationType,
+      _eventType: EventType,
+      _opts: { dir?: Direction; limit?: number; from?: string },
+    ) => pages[Math.min(call++, pages.length - 1)],
   );
   const redactEvent = vi.fn().mockResolvedValue({ event_id: '$redaction' });
   const client = {
@@ -85,7 +93,7 @@ function setup(
     providers: [
       MockProvider(MatrixClientService, {
         isInitialized: opts.isInitialized ?? true,
-        instance: client,
+        instance: client as unknown as MatrixClient,
       } as Partial<MatrixClientService>),
     ],
   });

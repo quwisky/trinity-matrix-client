@@ -1,9 +1,9 @@
 import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { signal } from '@angular/core';
+import { signal, type DebugElement } from '@angular/core';
 import { NEVER, of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import {
   KeywordRulesService,
@@ -34,7 +34,7 @@ beforeEach(() => {
   soundDisconnect.mockReset();
 });
 
-async function build(over: { setOn?: ReturnType<typeof vi.fn> } = {}) {
+async function build(over: { setOn?: Mock } = {}) {
   const setOn = over.setOn ?? vi.fn(() => of(undefined));
   const isOn = vi.fn((t: PushRuleToggle) => t.id === '.m.rule.master');
   const toastShow = vi.fn();
@@ -58,19 +58,15 @@ async function build(over: { setOn?: ReturnType<typeof vi.fn> } = {}) {
 
 /** Only the checkboxes rendered for push-rule toggles (excludes the sound switch). */
 function ruleCheckboxes(fixture: {
-  debugElement: {
-    queryAll: (p: unknown) => { componentInstance: HlmCheckbox }[];
-  };
+  debugElement: DebugElement;
   nativeElement: HTMLElement;
 }) {
   return checkboxes(fixture).slice(0, TOGGLES.length);
 }
 
 function checkboxes(fixture: {
-  debugElement: {
-    queryAll: (p: unknown) => { componentInstance: HlmCheckbox }[];
-  };
-}) {
+  debugElement: DebugElement;
+}): { componentInstance: HlmCheckbox }[] {
   return fixture.debugElement.queryAll(By.directive(HlmCheckbox));
 }
 

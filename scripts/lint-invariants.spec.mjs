@@ -89,6 +89,24 @@ describe('lint invariants', () => {
     expect(severityOf(config, '@nx/enforce-module-boundaries')).toBe(2);
   });
 
+  it('type-aware-lints the Playwright suite, so a dropped await cannot pass vacuously', async () => {
+    // The e2e tree was in `globalIgnores` for most of this repo's life, which is a state
+    // a config edit can restore in one line and `pnpm lint` will report as green — there
+    // is simply less to lint. These two rules are the reason the ignore was removed:
+    // no-floating-promises catches `expect(locator).toBeVisible()` without its `await`
+    // (the assertion never runs, the spec passes whatever the app did), and the `.only`
+    // ban catches a focused test that silently reduces the suite to one spec.
+    const spec = await resolve('e2e/playwright/app.spec.mts');
+
+    expect(severityOf(spec, '@typescript-eslint/no-floating-promises')).toBe(2);
+    expect(severityOf(spec, 'no-restricted-syntax')).toBe(2);
+    // no-floating-promises is type-aware: without a program behind it the rule loads and
+    // reports nothing at all, which looks identical to a clean suite.
+    expect(spec.languageOptions?.parserOptions?.project ?? []).toContain(
+      './e2e/tsconfig.json',
+    );
+  });
+
   it('lints Angular templates through the template parser, not the TypeScript one', async () => {
     const template = await resolve(
       'libs/feature/rooms/src/lib/message-row/message-row.component.html',

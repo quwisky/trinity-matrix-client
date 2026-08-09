@@ -138,11 +138,12 @@ describe('secure store', () => {
  */
 describe('secureStorageUsable (Linux backend gate)', () => {
   const realPlatform = process.platform;
-  const setPlatform = (platform: NodeJS.Platform): void =>
+  const setPlatform = (platform: NodeJS.Platform): void => {
     Object.defineProperty(process, 'platform', {
       value: platform,
       configurable: true,
     });
+  };
   afterEach(() => setPlatform(realPlatform));
 
   it('refuses the obfuscation-only basic_text backend on Linux', () => {

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { signal } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SpaceChildrenService } from './space-children.service';
@@ -100,7 +100,7 @@ function setup(
 }
 
 /** Pull a captured client listener by event name (for simulating live updates). */
-function handlerFor(client: { on: ReturnType<typeof vi.fn> }, event: string) {
+function handlerFor(client: { on: Mock }, event: string) {
   const call = client.on.mock.calls.find(([e]) => e === event);
   return call?.[1] as ((...args: unknown[]) => void) | undefined;
 }
@@ -111,10 +111,7 @@ function stateEvent(type: string, roomId: string) {
 }
 
 /** The content of the nth `sendStateEvent` call. */
-function sentContent(
-  sendStateEvent: ReturnType<typeof vi.fn>,
-  index = 0,
-): Record<string, unknown> {
+function sentContent(sendStateEvent: Mock, index = 0): Record<string, unknown> {
   return sendStateEvent.mock.calls[index][2] as Record<string, unknown>;
 }
 

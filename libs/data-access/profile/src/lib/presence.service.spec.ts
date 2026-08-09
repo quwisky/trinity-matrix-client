@@ -1,11 +1,18 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider, ngMocks } from 'ng-mocks';
-import { UserEvent } from 'matrix-js-sdk';
+import { UserEvent, type MatrixClient } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PresenceService } from './presence.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+
+/**
+ * The fakes here implement only the slice of MatrixClient the service touches, so the
+ * widening cast lives at this one visible seam rather than implicitly at every stub site.
+ */
+const asClient = (fake: object): MatrixClient =>
+  fake as unknown as MatrixClient;
 
 /** The signed-in user's id — distinct from the seeded co-members below. */
 const SELF = '@self:hs';
@@ -43,7 +50,7 @@ function setup(
     ],
   });
   const matrix = TestBed.inject(MatrixClientService);
-  ngMocks.stubMember(matrix, 'instance', client);
+  ngMocks.stubMember(matrix, 'instance', asClient(client));
   ngMocks.stubMember(matrix, 'isInitialized', true);
   return { svc: TestBed.inject(PresenceService), client, matrix, activeUserId };
 }
@@ -141,7 +148,7 @@ describe('PresenceService', () => {
 
     // Switch accounts: the active client becomes a new one; the effect re-wires.
     const client2 = fakeClient({ '@a:hs': 'offline' });
-    ngMocks.stubMember(matrix, 'instance', client2);
+    ngMocks.stubMember(matrix, 'instance', asClient(client2));
     activeUserId.set('@b:hs');
     TestBed.inject(ApplicationRef).tick();
 
@@ -163,7 +170,7 @@ describe('PresenceService', () => {
 
     // A re-login hands the service a new client where @a is now offline.
     const client2 = fakeClient({ '@a:hs': 'offline' });
-    ngMocks.stubMember(matrix, 'instance', client2);
+    ngMocks.stubMember(matrix, 'instance', asClient(client2));
     svc.connect();
 
     expect(client.off).toHaveBeenCalledWith(

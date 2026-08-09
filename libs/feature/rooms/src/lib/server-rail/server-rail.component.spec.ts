@@ -275,8 +275,8 @@ describe('ServerRailComponent', () => {
           space({ id: '!s2:hs', accountId: '@alt:hs' }),
         ],
         accountBadges: new Map([
-          ['@me:hs', { initial: 'M', name: 'Me' }],
-          ['@alt:hs', { initial: 'A', name: 'Alt' }],
+          ['@me:hs', { id: '@me:hs', initial: 'M', name: 'Me' }],
+          ['@alt:hs', { id: '@alt:hs', initial: 'A', name: 'Alt' }],
         ]),
       },
     });

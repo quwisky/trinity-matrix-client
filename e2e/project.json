@@ -4,5 +4,21 @@
   "projectType": "application",
   "sourceRoot": "e2e",
   "tags": ["type:e2e", "scope:trinity"],
-  "implicitDependencies": ["trinity"]
+  "implicitDependencies": ["trinity"],
+  "targets": {
+    "lint": {
+      "//": "Declared, not inferred: @nx/eslint only infers a lint target for projects with .ts/.js sources, and every file here is .mts — so removing 'e2e' from globalIgnores would otherwise have changed nothing about what `pnpm lint` actually runs.",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint \"**/*.mts\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "//": "The e2e tree has no spec/app split, so unlike every other project this one points at its own tsconfig.json rather than a tsconfig.spec.json; the target default's command is overridden here for that reason alone.",
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit"
+      }
+    }
+  }
 }

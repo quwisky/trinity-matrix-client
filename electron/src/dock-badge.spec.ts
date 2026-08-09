@@ -14,7 +14,12 @@ const {
   setBadgeCount: vi.fn(),
   setOverlayIcon: vi.fn(),
   createFromPath: vi.fn(() => ({ isEmpty: () => false })),
-  mainWindowRef: { current: null as { setOverlayIcon: unknown } | null },
+  mainWindowRef: {
+    current: null as {
+      setOverlayIcon?: unknown;
+      webContents?: unknown;
+    } | null,
+  },
 }));
 
 vi.mock('electron', () => ({

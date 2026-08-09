@@ -135,3 +135,23 @@ export function getTrinityDesktopBridge(): TrinityDesktopBridge | undefined {
   return (globalThis as { trinityDesktop?: TrinityDesktopBridge })
     .trinityDesktop;
 }
+
+/**
+ * Whether this renderer is the hand-rolled Electron shell.
+ *
+ * Capacitor's `isNativePlatform()` is FALSE on desktop, so anything that must treat the
+ * shell like neither web nor mobile — the service-worker enable predicate above all —
+ * has to ask this instead. The user-agent token is a fallback for the case where the
+ * preload marker is unavailable; it is checked second because the marker is the
+ * authoritative signal and a user agent can be overridden.
+ *
+ * Not a service: it is read during `bootstrapApplication`'s provider array, before any
+ * injector exists.
+ */
+export function isElectronRenderer(): boolean {
+  return (
+    !!getTrinityDesktopBridge()?.isElectron ||
+    (typeof navigator !== 'undefined' &&
+      navigator.userAgent.includes('Electron'))
+  );
+}

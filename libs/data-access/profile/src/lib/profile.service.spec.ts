@@ -1,9 +1,17 @@
 import { TestBed } from '@angular/core/testing';
+import type { MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileService } from './profile.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+
+/**
+ * The fakes here implement only the slice of MatrixClient the service touches, so the
+ * widening cast lives at this one visible seam rather than implicitly at every stub site.
+ */
+const asClient = (fake: object): MatrixClient =>
+  fake as unknown as MatrixClient;
 
 function fakeClient(overrides: Record<string, unknown> = {}) {
   return {
@@ -26,7 +34,7 @@ function setup(clientOverrides: Record<string, unknown> = {}) {
   const matrix = TestBed.inject(MatrixClientService);
   // The service reads `matrix.instance` (a getter) for the SDK client; stub both
   // getters on the mock so it hands back our fake client.
-  ngMocks.stubMember(matrix, 'instance', client);
+  ngMocks.stubMember(matrix, 'instance', asClient(client));
   ngMocks.stubMember(matrix, 'isInitialized', true);
   return { svc: TestBed.inject(ProfileService), client };
 }

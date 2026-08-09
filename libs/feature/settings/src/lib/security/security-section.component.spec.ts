@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { CryptoService, type CryptoStatus } from '@trinity/data-access/crypto';
 import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { EncryptionDialogService } from '@trinity/ui';
@@ -16,9 +16,9 @@ async function build(
     backup?: boolean;
   } = {},
   over: {
-    exportRoomKeys?: ReturnType<typeof vi.fn>;
-    importRoomKeys?: ReturnType<typeof vi.fn>;
-    prompt?: ReturnType<typeof vi.fn>;
+    exportRoomKeys?: Mock;
+    importRoomKeys?: Mock;
+    prompt?: Mock;
   } = {},
 ) {
   const refresh = vi.fn(() => of(undefined));

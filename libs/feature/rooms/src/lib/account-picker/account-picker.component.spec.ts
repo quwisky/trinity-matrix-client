@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { DialogRef } from '@trinity/helm/overlay';
 import { AccountScopeService } from '@trinity/data-access/rooms';
 import { AccountPickerComponent } from './account-picker.component';
@@ -15,8 +15,8 @@ const ACCOUNTS: AccountSummary[] = [
 
 describe('AccountPickerComponent', () => {
   let selected: ReturnType<typeof signal<ReadonlySet<string>>>;
-  let toggle: ReturnType<typeof vi.fn>;
-  let close: ReturnType<typeof vi.fn>;
+  let toggle: Mock;
+  let close: Mock;
 
   beforeEach(() => {
     selected = signal<ReadonlySet<string>>(new Set(['@alice:hs', '@bob:hs']));

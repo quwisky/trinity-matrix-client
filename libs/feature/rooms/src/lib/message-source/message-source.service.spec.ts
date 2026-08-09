@@ -6,7 +6,7 @@ import { TimelineService } from '@trinity/data-access/timeline';
 import { MessageSourceService } from './message-source.service';
 import { MessageSourceComponent } from './message-source.component';
 
-function setup(raw: unknown) {
+function setup(raw: object | null) {
   const rawEvent = vi.fn(() => raw);
   const open = vi.fn();
   TestBed.configureTestingModule({

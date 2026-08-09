@@ -31,7 +31,8 @@ async function build(
     resolveImage?: string | null;
   } = {},
 ) {
-  const result = 'result' in opts ? opts.result : preview();
+  const result: UrlPreview | null =
+    'result' in opts ? (opts.result ?? null) : preview();
   const previewFn = vi.fn(() => of(result));
   const resolver = vi.fn(() => of(opts.resolveImage ?? null));
   const { fixture, container } = await render(LinkPreviewComponent, {

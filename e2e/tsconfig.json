@@ -1,0 +1,29 @@
+{
+  // The e2e tree had NO tsconfig at all: 97 Playwright specs plus the Synapse harness got
+  // zero compile-time protection, and the classic vacuous-Playwright failure — a dropped
+  // `await` on a locator assertion, which passes silently forever — is invisible without
+  // one. Paired with the scoped ESLint block in eslint.config.mjs (no-floating-promises).
+  //
+  // Deliberately NOT extending tsconfig.base.json: these files run in Node under
+  // Playwright's own loader, not in the browser bundle, so they take Node16 resolution
+  // and `lib: es2022` rather than the app's `moduleResolution: bundler` + dom.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    // The specs import each other by their on-disk `.mts` path, which is what Playwright
+    // and Node actually resolve; without this tsc rejects every one of those imports.
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["**/*.mts", "**/*.d.mts"]
+}

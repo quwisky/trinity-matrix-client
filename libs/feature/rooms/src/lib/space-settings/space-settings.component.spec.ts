@@ -8,7 +8,7 @@ import {
 import { JoinRule } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { SpaceSettingsComponent } from './space-settings.component';
 
 async function build(
@@ -24,9 +24,9 @@ async function build(
     canManageAliases: boolean;
   }> = {},
   over: {
-    setName?: ReturnType<typeof vi.fn>;
-    setTopic?: ReturnType<typeof vi.fn>;
-    setJoinRule?: ReturnType<typeof vi.fn>;
+    setName?: Mock;
+    setTopic?: Mock;
+    setJoinRule?: Mock;
   } = {},
 ) {
   const setName = over.setName ?? vi.fn(() => of(undefined));

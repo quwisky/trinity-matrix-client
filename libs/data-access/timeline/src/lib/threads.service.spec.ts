@@ -12,7 +12,7 @@ import {
   EventShieldColour,
   EventShieldReason,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { ThreadsService } from './threads.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
@@ -135,7 +135,7 @@ function setup(
   reactions: Record<string, ReturnType<typeof fakeRelations>> = {},
   extraEvents: FakeEvent[] = [],
   sendReadReceipts = true,
-  getEncryptionInfoForEvent?: ReturnType<typeof vi.fn>,
+  getEncryptionInfoForEvent?: Mock,
 ) {
   const all = [
     ...extraEvents,
@@ -597,7 +597,7 @@ describe('ThreadsService', () => {
 
   it('aborts the threaded send when the root cannot be fetched', async () => {
     const { svc, room, client, sent } = setup([]);
-    (client.fetchRoomEvent as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+    (client.fetchRoomEvent as Mock).mockRejectedValueOnce(
       new Error('not found'),
     );
     svc.openThread('!r:hs', '$gone');

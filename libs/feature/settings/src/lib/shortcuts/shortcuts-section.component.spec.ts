@@ -2,7 +2,15 @@ import { render } from '@trinity/testing';
 import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { ShortcutsSectionComponent } from './shortcuts-section.component';
 
 // A settings-scoped keyboard event, dispatched on window (the capture listener).
@@ -18,8 +26,8 @@ function pressWindow(init: Partial<KeyboardEvent>): void {
 }
 
 describe('ShortcutsSectionComponent', () => {
-  let confirm: ReturnType<typeof vi.fn>;
-  let toast: ReturnType<typeof vi.fn>;
+  let confirm: Mock;
+  let toast: Mock;
 
   beforeEach(() => {
     confirm = vi.fn().mockResolvedValue(true);

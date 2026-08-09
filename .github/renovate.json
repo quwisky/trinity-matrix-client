@@ -20,9 +20,14 @@
   "prHourlyLimit": 0,
   "rebaseWhen": "conflicted",
   "minimumReleaseAge": "3 days",
+  "ignorePathsDescription": [
+    "Generated build output ONLY. `android/**` and `ios/**` used to be listed wholesale, and that removed two of the four shipped platforms from dependency automation entirely: the AGP and google-services pins in android/build.gradle, the eleven androidx/Cordova versions in android/variables.gradle, the Gradle wrapper, and the iOS SPM graph — none of it watched by anything.",
+    "The reason that mattered more than a missed minor: ignorePaths is evaluated BEFORE package rules, so the vulnerabilityAlerts block below — the one category deliberately exempt from the dashboard gate — could not reach these files either. An advisory against androidx.webkit, which backs the WebView rendering an E2EE client, produced no branch, no PR and no dashboard row. Silent by construction.",
+    "What remains here is the copy of the web build each native shell embeds. Those trees are `pnpm build` output committed into the platform projects; a lockfile or manifest found inside one is a stale artefact, not a dependency, and updating it would be updating a build product."
+  ],
   "ignorePaths": [
-    "android/**",
-    "ios/**",
+    "android/app/src/main/assets/**",
+    "ios/App/App/public/**",
     "www/**",
     "dist/**",
     "electron/www/**",
@@ -148,6 +153,16 @@
       "matchFileNames": ["package.json", "electron/package.json"],
       "allowedVersions": "<6.1.0",
       "rangeStrategy": "pin"
+    },
+    {
+      "description": [
+        "The native build graphs, now that ignorePaths no longer hides them: Gradle (AGP, google-services, the eleven androidx/Cordova pins Capacitor writes into android/variables.gradle), the Gradle wrapper, and the iOS Swift package at ios/App/CapApp-SPM/Package.swift. No cocoapods rule — this project has no Podfile; Capacitor 8 generates SPM instead.",
+        "Grouped into ONE branch because Capacitor pins these versions as a set: androidx.webkit, androidx.core and the Cordova compatibility shims are chosen to match the @capacitor/android that ships them, and moving one of them alone is how you get a resolution conflict that only appears at assemble time.",
+        "dependencyDashboardApproval stays true — inherited from the top level and restated here so it survives someone reordering these rules. A native bump cannot be judged by CI: nothing in this repo builds an APK or an .ipa (see ci.yml), so the only real verification is a device or emulator build, which is a human act. That is the reason to gate them, NOT a reason to hide them — the point of narrowing ignorePaths is that vulnerabilityAlerts, which opts out of this gate, can now reach them at all."
+      ],
+      "groupName": "native platforms",
+      "matchManagers": ["gradle", "gradle-wrapper", "swift"],
+      "dependencyDashboardApproval": true
     },
     {
       "description": [

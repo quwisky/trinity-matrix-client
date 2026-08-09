@@ -12,7 +12,15 @@ import {
   EventShieldColour,
   EventShieldReason,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { TimelineService } from './timeline.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
@@ -2393,7 +2401,7 @@ describe('TimelineService', () => {
   describe('per-message authenticity shields', () => {
     function shieldClient(
       events: ReturnType<typeof fakeEvent>[],
-      getEncryptionInfoForEvent: ReturnType<typeof vi.fn>,
+      getEncryptionInfoForEvent: Mock,
     ) {
       const handlers = new Map<string, (...args: unknown[]) => void>();
       const room = {
@@ -2426,10 +2434,7 @@ describe('TimelineService', () => {
       };
     }
 
-    function openWithShield(
-      getEncryptionInfoForEvent: ReturnType<typeof vi.fn>,
-      encrypted = true,
-    ) {
+    function openWithShield(getEncryptionInfoForEvent: Mock, encrypted = true) {
       vi.spyOn(document, 'hasFocus').mockReturnValue(true);
       const events = [
         fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi', encrypted }),

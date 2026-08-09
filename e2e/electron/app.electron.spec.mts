@@ -189,6 +189,25 @@ test('dark palette wins the cascade when .dark is set (regression)', async () =>
   expect(result.dark).toBe('#1e1f22'); // :root.dark (0,2,0) out-ranks :root (0,1,0)
 });
 
+test('registers no service worker in the desktop shell', async () => {
+  // The service-worker enable predicate in main.ts is gated on `isElectronRenderer()`
+  // and NOT on Capacitor's isNativePlatform(), which is false here — so a regression in
+  // that predicate registers ngsw against the custom `trinity://` scheme. What follows
+  // is not a clean failure: the SW would then answer navigations from a precache built
+  // for an http origin, and the shell would go on serving a stale bundle after an
+  // update with no way for the user to clear it. This is the only place it can be seen,
+  // because the predicate reads a global that exists only in the real shell.
+  const registrations = await page.evaluate(async () => {
+    if (!('serviceWorker' in navigator)) {
+      return { supported: false, count: 0 };
+    }
+    const all = await navigator.serviceWorker.getRegistrations();
+    return { supported: true, count: all.length };
+  });
+
+  expect(registrations.count).toBe(0);
+});
+
 test('exposes the CORS-allowlist bridge (a plain send, not an invoke)', async () => {
   // Renderer-side of the CORS scoping: the app publishes its live homeserver origins
   // so main can scope the shim (electron/src/cors.ts). Assert the bridge surface is

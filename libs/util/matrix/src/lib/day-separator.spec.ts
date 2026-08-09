@@ -272,9 +272,9 @@ describe('localDayStartFromIso', () => {
     // evening, so normalising gives midnight of the WRONG day — and the whole jump lands
     // a day early for the Americas while passing for everyone who wrote or reviewed it in
     // Europe. Pinned with an explicit zone so the result does not depend on the machine.
-    const original = process.env.TZ;
+    const original = process.env['TZ'];
     try {
-      process.env.TZ = 'America/New_York';
+      process.env['TZ'] = 'America/New_York';
       const local = new Date(localDayStartFromIso('2026-08-03')!);
       expect(local.getDate()).toBe(3);
       expect(local.getHours()).toBe(0);
@@ -283,9 +283,9 @@ describe('localDayStartFromIso', () => {
       // "undefined", which ICU cannot resolve and silently falls back to UTC — leaving
       // every later test in this file running in a different zone than it thinks.
       if (original === undefined) {
-        delete process.env.TZ;
+        delete process.env['TZ'];
       } else {
-        process.env.TZ = original;
+        process.env['TZ'] = original;
       }
     }
   });

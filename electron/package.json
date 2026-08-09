@@ -11,6 +11,7 @@
     "ensure:binary": "node scripts/ensure-electron.mjs",
     "copy:www": "node scripts/copy-www.mjs",
     "compile": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.spec.json --noEmit",
     "build": "node scripts/copy-www.mjs && tsc -p tsconfig.json",
     "test": "vitest run",
     "start": "electron .",
