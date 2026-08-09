@@ -1643,3 +1643,141 @@ describe('RoomsService per-account actions', () => {
     expect(activeClient.setRoomTag).not.toHaveBeenCalled();
   });
 });
+
+// membersFor is the live half of membersOf: one signal per watched room, written only
+// when a member event names that room.
+describe('RoomsService membersFor', () => {
+  function setup(rooms: ReturnType<typeof fakeRoom>[]) {
+    const byId = new Map(rooms.map((r) => [r.roomId, r]));
+    const client = {
+      getRooms: () => rooms,
+      getRoom: (id: string) => byId.get(id) ?? null,
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const { svc } = provideRooms(client);
+    svc.connect();
+    return { svc, client };
+  }
+
+  /** Fire RoomState.members as the SDK does, naming the room it happened in. */
+  function fireMemberChange(
+    client: { on: ReturnType<typeof vi.fn> },
+    roomId: string,
+    userId = '@someone:hs',
+  ): void {
+    const handler = client.on.mock.calls.find(
+      ([e]) => e === 'RoomState.members',
+    )?.[1] as ((e: unknown, s: unknown, m: unknown) => void) | undefined;
+    handler?.({}, { roomId }, { userId });
+  }
+
+  it('shares one signal per room', () => {
+    const { svc } = setup([fakeRoom({ roomId: '!a:hs', name: 'general' })]);
+
+    expect(svc.membersFor('!a:hs')).toBe(svc.membersFor('!a:hs'));
+  });
+
+  it('seeds synchronously, before any member event', () => {
+    const { svc } = setup([
+      fakeRoom({
+        roomId: '!a:hs',
+        name: 'general',
+        members: [fakeMember({ userId: '@ada:hs', name: 'Ada' })],
+      }),
+    ]);
+
+    expect(
+      svc
+        .membersFor('!a:hs')()
+        .map((m) => m.userId),
+    ).toEqual(['@ada:hs']);
+  });
+
+  it('re-reads the room a member event names', () => {
+    // Held here and mutated: fakeRoom reads `members` live on every getJoinedMembers().
+    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: roster,
+    });
+    const { svc, client } = setup([room]);
+    const members = svc.membersFor('!a:hs');
+
+    roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
+    fireMemberChange(client, '!a:hs');
+
+    expect(members().map((m) => m.userId)).toEqual(['@ada:hs', '@bo:hs']);
+  });
+
+  it('leaves other rooms alone when a member changes elsewhere', () => {
+    // The point of dispatching on `state.roomId`. The counter this replaced was
+    // unfiltered, so a busy room woke every member list in the app.
+    const quietRoster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
+    const quiet = fakeRoom({
+      roomId: '!quiet:hs',
+      name: 'quiet',
+      members: quietRoster,
+    });
+    const busy = fakeRoom({ roomId: '!busy:hs', name: 'busy' });
+    const { svc, client } = setup([quiet, busy]);
+    const quietMembers = svc.membersFor('!quiet:hs');
+    const before = quietMembers();
+
+    // Mutating the quiet room too, so a re-read would be VISIBLE rather than merely
+    // equal — otherwise the memo would make this pass either way.
+    quietRoster.push(fakeMember({ userId: '@late:hs', name: 'Late' }));
+    fireMemberChange(client, '!busy:hs');
+
+    expect(quietMembers()).toBe(before);
+  });
+
+  it('holds the same array when the room re-reads unchanged', () => {
+    const { svc, client } = setup([
+      fakeRoom({
+        roomId: '!a:hs',
+        name: 'general',
+        members: [fakeMember({ userId: '@ada:hs', name: 'Ada' })],
+      }),
+    ]);
+    const members = svc.membersFor('!a:hs');
+    const before = members();
+
+    fireMemberChange(client, '!a:hs');
+
+    // membersOf's fingerprint memo returns the identical array, so Object.is stops the
+    // write propagating. This is what makes writing on every member event cheap.
+    expect(members()).toBe(before);
+  });
+
+  it('re-reads every watched room when our own membership changes', () => {
+    // MyMembership names no room, so there is nothing to dispatch on.
+    const roster: ReturnType<typeof fakeMember>[] = [];
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: roster,
+    });
+    const { svc, client } = setup([room]);
+    const members = svc.membersFor('!a:hs');
+
+    roster.push(fakeMember({ userId: '@ada:hs', name: 'Ada' }));
+    // Registered TWICE: once in the projection's coalesced event list (which rebuilds the
+    // room list) and once by `bind` (which re-reads members). The second is the one under
+    // test, so take the last rather than the first.
+    const handlers = client.on.mock.calls
+      .filter(([e]) => e === 'Room.myMembership')
+      .map((call) => call[1] as () => void);
+    expect(handlers.length).toBe(2);
+    handlers[handlers.length - 1]();
+
+    expect(members().map((m) => m.userId)).toEqual(['@ada:hs']);
+  });
+
+  it('is empty, not thrown, for a null room id', () => {
+    const { svc } = setup([fakeRoom({ roomId: '!a:hs', name: 'general' })]);
+
+    expect(svc.membersFor(null)()).toEqual([]);
+  });
+});

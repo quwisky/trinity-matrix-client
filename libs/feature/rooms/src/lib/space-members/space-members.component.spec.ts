@@ -24,30 +24,36 @@ function member(
 
 async function build(members: MemberSummary[] = []) {
   const close = vi.fn();
-  const membersOf = vi.fn(() => members);
+  // A signal per room id, as the real service hands out — so the room asked for is still
+  // assertable, and a test can move the membership under the component.
+  const roster = signal(members);
+  const membersFor = vi.fn(() => roster.asReadonly());
   const { fixture, container } = await render(SpaceMembersComponent, {
     inputs: { spaceId: '!s:hs', spaceName: 'Design' },
     providers: [
-      MockProvider(RoomsService, {
-        membersOf,
-        memberRevision: signal(0) as never,
-      }),
+      MockProvider(RoomsService, { membersFor }),
       MockProvider(DialogRef, { close }),
     ],
   });
-  return { cmp: fixture.componentInstance, container, close, membersOf };
+  return {
+    cmp: fixture.componentInstance,
+    container,
+    close,
+    membersFor,
+    roster,
+  };
 }
 
 describe('SpaceMembersComponent', () => {
   it('lists the space’s members', async () => {
-    // A space IS a room, so membersOf answers for a space id unchanged — the gap was
-    // never the data, only that nothing asked.
-    const { cmp, membersOf } = await build([
+    // A space IS a room, so the member projection answers for a space id unchanged — the
+    // gap was never the data, only that nothing asked.
+    const { cmp, membersFor } = await build([
       member('@a:hs', 'Ada'),
       member('@b:hs', 'Bo'),
     ]);
 
-    expect(membersOf).toHaveBeenCalledWith('!s:hs');
+    expect(membersFor).toHaveBeenCalledWith('!s:hs');
     expect(cmp.members().map((m) => m.userId)).toEqual(['@a:hs', '@b:hs']);
   });
 

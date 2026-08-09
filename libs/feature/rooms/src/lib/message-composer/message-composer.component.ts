@@ -192,7 +192,7 @@ export class MessageComposerComponent {
   /** Sender name of the message being replied to, or '' when not replying. */
   readonly replyingTo = input('');
   /** Room members, for the @-mention autocomplete (empty disables mentions). */
-  readonly members = input<MentionMember[]>([]);
+  readonly members = input<readonly MentionMember[]>([]);
   /**
    * Whether to offer the room-scoped rich actions (poll, location, voice).
    * These act on the *active room* via their own services, so they can't be routed

@@ -109,7 +109,7 @@ export abstract class MessageListBase {
    */
   readonly roomId = input<string | null>(null);
   /** Room members, forwarded to the composer's @-mention autocomplete. */
-  readonly members = input<MentionMember[]>([]);
+  readonly members = input<readonly MentionMember[]>([]);
   /** Display names of members currently typing in the room (excludes the local user). */
   readonly typingNames = input<string[]>([]);
   /**

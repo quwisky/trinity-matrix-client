@@ -280,10 +280,9 @@ export class RoomShellViewModel {
   });
 
   readonly members = computed(() => {
-    // Recompute only when membership actually changes — not on every sync tick or
-    // read receipt (those bump `profileRevision`, which the member list doesn't depend on).
-    this.rooms.memberRevision();
-    return this.rooms.membersOf(this.store.activeRoomId());
+    // Scoped to the open room: the signal is written only when a member event names it,
+    // so a busy unrelated room cannot wake this list.
+    return this.rooms.membersFor(this.store.activeRoomId())();
   });
 
   /**

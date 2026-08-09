@@ -23,8 +23,8 @@ import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
  * no output wiring — and this is the pattern `RoomDirectoryComponent` already uses for the
  * same reason. It keeps one moderation surface rather than a space-shaped copy of it.
  *
- * The list reads through `memberRevision` so it re-renders when membership changes and
- * not on every sync tick — the same signal the room member list depends on.
+ * The list reads `membersFor(spaceId)`, so it re-renders when THIS space's membership
+ * changes and not on every sync tick — the same projection the room member list uses.
  */
 @Component({
   selector: 'trn-space-members',
@@ -41,9 +41,8 @@ export class SpaceMembersComponent {
     inject<DialogRef<MemberSummary | null, SpaceMembersComponent>>(DialogRef);
   private readonly rooms = inject(RoomsService);
 
-  readonly members = computed<MemberSummary[]>(() => {
-    this.rooms.memberRevision();
-    return this.rooms.membersOf(this.spaceId());
+  readonly members = computed<readonly MemberSummary[]>(() => {
+    return this.rooms.membersFor(this.spaceId())();
   });
 
   /**

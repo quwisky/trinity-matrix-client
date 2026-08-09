@@ -76,7 +76,7 @@ const ROLE_ICON: Record<MemberRole, string> = {
 export class MemberListComponent {
   private readonly presence = inject(PresenceService);
 
-  readonly members = input<MemberSummary[]>([]);
+  readonly members = input<readonly MemberSummary[]>([]);
   /**
    * Whether this is a direct message. A DM has no owner — both participants sit at power
    * level 100 by the trusted_private_chat preset — so the section is suppressed there.
