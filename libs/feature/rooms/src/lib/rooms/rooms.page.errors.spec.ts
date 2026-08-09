@@ -24,7 +24,11 @@ import {
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/data-access/rooms';
-import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import {
+  ThreadsService,
+  TimelineActionsService,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
   TrnDialogService,
@@ -143,7 +147,8 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(AccountScopeService, { mixing: signal(false) }),
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(TrnAlertService, { confirm: alertConfirm }),
-        MockProvider(TimelineService, { edit, sendMedia }),
+        MockProvider(TimelineService),
+        MockProvider(TimelineActionsService, { edit, sendMedia }),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
           isInitialized: true,

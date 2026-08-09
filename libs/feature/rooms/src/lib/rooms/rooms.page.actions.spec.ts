@@ -22,7 +22,11 @@ import {
   type SpaceChildRoom,
   type SpaceSummary,
 } from '@trinity/data-access/rooms';
-import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import {
+  ThreadsService,
+  TimelineActionsService,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import {
   TrnActionSheetService,
   TrnAlertService,
@@ -69,6 +73,7 @@ describe('RoomsPage space actions', () => {
           leaveSpace,
         }),
         MockProvider(TimelineService),
+        MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -393,6 +398,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(QuickSwitcherService),
         MockProvider(MessageSearchService),
         MockProvider(TimelineService),
+        MockProvider(TimelineActionsService),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -834,6 +840,7 @@ describe('RoomsPage space hierarchy actions', () => {
           ]),
         }),
         MockProvider(TimelineService),
+        MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,

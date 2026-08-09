@@ -1,12 +1,13 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnToastService } from '@trinity/helm/overlay';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 
 /**
  * Forwards a message to another conversation: reuses the quick switcher as a room
- * picker, then hands the send to {@link TimelineService.forwardMessage} and toasts the
- * outcome. Space/person/invite picks are ignored — only a room or DM is a valid target.
+ * picker, then hands the send to {@link TimelineActionsService.forwardMessage} and
+ * toasts the outcome. Space/person/invite picks are ignored — only a room or DM is a
+ * valid target.
  *
  * The picker is scoped to the ACTIVE account. Unlike opening a room — which switches to the
  * owning account first — forwarding sends immediately through the active client, so a
@@ -17,7 +18,7 @@ import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 @Injectable({ providedIn: 'root' })
 export class ForwardService {
   private readonly switcher = inject(QuickSwitcherService);
-  private readonly timeline = inject(TimelineService);
+  private readonly timelineActions = inject(TimelineActionsService);
   private readonly toast = inject(TrnToastService);
 
   /** Pick a destination room/DM and forward the source room's `eventId` into it. */
@@ -26,7 +27,7 @@ export class ForwardService {
     if (!selection || (selection.kind !== 'room' && selection.kind !== 'dm')) {
       return; // cancelled, or a non-room target the switcher also offers
     }
-    this.timeline
+    this.timelineActions
       .forwardMessage(sourceRoomId, eventId, selection.id)
       .subscribe({
         next: () =>

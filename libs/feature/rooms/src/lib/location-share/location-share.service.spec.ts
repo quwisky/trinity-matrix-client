@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { GeolocationService } from '@trinity/platform-native';
 import { LocationShareService } from './location-share.service';
 
@@ -31,7 +31,7 @@ function setup(
     providers: [
       LocationShareService,
       MockProvider(GeolocationService, { current }),
-      MockProvider(TimelineService, { sendLocation }),
+      MockProvider(TimelineActionsService, { sendLocation }),
       MockProvider(TrnDialogService, { openAndWait }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
