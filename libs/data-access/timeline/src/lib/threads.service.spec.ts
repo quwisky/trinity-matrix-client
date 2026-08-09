@@ -3,12 +3,14 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import {
+  MatrixEventEvent,
   RoomEvent,
   RoomStateEvent,
   ThreadEvent,
   type MatrixClient,
 } from 'matrix-js-sdk';
 import {
+  CryptoEvent,
   EventShieldColour,
   EventShieldReason,
 } from 'matrix-js-sdk/lib/crypto-api';
@@ -17,6 +19,7 @@ import { ThreadsService } from './threads.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import { PrivacySettingsService } from '@trinity/platform-native';
+import { switchableMatrixProvider } from './timeline.spec-harness';
 
 const MEMBERS: Record<string, string> = {
   '@me:hs': 'Me',
@@ -36,6 +39,9 @@ function emitter() {
     },
     emit(ev: string, ...args: unknown[]) {
       (handlers[ev] ?? []).slice().forEach((h) => h(...args));
+    },
+    listenerCount(ev: string) {
+      return (handlers[ev] ?? []).length;
     },
   };
 }
@@ -682,6 +688,93 @@ describe('ThreadsService', () => {
     svc.closeThread();
     expect(svc.threadMessages()).toEqual([]);
     expect(svc.openThreadRootId()).toBeNull();
+  });
+
+  it('detaches the client listeners openThread attached on closeThread', () => {
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
+    const { svc, client } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [root] }),
+    ]);
+    const on = vi.spyOn(client, 'on');
+    const off = vi.spyOn(client, 'off');
+
+    svc.openThread('!r:hs', '$root');
+    const attached = on.mock.calls;
+    expect(attached.map(([event]) => event)).toEqual([
+      MatrixEventEvent.Decrypted,
+      CryptoEvent.UserTrustStatusChanged,
+      CryptoEvent.DevicesUpdated,
+      CryptoEvent.KeysChanged,
+    ]);
+
+    svc.closeThread();
+    // The handler references must be the ones that were attached — an `off` with a
+    // fresh function leaves the listener bound.
+    for (const [event, handler] of attached) {
+      expect(off).toHaveBeenCalledWith(event, handler);
+    }
+    expect(off).toHaveBeenCalledTimes(attached.length);
+  });
+
+  it('detaches thread listeners from the account it opened on, not the active one', () => {
+    // `MatrixClientService.instance` follows the ACTIVE account. openThread() binds
+    // its client-level listeners (Decrypted/Crypto) to whichever client was active
+    // then; re-reading `instance` on close after an account switch detaches from the
+    // NEW client and leaks every listener on the old one — which is still syncing.
+    const rootA = fakeEvent({ id: '$a', sender: '@a:hs', body: 'first root' });
+    const rootB = fakeEvent({ id: '$b', sender: '@a:hs', body: 'second root' });
+    const threads = [
+      fakeThread({ id: '$a', rootEvent: rootA, events: [rootA] }),
+      fakeThread({ id: '$b', rootEvent: rootB, events: [rootB] }),
+    ];
+    const room = {
+      roomId: '!r:hs',
+      getThread: (id: string) => threads.find((t) => t.id === id) ?? null,
+      findEventById: (id: string) =>
+        [rootA, rootB].find((e) => e.getId() === id),
+      getMember: (id: string) => ({
+        name: MEMBERS[id] ?? id,
+        getMxcAvatarUrl: () => null,
+      }),
+      getUsersReadUpTo: (): string[] => [],
+      relations: { getChildEventsForEvent: () => undefined },
+      hasEncryptionStateEvent: () => false,
+      ...emitter(),
+    };
+    const makeClient = () => ({
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      sendReadReceipt: () => Promise.resolve({}),
+      ...emitter(),
+    });
+    const clientA = makeClient();
+    const clientB = makeClient();
+    const active = { client: clientA as unknown };
+
+    TestBed.configureTestingModule({
+      providers: [
+        ThreadsService,
+        switchableMatrixProvider(active),
+        MockProvider(MediaService, {
+          uploadMedia: fakeMediaService().uploadMedia,
+        }),
+        MockProvider(PrivacySettingsService, {
+          sendReadReceipts: signal(true).asReadonly(),
+        }),
+      ],
+    });
+    const svc = TestBed.inject(ThreadsService);
+
+    svc.openThread('!r:hs', '$a');
+    expect(clientA.listenerCount(MatrixEventEvent.Decrypted)).toBe(1);
+
+    active.client = clientB; // the user switches accounts
+    svc.openThread('!r:hs', '$b'); // closes the first thread on the way in
+
+    expect(clientA.listenerCount(MatrixEventEvent.Decrypted)).toBe(0);
+    expect(clientA.listenerCount(CryptoEvent.UserTrustStatusChanged)).toBe(0);
+    expect(clientA.listenerCount(CryptoEvent.DevicesUpdated)).toBe(0);
+    expect(clientA.listenerCount(CryptoEvent.KeysChanged)).toBe(0);
   });
 
   describe('in-thread composing', () => {
