@@ -67,10 +67,18 @@ export class UnreadAggregatorService {
       }
     }
     for (const userId of ids) {
-      if (this.listeners.has(userId)) {
-        continue;
-      }
       const client = this.matrix.clientFor(userId);
+      const held = this.listeners.get(userId);
+      if (held) {
+        // Same user id can get a NEW client object (re-adding an already signed-in account
+        // stops and re-creates it). Holding the old one strands the listener on a stopped
+        // client and that account silently stops updating.
+        if (held.client === client) {
+          continue;
+        }
+        this.detach(held.client, held.handler);
+        this.listeners.delete(userId);
+      }
       if (!client) {
         continue; // not fully started yet; a later accountIds tick re-checks it
       }

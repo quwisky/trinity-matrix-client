@@ -575,6 +575,54 @@ describe('NotificationService', () => {
       expect(MockNotification.instances).toHaveLength(2);
     });
 
+    it('re-binds when an account is handed a NEW client object', () => {
+      // Re-adding / re-authenticating an already signed-in account stops the old client
+      // and creates a new one under the same user id. Keying the notifier by user id
+      // alone strands it on the stopped client, and that account silently stops
+      // producing notifications.
+      const { svc, clients, accountIds } = setup({ accounts: ['@me:hs'] });
+      svc.connect();
+      const old = clients.get('@me:hs')!;
+
+      const fresh = fakeClient('@me:hs');
+      clients.set('@me:hs', fresh);
+      accountIds.set(['@me:hs']); // same id, new client
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(old.off).toHaveBeenCalledWith(
+        RoomEvent.Timeline,
+        expect.any(Function),
+      );
+      expect(fresh.on).toHaveBeenCalledTimes(2); // Timeline + Decrypted
+
+      timelineHandler(fresh)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('disconnects itself — enabled included — when the last account signs out', () => {
+      const { svc, clients, accountIds } = setup({ accounts: ['@me:hs'] });
+      svc.connect();
+      const me = clients.get('@me:hs')!;
+
+      accountIds.set([]); // logout: the client is gone
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(me.off).toHaveBeenCalledWith(
+        RoomEvent.Timeline,
+        expect.any(Function),
+      );
+
+      // The next account to warm up must NOT be bound behind the user's back: the
+      // shell calling connect() is what turns OS notifications back on.
+      const next = fakeClient('@next:hs');
+      clients.set('@next:hs', next);
+      accountIds.set(['@next:hs']);
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(next.on).not.toHaveBeenCalled();
+    });
+
     it('skips a warm-starting account with no client yet, attaching once it appears', () => {
       // @bg is signed in (present in accountIds) but its client is still warm-starting,
       // so clientFor('@bg:hs') returns null when connect() first reconciles.

@@ -53,6 +53,22 @@ function pushErrorMessage(err: unknown): string {
   return 'Could not reach the homeserver.';
 }
 
+/** Shown when the OS/FCM/APNs side of registration fails, rather than the homeserver. */
+const DEVICE_REGISTRATION_FAILED =
+  'The device could not register for push notifications.';
+
+/** Best text from a rejected `PushNotifications.register()` — a plugin/OS failure, so
+ * deliberately not {@link pushErrorMessage}, whose fallback blames the homeserver. */
+function deviceErrorMessage(err: unknown): string {
+  const message =
+    err && typeof err === 'object'
+      ? (err as { message?: unknown }).message
+      : null;
+  return typeof message === 'string' && message
+    ? message
+    : DEVICE_REGISTRATION_FAILED;
+}
+
 /**
  * Registers the device for OS push (FCM/APNs via `@capacitor/push-notifications`)
  * and a matching **Matrix pusher on every signed-in account** so each account's
@@ -117,6 +133,13 @@ export class PushService {
       }
       const permission = await PushNotifications.requestPermissions();
       if (permission.receive !== 'granted') {
+        // Say so instead of returning silently: mobile push is the only delivery path
+        // there is, so "denied" and "never attempted" must not look the same in settings.
+        this._registration.set({
+          status: 'error',
+          message:
+            'Notifications are turned off for Trinity in system settings.',
+        });
         return;
       }
       this.registered = true;
@@ -130,8 +153,16 @@ export class PushService {
         }).catch(() => undefined);
       }
       await this.attachListeners();
-      // Fires the `registration` listener with the FCM/APNs token.
-      await PushNotifications.register();
+      // Fires the `registration` listener with the FCM/APNs token — or `registrationError`.
+      // A rejection here means the OS flow never started, so release the one-time guard:
+      // holding it would make every later register() early-exit for the process lifetime.
+      await PushNotifications.register().catch((e: unknown) => {
+        this.registered = false;
+        this._registration.set({
+          status: 'error',
+          message: deviceErrorMessage(e),
+        });
+      });
     });
   }
 
@@ -182,10 +213,6 @@ export class PushService {
    * same value, so usually one entry — they diverge only when an app-id change was
    * interrupted, and removing both is what stops that stranding a pusher on the old
    * gateway. `removePusher` against an id with no pusher is harmless.
-   *
-   * Note the ordering contract this implies for the settings UI: tear the pushers down
-   * *before* clearing the stored gateway, because clearing drops the ledger and with it
-   * the only record of what to remove.
    */
   private liveAppIds(): readonly string[] {
     const ids = new Set<string>();
@@ -231,6 +258,15 @@ export class PushService {
     this.listenersAttached = true;
     await PushNotifications.addListener('registration', (token) => {
       void this.setPushers(token.value).catch(() => undefined);
+    });
+    // FCM/APNs refused the token. Without this the refusal is silent AND permanent: the
+    // `registered` guard is already set, so no later register() would re-attempt it.
+    await PushNotifications.addListener('registrationError', (error) => {
+      this.registered = false;
+      this._registration.set({
+        status: 'error',
+        message: error.error || DEVICE_REGISTRATION_FAILED,
+      });
     });
     await PushNotifications.addListener(
       'pushNotificationActionPerformed',

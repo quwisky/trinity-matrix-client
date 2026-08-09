@@ -32,7 +32,7 @@ import {
 } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { expect, it, vi } from 'vitest';
+import { expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { MemberInfoService } from '../member-info/member-info.service';
@@ -46,30 +46,30 @@ import { MessageSearchService } from '../message-search/message-search.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 
 describe('RoomsPage action error feedback', () => {
-  let edit: ReturnType<typeof vi.fn>;
-  let toastShow: ReturnType<typeof vi.fn>;
-  let sendMedia: ReturnType<typeof vi.fn>;
-  let setNotifyMode: ReturnType<typeof vi.fn>;
-  let leaveRoom: ReturnType<typeof vi.fn>;
-  let alertConfirm: ReturnType<typeof vi.fn>;
+  let edit: Mock;
+  let toastShow: Mock;
+  let sendMedia: Mock;
+  let setNotifyMode: Mock;
+  let leaveRoom: Mock;
+  let alertConfirm: Mock;
   let roomsSignal: WritableSignal<RoomSummary[]>;
-  let editableFields: ReturnType<typeof vi.fn>;
-  let currentAccess: ReturnType<typeof vi.fn>;
-  let canManageBans: ReturnType<typeof vi.fn>;
-  let canManageAliases: ReturnType<typeof vi.fn>;
-  let parentSpaceIds: ReturnType<typeof vi.fn>;
+  let editableFields: Mock;
+  let currentAccess: Mock;
+  let canManageBans: Mock;
+  let canManageAliases: Mock;
+  let parentSpaceIds: Mock;
   let railSpacesSignal: ReturnType<typeof signal<SpaceSummary[]>>;
-  let supportsRestricted: ReturnType<typeof vi.fn>;
-  let canCurate: ReturnType<typeof vi.fn>;
-  let spaceCanModerate: ReturnType<typeof vi.fn>;
-  let spaceMemberInfoOpen: ReturnType<typeof vi.fn>;
-  let createSpace: ReturnType<typeof vi.fn>;
-  let addExistingRoom: ReturnType<typeof vi.fn>;
-  let currentIdentity: ReturnType<typeof vi.fn>;
-  let joinPublicRoom: ReturnType<typeof vi.fn>;
-  let markReadFn: ReturnType<typeof vi.fn>;
-  let setMarkedUnreadFn: ReturnType<typeof vi.fn>;
-  let clearMarkedUnreadFn: ReturnType<typeof vi.fn>;
+  let supportsRestricted: Mock;
+  let canCurate: Mock;
+  let spaceCanModerate: Mock;
+  let spaceMemberInfoOpen: Mock;
+  let createSpace: Mock;
+  let addExistingRoom: Mock;
+  let currentIdentity: Mock;
+  let joinPublicRoom: Mock;
+  let markReadFn: Mock;
+  let setMarkedUnreadFn: Mock;
+  let clearMarkedUnreadFn: Mock;
 
   function build() {
     toastShow = vi.fn();
@@ -176,7 +176,7 @@ describe('RoomsPage action error feedback', () => {
     const shell = build();
     edit.mockReturnValue(throwError(() => new Error('nope')));
 
-    shell.messages.onEdit({ id: '$1', body: 'x' });
+    shell.messages.onEdit({ id: '$1', body: 'x', mentions: [] });
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
@@ -188,7 +188,7 @@ describe('RoomsPage action error feedback', () => {
     const shell = build();
     edit.mockReturnValue(of(undefined));
 
-    shell.messages.onEdit({ id: '$1', body: 'x' });
+    shell.messages.onEdit({ id: '$1', body: 'x', mentions: [] });
 
     expect(toastShow).not.toHaveBeenCalled();
   });
@@ -301,9 +301,9 @@ describe('RoomsPage action error feedback', () => {
       powerLevel: 0,
       isCreator: false,
     };
-    (
-      TestBed.inject(TrnDialogService).openAndWait as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(picked);
+    (TestBed.inject(TrnDialogService).openAndWait as Mock).mockResolvedValue(
+      picked,
+    );
 
     shell.spaces.onOpenSpaceMembers();
     await Promise.resolve();
@@ -323,9 +323,9 @@ describe('RoomsPage action error feedback', () => {
     const shell = build();
     shell.store.activeSpaceId.set('!s:hs');
     railSpacesSignal.set([railSpace('!s:hs')]);
-    (
-      TestBed.inject(TrnDialogService).openAndWait as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(null);
+    (TestBed.inject(TrnDialogService).openAndWait as Mock).mockResolvedValue(
+      null,
+    );
 
     shell.spaces.onOpenSpaceMembers();
     await Promise.resolve();
@@ -488,9 +488,8 @@ describe('RoomsPage action error feedback', () => {
 
     shell.spaces.onOpenSpaceSettings();
 
-    const [, options] = (
-      TestBed.inject(TrnDialogService).openAndWait as ReturnType<typeof vi.fn>
-    ).mock.calls[0];
+    const [, options] = (TestBed.inject(TrnDialogService).openAndWait as Mock)
+      .mock.calls[0];
     expect(options.inputs).not.toHaveProperty('historyVisibility');
     expect(options.inputs).not.toHaveProperty('canEditHistory');
   });

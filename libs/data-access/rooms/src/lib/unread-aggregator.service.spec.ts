@@ -178,6 +178,35 @@ describe('UnreadAggregatorService', () => {
     expect(a.listenerCount()).toBe(0);
   });
 
+  it('re-binds when an account is handed a NEW client object', async () => {
+    // Re-adding / re-authenticating an already signed-in account stops the old client and
+    // creates a new one under the same user id. Keying the listener by user id alone
+    // strands it on the stopped client and freezes the badge at the pre-re-auth count.
+    const { svc, accountIds, clients, flush } = harness();
+    const old = fakeClient([fakeRoom(3)]);
+    clients.set('@a:hs', old);
+    accountIds.set(['@a:hs']);
+    await flush();
+    expect(svc.totalUnread()).toBe(3);
+
+    const room = fakeRoom(7);
+    const fresh = fakeClient([room]);
+    clients.set('@a:hs', fresh);
+    accountIds.set(['@a:hs']); // same id, new client
+    await flush();
+
+    expect(old.listenerCount()).toBe(0);
+    expect(fresh.listenerCount()).toBeGreaterThan(0);
+
+    // The live client's events must drive the badge, which is what the stranded
+    // listener silently stopped doing.
+    room.unread = 9;
+    fresh.emit(ClientEvent.Sync);
+    await flush();
+
+    expect(svc.totalUnread()).toBe(9);
+  });
+
   describe('rooms flagged to come back to', () => {
     it('counts a flagged room even though the server counts it as zero', async () => {
       // Without this the flag is visible nowhere but the one sidebar list that happens

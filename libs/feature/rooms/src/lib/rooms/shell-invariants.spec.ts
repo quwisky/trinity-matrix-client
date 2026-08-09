@@ -5,6 +5,7 @@ import {
   effect,
   inject,
   signal,
+  type Type,
 } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { RoomsPage } from './rooms.page';
@@ -26,6 +27,7 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
+import { ROUTE_PROVIDER } from './rooms-page.spec-harness';
 
 /**
  * The two framework behaviours the #62 decomposition rests on, pinned before anything
@@ -187,9 +189,11 @@ describe('one error channel produces one toast per flush', () => {
 });
 
 /**
- * The thirteen classes that must be page-scoped rather than root-provided.
+ * The thirteen classes that must be page-scoped rather than root-provided. Typed as
+ * `Type<unknown>` so the array is a list of tokens rather than a union TestBed.inject
+ * cannot resolve to one instance type.
  */
-const COORDINATORS = [
+const COORDINATORS: Type<unknown>[] = [
   RoomShellStore,
   ShellStatusService,
   RoomShellViewModel,
@@ -229,7 +233,9 @@ describe('the shell coordinators are page-scoped, not root-provided', () => {
     // while dropping every child component, so the page can be constructed cheaply and
     // asked what its own node injector holds. Root-registering the same token as well
     // proves the page is answering, not the environment.
-    TestBed.configureTestingModule({ providers: [RoomShellStore] });
+    TestBed.configureTestingModule({
+      providers: [RoomShellStore, ROUTE_PROVIDER],
+    });
     TestBed.overrideComponent(RoomsPage, {
       set: { template: '', imports: [], host: {} },
     });

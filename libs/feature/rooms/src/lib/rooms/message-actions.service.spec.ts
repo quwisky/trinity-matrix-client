@@ -6,7 +6,7 @@ import { TimelineService } from '@trinity/data-access/timeline';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject, config, of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
 import { MessageSearchService } from '../message-search/message-search.service';
@@ -150,7 +150,7 @@ describe('MessageActionsService', () => {
     const cases: {
       name: string;
       run: (a: MessageActionsService) => void;
-      stub: ReturnType<typeof vi.fn>;
+      stub: Mock;
       message: string;
     }[] = [
       {

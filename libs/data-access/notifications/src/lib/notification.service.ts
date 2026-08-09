@@ -160,6 +160,14 @@ export class NotificationService {
     if (!this.enabled) {
       return;
     }
+    if (ids.length === 0) {
+      // The last account signed out. Drop `enabled` too, not just the listeners: it is
+      // what lets this effect attach, so leaving it set would re-bind OS notifications
+      // to the next account that warms up — before the user has reached the shell and
+      // asked for any of this. connect() from the shell turns us back on.
+      this.disconnect();
+      return;
+    }
     const live = new Set(ids);
     for (const [userId, notifier] of this.notifiers) {
       if (!live.has(userId)) {
@@ -169,10 +177,18 @@ export class NotificationService {
       }
     }
     for (const userId of ids) {
-      if (this.notifiers.has(userId)) {
-        continue;
-      }
       const client = this.matrix.clientFor(userId);
+      const held = this.notifiers.get(userId);
+      if (held) {
+        // Same user id can get a NEW client object (re-adding an already signed-in account
+        // stops and re-creates it). Holding the old one strands the listener on a stopped
+        // client and that account silently stops updating.
+        if (held.client === client) {
+          continue;
+        }
+        this.detach(held);
+        this.notifiers.delete(userId);
+      }
       if (!client) {
         continue; // not fully started yet; a later accountIds tick re-checks it
       }

@@ -27,7 +27,7 @@ import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
 import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
@@ -70,6 +70,7 @@ describe('RoomsPage mixed-account view', () => {
       lastMessage: '',
       activityTs: 0,
       favourite: false,
+      lowPriority: false,
       directUserId: opts.directUserId,
     };
   }
@@ -99,11 +100,11 @@ describe('RoomsPage mixed-account view', () => {
     room('!child-theirs:hs', '@alt:hs', { unread: 5 }),
   ];
 
-  let switchAccount: ReturnType<typeof vi.fn>;
-  let setMixedRoomsAccounts: ReturnType<typeof vi.fn>;
+  let switchAccount: Mock;
+  let setMixedRoomsAccounts: Mock;
   /** The picker's current selection, driven directly by the tests. */
   let shownAccounts: WritableSignal<ReadonlySet<string>>;
-  let toggleAccount: ReturnType<typeof vi.fn>;
+  let toggleAccount: Mock;
 
   function build(
     accountIds: string[],
@@ -120,7 +121,6 @@ describe('RoomsPage mixed-account view', () => {
         MockProvider(RoomsService, {
           rooms: signal([room('!mine:hs', '@me:hs')]),
           directRoomIds: signal<ReadonlySet<string>>(new Set()),
-          revision: signal(0).asReadonly(),
         }),
         MockProvider(SpacesService, {
           spaces: signal([space('!s-mine:hs', '@me:hs')]),
