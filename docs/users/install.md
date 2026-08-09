@@ -33,9 +33,12 @@ after the first load without a network. The service worker is registered only fo
 production web build. Native and desktop builds already carry those files locally and must
 not layer a second cache over them.
 
-There is no web app manifest in the tree, so a browser will not offer an "Install app"
-prompt. On iOS, Safari's "Add to Home Screen" produces a standalone window because
-`mobile-web-app-capable` is set in the page head.
+The build ships a web app manifest (`manifest.webmanifest`, precached with the shell), so
+a supporting browser offers an "Install app" prompt and the installed app opens in a
+standalone window with the brand colour. The maskable icon is the plated SVG; browsers
+that ignore SVG icons fall back to the 192/512 PNGs. On iOS, "Add to Home Screen" uses
+the `apple-touch-icon` and `mobile-web-app-capable` in the page head instead — Safari
+reads neither the manifest's icons nor its display mode.
 
 Trinity is compiled for these browser floors, taken directly from Angular 22's support
 policy:

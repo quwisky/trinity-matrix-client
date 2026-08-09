@@ -129,6 +129,17 @@ condition in `main.ts` checks Capacitor _and_ the Electron marker. See
 `AppComponent` subscribes to `SwUpdate.unrecoverable` and reloads the page when it fires,
 recovering from a cache that storage eviction has left unusable.
 
+It also watches `versionUpdates` for `VERSION_READY` and offers a Reload toast that calls
+`activateUpdate()` before reloading, and re-checks for a deploy whenever the tab returns to
+the foreground. The Angular service worker is version-locked per client: a tab keeps being
+served the version it booted with, and a new one only becomes active for a client that
+starts afterwards. A chat tab can stay open for weeks, so without this a shipped fix — to
+the crypto or session code included — would sit undelivered on exactly the clients that use
+the app most.
+
+The installable web app manifest (`manifest.webmanifest`) is linked from `index.html` and
+prefetched in the `app` asset group, which is what makes the browser offer **Install app**.
+
 ## Why inlineCritical is off
 
 ```json

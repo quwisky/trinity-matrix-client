@@ -92,7 +92,11 @@ registration when a service worker controls the page, because mobile browsers th
 `new Notification()`, and through the constructor otherwise.
 
 A click focuses the window, switches to the owning account if it is not already active,
-and navigates to `/rooms?room=<room_id>`.
+and navigates to `/rooms?room=<room_id>`. The rooms shell consumes that parameter and
+opens the room, then strips it with a `replaceUrl` navigation so Back does not re-open it.
+It reads `queryParamMap` as a stream rather than from the route snapshot, because `/rooms`
+is usually already the active route when a notification is tapped — the component is not
+re-created, so a snapshot read would only ever see the URL the shell was first opened with.
 
 !!! warning "macOS silently drops notifications from unsigned builds"
 
@@ -211,7 +215,11 @@ after such a change.
 
 `PushGatewayService` therefore keeps a ledger. `appId` is what the user wants;
 `appliedAppId` is what actually reached the homeservers, persisted so it survives the app
-being killed between the remove and the set. When they differ, `setPushers()` removes the
+being killed between the remove and the set. It lives in its own preferences key
+(`trinity.push.applied-app-id`) rather than inside the user's gateway override. Holding it
+in the override meant it was never written at all on a device still using the build-time
+default — so the first time such a user set their own gateway, nothing knew which app id
+was already live and the original pusher was stranded on the old gateway forever. When they differ, `setPushers()` removes the
 stale pusher **before** setting the new one — interrupted after the remove, the account is
 merely unregistered until the next `register()`; interrupted the other way round, the old
 gateway would keep receiving forever. The ledger only advances once every account

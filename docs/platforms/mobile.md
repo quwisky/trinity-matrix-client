@@ -84,7 +84,7 @@ unused.
 | Launch mode                             | `singleTask`      |
 
 [AndroidManifest.xml](https://github.com/quwisky/trinity-matrix-client/blob/develop/android/app/src/main/AndroidManifest.xml)
-carries four things worth knowing about.
+carries five things worth knowing about.
 
 **A scheme-only deep-link intent filter.** The `VIEW` filter declares
 `android:scheme="eu.qwky.trinity"` with no `android:host`. Two callback shapes have to
@@ -104,6 +104,16 @@ ever prompting.
 **A FileProvider**, plus `CAMERA`, `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` for
 attachment capture and saving.
 
+**`android:allowBackup="false"`** — a deliberate departure from the Capacitor generator
+default. The Rust crypto store lives in the WebView data directory and is initialised with
+no store passphrase, so it is not encrypted at rest: the device's Olm identity and every
+inbound megolm session sit in `app_webview/`. Android Auto Backup would sweep that into
+Google Drive, where a restore onto an attacker-controlled device decrypts the user's whole
+cached history without ever needing the access token the app keeps in the Keystore.
+`cap sync` regenerates the manifest, so check this attribute survived after any Capacitor
+bump. If backup is wanted later, keep it opt-in through `dataExtractionRules` and
+`fullBackupContent` that exclude `app_webview/` and the Preferences file.
+
 There is no `google-services.json` in the repository. The Gradle scaffold applies the
 Google Services plugin only when that file is present and otherwise logs that push
 notifications will not work. Supplying it is part of setting up push, covered in
@@ -117,9 +127,12 @@ in
 The platform floor is `.iOS(.v15)` and `capacitor-swift-pm` is pinned with `exact:`.
 
 `Info.plist` declares `CFBundleURLSchemes: [eu.qwky.trinity]` for the auth callback, and
-three usage strings that iOS requires before the corresponding prompt can be shown:
-`NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription` and
-`NSPhotoLibraryAddUsageDescription`.
+five usage strings that iOS requires before the corresponding prompt can be shown:
+`NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`,
+`NSPhotoLibraryAddUsageDescription`, `NSMicrophoneUsageDescription` (voice messages) and
+`NSLocationWhenInUseUsageDescription` (location sharing). A missing string is not a denied
+permission the app can catch — iOS terminates the process the moment the API is touched, so
+any new capability needs its key added here before the affordance ships.
 
 Neither native project has its `public/` web assets tracked in git — those are produced by
 `cap sync`.

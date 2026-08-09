@@ -179,6 +179,18 @@ All notable changes to this project are documented here. The format is based on
   level to change are shown but disabled, and each one saves independently, so a rejected topic
   no longer discards a rename that the server accepted.
 
+- **Trinity installs from the browser.** The icons for it had been shipping for a while, but the
+  one small file a browser looks for to offer **Install app** was missing, so the option never
+  appeared and the docs quietly admitted it. It is there now: installing gives Trinity its own
+  window without browser chrome, its own icon on the home screen or dock, and a maskable icon so
+  Android can shape it to match everything else.
+
+- **A newly deployed version now offers to load itself.** The web app is pinned to whichever
+  version your tab started with, so a tab left open — which, for a chat client, can mean weeks —
+  would go on running an old build indefinitely. Trinity now notices a new version and offers a
+  Reload, and checks again whenever you come back to the tab. Nothing reloads under you: it
+  waits for you to say so.
+
 ### Changed
 
 - **Mentions now have to be meant.** Quoting a message put the quoted words into the
@@ -256,6 +268,75 @@ All notable changes to this project are documented here. The format is based on
   **Invite people**. Home is unchanged — it has room.
 
 ### Fixed
+
+- **Tapping a notification opens the room it came from.** It focused the window and switched to
+  the right account, then left you wherever you already were — the one thing a notification is
+  for was the one thing it did not do. Every platform was affected. The room now opens, and the
+  link is cleaned up behind it so Back does not walk you into it again.
+
+- **Recording a voice message no longer closes the app on iPhone and iPad.** iOS requires an app
+  to say why it wants the microphone before it takes it, and shuts the app down on the spot if it
+  has not. Trinity said why it wanted the camera and your photos but never the microphone, so the
+  mic button was offered and tapping it ended the app. The same was true of sharing your location.
+
+- **A voice recording that gets interrupted no longer disables voice messages until you restart.**
+  If the recorder stopped on its own — the microphone taken by another app, permission withdrawn
+  mid-recording — stopping it failed in a way that left the microphone held and the app convinced
+  a recording was still under way. Every later attempt then silently did nothing while the timer
+  counted up. Recording now ends cleanly however it was interrupted, and the next one works.
+
+- **Push notifications say when they could not be set up.** If the phone's push service refused
+  to issue a token, Trinity treated it as done: nothing arrived, the setting showed neither
+  success nor failure, and nothing would retry for as long as the app stayed open. The failure is
+  now shown, and reopening the notification settings tries again.
+
+- **Signing back in to an account keeps its badge and its notifications working.** After
+  re-authenticating — a session that expired, a re-added account — that account could stop
+  updating its unread badge and stop raising notifications entirely, silently, until the app was
+  restarted. It stays connected now.
+
+- **Changing your push gateway no longer leaves the old one receiving.** Moving from the built-in
+  gateway to your own left the original registration in place on your homeserver, so the previous
+  operator carried on being told which room each message arrived in, indefinitely. The old
+  registration is now removed as part of the switch.
+
+- **A stale or mistyped link no longer leaves a blank page.** Any address the app did not
+  recognise loaded the shell and then showed nothing at all, with no way back except editing the
+  URL. Unknown addresses now land you back in your rooms.
+
+- **Signing out clears your unsent drafts.** Half-written messages are kept so they survive a
+  reload, but they were left behind on sign-out — including drafts for encrypted conversations,
+  in the clear, on a device that might be shared. They are now cleared with everything else.
+
+- **Signing out no longer leaves the previous account loaded.** Rooms, members and presence for
+  the account you signed out of stayed in memory until someone signed in again, and an account
+  that had already been signed out remotely could leave its encryption store behind on disk with
+  nothing left pointing at it. Both are cleaned up at the point of sign-out now.
+
+- **Interrupting Trinity while it restores your session no longer risks your encryption store.**
+  If a link or notification redirected the app while it was still starting your account up, the
+  half-started session was abandoned rather than stopped, and the next attempt could open a
+  second copy of the same encryption store. Starting an account is now safe to interrupt, and a
+  second attempt joins the first instead of duplicating it.
+
+- **Setting up encryption is no longer disturbed by switching accounts.** On a device with more
+  than one account signed in, switching while the setup was mid-flight made it ask your
+  homeserver to confirm the wrong account, which failed after the encryption work had already
+  begun. Setup now stays with the account it started on, as resetting and recovering already did.
+
+- **Errors that used to disappear are visible again.** Moving off Zone.js quietly disconnected
+  the app's error handler from failed background work, so the noise it was written to filter came
+  back and genuine failures reached nothing at all — which is why the voice-recording fault above
+  was silent. It is reconnected.
+
+- **A momentary failure to reach secure storage no longer locks you out for the session.** The
+  first failed attempt was remembered permanently, so every later read and write of your tokens
+  failed with it and the app looked signed out until it was restarted. It now retries.
+
+- **Desktop: the first requests after launch no longer fail against some homeservers.** The
+  shell was told which homeserver to expect only after the client had already started talking to
+  it, so on servers that need that help the opening requests were blocked — costing threads for
+  that session and delaying the first sync. It is declared before the client starts.
 
 - **A "Suggested" tick that the server rejects no longer sticks.** In Organise, marking a room
   as suggested left the box ticked even when the change was refused — a toast said it had
@@ -438,6 +519,37 @@ All notable changes to this project are documented here. The format is based on
   `Electron.app`. The command now fetches the binary itself, says so, skips the download when
   the matching version is already unpacked, and fails with an explanation rather than an empty
   directory. Developer-facing only — nothing in the app behaves differently.
+
+- **Unit tests are now type-checked, and so is the end-to-end suite.** Test code sat outside every
+  static-analysis path in the repo — excluded from each project's TypeScript config, ignored by the
+  type-aware lint rules, and run through a transpiler that does not type-check — so mistakes in it
+  were invisible to `test`, `lint` and `build` alike. Thirty-three real type errors had already
+  accumulated, most of them stand-in Matrix clients that had drifted away from the interface they
+  claim to implement, which is exactly the drift that lets a test go on passing after the code it
+  covers has changed. Every project gains a `typecheck` target, CI runs them, and the existing
+  errors are fixed. The Playwright suite gains the same treatment plus lint coverage, including
+  the rule that catches a dropped `await` on an assertion — the way an end-to-end test silently
+  stops testing anything. Developer-facing only.
+
+- **Android and iOS dependencies are covered by dependency automation again.** Both native trees
+  were excluded wholesale, which also put them beyond the reach of security advisories — including
+  the WebView library that renders the whole app. The exclusion now covers only generated build
+  output. Developer-facing only.
+
+### Security
+
+- **Android: your encryption keys are no longer swept into device backup.** The app was still
+  using the platform default that copies its data directory to Google Drive, and that directory is
+  where the encryption store lives — the device's identity and the keys to every message it has
+  decrypted, unencrypted at rest. Your access token was already held in the Android keystore, but
+  the keys that actually read your messages were not covered by it. They are now excluded from
+  backup, as other Matrix clients do.
+
+- **Desktop: packaged builds refuse to run app code from outside the bundle.** The build already
+  disabled the switches that let someone turn Electron into a general-purpose Node runtime — the
+  point being that the desktop process can reach your keychain. Two related protections were
+  missing, so code placed beside the bundle on disk could be loaded in preference to the real
+  thing, reaching the same keychain access the other switches were there to deny.
 
 ### Added
 
