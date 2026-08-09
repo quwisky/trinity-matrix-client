@@ -955,13 +955,38 @@ test.describe('Multiple accounts', () => {
     await registerUser(request, userB, passB);
     await registerUser(request, host, passH);
     const a = await apiLogin(request, hs, userA, passA);
+    const b = await apiLogin(request, hs, userB, passB);
     const h = await apiLogin(request, hs, host, passH);
+
+    // Display names deliberately NOT substrings of the mxids. Every profile assertion in
+    // this file used the localpart, which IS a substring of `@localpart:localhost` — so it
+    // passed against an account whose profile never hydrated, which is exactly what the
+    // account-profile projection exists to prevent.
+    const nameA = `Alpha ${runId}`;
+    const nameB = `Bravo ${runId}`;
+    for (const [who, name] of [
+      [a, nameA],
+      [b, nameB],
+    ] as const) {
+      await request.put(
+        `${hs}/_matrix/client/v3/profile/${encodeURIComponent(who.userId)}/displayname`,
+        { headers: who.headers, data: { displayname: name } },
+      );
+    }
 
     // A owns a room (so the mixed list has something of A's), and a third party invites A
     // to another room — the invite therefore belongs to an account that will NOT be active.
     await request.post(`${hs}/_matrix/client/v3/createRoom`, {
       headers: a.headers,
       data: { name: roomA, preset: 'private_chat' },
+    });
+    // B needs a room of its own for its profile to reach the client at all: the SDK
+    // hydrates `getUser()` from presence, and an account in no rooms receives none — so
+    // without this the panel would show B's mxid however well the projection works, and
+    // the assertion below would be testing the SDK rather than this code.
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: b.headers,
+      data: { name: `Room B ${runId}`, preset: 'private_chat' },
     });
     const created = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
       headers: h.headers,
@@ -974,8 +999,20 @@ test.describe('Multiple accounts', () => {
     );
 
     await login(page, { available: true, hs, user: userA, pass: passA });
+    // A's OWN profile, hydrated from its own sync. The client seeds its own user with a
+    // plain `new User(id)` and no re-emitter, so nothing but the sync tick can deliver
+    // this — without it the panel shows the raw mxid for the whole session.
+    await expect(page.locator('.userbar__name')).toHaveText(nameA, {
+      timeout: 20_000,
+    });
+
     await addAccountViaUi(page, hs, userB, passB);
     await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+    // B's profile arrives through B's OWN client — one listener per account, not one on
+    // whichever account happens to be active.
+    await expect(page.locator('.userbar__name')).toHaveText(nameB, {
+      timeout: 20_000,
+    });
 
     // Active account is B, so A's invite is invisible until A is mixed in.
     await expect(page.locator('.invite', { hasText: invited })).toHaveCount(0);
@@ -992,7 +1029,14 @@ test.describe('Multiple accounts', () => {
     await expect(page.locator('.userbar__handle')).toContainText(`@${userA}:`, {
       timeout: 20_000,
     });
-    await expect(page.getByTestId('active-account-chip')).toBeVisible();
-    await expect(page.getByTestId('active-account-chip')).toContainText(userA);
+    const chip = page.getByTestId('active-account-chip');
+    await expect(chip).toBeVisible();
+    // Scoped to the name span (the chip also renders an avatar initial), and paired with a
+    // negative: `toHaveText` alone still passes if the chip names the WRONG account, while
+    // the `not.toContainText` is what rules out the mxid fallback.
+    await expect(chip.locator('.title-account__name')).toHaveText(nameA, {
+      timeout: 20_000,
+    });
+    await expect(chip).not.toContainText(`@${userA}:`);
   });
 });

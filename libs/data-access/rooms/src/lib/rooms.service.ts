@@ -369,10 +369,16 @@ export class RoomsService {
       this._rooms.set([]);
       this._directRoomIds.set(new Set());
       this.dmPeers = new Set();
+      // A flush queued before the disconnect would otherwise run after this and repopulate
+      // from the OUTGOING client — the stale-list-survives-a-switch bug the loop below
+      // exists to prevent, reintroduced a microtask late. `projectFromClient` cancels its
+      // own coalescer for exactly this reason; it cannot know about this one.
+      this.memberFlusher.cancel();
       // The member signals are part of the read model too. Leaving them holding the
-      // outgoing client's members is what makes a stale list survive a switch.
+      // outgoing client's members is what makes a stale list survive a switch. The shared
+      // empty list, not a fresh `[]`, or every disconnect re-notifies every consumer.
       for (const members of this.memberSignals.values()) {
-        members.set([]);
+        members.set(EMPTY_MEMBERS);
       }
     },
   });

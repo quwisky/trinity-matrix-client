@@ -106,6 +106,35 @@ describe('AccountProfilesService', () => {
     expect(svc.profileOf('@alt:hs').avatarMxc).toBe('mxc://a');
   });
 
+  it('follows an avatar change that leaves the name alone', async () => {
+    // Every other test that changes a profile also changes the display name, so the
+    // avatar arm of the equality check was dead weight. Change only your picture and the
+    // header chip, the switcher and every mixed badge would never have updated.
+    const client = fakeClient('@me:hs', {
+      displayName: 'Me',
+      avatarUrl: 'mxc://old',
+    });
+    const { svc } = setup({ '@me:hs': client });
+
+    client.getUser = (id) =>
+      id === '@me:hs' ? { displayName: 'Me', avatarUrl: 'mxc://new' } : null;
+    handlerFor(client, 'User.avatarUrl')?.({}, { userId: '@me:hs' });
+    await Promise.resolve();
+
+    expect(svc.profileOf('@me:hs').avatarMxc).toBe('mxc://new');
+  });
+
+  it('falls back to the mxid for an EMPTY display name', () => {
+    // Synapse and the SDK both hand back '' for a user with no displayname, so `??` would
+    // render a blank name where `||` renders the mxid. The hydration test uses a null
+    // profile, where the two agree.
+    const { svc } = setup({
+      '@me:hs': fakeClient('@me:hs', { displayName: '', avatarUrl: null }),
+    });
+
+    expect(svc.profileOf('@me:hs').displayName).toBe('@me:hs');
+  });
+
   it('ignores an event about somebody else on the same client', async () => {
     // The client re-emits these for every user it knows — everyone in every room — so an
     // unfiltered handler would rebuild on other people's profile changes.
@@ -156,19 +185,20 @@ describe('AccountProfilesService', () => {
   it('detaches from an account that signs out', () => {
     const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
     const { svc, ids, clients } = setup({ '@me:hs': client });
+    // Captured BEFORE the sign-out, so the assertions can name the exact functions.
+    // `expect.any(Function)` passed even when `detach` unregistered handlers it had never
+    // registered — which leaves the real ones attached to a stopped client.
+    const onName = handlerFor(client, 'User.displayName');
+    const onAvatar = handlerFor(client, 'User.avatarUrl');
+    const onSync = handlerFor(client, 'sync');
 
     clients.delete('@me:hs');
     ids.set([]);
     TestBed.tick();
 
-    expect(client.off).toHaveBeenCalledWith(
-      'User.displayName',
-      expect.any(Function),
-    );
-    expect(client.off).toHaveBeenCalledWith(
-      'User.avatarUrl',
-      expect.any(Function),
-    );
+    expect(client.off).toHaveBeenCalledWith('User.displayName', onName);
+    expect(client.off).toHaveBeenCalledWith('User.avatarUrl', onAvatar);
+    expect(client.off).toHaveBeenCalledWith('sync', onSync);
     expect(svc.profiles().size).toBe(0);
   });
 
@@ -190,8 +220,12 @@ describe('AccountProfilesService', () => {
     active.set('@me:hs');
     TestBed.tick();
 
-    expect(first.off).toHaveBeenCalled();
-    expect(second.on).toHaveBeenCalled();
+    expect(first.off).toHaveBeenCalledWith('sync', handlerFor(first, 'sync'));
+    expect(second.on.mock.calls.map(([e]) => e).sort()).toEqual([
+      'User.avatarUrl',
+      'User.displayName',
+      'sync',
+    ]);
 
     second.getUser = (id) =>
       id === '@me:hs' ? { displayName: 'Newer', avatarUrl: null } : null;
@@ -242,11 +276,12 @@ describe('AccountProfilesService', () => {
     const client = fakeClient('@me:hs', { displayName: 'Me', avatarUrl: null });
     const { ids, clients } = setup({ '@me:hs': client });
 
+    const onSync = handlerFor(client, 'sync');
     clients.delete('@me:hs');
     ids.set([]);
     TestBed.tick();
 
-    expect(client.off).toHaveBeenCalledWith('sync', expect.any(Function));
+    expect(client.off).toHaveBeenCalledWith('sync', onSync);
   });
 
   it('skips an account whose client is not live yet, and picks it up later', () => {
@@ -265,7 +300,13 @@ describe('AccountProfilesService', () => {
     ids.set(['@pending:hs']);
     TestBed.tick();
 
-    expect(late.on).toHaveBeenCalled();
+    // All three, named: `toHaveBeenCalled()` is satisfied by any one of them, and the
+    // sync listener is THE trigger for an account's own profile.
+    expect(late.on.mock.calls.map(([e]) => e).sort()).toEqual([
+      'User.avatarUrl',
+      'User.displayName',
+      'sync',
+    ]);
     expect(svc.profileOf('@pending:hs').displayName).toBe('Pending');
   });
 });

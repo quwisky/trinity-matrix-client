@@ -55,6 +55,7 @@ function harness(opts: {
   return {
     svc: TestBed.inject(AccountBadgesService),
     mixing: mixing as WritableSignal<boolean>,
+    selected,
     profiles,
   };
 }
@@ -109,5 +110,36 @@ describe('AccountBadgesService', () => {
 
     expect(svc.forAccount('@alt:hs')?.name).toBe('Alice');
     expect(svc.forAccount('@alt:hs')?.avatarMxc).toBe('mxc://hs/alice');
+  });
+
+  it('adds a badge when another account is ticked into the mixed view', () => {
+    // `selected` and `mixing` have to be read INSIDE the computed. Hoisted into a field
+    // they would snapshot at construction, and the badge set would never follow the
+    // picker — which is what the harness's own comment warns about and then did not test.
+    const { svc, selected } = harness({
+      selected: ['@me:hs'],
+      profiles: {
+        '@me:hs': { displayName: 'Me' },
+        '@alt:hs': { displayName: 'Alt' },
+      },
+    });
+    expect(svc.badges().size).toBe(1);
+
+    selected.set(new Set(['@me:hs', '@alt:hs']));
+
+    expect(svc.badges().size).toBe(2);
+    expect(svc.forAccount('@alt:hs')?.name).toBe('Alt');
+  });
+
+  it('empties when mixed mode is turned off', () => {
+    const { svc, mixing } = harness({
+      selected: ['@me:hs', '@alt:hs'],
+      profiles: { '@me:hs': {}, '@alt:hs': {} },
+    });
+    expect(svc.badges().size).toBe(2);
+
+    mixing.set(false);
+
+    expect(svc.badges().size).toBe(0);
   });
 });

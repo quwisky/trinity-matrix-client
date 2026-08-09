@@ -1829,6 +1829,98 @@ describe('RoomsService membersFor', () => {
     expect(svc.membersFor(null)()).toEqual([]);
   });
 
+  it('clears the member signals on disconnect, keeping the empty identity', () => {
+    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: roster,
+    });
+    const { svc } = setup([room]);
+    const members = svc.membersFor('!a:hs');
+    const none = svc.membersFor(null);
+    const emptyBefore = none();
+    expect(members().map((m) => m.userId)).toEqual(['@ada:hs']);
+
+    svc.disconnect();
+
+    // Cleared, so a detached service holds none of the outgoing client's members...
+    expect(members()).toEqual([]);
+    // ...but through the SHARED empty list, or every disconnect re-notifies every consumer
+    // of the null-room signal — the landing state.
+    expect(none()).toBe(emptyBefore);
+  });
+
+  it('drops a member re-read queued before the disconnect', async () => {
+    // `projectFromClient` cancels its own coalescer on disconnect and cannot know about
+    // this one. Left queued, the flush runs after `reset` and repopulates the list from the
+    // client being let go of — the stale list, arriving a microtask late.
+    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: roster,
+    });
+    const { svc, client } = setup([room]);
+    const members = svc.membersFor('!a:hs');
+
+    roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
+    fireMemberChange(client, '!a:hs');
+    svc.disconnect();
+    await Promise.resolve();
+
+    expect(members()).toEqual([]);
+  });
+
+  it('does not re-read every watched room on an ordinary sync', async () => {
+    // The re-read on rebuild is gated on the CLIENT having changed. Ungated, every sync
+    // would re-read every watched room and undo the point of dispatching on state.roomId.
+    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: roster,
+    });
+    const { svc, client } = setup([room]);
+    const members = svc.membersFor('!a:hs');
+    const before = members();
+    // Pushed so a re-read would be VISIBLE rather than merely equal.
+    roster.push(fakeMember({ userId: '@bo:hs', name: 'Bo' }));
+
+    const onSync = client.on.mock.calls.find(([e]) => e === 'sync')?.[1] as
+      (() => void) | undefined;
+    onSync?.();
+    await Promise.resolve();
+
+    expect(members()).toBe(before);
+  });
+
+  it('forgets a room once its flush has run', async () => {
+    // The dirty set has to be emptied by the flush, or every later flush re-reads every
+    // room ever dirtied — unbounded per-turn cost that grows with the session.
+    const rosterA = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
+    const roomA = fakeRoom({ roomId: '!a:hs', name: 'a', members: rosterA });
+    const roomB = fakeRoom({ roomId: '!b:hs', name: 'b' });
+    const { svc, client } = setup([roomA, roomB]);
+    svc.membersFor('!a:hs');
+    svc.membersFor('!b:hs');
+
+    fireMemberChange(client, '!a:hs');
+    await Promise.resolve();
+
+    // Counted only from here, so this measures the SECOND flush.
+    let readsA = 0;
+    const originalA = roomA.getJoinedMembers;
+    roomA.getJoinedMembers = () => {
+      readsA += 1;
+      return originalA();
+    };
+    fireMemberChange(client, '!b:hs');
+    await Promise.resolve();
+
+    expect(readsA).toBe(0);
+  });
+
   it('holds the same empty list for a room it cannot read', async () => {
     // The identity invariant has to hold on the EMPTY paths too, or the null-room signal —
     // the landing state, and the state after every closeOpenRoom() — re-notifies its
