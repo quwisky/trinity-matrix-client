@@ -48,9 +48,11 @@ import { setCodeHighlighter } from './message-view';
  * message view is projected, so highlighting is available for the first paint and the
  * render path stays entirely synchronous.
  *
- * **Cost, stated plainly:** the grammars are static imports, roughly 813 KB raw / 134 kB
- * gzipped, and they are downloaded and parsed with the rooms chunk whether or not any
- * message contains code. Only grammar *compilation* is deferred to first use. Making the
+ * **Cost, stated plainly:** the grammars are static imports and they are downloaded and
+ * parsed with the rooms chunk whether or not any message contains code. Measured from an
+ * esbuild metafile of a production build: `@shikijs/langs` contributes 2,741,259 bytes of
+ * minified output plus ~135 KB of engine (`vscode-textmate`, `oniguruma`, `@shikijs/core`)
+ * — **78.6 % of the 3.49 MB rooms chunk**, and the single largest thing the app ships. Only grammar *compilation* is deferred to first use. Making the
  * download conditional means a dynamic `import()` on the first fenced block, which turns
  * highlighting async — and because the timeline's view and row caches key on event
  * revision and object identity, a late install would leave already-projected messages
