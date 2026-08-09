@@ -14,6 +14,7 @@ import { ManageSpaceRoomsComponent } from './manage-space-rooms.component';
 interface LinkFixture {
   childId: string;
   suggested?: boolean;
+  order?: string;
 }
 
 async function build(
@@ -45,7 +46,7 @@ async function build(
       childId: link.childId,
       via: ['hs'],
       suggested: link.suggested ?? false,
-      order: '',
+      order: link.order ?? '',
     })),
   );
   const { fixture, container } = await render(ManageSpaceRoomsComponent, {
@@ -343,6 +344,81 @@ describe('ManageSpaceRoomsComponent', () => {
       cmp.move('!a:hs', 'down');
 
       expect(moveChildBefore).toHaveBeenCalledWith('!s:hs', '!a:hs', null);
+    });
+  });
+
+  describe('the order the rows are arranged in', () => {
+    /**
+     * The service sorts by (order, child id) because it reads `m.space.child` alone and a
+     * child the viewer has not joined has no local room to take a name from. The sidebar
+     * tiebreaks on name. Both lists describe the same space, so an admin arranging it here
+     * must see the arrangement everyone else reads — hence the tiebreak is applied where
+     * the names exist, which is here.
+     */
+    it('tiebreaks on name, not on the child id the service sorted by', async () => {
+      const { cmp } = await build({
+        links: [{ childId: '!aaa:hs' }, { childId: '!zzz:hs' }],
+        rooms: [
+          { id: '!aaa:hs', name: 'Zulu' },
+          { id: '!zzz:hs', name: 'Alpha' },
+        ],
+      });
+
+      expect(cmp.childList().map((child) => child.name)).toEqual([
+        'Alpha',
+        'Zulu',
+      ]);
+    });
+
+    it('still lets an explicit order key win over the name', async () => {
+      const { cmp } = await build({
+        links: [
+          { childId: '!aaa:hs', order: 'm' },
+          { childId: '!zzz:hs', order: 'a' },
+        ],
+        rooms: [
+          { id: '!aaa:hs', name: 'Alpha' },
+          { id: '!zzz:hs', name: 'Zulu' },
+        ],
+      });
+
+      expect(cmp.childList().map((child) => child.name)).toEqual([
+        'Zulu',
+        'Alpha',
+      ]);
+    });
+
+    it('puts a child with no order key after the ones that have one', async () => {
+      const { cmp } = await build({
+        links: [{ childId: '!aaa:hs' }, { childId: '!zzz:hs', order: 'm' }],
+        rooms: [
+          { id: '!aaa:hs', name: 'Alpha' },
+          { id: '!zzz:hs', name: 'Zulu' },
+        ],
+      });
+
+      expect(cmp.childList().map((child) => child.name)).toEqual([
+        'Zulu',
+        'Alpha',
+      ]);
+    });
+
+    it('orders by code point, so an uppercase key precedes a lowercase one', async () => {
+      const { cmp } = await build({
+        links: [
+          { childId: '!aaa:hs', order: 'a' },
+          { childId: '!zzz:hs', order: 'B' },
+        ],
+        rooms: [
+          { id: '!aaa:hs', name: 'Alpha' },
+          { id: '!zzz:hs', name: 'Zulu' },
+        ],
+      });
+
+      expect(cmp.childList().map((child) => child.name)).toEqual([
+        'Zulu',
+        'Alpha',
+      ]);
     });
   });
 

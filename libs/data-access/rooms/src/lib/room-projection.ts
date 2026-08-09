@@ -9,6 +9,7 @@ import {
   messagePreview,
   roomAvatarMxc,
 } from '@trinity/util/matrix';
+import { compareOrder } from './space-child-order';
 import { type RoomSummary } from './rooms.service';
 
 /** State event type linking a space to a child room. */
@@ -168,9 +169,10 @@ export function compareRoomSummaries(a: RoomSummary, b: RoomSummary): number {
 
 /**
  * A space's *joined* child room ids, ordered by the `m.space.child` `order` field
- * (lexicographic) then room name. Children we have not joined — and removed/dangling
- * child links — are dropped. Pure read of the space room, shared by {@link SpacesService}
- * (active account) and the cross-account {@link MixedSpacesService}.
+ * (Unicode code point, unordered children last) then room name. Children we have not
+ * joined — and removed/dangling child links — are dropped. Pure read of the space room,
+ * shared by {@link SpacesService} (active account) and the cross-account
+ * {@link MixedSpacesService}.
  */
 export function spaceChildIdsOf(client: MatrixClient, space: Room): string[] {
   const children = (
@@ -194,7 +196,7 @@ export function spaceChildIdsOf(client: MatrixClient, space: Room): string[] {
     .filter((entry): entry is ChildEntry => entry !== null);
 
   children.sort(
-    (a, b) => a.order.localeCompare(b.order) || a.name.localeCompare(b.name),
+    (a, b) => compareOrder(a.order, b.order) || a.name.localeCompare(b.name),
   );
   return children.map((entry) => entry.id);
 }
