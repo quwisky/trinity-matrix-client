@@ -18,21 +18,21 @@ import { APP_ORIGIN } from './scheme';
  * and the shim is scoped to remote http(s) URLs so it never touches the
  * `trinity://app` scheme itself.
  *
- * KNOWN LIMITATION — this is scoped to *remote* origins, NOT to the homeserver.
- * The renderer can therefore read cross-origin response bodies from any https origin.
- * That is not reachable by web content (nothing but our own code runs on this origin),
- * so it is not directly exploitable — but it is an XSS amplifier: the app renders
- * untrusted federated message HTML, so any future sanitizer bypass would gain a
- * read-anywhere primitive. `connect-src 'self' https: wss:` in the CSP already blocks
- * the `http://` half (no intranet/localhost reads).
+ * SCOPE — the rewrite is narrowed further, to the origins the renderer has declared
+ * over IPC ({@link setAllowedCorsOrigins} / {@link allowCorsOrigin}): the signed-in
+ * homeservers plus whatever `.well-known` discovery and login are currently probing.
+ * The main process cannot know those on its own — the renderer picks the homeserver at
+ * login, multi-account means several at once, each may use a separate media/identity
+ * host, and discovery probes an origin the user typed before any account exists — so the
+ * renderer publishes its live set and this module gates on it ({@link isAllowed}).
  *
- * Narrowing it to a homeserver allowlist is NOT a simple edit, which is why it hasn't
- * been done here: the main process doesn't know the homeserver (the renderer picks it at
- * login), multi-account means several at once, each may use a separate media/identity
- * host, and `.well-known` discovery deliberately probes an arbitrary origin the user has
- * typed *before* any login exists to allowlist. A naive allowlist would break sign-in.
- * Doing it properly needs the renderer to publish its live origin set over IPC —
- * tracked as follow-up, deliberately not attempted as a drive-by.
+ * RESIDUAL — the renderer can still read cross-origin response bodies from the origins it
+ * declared, i.e. its own homeservers. That is inherent (it must talk to them), and it
+ * bounds the XSS amplification: a future sanitizer bypass on untrusted federated message
+ * HTML gains reads against the declared homeservers, not against arbitrary https origins.
+ * Undeclared origins pass through with the server's own headers untouched, which costs
+ * nothing — the Matrix spec requires CS API and `.well-known` responses to send
+ * `Access-Control-Allow-Origin: *`, so only proxies that strip it need this shim at all.
  */
 
 // Only remote http(s) responses are rewritten — never the `trinity://app`

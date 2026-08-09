@@ -1,0 +1,18 @@
+{
+  // Type-checks the specs, which tsconfig.json deliberately excludes (it describes the
+  // Node16/CommonJS build of the main process, and nothing else compiled them at all).
+  //
+  // `module`/`moduleResolution` differ from the build on purpose: Vitest loads these
+  // files through Vite as ES modules, so `import.meta.url` and importing an ESM-only
+  // package (@electron/fuses) are legal here and are errors under the CJS build config.
+  // The main-process sources keep their Node16 checking via `pnpm -C electron compile`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "types": ["node", "electron", "vitest/globals"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}

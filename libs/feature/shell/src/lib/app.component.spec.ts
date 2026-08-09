@@ -3,18 +3,45 @@ import { Dialog, type DialogRef } from '@angular/cdk/dialog';
 import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { provideServiceWorker } from '@angular/service-worker';
+import {
+  SwUpdate,
+  provideServiceWorker,
+  type UnrecoverableStateEvent,
+  type VersionEvent,
+} from '@angular/service-worker';
 import { App } from '@capacitor/app';
+import { toast } from '@spartan-ng/brain/sonner';
 import { VerificationService } from '@trinity/data-access/crypto';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Subject } from 'rxjs';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { AppComponent } from './app.component';
 
 vi.mock('@capacitor/browser', () => ({
   Browser: { close: vi.fn().mockResolvedValue(undefined), open: vi.fn() },
 }));
+
+// Only the imperative producer is faked; <hlm-toaster/> in this component's template
+// imports the rest of the entry point and must stay real, so the actual module is
+// spread back in. (`toast` MUST come from brain, not ngx-sonner — see TrnToastService.)
+vi.mock('@spartan-ng/brain/sonner', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@spartan-ng/brain/sonner')>();
+  return {
+    ...actual,
+    toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+  };
+});
 
 // Captures the 'backButton' listener so tests can invoke it directly, and stubs
 // the other App calls the native-only branch of ngOnInit makes. `vi.mock` factories
@@ -182,7 +209,7 @@ describe('AppComponent', () => {
   // registered with the (mocked) Capacitor App plugin, not a refactored helper.
   describe('native back button handling', () => {
     let dialogOpenDialogs: DialogRef<unknown, unknown>[];
-    let locationBack: ReturnType<typeof vi.fn>;
+    let locationBack: Mock;
 
     beforeEach(() => {
       backButtonListeners.length = 0;
@@ -243,4 +270,175 @@ describe('AppComponent', () => {
       expect(locationBack).not.toHaveBeenCalled();
     });
   });
+
+  // ngsw is version-locked per client: a running tab serves the build it booted with
+  // until something activates the new one, so a tab open for a week would otherwise
+  // never receive a shipped fix.
+  describe('service-worker updates', () => {
+    let versionUpdates: Subject<VersionEvent>;
+    let unrecoverable: Subject<UnrecoverableStateEvent>;
+    let swUpdate: {
+      isEnabled: boolean;
+      versionUpdates: Subject<VersionEvent>;
+      unrecoverable: Subject<UnrecoverableStateEvent>;
+      checkForUpdate: Mock;
+      activateUpdate: Mock;
+    };
+    let locationStub: ReturnType<typeof stubLocation>;
+
+    beforeEach(() => {
+      vi.mocked(toast).mockClear();
+      versionUpdates = new Subject<VersionEvent>();
+      unrecoverable = new Subject<UnrecoverableStateEvent>();
+      swUpdate = {
+        isEnabled: true,
+        versionUpdates,
+        unrecoverable,
+        checkForUpdate: vi.fn().mockResolvedValue(true),
+        activateUpdate: vi.fn().mockResolvedValue(true),
+      };
+      locationStub = stubLocation();
+    });
+
+    afterEach(() => locationStub.restore());
+
+    async function create() {
+      const { fixture } = await render(AppComponent, {
+        providers: [
+          provideRouter([]),
+          provideServiceWorker('ngsw-worker.js', { enabled: false }),
+          { provide: SwUpdate, useValue: swUpdate },
+          ...hostProviders,
+        ],
+      });
+      return fixture;
+    }
+
+    function readyEvent(): VersionEvent {
+      return {
+        type: 'VERSION_READY',
+        currentVersion: { hash: 'old' },
+        latestVersion: { hash: 'new' },
+      };
+    }
+
+    it('offers a reload when a new version is ready', async () => {
+      await create();
+
+      versionUpdates.next(readyEvent());
+
+      expect(toast).toHaveBeenCalledTimes(1);
+      const [message, options] = vi.mocked(toast).mock.calls[0];
+      expect(message).toContain('new version');
+      expect(options?.action?.label).toBe('Reload');
+      // The prompt must survive until it is answered — a 3s auto-dismiss would make
+      // the update unreachable for anyone not watching the corner of the screen.
+      expect(options?.duration).toBe(Number.POSITIVE_INFINITY);
+    });
+
+    it('activates the waiting version and reloads when the action is taken', async () => {
+      await create();
+      versionUpdates.next(readyEvent());
+
+      const options = vi.mocked(toast).mock.calls[0][1];
+      options?.action?.onClick(new MouseEvent('click'));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(swUpdate.activateUpdate).toHaveBeenCalled();
+      expect(locationStub.calls).toContain('reload');
+    });
+
+    it('reloads anyway when activation fails, so the next boot picks the version up', async () => {
+      swUpdate.activateUpdate.mockRejectedValue(new Error('discarded'));
+      await create();
+      versionUpdates.next(readyEvent());
+
+      vi.mocked(toast).mock.calls[0][1]?.action?.onClick(
+        new MouseEvent('click'),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(locationStub.calls).toContain('reload');
+    });
+
+    it('ignores version events that are not a ready build', async () => {
+      await create();
+
+      versionUpdates.next({
+        type: 'VERSION_DETECTED',
+        version: { hash: 'new' },
+      });
+
+      expect(toast).not.toHaveBeenCalled();
+    });
+
+    it('re-checks for a deploy when the tab returns to the foreground', async () => {
+      await create();
+
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(swUpdate.checkForUpdate).toHaveBeenCalled();
+    });
+
+    it('does not re-check while the tab is hidden', async () => {
+      await create();
+      // Shadow the prototype getter on the instance, then drop the own property again.
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'hidden',
+        configurable: true,
+      });
+      try {
+        document.dispatchEvent(new Event('visibilitychange'));
+      } finally {
+        delete (document as unknown as Record<string, unknown>)[
+          'visibilityState'
+        ];
+      }
+
+      expect(swUpdate.checkForUpdate).not.toHaveBeenCalled();
+    });
+
+    // The only untied subscribe in the app used to live here; a destroyed shell must
+    // stop reacting, or the pattern gets copied into a component that IS destroyed.
+    it('stops reacting to service-worker events once destroyed', async () => {
+      const fixture = await create();
+
+      fixture.destroy();
+      unrecoverable.next({
+        type: 'UNRECOVERABLE_STATE',
+        reason: 'cache gone',
+      });
+      versionUpdates.next(readyEvent());
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(locationStub.calls).not.toContain('reload');
+      expect(toast).not.toHaveBeenCalled();
+      expect(swUpdate.checkForUpdate).not.toHaveBeenCalled();
+    });
+  });
 });
+
+/**
+ * Swap `window.location` for a recorder: jsdom implements no navigation, and
+ * test-setup.base.ts filters its "Not implemented" noise — so a missing reload would
+ * otherwise be unobservable in both directions.
+ */
+function stubLocation() {
+  const original = Object.getOwnPropertyDescriptor(window, 'location');
+  const calls: string[] = [];
+  Object.defineProperty(window, 'location', {
+    value: { reload: () => calls.push('reload') },
+    writable: true,
+    configurable: true,
+  });
+  return {
+    calls,
+    restore: () => {
+      if (original) {
+        Object.defineProperty(window, 'location', original);
+      }
+    },
+  };
+}

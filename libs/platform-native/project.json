@@ -6,6 +6,7 @@
   "prefix": "trn",
   "tags": ["type:platform", "scope:shared"],
   "targets": {
-    "test": {}
+    "test": {},
+    "typecheck": {}
   }
 }

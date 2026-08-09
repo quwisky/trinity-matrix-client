@@ -68,6 +68,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
+      # Specs are excluded from every project's tsconfig.json AND from the type-aware
+      # ESLint block, and Vitest transpiles them without checking — so before this step
+      # existed nothing in CI ever ran the compiler over a single test file. Runs BEFORE
+      # `pnpm test`: a spec whose mock has drifted out of shape with the code it doubles
+      # should fail as the type error it is, not as a downstream assertion nobody can
+      # read.
+      - run: pnpm exec nx run-many -t typecheck
       - run: pnpm test
 
   # Not redundant with `test`: the production build runs the AOT compiler, which rejects
@@ -106,6 +113,10 @@ jobs:
       # should fail as itself, not as a Playwright launch timeout.
       - run: pnpm -C electron run ensure:binary
       - run: pnpm -C electron run compile
+      # `compile` type-checks the main-process sources only — electron/tsconfig.json
+      # excludes `src/**/*.spec.ts`. This is the same gate for the specs (see
+      # electron/tsconfig.spec.json for why it differs on module resolution).
+      - run: pnpm -C electron run typecheck
       - run: pnpm -C electron test
       # Launches the real binary and serves www/ over trinity://app. `electron:e2e` runs
       # `electron:build` first (Angular www/ + the main-process tsc), which this job needs

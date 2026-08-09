@@ -59,6 +59,11 @@ function eventRow(id: string, summary: string, ts: number): MessageView {
   };
 }
 
+/** `notAtBottom` drives the jump pill and is protected (template-only); read it
+ * through a narrow view rather than widening the component's API for a test. */
+const notAtBottom = (cmp: SimpleMessageListComponent): boolean =>
+  (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
+
 describe('SimpleMessageListComponent', () => {
   it('renders a row per message and groups consecutive senders', async () => {
     const { container } = await render(SimpleMessageListComponent, {
@@ -495,7 +500,7 @@ describe('SimpleMessageListComponent', () => {
     scroll.dispatchEvent(new Event('scroll'));
     fixture.detectChanges();
 
-    expect(cmp.notAtBottom()).toBe(true);
+    expect(notAtBottom(cmp)).toBe(true);
     const pill = container.querySelector<HTMLButtonElement>(
       '[data-testid=jump-to-latest]',
     );
@@ -506,7 +511,7 @@ describe('SimpleMessageListComponent', () => {
     fixture.detectChanges();
 
     expect(scrollToSpy).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' });
-    expect(cmp.notAtBottom()).toBe(false);
+    expect(notAtBottom(cmp)).toBe(false);
     expect(container.querySelector('[data-testid=jump-to-latest]')).toBeNull();
   });
 

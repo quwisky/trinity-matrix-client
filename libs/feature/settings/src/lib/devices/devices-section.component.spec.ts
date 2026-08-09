@@ -9,7 +9,15 @@ import { TrnAlertService, TrnDialogService } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { DevicesService, type DeviceInfo } from '@trinity/data-access/crypto';
 import { DevicesSectionComponent } from './devices-section.component';
 
@@ -45,9 +53,9 @@ describe('DevicesSectionComponent', () => {
   const disconnect = vi.fn();
   const navigate = vi.fn().mockResolvedValue(true);
   let devices: ReturnType<typeof signal<DeviceInfo[]>>;
-  let alertConfirm: ReturnType<typeof vi.fn>;
-  let alertPrompt: ReturnType<typeof vi.fn>;
-  let dialogOpen: ReturnType<typeof vi.fn>;
+  let alertConfirm: Mock;
+  let alertPrompt: Mock;
+  let dialogOpen: Mock;
 
   beforeEach(() => {
     rename.mockClear();

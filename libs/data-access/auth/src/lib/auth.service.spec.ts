@@ -23,7 +23,10 @@ import {
   type OidcGrantContext,
 } from './oidc-client.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  SessionStorageService,
+} from '@trinity/platform-native';
 import { AvatarService } from '@trinity/data-access/media';
 import { MediaService } from '@trinity/data-access/media';
 import { PushService } from '@trinity/data-access/notifications';
@@ -62,6 +65,7 @@ describe('AuthService', () => {
           activeUserId: activeUserId.asReadonly(),
         }),
         MockProvider(SessionStorageService),
+        MockProvider(DraftStoreService),
         MockProvider(OidcClientService),
         MockProvider(AvatarService),
         MockProvider(MediaService),
@@ -699,6 +703,37 @@ describe('AuthService', () => {
       expect(matrix.reset).toHaveBeenCalled();
       expect(storage.clear).toHaveBeenCalled();
       expect(matrix.remove).not.toHaveBeenCalled();
+    });
+
+    it('clears composer drafts on both sign-out branches', async () => {
+      // Drafts are the plaintext of messages destined for E2EE rooms, held in
+      // localStorage on web/Electron. Only the factory reset used to touch them, so they
+      // survived every sign-out.
+      const matrix = TestBed.inject(MatrixClientService);
+      const storage = TestBed.inject(SessionStorageService);
+      const push = TestBed.inject(PushService);
+      const drafts = TestBed.inject(DraftStoreService);
+      const client = { logout: vi.fn().mockResolvedValue(undefined) };
+      vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+      vi.mocked(push.unregister).mockReturnValue(of(undefined));
+      vi.mocked(matrix.reset).mockReturnValue(of(undefined));
+      vi.mocked(matrix.remove).mockReturnValue(of(undefined));
+      vi.mocked(storage.clear).mockReturnValue(of(undefined));
+      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+
+      // Branch 1: one of several accounts.
+      accountIds.set(['@me:hs', '@you:hs']);
+      activeUserId.set('@me:hs');
+      await firstValueFrom(auth.logout('@you:hs'));
+      expect(matrix.reset).not.toHaveBeenCalled(); // really the per-account branch
+      expect(drafts.clearAll).toHaveBeenCalledOnce();
+
+      // Branch 2: the last account.
+      accountIds.set(['@me:hs']);
+      await firstValueFrom(auth.logout('@me:hs'));
+      expect(storage.clear).toHaveBeenCalled(); // really the full-reset branch
+      expect(drafts.clearAll).toHaveBeenCalledTimes(2);
     });
 
     it('keeps a still-persisted account when signing out the only LIVE one', async () => {

@@ -81,4 +81,12 @@ export const routes: Routes = [
     redirectTo: 'rooms',
     pathMatch: 'full',
   },
+  // The service worker answers EVERY same-origin navigation with index.html, so a stale
+  // bookmark or an old share link boots the shell against a path no route matches —
+  // without this the app renders an empty outlet forever. authGuard on /rooms sends a
+  // signed-out user on to /login, so one redirect covers both states.
+  {
+    path: '**',
+    redirectTo: 'rooms',
+  },
 ];

@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of, throwError, Subject } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
   PublicRoomsService,
@@ -31,8 +31,8 @@ function page(over: Partial<PublicRoomsPage> = {}): PublicRoomsPage {
 
 async function build(
   over: {
-    search?: ReturnType<typeof vi.fn>;
-    join?: ReturnType<typeof vi.fn>;
+    search?: Mock;
+    join?: Mock;
   } = {},
 ) {
   const search = over.search ?? vi.fn(() => of(page()));

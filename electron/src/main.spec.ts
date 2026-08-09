@@ -66,7 +66,7 @@ import { registerDockBadge } from './dock-badge';
 
 /** First invocation-order tick of a mock (a global monotonic counter in vitest,
  * so it's comparable ACROSS different mocks). */
-function firstOrder(fn: ReturnType<typeof vi.fn>): number {
+function firstOrder(fn: { mock: { invocationCallOrder: number[] } }): number {
   return fn.mock.invocationCallOrder[0];
 }
 
@@ -83,8 +83,8 @@ describe('main bootstrap', () => {
     expect(requestSingleInstanceLock).toHaveBeenCalled();
     // Registered as a top-level side effect (must run before app is ready).
     expect(registerPrivilegedScheme).toHaveBeenCalledTimes(1);
-    expect(firstOrder(registerPrivilegedScheme)).toBeLessThan(
-      firstOrder(registerAppProtocol),
+    expect(firstOrder(vi.mocked(registerPrivilegedScheme))).toBeLessThan(
+      firstOrder(vi.mocked(registerAppProtocol)),
     );
   });
 
@@ -101,11 +101,11 @@ describe('main bootstrap', () => {
     // The homeserver-traffic interceptor must be live on the default session
     // before the window loads its URL, and the app protocol must already be
     // serving trinity://app.
-    expect(firstOrder(registerAppProtocol)).toBeLessThan(
-      firstOrder(installMatrixCors),
+    expect(firstOrder(vi.mocked(registerAppProtocol))).toBeLessThan(
+      firstOrder(vi.mocked(installMatrixCors)),
     );
-    expect(firstOrder(installMatrixCors)).toBeLessThan(
-      firstOrder(createWindow),
+    expect(firstOrder(vi.mocked(installMatrixCors))).toBeLessThan(
+      firstOrder(vi.mocked(createWindow)),
     );
   });
 });

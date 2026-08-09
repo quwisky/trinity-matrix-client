@@ -32,7 +32,7 @@ import {
 } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
-import { expect, it, vi } from 'vitest';
+import { expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
@@ -45,30 +45,30 @@ import { MessageSearchService } from '../message-search/message-search.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 
 describe('RoomsPage panels, pins and media', () => {
-  let edit: ReturnType<typeof vi.fn>;
-  let toastShow: ReturnType<typeof vi.fn>;
-  let sendMedia: ReturnType<typeof vi.fn>;
-  let setNotifyMode: ReturnType<typeof vi.fn>;
-  let leaveRoom: ReturnType<typeof vi.fn>;
-  let alertConfirm: ReturnType<typeof vi.fn>;
+  let edit: Mock;
+  let toastShow: Mock;
+  let sendMedia: Mock;
+  let setNotifyMode: Mock;
+  let leaveRoom: Mock;
+  let alertConfirm: Mock;
   let roomsSignal: WritableSignal<RoomSummary[]>;
-  let editableFields: ReturnType<typeof vi.fn>;
-  let currentAccess: ReturnType<typeof vi.fn>;
-  let canManageBans: ReturnType<typeof vi.fn>;
-  let canManageAliases: ReturnType<typeof vi.fn>;
-  let parentSpaceIds: ReturnType<typeof vi.fn>;
+  let editableFields: Mock;
+  let currentAccess: Mock;
+  let canManageBans: Mock;
+  let canManageAliases: Mock;
+  let parentSpaceIds: Mock;
   let railSpacesSignal: ReturnType<typeof signal<SpaceSummary[]>>;
-  let supportsRestricted: ReturnType<typeof vi.fn>;
-  let canCurate: ReturnType<typeof vi.fn>;
-  let spaceCanModerate: ReturnType<typeof vi.fn>;
-  let spaceMemberInfoOpen: ReturnType<typeof vi.fn>;
-  let createSpace: ReturnType<typeof vi.fn>;
-  let addExistingRoom: ReturnType<typeof vi.fn>;
-  let currentIdentity: ReturnType<typeof vi.fn>;
-  let joinPublicRoom: ReturnType<typeof vi.fn>;
-  let markReadFn: ReturnType<typeof vi.fn>;
-  let setMarkedUnreadFn: ReturnType<typeof vi.fn>;
-  let clearMarkedUnreadFn: ReturnType<typeof vi.fn>;
+  let supportsRestricted: Mock;
+  let canCurate: Mock;
+  let spaceCanModerate: Mock;
+  let spaceMemberInfoOpen: Mock;
+  let createSpace: Mock;
+  let addExistingRoom: Mock;
+  let currentIdentity: Mock;
+  let joinPublicRoom: Mock;
+  let markReadFn: Mock;
+  let setMarkedUnreadFn: Mock;
+  let clearMarkedUnreadFn: Mock;
 
   function build() {
     toastShow = vi.fn();
@@ -191,6 +191,7 @@ describe('RoomsPage panels, pins and media', () => {
         lastMessage: '',
         activityTs: 0,
         favourite: false,
+        lowPriority: false,
       },
     ]);
     shell.store.activeRoomId.set('!r:hs');
@@ -404,6 +405,7 @@ describe('RoomsPage panels, pins and media', () => {
       lastMessage: '',
       activityTs: 0,
       favourite: false,
+      lowPriority: false,
     });
     roomsSignal.set([
       unreadRoom('!a:hs', '@me:hs', true),
@@ -439,6 +441,7 @@ describe('RoomsPage panels, pins and media', () => {
       lastMessage: '',
       activityTs: 0,
       favourite: false,
+      lowPriority: false,
     });
     roomsSignal.set([flagged('!f:hs')]);
 
@@ -468,6 +471,7 @@ describe('RoomsPage panels, pins and media', () => {
       lastMessage: '',
       activityTs: 0,
       favourite: false,
+      lowPriority: false,
     };
     roomsSignal.set([merged]);
 

@@ -365,11 +365,13 @@ const ALICE: Mention = { userId: '@alice:hs', display: '@Alice' };
 describe('mentions in content builders', () => {
   it('adds m.mentions and a matrix.to pill for a plain-text mention', () => {
     const text = 'hey @Alice';
-    const content = textMessageContent(text, renderMarkdown(text), [ALICE]);
+    const content = textMessageContent(text, renderMarkdown(text), [
+      ALICE,
+    ]) as Record<string, unknown>;
 
-    expect(content.body).toBe('hey @Alice'); // plain body keeps the readable @name
-    expect(content.format).toBe('org.matrix.custom.html');
-    expect(content.formatted_body).toContain(
+    expect(content['body']).toBe('hey @Alice'); // plain body keeps the readable @name
+    expect(content['format']).toBe('org.matrix.custom.html');
+    expect(content['formatted_body']).toContain(
       '<a href="https://matrix.to/#/@alice:hs">@Alice</a>',
     );
     expect(mentionIds(content)).toEqual(['@alice:hs']);
@@ -411,8 +413,12 @@ describe('mentions in content builders', () => {
       display: '@X',
     };
     const text = 'hi @X';
-    const html = textMessageContent(text, renderMarkdown(text), [evil])
-      .formatted_body as string;
+    const html = (
+      textMessageContent(text, renderMarkdown(text), [evil]) as Record<
+        string,
+        unknown
+      >
+    )['formatted_body'] as string;
 
     expect(html).not.toContain('"><img'); // no raw attribute breakout
     expect(html).toContain('&quot;'); // the quote was escaped in the href
@@ -487,21 +493,21 @@ describe('mentions in content builders', () => {
     const content = textMessageContent(text, renderMarkdown(text), [
       ALICE,
       { userId: '@bob:hs', display: '@Bob' },
-    ]);
+    ]) as Record<string, unknown>;
 
     expect(mentionIds(content)).toEqual(['@alice:hs', '@bob:hs']);
-    expect(content.formatted_body).toContain('matrix.to/#/@alice:hs');
-    expect(content.formatted_body).toContain('matrix.to/#/@bob:hs');
+    expect(content['formatted_body']).toContain('matrix.to/#/@alice:hs');
+    expect(content['formatted_body']).toContain('matrix.to/#/@bob:hs');
   });
 
   it('HTML-escapes a mention display in the pill', () => {
     const text = 'hi @A&B';
     const content = textMessageContent(text, renderMarkdown(text), [
       { userId: '@ab:hs', display: '@A&B' },
-    ]);
+    ]) as Record<string, unknown>;
 
     // The pill text is escaped (matches the form marked emitted); no raw ampersand.
-    expect(content.formatted_body).toContain(
+    expect(content['formatted_body']).toContain(
       '<a href="https://matrix.to/#/@ab:hs">@A&amp;B</a>',
     );
   });
@@ -518,9 +524,9 @@ describe('mentions in content builders', () => {
     const text = `hi ${display}`;
     const content = textMessageContent(text, renderMarkdown(text), [
       { userId, display },
-    ]);
+    ]) as Record<string, unknown>;
 
-    expect(content.formatted_body).toContain(
+    expect(content['formatted_body']).toContain(
       `<a href="https://matrix.to/#/${userId}">`,
     );
     expect(content['m.mentions']).toEqual({ user_ids: [userId] });
@@ -534,11 +540,11 @@ describe('mentions in content builders', () => {
       '<!-- x -->',
       renderMarkdown('<!-- x -->'),
       [{ userId: '@a:hs', display: '@A' }],
-    );
+    ) as Record<string, unknown>;
 
-    expect(content.formatted_body).toBeUndefined();
-    expect(content.format).toBeUndefined();
-    expect(content.body).toBe('<!-- x -->');
+    expect(content['formatted_body']).toBeUndefined();
+    expect(content['format']).toBeUndefined();
+    expect(content['body']).toBe('<!-- x -->');
   });
 
   it('still notifies the people mentioned when the markup sanitizes away', () => {
@@ -548,7 +554,7 @@ describe('mentions in content builders', () => {
       '<!-- x -->',
       renderMarkdown('<!-- x -->'),
       [{ userId: '@a:hs', display: '@A' }],
-    );
+    ) as Record<string, unknown>;
 
     expect(content['m.mentions']).toEqual({ user_ids: ['@a:hs'] });
   });
@@ -558,7 +564,7 @@ describe('mentions in content builders', () => {
       '<!-- x -->',
       renderMarkdown('<!-- x -->'),
       [{ userId: '@a:hs', display: '@A' }],
-    );
+    ) as Record<string, unknown>;
 
     expect(content['m.mentions']).toEqual({ user_ids: ['@a:hs'] });
   });
@@ -731,7 +737,7 @@ describe('m.mentions is always present', () => {
       renderMarkdown(text),
     ) as Record<string, unknown>;
 
-    expect(reply.body).toContain('@room'); // the quoted fallback really does carry it
+    expect(reply['body']).toContain('@room'); // the quoted fallback really does carry it
     expect(reply['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
   });
 });

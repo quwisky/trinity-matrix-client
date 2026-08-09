@@ -2,7 +2,7 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { GeolocationService } from '@trinity/platform-native';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { ManualLocationDialogComponent } from './manual-location-dialog.component';
@@ -10,7 +10,7 @@ import { ManualLocationDialogComponent } from './manual-location-dialog.componen
 async function setup(
   over: {
     supportsApproximate?: boolean;
-    approximate?: ReturnType<typeof vi.fn>;
+    approximate?: Mock;
   } = {},
 ) {
   const close = vi.fn();

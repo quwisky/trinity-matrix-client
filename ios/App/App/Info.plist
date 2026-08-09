@@ -64,5 +64,9 @@
 	<string>Trinity needs photo library access to attach images to your messages.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Trinity needs permission to save images you receive to your photo library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Trinity needs microphone access to record voice messages.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Trinity needs your location to share it in a message when you choose to.</string>
 </dict>
 </plist>

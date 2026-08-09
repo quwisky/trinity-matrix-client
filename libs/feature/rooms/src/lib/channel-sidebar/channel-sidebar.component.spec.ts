@@ -1,10 +1,11 @@
 import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { type AccountBadge } from '@trinity/ui';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, type Mock } from 'vitest';
 import {
   InvitesService,
   MixedInvitesService,
@@ -79,6 +80,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
 function invite(over: Partial<PendingInvite> = {}): PendingInvite {
   return {
     roomId: '!i:hs',
+    accountId: '@me:hs',
     name: 'Invited Room',
     initial: 'I',
     avatarMxc: null,
@@ -112,7 +114,7 @@ function child(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
  */
 /** Spy behind RoomNotificationsService.modeFor, so tests can assert the account it was
  * asked about (a mixed-in row must be read from ITS account, not the active one). */
-let modeForSpy: ReturnType<typeof vi.fn>;
+let modeForSpy: Mock;
 
 async function renderSidebar(
   opts: {
@@ -129,6 +131,9 @@ async function renderSidebar(
       sortMode?: RoomSortMode;
       sortOverridden?: boolean;
       defaultSortMode?: RoomSortMode;
+      canCurateSpace?: boolean;
+      canConfigureSpace?: boolean;
+      accountBadges?: ReadonlyMap<string, AccountBadge>;
     };
     joinableRooms?: SpaceChildRoom[];
     childSpaces?: SpaceChildRoom[];
@@ -1381,9 +1386,9 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('badges each room with its owning account only in the mixed view', async () => {
-    const badges = new Map([
-      ['@me:hs', { initial: 'M', name: 'Me' }],
-      ['@alt:hs', { initial: 'A', name: 'Alt' }],
+    const badges = new Map<string, AccountBadge>([
+      ['@me:hs', { id: '@me:hs', initial: 'M', name: 'Me' }],
+      ['@alt:hs', { id: '@alt:hs', initial: 'A', name: 'Alt' }],
     ]);
     const { container, fixture } = await renderSidebar({
       inputs: {

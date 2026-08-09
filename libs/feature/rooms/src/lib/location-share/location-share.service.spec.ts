@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { GeolocationService } from '@trinity/platform-native';
@@ -17,9 +17,9 @@ function setBridge(bridge: Bridge | undefined): void {
 
 function setup(
   over: {
-    current?: ReturnType<typeof vi.fn>;
-    sendLocation?: ReturnType<typeof vi.fn>;
-    openAndWait?: ReturnType<typeof vi.fn>;
+    current?: Mock;
+    sendLocation?: Mock;
+    openAndWait?: Mock;
   } = {},
 ) {
   const current = over.current ?? vi.fn(() => of({ lat: 1.5, lng: 2.5 }));

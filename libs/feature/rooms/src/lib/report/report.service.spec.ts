@@ -3,13 +3,13 @@ import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { RoomModerationService } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { ReportService } from './report.service';
 
 function setup(
   over: {
-    prompt?: ReturnType<typeof vi.fn>;
-    reportMessage?: ReturnType<typeof vi.fn>;
+    prompt?: Mock;
+    reportMessage?: Mock;
   } = {},
 ) {
   const prompt = over.prompt ?? vi.fn().mockResolvedValue('spam');

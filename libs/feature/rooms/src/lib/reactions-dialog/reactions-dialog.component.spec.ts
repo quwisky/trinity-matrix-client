@@ -4,7 +4,7 @@ import { AvatarComponent } from '@trinity/ui';
 import { type ReactionDetail } from '@trinity/util/matrix';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { ReactionsDialogComponent } from './reactions-dialog.component';
 
 function reactor(name: string) {
@@ -22,7 +22,7 @@ const SECTIONS: ReactionDetail[] = [
 ];
 
 describe('ReactionsDialogComponent', () => {
-  let reactionDetails: ReturnType<typeof vi.fn>;
+  let reactionDetails: Mock;
 
   beforeEach(() => {
     reactionDetails = vi.fn(() => SECTIONS);

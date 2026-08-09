@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { SpacesService } from './spaces.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
@@ -93,7 +93,7 @@ function setup(rooms: ReturnType<typeof fakeRoom>[]) {
 }
 
 /** Pull a captured client listener by event name (for simulating live updates). */
-function handlerFor(client: { on: ReturnType<typeof vi.fn> }, event: string) {
+function handlerFor(client: { on: Mock }, event: string) {
   const call = client.on.mock.calls.find(([e]) => e === event);
   return call?.[1] as ((...args: unknown[]) => void) | undefined;
 }

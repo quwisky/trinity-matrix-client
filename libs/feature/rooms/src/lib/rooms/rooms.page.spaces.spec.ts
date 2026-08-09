@@ -482,6 +482,7 @@ describe('RoomsPage space ordering', () => {
       lastMessage: '',
       activityTs,
       favourite,
+      lowPriority: false,
     };
   }
 
@@ -693,6 +694,7 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
       lastMessage: '',
       activityTs: 0,
       favourite: false,
+      lowPriority: false,
     };
   }
 

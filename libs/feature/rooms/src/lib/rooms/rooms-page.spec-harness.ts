@@ -7,7 +7,12 @@
 // pieces they all shared.
 import { signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import {
+  ActivatedRoute,
+  Router,
+  convertToParamMap,
+  type ParamMap,
+} from '@angular/router';
 import { CryptoService } from '@trinity/data-access/crypto';
 import {
   InvitesService,
@@ -17,7 +22,7 @@ import { PinnedMessagesService } from '@trinity/data-access/pinned';
 
 import { TrnActionSheetService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 import { vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { RoomShellStore } from './room-shell-store';
@@ -35,6 +40,28 @@ import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
 import { ThreadPanelService } from '../thread/thread-panel.service';
 import { PinnedPanelService } from '../pinned/pinned-panel.service';
+
+/**
+ * The `?room=` deep link a notification tap produces, as the stream the page subscribes
+ * to (`ActivatedRoute.queryParamMap`). A BehaviorSubject because the real one replays its
+ * current value to a late subscriber, which is exactly the case that matters: `/rooms` is
+ * already active when the tap arrives.
+ *
+ * Every block needs it since every block constructs the page; only the deep-link tests
+ * push to it, and they reset it afterwards with {@link setRouteQueryParams}.
+ */
+const queryParamMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
+
+/** Drive `ActivatedRoute.queryParamMap`. Reset with `{}` after a test that sets it. */
+export function setRouteQueryParams(params: Record<string, string>): void {
+  queryParamMap.next(convertToParamMap(params));
+}
+
+/** The ActivatedRoute stub, for the one block that builds RoomsPage without SHARED_MOCKS. */
+export const ROUTE_PROVIDER: Provider = {
+  provide: ActivatedRoute,
+  useValue: { queryParamMap } as unknown as ActivatedRoute,
+};
 
 /**
  * Providers every TestBed block across the rooms.page specs supplies identically, with
@@ -70,6 +97,7 @@ export const SHARED_MOCKS: Provider[] = [
   MockProvider(PinnedMessagesService),
   MockProvider(PinnedPanelService),
   MockProvider(Router),
+  ROUTE_PROVIDER,
   MockProvider(ThreadPanelService),
   MockProvider(TrnActionSheetService),
 ];

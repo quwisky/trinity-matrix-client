@@ -75,7 +75,6 @@ function setup(
         }),
         wipeKeyValueStores: vi.fn(async () => {
           calls.push('wipeKeyValueStores');
-          return true;
         }),
         wipeServiceWorker: vi.fn(async () => {
           calls.push('wipeServiceWorker');
@@ -282,7 +281,7 @@ describe('FactoryResetService', () => {
         }),
         MockProvider(LocalDataWipeService, {
           wipeIndexedDb: vi.fn(async () => CLEAN_IDB),
-          wipeKeyValueStores: vi.fn(async () => false),
+          wipeKeyValueStores: vi.fn(async () => undefined),
           wipeServiceWorker: vi.fn(async () => undefined),
         }),
         MockProvider(OidcClientService),

@@ -31,9 +31,11 @@ describe('TrinityErrorHandler', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  it('swallows a transient error wrapped in an Angular promise-rejection envelope', () => {
-    // Angular surfaces unhandled promise rejections as { rejection, promise }.
-    handler.handleError({ rejection: new ConnectionError('fetch failed') });
+  it('swallows a transient error delivered as a raw rejection reason', () => {
+    // What provideBrowserGlobalErrorListeners() hands us: PromiseRejectionEvent.reason
+    // itself. The `{ rejection, promise }` envelope this once unwrapped was zone.js's,
+    // and this app has no zone.js — see global-error-listeners.spec.ts for the wiring.
+    handler.handleError(new ConnectionError('fetch failed'));
 
     expect(debugSpy).toHaveBeenCalledTimes(1);
     expect(superSpy).not.toHaveBeenCalled();

@@ -281,11 +281,14 @@ export abstract class MessageListBase {
 
     // Re-evaluate the jump-to-unread pill when the unread anchor or the message set
     // changes (e.g. the divider row (dis)appears). Deferred a frame so the row/divider
-    // is laid out before we measure it.
-    effect(() => {
+    // is laid out before we measure it. Cancelled on re-run: a burst of sync ticks
+    // between two frames would otherwise queue one forced-layout measurement each, on
+    // the hottest surface in the app, all computing the same answer.
+    effect((onCleanup) => {
       this.firstUnreadId();
       this.messages();
-      requestAnimationFrame(() => this.updateJumpToUnread());
+      const handle = requestAnimationFrame(() => this.updateJumpToUnread());
+      onCleanup(() => cancelAnimationFrame(handle));
     });
   }
 

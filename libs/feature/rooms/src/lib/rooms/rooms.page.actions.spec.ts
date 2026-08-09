@@ -31,7 +31,7 @@ import {
 } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardService } from '../user-card/user-card.service';
@@ -42,11 +42,11 @@ import { MessageSearchService } from '../message-search/message-search.service';
 // Create-space / create-channel / leave-space: the page prompts via TrnAlertService
 // and delegates to SpacesService, handling the success navigation + error state.
 describe('RoomsPage space actions', () => {
-  let alertPrompt: ReturnType<typeof vi.fn>;
-  let alertConfirm: ReturnType<typeof vi.fn>;
-  let createSpace: ReturnType<typeof vi.fn>;
-  let createRoomInSpace: ReturnType<typeof vi.fn>;
-  let leaveSpace: ReturnType<typeof vi.fn>;
+  let alertPrompt: Mock;
+  let alertConfirm: Mock;
+  let createSpace: Mock;
+  let createRoomInSpace: Mock;
+  let leaveSpace: Mock;
 
   function build(
     activeUserId: string | null = '@me:hs',
@@ -322,23 +322,24 @@ describe('RoomsPage space actions', () => {
 // prompts for a name (alert), or reads a pending invite, then delegates to the
 // services and handles selection + success/error toasts.
 describe('RoomsPage room / DM / invite actions', () => {
-  let alertPrompt: ReturnType<typeof vi.fn>;
-  let toastShow: ReturnType<typeof vi.fn>;
-  let pick: ReturnType<typeof vi.fn>;
-  let createRoom: ReturnType<typeof vi.fn>;
+  let alertPrompt: Mock;
+  let toastShow: Mock;
+  let pick: Mock;
+  let createRoom: Mock;
   let directIds: ReturnType<typeof signal<ReadonlySet<string>>>;
-  let createDirectMessage: ReturnType<typeof vi.fn>;
-  let inviteUser: ReturnType<typeof vi.fn>;
-  let acceptInvite: ReturnType<typeof vi.fn>;
-  let declineInvite: ReturnType<typeof vi.fn>;
-  let userCardOpen: ReturnType<typeof vi.fn>;
-  let memberInfoOpen: ReturnType<typeof vi.fn>;
-  let canModerate: ReturnType<typeof vi.fn>;
+  let createDirectMessage: Mock;
+  let inviteUser: Mock;
+  let acceptInvite: Mock;
+  let declineInvite: Mock;
+  let userCardOpen: Mock;
+  let memberInfoOpen: Mock;
+  let canModerate: Mock;
   let pending: WritableSignal<PendingInvite[]>;
 
   function pendingInvite(over: Partial<PendingInvite> = {}): PendingInvite {
     return {
       roomId: '!i:hs',
+      accountId: '@me:hs',
       name: 'Invited',
       initial: 'I',
       avatarMxc: null,
@@ -764,10 +765,10 @@ describe('RoomsPage room / DM / invite actions', () => {
 // removing a joined child delegate to SpacesService (the live read model + sync
 // surface the result, so the page only fires the SDK-backed call).
 describe('RoomsPage space hierarchy actions', () => {
-  let alertConfirm: ReturnType<typeof vi.fn>;
-  let openSpace: ReturnType<typeof vi.fn>;
-  let joinRoom: ReturnType<typeof vi.fn>;
-  let removeRoomFromSpace: ReturnType<typeof vi.fn>;
+  let alertConfirm: Mock;
+  let openSpace: Mock;
+  let joinRoom: Mock;
+  let removeRoomFromSpace: Mock;
 
   function childRoom(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
     return {
@@ -798,6 +799,8 @@ describe('RoomsPage space hierarchy actions', () => {
           rooms: signal<RoomSummary[]>([
             {
               id: '!c:hs',
+              accountId: '@me:hs',
+              accountIds: ['@me:hs'],
               name: 'general',
               initial: 'G',
               avatarMxc: null,
@@ -811,6 +814,7 @@ describe('RoomsPage space hierarchy actions', () => {
               lastMessage: '',
               activityTs: 0,
               favourite: false,
+              lowPriority: false,
             },
           ]),
         }),
@@ -821,6 +825,7 @@ describe('RoomsPage space hierarchy actions', () => {
           spaces: signal<SpaceSummary[]>([
             {
               id: '!s:hs',
+              accountId: '@me:hs',
               name: 'My Space',
               initial: 'M',
               avatarMxc: null,

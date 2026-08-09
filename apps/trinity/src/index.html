@@ -35,9 +35,16 @@
 
     <link rel="icon" type="image/png" href="assets/icon/favicon.png" />
 
-    <!-- add to homescreen for ios -->
+    <!-- Install metadata for the web build. Native (Capacitor) and desktop (Electron)
+         wrap this same index.html and ignore both: they ship their own icons and are
+         already installed. Icon `src`s inside the manifest resolve against the manifest
+         URL, which is served from the app root alongside index.html. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+
+    <!-- add to homescreen for ios (iOS reads the apple-touch-icon, not the manifest) -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <link rel="apple-touch-icon" href="assets/icon/apple-touch-icon.png" />
   </head>
 
   <body>

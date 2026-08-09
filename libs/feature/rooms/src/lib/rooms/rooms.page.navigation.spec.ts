@@ -2,11 +2,13 @@ import {
   SHARED_MOCKS,
   clientStub,
   invitesProvider,
+  setRouteQueryParams,
   shellFrom,
   stubNarrowLayout,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { AuthService } from '@trinity/data-access/auth';
 import { type PendingInvite } from '@trinity/data-access/invites';
@@ -29,7 +31,7 @@ import {
 } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
@@ -39,14 +41,14 @@ import { MessageSearchService } from '../message-search/message-search.service';
 // kind: room/dm open the room, space selects it in the rail, a directory person
 // opens a DM, an invite runs the page's accept path.
 describe('RoomsPage quick switcher', () => {
-  let pick: ReturnType<typeof vi.fn>;
-  let messageSearch: ReturnType<typeof vi.fn>;
-  let createDirectMessage: ReturnType<typeof vi.fn>;
-  let acceptInvite: ReturnType<typeof vi.fn>;
-  let openSpace: ReturnType<typeof vi.fn>;
-  let timelineOpen: ReturnType<typeof vi.fn>;
+  let pick: Mock;
+  let messageSearch: Mock;
+  let createDirectMessage: Mock;
+  let acceptInvite: Mock;
+  let openSpace: Mock;
+  let timelineOpen: Mock;
   let pending: WritableSignal<PendingInvite[]>;
-  let dialogHasOpen: ReturnType<typeof vi.fn>;
+  let dialogHasOpen: Mock;
 
   function build() {
     pick = vi.fn();
@@ -148,6 +150,7 @@ describe('RoomsPage quick switcher', () => {
     pending.set([
       {
         roomId: '!i:hs',
+        accountId: '@me:hs',
         name: 'Invited',
         initial: 'I',
         avatarMxc: null,
@@ -260,9 +263,9 @@ describe('RoomsPage quick switcher', () => {
 // pages keyed off `activeRoomId`: picking a room opens the chat page, and the back
 // button (`backToList`) returns to the list. At md+ both columns are static columns.
 describe('RoomsPage mobile navigation', () => {
-  let timelineOpen: ReturnType<typeof vi.fn>;
-  let threadsOpen: ReturnType<typeof vi.fn>;
-  let releaseAll: ReturnType<typeof vi.fn>;
+  let timelineOpen: Mock;
+  let threadsOpen: Mock;
+  let releaseAll: Mock;
 
   function build() {
     timelineOpen = vi.fn();
@@ -389,7 +392,7 @@ describe('RoomsPage account switcher summary', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        MockProvider(RoomsService, { revision: signal(0).asReadonly() }),
+        MockProvider(RoomsService),
         MockProvider(SpacesService),
         MockProvider(TimelineService),
         MockProvider(MatrixClientService, {
@@ -457,6 +460,8 @@ describe('RoomsPage keyboard room switching', () => {
   function roomSummary(id: string, unread = 0): RoomSummary {
     return {
       id,
+      accountId: '@me:hs',
+      accountIds: ['@me:hs'],
       name: id,
       initial: id[1].toUpperCase(),
       avatarMxc: null,
@@ -470,6 +475,7 @@ describe('RoomsPage keyboard room switching', () => {
       lastMessage: '',
       activityTs: 0,
       favourite: false,
+      lowPriority: false,
     };
   }
 
@@ -729,5 +735,111 @@ describe('RoomsPage keyboard room switching', () => {
     expect(shell.store.activeRoomId()).toBe('!b:hs'); // the new chord does
 
     TestBed.inject(KeyboardShortcutsService).resetAll(); // don't leak into other specs
+  });
+});
+
+// A notification tap (web Notification, Electron toast, or an FCM/APNs tap) navigates to
+// `/rooms?room=<id>`; the shell is what has to turn that into an open room. These drive the
+// real query param through to `activeRoomId` — the producer side was already asserted
+// against a mocked Router in the notifications lib, which stayed green for the whole time
+// nothing consumed the param.
+describe('RoomsPage notification deep link', () => {
+  let timelineOpen: Mock;
+
+  function build() {
+    timelineOpen = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        ...SHARED_MOCKS,
+        MockProvider(RoomsService),
+        MockProvider(SpacesService),
+        MockProvider(TimelineService, { open: timelineOpen }),
+        MockProvider(MediaService),
+        MockProvider(MatrixClientService, {
+          isInitialized: true,
+          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+          clientFor: () => clientStub(),
+        }),
+        MockProvider(UnreadAggregatorService, {
+          unreadByAccount: signal<ReadonlyMap<string, number>>(
+            new Map(),
+          ).asReadonly(),
+        }),
+        MockProvider(ThreadsService),
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(MessageSearchService),
+        MockProvider(AuthService),
+        MockProvider(TrnDialogService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return shellFrom();
+  }
+
+  afterEach(() => setRouteQueryParams({})); // never leak a deep link into the next test
+
+  it('opens the room named by ?room= when the page is created with it', () => {
+    setRouteQueryParams({ room: '!notified:hs' });
+    const shell = build();
+
+    TestBed.tick(); // run the deep-link effect
+
+    expect(shell.store.activeRoomId()).toBe('!notified:hs');
+    expect(timelineOpen).toHaveBeenCalledWith('!notified:hs');
+  });
+
+  it('opens it when the param arrives on the already-active /rooms route', () => {
+    // THE case: tapping a notification while the shell is open does not re-create the
+    // component, so a route snapshot read sees nothing. Only the stream fires.
+    const shell = build();
+    TestBed.tick();
+    expect(shell.store.activeRoomId()).toBeNull();
+
+    setRouteQueryParams({ room: '!notified:hs' });
+    TestBed.tick();
+
+    expect(shell.store.activeRoomId()).toBe('!notified:hs');
+    expect(timelineOpen).toHaveBeenCalledWith('!notified:hs');
+  });
+
+  it('strips the param with replaceUrl so Back does not re-open the room', () => {
+    setRouteQueryParams({ room: '!notified:hs' });
+    build();
+
+    TestBed.tick();
+
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({
+        queryParams: { room: null },
+        replaceUrl: true,
+      }),
+    );
+  });
+
+  it('does not re-open the room that is already open', () => {
+    const shell = build();
+    shell.nav.onSelectRoom('!notified:hs');
+    timelineOpen.mockClear();
+
+    setRouteQueryParams({ room: '!notified:hs' });
+    TestBed.tick();
+
+    expect(shell.store.activeRoomId()).toBe('!notified:hs');
+    expect(timelineOpen).not.toHaveBeenCalled();
+  });
+
+  it('ignores a route with no room param', () => {
+    const shell = build();
+
+    TestBed.tick();
+
+    expect(shell.store.activeRoomId()).toBeNull();
+    expect(TestBed.inject(Router).navigate).not.toHaveBeenCalled();
   });
 });

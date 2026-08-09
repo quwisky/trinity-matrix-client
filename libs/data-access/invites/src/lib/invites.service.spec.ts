@@ -1,9 +1,9 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { RoomEvent } from 'matrix-js-sdk';
+import { RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { InvitesService } from './invites.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
@@ -57,6 +57,13 @@ function fakeRoom(opts: RoomOpts, myUserId: string) {
   };
 }
 
+/**
+ * The fakes here implement only the slice of MatrixClient InvitesService touches, so the
+ * widening cast lives at this one visible seam rather than implicitly at every stub site.
+ */
+const asClient = (fake: object): MatrixClient =>
+  fake as unknown as MatrixClient;
+
 const activeUserId = signal<string | null>(null);
 
 function setup(rooms: ReturnType<typeof fakeRoom>[]) {
@@ -83,13 +90,13 @@ function setup(rooms: ReturnType<typeof fakeRoom>[]) {
   // `isInitialized` and `instance` are getters on the real service; stub the
   // mocked members so the service reads our fake client.
   ngMocks.stubMember(matrix, 'isInitialized', true);
-  ngMocks.stubMember(matrix, 'instance', client);
+  ngMocks.stubMember(matrix, 'instance', asClient(client));
   const svc = TestBed.inject(InvitesService);
   svc.connect();
   return { svc, client, matrix };
 }
 
-function handlerFor(client: { on: ReturnType<typeof vi.fn> }, event: string) {
+function handlerFor(client: { on: Mock }, event: string) {
   const call = client.on.mock.calls.find(([e]) => e === event);
   return call?.[1] as ((...args: unknown[]) => void) | undefined;
 }
@@ -258,7 +265,7 @@ describe('InvitesService', () => {
       on: vi.fn(),
       off: vi.fn(),
     };
-    ngMocks.stubMember(matrix, 'instance', clientB);
+    ngMocks.stubMember(matrix, 'instance', asClient(clientB));
     svc.connect();
 
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!b:hs']);
@@ -268,7 +275,7 @@ describe('InvitesService', () => {
 
   it('re-projects onto the newly-active account when the active account switches', () => {
     const { svc, client, matrix } = setup([
-      fakeRoom({ roomId: '!a:hs', name: 'A invite' }),
+      fakeRoom({ roomId: '!a:hs', name: 'A invite' }, '@me:hs'),
     ]);
     activeUserId.set('@a:hs');
     TestBed.inject(ApplicationRef).tick(); // effect's first run: still A
@@ -277,13 +284,15 @@ describe('InvitesService', () => {
 
     const clientB = {
       getUserId: () => '@b:hs',
-      getRooms: () => [fakeRoom({ roomId: '!b:hs', name: 'B invite' })],
+      getRooms: () => [
+        fakeRoom({ roomId: '!b:hs', name: 'B invite' }, '@b:hs'),
+      ],
       joinRoom: vi.fn().mockResolvedValue({}),
       leave: vi.fn().mockResolvedValue({}),
       on: vi.fn(),
       off: vi.fn(),
     };
-    ngMocks.stubMember(matrix, 'instance', clientB);
+    ngMocks.stubMember(matrix, 'instance', asClient(clientB));
     activeUserId.set('@b:hs');
     TestBed.inject(ApplicationRef).tick();
 
@@ -327,7 +336,7 @@ describe('InvitesService per-account answers', () => {
     });
     const matrix = TestBed.inject(MatrixClientService);
     ngMocks.stubMember(matrix, 'isInitialized', true);
-    ngMocks.stubMember(matrix, 'instance', activeClient);
+    ngMocks.stubMember(matrix, 'instance', asClient(activeClient));
     return { svc: TestBed.inject(InvitesService), activeClient, ownerClient };
   }
 

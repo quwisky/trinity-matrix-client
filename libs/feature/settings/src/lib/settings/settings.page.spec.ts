@@ -3,7 +3,7 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, type Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { SettingsPage } from './settings.page';
 
@@ -43,7 +43,7 @@ const ROUTES: Routes = [
  */
 function stubMatchMedia(wide: boolean): {
   fireChange: (matches: boolean) => void;
-  removeListener: ReturnType<typeof vi.fn>;
+  removeListener: Mock;
 } {
   let handler: ((event: MediaQueryListEvent) => void) | undefined;
   const removeListener = vi.fn();

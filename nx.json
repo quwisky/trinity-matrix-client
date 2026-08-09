@@ -36,6 +36,16 @@
         }
       }
     },
+    "typecheck": {
+      "cache": true,
+      "//": "The ONLY gate that type-checks specs. Every project's tsconfig.json excludes `src/**/*.spec.ts`, the type-aware ESLint block ignores them too, and Vitest goes through @analogjs/vite-plugin-angular, which transpiles without checking — so until this existed a spec could drift arbitrarily far from the code it claims to test (a fake client missing 358 MatrixClient members, a mock tuple the assertions index past the end of) and every gate stayed green. `^production` for the same reason lint needs it: a spec's types come from its DEPENDENCIES' source, so a model change in data-access must invalidate its consumers' cached pass.",
+      "inputs": ["default", "^production"],
+      "options": {
+        "command": "tsc -p tsconfig.spec.json --noEmit",
+        "cwd": "{projectRoot}"
+      },
+      "executor": "nx:run-commands"
+    },
     "lint": {
       "cache": true,
       "//": "`^production` is load-bearing: @typescript-eslint/no-deprecated is type-aware, so a project's lint result depends on its DEPENDENCIES' source (the @deprecated tag lives there). Without dependency inputs, deprecating an export in util-matrix leaves every consumer reporting a cached pass — the ban silently stops working across exactly the lib boundaries it exists to police.",

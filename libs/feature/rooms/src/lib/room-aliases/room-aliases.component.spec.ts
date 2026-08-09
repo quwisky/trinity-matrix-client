@@ -1,7 +1,7 @@
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { RoomAliasesService } from '@trinity/data-access/rooms';
 import { RoomAliasesComponent } from './room-aliases.component';
@@ -13,9 +13,9 @@ async function build(
     server?: string | null;
   } = {},
   over: {
-    addAlias?: ReturnType<typeof vi.fn>;
-    removeAlias?: ReturnType<typeof vi.fn>;
-    setCanonicalAlias?: ReturnType<typeof vi.fn>;
+    addAlias?: Mock;
+    removeAlias?: Mock;
+    setCanonicalAlias?: Mock;
   } = {},
 ) {
   const addAlias = over.addAlias ?? vi.fn(() => of(undefined));

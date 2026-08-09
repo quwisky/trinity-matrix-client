@@ -1,16 +1,21 @@
 import { TestBed } from '@angular/core/testing';
-import { NavigationEnd, Router } from '@angular/router';
+import {
+  NavigationEnd,
+  NavigationStart,
+  Router,
+  type Event as RouterEvent,
+} from '@angular/router';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NavigationFocusService } from './navigation-focus.service';
 
 describe('NavigationFocusService', () => {
-  let events: Subject<unknown>;
+  let events: Subject<RouterEvent>;
   let svc: NavigationFocusService;
 
   beforeEach(() => {
-    events = new Subject<unknown>();
+    events = new Subject<RouterEvent>();
     TestBed.configureTestingModule({
       providers: [MockProvider(Router, { events })],
     });
@@ -71,7 +76,7 @@ describe('NavigationFocusService', () => {
       const spy = vi.spyOn(svc, 'focusEnteringPage');
       svc.init();
 
-      events.next({ id: 1 }); // not a NavigationEnd
+      events.next(new NavigationStart(1, '/rooms')); // not a NavigationEnd
       expect(spy).not.toHaveBeenCalled();
 
       events.next(new NavigationEnd(1, '/rooms', '/rooms'));

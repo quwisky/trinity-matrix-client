@@ -7,10 +7,10 @@ import { TrinityOidcTokenRefresher } from './oidc-token-refresher';
 // before it can build anything. OAuth2 and TokenRefresher stay REAL, so these tests
 // exercise the actual refresh-token grant rather than a re-description of it.
 const getAuthMetadata = vi.fn();
-const createClientSpy = vi.fn(() => ({ getAuthMetadata }));
+const createClientSpy = vi.fn((_opts: unknown) => ({ getAuthMetadata }));
 vi.mock('matrix-js-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('matrix-js-sdk')>()),
-  createClient: (opts: unknown) => createClientSpy(opts as never),
+  createClient: (opts: unknown) => createClientSpy(opts),
 }));
 
 const BINDING = {

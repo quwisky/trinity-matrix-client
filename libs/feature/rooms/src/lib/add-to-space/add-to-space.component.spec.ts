@@ -8,7 +8,7 @@ import {
 } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { AddToSpaceComponent } from './add-to-space.component';
 
 function room(id: string, name: string) {
@@ -25,7 +25,7 @@ async function build(
     spaces?: ReturnType<typeof space>[];
     existing?: string[];
   } = {},
-  over: { addExistingRoom?: ReturnType<typeof vi.fn> } = {},
+  over: { addExistingRoom?: Mock } = {},
 ) {
   const addExistingRoom = over.addExistingRoom ?? vi.fn(() => of(undefined));
   const close = vi.fn();

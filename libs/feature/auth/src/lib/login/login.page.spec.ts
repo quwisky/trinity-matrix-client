@@ -1,6 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AuthService, FactoryResetService } from '@trinity/data-access/auth';
+import {
+  AuthService,
+  FactoryResetService,
+  type OidcAuthorizationParams,
+} from '@trinity/data-access/auth';
 import {
   AppRestartService,
   SessionStorageService,
@@ -9,7 +13,7 @@ import { TrnAlertService } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { LoginPage } from './login.page';
 import { SsoStateStore } from '../sso-state.store';
 import { OidcStateStore } from '../oidc-state.store';
@@ -268,7 +272,8 @@ describe('LoginPage', () => {
 
   it('starts SSO with a state nonce stashed and bound to the callback redirect', async () => {
     const getSsoUrl = vi.fn(
-      () => 'https://hs.example/_matrix/sso?redirectUrl=x',
+      (_baseUrl: string, _redirectUrl: string) =>
+        'https://hs.example/_matrix/sso?redirectUrl=x',
     );
     const { cmp, ssoStore } = await renderLogin({
       getSsoUrl,
@@ -293,7 +298,9 @@ describe('LoginPage', () => {
   });
 
   it('re-auth SSO stashes an add-mode nonce bound to the existing device', async () => {
-    const getSsoUrl = vi.fn(() => 'https://hs.example/sso');
+    const getSsoUrl = vi.fn(
+      (_baseUrl: string, _redirectUrl: string) => 'https://hs.example/sso',
+    );
     const getSupportedFlows = vi.fn(() => of(['m.login.sso']));
     const { cmp, ssoStore } = await renderLogin(
       {
@@ -496,7 +503,9 @@ describe('LoginPage', () => {
     };
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
     try {
-      const getSsoUrl = vi.fn(() => 'https://hs.example/sso');
+      const getSsoUrl = vi.fn(
+        (_baseUrl: string, _redirectUrl: string) => 'https://hs.example/sso',
+      );
       const { cmp } = await renderLogin({
         getSsoUrl,
       } as unknown as Partial<AuthService>);
@@ -528,7 +537,7 @@ describe('LoginPage', () => {
 
     /** An OIDC-native login page: discovered homeserver + provider metadata. */
     async function renderOidcReady(
-      buildOidcAuthorizationRequest: ReturnType<typeof vi.fn>,
+      buildOidcAuthorizationRequest: Mock,
       oidcStore?: Partial<OidcStateStore>,
     ) {
       const rendered = await renderLogin(
@@ -587,7 +596,9 @@ describe('LoginPage', () => {
     });
 
     it('re-authenticates the stored device instead of minting a new one', async () => {
-      const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
+      const buildOidcAuthorizationRequest = vi.fn(
+        (_params: OidcAuthorizationParams) => of(OIDC_REQUEST),
+      );
       const { cmp, oidcStore } = await renderLogin(
         {
           buildOidcAuthorizationRequest,
@@ -631,7 +642,9 @@ describe('LoginPage', () => {
     it('stashes no expectation for an ordinary login', async () => {
       // Any account the user picks is the right answer here, so an expectation would only
       // create a way to reject a perfectly good sign-in.
-      const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
+      const buildOidcAuthorizationRequest = vi.fn(
+        (_params: OidcAuthorizationParams) => of(OIDC_REQUEST),
+      );
       const { cmp, oidcStore } = await renderOidcReady(
         buildOidcAuthorizationRequest,
       );
@@ -646,7 +659,9 @@ describe('LoginPage', () => {
     });
 
     it('builds the authorization request, stashes the sign-in state, then redirects (web)', async () => {
-      const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
+      const buildOidcAuthorizationRequest = vi.fn(
+        (_params: OidcAuthorizationParams) => of(OIDC_REQUEST),
+      );
       const { cmp, oidcStore } = await renderOidcReady(
         buildOidcAuthorizationRequest,
       );
@@ -697,7 +712,9 @@ describe('LoginPage', () => {
         const savePending = new Promise<void>((resolve) => {
           releaseSave = resolve;
         });
-        const buildOidcAuthorizationRequest = vi.fn(() => of(OIDC_REQUEST));
+        const buildOidcAuthorizationRequest = vi.fn(
+          (_params: OidcAuthorizationParams) => of(OIDC_REQUEST),
+        );
         const { cmp } = await renderOidcReady(buildOidcAuthorizationRequest, {
           save: vi.fn(() => savePending),
         });
@@ -724,7 +741,9 @@ describe('LoginPage', () => {
         ...OIDC_REQUEST,
         url: 'https://op/authorize?state=STATE1',
       };
-      const buildOidcAuthorizationRequest = vi.fn(() => of(request));
+      const buildOidcAuthorizationRequest = vi.fn(
+        (_params: OidcAuthorizationParams) => of(request),
+      );
       const { cmp } = await renderLogin({
         buildOidcAuthorizationRequest,
       } as unknown as Partial<AuthService>);
@@ -754,7 +773,9 @@ describe('LoginPage', () => {
           ...OIDC_REQUEST,
           url: 'https://op/authorize?state=STATE1',
         };
-        const buildOidcAuthorizationRequest = vi.fn(() => of(request));
+        const buildOidcAuthorizationRequest = vi.fn(
+          (_params: OidcAuthorizationParams) => of(request),
+        );
         const { cmp, oidcStore } = await renderOidcReady(
           buildOidcAuthorizationRequest,
         );

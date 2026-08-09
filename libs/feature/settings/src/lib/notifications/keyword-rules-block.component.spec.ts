@@ -1,8 +1,9 @@
+import type { DebugElement } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import {
   KeywordRulesService,
@@ -17,28 +18,31 @@ const LOUD: KeywordRule = {
   pattern: 'oncall',
   enabled: true,
   sound: true,
+  soundValue: 'default',
 };
 const QUIET: KeywordRule = {
   ruleId: 'trinity',
   pattern: 'trinity',
   enabled: true,
   sound: false,
+  soundValue: 'default',
 };
 const OFF: KeywordRule = {
   ruleId: 'standby',
   pattern: 'standby',
   enabled: false,
   sound: true,
+  soundValue: 'default',
 };
 
 async function build(
   over: {
     keywords?: KeywordRule[][];
     hasLoaded?: boolean;
-    add?: ReturnType<typeof vi.fn>;
-    remove?: ReturnType<typeof vi.fn>;
-    setSound?: ReturnType<typeof vi.fn>;
-    find?: ReturnType<typeof vi.fn>;
+    add?: Mock;
+    remove?: Mock;
+    setSound?: Mock;
+    find?: Mock;
   } = {},
 ) {
   // `keywords` is a queue of successive reads, so a test can model the list changing
@@ -83,10 +87,9 @@ const rows = (fixture: { nativeElement: HTMLElement }) =>
 
 /** The rendered checkbox instances, so a test asserts pixels rather than the model. */
 const checkboxes = (fixture: {
-  debugElement: {
-    queryAll: (p: unknown) => { componentInstance: HlmCheckbox }[];
-  };
-}) => fixture.debugElement.queryAll(By.directive(HlmCheckbox));
+  debugElement: DebugElement;
+}): { componentInstance: HlmCheckbox }[] =>
+  fixture.debugElement.queryAll(By.directive(HlmCheckbox));
 
 describe('KeywordRulesBlockComponent', () => {
   it('lists the account’s keywords', async () => {

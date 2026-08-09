@@ -498,6 +498,51 @@ describe('PushService', () => {
 
     expect(h.push.register).not.toHaveBeenCalled();
     expect(client.setPusher).not.toHaveBeenCalled();
+    // Push is the ONLY delivery path on mobile, so a denial has to be visible in
+    // settings — "denied" and "never attempted" must not both read as idle.
+    expect(svc.registration()).toMatchObject({ status: 'error' });
+  });
+
+  describe('a refused device token', () => {
+    it('surfaces the registrationError and lets a later register() retry', async () => {
+      // FCM/APNs refuses the token AFTER the one-time OS flow has been marked as run.
+      // Without releasing that guard the refusal is silent AND permanent: no pusher,
+      // no notifications, and no way back for the lifetime of the process.
+      const { svc, client } = setup();
+      await firstValueFrom(svc.register());
+
+      h.listeners['registrationError']({ error: 'SENDER_ID_MISMATCH' });
+
+      expect(svc.registration()).toEqual({
+        status: 'error',
+        message: 'SENDER_ID_MISMATCH',
+      });
+
+      // The retry gets as far as the OS again, and a token this time registers pushers.
+      await firstValueFrom(svc.register());
+      expect(h.push.register).toHaveBeenCalledTimes(2);
+
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+      expect(client.setPusher).toHaveBeenCalled();
+    });
+
+    it('releases the one-time guard when register() itself rejects', async () => {
+      const { svc } = setup();
+      h.push.register.mockRejectedValueOnce(
+        new Error('no google play services'),
+      );
+
+      await firstValueFrom(svc.register());
+
+      expect(svc.registration()).toEqual({
+        status: 'error',
+        message: 'no google play services',
+      });
+
+      await firstValueFrom(svc.register());
+      expect(h.push.register).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('runs the OS-registration flow only once (idempotent)', async () => {

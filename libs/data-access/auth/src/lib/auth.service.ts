@@ -21,6 +21,7 @@ import { AvatarService } from '@trinity/data-access/media';
 import { MediaService } from '@trinity/data-access/media';
 import { PushService } from '@trinity/data-access/notifications';
 import {
+  DraftStoreService,
   SessionStorageService,
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
@@ -68,6 +69,7 @@ export class AuthService {
   private readonly media = inject(MediaService);
   private readonly push = inject(PushService);
   private readonly oidc = inject(OidcClientService);
+  private readonly drafts = inject(DraftStoreService);
 
   /**
    * Resolve a homeserver base URL from a user-entered domain (e.g. "matrix.org"
@@ -349,6 +351,9 @@ export class AuthService {
             tap(() => {
               this.avatars.releaseAll();
               this.media.releaseAll();
+              // Composer drafts are the plaintext of messages destined for encrypted
+              // rooms; they must not survive a sign-out (see DraftStoreService.clearAll).
+              this.drafts.clearAll();
             }),
             switchMap(() => this.storage.clear()),
           );
@@ -360,6 +365,10 @@ export class AuthService {
           switchMap(() => revoke),
           switchMap(() => serverLogout),
           switchMap(() => this.matrix.remove(target)),
+          // Drafts are keyed by conversation, with nothing saying which account wrote
+          // them, so the outgoing account's plaintext can only be dropped by dropping
+          // them all. Losing a draft is recoverable; leaking one is not.
+          tap(() => this.drafts.clearAll()),
           switchMap(() => this.storage.remove(target)),
           switchMap(() => {
             const active = this.matrix.activeUserId();

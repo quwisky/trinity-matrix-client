@@ -3,7 +3,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import {
   PushGatewayService,
   PushService,
@@ -20,10 +20,10 @@ interface Stub {
 
 const NOTIFY = 'https://push.example.org/_matrix/push/v1/notify';
 
-let saveSpy: ReturnType<typeof vi.fn>;
-let clearSpy: ReturnType<typeof vi.fn>;
-let registerSpy: ReturnType<typeof vi.fn>;
-let unregisterSpy: ReturnType<typeof vi.fn>;
+let saveSpy: Mock;
+let clearSpy: Mock;
+let registerSpy: Mock;
+let unregisterSpy: Mock;
 let dialogResult: WritableSignal<boolean>;
 
 function providers(overrides: Partial<Stub> = {}) {

@@ -172,6 +172,7 @@ export function projectFromClient(
       matrix,
       () => projection.isConnected(),
       () => projection.connect(),
+      () => projection.disconnect(),
     );
   }
 

@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountProfilesService } from './account-profiles.service';
 
@@ -55,7 +55,7 @@ function setup(
 
 /** Pull a captured listener by event name. */
 function handlerFor(
-  client: { on: ReturnType<typeof vi.fn> },
+  client: { on: Mock },
   event: string,
 ): ((e: unknown, user: { userId: string }) => void) | undefined {
   const call = client.on.mock.calls.find(([e]) => e === event);

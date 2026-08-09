@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import {
   ComposerSettingsService,
   SystemLineSettingsService,
@@ -38,13 +38,13 @@ describe('AppearanceSettingsComponent', () => {
   let showMembership: ReturnType<typeof signal<boolean>>;
   let showProfile: ReturnType<typeof signal<boolean>>;
   let showRoomChanges: ReturnType<typeof signal<boolean>>;
-  let setShowMembership: ReturnType<typeof vi.fn>;
-  let setShowProfile: ReturnType<typeof vi.fn>;
-  let setShowRoomChanges: ReturnType<typeof vi.fn>;
+  let setShowMembership: Mock;
+  let setShowProfile: Mock;
+  let setShowRoomChanges: Mock;
   let spaceOrderDefault: ReturnType<typeof signal<RoomSortMode>>;
-  let setDefault: ReturnType<typeof vi.fn>;
+  let setDefault: Mock;
   let showFormattingToolbar: ReturnType<typeof signal<boolean>>;
-  let setShowFormattingToolbar: ReturnType<typeof vi.fn>;
+  let setShowFormattingToolbar: Mock;
 
   beforeEach(() => {
     preference = signal<ThemePreference>('system');

@@ -6,6 +6,7 @@
   "prefix": "trn",
   "tags": ["type:data-access", "scope:shared"],
   "targets": {
-    "test": {}
+    "test": {},
+    "typecheck": {}
   }
 }

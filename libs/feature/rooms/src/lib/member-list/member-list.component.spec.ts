@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { AvatarComponent } from '@trinity/ui';
 import { PresenceService } from '@trinity/data-access/profile';
+import { type MemberSummary } from '@trinity/data-access/rooms';
 import { type PresenceState } from '@trinity/util/matrix';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
@@ -19,7 +20,9 @@ const presenceStub = {
 const providers = [{ provide: PresenceService, useValue: presenceStub }];
 
 // A member view-model, defaulting to a regular member (power level 0).
-function member(over: Partial<MemberSummaryLike> & { userId: string }) {
+function member(
+  over: Partial<MemberSummary> & { userId: string },
+): MemberSummary {
   return {
     name: over.userId,
     initial: over.userId[1]?.toUpperCase() ?? '?',
@@ -29,8 +32,6 @@ function member(over: Partial<MemberSummaryLike> & { userId: string }) {
     ...over,
   };
 }
-type MemberSummaryLike = ReturnType<typeof member>;
-
 const opts = { imports: [MockComponent(AvatarComponent)], providers };
 
 /** Visible section headers, in render order (e.g. ['Admin — 1', 'Member — 2']). */

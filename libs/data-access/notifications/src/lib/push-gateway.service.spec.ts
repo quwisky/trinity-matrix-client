@@ -179,13 +179,48 @@ describe('PushGatewayService', () => {
       expect(svc.appliedAppId()).toBe('first.app.id');
     });
 
-    it('does nothing when there is no override to attach it to', async () => {
+    it('records the id when the gateway is the build-time default, with no override', async () => {
+      // The pushers a stock build registers are just as real. While the ledger lived
+      // inside the override blob this path recorded nothing, so a later app-id change
+      // left the first pusher forwarding room/event metadata to the old gateway forever.
       const svc = setup(ENV);
       await svc.init();
       await svc.markApplied('eu.qwky.trinity');
 
-      expect(svc.appliedAppId()).toBeNull();
-      expect(h.store.has(KEY)).toBe(false);
+      expect(svc.appliedAppId()).toBe('eu.qwky.trinity');
+      expect(svc.override()).toBeNull(); // and it did not invent an override
+
+      const reloaded = setup(ENV);
+      await reloaded.init();
+      expect(reloaded.appliedAppId()).toBe('eu.qwky.trinity');
+    });
+
+    it('survives clear(), which does not delete the pushers it names', async () => {
+      const svc = setup(ENV);
+      await svc.save(NOTIFY, 'org.example.gw');
+      await svc.markApplied('org.example.gw');
+
+      await svc.clear();
+
+      expect(svc.appliedAppId()).toBe('org.example.gw');
+    });
+
+    it('migrates a ledger written into the old override blob', async () => {
+      h.store.set(
+        KEY,
+        JSON.stringify({ gatewayUrl: NOTIFY, appliedAppId: 'legacy.app.id' }),
+      );
+      const svc = setup();
+      await svc.init();
+
+      expect(svc.appliedAppId()).toBe('legacy.app.id');
+
+      // Rewritten under its own key: dropping the override no longer takes the ledger
+      // with it, so the stale pusher is still removable after a reload.
+      await svc.clear();
+      const reloaded = setup();
+      await reloaded.init();
+      expect(reloaded.appliedAppId()).toBe('legacy.app.id');
     });
   });
 

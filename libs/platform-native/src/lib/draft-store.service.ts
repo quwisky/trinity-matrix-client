@@ -76,6 +76,27 @@ export class DraftStoreService implements OnDestroy {
     }
   }
 
+  /**
+   * Drop every draft, in memory and on disk — for sign-out.
+   *
+   * A draft is the plaintext of a message destined for an encrypted room, so it must not
+   * outlive the session that wrote it; on web/Electron the store is localStorage, readable
+   * by whoever next uses the browser profile. The pending write is cancelled first, or it
+   * would re-persist the map 400ms after the wipe.
+   *
+   * Not account-scoped, because drafts are keyed by conversation and nothing distinguishes
+   * whose they are — so signing one of several accounts out clears all of them. Losing a
+   * draft is recoverable; leaking one is not.
+   */
+  clearAll(): void {
+    this.cancelPending();
+    this.drafts = new Map();
+    // Same reason as persist(): a `.catch` straight onto a non-promise throws synchronously.
+    void Promise.resolve(Preferences.remove({ key: DRAFTS_KEY })).catch(
+      () => undefined,
+    );
+  }
+
   private schedulePersist(): void {
     if (this.pending !== null) {
       return;

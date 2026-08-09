@@ -6,6 +6,7 @@
   "prefix": "trn",
   "tags": ["type:feature", "scope:matrix"],
   "targets": {
-    "test": {}
+    "test": {},
+    "typecheck": {}
   }
 }

@@ -128,11 +128,19 @@ export class CryptoService {
     return defer(() =>
       from(
         (async (): Promise<string> => {
+          // Captured once: the server read and the key generation below are both awaits,
+          // and an account switch mid-flight must not retarget the UIA user id onto a
+          // different account (or find no client at all, once the old one signed out).
+          const client = this.matrix.instance;
           const crypto = this.requireCrypto();
-          await assertNoRecoveryOnAccount(this.matrix.instance);
+          const userId = client.getUserId() ?? '';
+          await assertNoRecoveryOnAccount(client);
           const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
           await crypto.bootstrapCrossSigning({
-            authUploadDeviceSigningKeys: this.passwordUia(promptPassword),
+            authUploadDeviceSigningKeys: this.passwordUia(
+              promptPassword,
+              userId,
+            ),
           });
           await crypto.bootstrapSecretStorage({
             setupNewKeyBackup: true,
@@ -226,8 +234,11 @@ export class CryptoService {
     return defer(() =>
       from(
         (async (): Promise<void> => {
+          // Resolved before the decrypt, which is long enough to span an account
+          // switch: these keys belong to the account the import was started on.
+          const crypto = this.requireCrypto();
           const json = await decryptMegolmKeyFile(armored, passphrase);
-          await this.requireCrypto().importRoomKeysAsJson(json);
+          await crypto.importRoomKeysAsJson(json);
         })(),
       ),
     );
@@ -394,9 +405,14 @@ export class CryptoService {
   /**
    * UIA callback for uploading new device-signing keys: defers to the shared
    * password-UIA loop (probe unauthenticated, then prompt + retry).
+   *
+   * `userId` is passed in rather than read here: the callback is built after several
+   * awaits, so the account it authenticates as has to be the one the caller captured.
    */
-  private passwordUia(promptPassword: PasswordPrompt): UIAuthCallback<void> {
-    const userId = this.matrix.instance.getUserId() ?? '';
+  private passwordUia(
+    promptPassword: PasswordPrompt,
+    userId: string,
+  ): UIAuthCallback<void> {
     return (makeRequest) => runPasswordUia(makeRequest, promptPassword, userId);
   }
 

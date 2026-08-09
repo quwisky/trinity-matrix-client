@@ -5,7 +5,7 @@ import { CryptoService } from '@trinity/data-access/crypto';
 import { TrnAlertService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Observable, Subject, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { EncryptionSetupPage } from './encryption-setup.page';
 
 const KEY = 'THE-RECOVERY-KEY';
@@ -19,7 +19,7 @@ async function setup(options: SetupOptions = {}): Promise<{
   fixture: Awaited<ReturnType<typeof render<EncryptionSetupPage>>>['fixture'];
   crypto: CryptoService;
   router: Router;
-  confirm: ReturnType<typeof vi.fn>;
+  confirm: Mock;
 }> {
   const confirm = vi.fn().mockResolvedValue(options.confirmLeave ?? true);
   const { fixture } = await render(EncryptionSetupPage, {

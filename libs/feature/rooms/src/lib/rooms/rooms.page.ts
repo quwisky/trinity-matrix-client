@@ -14,9 +14,12 @@ import {
   afterNextRender,
   effect,
   inject,
+  untracked,
   viewChild,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
+import { map } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideArrowLeft,
@@ -172,6 +175,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly push = inject(PushService);
   private readonly notifications = inject(NotificationService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly injector = inject(Injector);
   readonly store = inject(RoomShellStore);
   readonly status = inject(ShellStatusService);
@@ -200,6 +204,20 @@ export class RoomsPage implements OnInit, OnDestroy {
   // so keyboard/screen-reader focus follows to the newly-shown page (see focusActiveView).
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
   private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
+
+  /**
+   * The room a notification tap asked for: `/rooms?room=<id>`, written by
+   * `NotificationService`/`PushService` after they switch to the owning account.
+   *
+   * Read as a STREAM, not from the route snapshot. `/rooms` is normally already the
+   * active route when a notification is tapped, so the router reuses this component and
+   * a snapshot read would only ever see the value the page was first created with —
+   * which is how every tap ended up landing on whatever room was already open.
+   */
+  private readonly requestedRoomId = toSignal(
+    this.route.queryParamMap.pipe(map((params) => params.get('room'))),
+    { initialValue: null },
+  );
   constructor() {
     // The service cannot read the page's viewChild refs, so hand it the focus call.
     // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
@@ -230,6 +248,25 @@ export class RoomsPage implements OnInit, OnDestroy {
       this.mixedSpaces.setAccounts(accounts);
       this.mixedInvites.setAccounts(accounts);
     });
+    // Open the room a notification tap asked for, then strip the param so Back (or a
+    // reload) does not re-open it. `activeRoomId` is read untracked: this must react to
+    // the URL only — tracking it would re-run on every ordinary room switch and, if the
+    // strip had not landed yet, yank the user back to the notified room.
+    effect(() => {
+      const roomId = this.requestedRoomId();
+      if (!roomId) {
+        return;
+      }
+      if (roomId !== untracked(() => this.store.activeRoomId())) {
+        this.nav.onSelectRoom(roomId);
+      }
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { room: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    });
   }
 
   ngOnInit(): void {
@@ -256,9 +293,20 @@ export class RoomsPage implements OnInit, OnDestroy {
     this.shortcutActions.onGlobalKeydown(event);
   }
 
+  /**
+   * Only the open room's panes are torn down here.
+   *
+   * The seven projections `ngOnInit` connects are root-scoped and outlive this page —
+   * leaving `/rooms` for settings must not blank them, and they are re-`connect()`ed
+   * on the way back in. Their real teardown is the one that matters (the last account
+   * signing out), and that belongs to the projections themselves rather than to
+   * whichever page happened to connect them: `reproject-on-switch` disconnects them
+   * when the active client goes away, and `NotificationService` drops its own listeners
+   * on the empty account set. This used to disconnect `invites` alone, which was neither
+   * symmetric nor load-bearing — one owner, not one and a half.
+   */
   ngOnDestroy(): void {
     this.nav.closeOpenRoom();
-    this.invites.disconnect();
   }
 
   /**

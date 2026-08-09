@@ -8,7 +8,7 @@ import {
 import { HistoryVisibility, JoinRule } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomSettingsComponent } from './room-settings.component';
 
 async function build(
@@ -29,11 +29,11 @@ async function build(
     supportsRestricted: boolean;
   }> = {},
   over: {
-    setName?: ReturnType<typeof vi.fn>;
-    setTopic?: ReturnType<typeof vi.fn>;
-    setAvatar?: ReturnType<typeof vi.fn>;
-    setJoinRule?: ReturnType<typeof vi.fn>;
-    setHistoryVisibility?: ReturnType<typeof vi.fn>;
+    setName?: Mock;
+    setTopic?: Mock;
+    setAvatar?: Mock;
+    setJoinRule?: Mock;
+    setHistoryVisibility?: Mock;
   } = {},
 ) {
   const setName = over.setName ?? vi.fn(() => of(undefined));

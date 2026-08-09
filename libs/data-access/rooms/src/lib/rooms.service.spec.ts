@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { ApplicationRef, signal, type WritableSignal } from '@angular/core';
 import {
+  type MatrixClient,
   ClientEvent,
   MatrixEventEvent,
   ReceiptType,
@@ -12,7 +13,7 @@ import { firstValueFrom } from 'rxjs';
 import { RoomsService } from './rooms.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 
 // A live-timeline event shaped like the bits messagePreview() reads.
 function timelineEvent(over: {
@@ -128,12 +129,20 @@ function fakeRoom(opts: {
 }
 
 /**
+ * The fakes below implement only the slice of MatrixClient the service touches, so the
+ * widening cast lives here — one visible seam — rather than being repeated, implicit,
+ * at every stub site.
+ */
+const asClient = (fake: object): MatrixClient =>
+  fake as unknown as MatrixClient;
+
+/**
  * Provide RoomsService with a MockProvider-backed MatrixClientService whose
  * `instance` getter yields `client` and whose `isInitialized` is true, matching the
  * data-holder shape the service reads. Returns both so tests can re-point `instance`.
  */
 function provideRooms(
-  client: unknown,
+  client: object,
   sendReadReceipts = true,
 ): {
   svc: RoomsService;
@@ -154,7 +163,7 @@ function provideRooms(
   });
   const matrix = TestBed.inject(MatrixClientService);
   ngMocks.stubMember(matrix, 'isInitialized', true);
-  ngMocks.stubMember(matrix, 'instance', client);
+  ngMocks.stubMember(matrix, 'instance', asClient(client));
   const svc = TestBed.inject(RoomsService);
   return { svc, matrix, activeUserId };
 }
@@ -458,7 +467,7 @@ describe('RoomsService', () => {
         markedUnread: { unread: true },
       });
       const write = { mine: vi.fn(), theirs: vi.fn() };
-      const clients: Record<string, unknown> = {
+      const clients: Record<string, object> = {
         '@me:hs': {
           getRooms: () => [mine],
           getRoom: () => mine,
@@ -811,7 +820,7 @@ describe('RoomsService', () => {
       on: vi.fn(),
       off: vi.fn(),
     };
-    ngMocks.stubMember(matrix, 'instance', clientB);
+    ngMocks.stubMember(matrix, 'instance', asClient(clientB));
     activeUserId.set('@b:hs');
     TestBed.inject(ApplicationRef).tick();
 
@@ -923,7 +932,7 @@ describe('RoomsService', () => {
     expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs']);
 
     // Simulate logout→login: MatrixClientService swaps in a fresh client.
-    ngMocks.stubMember(matrix, 'instance', clientB);
+    ngMocks.stubMember(matrix, 'instance', asClient(clientB));
     svc.connect();
 
     expect(svc.rooms().map((r) => r.id)).toEqual(['!b:hs']); // not frozen on A
@@ -1572,7 +1581,9 @@ describe('RoomsService per-account actions', () => {
     ngMocks.stubMember(
       matrix,
       'clientFor',
-      vi.fn((id: string) => (id === '@owner:hs' ? ownerClient : null)),
+      vi.fn((id: string) =>
+        id === '@owner:hs' ? asClient(ownerClient) : null,
+      ),
     );
     return { svc, activeClient, ownerClient };
   }
@@ -1662,7 +1673,7 @@ describe('RoomsService membersFor', () => {
 
   /** Fire RoomState.members as the SDK does, naming the room it happened in. */
   function fireMemberChange(
-    client: { on: ReturnType<typeof vi.fn> },
+    client: { on: Mock },
     roomId: string,
     userId = '@someone:hs',
   ): void {

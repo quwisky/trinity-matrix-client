@@ -8,7 +8,7 @@ import {
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { signal } from '@angular/core';
 import { QuickSwitcherComponent } from './quick-switcher.component';
@@ -34,9 +34,9 @@ const LOCAL: SwitcherResult[] = [
 ];
 
 describe('QuickSwitcherComponent', () => {
-  let dismiss: ReturnType<typeof vi.fn>;
-  let localResults: ReturnType<typeof vi.fn>;
-  let searchPeople: ReturnType<typeof vi.fn>;
+  let dismiss: Mock;
+  let localResults: Mock;
+  let searchPeople: Mock;
 
   function setInput(value: string, instance: QuickSwitcherComponent): void {
     instance.onInput({ target: { value } } as unknown as Event);
@@ -44,7 +44,7 @@ describe('QuickSwitcherComponent', () => {
 
   function keyEvent(): {
     event: Event;
-    preventDefault: ReturnType<typeof vi.fn>;
+    preventDefault: Mock;
   } {
     const preventDefault = vi.fn();
     return { event: { preventDefault } as unknown as Event, preventDefault };

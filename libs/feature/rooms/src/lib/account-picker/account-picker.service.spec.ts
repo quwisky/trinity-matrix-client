@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnDialogService } from '@trinity/helm/overlay';
 import { AccountPickerService } from './account-picker.service';
 import { AccountPickerComponent } from './account-picker.component';
@@ -11,7 +11,7 @@ const ACCOUNTS: AccountSummary[] = [
 ];
 
 describe('AccountPickerService', () => {
-  let openAndWait: ReturnType<typeof vi.fn>;
+  let openAndWait: Mock;
   let resolveDialog: (value: null) => void;
 
   beforeEach(() => {

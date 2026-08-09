@@ -7,7 +7,10 @@ import { AppBadgeService } from './app-badge.service';
 import { MobileBadgeService } from '@trinity/platform-native';
 import { UnreadAggregatorService } from '@trinity/data-access/rooms';
 
-type BadgingNavigator = Navigator & {
+// lib.dom declares the Badging API as REQUIRED on Navigator, but jsdom does not implement
+// it — these tests install and remove it per case, so the members have to be optional here
+// or the removal is a type error.
+type BadgingNavigator = Omit<Navigator, 'setAppBadge' | 'clearAppBadge'> & {
   setAppBadge?: unknown;
   clearAppBadge?: unknown;
 };

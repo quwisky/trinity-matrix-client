@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import {
   ThemeService,
   TRINITY_CODE_LINE_MODES,
@@ -13,9 +13,9 @@ import { CodeAppearanceBlockComponent } from './code-appearance-block.component'
 
 describe('CodeAppearanceBlockComponent', () => {
   let codeScale: ReturnType<typeof signal<CodeScale>>;
-  let setCodeScale: ReturnType<typeof vi.fn>;
+  let setCodeScale: Mock;
   let codeLines: ReturnType<typeof signal<CodeLineMode>>;
-  let setCodeLines: ReturnType<typeof vi.fn>;
+  let setCodeLines: Mock;
 
   beforeEach(() => {
     codeScale = signal<CodeScale>('default');

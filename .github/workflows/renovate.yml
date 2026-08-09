@@ -99,3 +99,76 @@ jobs:
           RENOVATE_REQUIRE_CONFIG: 'required'
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
           RENOVATE_DRY_RUN: ${{ inputs.dryRun && 'full' || '' }}
+          # Written into the workspace (the action mounts it), so the health check below
+          # can read what the run actually did. Without it this job's only success
+          # criterion is the action's exit code — see that step for why that is not one.
+          RENOVATE_LOG_FILE: renovate-log.ndjson
+          RENOVATE_LOG_FILE_LEVEL: info
+
+      # THE health check. Renovate exits 0 on a per-repository abort — `repository-changed`,
+      # a config-resolution failure, a platform error — so "the action succeeded" and "the
+      # bot updated nothing, ever" are the same green tick. That is not hypothetical: this
+      # job reported success daily for weeks while aborting on `repository-changed` every
+      # time, and the first evidence was a dependency graph that had quietly stopped moving.
+      #
+      # Two independent signals, because either alone can rot:
+      #   1. the log must carry Renovate's own end-of-repository marker and none of the
+      #      abort reasons. If a Renovate major renames the marker this step goes RED — a
+      #      false alarm, which is the correct direction to fail for a check whose entire
+      #      purpose is that silence is indistinguishable from success.
+      #   2. the dependency dashboard issue must exist. `dependencyDashboardApproval: true`
+      #      makes that issue the gate every non-patch update passes through, so an absent
+      #      one means nothing can ever be approved. Skipped on a dry run, which writes
+      #      nothing to the platform by design.
+      - name: Verify Renovate actually processed the repository
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dryRun }}
+        run: |
+          set -euo pipefail
+          log=renovate-log.ndjson
+
+          if [ ! -s "$log" ]; then
+            echo "::error::Renovate wrote no log file - it never reached the repository."
+            exit 1
+          fi
+
+          # Renovate records an aborted repository by reason rather than by exit status.
+          aborts='repository-changed|config-validation|config-secrets-invalid|platform-failure|repository-not-found|rate-limit-exceeded|cannot-fork'
+          if grep -Eq "\"($aborts)\"" "$log"; then
+            echo '::error::Renovate aborted this repository (matching lines below); it exits 0 on these.'
+            grep -E "\"($aborts)\"" "$log" | head -20
+            exit 1
+          fi
+
+          if ! grep -q 'Repository finished' "$log"; then
+            echo '::error::Renovate never logged "Repository finished" - the run did not complete, or the marker was renamed upstream (read the log artifact before relaxing this).'
+            exit 1
+          fi
+
+          if [ "${DRY_RUN:-false}" = 'true' ]; then
+            echo 'Dry run: skipping the dependency-dashboard assertion (it writes nothing).'
+            exit 0
+          fi
+
+          dashboards=$(gh issue list --repo "$REPO" --state open \
+            --search 'Dependency Dashboard in:title' --json title --jq 'length')
+          if [ "$dashboards" -eq 0 ]; then
+            echo '::error::No open Dependency Dashboard issue. dependencyDashboardApproval is on, so without it no non-patch update can ever be approved.'
+            exit 1
+          fi
+
+          echo 'Renovate completed; dependency dashboard present.'
+
+      # Uploaded on failure only: the log is the whole diagnosis for an abort, and on a
+      # healthy run it is noise nobody reads.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: renovate-log
+          path: renovate-log.ndjson
+          if-no-files-found: ignore
+          retention-days: 7
+          overwrite: true

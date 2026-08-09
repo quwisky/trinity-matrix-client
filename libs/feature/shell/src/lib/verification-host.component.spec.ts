@@ -5,7 +5,10 @@ import {
   VerificationService,
   type VerificationView,
 } from '@trinity/data-access/crypto';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  type SyncState,
+} from '@trinity/data-access/matrix-client';
 import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/ui';
 import { TrnDialogService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
@@ -26,8 +29,10 @@ function incoming(): VerificationView {
   };
 }
 
+type SyncStateValue = SyncState | null;
+
 async function setup() {
-  const syncState = signal<string | null>(null);
+  const syncState = signal<SyncStateValue>(null);
   const active = signal<VerificationView | null>(null);
   const open = vi.fn().mockReturnValue({ closed: new Subject() });
   const { fixture } = await render(VerificationHostComponent, {
@@ -55,7 +60,7 @@ describe('VerificationHostComponent', () => {
     const { fixture, syncState, connect } = await setup();
     expect(connect).not.toHaveBeenCalled();
 
-    syncState.set('PREPARED');
+    syncState.set('PREPARED' as SyncStateValue);
     fixture.detectChanges();
 
     expect(connect).toHaveBeenCalled();

@@ -1,7 +1,7 @@
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnToastService } from '@trinity/helm/overlay';
 import {
   RoomModerationService,
@@ -9,10 +9,7 @@ import {
 } from '@trinity/data-access/rooms';
 import { BannedMembersComponent } from './banned-members.component';
 
-async function build(
-  bans: BannedMember[],
-  over: { unban?: ReturnType<typeof vi.fn> } = {},
-) {
+async function build(bans: BannedMember[], over: { unban?: Mock } = {}) {
   const unban = over.unban ?? vi.fn(() => of(undefined));
   const bannedMembers = vi.fn(() => bans);
   const toastShow = vi.fn();
