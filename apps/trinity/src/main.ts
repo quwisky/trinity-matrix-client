@@ -3,6 +3,7 @@ import {
   ErrorHandler,
   inject,
   provideAppInitializer,
+  provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
 } from '@angular/core';
 import {
@@ -36,6 +37,7 @@ import {
   ComposerSettingsService,
   ThemeService,
   TrinityErrorHandler,
+  isElectronRenderer,
 } from '@trinity/platform-native';
 import {
   AVATAR_RESOLVER,
@@ -49,15 +51,11 @@ import { AppComponent, NavigationFocusService } from '@trinity/feature/shell';
 import { environment } from './environments/environment';
 import { BUILD_INFO_VALUE } from './app/build-info';
 
-// Desktop (hand-rolled Electron) detection. The preload bridge exposes
-// `trinityDesktop.isElectron`; we fall back to the Electron user-agent token in
-// case the marker is ever unavailable. Capacitor.isNativePlatform() is FALSE in
-// this shell, so the service worker must be gated on this flag too.
-const isElectron =
-  !!(globalThis as { trinityDesktop?: { isElectron?: boolean } }).trinityDesktop
-    ?.isElectron ||
-  (typeof navigator !== 'undefined' &&
-    navigator.userAgent.includes('Electron'));
+// Desktop (hand-rolled Electron) detection. Capacitor.isNativePlatform() is FALSE in
+// this shell, so the service worker must be gated on this flag too. The predicate lives
+// next to the bridge it reads (and is unit-tested there); this file is the composition
+// root and has no test of its own.
+const isElectron = isElectronRenderer();
 
 bootstrapApplication(AppComponent, {
   providers: [
@@ -65,6 +63,12 @@ bootstrapApplication(AppComponent, {
     // event handlers write signals, which schedule change detection directly. See
     // docs/architecture/state-and-reactivity.md.
     provideZonelessChangeDetection(),
+    // Installs the window 'error'/'unhandledrejection' listeners that forward to
+    // ErrorHandler. REQUIRED here: zone.js used to do this via NgZone.onUnhandledError,
+    // and without it the handler below only ever sees errors thrown *inside* Angular —
+    // every SDK promise rejection (the thing it was written to triage) would reach no
+    // application handler at all.
+    provideBrowserGlobalErrorListeners(),
     // Quiet transient homeserver noise (503s / dropped connections during the
     // initial-sync request burst) so SDK-internal rejections don't spam the
     // console as ERROR; genuine errors still reach the default handler.

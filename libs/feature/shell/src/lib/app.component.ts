@@ -1,16 +1,20 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   OnInit,
   inject,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Dialog } from '@angular/cdk/dialog';
 import { Location } from '@angular/common';
 import { Router, RouterOutlet } from '@angular/router';
 import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
-import { SwUpdate } from '@angular/service-worker';
+import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
+import { toast } from '@spartan-ng/brain/sonner';
+import { filter, fromEvent } from 'rxjs';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
 import { HlmToaster } from '@trinity/helm/sonner';
 import { VerificationHostComponent } from './verification-host.component';
@@ -26,12 +30,16 @@ export class AppComponent implements OnInit {
   private readonly swUpdate = inject(SwUpdate);
   private readonly dialog = inject(Dialog);
   private readonly location = inject(Location);
+  private readonly destroyRef = inject(DestroyRef);
 
   ngOnInit(): void {
     // Recover from a broken service-worker cache (e.g. storage eviction left an
     // asset un-cacheable) by reloading — web-only, no-op when the SW is disabled.
     if (this.swUpdate.isEnabled) {
-      this.swUpdate.unrecoverable.subscribe(() => window.location.reload());
+      this.swUpdate.unrecoverable
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(() => window.location.reload());
+      this.watchForUpdates();
     }
 
     // Electron desktop: the main process forwards `eu.qwky.trinity://` deep links
@@ -74,6 +82,56 @@ export class AppComponent implements OnInit {
         this.handleDeepLink(launch.url);
       }
     });
+  }
+
+  /**
+   * ngsw is version-locked per client: once a tab is running it keeps serving the build
+   * it booted with until something activates the new one. Trinity's tabs live for days
+   * or weeks, so without this a shipped crypto or session fix never reaches the clients
+   * that use the app most. Offer the reload rather than forcing it — reloading under a
+   * half-typed message or an in-flight verification would be worse than waiting.
+   */
+  private watchForUpdates(): void {
+    this.swUpdate.versionUpdates
+      .pipe(
+        filter(
+          (event): event is VersionReadyEvent => event.type === 'VERSION_READY',
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => {
+        // `toast` MUST come from @spartan-ng/brain/sonner: ngx-sonner's pushes into a
+        // different store than the <hlm-toaster/> in this template reads, and drops the
+        // toast silently (see TrnToastService's header). Called directly rather than
+        // through that service because this is the only toast in the app with an action
+        // button, which the service does not model.
+        toast('A new version of Trinity is available.', {
+          duration: Number.POSITIVE_INFINITY,
+          action: { label: 'Reload', onClick: () => this.activateUpdate() },
+        });
+      });
+
+    // ngsw only re-checks the server on its own registration schedule, so a tab left open
+    // in a background window can miss a deploy indefinitely. Re-check whenever it comes
+    // back to the foreground; VERSION_READY above turns a hit into the prompt.
+    fromEvent(document, 'visibilitychange')
+      .pipe(
+        filter(() => document.visibilityState === 'visible'),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => {
+        // Offline, or the server is mid-deploy: nothing to do but wait for the next check.
+        void this.swUpdate.checkForUpdate().catch(() => undefined);
+      });
+  }
+
+  /** Swap in the waiting version, then reload onto it. A failed activation still wants
+   * the reload: the fresh boot picks up whichever version the SW ends up holding. */
+  private activateUpdate(): void {
+    void this.swUpdate.activateUpdate().then(
+      () => window.location.reload(),
+      () => window.location.reload(),
+    );
   }
 
   /**
