@@ -46,9 +46,12 @@ function harness(
   const client = fakeClient('first');
   const instance = signal(client);
   const activeUserId = signal<string | null>('@a:hs');
+  // Signal-backed like the real getter (which reads the active account), so a sign-out
+  // re-runs the re-projection effect.
+  const initialized = signal(opts.initialized ?? true);
   const matrix = {
     get isInitialized() {
-      return opts.initialized ?? true;
+      return initialized();
     },
     get instance() {
       return instance() as unknown as MatrixClient;
@@ -68,7 +71,16 @@ function harness(
     }),
   );
   const tick = () => TestBed.inject(ApplicationRef).tick();
-  return { projection, client, instance, activeUserId, rebuild, reset, tick };
+  return {
+    projection,
+    client,
+    instance,
+    activeUserId,
+    initialized,
+    rebuild,
+    reset,
+    tick,
+  };
 }
 
 describe('projectFromClient', () => {
@@ -227,6 +239,25 @@ describe('projectFromClient', () => {
     tick();
 
     expect(rebuild).not.toHaveBeenCalled();
+  });
+
+  it('tears itself down when the last account signs out', () => {
+    // Logout notifies no projection; this effect is the only thing that hears it. Before,
+    // it called connect(), which early-returns while nothing is initialized — leaving the
+    // listeners on the stopped client and the signed-out account's data in the read model.
+    const { projection, client, activeUserId, initialized, reset, tick } =
+      harness();
+    projection.connect();
+    tick();
+
+    initialized.set(false);
+    activeUserId.set(null);
+    tick();
+
+    expect(reset).toHaveBeenCalledOnce();
+    expect(projection.isConnected()).toBe(false);
+    expect(projection.client()).toBeNull();
+    expect(client.count(ClientEvent.Sync)).toBe(0);
   });
 
   it('can opt out of re-projecting, for a projection the switch already tears down', () => {

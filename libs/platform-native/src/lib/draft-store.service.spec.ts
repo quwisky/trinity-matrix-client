@@ -12,11 +12,12 @@ import { Preferences } from '@capacitor/preferences';
 import { DraftStoreService } from './draft-store.service';
 
 vi.mock('@capacitor/preferences', () => ({
-  Preferences: { get: vi.fn(), set: vi.fn() },
+  Preferences: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
 }));
 
 const get = Preferences.get as unknown as Mock;
 const set = Preferences.set as unknown as Mock;
+const remove = Preferences.remove as unknown as Mock;
 const KEY = 'trinity.composer.drafts';
 
 describe('DraftStoreService', () => {
@@ -24,6 +25,7 @@ describe('DraftStoreService', () => {
     vi.useFakeTimers();
     get.mockReset().mockResolvedValue({ value: null });
     set.mockReset().mockResolvedValue(undefined);
+    remove.mockReset().mockResolvedValue(undefined);
   });
   afterEach(() => vi.useRealTimers());
 
@@ -55,6 +57,36 @@ describe('DraftStoreService', () => {
     svc.set('!a:hs', 'text');
     svc.clear('!a:hs');
     expect(svc.get('!a:hs')).toBe('');
+  });
+
+  // L1: drafts are plaintext for E2EE rooms, so sign-out must not leave them behind.
+  describe('clearAll', () => {
+    it('empties the map and removes the persisted key', () => {
+      const svc = service();
+      svc.set('!a:hs', 'half a message');
+
+      svc.clearAll();
+
+      expect(svc.get('!a:hs')).toBe('');
+      expect(remove).toHaveBeenCalledWith({ key: KEY });
+    });
+
+    it('cancels the pending write, so nothing is re-persisted after the wipe', () => {
+      const svc = service();
+      svc.set('!a:hs', 'half a message'); // arms the 400ms debounce
+
+      svc.clearAll();
+      vi.advanceTimersByTime(1000);
+
+      expect(set).not.toHaveBeenCalled();
+    });
+
+    it('survives a Preferences.remove that does not return a promise', () => {
+      remove.mockReturnValue(undefined); // a torn-down module hands this back
+      const svc = service();
+
+      expect(() => svc.clearAll()).not.toThrow();
+    });
   });
 
   it('loads persisted drafts on init', async () => {

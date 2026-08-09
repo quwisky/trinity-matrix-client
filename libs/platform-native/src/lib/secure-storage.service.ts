@@ -156,8 +156,23 @@ export class SecureStorageService {
     }
   }
 
+  /**
+   * The chosen backend, selected once. A REJECTED selection must not be memoized: a
+   * rejection is a value like any other, so caching it would make every later get/set/remove
+   * reject for the page lifetime. The reachable case is a startup race on desktop —
+   * `createWindow()` loads the renderer before `registerSecureStoreIpc()` is installed, so
+   * the availability probe can reject with nothing wrong with the keychain at all. Clearing
+   * the memo makes the next call retry (mirroring TrinityOidcTokenRefresher).
+   *
+   * Deliberately NOT swallowed into the web fallback: on a device that has a keychain, a
+   * transient IPC failure would then latch a plaintext token store for the whole session.
+   * A retryable rejection is the safer of the two.
+   */
   private resolve(): Promise<SecureStorageBackend> {
-    return (this.backend ??= this.select());
+    return (this.backend ??= this.select().catch((err: unknown) => {
+      this.backend = undefined;
+      throw err;
+    }));
   }
 
   private async select(): Promise<SecureStorageBackend> {

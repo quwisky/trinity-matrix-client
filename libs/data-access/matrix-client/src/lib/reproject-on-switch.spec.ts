@@ -7,14 +7,20 @@ import type { MatrixClientService } from './matrix-client.service';
 function harness(isConnected: () => boolean) {
   const activeUserId = signal<string | null>('@a:hs');
   const connect = vi.fn();
+  const disconnect = vi.fn();
   const matrix = {
     activeUserId: activeUserId.asReadonly(),
+    // The real getter reads the active account, so it is false exactly when the active
+    // id is null (the last account signing out).
+    get isInitialized(): boolean {
+      return activeUserId() !== null;
+    },
   } as unknown as MatrixClientService;
   TestBed.runInInjectionContext(() =>
-    reprojectOnAccountSwitch(matrix, isConnected, connect),
+    reprojectOnAccountSwitch(matrix, isConnected, connect, disconnect),
   );
   const tick = () => TestBed.inject(ApplicationRef).tick();
-  return { activeUserId, connect, tick };
+  return { activeUserId, connect, disconnect, tick };
 }
 
 describe('reprojectOnAccountSwitch', () => {
@@ -30,13 +36,14 @@ describe('reprojectOnAccountSwitch', () => {
   });
 
   it('does nothing on a switch while the service is not connected', () => {
-    const { activeUserId, connect, tick } = harness(() => false);
+    const { activeUserId, connect, disconnect, tick } = harness(() => false);
     tick();
 
     activeUserId.set('@b:hs');
     tick();
 
     expect(connect).not.toHaveBeenCalled();
+    expect(disconnect).not.toHaveBeenCalled();
   });
 
   it('reads the connected guard at switch time, not when the effect was wired', () => {
@@ -55,5 +62,19 @@ describe('reprojectOnAccountSwitch', () => {
     activeUserId.set('@b:hs');
     tick();
     expect(connect).toHaveBeenCalledOnce();
+  });
+
+  it('disconnects — never connects — when the last account signs out', () => {
+    // connect() early-returns when nothing is initialized, so calling it here would
+    // leave the projection holding the stopped client's data (M3).
+    const { activeUserId, connect, disconnect, tick } = harness(() => true);
+    tick();
+    connect.mockClear();
+
+    activeUserId.set(null);
+    tick();
+
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(connect).not.toHaveBeenCalled();
   });
 });

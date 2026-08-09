@@ -93,6 +93,8 @@ function setup() {
   vi.mocked(storage.load).mockReturnValue(of(null));
   // restoreAll fires an orphan sweep; default it to a no-op so restore paths don't NPE.
   vi.mocked(storage.sweepOrphanedCryptoStores).mockReturnValue(of(undefined));
+  // A wipe of a non-live account reads its registry record for the crypto prefix.
+  vi.mocked(storage.record).mockReturnValue(of(null));
   return { svc, storage };
 }
 
@@ -465,12 +467,12 @@ describe('MatrixClientService', () => {
     vi.mocked(createClient).mockReturnValue(client as never);
     const { svc, storage } = setup();
 
-    storage.load.mockReturnValue(of(SESSION));
+    vi.mocked(storage.load).mockReturnValue(of(SESSION));
     await expect(firstValueFrom(svc.restore())).resolves.toBe(true);
     expect(svc.isInitialized).toBe(true);
 
     await firstValueFrom(svc.stop());
-    storage.load.mockReturnValue(of(null));
+    vi.mocked(storage.load).mockReturnValue(of(null));
     await expect(firstValueFrom(svc.restore())).resolves.toBe(false);
   });
 
@@ -836,6 +838,147 @@ describe('MatrixClientService', () => {
     expect(svc.activeUserId()).toBeNull();
   });
 
+  describe('wiping an account that has no live client', () => {
+    // L2. remove() is documented as "stop it + wipe its stores", and the account with
+    // nothing to stop — soft-logged-out, or a failed background warm-up — is exactly the
+    // one whose crypto store would be orphaned: logout deletes the registry record that
+    // carries its cryptoPrefix moments later, and then nothing can name the store.
+
+    /** A minimal IDBFactory that records deletes and reports each as a success. */
+    function fakeIndexedDb(deleted: string[]) {
+      return {
+        deleteDatabase(name: string) {
+          deleted.push(name);
+          const request: { onsuccess: (() => void) | null } = {
+            onsuccess: null,
+          };
+          setTimeout(() => request.onsuccess?.(), 0);
+          return request as unknown as IDBOpenDBRequest;
+        },
+      };
+    }
+
+    it('deletes its databases by name, from the registry record', async () => {
+      const deleted: string[] = [];
+      vi.stubGlobal('indexedDB', fakeIndexedDb(deleted));
+      const { svc, storage } = setup();
+      vi.mocked(storage.record).mockReturnValue(
+        of({
+          userId: '@ghost:hs',
+          baseUrl: 'https://hs.example',
+          deviceId: 'DEV',
+          cryptoPrefix: 'trinity-crypto:@ghost:hs',
+        }),
+      );
+
+      await firstValueFrom(svc.remove('@ghost:hs')); // never started a client
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect([...deleted].sort()).toEqual([
+        'matrix-js-sdk:trinity-sync:@ghost:hs',
+        'trinity-crypto:@ghost:hs::matrix-sdk-crypto',
+        'trinity-crypto:@ghost:hs::matrix-sdk-crypto-meta',
+      ]);
+    });
+
+    it('leaves the SDK-default crypto pair alone when no record names it', async () => {
+      // Without a record the prefix is unknown, and the default pair may belong to a
+      // migrated legacy account — the cold-start orphan sweep owns that case.
+      const deleted: string[] = [];
+      vi.stubGlobal('indexedDB', fakeIndexedDb(deleted));
+      const { svc } = setup(); // record() defaults to null
+
+      await firstValueFrom(svc.remove('@ghost:hs'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(deleted).toEqual(['matrix-js-sdk:trinity-sync:@ghost:hs']);
+    });
+  });
+
+  describe('a start whose caller does not survive it', () => {
+    // H1. The callers are route guards, and the Router unsubscribes a guard whose
+    // navigation is superseded — mid-chain, i.e. somewhere inside open-IndexedDB → WASM →
+    // initRustCrypto → startClient. What must never follow is a SECOND client for the same
+    // account: two initRustCrypto calls open one device's crypto store twice.
+
+    /** A client whose crypto bootstrap hangs until the returned resolver is called. */
+    function clientWithPendingCrypto() {
+      const client = fakeClient();
+      let release!: () => void;
+      client.initRustCrypto.mockReturnValue(
+        new Promise<void>((resolve) => {
+          release = () => resolve();
+        }),
+      );
+      return { client, release: () => release() };
+    }
+
+    /** Let the (now unblocked) chain run to its end. */
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('rolls the client back when it is unsubscribed mid-initRustCrypto', async () => {
+      const { client, release } = clientWithPendingCrypto();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+
+      svc.init(SESSION).subscribe().unsubscribe(); // navigation superseded
+      release();
+      await settle();
+
+      // It runs to completion (a promise cannot be cancelled), then undoes itself —
+      // rather than syncing on unreachable with its crypto store open.
+      expect(client.stopClient).toHaveBeenCalled();
+      expect(client.off).toHaveBeenCalledWith(
+        ClientEvent.Sync,
+        expect.any(Function),
+      );
+      expect(clearHolder).toHaveBeenCalled();
+      expect(svc.isInitialized).toBe(false);
+      expect([...svc.accountIds()]).toEqual([]);
+    });
+
+    it('joins an in-flight start instead of building a second client', async () => {
+      // The reachable shape: a deep link completes login for the SAME account while the
+      // initial guard is still inside initRustCrypto.
+      const { client, release } = clientWithPendingCrypto();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+
+      const guard = firstValueFrom(svc.init(SESSION));
+      const deepLink = firstValueFrom(svc.add(SESSION));
+      release();
+      await Promise.all([guard, deepLink]);
+
+      expect(createClient).toHaveBeenCalledOnce();
+      expect(client.initRustCrypto).toHaveBeenCalledOnce();
+      expect([...svc.accountIds()]).toEqual(['@me:hs']);
+      expect(svc.instance).toBe(client);
+      expect(client.stopClient).not.toHaveBeenCalled(); // both callers wanted it
+    });
+
+    it('does not replay a FAILED start to the next caller', async () => {
+      // The in-flight entry is dropped the moment the chain settles, so the login after a
+      // failure gets a real attempt rather than the cached rejection.
+      const failing = fakeClient();
+      failing.startClient.mockRejectedValue(new Error('sync boom'));
+      const working = fakeClient();
+      vi.mocked(createClient)
+        .mockReturnValueOnce(failing as never)
+        .mockReturnValueOnce(working as never);
+      const { svc } = setup();
+
+      await expect(firstValueFrom(svc.init(SESSION))).rejects.toThrow(
+        'sync boom',
+      );
+      expect(failing.stopClient).toHaveBeenCalled();
+
+      await firstValueFrom(svc.init(SESSION));
+
+      expect(createClient).toHaveBeenCalledTimes(2);
+      expect(svc.instance).toBe(working);
+    });
+  });
+
   describe('CORS origin publishing (desktop)', () => {
     // On desktop the renderer must publish the live homeserver origin set so main's CORS
     // shim can be scoped to it (electron/src/cors.ts). Published on every account-set
@@ -850,7 +993,7 @@ describe('MatrixClientService', () => {
           fakeClient('https://hs.example') as never,
         );
         const { svc, storage } = setup();
-        vi.mocked(storage.save).mockReturnValue(of(SESSION as never));
+        vi.mocked(storage.save).mockReturnValue(of(SESSION));
         vi.mocked(storage.setActive).mockReturnValue(of(undefined));
 
         await firstValueFrom(svc.init(SESSION));
@@ -862,11 +1005,49 @@ describe('MatrixClientService', () => {
         vi.mocked(createClient).mockReturnValueOnce(
           fakeClient('https://other.example') as never,
         );
-        vi.mocked(storage.save).mockReturnValue(of(SESSION_B as never));
+        vi.mocked(storage.save).mockReturnValue(of(SESSION_B));
         await firstValueFrom(svc.add(SESSION_B));
         expect(setAllowedOrigins).toHaveBeenLastCalledWith([
           'https://hs.example',
           'https://other.example',
+        ]);
+      } finally {
+        delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+      }
+    });
+
+    it('declares the homeserver origin BEFORE the client that calls it is built', async () => {
+      // M4. startClient() issues /versions, the thread-support probe and the first /sync
+      // before it resolves, so a set published only afterwards leaves all three to be
+      // blocked against a homeserver whose proxy strips CORS headers — and a failed
+      // getVersions() disables server-side threads for the whole session.
+      const order: string[] = [];
+      const allowOrigin = vi.fn(() => order.push('allowOrigin'));
+      const setAllowedOrigins = vi.fn(() => order.push('setAllowedOrigins'));
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+        cors: { setAllowedOrigins, allowOrigin },
+      };
+      try {
+        const client = fakeClient();
+        client.startClient.mockImplementation(() => {
+          order.push('startClient');
+          return Promise.resolve();
+        });
+        vi.mocked(createClient).mockImplementation((() => {
+          order.push('createClient');
+          return client;
+        }) as never);
+        const { svc } = setup();
+
+        await firstValueFrom(svc.add(SESSION));
+
+        expect(allowOrigin).toHaveBeenCalledWith('https://hs.example');
+        expect(order).toEqual([
+          'allowOrigin',
+          'createClient',
+          'startClient',
+          // The post-registration publish still runs, so a removal keeps applying.
+          'setAllowedOrigins',
         ]);
       } finally {
         delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;

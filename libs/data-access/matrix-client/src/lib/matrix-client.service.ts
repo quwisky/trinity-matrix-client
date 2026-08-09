@@ -19,19 +19,27 @@ import {
   Observable,
   catchError,
   defer,
+  finalize,
+  firstValueFrom,
   from,
   map,
   of,
+  shareReplay,
   switchMap,
   tap,
-  throwError,
 } from 'rxjs';
 import {
   SessionStorageService,
+  deleteDatabase,
   getTrinityDesktopBridge,
 } from '@trinity/platform-native';
 import { MatrixSession } from '@trinity/util/matrix';
-import { preloadCryptoWasm, syncStoreDbName } from '@trinity/util/matrix';
+import {
+  preloadCryptoWasm,
+  rustCryptoStoreDbNames,
+  syncStoreDbName,
+  syncStoreIndexedDbName,
+} from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { TrinityOidcTokenRefresher } from './oidc-token-refresher';
 
@@ -92,6 +100,19 @@ export class MatrixClientService {
     const origins = [...this.clients.values()].map((a) => a.client.baseUrl);
     bridge.cors.setAllowedOrigins(origins);
   }
+
+  /**
+   * Declare ONE origin to the same shim, additively. Needed before an account's client
+   * exists, where {@link publishCorsOrigins} — which reads the live client set — cannot
+   * name it yet: `startClient()` issues `/_matrix/client/versions`, the thread-support
+   * probe and the first `/sync` before it resolves, so publishing only afterwards leaves
+   * all three to be blocked against a homeserver whose proxy strips CORS headers (a failed
+   * `getVersions()` disables server-side threads for the whole session). The post-start
+   * {@link publishCorsOrigins} still replaces the set, so removals keep applying.
+   */
+  private allowCorsOrigin(origin: string): void {
+    getTrinityDesktopBridge()?.cors?.allowOrigin(origin);
+  }
   private readonly _activeUserId = signal<string | null>(null);
   /** The account currently in view (whose client {@link instance} returns). */
   readonly activeUserId = this._activeUserId.asReadonly();
@@ -115,6 +136,12 @@ export class MatrixClientService {
    * either before the pending delete finishes would block (or race) it.
    */
   private readonly wipes = new Map<string, Promise<void>>();
+
+  /**
+   * Starts that have not finished yet, keyed by user id — see {@link start} for why a
+   * second start must join the first rather than build a second client.
+   */
+  private readonly starting = new Map<string, Observable<AccountClient>>();
 
   /** Coarse sync state of the ACTIVE account (null until its first transition). */
   readonly syncState: Signal<SyncState | null> = computed(() => {
@@ -345,10 +372,64 @@ export class MatrixClientService {
 
   /**
    * Build a client from a session, bootstrap E2EE, start syncing, and register it in
-   * the map (not activated — the caller decides). Awaits a pending wipe for the same
-   * account first. On failure it tears the half-started client down and rethrows.
+   * the map (not activated — the caller decides). On failure it tears the half-started
+   * client down and rethrows.
+   *
+   * **Idempotent per account while in flight**, and independent of the caller's
+   * subscription surviving. Both matter because the callers are guards: the Router
+   * unsubscribes a guard whose navigation is superseded, and the start chain (open
+   * IndexedDB → WASM → `initRustCrypto` → `startClient`) is long enough that a deep link
+   * arriving mid-flight begins a second one for the same account. Two `initRustCrypto`
+   * calls on one device open the same crypto store twice, which is the shape that produces
+   * device-key divergence.
+   *
+   * So a second `start()` for the same user id JOINS the first, and the shared chain is
+   * `refCount: false` deliberately — losing the last subscriber must not cancel it, or a
+   * cancelled navigation would leave a half-open store behind for the next login to collide
+   * with. It always runs to the end and then, if nothing consumed its result, rolls itself
+   * back (see `rollback` in {@link startNew}).
    */
   private start(session: MatrixSession): Observable<AccountClient> {
+    return defer(() => {
+      const inFlight = this.starting.get(session.userId);
+      if (inFlight) {
+        return inFlight;
+      }
+      // Set by the tap BELOW the share, so it is true exactly when some subscriber
+      // received the started account — the signal `startNew` uses to decide whether this
+      // start was wanted. A subscriber count would not do: `firstValueFrom` unsubscribes
+      // on the value, so a perfectly consumed start also ends with zero subscribers.
+      let delivered = false;
+      const started: Observable<AccountClient> = this.startNew(
+        session,
+        () => delivered,
+      ).pipe(
+        finalize(() => {
+          if (this.starting.get(session.userId) === started) {
+            this.starting.delete(session.userId);
+          }
+        }),
+        // Not cached across calls: the entry is dropped above the moment the chain
+        // settles, so a FAILED start is never replayed to a later caller.
+        shareReplay({ bufferSize: 1, refCount: false }),
+        tap(() => {
+          delivered = true;
+        }),
+      );
+      this.starting.set(session.userId, started);
+      return started;
+    });
+  }
+
+  /**
+   * One actual start attempt: awaits a pending wipe for the same account, then builds,
+   * bootstraps and registers the client. See {@link start}, which owns the joining and
+   * the cancellation semantics.
+   */
+  private startNew(
+    session: MatrixSession,
+    consumed: () => boolean,
+  ): Observable<AccountClient> {
     return defer(() => {
       // Replace any existing client for this account (a re-add / re-auth) so we
       // never orphan a running client — its Sync listener, and its sync store —
@@ -358,6 +439,7 @@ export class MatrixClientService {
       }
       let created: MatrixClient | null = null;
       let store: IndexedDBStore | null = null;
+      let account: AccountClient | null = null;
       const syncState = signal<SyncState | null>(null);
       const onSync = (state: SyncState): void => syncState.set(state);
       const onLoggedOut = (err: MatrixError): void =>
@@ -365,9 +447,32 @@ export class MatrixClientService {
       // Per-account 4S key holder, wired only into THIS client's callbacks so a
       // background account's key op can't read/overwrite another account's key.
       const holder = new SecretStorageKeyHolder();
+      /**
+       * Undo whatever this attempt managed to do. Driven from `finalize`, so it covers the
+       * error path AND the cancelled one — an unsubscribed start still reaches the end,
+       * and without this its client would sync on, unreachable, with its crypto store open.
+       */
+      const rollback = (): void => {
+        if (account) {
+          // It finished after its caller had gone: hand it to the normal removal path,
+          // which detaches, stops, closes the store and repoints the active account.
+          if (this.clients.get(session.userId) === account) {
+            this.removeInternal(session.userId, false);
+          }
+          return;
+        }
+        created?.off(ClientEvent.Sync, onSync);
+        created?.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
+        created?.stopClient();
+        holder.clear();
+        this.closeStore(store);
+      };
       return from(this.wipes.get(session.userId) ?? Promise.resolve()).pipe(
         switchMap(() => {
           store = this.createSyncStore(session.userId);
+          // Declared before the client is built, so the first requests it makes — inside
+          // startClient(), which resolves only after them — are already served.
+          this.allowCorsOrigin(session.baseUrl);
           // OIDC ("next-gen auth") sessions carry a refresh token: give the SDK the
           // token plus a per-account refresher so it silently rotates the short-lived
           // access token and persists the result (see TrinityOidcTokenRefresher).
@@ -425,7 +530,7 @@ export class MatrixClientService {
           ),
         ),
         map(() => {
-          const account: AccountClient = {
+          const started: AccountClient = {
             userId: session.userId,
             client: created!,
             cryptoPrefix: session.cryptoPrefix,
@@ -435,20 +540,20 @@ export class MatrixClientService {
             onLoggedOut,
             holder,
           };
-          this.clients.set(session.userId, account);
+          account = started;
+          this.clients.set(session.userId, started);
           this._accountIds.set([...this.clients.keys()]);
           this.publishCorsOrigins();
           // A successful (re-)start clears any prior soft-logout — re-auth restored it.
           this.clearSoftLoggedOut(session.userId);
-          return account;
+          return started;
         }),
-        catchError((err) => {
-          created?.off(ClientEvent.Sync, onSync);
-          created?.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
-          created?.stopClient();
-          holder.clear();
-          this.closeStore(store);
-          return throwError(() => err);
+        // Covers error, completion and unsubscription in one place; the error still
+        // propagates untouched to the caller.
+        finalize(() => {
+          if (!consumed()) {
+            rollback();
+          }
         }),
       );
     });
@@ -478,6 +583,13 @@ export class MatrixClientService {
     this.clearSoftLoggedOut(userId); // any removal clears a stale re-auth flag
     const account = this.clients.get(userId);
     if (!account) {
+      if (wipe) {
+        // "Stop it + wipe its stores" must still wipe when there is nothing to stop —
+        // the normal state for a soft-logged-out account, or one whose background
+        // warm-up failed. The caller deletes the registry record moments later, and
+        // that record is the only thing naming this account's crypto store.
+        this.wipeStoresByName(userId);
+      }
       return;
     }
     account.client.off(ClientEvent.Sync, account.onSync);
@@ -499,21 +611,56 @@ export class MatrixClientService {
       // GC), so run it as a tracked BACKGROUND wipe keyed by user id; a re-add of the
       // same account awaits it. Best-effort — a failure still leaves the client removed.
       const store = account.syncStore;
-      const wipeDone = account.client
-        .clearStores({ cryptoDatabasePrefix: account.cryptoPrefix })
-        .catch(() => undefined)
-        .finally(() => this.closeStore(store));
-      this.wipes.set(userId, wipeDone);
-      // Prune the entry once it settles (unless a newer wipe replaced it), so the
-      // map doesn't grow across logout/login cycles or leave a stale promise behind.
-      void wipeDone.finally(() => {
-        if (this.wipes.get(userId) === wipeDone) {
-          this.wipes.delete(userId);
-        }
-      });
+      this.trackWipe(
+        userId,
+        account.client
+          .clearStores({ cryptoDatabasePrefix: account.cryptoPrefix })
+          .catch(() => undefined)
+          .finally(() => this.closeStore(store)),
+      );
     } else {
       this.closeStore(account.syncStore);
     }
+  }
+
+  /**
+   * Delete a NON-live account's IndexedDB by name: its sync store, plus the Rust crypto
+   * pair derived from the registry record's `cryptoPrefix` (the same prefix the live path
+   * hands `clearStores`). Without a record we only know the sync-store name — the
+   * SDK-default crypto pair may belong to a migrated legacy account, so it is left for the
+   * cold-start orphan sweep rather than guessed at.
+   *
+   * Best-effort and bounded (`deleteDatabase` settles even when a connection blocks it),
+   * and tracked like the live wipe so a re-add of this account awaits it.
+   */
+  private wipeStoresByName(userId: string): void {
+    const idb = globalThis.indexedDB;
+    if (typeof idb === 'undefined') {
+      return;
+    }
+    const wipeDone = firstValueFrom(this.storage.record(userId))
+      .then(async (record) => {
+        const names = [syncStoreIndexedDbName(userId)];
+        if (record) {
+          names.push(...rustCryptoStoreDbNames(record.cryptoPrefix));
+        }
+        await Promise.all(names.map((name) => deleteDatabase(idb, name)));
+      })
+      .catch(() => undefined);
+    this.trackWipe(userId, wipeDone);
+  }
+
+  /**
+   * Track an in-flight store wipe, and prune the entry once it settles (unless a newer
+   * wipe replaced it) so the map doesn't grow across logout/login cycles.
+   */
+  private trackWipe(userId: string, wipeDone: Promise<void>): void {
+    this.wipes.set(userId, wipeDone);
+    void wipeDone.finally(() => {
+      if (this.wipes.get(userId) === wipeDone) {
+        this.wipes.delete(userId);
+      }
+    });
   }
 
   /**

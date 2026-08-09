@@ -369,6 +369,41 @@ describe('CryptoService', () => {
         expect(crypto.bootstrapSecretStorage).toHaveBeenCalledOnce();
       });
     }
+
+    it('authenticates as the account it started on, not whichever is active now', async () => {
+      // Two awaits — the server read and the key generation — sit between entering setUp
+      // and building the UIA callback. A switch across them must not name the new account
+      // in the m.id.user identifier: the homeserver refuses an identifier that is not the
+      // requester, stranding the setup after the olm machine has been touched.
+      const { svc, crypto, client, matrix } = setup({ defaultKeyId: 'k' });
+      let uia!: (mr: (auth: unknown) => Promise<unknown>) => Promise<unknown>;
+      crypto.createRecoveryKeyFromPassphrase.mockImplementation(async () => {
+        ngMocks.stubMember(matrix, 'instance', {
+          ...client,
+          getUserId: () => '@other:hs',
+        } as unknown as MatrixClientService['instance']);
+        return {
+          encodedPrivateKey: 'EsTShown',
+          privateKey: new Uint8Array(32),
+        };
+      });
+      crypto.bootstrapCrossSigning.mockImplementation(
+        async (opts: BootstrapCrossSigningOpts) => {
+          uia = opts.authUploadDeviceSigningKeys as typeof uia;
+        },
+      );
+
+      await firstValueFrom(svc.setUp(async () => 's3cret'));
+      const makeRequest = vi
+        .fn()
+        .mockRejectedValueOnce(uiaError('sess1'))
+        .mockResolvedValueOnce(undefined);
+      await uia(makeRequest);
+
+      expect(makeRequest.mock.calls[1][0]).toMatchObject({
+        identifier: { type: 'm.id.user', user: '@me:hs' },
+      });
+    });
   });
 
   describe('resetRecovery', () => {
@@ -1703,6 +1738,24 @@ describe('CryptoService', () => {
         firstValueFrom(svc.importRoomKeys(armored, 'wrong')),
       ).rejects.toThrow(/incorrect passphrase/i);
       expect(crypto.importRoomKeysAsJson).not.toHaveBeenCalled();
+    });
+
+    it('imports into the account the file was decrypted for, not whichever is active now', async () => {
+      // Decrypting the file is a long await; a switch across it must not push one
+      // account's room keys into another account's olm machine.
+      const { svc, crypto, client, matrix } = setup();
+      const armored = await firstValueFrom(svc.exportRoomKeys('pw'));
+      const otherCrypto = { importRoomKeysAsJson: vi.fn() };
+
+      const pending = firstValueFrom(svc.importRoomKeys(armored, 'pw'));
+      ngMocks.stubMember(matrix, 'instance', {
+        ...client,
+        getCrypto: () => otherCrypto,
+      } as unknown as MatrixClientService['instance']);
+      await pending;
+
+      expect(crypto.importRoomKeysAsJson).toHaveBeenCalledWith('[]');
+      expect(otherCrypto.importRoomKeysAsJson).not.toHaveBeenCalled();
     });
   });
 });

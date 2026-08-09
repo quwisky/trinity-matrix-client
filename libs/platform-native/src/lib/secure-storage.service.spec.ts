@@ -80,6 +80,37 @@ describe('SecureStorageService', () => {
     expect(await s.get('accessToken')).toBeNull();
   });
 
+  it('retries backend selection after a rejected one, instead of latching it', async () => {
+    // L3: the memo caches a promise, and a rejection is a value — so a probe that failed
+    // once (on desktop, `createWindow()` loads the renderer before the secure-store IPC
+    // handler is registered) used to reject every get/set for the whole page lifetime.
+    const isAvailable = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('no ipc handler yet'))
+      .mockResolvedValue(true);
+    const store = {
+      isAvailable,
+      get: vi.fn().mockResolvedValue('tok'),
+      set: vi.fn().mockResolvedValue(true),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop = {
+      secureStore: store,
+    };
+    try {
+      const s = service();
+
+      await expect(s.get('accessToken')).rejects.toThrow('no ipc handler yet');
+
+      // The retry reaches the keychain the race denied the first call.
+      expect(await s.get('accessToken')).toBe('tok');
+      expect(await s.isSecure()).toBe(true);
+      expect(isAvailable).toHaveBeenCalledTimes(2); // re-probed, not replayed
+    } finally {
+      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    }
+  });
+
   describe('clearAll', () => {
     it('sweeps the keychain and says it did, on native', async () => {
       vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
