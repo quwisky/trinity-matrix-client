@@ -4,6 +4,7 @@ import { ProfileSettingsComponent } from './profile/profile-settings.component';
 import { AppearanceSettingsComponent } from './appearance/appearance-settings.component';
 import { ExperimentalSettingsComponent } from './experimental/experimental-settings.component';
 import { AdvancedSettingsComponent } from './advanced/advanced-settings.component';
+import { provideConfigEditor } from './advanced/config-editor-loader';
 import { DevicesSectionComponent } from './devices/devices-section.component';
 import { GifsSectionComponent } from './gifs/gifs-section.component';
 import { PresenceSectionComponent } from './presence/presence-section.component';
@@ -33,7 +34,15 @@ export const settingsRoutes: Routes = [
       { path: 'gifs', component: GifsSectionComponent },
       { path: 'shortcuts', component: ShortcutsSectionComponent },
       { path: 'experimental', component: ExperimentalSettingsComponent },
-      { path: 'advanced', component: AdvancedSettingsComponent },
+      {
+        path: 'advanced',
+        component: AdvancedSettingsComponent,
+        // The rich editor is offered by the route rather than reached from the component, so
+        // the one dynamic import that pulls CodeMirror in is wired where the platform question
+        // is answered — and a section rendered without this route (a spec) still edits, in its
+        // textarea, without ever touching that chunk.
+        providers: [provideConfigEditor()],
+      },
     ],
   },
 ];

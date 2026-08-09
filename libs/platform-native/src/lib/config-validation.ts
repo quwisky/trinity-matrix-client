@@ -60,18 +60,25 @@ export function isConfigRecord(
  * A setting whose value is one of a closed set of ids.
  *
  * `isValid` is the owning service's own guard, so the imported value is held to the same
- * standard as the stored one; `options` is only for the message, and `noun` completes the
+ * standard as the stored one; `options` is the offered set, and `noun` completes the
  * sentence "'mauve' is not …".
+ *
+ * `options` is declared here once and reaches three places from this one call: the rejection
+ * message, the schema's `enum`, and the editor's completion list. The alternative — a list
+ * for the message and a second for the schema — is the drift this whole feature exists to
+ * stop, one level down.
  */
 export function choiceSetting<T extends string>(spec: {
   readonly isValid: (value: string) => value is T;
   readonly options: readonly string[];
   readonly noun: string;
   readonly set: (value: T) => void;
-}): Pick<ConfigEntry, 'validate' | 'write'> {
+}): Pick<ConfigEntry, 'validate' | 'write' | 'type' | 'choices'> {
   const accepts = (value: unknown): value is T =>
     typeof value === 'string' && spec.isValid(value);
   return {
+    type: 'string',
+    choices: spec.options,
     validate: (value) =>
       accepts(value)
         ? { ok: true, value }
@@ -93,8 +100,9 @@ export function choiceSetting<T extends string>(spec: {
 /** A setting that is on or off. Strict about the type: `'true'` is not `true`. */
 export function flagSetting(
   set: (on: boolean) => void,
-): Pick<ConfigEntry, 'validate' | 'write'> {
+): Pick<ConfigEntry, 'validate' | 'write' | 'type'> {
   return {
+    type: 'boolean',
     validate: (value) =>
       typeof value === 'boolean'
         ? { ok: true, value }
@@ -117,8 +125,9 @@ export function flagSetting(
 export function textSetting(spec: {
   readonly maxLength: number;
   readonly set: (value: string) => void;
-}): Pick<ConfigEntry, 'validate' | 'write'> {
+}): Pick<ConfigEntry, 'validate' | 'write' | 'type'> {
   return {
+    type: 'string',
     validate: (value) => {
       if (typeof value !== 'string') {
         return {

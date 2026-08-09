@@ -1,5 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { AppConfigService, exportedKeysFor } from '@trinity/platform-native';
+import {
+  AppConfigService,
+  configSchemaDrift,
+  exportedKeysFor,
+} from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import { defer, of, type Observable } from 'rxjs';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -64,6 +68,12 @@ describe('push config entries', () => {
     const keys = setup().config.entries.map((entry) => entry.key);
 
     expect(keys).toEqual([...exportedKeysFor('data-access/notifications')]);
+  });
+
+  it('describes each of its settings the way the schema publishes it', () => {
+    // The runtime half of the drift guard, over this lib's contribution: its Nx boundary
+    // stops any other project from checking these, so a setting added here fails here.
+    expect(configSchemaDrift(setup().config.entries)).toEqual([]);
   });
 
   it('exports no gateway when the build-time default applies', () => {

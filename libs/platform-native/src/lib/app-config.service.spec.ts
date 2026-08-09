@@ -61,10 +61,10 @@ function setupWith(
 /**
  * The smallest entry that reads and resets something.
  *
- * `write` and `validate` are required of every entry, so they are here — inert, and matched
- * to a setting whose value is always `null`. The tests below are about the registry's shape
- * (duplicate paths, overlapping paths, a slow reset), so nothing calls them; an override
- * supplies a real pair where one is needed.
+ * `description`, `type`, `write` and `validate` are required of every entry, so they are
+ * here — inert, and all four agreeing on a setting whose value is always `null`. The tests
+ * below are about the registry's shape (duplicate paths, overlapping paths, a slow reset), so
+ * nothing reads or calls them; an override supplies a real one where it matters.
  */
 function entry(
   path: string,
@@ -73,6 +73,8 @@ function entry(
   return {
     path,
     key: `trinity.${path}`,
+    description: `The ${path} setting.`,
+    type: 'null',
     read: () => null,
     reset: () => undefined,
     write: () => undefined,

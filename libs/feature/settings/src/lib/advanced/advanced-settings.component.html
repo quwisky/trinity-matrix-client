@@ -15,25 +15,40 @@
       data-testid="advanced-gif-key-note"
       >does include the GIF API key you saved</span
     >, which is a key to a third-party service — treat a copy you share the way
-    you would treat that key. You can edit it here, or import one from another
-    device; Trinity checks the whole document and shows exactly what will change
-    before anything is written.
+    you would treat that key.
+    @if (canEdit) {
+      You can edit it here, or import one from another device; Trinity checks
+      the whole document and shows exactly what will change before anything is
+      written.
+    }
   </p>
 
   <div class="px-4 py-2">
-    <label hlmLabel for="advanced-config-json">Settings JSON</label>
-    <textarea
-      id="advanced-config-json"
-      hlmTextarea
-      spellcheck="false"
-      autocapitalize="none"
-      autocomplete="off"
-      autocorrect="off"
-      class="advanced__json mt-1 font-mono text-xs"
-      [value]="editorValue()"
-      (input)="onEdit($event)"
-      data-testid="advanced-config-json"
-    ></textarea>
+    @if (editor(); as loaded) {
+      <!-- Not a <label for>: the editor's own text area is built by CodeMirror and has no id
+           to point at, so it carries the accessible name itself (aria-label). -->
+      <span hlmLabel class="block">Settings JSON</span>
+      <ng-container
+        [trnConfigEditorOutlet]="loaded"
+        [value]="editorValue()"
+        (edited)="onEditText($event)"
+      />
+    } @else {
+      <label hlmLabel for="advanced-config-json">Settings JSON</label>
+      <textarea
+        id="advanced-config-json"
+        hlmTextarea
+        spellcheck="false"
+        autocapitalize="none"
+        autocomplete="off"
+        autocorrect="off"
+        class="advanced__json mt-1 font-mono text-xs"
+        [value]="editorValue()"
+        [readOnly]="!canEdit"
+        (input)="onEdit($event)"
+        data-testid="advanced-config-json"
+      ></textarea>
+    }
     @if (edited()) {
       <p
         class="pt-1 text-13 text-muted-foreground"
@@ -67,56 +82,71 @@
         Export to file
       </button>
     }
-    <button
-      hlmBtn
-      variant="outline"
-      size="sm"
-      (click)="pickFile()"
-      data-testid="advanced-import-file"
-    >
-      Import from file
-    </button>
-    <button
-      hlmBtn
-      variant="outline"
-      size="sm"
-      (click)="importClipboard()"
-      data-testid="advanced-import-clipboard"
-    >
-      Paste from clipboard
-    </button>
-    @if (edited()) {
+    @if (canEdit) {
       <button
         hlmBtn
-        variant="ghost"
+        variant="outline"
         size="sm"
-        (click)="discard()"
-        data-testid="advanced-discard"
+        (click)="pickFile()"
+        data-testid="advanced-import-file"
       >
-        Discard changes
+        Import from file
       </button>
+      <button
+        hlmBtn
+        variant="outline"
+        size="sm"
+        (click)="importClipboard()"
+        data-testid="advanced-import-clipboard"
+      >
+        Paste from clipboard
+      </button>
+      @if (edited()) {
+        <button
+          hlmBtn
+          variant="ghost"
+          size="sm"
+          (click)="discard()"
+          data-testid="advanced-discard"
+        >
+          Discard changes
+        </button>
+      }
+      <input
+        #configFile
+        type="file"
+        accept=".json,application/json"
+        hidden
+        (change)="importFile($event)"
+        data-testid="advanced-import-file-input"
+      />
     }
-    <input
-      #configFile
-      type="file"
-      accept=".json,application/json"
-      hidden
-      (change)="importFile($event)"
-      data-testid="advanced-import-file-input"
-    />
   </div>
 
-  <div class="flex flex-wrap items-center gap-2 px-4 py-2">
-    <button
-      hlmBtn
-      size="sm"
-      [disabled]="applying()"
-      (click)="review()"
-      data-testid="advanced-apply"
+  @if (canEdit) {
+    <div class="flex flex-wrap items-center gap-2 px-4 py-2">
+      <button
+        hlmBtn
+        size="sm"
+        [disabled]="applying()"
+        (click)="review()"
+        data-testid="advanced-apply"
+      >
+        Apply these settings…
+      </button>
+    </div>
+  } @else {
+    <p
+      class="block px-4 py-2 text-13 text-muted-foreground"
+      data-testid="advanced-editing-unavailable"
     >
-      Apply these settings…
-    </button>
-  </div>
+      Editing this document isn't offered in the mobile app — a JSON editor over
+      a phone keyboard is a worse way to change one setting than the switch that
+      owns it, and a half-typed document is easy to apply by accident. Change
+      settings on their own screens here; copy this one to move it to a
+      computer, where it can be edited and applied.
+    </p>
+  }
 
   @if (problems().length > 0) {
     <div class="px-4 py-2" role="alert" data-testid="advanced-apply-problems">

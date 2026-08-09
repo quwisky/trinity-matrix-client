@@ -27,6 +27,8 @@ function entry(
   return {
     path,
     key: `stored:${path}`,
+    description: `The ${path} setting.`,
+    type: 'string',
     read: () => current,
     reset: () => undefined,
     write: () => undefined,
