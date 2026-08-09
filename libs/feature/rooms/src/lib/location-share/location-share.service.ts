@@ -8,7 +8,7 @@ import {
   timeout,
 } from 'rxjs';
 import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   GeolocationService,
   getTrinityDesktopBridge,
@@ -24,13 +24,14 @@ import { ManualLocationDialogComponent } from './manual-location-dialog/manual-l
  * it instead opens the manual-location dialog, because Chromium's
  * `navigator.geolocation` can't resolve a position without an embedded Google API key
  * — so the on-device path would just stall. Either way the resolved point flows into
- * {@link TimelineService.sendLocation}; a denied/failed request surfaces a toast, and
- * {@link sharing} tracks the in-flight send so the composer can show a busy state.
+ * {@link TimelineActionsService.sendLocation}; a denied/failed request surfaces a
+ * toast, and {@link sharing} tracks the in-flight send so the composer can show a busy
+ * state.
  */
 @Injectable({ providedIn: 'root' })
 export class LocationShareService {
   private readonly geo = inject(GeolocationService);
-  private readonly timeline = inject(TimelineService);
+  private readonly timelineActions = inject(TimelineActionsService);
   private readonly toast = inject(TrnToastService);
   private readonly dialog = inject(TrnDialogService);
 
@@ -77,7 +78,9 @@ export class LocationShareService {
     this.sharingSig.set(true);
     source
       .pipe(
-        switchMap(({ lat, lng }) => this.timeline.sendLocation(lat, lng)),
+        switchMap(({ lat, lng }) =>
+          this.timelineActions.sendLocation(lat, lng),
+        ),
         finalize(() => this.sharingSig.set(false)),
       )
       .subscribe({

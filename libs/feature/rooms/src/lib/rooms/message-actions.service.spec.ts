@@ -2,7 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { Component, inject, type Provider } from '@angular/core';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { RoomsService } from '@trinity/data-access/rooms';
-import { TimelineService } from '@trinity/data-access/timeline';
+import {
+  TimelineActionsService,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Subject, config, of, throwError } from 'rxjs';
@@ -52,15 +55,14 @@ describe('MessageActionsService', () => {
   const toastShow = vi.fn();
 
   const MOCKS: Provider[] = [
-    MockProvider(TimelineService, {
+    MockProvider(TimelineService, { loadOlder, setTyping }),
+    MockProvider(TimelineActionsService, {
       send,
       reply,
       redact,
       toggleReaction,
       votePoll,
       endPoll,
-      loadOlder,
-      setTyping,
     }),
     MockProvider(ThreadPanelService, { open: openThread }),
     MockProvider(PinnedMessagesService),

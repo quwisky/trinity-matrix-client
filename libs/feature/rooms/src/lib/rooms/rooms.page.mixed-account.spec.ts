@@ -23,7 +23,11 @@ import {
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/data-access/rooms';
-import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import {
+  ThreadsService,
+  TimelineActionsService,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -147,6 +151,7 @@ describe('RoomsPage mixed-account view', () => {
           setAccounts: vi.fn(),
         }),
         MockProvider(TimelineService),
+        MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,

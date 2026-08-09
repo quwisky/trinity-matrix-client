@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   CreatePollDialogComponent,
   type NewPoll,
@@ -8,13 +8,13 @@ import {
 
 /**
  * Presents {@link CreatePollDialogComponent} and, on confirm, starts the poll in the
- * open room via {@link TimelineService.createPoll}, toasting a failure. Owns
+ * open room via {@link TimelineActionsService.createPoll}, toasting a failure. Owns
  * presentation + orchestration so the composer just triggers it.
  */
 @Injectable({ providedIn: 'root' })
 export class CreatePollService {
   private readonly dialog = inject(TrnDialogService);
-  private readonly timeline = inject(TimelineService);
+  private readonly timelineActions = inject(TimelineActionsService);
   private readonly toast = inject(TrnToastService);
 
   /** Open the poll composer; on create, send the poll to the active room. */
@@ -26,7 +26,7 @@ export class CreatePollService {
     if (!poll) {
       return;
     }
-    this.timeline.createPoll(poll.question, poll.options).subscribe({
+    this.timelineActions.createPoll(poll.question, poll.options).subscribe({
       error: () =>
         this.toast.show('Could not create the poll.', {
           duration: 4000,

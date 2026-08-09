@@ -3,7 +3,11 @@ import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { DialogRef } from '@angular/cdk/dialog';
 import { render } from '@trinity/testing';
-import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import {
+  ThreadsService,
+  TimelineActionsService,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { type MessageView } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
@@ -109,6 +113,7 @@ async function build(
       MockProvider(TimelineService, {
         canRedactOthers: signal(state.canRedactOthers ?? false).asReadonly(),
       }),
+      MockProvider(TimelineActionsService),
       MockProvider(RoomsService, { membersFor }),
       MockProvider(MessageSourceService, { open: sourceOpen }),
       MockProvider(DialogRef, { close: dismiss }),

@@ -60,7 +60,11 @@ import {
   MixedRoomsService,
   MixedSpacesService,
 } from '@trinity/data-access/rooms';
-import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import {
+  ThreadsService,
+  TimelineActionsService,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import { FeatureFlagsService } from '@trinity/platform-native';
 import { AvatarComponent, PageHeaderComponent } from '@trinity/ui';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
@@ -165,6 +169,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly mixedInvites = inject(MixedInvitesService);
   readonly invites = inject(InvitesService);
   readonly timeline = inject(TimelineService);
+  readonly timelineActions = inject(TimelineActionsService);
   readonly threads = inject(ThreadsService);
   readonly pinned = inject(PinnedMessagesService);
   readonly flags = inject(FeatureFlagsService);

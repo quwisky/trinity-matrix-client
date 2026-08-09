@@ -23,7 +23,11 @@ import {
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/data-access/rooms';
-import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import {
+  ThreadsService,
+  TimelineActionsService,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
   TrnDialogService,
@@ -82,6 +86,7 @@ describe('RoomsPage quick switcher', () => {
         MockProvider(QuickSwitcherService, { pick }),
         MockProvider(MessageSearchService, { search: messageSearch }),
         MockProvider(TimelineService, { open: timelineOpen }),
+        MockProvider(TimelineActionsService),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -278,6 +283,7 @@ describe('RoomsPage mobile navigation', () => {
         MockProvider(RoomsService),
         MockProvider(SpacesService),
         MockProvider(TimelineService, { open: timelineOpen }),
+        MockProvider(TimelineActionsService),
         MockProvider(MediaService, { releaseAll }),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -395,6 +401,7 @@ describe('RoomsPage account switcher summary', () => {
         MockProvider(RoomsService),
         MockProvider(SpacesService),
         MockProvider(TimelineService),
+        MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
@@ -506,6 +513,7 @@ describe('RoomsPage keyboard room switching', () => {
           childRoomIds: vi.fn(() => []),
         }),
         MockProvider(TimelineService),
+        MockProvider(TimelineActionsService),
         MockProvider(MediaService, { releaseAll }),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -755,6 +763,7 @@ describe('RoomsPage notification deep link', () => {
         MockProvider(RoomsService),
         MockProvider(SpacesService),
         MockProvider(TimelineService, { open: timelineOpen }),
+        MockProvider(TimelineActionsService),
         MockProvider(MediaService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
