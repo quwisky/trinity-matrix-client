@@ -175,6 +175,49 @@ describe('AccountProfilesService', () => {
     expect(svc.profileOf('@me:hs').displayName).toBe('Newer');
   });
 
+  it('follows the account\u2019s own profile hydrating on sync', async () => {
+    // THE case, and the one the UserEvent listeners cannot cover: the client seeds its own
+    // user with `new User(id)` rather than `User.createUser`, so it has no re-emitter and
+    // `User.displayName` never reaches a client-level listener for it. Before the sync
+    // trigger existed, the header chip and every account badge showed the raw mxid for the
+    // whole session.
+    const client = fakeClient({ displayName: '@me:hs', avatarUrl: null });
+    const { svc } = setup({ '@me:hs': client });
+    expect(svc.profileOf('@me:hs').displayName).toBe('@me:hs');
+
+    client.getUser = () => ({ displayName: 'Me', avatarUrl: 'mxc://me' });
+    handlerFor(client, 'sync')?.({}, { userId: '' } as never);
+    await Promise.resolve();
+
+    expect(svc.profileOf('@me:hs').displayName).toBe('Me');
+    expect(svc.profileOf('@me:hs').avatarMxc).toBe('mxc://me');
+  });
+
+  it('hears a BACKGROUND account sync without the active one syncing', async () => {
+    // Each account gets its own sync listener, which is the whole point: the counter this
+    // replaced was bumped by the active client only.
+    const me = fakeClient({ displayName: 'Me', avatarUrl: null });
+    const alt = fakeClient(null);
+    const { svc } = setup({ '@me:hs': me, '@alt:hs': alt });
+
+    alt.getUser = () => ({ displayName: 'Alt', avatarUrl: null });
+    handlerFor(alt, 'sync')?.({}, { userId: '' } as never);
+    await Promise.resolve();
+
+    expect(svc.profileOf('@alt:hs').displayName).toBe('Alt');
+  });
+
+  it('detaches the sync listener too', () => {
+    const client = fakeClient({ displayName: 'Me', avatarUrl: null });
+    const { ids, clients } = setup({ '@me:hs': client });
+
+    clients.delete('@me:hs');
+    ids.set([]);
+    TestBed.flushEffects();
+
+    expect(client.off).toHaveBeenCalledWith('sync', expect.any(Function));
+  });
+
   it('skips an account whose client is not live yet', () => {
     const { svc } = setup({});
     const ids = TestBed.inject(MatrixClientService).accountIds;

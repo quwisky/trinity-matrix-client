@@ -288,7 +288,16 @@ export class RoomsService {
     ],
     // refresh() writes signals, which schedule change detection, so the room list and
     // unread badges surface immediately.
-    rebuild: () => this.refresh(),
+    rebuild: (client) => {
+      this.refresh();
+      // Only when the client itself changed — a re-login or an account switch. The member
+      // signals hold values read from the OUTGOING client, and nothing else re-reads them:
+      // their writers are bound to the active client only.
+      if (client !== this.lastMemberClient) {
+        this.lastMemberClient = client;
+        this.rereadMembers(null);
+      }
+    },
     // Bound by hand rather than added to `events` because these must NOT be coalesced
     // into the rebuild: they feed the per-room member signals alone, which is what keeps a
     // member list reactive without re-running the room-list rebuild on every sync tick.
@@ -307,8 +316,22 @@ export class RoomsService {
       this._rooms.set([]);
       this._directRoomIds.set(new Set());
       this.dmPeers = new Set();
+      // The member signals are part of the read model too. Leaving them holding the
+      // outgoing client's members is what makes a stale list survive a switch.
+      for (const members of this.memberSignals.values()) {
+        members.set([]);
+      }
     },
   });
+
+  /**
+   * The client the member signals were last read against.
+   *
+   * They are values, not lazy reads, so a new client has to re-read them — and only a NEW
+   * client, because `rebuild` also runs on every coalesced sync and re-reading every
+   * watched room there would undo the point of dispatching on `state.roomId`.
+   */
+  private lastMemberClient: MatrixClient | null = null;
 
   /**
    * Attach sync listeners and do the first read. Idempotent per client (e.g. the

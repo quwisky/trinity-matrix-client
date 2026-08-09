@@ -1,5 +1,10 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
-import { UserEvent, type MatrixClient, type User } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  UserEvent,
+  type MatrixClient,
+  type User,
+} from 'matrix-js-sdk';
 import {
   coalesce,
   MatrixClientService,
@@ -17,7 +22,8 @@ export interface AccountProfile {
 /** The listener attached to one account's client, kept so it can be detached. */
 interface AccountListener {
   readonly client: MatrixClient;
-  readonly handler: (event: unknown, user: User) => void;
+  readonly onUser: (event: unknown, user: User) => void;
+  readonly onSync: () => void;
 }
 
 /**
@@ -40,10 +46,19 @@ interface AccountListener {
  * listeners — the same shape `MixedRoomsService` and `UnreadAggregatorService` use,
  * including the identity re-check that catches a new client object for the same user id.
  *
- * `User.displayName`/`User.avatarUrl` are re-emitted at the client
- * (`matrix-js-sdk/src/models/user.ts` registers them with the client's re-emitter), which
- * is what makes a single per-client listener enough. The same mechanism `PresenceService`
- * relies on.
+ * **Why it listens to `ClientEvent.Sync` and not only to `UserEvent.*`**, which is the trap
+ * here: the client re-emits `User.displayName`/`User.avatarUrl` only for `User` objects
+ * built by `User.createUser`, and an account's OWN user is not one of them.
+ * `startClient()` seeds it as `store.storeUser(new User(userId))` — the plain constructor,
+ * no re-emitter — precisely so it exists before the first sync
+ * (`matrix-js-sdk/src/client.ts`, "Create our own user object artificially"). Nothing
+ * later replaces it, and `client.setDisplayName` emits on that same object, so a listener
+ * for the account's own profile would never fire once. `PresenceService` is not a
+ * counter-example: it consumes the re-emission for OTHER users and hardcodes self to
+ * `online`.
+ *
+ * So the sync tick is the real trigger, and the `UserEvent` listeners are the fast path for
+ * the case they do cover. `equal: sameProfiles` makes the ticks that changed nothing free.
  */
 @Injectable({ providedIn: 'root' })
 export class AccountProfilesService {
@@ -122,21 +137,27 @@ export class AccountProfilesService {
         continue; // not fully started yet; a later account change re-checks it
       }
       // Filtered to the account's OWN user: the client re-emits these for every user it
-      // knows about, which in a busy session is everyone in every room.
-      const handler = (_event: unknown, user: User): void => {
+      // knows about, which in a busy session is everyone in every room. See the class doc
+      // for why this listener alone is NOT enough for the own user.
+      const onUser = (_event: unknown, user: User): void => {
         if (user.userId === userId) {
           this.flusher.schedule();
         }
       };
-      client.on(UserEvent.DisplayName, handler);
-      client.on(UserEvent.AvatarUrl, handler);
-      this.listeners.set(userId, { client, handler });
+      // The trigger that actually fires for the account's own profile. Per account, so a
+      // background account hydrating is heard without the active one having to sync.
+      const onSync = (): void => this.flusher.schedule();
+      client.on(UserEvent.DisplayName, onUser);
+      client.on(UserEvent.AvatarUrl, onUser);
+      client.on(ClientEvent.Sync, onSync);
+      this.listeners.set(userId, { client, onUser, onSync });
     }
   }
 
-  private detach({ client, handler }: AccountListener): void {
-    client.off(UserEvent.DisplayName, handler);
-    client.off(UserEvent.AvatarUrl, handler);
+  private detach({ client, onUser, onSync }: AccountListener): void {
+    client.off(UserEvent.DisplayName, onUser);
+    client.off(UserEvent.AvatarUrl, onUser);
+    client.off(ClientEvent.Sync, onSync);
   }
 }
 

@@ -275,7 +275,10 @@ when the changed member is a DM peer, because a DM has no `m.room.avatar` and th
 _is_ the room's row avatar.
 
 **`reset` clears everything the projection owns** — the memoised member cache, the rooms signal,
-the direct-room ids and the DM peer set — so a disconnected service holds nothing stale.
+the direct-room ids, the DM peer set and the per-room member signals — so a disconnected service
+holds nothing stale. That last one is the easiest to forget and the one a stale read is visible
+through: the member signals hold VALUES read from a particular client, so `rebuild` also re-reads
+them whenever the client itself changed.
 
 **Optimistic writes are explicit and reversible.** `setMarkedUnread` is the one place a write
 cannot wait for the server, and the comment explains why: `setRoomAccountData` is a bare PUT with
@@ -336,6 +339,7 @@ conclusions rather than the puzzle:
 | `RoomsService.profileRevision` (was `revision`)       | **Removed** → `AccountProfilesService`, which projects `UserEvent.DisplayName`/`AvatarUrl` per signed-in account. The counter was bumped only by the ACTIVE client while two consumers read _other_ accounts' clients, so a mixed-in account's badge stayed stale until the active account happened to sync — papered over by also reading the unread aggregator. |
 | `RoomsService.memberRevision`                         | **Removed** → `membersFor(roomId)`, a signal per watched room written only when a member event names it. It was never a throttle: what makes a re-read cheap is `membersOf`'s fingerprint memo returning the identical array, which `Object.is` stops. Being unfiltered, it woke every member list in the app on any room's member event.                         |
 | `heightVersion` (`virtual-message-list.component.ts`) | **Kept**, and not a Matrix problem: it invalidates a `Map` a `ResizeObserver` writes. The alternative allocates per measurement. Never previously listed.                                                                                                                                                                                                         |
+| `RoomShellStore.jumpRequest`                          | **Kept**, and not a Matrix problem either: it re-fires an effect for a jump to a target that has not changed, which is a command and not state. Never previously listed.                                                                                                                                                                                          |
 
 Two general lessons, both learned the hard way here:
 
@@ -351,7 +355,9 @@ back a fresh array each rebuild. It worked, it was untested, and severing the re
 still leaves the end-to-end test green. Pin a projection where the accident cannot reach it:
 in the data-access spec, not the component's.
 
-What is left is one counter, and it is not a Matrix problem. Before adding another, check
+What is left is two counters, neither over Matrix state: `heightVersion` above, and
+`RoomShellStore.jumpRequest`, which re-fires an effect for a jump to a target that has not
+changed. Before adding another, check
 whether the value can be projected by the service that owns the
 events — `projectFromClient` decides listener lifecycle, coalescing and account-switch
 re-projection for you, and the answer has been "yes, project it" five times running. Where the

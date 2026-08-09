@@ -1775,6 +1775,47 @@ describe('RoomsService membersFor', () => {
     expect(members().map((m) => m.userId)).toEqual(['@ada:hs']);
   });
 
+  it('re-reads against the new client when the projection rewires', () => {
+    // The signals hold VALUES, so a re-login or account switch has to re-read them —
+    // nothing else does. Their writers are bound to the active client only, so without
+    // this a member list survives a switch showing the previous account's members, and a
+    // MyMembership from the new client wipes it to [] instead.
+    const roster = [fakeMember({ userId: '@ada:hs', name: 'Ada' })];
+    const room = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: roster,
+    });
+    const first = {
+      getRooms: () => [room],
+      getRoom: (id: string) => (id === '!a:hs' ? room : null),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const { svc, matrix } = provideRooms(first);
+    svc.connect();
+    const members = svc.membersFor('!a:hs');
+    expect(members().map((m) => m.userId)).toEqual(['@ada:hs']);
+
+    // A different client, whose copy of the room has a different membership.
+    const rosterB = [fakeMember({ userId: '@bo:hs', name: 'Bo' })];
+    const roomB = fakeRoom({
+      roomId: '!a:hs',
+      name: 'general',
+      members: rosterB,
+    });
+    const second = {
+      getRooms: () => [roomB],
+      getRoom: (id: string) => (id === '!a:hs' ? roomB : null),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    ngMocks.stubMember(matrix, 'instance', second as never);
+    svc.connect();
+
+    expect(members().map((m) => m.userId)).toEqual(['@bo:hs']);
+  });
+
   it('is empty, not thrown, for a null room id', () => {
     const { svc } = setup([fakeRoom({ roomId: '!a:hs', name: 'general' })]);
 
