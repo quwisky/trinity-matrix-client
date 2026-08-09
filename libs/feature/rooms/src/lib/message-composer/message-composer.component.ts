@@ -1,7 +1,6 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   ElementRef,
   Injector,
   afterNextRender,
@@ -14,49 +13,24 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
-  lucideImagePlay,
-  lucideMapPin,
-  lucideMic,
-  lucidePaperclip,
-  lucidePlus,
   lucideSend,
   lucideSmile,
   lucideTrash2,
-  lucideVote,
   lucideX,
 } from '@ng-icons/lucide';
-import {
-  HlmDropdownMenu,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
-import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
-import { HlmSpinner } from '@trinity/helm/spinner';
 import { HlmTextarea } from '@trinity/helm/textarea';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { TrnToastService } from '@trinity/helm/overlay';
 import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
-import {
-  EmojiService,
-  type EmojiData,
-  type EmojiEvent,
-} from '@ctrl/ngx-emoji-mart/ngx-emoji';
+import { EmojiService, type EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import {
   ComposerSettingsService,
   DraftStoreService,
   KeyboardShortcutsService,
   ThemeService,
-  VoiceRecorderService,
 } from '@trinity/platform-native';
-import {
-  GifService,
-  GifSettingsService,
-  type GifResult,
-} from '@trinity/data-access/gif';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { type GifResult } from '@trinity/data-access/gif';
 import {
   applyFormat,
   continueList,
@@ -72,18 +46,24 @@ import {
 } from '@trinity/util/matrix';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/ui';
 import { ComposerToolbarComponent } from './composer-toolbar/composer-toolbar.component';
+import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
+import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
+import { ComposerSuggestionsComponent } from './composer-suggestions/composer-suggestions.component';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
-import { MediaPickerService } from '../media-picker/media-picker.service';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
-import { CreatePollService } from '../poll/create-poll.service';
-import { LocationShareService } from '../location-share/location-share.service';
+import { ComposerAttachmentsService } from './composer-attachments.service';
+import { EmojiAutocomplete } from './emoji-autocomplete';
+import {
+  MentionAutocomplete,
+  type MentionMember,
+} from './mention-autocomplete';
 
-/** A room member offered by the @-mention autocomplete. */
-export interface MentionMember {
-  userId: string;
-  name: string;
-}
+/**
+ * A room member offered by the @-mention autocomplete. Re-exported here because it is the
+ * shape of this component's `members` input; the list itself lives with the engine.
+ */
+export type { MentionMember };
 
 /** What the composer emits on submit: the message text plus any @-mentioned users. */
 export interface ComposerSubmit {
@@ -92,25 +72,6 @@ export interface ComposerSubmit {
 }
 
 const MAX_HEIGHT_PX = 200;
-
-/**
- * A `:shortcode` being typed at the caret: a `:` at a word boundary, then at
- * least two shortcode characters, with no closing colon yet. The leading
- * boundary keeps URLs and times (`http://`, `8:30`) from opening the menu.
- */
-const EMOJI_TRIGGER = /(?:^|\s):([a-z0-9_+-]{2,})$/i;
-/** A fully typed `:shortcode:` (closing colon present) for inline replacement. */
-const EMOJI_COMPLETE = /(?:^|\s):([a-z0-9_+-]+):$/i;
-/** How many suggestions the menu offers at once. */
-const EMOJI_SUGGESTION_LIMIT = 8;
-
-/**
- * An `@mention` being typed at the caret: `@` at a word boundary (so an email's
- * `a@b` doesn't trigger) followed by the query so far (may be empty right after `@`).
- */
-const MENTION_TRIGGER = /(?:^|\s)@([^\s@]*)$/;
-/** How many member suggestions the mention menu offers at once. */
-const MENTION_SUGGESTION_LIMIT = 8;
 
 /**
  * Which formatting action each shortcut applies. An explicit table rather than deriving the
@@ -129,6 +90,11 @@ const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
  * Discord-style composer: Enter sends, Shift+Enter inserts a newline. In edit mode
  * it is prefilled with the message draft and Esc cancels. An emoji button opens a
  * picker that inserts at the cursor.
+ *
+ * What it owns is the textarea: its value, its caret, the draft behind it and what a submit
+ * makes of them. The two autocompletes ({@link EmojiAutocomplete}, {@link MentionAutocomplete})
+ * and every non-text attachment ({@link ComposerAttachmentsService}) live beside it, and the
+ * template's four child components render what they hold.
  */
 @Component({
   selector: 'trn-message-composer',
@@ -139,27 +105,21 @@ const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
     HlmTextarea,
     PickerComponent,
     GifPickerComponent,
-    HlmDropdownMenu,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuTrigger,
-    HlmProgress,
-    HlmProgressIndicator,
-    HlmSpinner,
     ComposerToolbarComponent,
+    ComposerAttachmentStripComponent,
+    ComposerInsertMenuComponent,
+    ComposerSuggestionsComponent,
     SpoilerRevealDirective,
     MatrixLinkDirective,
   ],
+  // Per composer instance, not per app: the room composer and the thread composer are alive
+  // at once and each needs its own staged file, GIF grid and recording.
+  providers: [ComposerAttachmentsService],
   viewProviders: [
     provideIcons({
-      lucideImagePlay,
-      lucideMapPin,
-      lucideMic,
-      lucidePaperclip,
-      lucidePlus,
       lucideSend,
       lucideSmile,
       lucideTrash2,
-      lucideVote,
       lucideX,
     }),
   ],
@@ -244,11 +204,12 @@ export class MessageComposerComponent {
       return { html: '', rich: false };
     }
     const mentions = untracked(() => this.activeMentions());
-    // Slash commands only where they are actually parsed on send: `TimelineService.send` and
-    // `ThreadsService.sendThreadMessage`. A reply, an edit and an attachment caption route
-    // through `replyMessageContent` / `editMessageContent` / `mediaCaptionFields`, none of
-    // which look at a leading slash — so previewing `/spoiler x` concealed while replying
-    // would promise a spoiler and send the literal text.
+    // Slash commands only where they are actually parsed on send:
+    // `TimelineActionsService.send` and `ThreadsService.sendThreadMessage`. A reply,
+    // an edit and an attachment caption route through `replyMessageContent` /
+    // `editMessageContent` / `mediaCaptionFields`, none of which look at a leading
+    // slash — so previewing `/spoiler x` concealed while replying would promise a
+    // spoiler and send the literal text.
     const parsesCommands =
       !this.editing() && !this.replyingTo() && !this.pendingFile();
     const content = ((parsesCommands
@@ -276,35 +237,32 @@ export class MessageComposerComponent {
       : { html: escapeHtml(body), rich: false };
   });
 
+  /**
+   * Every way something other than typed text gets into the message: a picked, pasted or
+   * dropped-in file, a GIF, a poll, a location, a voice clip. The signals and methods below
+   * that carry an attachment meaning are this service's, surfaced under their long-standing
+   * names so the template and the consumers of this component see one composer.
+   */
+  private readonly attachments = inject(ComposerAttachmentsService);
+
   /** A picked/pasted attachment held for a caption, sent on the next submit
    * (Enter / send button) — not uploaded immediately. */
-  readonly pendingFile = signal<File | null>(null);
+  readonly pendingFile = this.attachments.pendingFile;
   /** Object URL previewing a staged image, else null (revoked on clear/destroy). */
-  readonly pendingPreview = signal<string | null>(null);
+  readonly pendingPreview = this.attachments.pendingPreview;
   readonly pickerOpen = signal(false);
   /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
-  readonly gifPickerOpen = signal(false);
+  readonly gifPickerOpen = this.attachments.gifPickerOpen;
   /** True while a voice message is being recorded. */
-  readonly recordingVoice = signal(false);
-  /** Elapsed recording time in seconds, for the live timer. */
-  private readonly voiceElapsed = signal(0);
-  /** Interval handle for the recording timer, cleared on stop/cancel/destroy. */
-  private voiceTimer: ReturnType<typeof setInterval> | null = null;
-  /** True between a start() call and its mic-acquisition resolving (re-entry guard). */
-  private voiceStarting = false;
-  /** Set on teardown so an in-flight mic acquisition can abort instead of orphaning. */
-  private destroyed = false;
+  readonly recordingVoice = this.attachments.recordingVoice;
   /** `m:ss` label for the running recording timer. */
-  readonly voiceTimeLabel = computed(() => {
-    const total = this.voiceElapsed();
-    const minutes = Math.floor(total / 60);
-    const seconds = total % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  });
+  readonly voiceTimeLabel = this.attachments.voiceTimeLabel;
   /** True while a chosen GIF is being fetched, before its media upload starts. */
-  readonly gifDownloading = signal(false);
+  readonly gifDownloading = this.attachments.gifDownloading;
   /** The GIF affordance is offered only once a provider + API key are configured. */
-  readonly gifEnabled = computed(() => this.gifSettings.configured());
+  readonly gifEnabled = this.attachments.gifEnabled;
+  /** True while a location is being resolved and sent (drives the button's busy state). */
+  readonly locationSharing = this.attachments.locationSharing;
   /**
    * Whether the narrow-layout `+` opens the insert tray rather than the file picker
    * directly. With only one insert action left to offer — the thread composer with no
@@ -316,48 +274,33 @@ export class MessageComposerComponent {
   );
   /** Match the emoji picker's chrome to the app's active theme. */
   readonly isDarkMode = computed(() => this.theme.resolved() === 'dark');
+  /**
+   * The two autocomplete engines. Each owns its trigger detection, suggestion list,
+   * highlighted index and the caret splice an acceptance resolves to; this component owns
+   * the textarea, so it reads the caret, hands it over, and applies whatever comes back.
+   * That is the boundary the two used to lack — they shared one caret model in-line here.
+   */
+  private readonly emojiAutocomplete = new EmojiAutocomplete(
+    inject(EmojiSearch),
+    inject(EmojiService),
+  );
+  private readonly mentionAutocomplete = new MentionAutocomplete(this.members);
   /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
-  readonly emojiQuery = signal<string | null>(null);
+  readonly emojiQuery = this.emojiAutocomplete.query;
   /** Ranked emoji suggestions for the current query (from emoji-mart's index). */
-  readonly emojiMatches = computed<EmojiData[]>(() => {
-    const q = this.emojiQuery();
-    if (q === null) {
-      return [];
-    }
-    return this.emojiSearch.search(q, undefined, EMOJI_SUGGESTION_LIMIT) ?? [];
-  });
+  readonly emojiMatches = this.emojiAutocomplete.matches;
   /** The menu is shown only when a query yields at least one match. */
-  readonly emojiOpen = computed(() => this.emojiMatches().length > 0);
+  readonly emojiOpen = this.emojiAutocomplete.open;
   /** Index of the highlighted suggestion. */
-  readonly emojiActiveIndex = signal(0);
+  readonly emojiActiveIndex = this.emojiAutocomplete.activeIndex;
   /** The `@mention` query under the caret, or null when the menu is closed. */
-  readonly mentionQuery = signal<string | null>(null);
+  readonly mentionQuery = this.mentionAutocomplete.query;
   /** Members matching the current query (prefix matches first), capped for the menu. */
-  readonly mentionMatches = computed<MentionMember[]>(() => {
-    const q = this.mentionQuery();
-    if (q === null) {
-      return [];
-    }
-    const query = q.toLowerCase();
-    return this.members()
-      .filter(
-        (m) =>
-          m.name.toLowerCase().includes(query) ||
-          m.userId.toLowerCase().includes(query),
-      )
-      .sort(
-        (a, b) =>
-          Number(b.name.toLowerCase().startsWith(query)) -
-          Number(a.name.toLowerCase().startsWith(query)),
-      )
-      .slice(0, MENTION_SUGGESTION_LIMIT);
-  });
+  readonly mentionMatches = this.mentionAutocomplete.matches;
   /** The mention menu shows only when a query yields at least one member. */
-  readonly mentionOpen = computed(() => this.mentionMatches().length > 0);
+  readonly mentionOpen = this.mentionAutocomplete.open;
   /** Index of the highlighted member suggestion. */
-  readonly mentionActiveIndex = signal(0);
-  /** Users chosen via the mention menu, for `m.mentions` + pills on submit. */
-  private readonly mentions = signal<Mention[]>([]);
+  readonly mentionActiveIndex = this.mentionAutocomplete.activeIndex;
   /** Whether to show a determinate bar — true once the first real fraction lands.
    * Until then (metadata probe + thumbnail upload) the bar is indeterminate so it
    * reads as "working" rather than a stalled 0%. */
@@ -369,24 +312,13 @@ export class MessageComposerComponent {
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('fileInput');
-  private readonly picker = inject(MediaPickerService);
-  private readonly toast = inject(TrnToastService);
-  private readonly createPollSvc = inject(CreatePollService);
-  private readonly locationShare = inject(LocationShareService);
-  private readonly timeline = inject(TimelineService);
-  private readonly voiceRecorder = inject(VoiceRecorderService);
-  private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
 
   /** Whether this device can record voice (mic + MediaRecorder present). */
   get voiceSupported(): boolean {
-    return this.voiceRecorder.supported;
+    return this.attachments.voiceSupported;
   }
-  private readonly emojiSearch = inject(EmojiSearch);
-  private readonly emojiService = inject(EmojiService);
   private readonly theme = inject(ThemeService);
-  private readonly gifs = inject(GifService);
-  private readonly gifSettings = inject(GifSettingsService);
   private readonly drafts = inject(DraftStoreService);
   private readonly composerSettings = inject(ComposerSettingsService);
   /**
@@ -404,15 +336,22 @@ export class MessageComposerComponent {
   private wasRoomId: string | null | undefined = undefined;
 
   constructor() {
-    // Revoke a staged image's preview object URL on teardown.
-    this.destroyRef.onDestroy(() => this.setPreview(null));
-    // Stop a running recording timer (and release the mic) if torn down mid-record.
-    this.destroyRef.onDestroy(() => {
-      this.destroyed = true;
-      this.clearVoiceTimer();
-      if (this.recordingVoice() || this.voiceStarting) {
-        this.voiceRecorder.cancel();
-      }
+    // Before anything else: the attachment workflows call straight back through this, and
+    // the room-change effect below can already ask them to drop a staged file.
+    this.attachments.connect({
+      roomId: this.roomId,
+      editing: this.editing,
+      uploadProgress: this.uploadProgress,
+      sendMedia: (file, caption) => this.submitMedia.emit({ file, caption }),
+      endReply: () => {
+        if (this.replyingTo()) {
+          this.cancelReply.emit();
+        }
+      },
+      focusInput: () =>
+        queueMicrotask(() => this.textarea()?.nativeElement.focus()),
+      leavePreview: () => this.previewing.set(false),
+      openFileDialog: () => this.fileInput()?.nativeElement.click(),
     });
 
     // On a room/thread change: drop the staged (unsent) attachment — it was staged
@@ -431,7 +370,7 @@ export class MessageComposerComponent {
           if (this.recordingVoice()) {
             this.cancelVoiceRecording();
           }
-          this.mentions.set([]); // tracked mentions belong to the old conversation
+          this.mentionAutocomplete.clearChosen(); // they belong to the old conversation
           this.previewing.set(false); // the new room opens ready to write, not to read
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!this.editing()) {
@@ -801,99 +740,58 @@ export class MessageComposerComponent {
   private resetMenus(): void {
     this.emojiQuery.set(null);
     this.mentionQuery.set(null);
-    this.mentions.set([]);
+    this.mentionAutocomplete.clearChosen();
     // Leaving the preview on is a trap rather than a preference: it hides the textarea, so a
     // composer that lands in preview mode after a send or a room switch looks broken — an
     // empty box that swallows typing until you notice the eye button.
     this.previewing.set(false);
   }
 
+  /** Caret offset in the textarea, or the end of the text when it isn't rendered. */
+  private caret(): number {
+    return this.textarea()?.nativeElement.selectionStart ?? this.text().length;
+  }
+
   /** Recompute the mention menu from the `@query` under the caret. */
   private syncMentionAutocomplete(): void {
-    const el = this.textarea()?.nativeElement;
-    const caret = el?.selectionStart ?? this.text().length;
-    const trigger = MENTION_TRIGGER.exec(this.text().slice(0, caret));
-    this.mentionQuery.set(trigger ? trigger[1] : null);
+    this.mentionAutocomplete.sync(this.text(), this.caret());
   }
 
   /** Accept a member: swap the `@query` for `@Name ` and record the mention. */
   acceptMention(index = this.mentionActiveIndex()): void {
-    const member = this.mentionMatches()[index];
-    if (!member) {
+    const replacement = this.mentionAutocomplete.accept(
+      this.text(),
+      this.caret(),
+      index,
+    );
+    if (!replacement) {
       return;
     }
-    const el = this.textarea()?.nativeElement;
-    const caret = el?.selectionStart ?? this.text().length;
-    const trigger = MENTION_TRIGGER.exec(this.text().slice(0, caret));
-    const display = `@${member.name}`;
-    const start = trigger ? caret - trigger[1].length - 1 : caret; // drop "@query"
-    this.replaceRange(start, caret, `${display} `);
-    this.mentions.update((list) => [
-      ...list,
-      { userId: member.userId, display },
-    ]);
+    this.replaceRange(replacement.start, replacement.end, replacement.insert);
     this.mentionQuery.set(null);
   }
 
   private moveMentionSelection(delta: number): void {
-    const n = this.mentionMatches().length;
-    if (n === 0) {
-      return;
+    const next = this.mentionAutocomplete.move(delta);
+    if (next !== null) {
+      this.scrollSuggestionIntoView(`mention-suggestion-${next}`);
     }
-    const next = (this.mentionActiveIndex() + delta + n) % n;
-    this.mentionActiveIndex.set(next);
-    queueMicrotask(() =>
-      document
-        .getElementById(`mention-suggestion-${next}`)
-        ?.scrollIntoView?.({ block: 'nearest' }),
-    );
   }
 
   /** Chosen mentions still present in the text (deleted ones dropped), deduped. */
   private activeMentions(): Mention[] {
-    const text = this.text();
-    const seen = new Set<string>();
-    const out: Mention[] = [];
-    for (const mention of this.mentions()) {
-      if (text.includes(mention.display) && !seen.has(mention.userId)) {
-        seen.add(mention.userId);
-        out.push(mention);
-      }
-    }
-    return out;
+    return this.mentionAutocomplete.active(this.text());
   }
 
   /**
-   * Recompute the emoji menu from the text before the caret. A fully typed
-   * `:shortcode:` is converted to its emoji inline; otherwise an in-progress
-   * `:fragment` opens (or, with no match, closes) the suggestion menu.
+   * Recompute the emoji menu from the text before the caret, applying the inline
+   * `:shortcode:` → emoji replacement the engine resolves when one is complete.
    */
   private syncEmojiAutocomplete(): void {
-    const el = this.textarea()?.nativeElement;
-    const caret = el?.selectionStart ?? this.text().length;
-    const before = this.text().slice(0, caret);
-
-    const complete = EMOJI_COMPLETE.exec(before);
-    if (complete) {
-      const char = this.nativeForShortcode(complete[1].toLowerCase());
-      if (char) {
-        const start = caret - complete[1].length - 2; // ":" + code + ":"
-        this.replaceRange(start, caret, char);
-        this.emojiQuery.set(null);
-        return;
-      }
+    const replacement = this.emojiAutocomplete.sync(this.text(), this.caret());
+    if (replacement) {
+      this.replaceRange(replacement.start, replacement.end, replacement.insert);
     }
-
-    const trigger = EMOJI_TRIGGER.exec(before);
-    this.emojiQuery.set(trigger ? trigger[1].toLowerCase() : null);
-  }
-
-  /** Native emoji for an exact shortcode, or undefined if it isn't a real one. */
-  private nativeForShortcode(code: string): string | undefined {
-    const data = this.emojiService.getData(code);
-    return data
-      ? (this.emojiService.getSanitizedData(data).native ?? undefined)
-      : undefined;
   }
 
   /** The emoji picker chose an emoji → insert its native character at the cursor. */
@@ -906,15 +804,12 @@ export class MessageComposerComponent {
 
   /** Open the create-poll dialog (starts a poll in the active room on confirm). */
   openPollDialog(): void {
-    void this.createPollSvc.open();
+    this.attachments.openPollDialog();
   }
-
-  /** True while a location is being resolved and sent (drives the button's busy state). */
-  readonly locationSharing = this.locationShare.sharing;
 
   /** Share the device's current location to the active room. */
   shareLocation(): void {
-    this.locationShare.share();
+    this.attachments.shareLocation();
   }
 
   /** Toggle the emoji picker, closing the other overlays (only one at a time). */
@@ -926,166 +821,65 @@ export class MessageComposerComponent {
   /** Toggle the GIF grid, closing the other overlays (only one at a time). */
   toggleGifPicker(): void {
     this.pickerOpen.set(false);
-    this.gifPickerOpen.set(!this.gifPickerOpen());
+    this.attachments.toggleGifPicker();
   }
 
   /** Begin recording a voice message; toasts and resets if the mic is unavailable. */
-  async startVoiceRecording(): Promise<void> {
-    // Guard re-entry: `recordingVoice` isn't set until the async mic acquisition
-    // resolves, so a second click before then would open a second mic stream and
-    // orphan the first. `voiceStarting` closes that window synchronously.
-    if (this.recordingVoice() || this.voiceStarting) {
-      return;
-    }
-    this.voiceStarting = true;
-    const roomAtStart = this.roomId();
-    try {
-      await this.voiceRecorder.start();
-    } catch {
-      this.voiceStarting = false;
-      this.toast.show('Could not access the microphone.', {
-        duration: 4000,
-        variant: 'destructive',
-      });
-      return;
-    }
-    this.voiceStarting = false;
-    // The view may have been torn down, or the room switched, during acquisition —
-    // don't leave a stream open / timer ticking (and never bind the clip to a room
-    // the user has since left).
-    if (this.destroyed || this.roomId() !== roomAtStart) {
-      this.voiceRecorder.cancel();
-      return;
-    }
-    this.recordingVoice.set(true);
-    // Recording replaces the toolbar, and the preview toggle lives on it — leaving the
-    // preview up would strand it with no way back to the input.
-    this.previewing.set(false);
-    this.voiceElapsed.set(0);
-    this.voiceTimer = setInterval(
-      () => this.voiceElapsed.update((s) => s + 1),
-      1000,
-    );
+  startVoiceRecording(): Promise<void> {
+    return this.attachments.startVoiceRecording();
   }
 
   /** Stop recording and send the clip as a voice message. */
   stopVoiceRecording(): void {
-    if (!this.recordingVoice()) {
-      return;
-    }
-    this.clearVoiceTimer();
-    this.recordingVoice.set(false);
-    void this.voiceRecorder
-      .stop()
-      .then((recording) => {
-        if (!recording || recording.blob.size === 0) {
-          return;
-        }
-        // A voice message is standalone; drop any active reply (as media does).
-        if (this.replyingTo()) {
-          this.cancelReply.emit();
-        }
-        this.timeline
-          .sendVoiceMessage(recording)
-          .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe({
-            error: () =>
-              this.toast.show('Could not send that voice message.', {
-                duration: 4000,
-                variant: 'destructive',
-              }),
-          });
-      })
-      // Zoneless: an unhandled rejection here would go nowhere at all.
-      .catch(() =>
-        this.toast.show('Could not finish that voice recording.', {
-          duration: 4000,
-          variant: 'destructive',
-        }),
-      );
+    this.attachments.stopVoiceRecording();
   }
 
   /** Abort the recording, discarding the clip. */
   cancelVoiceRecording(): void {
-    if (!this.recordingVoice()) {
-      return;
-    }
-    this.clearVoiceTimer();
-    this.recordingVoice.set(false);
-    this.voiceRecorder.cancel();
+    this.attachments.cancelVoiceRecording();
   }
 
-  private clearVoiceTimer(): void {
-    if (this.voiceTimer !== null) {
-      clearInterval(this.voiceTimer);
-      this.voiceTimer = null;
-    }
-  }
-
-  /** A GIF was chosen → download it and send it through the media path (works in
-   * rooms and threads, encrypted or not). Sends immediately, like other GIF UIs. */
+  /** A GIF was chosen → download it and send it through the media path. */
   onGifSelect(gif: GifResult): void {
-    if (this.gifDownloading()) {
-      return;
-    }
-    this.gifDownloading.set(true);
-    this.gifs
-      .download(gif)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (file) => {
-          this.gifDownloading.set(false);
-          this.gifPickerOpen.set(false);
-          // A media send carries no reply relation (see submit()); close any
-          // active reply so its banner doesn't linger over the next message.
-          if (this.replyingTo()) {
-            this.cancelReply.emit();
-          }
-          this.submitMedia.emit({ file, caption: '' });
-        },
-        error: () => {
-          this.gifDownloading.set(false);
-          this.toast.show('Could not load that GIF.', {
-            duration: 4000,
-            variant: 'destructive',
-          });
-        },
-      });
+    this.attachments.gifSelected(gif);
   }
 
   /** Accept a suggestion: swap the `:fragment` under the caret for the emoji. */
   acceptEmoji(index = this.emojiActiveIndex()): void {
-    const match = this.emojiMatches()[index];
-    const native = match?.native;
-    if (!native) {
+    const acceptance = this.emojiAutocomplete.accept(
+      this.text(),
+      this.caret(),
+      index,
+    );
+    if (!acceptance) {
       return;
     }
-    const el = this.textarea()?.nativeElement;
-    const caret = el?.selectionStart ?? this.text().length;
-    const trigger = EMOJI_TRIGGER.exec(this.text().slice(0, caret));
-    if (trigger) {
-      const start = caret - trigger[1].length - 1; // ":" + fragment
-      this.replaceRange(start, caret, native);
+    if (acceptance.kind === 'replace') {
+      const { start, end, insert } = acceptance.replacement;
+      this.replaceRange(start, end, insert);
     } else {
       // Caret drifted off the fragment — fall back to a plain cursor insert.
-      this.insertEmoji(native);
+      this.insertEmoji(acceptance.native);
     }
     this.emojiQuery.set(null);
   }
 
   private moveEmojiSelection(delta: number): void {
-    const n = this.emojiMatches().length;
-    if (n === 0) {
-      return;
+    const next = this.emojiAutocomplete.move(delta);
+    if (next !== null) {
+      this.scrollSuggestionIntoView(`emoji-suggestion-${next}`);
     }
-    const next = (this.emojiActiveIndex() + delta + n) % n;
-    this.emojiActiveIndex.set(next);
-    // aria-activedescendant doesn't auto-scroll the listbox; keep the highlight
-    // visible when the result set overflows the menu's max-height.
+  }
+
+  /**
+   * Keep the highlighted option in view: `aria-activedescendant` doesn't auto-scroll the
+   * listbox, and the result set can overflow the menu's max-height. `id` must be the one
+   * `ComposerSuggestionsComponent` stamps on the option — the same id
+   * `aria-activedescendant` points at.
+   */
+  private scrollSuggestionIntoView(id: string): void {
     queueMicrotask(() =>
-      document
-        .getElementById(`emoji-suggestion-${next}`)
-        ?.scrollIntoView?.({ block: 'nearest' }),
+      document.getElementById(id)?.scrollIntoView?.({ block: 'nearest' }),
     );
   }
 
@@ -1104,99 +898,22 @@ export class MessageComposerComponent {
 
   /** Attach button: native gallery picker on device, else the hidden file input. */
   onAttach(): void {
-    if (this.picker.available) {
-      this.picker
-        .pickImage()
-        .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe({
-          next: (file) => {
-            if (file) {
-              this.stagePending(file);
-            }
-          },
-          // A user-cancel resolves to null above; this catches a denied photo
-          // permission (or a genuine picker failure) instead of leaving it
-          // unhandled, and shows the reason.
-          error: (err: unknown) => void this.showAttachError(err),
-        });
-    } else {
-      this.fileInput()?.nativeElement.click();
-    }
-  }
-
-  /** Surface a gallery-picker failure (notably denied photo access) as a toast. */
-  private showAttachError(err: unknown): void {
-    this.toast.show(
-      err instanceof Error ? err.message : 'Could not open the gallery.',
-      { duration: 4000, variant: 'destructive' },
-    );
+    this.attachments.attach();
   }
 
   /** Hidden file input change → stage the picked file, then reset for re-picking. */
   onFilePicked(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (file) {
-      this.stagePending(file);
-    }
-    input.value = ''; // let the same file be picked again
-  }
-
-  /** Hold a picked/pasted file for a caption instead of sending immediately.
-   * A preview object URL is made for images and revoked when it's replaced. */
-  private stagePending(file: File): void {
-    this.setPreview(
-      file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-    );
-    this.pendingFile.set(file);
-    queueMicrotask(() => this.textarea()?.nativeElement.focus());
+    this.attachments.filePicked(event);
   }
 
   /** Drop the staged attachment (× button, Escape, or after it's sent). */
   clearPending(): void {
-    this.setPreview(null);
-    this.pendingFile.set(null);
+    this.attachments.clearPending();
   }
 
-  /** Swap the preview object URL, revoking the previous one. */
-  private setPreview(url: string | null): void {
-    const prev = this.pendingPreview();
-    if (prev && prev !== url) {
-      URL.revokeObjectURL(prev);
-    }
-    this.pendingPreview.set(url);
-  }
-
-  /**
-   * Paste an image from the clipboard → send it as an attachment (Discord-style),
-   * via the same media path as the picker. Pasted images land in `files` on most
-   * engines; some (older WebKit) expose them only as `items` of kind `file`. Text
-   * paste is left untouched.
-   */
+  /** Paste an image from the clipboard → stage it as an attachment (Discord-style). */
   onPaste(event: ClipboardEvent): void {
-    // While editing, attachments are disabled (an edit can't become media), so
-    // let the paste fall through to the textarea. Also one upload at a time.
-    if (this.editing() || this.uploadProgress() !== null) {
-      return;
-    }
-    const data = event.clipboardData;
-    if (!data) {
-      return;
-    }
-    let image: File | null =
-      Array.from(data.files).find((f) => f.type.startsWith('image/')) ?? null;
-    if (!image) {
-      for (const item of Array.from(data.items)) {
-        if (item.kind === 'file' && item.type.startsWith('image/')) {
-          image = item.getAsFile();
-          break;
-        }
-      }
-    }
-    if (image) {
-      event.preventDefault(); // don't also drop the raw image into the textarea
-      this.stagePending(image);
-    }
+    this.attachments.paste(event);
   }
 
   onEscape(): void {

@@ -18,7 +18,7 @@ import {
   type GifResult,
 } from '@trinity/data-access/gif';
 import { TrnToastService } from '@trinity/helm/overlay';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   MessageComposerComponent,
   type ComposerSubmit,
@@ -1177,7 +1177,7 @@ describe('MessageComposerComponent', () => {
             stop: over.stop ?? (() => Promise.resolve(recording)),
             cancel,
           }),
-          MockProvider(TimelineService, { sendVoiceMessage }),
+          MockProvider(TimelineActionsService, { sendVoiceMessage }),
         ] as Provider[],
       };
     }
@@ -1219,7 +1219,7 @@ describe('MessageComposerComponent', () => {
           stop: () => Promise.resolve(recording),
           cancel,
         }),
-        MockProvider(TimelineService, {}),
+        MockProvider(TimelineActionsService, {}),
       ]);
       const cmp = fixture.componentInstance;
 
@@ -1858,9 +1858,10 @@ describe('MessageComposerComponent', () => {
       ])(
         'previews a slash command literally while %s, because that is what sends',
         async (_label, inputs) => {
-          // Only TimelineService.send and ThreadsService.sendThreadMessage parse slash
-          // commands. A reply/edit goes through replyMessageContent/editMessageContent,
-          // which send the text as typed — so concealing it here would be a lie.
+          // Only TimelineActionsService.send and ThreadsService.sendThreadMessage
+          // parse slash commands. A reply/edit goes through replyMessageContent /
+          // editMessageContent, which send the text as typed — so concealing it here
+          // would be a lie.
           const { fixture } = await renderComposer(inputs);
           fixture.componentInstance.text.set('/spoiler the butler did it');
           fixture.detectChanges();

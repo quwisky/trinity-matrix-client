@@ -14,48 +14,14 @@
   </div>
 }
 
-@if (uploadProgress() !== null) {
-  <div class="composer__upload" data-testid="upload-progress">
-    <hlm-progress
-      [value]="uploadDeterminate() ? (uploadProgress() ?? 0) * 100 : null"
-      aria-label="Uploading attachment"
-    >
-      <hlm-progress-indicator />
-    </hlm-progress>
-    <span class="composer__upload-label" aria-live="polite">
-      Uploading…{{ uploadDeterminate() ? ' ' + uploadPercent() + '%' : '' }}
-    </span>
-  </div>
-}
-
-@if (pendingFile(); as file) {
-  <div class="composer__pending" data-testid="composer-pending">
-    @if (pendingPreview(); as src) {
-      <img
-        decoding="async"
-        class="composer__pending-thumb"
-        [src]="src"
-        alt=""
-      />
-    } @else {
-      <span class="composer__pending-icon" aria-hidden="true">
-        <ng-icon name="lucidePaperclip" />
-      </span>
-    }
-    <span class="composer__pending-name" [title]="file.name">{{
-      file.name
-    }}</span>
-    <button
-      type="button"
-      class="composer__pending-remove"
-      aria-label="Remove attachment"
-      data-testid="composer-pending-remove"
-      (click)="clearPending()"
-    >
-      <ng-icon name="lucideX" aria-hidden="true" />
-    </button>
-  </div>
-}
+<trn-composer-attachment-strip
+  [uploadProgress]="uploadProgress()"
+  [uploadDeterminate]="uploadDeterminate()"
+  [uploadPercent]="uploadPercent()"
+  [pendingFile]="pendingFile()"
+  [pendingPreview]="pendingPreview()"
+  (removePending)="clearPending()"
+/>
 
 <div class="composer">
   @if (!recordingVoice() && showToolbar()) {
@@ -111,71 +77,20 @@
       </button>
     </div>
   }
-  @if (emojiOpen()) {
-    <ul
-      id="emoji-suggestions"
-      class="composer__emoji-menu"
-      role="listbox"
-      aria-label="Emoji suggestions"
-      data-testid="emoji-autocomplete"
-    >
-      @for (m of emojiMatches(); track m.id; let i = $index) {
-        <li role="presentation">
-          <button
-            type="button"
-            tabindex="-1"
-            [id]="'emoji-suggestion-' + i"
-            class="composer__emoji-suggestion"
-            [class.composer__emoji-suggestion--active]="
-              i === emojiActiveIndex()
-            "
-            role="option"
-            [attr.aria-selected]="i === emojiActiveIndex()"
-            (mousedown)="$event.preventDefault()"
-            (mouseenter)="emojiActiveIndex.set(i)"
-            (click)="acceptEmoji(i)"
-          >
-            <span class="composer__emoji-suggestion-char" aria-hidden="true">{{
-              m.native
-            }}</span>
-            <span class="composer__emoji-suggestion-code">{{ m.colons }}</span>
-          </button>
-        </li>
-      }
-    </ul>
-  }
-  @if (mentionOpen()) {
-    <ul
-      id="mention-suggestions"
-      class="composer__emoji-menu"
-      role="listbox"
-      aria-label="Member suggestions"
-      data-testid="mention-autocomplete"
-    >
-      @for (member of mentionMatches(); track member.userId; let i = $index) {
-        <li role="presentation">
-          <button
-            type="button"
-            tabindex="-1"
-            [id]="'mention-suggestion-' + i"
-            class="composer__emoji-suggestion"
-            [class.composer__emoji-suggestion--active]="
-              i === mentionActiveIndex()
-            "
-            role="option"
-            [attr.aria-selected]="i === mentionActiveIndex()"
-            (mousedown)="$event.preventDefault()"
-            (mouseenter)="mentionActiveIndex.set(i)"
-            (click)="acceptMention(i)"
-          >
-            <span class="composer__emoji-suggestion-code">{{
-              member.name
-            }}</span>
-          </button>
-        </li>
-      }
-    </ul>
-  }
+  <!-- The option ids this stamps are what the textarea's `aria-activedescendant` below points
+       at, and what `scrollSuggestionIntoView` looks up — see the child's own note. -->
+  <trn-composer-suggestions
+    [emojiOpen]="emojiOpen()"
+    [emojiMatches]="emojiMatches()"
+    [emojiActiveIndex]="emojiActiveIndex()"
+    [mentionOpen]="mentionOpen()"
+    [mentionMatches]="mentionMatches()"
+    [mentionActiveIndex]="mentionActiveIndex()"
+    (emojiHighlight)="emojiActiveIndex.set($event)"
+    (emojiAccept)="acceptEmoji($event)"
+    (mentionHighlight)="mentionActiveIndex.set($event)"
+    (mentionAccept)="acceptMention($event)"
+  />
   <input
     #fileInput
     type="file"
@@ -189,102 +104,22 @@
        are positioned `bottom: calc(100% + 4px)` against `.composer`, so anything outside it
        would be covered by them. -->
   <div class="composer__row">
-    <!-- Every compose action lives behind one `+` at all widths: a dropdown tray when
-       there is more than one to offer, a plain attach button when there is not. Keeps
-       the row to +, input, emoji and send. -->
-    @if (hasInsertMenu()) {
-      <button
-        type="button"
-        class="composer__attach"
-        [hlmDropdownMenuTrigger]="insertMenu"
-        hlmTooltip="Add to message"
-        aria-label="Add to message"
-        data-testid="composer-insert"
-        [disabled]="editing()"
-      >
-        @if (locationSharing() || gifDownloading()) {
-          <hlm-spinner class="text-base" />
-        } @else {
-          <ng-icon name="lucidePlus" aria-hidden="true" />
-        }
-      </button>
-      <ng-template #insertMenu>
-        <!-- Each item repeats its inline twin's [disabled] rather than the trigger
-           carrying the union: an upload in flight blocks another *attachment*, it is
-           no reason to stop someone starting a poll. Only editing() is whole-tray. -->
-        <div hlmDropdownMenu aria-label="Add to message">
-          <button
-            hlmDropdownMenuItem
-            class="composer__insert-item"
-            [disabled]="uploadProgress() !== null"
-            (triggered)="onAttach()"
-            data-testid="insert-attach"
-          >
-            <ng-icon name="lucidePaperclip" />
-            Attach a file
-          </button>
-          @if (gifEnabled()) {
-            <button
-              hlmDropdownMenuItem
-              class="composer__insert-item"
-              [disabled]="uploadProgress() !== null || gifDownloading()"
-              (triggered)="toggleGifPicker()"
-              data-testid="insert-gif"
-            >
-              <ng-icon name="lucideImagePlay" />
-              GIF
-            </button>
-          }
-          @if (richActions()) {
-            <button
-              hlmDropdownMenuItem
-              class="composer__insert-item"
-              (triggered)="openPollDialog()"
-              data-testid="insert-poll"
-            >
-              <ng-icon name="lucideVote" />
-              Poll
-            </button>
-            <button
-              hlmDropdownMenuItem
-              class="composer__insert-item"
-              [disabled]="locationSharing()"
-              (triggered)="shareLocation()"
-              data-testid="insert-location"
-            >
-              <ng-icon name="lucideMapPin" />
-              Location
-            </button>
-            @if (voiceSupported && !recordingVoice()) {
-              <button
-                hlmDropdownMenuItem
-                class="composer__insert-item"
-                [disabled]="uploadProgress() !== null"
-                (triggered)="startVoiceRecording()"
-                data-testid="insert-voice"
-              >
-                <ng-icon name="lucideMic" />
-                Voice message
-              </button>
-            }
-          }
-        </div>
-      </ng-template>
-    } @else {
-      <!-- Nothing to collect in a tray (thread composer, no GIF provider), so the `+`
-         stays a plain attach button. -->
-      <button
-        type="button"
-        class="composer__attach"
-        hlmTooltip="Attach"
-        aria-label="Attach a file"
-        data-testid="composer-insert-attach"
-        [disabled]="uploadProgress() !== null || editing()"
-        (click)="onAttach()"
-      >
-        <ng-icon name="lucidePlus" aria-hidden="true" />
-      </button>
-    }
+    <trn-composer-insert-menu
+      [hasMenu]="hasInsertMenu()"
+      [editing]="editing()"
+      [uploading]="uploadProgress() !== null"
+      [gifEnabled]="gifEnabled()"
+      [gifDownloading]="gifDownloading()"
+      [richActions]="richActions()"
+      [voiceSupported]="voiceSupported"
+      [recording]="recordingVoice()"
+      [locationSharing]="locationSharing()"
+      (attachFile)="onAttach()"
+      (pickGif)="toggleGifPicker()"
+      (createPoll)="openPollDialog()"
+      (shareLocation)="shareLocation()"
+      (recordVoice)="startVoiceRecording()"
+    />
     <!-- The preview replaces the input rather than sitting beside it, so the composer keeps its
        height and nothing below it moves. The textarea stays in the DOM (hidden) so its value,
        caret and draft survive the round trip untouched. -->

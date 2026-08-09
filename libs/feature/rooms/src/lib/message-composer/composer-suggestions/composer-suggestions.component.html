@@ -1,0 +1,61 @@
+@if (emojiOpen()) {
+  <ul
+    id="emoji-suggestions"
+    class="composer__emoji-menu"
+    role="listbox"
+    aria-label="Emoji suggestions"
+    data-testid="emoji-autocomplete"
+  >
+    @for (m of emojiMatches(); track m.id; let i = $index) {
+      <li role="presentation">
+        <button
+          type="button"
+          tabindex="-1"
+          [id]="'emoji-suggestion-' + i"
+          class="composer__emoji-suggestion"
+          [class.composer__emoji-suggestion--active]="i === emojiActiveIndex()"
+          role="option"
+          [attr.aria-selected]="i === emojiActiveIndex()"
+          (mousedown)="$event.preventDefault()"
+          (mouseenter)="emojiHighlight.emit(i)"
+          (click)="emojiAccept.emit(i)"
+        >
+          <span class="composer__emoji-suggestion-char" aria-hidden="true">{{
+            m.native
+          }}</span>
+          <span class="composer__emoji-suggestion-code">{{ m.colons }}</span>
+        </button>
+      </li>
+    }
+  </ul>
+}
+@if (mentionOpen()) {
+  <ul
+    id="mention-suggestions"
+    class="composer__emoji-menu"
+    role="listbox"
+    aria-label="Member suggestions"
+    data-testid="mention-autocomplete"
+  >
+    @for (member of mentionMatches(); track member.userId; let i = $index) {
+      <li role="presentation">
+        <button
+          type="button"
+          tabindex="-1"
+          [id]="'mention-suggestion-' + i"
+          class="composer__emoji-suggestion"
+          [class.composer__emoji-suggestion--active]="
+            i === mentionActiveIndex()
+          "
+          role="option"
+          [attr.aria-selected]="i === mentionActiveIndex()"
+          (mousedown)="$event.preventDefault()"
+          (mouseenter)="mentionHighlight.emit(i)"
+          (click)="mentionAccept.emit(i)"
+        >
+          <span class="composer__emoji-suggestion-code">{{ member.name }}</span>
+        </button>
+      </li>
+    }
+  </ul>
+}

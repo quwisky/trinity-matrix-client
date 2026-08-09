@@ -482,9 +482,30 @@ flag it if the emoji dataset or Shiki language set doubled.
 shape is inert.** `@angular/build`'s `BundleCalculator` matches a `bundle` budget by literal chunk name
 (`bundle-calculator.js:146` — `chunks.filter(c => c?.names?.includes(budgetName))`), with no glob
 support, so `"*"` matches nothing and the budget never evaluates. Use `anyScript` (per-file gate) and
-`allScript` (total gate) instead — those are the calculators that actually cover lazy chunks. Then
-either drop `PreloadAllModules`, or move the emoji picker and Shiki behind `@defer`/dynamic `import()`
-so the route chunk stays small.
+`allScript` (total gate) instead — those are the calculators that actually cover lazy chunks.
+
+~~Then either drop `PreloadAllModules`, or move the emoji picker and Shiki behind `@defer`/dynamic
+`import()`.~~ **Also corrected during implementation — the `@defer` half was measured and refuted.**
+An esbuild metafile of the real production build attributes the 3.48 MB chunk as **78.6 %
+`@shikijs/langs` (2,741,259 B)** and only 13.7 % emoji-mart, so the picker was never the bulk. A probe
+build wrapping `<emoji-mart>` in `@defer (on immediate)` moved the route chunk **+437 B** and the
+_initial_ bundle **+6,634 B** (the app's first `@defer` pulls in the deferred-block runtime) — a net
+regression, reverted. The emoji weight is anchored by the eager `inject(EmojiSearch)` /
+`inject(EmojiService)` feeding the composer's shortcode matching, not by the template, and making
+those lazy would turn `:shortcode:` conversion async: a behaviour change, not a move. Shiki resists a
+dynamic import for the reason `code-highlight.ts` already documents — a late install leaves
+already-projected messages unhighlighted, because `TimelineService.viewCache` keys on
+`eventRevision()` (Matrix inputs only) and is cleared solely by `close()`, while
+`setCodeHighlighter`'s own clear reaches one layer below it; fixing that needs a generation counter in
+**both** caches. **The lever that would actually work is dropping `PreloadAllModules`** — which is a
+behaviour change (every first room/settings navigation pays the fetch), so it wants deciding on its
+merits rather than smuggling in under a bundle-size finding.
+
+Related, found while measuring and left alone: the "Cost, stated plainly" comment in
+`libs/util/matrix/src/lib/code-highlight.ts` puts the grammars at "roughly 813 KB raw / 134 kB
+gzipped". The measured contribution is 2,741,259 B of _minified output_ — 3.4× the stated figure. That
+comment is what a reader consults when deciding whether the static import is affordable, so the
+understatement is worth correcting.
 
 ---
 

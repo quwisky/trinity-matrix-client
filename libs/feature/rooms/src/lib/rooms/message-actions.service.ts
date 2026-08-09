@@ -2,7 +2,10 @@ import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import { RoomsService } from '@trinity/data-access/rooms';
-import { TimelineService } from '@trinity/data-access/timeline';
+import {
+  TimelineActionsService,
+  TimelineService,
+} from '@trinity/data-access/timeline';
 import { type Mention, type MatrixLinkTarget } from '@trinity/util/matrix';
 import { Observable, finalize } from 'rxjs';
 import { ThreadPanelService } from '../thread/thread-panel.service';
@@ -31,6 +34,7 @@ export class MessageActionsService {
   private readonly rooms = inject(RoomsService);
   private readonly jumpToDateSvc = inject(JumpToDateService);
   private readonly timeline = inject(TimelineService);
+  private readonly timelineActions = inject(TimelineActionsService);
   private readonly pinned = inject(PinnedMessagesService);
   private readonly threadPanel = inject(ThreadPanelService);
   private readonly pinnedPanel = inject(PinnedPanelService);
@@ -119,7 +123,7 @@ export class MessageActionsService {
 
   onSend({ body, mentions }: { body: string; mentions: Mention[] }): void {
     // The local echo (and its failed/retry state) surfaces the result.
-    this.timeline
+    this.timelineActions
       .send(body, mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
@@ -133,14 +137,17 @@ export class MessageActionsService {
   /** Cast a vote on a poll (m.poll.response). */
   onPollVote({ pollId, answerId }: { pollId: string; answerId: string }): void {
     this.runAction(
-      this.timeline.votePoll(pollId, answerId),
+      this.timelineActions.votePoll(pollId, answerId),
       'Could not cast your vote.',
     );
   }
 
   /** Close a poll (m.poll.end). */
   onPollEnd(pollId: string): void {
-    this.runAction(this.timeline.endPoll(pollId), 'Could not end the poll.');
+    this.runAction(
+      this.timelineActions.endPoll(pollId),
+      'Could not end the poll.',
+    );
   }
 
   onSendMedia({ file, caption }: { file: File; caption: string }): void {
@@ -149,7 +156,7 @@ export class MessageActionsService {
     // SDK echo + retry path takes over (like onSend). finalize() clears the bar on
     // success, error, or unsubscribe — runAction has no such hook, so subscribe here.
     this.uploadProgress.set(0);
-    this.timeline
+    this.timelineActions
       .sendMedia(file, caption, (fraction) => this.uploadProgress.set(fraction))
       .pipe(
         finalize(() => this.uploadProgress.set(null)),
@@ -165,27 +172,27 @@ export class MessageActionsService {
   // silent — surface it as a toast. (Send/reply produce an echo with a retry.)
   onEdit(edit: { id: string; body: string; mentions: Mention[] }): void {
     this.runAction(
-      this.timeline.edit(edit.id, edit.body, edit.mentions),
+      this.timelineActions.edit(edit.id, edit.body, edit.mentions),
       'Could not edit the message.',
     );
   }
 
   onDelete(messageId: string): void {
     this.runAction(
-      this.timeline.redact(messageId),
+      this.timelineActions.redact(messageId),
       'Could not delete the message.',
     );
   }
 
   onReact(reaction: { id: string; key: string }): void {
     this.runAction(
-      this.timeline.toggleReaction(reaction.id, reaction.key),
+      this.timelineActions.toggleReaction(reaction.id, reaction.key),
       'Could not update the reaction.',
     );
   }
 
   onReply(reply: { id: string; body: string; mentions: Mention[] }): void {
-    this.timeline
+    this.timelineActions
       .reply(reply.id, reply.body, reply.mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();

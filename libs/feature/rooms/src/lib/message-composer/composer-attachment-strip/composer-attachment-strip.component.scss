@@ -1,0 +1,79 @@
+// No box of its own: the upload bar and the staged attachment stay direct children of the
+// composer element, exactly where they sat before they were extracted.
+:host {
+  display: contents;
+}
+
+.composer__upload {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px;
+
+  trn-progress {
+    flex: 1;
+  }
+}
+
+.composer__upload-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--trinity-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+// Staged attachment awaiting a caption (shown above the input until sent).
+.composer__pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 8px;
+  padding: 6px 8px;
+  border-radius: var(--trinity-radius);
+  background: var(--trinity-sidebar);
+}
+
+.composer__pending-thumb {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--trinity-radius-sm);
+}
+
+.composer__pending-icon {
+  display: flex;
+  flex-shrink: 0;
+  font-size: 20px;
+  color: var(--trinity-text-muted);
+}
+
+.composer__pending-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--trinity-text);
+}
+
+.composer__pending-remove {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  font-size: 14px;
+  color: var(--trinity-text-muted);
+
+  &:hover {
+    color: var(--trinity-text);
+  }
+}
+
+// Touch targets: the 44px minimum this project holds itself to. Split out of the composer's
+// own coarse-pointer block when this markup moved, so the rule travels with the button.
+@media (pointer: coarse) {
+  .composer__pending-remove {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

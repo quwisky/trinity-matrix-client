@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { type Observable, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnToastService } from '@trinity/helm/overlay';
-import { TimelineService } from '@trinity/data-access/timeline';
+import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { type SwitcherSelection } from '@trinity/data-access/search';
 import { ForwardService } from './forward.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
@@ -19,7 +19,7 @@ function setup(
     providers: [
       ForwardService,
       MockProvider(QuickSwitcherService, { pick }),
-      MockProvider(TimelineService, { forwardMessage }),
+      MockProvider(TimelineActionsService, { forwardMessage }),
       MockProvider(TrnToastService, { show }),
     ],
   });
