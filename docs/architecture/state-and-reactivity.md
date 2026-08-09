@@ -267,14 +267,18 @@ interesting ones:
 
 **Two listeners are deliberately kept out of the coalesced rebuild.** `RoomStateEvent.Members` and
 `RoomEvent.MyMembership` are attached through `bind`/`unbind` rather than `events`, because they
-should not trigger an O(rooms) rebuild. They bump a separate `memberRevision` signal, which exists
-so a member-list projection can stay reactive without re-running on every sync tick and read
-receipt. The member handler does call `projection.schedule()` in one narrow case: when the changed
-member is a DM peer, because a DM has no `m.room.avatar` and that member's picture _is_ the room's
-row avatar.
+should not trigger an O(rooms) rebuild. They write the per-room member signals
+(`membersFor(roomId)`) instead, so a member list stays reactive without re-running on every sync
+tick and read receipt — and `RoomStateEvent.Members` carries the room it happened in, so only that
+room's signal is written. The member handler does call `projection.schedule()` in one narrow case:
+when the changed member is a DM peer, because a DM has no `m.room.avatar` and that member's picture
+_is_ the room's row avatar.
 
 **`reset` clears everything the projection owns** — the memoised member cache, the rooms signal,
-the direct-room ids and the DM peer set — so a disconnected service holds nothing stale.
+the direct-room ids, the DM peer set and the per-room member signals — so a disconnected service
+holds nothing stale. That last one is the easiest to forget and the one a stale read is visible
+through: the member signals hold VALUES read from a particular client, so `rebuild` also re-reads
+them whenever the client itself changed.
 
 **Optimistic writes are explicit and reversible.** `setMarkedUnread` is the one place a write
 cannot wait for the server, and the comment explains why: `setRoomAccountData` is a bare PUT with
@@ -315,24 +319,27 @@ a private `withBusy()` helper backed by page-level `busy` and `error` signals.
     Observable is subscribed, so calling `runWithBusy` and never subscribing leaves `busy` stuck
     true because `finalize` never runs.
 
-## Revision counters, and what replaced most of them
+## Revision counters, and what replaced them
 
 A bump counter is a signal holding no data: a `computed` reads it, discards the value, and
 re-runs when it ticks. They appear where the underlying data is not in a signal at all — it
 lives in `matrix-js-sdk` objects mutated in place — so there is nothing to depend on.
 
 This section used to say there were four and leave it there. Issue #61 audited them; the
-count was wrong, so was one of the justifications, and two turned out to be avoidable. The
-survey, so the next reader inherits the conclusions rather than the puzzle:
+count was wrong in both directions, so was one of the justifications, and **every counter over
+Matrix state turned out to be avoidable** — including the two that survived the first pass on
+the strength of arguments that did not hold up. The survey, so the next reader inherits the
+conclusions rather than the puzzle:
 
-| Counter                                               | Verdict                                                                                                                                                                                                                                                                                                                                                              |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SpacesService._revision`                             | **Removed.** It stood for "which rooms am I in?", which `refresh()` already knew from its own `getRooms()` pass. Now a `_joinedRoomIds` set with structural equality.                                                                                                                                                                                                |
-| `PinnedMessagesService._revision`                     | **Removed.** It was defended as irreducible — late decryption, no entity-level signal to depend on. But `MatrixEventEvent.Decrypted` _is_ that signal, the service already listened to it, and `TimelineService` solves the same problem on the same event with no counter. `pinnedMessages` is now a signal the resolve writes.                                     |
-| `ManageSpaceRoomsComponent.revision`                  | **Removed.** A _component_ compensating for a service with no reactive surface. `SpaceChildrenService.linksFor` projects `m.space.child` now. It was never in this list.                                                                                                                                                                                             |
-| `RoomsService.profileRevision`                        | **Kept**, renamed from `revision`. Its comment claimed it drove member queries; all four consumers resolve user profiles via `getUser()`. Replacing it needs a cross-account projection of `UserEvent.DisplayName`/`AvatarUrl`, because two consumers read _other_ accounts' clients.                                                                                |
-| `RoomsService.memberRevision`                         | **Kept**, on correctness grounds and not the ones previously written down. It is not a throttle: the recompute it "avoids" is `membersOf`'s fingerprint memo returning the identical array, which `Object.is` stops. It stays because `RoomStateEvent.Members` is deliberately outside the coalesced event list, making this the service's only membership observer. |
-| `heightVersion` (`virtual-message-list.component.ts`) | **Kept**, and not a Matrix problem: it invalidates a `Map` a `ResizeObserver` writes. The alternative allocates per measurement. Never previously listed.                                                                                                                                                                                                            |
+| Counter                                               | Verdict                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SpacesService._revision`                             | **Removed.** It stood for "which rooms am I in?", which `refresh()` already knew from its own `getRooms()` pass. Now a `_joinedRoomIds` set with structural equality.                                                                                                                                                                                             |
+| `PinnedMessagesService._revision`                     | **Removed.** It was defended as irreducible — late decryption, no entity-level signal to depend on. But `MatrixEventEvent.Decrypted` _is_ that signal, the service already listened to it, and `TimelineService` solves the same problem on the same event with no counter. `pinnedMessages` is now a signal the resolve writes.                                  |
+| `ManageSpaceRoomsComponent.revision`                  | **Removed.** A _component_ compensating for a service with no reactive surface. `SpaceChildrenService.linksFor` projects `m.space.child` now. It was never in this list.                                                                                                                                                                                          |
+| `RoomsService.profileRevision` (was `revision`)       | **Removed** → `AccountProfilesService`, which projects `UserEvent.DisplayName`/`AvatarUrl` per signed-in account. The counter was bumped only by the ACTIVE client while two consumers read _other_ accounts' clients, so a mixed-in account's badge stayed stale until the active account happened to sync — papered over by also reading the unread aggregator. |
+| `RoomsService.memberRevision`                         | **Removed** → `membersFor(roomId)`, a signal per watched room written only when a member event names it. It was never a throttle: what makes a re-read cheap is `membersOf`'s fingerprint memo returning the identical array, which `Object.is` stops. Being unfiltered, it woke every member list in the app on any room's member event.                         |
+| `heightVersion` (`virtual-message-list.component.ts`) | **Kept**, and not a Matrix problem: it invalidates a `Map` a `ResizeObserver` writes. The alternative allocates per measurement. Never previously listed.                                                                                                                                                                                                         |
+| `RoomShellStore.jumpRequest`                          | **Kept**, and not a Matrix problem either: it re-fires an effect for a jump to a target that has not changed, which is a command and not state. Never previously listed.                                                                                                                                                                                          |
 
 Two general lessons, both learned the hard way here:
 
@@ -348,9 +355,19 @@ back a fresh array each rebuild. It worked, it was untested, and severing the re
 still leaves the end-to-end test green. Pin a projection where the accident cannot reach it:
 in the data-access spec, not the component's.
 
-Before adding a new one, check whether the value can be projected by the service that owns the
-events — `projectFromClient` decides listener lifecycle, coalescing and account-switch
-re-projection for you, and the answer has now been "yes, project it" three times running.
+What is left is two counters, neither over Matrix state: `heightVersion` above, and
+`RoomShellStore.jumpRequest`, which re-fires an effect for a jump to a target that has not
+changed. Before adding another, check
+whether the value can be projected by the service that owns the
+events — the answer has been "yes, project it" five times running. Which projection shape
+depends on what it is keyed on, and only two of those five used `projectFromClient`:
+it decides listener lifecycle, coalescing and account-switch re-projection for a read model
+keyed on ONE active client. `PinnedMessagesService` is room-scoped and takes `coalesce`
+alone; `membersFor` writes per-room signals from the owning service's own listeners. Where the
+projection is keyed on the ACCOUNT SET rather than one active client, reconcile a listener per
+account instead (`AccountProfilesService`, `MixedRoomsService`, `UnreadAggregatorService`) — and
+keep the `held.client === client` identity re-check, or re-adding a signed-in account strands
+the listener on a stopped client.
 
 ## Page-scoped coordinators
 

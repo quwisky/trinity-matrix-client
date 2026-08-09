@@ -110,8 +110,7 @@ export class ThreadViewComponent implements OnInit, OnDestroy {
 
   /** The room's members, for the thread composer's @-mention autocomplete. */
   readonly members = computed(() => {
-    this.rooms.memberRevision(); // recompute when membership changes
-    return this.rooms.membersOf(this.roomId());
+    return this.rooms.membersFor(this.roomId())();
   });
 
   /** Id of the thread message being edited, or null. */

@@ -1,10 +1,6 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import {
-  AccountScopeService,
-  RoomsService,
-  UnreadAggregatorService,
-} from '@trinity/data-access/rooms';
+import { AccountProfilesService } from '@trinity/data-access/profile';
+import { AccountScopeService } from '@trinity/data-access/rooms';
 import { type AccountBadge } from '@trinity/ui';
 
 /**
@@ -19,31 +15,29 @@ import { type AccountBadge } from '@trinity/ui';
  */
 @Injectable({ providedIn: 'root' })
 export class AccountBadgesService {
-  private readonly matrix = inject(MatrixClientService);
   private readonly scope = inject(AccountScopeService);
-  private readonly rooms = inject(RoomsService);
-  private readonly unreadAgg = inject(UnreadAggregatorService);
+  private readonly profiles = inject(AccountProfilesService);
 
   readonly badges = computed<ReadonlyMap<string, AccountBadge>>(() => {
     const badges = new Map<string, AccountBadge>();
     if (!this.scope.mixing()) {
       return badges;
     }
-    // Invalidate on ANY mixed account's sync, not just the active one. `rooms.profileRevision()`
-    // is bumped only by the active client, so on its own a mixed-in account whose profile
-    // hydrates later would keep a stale badge (its mxid and a hashed letter instead of its
-    // name and picture) until the active account happened to sync. The unread aggregator is
-    // the one signal already fed by every signed-in client.
-    this.rooms.profileRevision();
-    this.unreadAgg.unreadByAccount();
+    // Every account's profile, each read through its OWN client. This used to read a
+    // counter only the ACTIVE client bumped, and lean on the unread aggregator — the one
+    // signal already fed by every client — to notice a mixed-in account hydrating later,
+    // which otherwise kept its mxid and a hashed letter instead of its name and picture.
+    // That workaround is gone: the projection listens per account, so a badge is driven by
+    // the thing it displays rather than by whichever unrelated signal happened to tick.
+    const profiles = this.profiles.profiles();
     for (const userId of this.scope.selected()) {
-      const user = this.matrix.clientFor(userId)?.getUser(userId);
-      const name = user?.displayName || userId;
+      const profile = profiles.get(userId);
+      const name = profile?.displayName || userId;
       badges.set(userId, {
         id: userId,
         name,
         initial: (name.replace(/^[@#!]+/, '').trim()[0] ?? '?').toUpperCase(),
-        avatarMxc: user?.avatarUrl ?? null,
+        avatarMxc: profile?.avatarMxc ?? null,
       });
     }
     return badges;

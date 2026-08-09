@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import { DialogRef } from '@angular/cdk/dialog';
 import { render } from '@trinity/testing';
 import { ThreadsService, TimelineService } from '@trinity/data-access/timeline';
+import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { type MessageView } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -71,6 +72,17 @@ async function build(
   const retryInThread = vi.fn();
   const sourceOpen = vi.fn();
   const dismiss = vi.fn().mockResolvedValue(true);
+  // The thread composer's @-mention list comes from the room's member projection. The spec
+  // supplied no RoomsService at all, so `return []` in the component went unnoticed — only
+  // a `throw` failed, and that was the template crashing rather than an assertion.
+  const roster = signal<readonly MemberSummary[]>([
+    { userId: '@ada:hs', name: 'Ada', initial: 'A', avatarMxc: null },
+  ]);
+  const membersFor = vi.fn((roomId: string | null) =>
+    roomId === '!r:hs'
+      ? roster.asReadonly()
+      : signal<readonly MemberSummary[]>([]).asReadonly(),
+  );
   const { fixture, container } = await render(ThreadViewComponent, {
     inputs: { roomId: '!r:hs', rootEventId: '$root' },
     providers: [
@@ -90,6 +102,7 @@ async function build(
       MockProvider(TimelineService, {
         canRedactOthers: signal(state.canRedactOthers ?? false).asReadonly(),
       }),
+      MockProvider(RoomsService, { membersFor }),
       MockProvider(MessageSourceService, { open: sourceOpen }),
       MockProvider(DialogRef, { close: dismiss }),
     ],
@@ -97,6 +110,8 @@ async function build(
   return {
     fixture,
     container,
+    roster,
+    membersFor,
     canPaginateThread,
     loadingOlderThread,
     openThread,
@@ -329,5 +344,33 @@ describe('ThreadViewComponent', () => {
     const { container } = await build([], { canPaginate: false });
 
     expect(container.querySelector('.thread__load-older')).toBeNull();
+  });
+});
+
+describe('ThreadViewComponent members', () => {
+  it('hands the composer the room\u2019s own live member list', async () => {
+    const { fixture, roster, membersFor } = await build([]);
+    const composer = () =>
+      fixture.debugElement.query(By.directive(MessageComposerComponent))
+        .componentInstance as MessageComposerComponent;
+
+    expect(membersFor).toHaveBeenCalledWith('!r:hs');
+    expect(
+      composer()
+        .members()
+        .map((m) => m.userId),
+    ).toEqual(['@ada:hs']);
+
+    roster.set([
+      { userId: '@ada:hs', name: 'Ada', initial: 'A', avatarMxc: null },
+      { userId: '@bo:hs', name: 'Bo', initial: 'B', avatarMxc: null },
+    ]);
+    fixture.detectChanges();
+
+    expect(
+      composer()
+        .members()
+        .map((m) => m.userId),
+    ).toEqual(['@ada:hs', '@bo:hs']);
   });
 });
