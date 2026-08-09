@@ -25,7 +25,7 @@
         <label class="manage-rooms__suggested">
           <hlm-checkbox
             [checked]="child.suggested"
-            [disabled]="busyChildId() === child.childId"
+            [disabled]="writeLocked()"
             (checkedChange)="toggleSuggested(child.childId, $event)"
             [attr.data-testid]="'suggest-' + child.childId"
           />
@@ -37,7 +37,7 @@
           type="button"
           variant="ghost"
           size="icon"
-          [disabled]="isFirst(child.childId) || busyChildId() === child.childId"
+          [disabled]="isFirst(child.childId) || writeLocked()"
           (click)="move(child.childId, 'up')"
           [attr.aria-label]="'Move ' + child.name + ' up'"
           [attr.data-testid]="'move-up-' + child.childId"
@@ -49,7 +49,7 @@
           type="button"
           variant="ghost"
           size="icon"
-          [disabled]="isLast(child.childId) || busyChildId() === child.childId"
+          [disabled]="isLast(child.childId) || writeLocked()"
           (click)="move(child.childId, 'down')"
           [attr.aria-label]="'Move ' + child.name + ' down'"
           [attr.data-testid]="'move-down-' + child.childId"

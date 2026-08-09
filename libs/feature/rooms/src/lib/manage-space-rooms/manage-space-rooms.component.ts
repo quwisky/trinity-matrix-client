@@ -7,6 +7,7 @@ import {
   inject,
   input,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgIcon, provideIcons } from '@ng-icons/core';
@@ -21,6 +22,13 @@ import {
 } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util/matrix';
+
+/**
+ * How long the write lock survives without an echo. Long enough for a healthy round trip
+ * plus the sync that carries it back, short enough that a write which changes nothing does
+ * not strand the dialog.
+ */
+const ECHO_TIMEOUT_MS = 5000;
 
 /** One child row: its link state plus whatever we can resolve about the room itself. */
 export interface ManagedChild {
@@ -68,8 +76,36 @@ export class ManageSpaceRoomsComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
+  constructor() {
+    // The lock's safety timer outlives the dialog otherwise — closing mid-write would
+    // leave it to fire against a destroyed component.
+    this.destroyRef.onDestroy(() => this.releaseEchoLock());
+  }
+
   /** The child currently being written, so its row can show as busy. */
   readonly busyChildId = signal<string | null>(null);
+
+  /** A write the server accepted whose echo has not been projected yet. */
+  private readonly echoPending = signal(false);
+  private echoTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Dialog-wide write lock: no second curation write until the first one's echo lands.
+   *
+   * Every curation write is a read-modify-write against live room state, and
+   * `sendStateEvent` is a bare PUT with no local echo — so a write issued before the echo
+   * reads the PRE-write link and re-sends it. Suggesting a room and immediately moving it
+   * silently dropped the suggestion: `writeLink` omits `suggested` when falsy, so the
+   * reorder re-sent the link without it and the server took that as the truth.
+   *
+   * `busyChildId` alone could not gate this — it clears when the PUT resolves, which is a
+   * round trip before the state a second write would read catches up — and it is per-row,
+   * while the hazard is per-space: any two writes to the same space race, not just two to
+   * the same child.
+   */
+  readonly writeLocked = computed(
+    () => this.busyChildId() !== null || this.echoPending(),
+  );
 
   /**
    * `suggested` writes overlaid on the projected links, from the click until the echo.
@@ -192,6 +228,9 @@ export class ManageSpaceRoomsComponent {
 
   /** Flag a child as suggested — a hint to members about where to start. */
   toggleSuggested(childId: string, suggested: boolean): void {
+    if (this.writeLocked()) {
+      return;
+    }
     this.pendingSuggested.update((current) =>
       new Map(current).set(childId, { value: suggested, settled: false }),
     );
@@ -228,6 +267,9 @@ export class ManageSpaceRoomsComponent {
   }
 
   move(childId: string, direction: 'up' | 'down'): void {
+    if (this.writeLocked()) {
+      return;
+    }
     const list = this.childList();
     const index = list.findIndex((child) => child.childId === childId);
     if (index === -1) {
@@ -253,6 +295,43 @@ export class ManageSpaceRoomsComponent {
     this.dialogRef.close(true);
   }
 
+  /**
+   * Hold the lock from the server's answer until the projection catches up.
+   *
+   * Released by {@link releaseOnEcho} on the next projection tick — or by the timer, which
+   * is the safety valve: a write the server answers without changing state (re-suggesting
+   * an already-suggested room, or a reorder that mints the key the child already had)
+   * produces no echo at all, and a lock nothing can release would be worse than the race
+   * it prevents.
+   */
+  private holdUntilEcho(): void {
+    this.echoPending.set(true);
+    if (this.echoTimer !== null) {
+      clearTimeout(this.echoTimer);
+    }
+    this.echoTimer = setTimeout(() => this.releaseEchoLock(), ECHO_TIMEOUT_MS);
+  }
+
+  private releaseEchoLock(): void {
+    if (this.echoTimer !== null) {
+      clearTimeout(this.echoTimer);
+      this.echoTimer = null;
+    }
+    this.echoPending.set(false);
+  }
+
+  /**
+   * The projection moved, so whatever we were waiting for has landed. Reads `echoPending`
+   * untracked: this effect must depend on the links alone, or clearing the flag would
+   * re-enter it.
+   */
+  private readonly releaseOnEcho = effect(() => {
+    this.children.linksFor(this.spaceId())();
+    if (untracked(() => this.echoPending())) {
+      this.releaseEchoLock();
+    }
+  });
+
   private run(
     childId: string,
     action: ReturnType<SpaceChildrenService['setSuggested']>,
@@ -267,10 +346,12 @@ export class ManageSpaceRoomsComponent {
         // have worked anyway — `sendStateEvent` is a bare PUT with no local echo, so at
         // this instant the room state still holds the PRE-write content.
         this.busyChildId.set(null);
+        this.holdUntilEcho();
         accepted?.();
       },
       error: () => {
         this.busyChildId.set(null);
+        this.releaseEchoLock();
         rejected?.();
         this.toast.show(failureMessage, {
           duration: 4000,

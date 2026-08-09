@@ -271,6 +271,81 @@ describe('ManageSpaceRoomsComponent', () => {
     ]);
   });
 
+  describe('two curation writes in a row', () => {
+    /**
+     * Every curation write is a read-modify-write against live room state, and
+     * `sendStateEvent` is a bare PUT with no local echo — so a second write issued before
+     * the first one's echo reads the PRE-write link and re-sends it. Suggesting a room and
+     * immediately moving it therefore un-suggested it, silently, because `writeLink` omits
+     * `suggested` when falsy. The window is real because `busyChildId` cleared when the PUT
+     * resolved, a round trip before the state it read caught up.
+     */
+    it('refuses a second write while the first is still in flight', async () => {
+      const accepted = new Subject<void>();
+      const { cmp, moveChildBefore } = await build(
+        { links: [{ childId: '!a:hs' }, { childId: '!b:hs' }] },
+        { setSuggested: vi.fn(() => accepted) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+      cmp.move('!a:hs', 'down');
+
+      expect(moveChildBefore).not.toHaveBeenCalled();
+    });
+
+    it('still refuses once the server has answered but the echo has not landed', async () => {
+      const accepted = new Subject<void>();
+      const { cmp, moveChildBefore } = await build(
+        { links: [{ childId: '!a:hs' }, { childId: '!b:hs' }] },
+        { setSuggested: vi.fn(() => accepted) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+      // The PUT resolved. The room state the next write would read is still pre-write.
+      accepted.next();
+      accepted.complete();
+
+      cmp.move('!a:hs', 'down');
+
+      expect(moveChildBefore).not.toHaveBeenCalled();
+    });
+
+    it('allows the next write once the echo has been projected', async () => {
+      const accepted = new Subject<void>();
+      const { cmp, fixture, links, moveChildBefore } = await build(
+        { links: [{ childId: '!a:hs' }, { childId: '!b:hs' }] },
+        { setSuggested: vi.fn(() => accepted) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+      accepted.next();
+      accepted.complete();
+      // The echo arrives: the projection now carries what was written.
+      links.update((current) =>
+        current.map((link) =>
+          link.childId === '!a:hs' ? { ...link, suggested: true } : link,
+        ),
+      );
+      await fixture.whenStable();
+
+      cmp.move('!a:hs', 'down');
+
+      expect(moveChildBefore).toHaveBeenCalledWith('!s:hs', '!a:hs', null);
+    });
+
+    it('releases the lock when the write is refused', async () => {
+      const { cmp, moveChildBefore } = await build(
+        { links: [{ childId: '!a:hs' }, { childId: '!b:hs' }] },
+        { setSuggested: vi.fn(() => throwError(() => new Error('nope'))) },
+      );
+
+      cmp.toggleSuggested('!a:hs', true);
+      cmp.move('!a:hs', 'down');
+
+      expect(moveChildBefore).toHaveBeenCalledWith('!s:hs', '!a:hs', null);
+    });
+  });
+
   describe('a rejected suggested write', () => {
     it('puts the row back the way the server has it', async () => {
       // The checkbox ticks itself on click and only re-derives when its `checked` INPUT
