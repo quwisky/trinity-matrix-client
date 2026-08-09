@@ -1,7 +1,7 @@
 import { ApplicationRef, signal, type Provider } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { render, type ComponentInput } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
@@ -318,7 +318,7 @@ describe('MessageComposerComponent', () => {
 
   it('disables the attach action in the tray while an upload is in flight', async () => {
     const { fixture } = await renderComposer();
-    fixture.nativeElement
+    (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
       ?.click();
     await fixture.whenStable();
@@ -386,7 +386,7 @@ describe('MessageComposerComponent', () => {
 
   function pasteEvent(opts: { files?: File[]; items?: unknown[] }): {
     event: ClipboardEvent;
-    preventDefault: ReturnType<typeof vi.fn>;
+    preventDefault: Mock;
   } {
     const preventDefault = vi.fn();
     const event = {
@@ -842,7 +842,7 @@ describe('MessageComposerComponent', () => {
 
   it('omits GIF from the tray when no provider is configured', async () => {
     const { fixture } = await renderComposer();
-    fixture.nativeElement
+    (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
       ?.click();
     await fixture.whenStable();
@@ -851,7 +851,7 @@ describe('MessageComposerComponent', () => {
 
   it('offers GIF in the tray when a provider + key are configured', async () => {
     const { fixture } = await renderComposer({}, gifProviders());
-    fixture.nativeElement
+    (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
       ?.click();
     await fixture.whenStable();
@@ -966,7 +966,8 @@ describe('MessageComposerComponent', () => {
         MockProvider(VoiceRecorderService, { supported: true }),
       ]);
 
-      fixture.nativeElement
+      (fixture.nativeElement as HTMLElement)
+
         .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
         ?.click();
       await fixture.whenStable();
@@ -988,7 +989,7 @@ describe('MessageComposerComponent', () => {
         }),
         MockProvider(VoiceRecorderService, { supported: true }),
       ]);
-      fixture.nativeElement
+      (fixture.nativeElement as HTMLElement)
         .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
         ?.click();
       await fixture.whenStable();
@@ -1030,7 +1031,7 @@ describe('MessageComposerComponent', () => {
       ];
 
       for (const [testid, spy] of wiring) {
-        fixture.nativeElement
+        (fixture.nativeElement as HTMLElement)
           .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
           ?.click();
         appRef.tick();
@@ -1077,7 +1078,7 @@ describe('MessageComposerComponent', () => {
           share: vi.fn(),
         }),
       ]);
-      fixture.nativeElement
+      (fixture.nativeElement as HTMLElement)
         .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
         ?.click();
       TestBed.inject(ApplicationRef).tick();
@@ -1161,7 +1162,7 @@ describe('MessageComposerComponent', () => {
       over: {
         start?: () => Promise<void>;
         stop?: () => Promise<typeof recording | null>;
-        sendVoiceMessage?: ReturnType<typeof vi.fn>;
+        sendVoiceMessage?: Mock;
       } = {},
     ) {
       const cancel = vi.fn();

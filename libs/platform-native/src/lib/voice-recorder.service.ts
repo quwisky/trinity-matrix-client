@@ -81,6 +81,14 @@ export class VoiceRecorderService {
         this.chunks.push(event.data);
       }
     };
+    // The recorder can die on its own (permission revoked mid-record, the device
+    // grabbed by another app). Nothing else clears the handle, and `start()` no-ops
+    // while it is set, so a stale one would wedge voice messaging for the session.
+    recorder.onerror = () => {
+      if (this.recorder === recorder) {
+        this.teardown();
+      }
+    };
     this.recorder = recorder;
     recorder.start();
     this.startedAt = performance.now();
@@ -99,20 +107,34 @@ export class VoiceRecorderService {
       0,
       Math.round(performance.now() - this.startedAt),
     );
-    const blob = await new Promise<Blob>((resolve) => {
-      recorder.addEventListener(
-        'stop',
-        () =>
-          resolve(
-            new Blob(this.chunks, {
-              type: recorder.mimeType || 'audio/webm',
-            }),
-          ),
-        { once: true },
-      );
-      recorder.stop();
-    });
-    this.teardown();
+    let blob: Blob;
+    try {
+      // Already inactive — the tracks ended under us, so no 'stop' event is coming
+      // and calling stop() would throw InvalidStateError. Take whatever was captured.
+      if (recorder.state === 'inactive') {
+        blob = this.collect(recorder);
+      } else {
+        blob = await new Promise<Blob>((resolve) => {
+          recorder.addEventListener(
+            'stop',
+            () => resolve(this.collect(recorder)),
+            {
+              once: true,
+            },
+          );
+          try {
+            recorder.stop();
+          } catch {
+            // Raced into 'inactive' between the check and the call; the event will
+            // never fire, so resolve from the chunks we already have.
+            resolve(this.collect(recorder));
+          }
+        });
+      }
+    } finally {
+      // On every exit path, or the mic stays live and `start()` no-ops forever after.
+      this.teardown();
+    }
     const waveform = await computeWaveform(blob);
     return { blob, durationMs, waveform, mimeType: blob.type || 'audio/webm' };
   }
@@ -128,6 +150,10 @@ export class VoiceRecorderService {
       }
     }
     this.teardown();
+  }
+
+  private collect(recorder: MediaRecorder): Blob {
+    return new Blob(this.chunks, { type: recorder.mimeType || 'audio/webm' });
   }
 
   private teardown(): void {

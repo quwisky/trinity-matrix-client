@@ -11,6 +11,9 @@ import {
 } from '@testing-library/angular/zoneless';
 
 export * from '@testing-library/angular/zoneless';
+// From the non-zoneless entry for the same reason as `RenderComponentOptions` above:
+// specs typing an `inputs` bag need the component-parameterised version.
+export type { ComponentInput } from '@testing-library/angular';
 
 /**
  * Zoneless-aware `render` for our specs.

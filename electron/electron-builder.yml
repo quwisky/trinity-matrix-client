@@ -18,8 +18,9 @@ files:
 
 asar: true
 
-# Harden the packaged binary's fuses (disable RUN_AS_NODE / NODE_OPTIONS / --inspect)
-# so a local process can't re-launch the signed app as Node to inject code into the
+# Harden the packaged binary's fuses (disable RUN_AS_NODE / NODE_OPTIONS / --inspect,
+# and pin the app to the asar above) so a local process can't re-launch the signed app
+# as Node — or swap in its own app/ directory — to inject code into the
 # keychain-privileged main process. Runs before signing; see afterPack.cjs.
 afterPack: ./afterPack.cjs
 

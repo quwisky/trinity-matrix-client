@@ -975,25 +975,34 @@ export class MessageComposerComponent {
     }
     this.clearVoiceTimer();
     this.recordingVoice.set(false);
-    void this.voiceRecorder.stop().then((recording) => {
-      if (!recording || recording.blob.size === 0) {
-        return;
-      }
-      // A voice message is standalone; drop any active reply (as media does).
-      if (this.replyingTo()) {
-        this.cancelReply.emit();
-      }
-      this.timeline
-        .sendVoiceMessage(recording)
-        .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe({
-          error: () =>
-            this.toast.show('Could not send that voice message.', {
-              duration: 4000,
-              variant: 'destructive',
-            }),
-        });
-    });
+    void this.voiceRecorder
+      .stop()
+      .then((recording) => {
+        if (!recording || recording.blob.size === 0) {
+          return;
+        }
+        // A voice message is standalone; drop any active reply (as media does).
+        if (this.replyingTo()) {
+          this.cancelReply.emit();
+        }
+        this.timeline
+          .sendVoiceMessage(recording)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe({
+            error: () =>
+              this.toast.show('Could not send that voice message.', {
+                duration: 4000,
+                variant: 'destructive',
+              }),
+          });
+      })
+      // Zoneless: an unhandled rejection here would go nowhere at all.
+      .catch(() =>
+        this.toast.show('Could not finish that voice recording.', {
+          duration: 4000,
+          variant: 'destructive',
+        }),
+      );
   }
 
   /** Abort the recording, discarding the clip. */

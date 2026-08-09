@@ -5,15 +5,19 @@ import { VoiceRecorderService } from './voice-recorder.service';
 /** A minimal MediaRecorder stand-in driving the service's data/stop flow. */
 class FakeMediaRecorder {
   static isTypeSupported = vi.fn(() => true);
+  static instances: FakeMediaRecorder[] = [];
   state: 'inactive' | 'recording' = 'inactive';
   mimeType = 'audio/webm;codecs=opus';
   ondataavailable: ((event: { data: Blob }) => void) | null = null;
+  onerror: (() => void) | null = null;
   private readonly listeners = new Map<string, (() => void)[]>();
 
   constructor(
     public stream: unknown,
     public options?: { mimeType?: string },
-  ) {}
+  ) {
+    FakeMediaRecorder.instances.push(this);
+  }
 
   addEventListener(type: string, cb: () => void): void {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), cb]);
@@ -27,6 +31,10 @@ class FakeMediaRecorder {
   }
 
   stop(): void {
+    // Per the MediaStream Recording spec — stopping an inactive recorder throws.
+    if (this.state === 'inactive') {
+      throw new DOMException('already inactive', 'InvalidStateError');
+    }
     this.state = 'inactive';
     (this.listeners.get('stop') ?? []).forEach((cb) => cb());
   }
@@ -62,6 +70,7 @@ describe('VoiceRecorderService', () => {
     });
     getUserMedia.mockClear();
     trackStop.mockClear();
+    FakeMediaRecorder.instances = [];
   });
 
   afterEach(() => {
@@ -112,6 +121,48 @@ describe('VoiceRecorderService', () => {
 
     expect(trackStop).toHaveBeenCalled();
     expect(svc.recording).toBe(false);
+  });
+
+  // The tracks can end under us (permission revoked mid-record, the device grabbed by
+  // another app). stop() used to reject there, stranding the mic and — because start()
+  // no-ops while a recorder handle is held — killing voice messaging for the session.
+  it('stop() resolves from the captured chunks when the recorder already went inactive', async () => {
+    const svc = make();
+    await svc.start();
+    FakeMediaRecorder.instances[0].state = 'inactive';
+
+    const recording = await svc.stop();
+
+    expect(recording).not.toBeNull();
+    expect(recording?.blob.size).toBeGreaterThan(0);
+    expect(trackStop).toHaveBeenCalled(); // mic released
+    expect(svc.recording).toBe(false);
+  });
+
+  it('start() re-acquires the mic after stop() found the recorder inactive', async () => {
+    const svc = make();
+    await svc.start();
+    FakeMediaRecorder.instances[0].state = 'inactive';
+    await svc.stop();
+
+    await svc.start();
+
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(FakeMediaRecorder.instances).toHaveLength(2);
+    expect(svc.recording).toBe(true);
+  });
+
+  it('a recorder error releases the mic so the next start() is not a no-op', async () => {
+    const svc = make();
+    await svc.start();
+
+    FakeMediaRecorder.instances[0].onerror?.();
+
+    expect(trackStop).toHaveBeenCalled();
+    expect(svc.recording).toBe(false);
+
+    await svc.start();
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
   });
 
   it('start() rejects when recording is unsupported', async () => {
