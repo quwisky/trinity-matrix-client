@@ -20,6 +20,7 @@ import {
   visibilityOptions,
 } from '@trinity/util/matrix';
 import { spaceChildIdsOf } from './room-projection';
+import { compareOrder } from './space-child-order';
 
 /** Children fetched per `getRoomHierarchy` page. */
 const HIERARCHY_LIMIT = 100;
@@ -550,7 +551,7 @@ export class SpacesService {
       })
       .sort(
         (a, b) =>
-          a.order.localeCompare(b.order) ||
+          compareOrder(a.order, b.order) ||
           a.base.name.localeCompare(b.base.name),
       )
       .map((entry) => entry.base);

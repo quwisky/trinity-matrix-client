@@ -19,6 +19,7 @@ import {
   RoomsService,
   SpaceChildrenService,
   SpacesService,
+  compareOrder,
 } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util/matrix';
@@ -136,19 +137,34 @@ export class ManageSpaceRoomsComponent {
     const spaceId = this.spaceId();
     const names = this.nameLookup();
     const pending = this.pendingSuggested();
-    return this.children
-      .linksFor(spaceId)()
-      .map((link) => {
-        const known = names.get(link.childId);
-        const name = known?.name ?? link.childId;
-        return {
-          childId: link.childId,
-          name,
-          initial: known?.initial ?? initialOf(name),
-          avatarMxc: known?.avatarMxc ?? null,
-          suggested: pending.get(link.childId)?.value ?? link.suggested,
-        };
-      });
+    const nameFor = (childId: string): string =>
+      names.get(childId)?.name ?? childId;
+    return (
+      this.children
+        .linksFor(spaceId)()
+        // Copy first: the array belongs to the projection's signal, and sort mutates.
+        .slice()
+        // The service tiebreaks on child id because it reads `m.space.child` alone —
+        // a child the viewer has not joined has no local room to take a name from.
+        // Names only exist here, so the tiebreak the sidebar uses is applied here too,
+        // or an admin arranges the space in an order nobody else reads it in.
+        .sort(
+          (a, b) =>
+            compareOrder(a.order, b.order) ||
+            nameFor(a.childId).localeCompare(nameFor(b.childId)),
+        )
+        .map((link) => {
+          const known = names.get(link.childId);
+          const name = nameFor(link.childId);
+          return {
+            childId: link.childId,
+            name,
+            initial: known?.initial ?? initialOf(name),
+            avatarMxc: known?.avatarMxc ?? null,
+            suggested: pending.get(link.childId)?.value ?? link.suggested,
+          };
+        })
+    );
   });
 
   /**

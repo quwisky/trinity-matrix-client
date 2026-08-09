@@ -647,6 +647,64 @@ describe('SpacesService hierarchy', () => {
     expect(children[1]).toMatchObject({ roomId: '!sub:hs', isSpace: true });
   });
 
+  it('orders children by code point, not by locale collation', async () => {
+    // MSC1772 mandates Unicode code point order, where 'B' (66) precedes 'a' (97);
+    // `localeCompare` case-folds and puts 'a' first, arranging the Organise dialog
+    // differently from every other client. Names run the other way so only the order
+    // field can produce this result.
+    const { svc } = setupHierarchy({
+      rooms: [
+        hroom({
+          roomId: '!s:hs',
+          name: 'Space',
+          isSpace: true,
+          children: [
+            { childId: '!upper:hs', order: 'B' },
+            { childId: '!lower:hs', order: 'a' },
+          ],
+        }),
+        hroom({ roomId: '!upper:hs', name: 'zulu' }),
+        hroom({ roomId: '!lower:hs', name: 'alpha' }),
+      ],
+    });
+
+    svc.openSpace('!s:hs');
+    await flush();
+
+    expect(svc.openSpaceChildren().map((c) => c.roomId)).toEqual([
+      '!upper:hs',
+      '!lower:hs',
+    ]);
+  });
+
+  it('sorts a child with no order key after the children that have one', async () => {
+    // The spec sorts children with a valid order ahead of those without, but
+    // `''.localeCompare('z')` is -1, which floats the unordered child to the top.
+    const { svc } = setupHierarchy({
+      rooms: [
+        hroom({
+          roomId: '!s:hs',
+          name: 'Space',
+          isSpace: true,
+          children: [
+            { childId: '!unordered:hs' },
+            { childId: '!ordered:hs', order: 'z' },
+          ],
+        }),
+        hroom({ roomId: '!unordered:hs', name: 'alpha' }),
+        hroom({ roomId: '!ordered:hs', name: 'zulu' }),
+      ],
+    });
+
+    svc.openSpace('!s:hs');
+    await flush();
+
+    expect(svc.openSpaceChildren().map((c) => c.roomId)).toEqual([
+      '!ordered:hs',
+      '!unordered:hs',
+    ]);
+  });
+
   it('splits not-joined rooms from child spaces', async () => {
     const { svc } = setupHierarchy({
       rooms: [
