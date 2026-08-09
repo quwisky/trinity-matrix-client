@@ -355,6 +355,7 @@ export class ThreadsService {
 
     this.threadRoom = room;
     this.threadRoomId = roomId;
+    this.threadClient = client;
     this._openThreadRootId.set(rootEventId);
     // Attach an already-aggregated Thread (e.g. opening from a "N replies"
     // indicator). When none exists — opening a *new* thread via "Reply in thread"
