@@ -274,6 +274,13 @@ export class RoomsPage implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * These projections are **session-lifetime, not page-lifetime**, which is why nothing
+   * here is undone in {@link ngOnDestroy}. They are root singletons whose `connect()` is
+   * idempotent per client, and `projectFromClient` keys its listeners to the client
+   * instance — so a re-mount rebinds nothing and a logout releases all of them at once,
+   * from `reprojectOnAccountSwitch`, rather than from whichever page remembered to ask.
+   */
   ngOnInit(): void {
     this.rooms.connect();
     this.spaces.connect();
