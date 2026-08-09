@@ -12,6 +12,7 @@ import {
   type PendingInvite,
 } from '@trinity/data-access/invites';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { AccountProfilesService } from '@trinity/data-access/profile';
 import {
   RoomsService,
   SpacesService,
@@ -159,6 +160,17 @@ describe('RoomsPage mixed-account view', () => {
         MockProvider(UnreadAggregatorService, {
           unreadByAccount: signal<ReadonlyMap<string, number>>(
             new Map(),
+          ).asReadonly(),
+        }),
+        // Profiles come from the projection now, not from reading each client here.
+        MockProvider(AccountProfilesService, {
+          profiles: signal(
+            new Map(
+              accountIds.map((id) => [
+                id,
+                { userId: id, displayName: id, avatarMxc: avatars[id] ?? null },
+              ]),
+            ),
           ).asReadonly(),
         }),
         MockProvider(ThreadsService),

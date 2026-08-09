@@ -20,7 +20,10 @@ import {
   normalizeRoomFilter,
 } from '../channel-sidebar/room-filter';
 import { RoomShellStore } from './room-shell-store';
-import { type UserProfile } from '@trinity/data-access/profile';
+import {
+  AccountProfilesService,
+  type UserProfile,
+} from '@trinity/data-access/profile';
 import { type RailUnread } from '../server-rail/server-rail.component';
 import { type AccountSummary } from '../channel-sidebar/channel-sidebar.component';
 
@@ -48,6 +51,7 @@ export class RoomShellViewModel {
   private readonly accountBadgesSvc = inject(AccountBadgesService);
   private readonly unreadAgg = inject(UnreadAggregatorService);
   private readonly matrix = inject(MatrixClientService);
+  private readonly profiles = inject(AccountProfilesService);
 
   /** Ids of every joined room that is a child of some space, unioned across all spaces.
    * Used to keep space-owned rooms out of the flat Rooms view (they live in their space).
@@ -297,23 +301,15 @@ export class RoomShellViewModel {
   /** The active account's user id — recomputes when the account is switched. */
   readonly userId = computed(() => this.matrix.activeUserId() ?? '');
 
-  readonly userName = computed(() => {
-    this.rooms.profileRevision(); // re-read once the user's profile hydrates on sync
-    const uid = this.userId();
-    if (!uid || !this.matrix.isInitialized) {
-      return uid;
-    }
-    return this.matrix.instance.getUser(uid)?.displayName ?? uid;
-  });
+  // Both read the projection rather than the client: it is a declared dependency, so these
+  // update when the profile hydrates instead of when something else happened to sync.
+  readonly userName = computed(
+    () => this.profiles.profileOf(this.userId()).displayName,
+  );
 
-  readonly userAvatarMxc = computed(() => {
-    this.rooms.profileRevision(); // re-read once the user's profile hydrates on sync
-    const uid = this.userId();
-    if (!uid || !this.matrix.isInitialized) {
-      return null;
-    }
-    return this.matrix.instance.getUser(uid)?.avatarUrl ?? null;
-  });
+  readonly userAvatarMxc = computed(
+    () => this.profiles.profileOf(this.userId()).avatarMxc,
+  );
 
   /** First letter of the active account's display name, for the header chip's avatar. */
   readonly userInitial = computed(() =>
@@ -333,14 +329,14 @@ export class RoomShellViewModel {
 
   /** Every signed-in account, for the user-panel switcher (profile + unread total). */
   readonly accounts = computed<AccountSummary[]>(() => {
-    this.rooms.profileRevision(); // re-read each account's profile as it hydrates on sync
     const unread = this.unreadAgg.unreadByAccount();
+    const profiles = this.profiles.profiles();
     return this.matrix.accountIds().map((userId) => {
-      const user = this.matrix.clientFor(userId)?.getUser(userId);
+      const profile = profiles.get(userId);
       return {
         userId,
-        displayName: user?.displayName || userId,
-        avatarMxc: user?.avatarUrl ?? null,
+        displayName: profile?.displayName || userId,
+        avatarMxc: profile?.avatarMxc ?? null,
         unread: unread.get(userId) ?? 0,
       };
     });

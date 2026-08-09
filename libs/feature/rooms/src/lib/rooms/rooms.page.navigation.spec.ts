@@ -11,6 +11,7 @@ import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { AuthService } from '@trinity/data-access/auth';
 import { type PendingInvite } from '@trinity/data-access/invites';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { AccountProfilesService } from '@trinity/data-access/profile';
 import { MediaService } from '@trinity/data-access/media';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 import {
@@ -411,6 +412,22 @@ describe('RoomsPage account switcher summary', () => {
         MockProvider(UnreadAggregatorService, {
           unreadByAccount: signal<ReadonlyMap<string, number>>(
             new Map([['@me:hs', 4]]),
+          ).asReadonly(),
+        }),
+        // '@me:hs' has a hydrated profile; '@alt:hs' is signed in but not live yet, so it
+        // has no entry and the row falls back to its mxid.
+        MockProvider(AccountProfilesService, {
+          profiles: signal(
+            new Map([
+              [
+                '@me:hs',
+                {
+                  userId: '@me:hs',
+                  displayName: 'Me',
+                  avatarMxc: meAvatar,
+                },
+              ],
+            ]),
           ).asReadonly(),
         }),
         MockProvider(ThreadsService),

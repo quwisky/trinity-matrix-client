@@ -259,26 +259,6 @@ export class RoomsService {
   readonly directRoomIds = this._directRoomIds.asReadonly();
 
   /**
-   * Bumped on every refresh, so a derivation that resolves a USER PROFILE off the client
-   * (`getUser()`) re-runs as profiles hydrate on sync. Every consumer does exactly that;
-   * despite the old name and comment, no member query reads it.
-   *
-   * A bump counter and not a signal of data, because the thing it stands for — "some
-   * profile somewhere may have changed" — has no value to carry. The honest replacement is
-   * a real projection of `UserEvent.DisplayName`/`AvatarUrl`, which is deferred rather than
-   * unknown: two of the consumers resolve profiles from OTHER accounts' clients, so it
-   * needs the cross-account listener-set shape `MixedRoomsService` has, including its
-   * `held.client === client` identity re-check. `account-badges.service.ts` already
-   * documents that this signal alone is insufficient and pairs it with a second one.
-   *
-   * The name matters: a public signal called `revision` on a service whose room list
-   * rebuilds constantly invites reuse as a generic "something changed" hook, which is the
-   * habit issue #61 was filed about.
-   */
-  private readonly _profileRevision = signal(0);
-  readonly profileRevision = this._profileRevision.asReadonly();
-
-  /**
    * The sync projection: listeners keyed to the client instance, rebuilds coalesced into
    * one per turn, and re-projection onto the newly-active account on a switch. All three
    * are {@link projectFromClient}'s; what stays here is the event list and the rebuild.
@@ -784,8 +764,6 @@ export class RoomsService {
     );
     this._directRoomIds.set(direct);
     this.dmPeers = new Set(userByRoom.values());
-    // Profiles hydrate on sync; see the field's own note on why this is a counter.
-    this._profileRevision.update((n) => n + 1);
   }
 
   /** Overlay an in-flight marked-unread write, and forget it once /sync agrees. */
