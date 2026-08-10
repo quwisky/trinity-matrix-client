@@ -108,6 +108,14 @@ export function choiceSetting<T extends string>(spec: {
  * standard a typed-in one is; `noun` and `expected` complete the sentence
  * "'250' is not … (expected …)" — spelled out rather than derived, because the range a
  * number takes is not something the type can say.
+ *
+ * **The range does not reach the published JSON Schema**, only the rejection message: the
+ * schema node is `{ type, description }` (see `leafNode` in config-json-schema.ts), which
+ * has no `minimum`/`maximum`. So the Advanced editor cannot underline an out-of-range number
+ * while it is being typed — `validate` catches it on Apply instead, and the message says the
+ * range. Deliberate, and the same trade {@link textSetting} makes with `maxLength`: adding
+ * the keywords means widening `ConfigSchemaNode`, teaching `leafNode`, and widening the
+ * drift comparison, or the new keyword is published unguarded.
  */
 export function numberSetting(spec: {
   readonly isValid: (value: number) => boolean;

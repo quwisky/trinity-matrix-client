@@ -3,6 +3,7 @@ import {
   DEFAULT_DATE_FORMAT,
   DEFAULT_MAX_HIGHLIGHT_LINES,
   DEFAULT_TIME_FORMAT,
+  MAX_HIGHLIGHT_LINES,
   TRINITY_DATE_FORMATS,
   TRINITY_TIME_FORMATS,
   isDateFormat,
@@ -10,7 +11,6 @@ import {
 } from '@trinity/util/matrix';
 import {
   CodeHighlightSettingsService,
-  MAX_HIGHLIGHT_LINES_CEILING,
   isMaxHighlightLines,
 } from './code-highlight-settings.service';
 import { provideConfigEntries, type ConfigEntry } from './config-schema';
@@ -243,7 +243,7 @@ function codeHighlightEntries(
       ...numberSetting({
         isValid: isMaxHighlightLines,
         noun: 'a highlighting limit',
-        expected: `a whole number of lines from 0 to ${MAX_HIGHLIGHT_LINES_CEILING}, where 0 means no limit`,
+        expected: `a whole number of lines from 0 to ${MAX_HIGHLIGHT_LINES}, where 0 means no limit`,
         set: (value) => code.setMaxHighlightLines(value),
       }),
     },

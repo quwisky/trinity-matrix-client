@@ -868,12 +868,44 @@ let codeHighlighter: CodeHighlighter | null = null;
  * Lines of code one message may have highlighted when the reader has expressed no
  * preference — the ceiling {@link setMaxHighlightLines} starts from and can replace.
  *
- * Set by what the main thread can absorb, not by what fits. Measured in Chromium over
- * realistic TypeScript: 250 lines costs ~55 ms to tokenize and ~12 ms to paint, where the
- * same block left plain is ~0.5 ms — and a back-pagination projects a page of events in one
- * synchronous pass, so the ceiling is per message but the cost lands in batches.
+ * Set by what the main thread can absorb, not by what fits. With {@link BUDGET_LINE_CHARS}
+ * it admits at most 20,000 characters of tokenization per message, which is the bound this
+ * module shipped before the limit was made a preference, and is deliberately unchanged:
+ * measured in Chromium over realistic TypeScript that is ~55 ms to tokenize and ~12 ms to
+ * paint, where the same block left plain is ~0.5 ms — and a back-pagination projects a page
+ * of events in one synchronous pass, so the ceiling is per message but the cost lands in
+ * batches.
  */
 export const DEFAULT_MAX_HIGHLIGHT_LINES = 250;
+
+/**
+ * The largest limit {@link setMaxHighlightLines} accepts.
+ *
+ * Not a safety bound — `0` deliberately removes the ceiling and is right there. It is a
+ * usability one: past this, a limit is indistinguishable from no limit for anything that
+ * fits in a Matrix event, so a reader who wants no limit should say so rather than pick a
+ * big number and believe a ceiling is still in place. Lives here, with the budget it bounds,
+ * so the setter and the settings UI cannot disagree about what they accept.
+ */
+export const MAX_HIGHLIGHT_LINES = 10_000;
+
+/**
+ * Characters of code that cost one line of budget.
+ *
+ * The budget is denominated in lines because that is the unit a listing is read in and the
+ * unit the reader sets it in — but tokenization is paid per character, and a sender chooses
+ * how wide their lines are. Charging rows alone would mean 250 lines of 260 columns (one
+ * 64 KiB event, comfortably legal) bought 65,000 characters of synchronous work where 250
+ * lines of ordinary code buys 19,500: measured at 173 ms against 56 ms in Chromium, for a
+ * limit that claims to mean the same thing in both cases.
+ *
+ * So a block costs `max(rows, ceil(chars / 80))`. 80 is a whole line of source at the
+ * conventional column limit, counting its newline, so every line of ordinary code costs
+ * exactly the 1 the reader expects and only lines wider than anything a person typed cost
+ * more. It also makes the default exactly the 20,000-character ceiling this module used
+ * before the limit was a preference.
+ */
+const BUDGET_LINE_CHARS = 80;
 
 /**
  * Lines one message may have highlighted, and the only ceiling there is: it bounds a single
@@ -885,11 +917,6 @@ export const DEFAULT_MAX_HIGHLIGHT_LINES = 250;
  * 57 ms for four 5,000-character ones, with fewer DOM nodes. A smaller per-block cap bought
  * nothing a sender could not walk around by pressing Return, while refusing exactly the long
  * listings worth colouring.
- *
- * Lines rather than characters because that is the unit the reader sets it in, and the unit
- * a listing is measured in on screen. It does mean a message of very long lines costs more
- * per line than this number suggests; what bounds that is shiki's own per-line ceiling,
- * `tokenizeTimeLimit`, which we inherit at its 500 ms default.
  *
  * `0` is no ceiling at all — see {@link setMaxHighlightLines}.
  */
@@ -961,18 +988,21 @@ export function setCodeHighlighter(highlighter: CodeHighlighter | null): void {
  * seam rather than an injected service because this module is `[type:util]` and may not
  * depend on the platform lib that owns the preference.
  *
- * Ignores a value that is not a whole number of lines, falling back to the default rather
- * than to `0`: garbage must not silently remove a ceiling on synchronous work.
+ * Ignores anything that is not a whole number of lines within {@link MAX_HIGHLIGHT_LINES},
+ * leaving the current limit alone. Ignoring rather than falling back to the default,
+ * because this is exported: a caller passing something odd must not be able to move a limit
+ * the reader chose, and it must certainly never land on `0`, which turns the ceiling off.
  */
 export function setMaxHighlightLines(lines: number): void {
-  const limit =
-    Number.isInteger(lines) && lines >= 0 ? lines : DEFAULT_MAX_HIGHLIGHT_LINES;
-  if (limit === maxHighlightLines) {
+  if (!Number.isInteger(lines) || lines < 0 || lines > MAX_HIGHLIGHT_LINES) {
+    return;
+  }
+  if (lines === maxHighlightLines) {
     // Guarded so the startup read at the default, or an apply-all that rewrites every
     // setting to what it already was, does not throw away a warm memo for nothing.
     return;
   }
-  maxHighlightLines = limit;
+  maxHighlightLines = lines;
   sanitizedHtmlCache.clear();
 }
 
@@ -1235,7 +1265,8 @@ function renderCodeBlocks(root: ParentNode): void {
       const source = code.textContent ?? '';
       // Charged only when tokenization actually happened. The highlighter declines a
       // language it holds no grammar for without doing the work, and charging for that
-      // would starve blocks that could have been highlighted.
+      // would starve blocks that could have been highlighted. The charge is `highlightCost`,
+      // not the row count — see BUDGET_LINE_CHARS.
       const charged = highlightBlock(code, lang, source, budget);
       budget -= charged;
       lineBudget -= markCodeLines(code, source, charged > 0, lineBudget);
@@ -1244,7 +1275,7 @@ function renderCodeBlocks(root: ParentNode): void {
 }
 
 /**
- * Tokenize one block in place, returning the lines to charge against the message budget —
+ * Tokenize one block in place, returning what to charge against the message budget —
  * 0 when nothing was highlighted.
  *
  * Extracted from the loop so declining a block does not skip the passes after it: the
@@ -1264,14 +1295,12 @@ function highlightBlock(
   if (!lang || !codeHighlighter || !source || code.children.length > 0) {
     return 0;
   }
-  // Counted the same way the numbering gutter counts, so a block sitting exactly on the
-  // limit is treated as the same size by both and the two never disagree by one.
-  const lines = countCodeLines(source);
+  const cost = highlightCost(source);
   // Declining, not aborting: what does not fit the REMAINING budget is skipped and the loop
   // goes on, so a short block after a long listing is still coloured. First come, first
   // served, which does mean a listing big enough to spend the budget leaves nothing for the
   // fences below it — the trade for colouring long listings at all.
-  if (lines > budget) {
+  if (cost > budget) {
     return 0;
   }
   const highlighted = codeHighlighter(source, lang, code.ownerDocument);
@@ -1279,7 +1308,22 @@ function highlightBlock(
     return 0;
   }
   code.replaceChildren(highlighted);
-  return lines;
+  return cost;
+}
+
+/**
+ * What a block costs against the message's line budget.
+ *
+ * Its rows, except that an over-wide line costs what it actually takes to tokenize — see
+ * {@link BUDGET_LINE_CHARS}. For any code a person wrote the two are the same number, so
+ * "250 lines" means 250 lines; it diverges only for the machine-generated single-line
+ * bundle, or the sender picking width to buy work the row count would not have paid for.
+ */
+function highlightCost(source: string): number {
+  return Math.max(
+    countCodeLines(source),
+    Math.ceil(source.length / BUDGET_LINE_CHARS),
+  );
 }
 
 /**

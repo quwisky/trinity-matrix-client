@@ -46,7 +46,9 @@ renders normally, just without colour, so a very long paste stays readable inste
 the conversation up while it is coloured.
 
 The 250 is yours to change, in Settings → Appearance → **Syntax highlighting**, and `0` means
-no limit at all. Raising it costs time before a message with a long listing in it can appear
+no limit at all. A very wide line counts as more than one — 80 characters make a line, so
+ordinary code counts as you would expect and a minified single-line file does not slip
+through. Raising it costs time before a message with a long listing in it can appear
 — and that cost is paid again for every such message when you scroll back through a room, so
 raise it if you read long pastes and lower it if rooms feel slow.
 

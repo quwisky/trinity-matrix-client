@@ -151,15 +151,41 @@ describe('CodeAppearanceBlockComponent', () => {
         .querySelector('[data-testid=code-highlight-lines-error]')
         ?.textContent?.trim() ?? null;
 
-    it('shows the stored limit, named by its heading', async () => {
+    it('shows the stored limit, under a label of its own', async () => {
+      // A real <label for>, unlike the two selects above, which borrow the <h2> through
+      // `aria-labelledby` only because `hlm-select` has no labelable control.
       maxHighlightLines.set(120);
       const { container } = await renderBlock();
 
-      expect(field(container)?.value).toBe('120');
-      const id = field(container)?.getAttribute('aria-labelledby');
-      expect(container.querySelector(`#${id}`)?.textContent?.trim()).toBe(
-        'Syntax highlighting',
-      );
+      const input = field(container);
+      expect(input?.value).toBe('120');
+      expect(input?.getAttribute('aria-labelledby')).toBeNull();
+      expect(
+        container
+          .querySelector(`label[for="${input?.id}"]`)
+          ?.textContent?.trim(),
+      ).toBe('Most lines to colour in one message');
+    });
+
+    it('marks the field invalid and announces why', async () => {
+      // `aria-describedby` is deliberately not used: trnInput composes the kit's
+      // BrnFieldControlDescribedBy, which owns it and nulls anything set here without a
+      // form-field. So the field carries
+      // aria-invalid and the message is a live region — assert both, or a later change that
+      // drops the alert role leaves a red line no screen reader mentions.
+      const { fixture, container } = await renderBlock();
+      const cmp = fixture.componentInstance;
+      expect(field(container)?.getAttribute('aria-invalid')).toBeNull();
+
+      cmp.onHighlightLinesInput('-1');
+      fixture.detectChanges();
+
+      expect(field(container)?.getAttribute('aria-invalid')).toBe('true');
+      expect(
+        container
+          .querySelector('[data-testid=code-highlight-lines-error]')
+          ?.getAttribute('role'),
+      ).toBe('alert');
     });
 
     it('applies a valid limit only once the value settles', async () => {
@@ -194,6 +220,9 @@ describe('CodeAppearanceBlockComponent', () => {
       ['fractional', '12.5'],
       ['negative', '-1'],
       ['past the ceiling', '10001'],
+      // Defensive only: `input[type=number]` hands back '' for non-numeric content, which
+      // the empty case above already covers. This pins the branch anyway, because the
+      // method is public and the draft is a string.
       ['not a number', 'lots'],
     ])(
       'explains a limit that is %s, and applies nothing',

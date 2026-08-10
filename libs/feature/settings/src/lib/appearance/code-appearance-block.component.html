@@ -50,8 +50,15 @@
   Syntax highlighting
 </h2>
 <div class="px-4 py-2">
+  <!-- A real <label>, not the `aria-labelledby` pointing at the <h2> that the two selects
+       above use: they do that because `hlm-select` has no labelable control, and an <input>
+       does. "250" on its own does not say what it counts. -->
+  <label trnLabel for="code-highlight-lines" class="mb-1 block">
+    Most lines to colour in one message
+  </label>
   <input
-    hlmInput
+    trnInput
+    id="code-highlight-lines"
     class="w-full"
     type="number"
     inputmode="numeric"
@@ -59,15 +66,19 @@
     step="1"
     [max]="maxLines"
     data-testid="code-highlight-lines-input"
-    aria-labelledby="appearance-code-highlight-heading"
-    aria-describedby="appearance-code-highlight-hint"
     [attr.aria-invalid]="errorText() ? 'true' : null"
     [value]="linesDraft()"
     (input)="onHighlightLinesInput($any($event.target).value)"
     (change)="commitHighlightLines()"
   />
+  <!-- `role="alert"` rather than an `aria-describedby` pointing here: `trnInput` composes
+       the kit's BrnFieldControlDescribedBy, which owns that attribute and computes it from
+       a BrnFieldA11yService this repo has no component for (no form-field is vendored) —
+       so anything set here, bound or static, is overwritten with null. The live region
+       announces the message when it appears, which is what matters at the moment it does. -->
   @if (errorText(); as error) {
     <p
+      id="appearance-code-highlight-error"
       class="mt-1 text-13 text-danger"
       role="alert"
       data-testid="code-highlight-lines-error"

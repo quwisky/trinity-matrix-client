@@ -94,6 +94,13 @@ pays that cost again for every message it loads. Raise it if you read long paste
 still feel quick; lower it if they do not. Past the limit a block renders exactly as it was
 written, just without colour, so nothing is ever hidden by it.
 
+One wrinkle, because it is the difference between a limit that holds and one that does not:
+a very wide line counts as more than one. The limit is really a budget for the work, and 80
+characters is a line of it, so every line of ordinary code counts as the one you would
+expect — but a 400-character line counts as five, and a minified file on a single line
+counts as all of them. Without that, choosing the line width would be a way around the
+limit entirely.
+
 **Time format.** Match system, 12-hour, or 24-hour.
 
 **Date format.** Match system, Day first, Month first, or ISO. Every option is previewed

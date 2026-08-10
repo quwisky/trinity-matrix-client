@@ -5,18 +5,19 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
+import { TrnLabel } from '@trinity/components/label';
 import {
   TrnSelectComponent,
   type TrnSelectOption,
 } from '@trinity/components/select';
 import {
   CodeHighlightSettingsService,
-  MAX_HIGHLIGHT_LINES_CEILING,
   ThemeService,
   type CodeLineMode,
   type CodeScale,
 } from '@trinity/platform-native';
+import { MAX_HIGHLIGHT_LINES } from '@trinity/util/matrix';
 
 /**
  * How code inside messages is displayed, as its own block on the Appearance page.
@@ -36,7 +37,7 @@ import {
   selector: 'trn-code-appearance-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './code-appearance-block.component.html',
-  imports: [HlmInput, TrnSelectComponent],
+  imports: [TrnInput, TrnLabel, TrnSelectComponent],
 })
 export class CodeAppearanceBlockComponent {
   private readonly codeHighlight = inject(CodeHighlightSettingsService);
@@ -44,7 +45,7 @@ export class CodeAppearanceBlockComponent {
   readonly theme = inject(ThemeService);
 
   /** The largest limit the field accepts, for the message and the `max` attribute. */
-  readonly maxLines = MAX_HIGHLIGHT_LINES_CEILING;
+  readonly maxLines = MAX_HIGHLIGHT_LINES;
 
   /**
    * The choices, in the shape the wrapper takes. A stable field rather than an inline
@@ -68,6 +69,11 @@ export class CodeAppearanceBlockComponent {
    * What is in the field. A string, not a number, because that is what an `<input>` holds:
    * "" and "12." are both states a number model cannot represent, and both need a message
    * rather than a silent coercion to 0 — which is the value that means "no limit".
+   *
+   * Seeded once and never re-synced, which is safe only because Appearance and Advanced are
+   * separate routes (`settings.routes.ts`): the Advanced editor and Reset can both write
+   * this key, and this component is destroyed and rebuilt before either result is on screen.
+   * Putting the two on one screen would need a `linkedSignal` off {@link appliedLines}.
    */
   readonly linesDraft = signal(String(this.codeHighlight.maxHighlightLines()));
 

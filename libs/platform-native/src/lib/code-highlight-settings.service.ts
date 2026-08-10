@@ -2,28 +2,21 @@ import { Injectable, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 import {
   DEFAULT_MAX_HIGHLIGHT_LINES,
+  MAX_HIGHLIGHT_LINES,
   setMaxHighlightLines,
 } from '@trinity/util/matrix';
 
 const MAX_HIGHLIGHT_LINES_KEY = 'trinity.code-highlight-lines';
 
 /**
- * The largest limit the setting will take.
+ * Whether `lines` is a limit this setting accepts (`0` = no limit).
  *
- * Not a safety bound — it is a usability one. A limit past this is indistinguishable from
- * "no limit" for any message that fits in a Matrix event, so someone who wants that should
- * say `0` and mean it, rather than picking a large number and believing a ceiling is still
- * there.
+ * Deliberately the same range `setMaxHighlightLines` itself enforces, taken from the same
+ * constant rather than restated: a guard here that was looser than the sanitizer's would
+ * accept a value from a pasted config that then silently did nothing.
  */
-export const MAX_HIGHLIGHT_LINES_CEILING = 10_000;
-
-/** Whether `lines` is a limit this setting accepts (`0` = no limit). */
 export function isMaxHighlightLines(lines: number): boolean {
-  return (
-    Number.isInteger(lines) &&
-    lines >= 0 &&
-    lines <= MAX_HIGHLIGHT_LINES_CEILING
-  );
+  return Number.isInteger(lines) && lines >= 0 && lines <= MAX_HIGHLIGHT_LINES;
 }
 
 /**

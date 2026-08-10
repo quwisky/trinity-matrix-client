@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   DEFAULT_MAX_HIGHLIGHT_LINES,
+  MAX_HIGHLIGHT_LINES,
   MAX_NAMED_REACTORS,
   collectMessageSenders,
   firstUrl,
@@ -623,6 +624,10 @@ describe('sanitizeMatrixHtml — code highlighting', () => {
     const block = (lines: number) =>
       `<pre><code class="language-python">${'x\n'.repeat(lines)}</code></pre>`;
 
+    /** `lines` lines of exactly `width` characters each. */
+    const wideBlock = (lines: number, width: number) =>
+      `<pre><code class="language-python">${`${'x'.repeat(width)}\n`.repeat(lines)}</code></pre>`;
+
     /**
      * One span per line, like the real highlighter: no token may span a newline, or the
      * line-wrapping pass folds two visual lines into one wrapper and the numbering lies.
@@ -677,17 +682,40 @@ describe('sanitizeMatrixHtml — code highlighting', () => {
       expect(sanitizeMatrixHtml(block(4))).toContain('tok-');
     });
 
-    it('falls back to the default rather than to no limit on a bad value', () => {
-      // Garbage must not silently remove the ceiling on synchronous work.
-      setCodeHighlighter(linewiseHighlighter);
-      setMaxHighlightLines(Number.NaN);
+    it.each([
+      ['not a whole number', 12.5],
+      ['not a number at all', Number.NaN],
+      ['negative', -1],
+      ['past the ceiling', MAX_HIGHLIGHT_LINES + 1],
+    ])(
+      'ignores a limit that is %s, keeping the one in force',
+      (_label, bad) => {
+        // Ignoring, not falling back to the default: this is exported, so a caller passing
+        // something odd must not be able to move a limit the reader chose — and must
+        // certainly never land on 0, which turns the ceiling off entirely.
+        setCodeHighlighter(linewiseHighlighter);
+        setMaxHighlightLines(6);
 
-      expect(
-        sanitizeMatrixHtml(block(DEFAULT_MAX_HIGHLIGHT_LINES + 1)),
-      ).not.toContain('tok-');
-      expect(sanitizeMatrixHtml(block(DEFAULT_MAX_HIGHLIGHT_LINES))).toContain(
-        'tok-',
-      );
+        setMaxHighlightLines(bad);
+
+        expect(sanitizeMatrixHtml(block(6))).toContain('tok-');
+        expect(sanitizeMatrixHtml(block(7))).not.toContain('tok-');
+      },
+    );
+
+    it('charges an over-wide line for the work it actually is', () => {
+      // A line is a unit of budget, not of text: 80 columns costs 1. Without this a sender
+      // buys 65,000 characters of synchronous tokenization from a 250-line limit by
+      // choosing the width, which is 173 ms against the 56 ms the same limit costs on
+      // ordinary code — measured in Chromium.
+      setCodeHighlighter(linewiseHighlighter);
+      setMaxHighlightLines(4);
+
+      // Four lines of ordinary width: four lines of budget, so it fits. (79 columns plus
+      // the newline is one whole 80-character line of source.)
+      expect(sanitizeMatrixHtml(wideBlock(4, 79))).toContain('tok-');
+      // Four lines carrying the characters of sixteen: it does not.
+      expect(sanitizeMatrixHtml(wideBlock(4, 320))).not.toContain('tok-');
     });
   });
 

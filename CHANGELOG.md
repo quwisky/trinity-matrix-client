@@ -324,7 +324,9 @@ All notable changes to this project are documented here. The format is based on
   for every message it loads — so this is the dial between "colour everything I paste" and
   "keep rooms quick", rather than a number picked for you. It takes effect on the messages
   already in front of you, not just the next ones. Past the limit a block renders exactly as
-  it was written, just without colour, so raising or lowering it never hides anything.
+  it was written, just without colour, so raising or lowering it never hides anything. A very
+  wide line counts as more than one, at 80 characters to a line, so ordinary code counts as
+  you would expect while a minified file on one line cannot slip past the number you set.
 
 - **Code blocks are coloured for eighteen more languages.** Pasting C, C#, Dart, a
   Dockerfile, HTML, an INI or TOML config, Kotlin, Lua, a Makefile, Markdown, Perl, PHP,
