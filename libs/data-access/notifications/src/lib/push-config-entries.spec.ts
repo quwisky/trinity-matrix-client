@@ -1,8 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { AppConfigService, exportedKeysFor } from '@trinity/platform-native';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MockProvider } from 'ng-mocks';
+import { defer, of, type Observable } from 'rxjs';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { providePushConfigEntries } from './push-config-entries';
 import { PushGatewayService } from './push-gateway.service';
+import { PushService } from './push.service';
 
 const h = vi.hoisted(() => ({ store: new Map<string, string>() }));
 
@@ -26,9 +29,18 @@ vi.mock('@capacitor/core', () => ({
 
 const NOTIFY = 'https://push.example.org/_matrix/push/v1/notify';
 
+/**
+ * Stands in for {@link PushService.unregister}. Reassign it before {@link setup} to control
+ * when the teardown settles — {@link setup} hands the current value to the mock.
+ */
+let unregisterSpy: Mock<() => Observable<void>>;
+
 function setup(): { config: AppConfigService; push: PushGatewayService } {
   TestBed.configureTestingModule({
-    providers: [providePushConfigEntries()],
+    providers: [
+      providePushConfigEntries(),
+      MockProvider(PushService, { unregister: unregisterSpy }),
+    ],
   });
   return {
     config: TestBed.inject(AppConfigService),
@@ -40,6 +52,7 @@ describe('push config entries', () => {
   beforeEach(() => {
     h.store.clear();
     TestBed.resetTestingModule();
+    unregisterSpy = vi.fn(() => of(undefined));
   });
 
   it('registers an entry for every key the ledger says this lib exports', () => {
@@ -86,5 +99,37 @@ describe('push config entries', () => {
     // would strand them on the old gateway with nothing recording where they went.
     expect(push.appliedAppId()).toBe('eu.qwky.trinity');
     expect(h.store.get('trinity.push.applied-app-id')).toBe('eu.qwky.trinity');
+  });
+
+  it('tears the pushers down before it clears the stored gateway', async () => {
+    let torndown!: () => void;
+    const teardown = new Promise<void>((resolve) => (torndown = resolve));
+    unregisterSpy = vi.fn(() => defer(async () => await teardown));
+    const { config, push } = setup();
+    await push.save(NOTIFY, 'eu.qwky.trinity');
+    await push.markApplied('eu.qwky.trinity');
+    const clearSpy = vi.spyOn(push, 'clear');
+
+    const reset = new Promise<void>((resolve, reject) =>
+      config.resetToDefaults().subscribe({ complete: resolve, error: reject }),
+    );
+
+    // Clearing the gateway drops the applied-app-id ledger that unregister() reads to know
+    // which pushers to remove, so the teardown must be finished, not merely started, before
+    // the gateway goes. Otherwise the homeserver keeps delivering metadata to a gateway the
+    // user just disowned — and with no override left, canPush() is false and nothing ever
+    // removes them.
+    expect(unregisterSpy).toHaveBeenCalled();
+    // A macrotask, so everything already resolvable has settled: a single microtask would
+    // not reach a `clear()` awaited behind the teardown, and the assertion would hold for
+    // the wrong reason.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(clearSpy).not.toHaveBeenCalled();
+
+    torndown();
+    await reset;
+
+    expect(clearSpy).toHaveBeenCalled();
+    expect(push.override()).toBeNull();
   });
 });

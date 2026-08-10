@@ -17,14 +17,26 @@ import {
   AppConfigService,
   CONFIG_EXCLUSION_NOTES,
 } from '@trinity/platform-native';
+import { downloadTextFile } from '../download-text-file';
 import {
   RESET_CONFIG_MISTYPED_MESSAGE,
   confirmResetConfigIntent,
 } from './reset-config';
 
-/** Name of the downloaded file — dated, so two exports don't overwrite each other. */
+/** Two digits, so the dated filename sorts lexically. */
+function pad(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+/**
+ * Name of the downloaded file — dated, so two exports don't overwrite each other.
+ *
+ * The date is the user's, read from the local calendar fields rather than
+ * `toISOString()`: a UTC date is a day out either side of midnight for most of the world,
+ * and this name is what someone scans a downloads folder for.
+ */
 function exportFileName(now: Date): string {
-  return `trinity-settings-${now.toISOString().slice(0, 10)}.json`;
+  return `trinity-settings-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
 }
 
 /**
@@ -67,15 +79,21 @@ export class AdvancedSettingsComponent {
 
   /**
    * The document, live: `exportJson()` reads the owning services' signals, so a preference
-   * changed elsewhere (or reset here) re-renders this without a reload. Copy and Export send
-   * exactly this string, so what is shown and what leaves the app cannot disagree.
+   * changed elsewhere (or reset here) re-renders this without a reload.
+   *
+   * What is rendered, only. Copy and Export re-read the document instead of sending this
+   * string, because `exportedAt` is stamped at the moment of the read: memoized here it
+   * would freeze at the last re-render, and a file opened at 17:00 would claim it was taken
+   * at 09:00 while its own filename said today. The settings are identical either way —
+   * both reads go to the same signals.
    */
   readonly configJson = computed(() => this.config.exportJson());
 
   /** Copy the document, toasting only once the write resolves — never on a rejection. */
   copy(): void {
     void (
-      navigator.clipboard?.writeText(this.configJson()) ?? Promise.reject()
+      navigator.clipboard?.writeText(this.config.exportJson()) ??
+      Promise.reject()
     ).then(
       () => this.toast.show('Settings copied.', { duration: 2000 }),
       () =>
@@ -88,12 +106,11 @@ export class AdvancedSettingsComponent {
 
   /** Save the document as a file (web + desktop only; see {@link canExportFile}). */
   exportFile(): void {
-    const anchor = this.document.createElement('a');
-    anchor.href =
-      'data:application/json;charset=utf-8,' +
-      encodeURIComponent(this.configJson());
-    anchor.download = exportFileName(new Date());
-    anchor.click();
+    downloadTextFile(this.document, {
+      name: exportFileName(new Date()),
+      mimeType: 'application/json',
+      content: this.config.exportJson(),
+    });
   }
 
   /** Put every exported setting back to its default, behind the type-to-confirm gate. */

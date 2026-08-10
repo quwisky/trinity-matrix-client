@@ -1,3 +1,4 @@
+import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -14,6 +15,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { EncryptionDialogService } from '@trinity/ui';
+import { downloadTextFile } from '../download-text-file';
 
 /** Where the encryption flows return after finishing on the routed (mobile) path. */
 const RETURN_TO = '/settings/security';
@@ -38,6 +40,7 @@ export class SecuritySectionComponent implements OnInit {
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly document = inject(DOCUMENT);
 
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('keyFile');
@@ -168,12 +171,12 @@ export class SecuritySectionComponent implements OnInit {
       });
   }
 
-  /** Trigger a browser download of the armored key file (data URL — no blob URL needed). */
+  /** Trigger a browser download of the armored key file. */
   private download(armored: string): void {
-    const anchor = document.createElement('a');
-    anchor.href =
-      'data:text/plain;charset=utf-8,' + encodeURIComponent(armored);
-    anchor.download = 'trinity-room-keys.txt';
-    anchor.click();
+    downloadTextFile(this.document, {
+      name: 'trinity-room-keys.txt',
+      mimeType: 'text/plain',
+      content: armored,
+    });
   }
 }

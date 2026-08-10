@@ -20,6 +20,7 @@ import {
 import { AdvancedSettingsComponent } from './advanced-settings.component';
 import {
   RESET_CONFIG_CONFIRMATION_WORD,
+  RESET_CONFIG_CONSEQUENCES,
   RESET_CONFIG_MISTYPED_MESSAGE,
 } from './reset-config';
 
@@ -55,6 +56,35 @@ function button(container: Element, testid: string): HTMLButtonElement | null {
   return container.querySelector(`[data-testid=${testid}]`);
 }
 
+/** The exported envelope, as these tests read it back. */
+interface Envelope {
+  readonly version: number;
+  readonly exportedAt: string;
+  readonly settings: Record<string, unknown>;
+}
+
+function parseEnvelope(json: string): Envelope {
+  return JSON.parse(json) as Envelope;
+}
+
+/**
+ * Intercept the download anchor. Installed only around the click that exports: an anchor
+ * returned for every `createElement` would break rendering.
+ */
+function stubDownloadAnchor(): {
+  readonly element: HTMLAnchorElement;
+  readonly click: Mock;
+  readonly restore: () => void;
+} {
+  const element = document.createElement('a');
+  const click = vi.fn();
+  element.click = click;
+  const createElement = vi
+    .spyOn(document, 'createElement')
+    .mockReturnValue(element);
+  return { element, click, restore: () => createElement.mockRestore() };
+}
+
 describe('AdvancedSettingsComponent', () => {
   let alertPrompt: Mock;
   let toastShow: Mock;
@@ -72,7 +102,15 @@ describe('AdvancedSettingsComponent', () => {
     });
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /** What the first Copy put on the clipboard. */
+  function copiedText(): string {
+    return String(writeText.mock.calls[0]?.[0] ?? '');
+  }
 
   /** The real {@link AppConfigService} over {@link ENTRIES} — the document is truly built. */
   function realConfig() {
@@ -109,24 +147,10 @@ describe('AdvancedSettingsComponent', () => {
     expect(json).toContain('\n  "version": 1');
   });
 
-  it('shows nothing the export excludes — no drafts, tokens or account registry', async () => {
-    const { container } = await render(AdvancedSettingsComponent, {
-      providers: realConfig(),
-    });
-
-    // The omissions are structural (the document is built from the registered entries and
-    // nothing else), so this asserts the surface honours that rather than filtering later.
-    const json = textareaValue(container);
-    for (const forbidden of [
-      'drafts',
-      'accessToken',
-      'matrix.accounts',
-      'applied-app-id',
-      'oidc',
-    ]) {
-      expect(json).not.toContain(forbidden);
-    }
-  });
+  // What the export leaves out is proved in `app-config.service.spec.ts`, over the real
+  // registry and a real DraftStoreService holding real draft text. Asserting it here, over
+  // this file's own two-entry stub registry, would only prove that strings absent from the
+  // fixture are absent from the fixture — a test that cannot fail. Not repeated on purpose.
 
   it('says the document is preferences only, and names what it leaves out', async () => {
     const { container } = await render(AdvancedSettingsComponent, {
@@ -141,7 +165,34 @@ describe('AdvancedSettingsComponent', () => {
     ).toBeGreaterThan(0);
   });
 
-  it('copies exactly the document it shows', async () => {
+  // The section carries a third-party API key, and the maintainer's condition for keeping it
+  // in the export was that the page says so BEFORE offering a way to send the document
+  // anywhere. A disclosure below the buttons is read after the damage.
+  it('discloses the GIF API key above Copy and Export, not below them', async () => {
+    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+    const { container } = await render(AdvancedSettingsComponent, {
+      providers: realConfig(),
+    });
+
+    const note = container.querySelector('[data-testid=advanced-gif-key-note]');
+    expect(note?.textContent).toContain('GIF API key');
+    for (const testid of ['advanced-copy', 'advanced-export']) {
+      const action = button(container, testid);
+      expect(action, `${testid} must be on the page`).not.toBeNull();
+      const position =
+        note && action ? note.compareDocumentPosition(action) : 0;
+      expect(
+        position & Node.DOCUMENT_POSITION_FOLLOWING,
+        `the disclosure must precede ${testid}`,
+      ).toBeGreaterThan(0);
+    }
+    // Said once: two paragraphs saying the same thing is how one of them goes stale.
+    expect(
+      container.querySelectorAll('[data-testid=advanced-gif-key-note]').length,
+    ).toBe(1);
+  });
+
+  it('copies exactly the settings it shows', async () => {
     const { container } = await render(AdvancedSettingsComponent, {
       providers: realConfig(),
     });
@@ -150,10 +201,34 @@ describe('AdvancedSettingsComponent', () => {
     button(container, 'advanced-copy')?.click();
     await flush();
 
-    expect(writeText).toHaveBeenCalledWith(shown);
+    // The settings, not the whole string: `exportedAt` is deliberately re-stamped on the way
+    // out (see below), so the envelopes may differ by a timestamp and nothing else.
+    const copied = parseEnvelope(copiedText());
+    expect(copied.settings).toEqual(parseEnvelope(shown).settings);
+    expect(copied.version).toBe(parseEnvelope(shown).version);
     expect(toastShow).toHaveBeenCalledWith(
       'Settings copied.',
       expect.anything(),
+    );
+  });
+
+  // Opened at 09:00, copied at 17:00: a document memoized at render time would claim it was
+  // taken at 09:00 — and PR #135 keys its migration off this envelope.
+  it('stamps the copy when it leaves the app, not when the view rendered', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T09:00:00.000Z'));
+    const { container } = await render(AdvancedSettingsComponent, {
+      providers: realConfig(),
+    });
+    const rendered = parseEnvelope(textareaValue(container)).exportedAt;
+
+    vi.setSystemTime(new Date('2026-01-01T17:00:00.000Z'));
+    button(container, 'advanced-copy')?.click();
+    await flush();
+
+    expect(rendered).toBe('2026-01-01T09:00:00.000Z');
+    expect(parseEnvelope(copiedText()).exportedAt).toBe(
+      '2026-01-01T17:00:00.000Z',
     );
   });
 
@@ -190,20 +265,63 @@ describe('AdvancedSettingsComponent', () => {
       providers: mockedConfig('{"version":1}'),
     });
 
-    // Stubbed only now: an anchor returned for every createElement would break rendering.
-    const anchor = document.createElement('a');
-    const click = vi.spyOn(anchor, 'click').mockImplementation(() => undefined);
-    const createElement = vi
-      .spyOn(document, 'createElement')
-      .mockReturnValue(anchor);
+    const anchor = stubDownloadAnchor();
     button(container, 'advanced-export')?.click();
-    createElement.mockRestore();
+    anchor.restore();
 
-    expect(click).toHaveBeenCalled();
-    expect(anchor.download).toMatch(
+    expect(anchor.click).toHaveBeenCalled();
+    expect(anchor.element.download).toMatch(
       /^trinity-settings-\d{4}-\d{2}-\d{2}\.json$/,
     );
-    expect(decodeURIComponent(anchor.href)).toContain('{"version":1}');
+    expect(decodeURIComponent(anchor.element.href)).toContain('{"version":1}');
+  });
+
+  // 12:00 UTC is already the 2nd in Kiritimati: a UTC-dated filename is a day out either
+  // side of midnight for most of the world, on the one string people scan a folder for.
+  it('dates the file by the user’s calendar, not UTC', async () => {
+    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+    const timeZone = process.env['TZ'];
+    process.env['TZ'] = 'Pacific/Kiritimati';
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T12:00:00.000Z'));
+
+    try {
+      const { container } = await render(AdvancedSettingsComponent, {
+        providers: mockedConfig(),
+      });
+
+      const anchor = stubDownloadAnchor();
+      button(container, 'advanced-export')?.click();
+      anchor.restore();
+
+      expect(anchor.element.download).toBe('trinity-settings-2026-01-02.json');
+    } finally {
+      process.env['TZ'] = timeZone;
+    }
+  });
+
+  it('stamps the exported file when it leaves the app, not when the view rendered', async () => {
+    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T09:00:00.000Z'));
+    const { container } = await render(AdvancedSettingsComponent, {
+      providers: realConfig(),
+    });
+    const rendered = parseEnvelope(textareaValue(container)).exportedAt;
+
+    vi.setSystemTime(new Date('2026-01-01T17:00:00.000Z'));
+    const anchor = stubDownloadAnchor();
+    button(container, 'advanced-export')?.click();
+    anchor.restore();
+
+    const written = parseEnvelope(
+      decodeURIComponent(anchor.element.href).replace(
+        /^data:application\/json;charset=utf-8,/,
+        '',
+      ),
+    );
+    expect(rendered).toBe('2026-01-01T09:00:00.000Z');
+    expect(written.exportedAt).toBe('2026-01-01T17:00:00.000Z');
   });
 
   it('replaces the file export with an explanation on native, never hiding it silently', async () => {
@@ -237,6 +355,27 @@ describe('AdvancedSettingsComponent', () => {
       'Settings reset to defaults.',
       expect.objectContaining({ variant: 'success' }),
     );
+  });
+
+  // Resetting the push gateway deregisters this device's pushers (see
+  // `push-config-entries.ts`), which is the one thing here that reaches the server. The gate
+  // used to promise the opposite — a promise the user acts on before anything is destroyed.
+  it('warns that the reset removes this device’s push registrations', async () => {
+    const { container } = await render(AdvancedSettingsComponent, {
+      providers: mockedConfig(),
+    });
+
+    button(container, 'advanced-reset')?.click();
+    await flush();
+
+    expect(RESET_CONFIG_CONSEQUENCES).toContain('push registrations');
+    expect(RESET_CONFIG_CONSEQUENCES).not.toContain(
+      'nothing on your homeserver changes',
+    );
+    const prompt: unknown = alertPrompt.mock.calls[0]?.[0];
+    expect(prompt).toMatchObject({
+      message: expect.stringContaining('push registrations') as unknown,
+    });
   });
 
   it('resets nothing when the gate is cancelled', async () => {

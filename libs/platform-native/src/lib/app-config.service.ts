@@ -40,8 +40,12 @@ export class AppConfigService {
   );
 
   /**
-   * The current settings, nested by path. Reads signals, so calling this from a template
-   * method keeps the rendered document live as preferences change.
+   * The current settings, nested by path. Reads the owning services' signals, so wrapping
+   * it in a `computed()` keeps the rendered document live as preferences change — the
+   * template reads that signal rather than calling this.
+   *
+   * Every path is guaranteed collision-free by {@link flatten}, so a leaf can never be
+   * overwritten by a branch built for a longer path.
    */
   settings(): ConfigSettings {
     const root: ConfigTreeNode = {};
@@ -107,5 +111,49 @@ function flatten(
       entries.push(entry);
     }
   }
-  return entries.sort((a, b) => a.path.localeCompare(b.path));
+  assertDistinctPaths(entries);
+  // Code point order, not `localeCompare`: the key order of a *committed* document must not
+  // depend on the device's locale or on which ICU version the runtime shipped with, or two
+  // exports of identical settings could differ by machine.
+  return entries.sort((a, b) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
+  );
+}
+
+/**
+ * Fail the registry build when two entries claim overlapping paths.
+ *
+ * Two ways to collide, both of which silently drop a setting from the document rather than
+ * erroring: the same path twice (the second `read()` wins), and one path being a *prefix* of
+ * another (`push.gateway` beside a future `push.gateway.url` — whichever is written first is
+ * overwritten, the string leaf by the branch or the branch by the leaf). A dropped setting is
+ * invisible in the export and, once apply lands, would be written to the wrong owner.
+ *
+ * Checked against the whole registry rather than one library's entries, which is where a
+ * per-lib uniqueness assertion cannot help: the paths that collide come from different libs.
+ * Prefixes are tested explicitly rather than inferred from sort order — a `-` sorts below
+ * `.`, so `push.gateway-x` can land between `push.gateway` and `push.gateway.url` and split
+ * a colliding pair that a neighbour-only pass would then miss.
+ */
+function assertDistinctPaths(entries: readonly ConfigEntry[]): void {
+  const paths = new Set<string>();
+  for (const entry of entries) {
+    if (paths.has(entry.path)) {
+      throw new Error(
+        `Two config entries claim the path '${entry.path}'. Each exported setting needs its own path.`,
+      );
+    }
+    paths.add(entry.path);
+  }
+  for (const path of paths) {
+    const segments = path.split('.');
+    for (let depth = 1; depth < segments.length; depth++) {
+      const prefix = segments.slice(0, depth).join('.');
+      if (paths.has(prefix)) {
+        throw new Error(
+          `The config entry path '${prefix}' is a prefix of '${path}'. One would overwrite the other in the exported document; give them sibling paths instead.`,
+        );
+      }
+    }
+  }
 }

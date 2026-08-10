@@ -46,16 +46,21 @@ export interface ConfigEntry {
    * `trinity.palette`). **Part of the committed export format** — renaming one needs a
    * migration keyed off {@link CONFIG_EXPORT_VERSION}.
    *
-   * Each owning lib keeps its paths under its own top-level group, which is what makes
-   * cross-lib path collisions impossible without a central registry to check against.
+   * Each owning lib keeps its paths under its own top-level group; `AppConfigService`
+   * enforces the rest, rejecting a registry whose paths repeat or overlap.
    */
   readonly path: string;
 
   /**
-   * The Capacitor `Preferences` key this setting is stored under. Present so the drift
-   * guard (`scripts/config-schema-drift.spec.mjs`) can tie an entry back to a classified
-   * key — **never used for I/O**. Two entries may share a key when one stored blob holds
-   * two independently-edited fields.
+   * The Capacitor `Preferences` key this setting is stored under — **never used for I/O**.
+   *
+   * Present so an entry can be tied back to its classification: each owning lib's spec
+   * compares its registered keys against {@link exportedKeysFor}, which is what fails when
+   * a key is classified `exported` in {@link CONFIG_KEY_LEDGER} and no entry reads it (or
+   * the reverse). The drift guard in `scripts/config-schema-drift.spec.mjs` answers a
+   * different question — whether a stored key is classified at all.
+   *
+   * Two entries may share a key when one stored blob holds two independently-edited fields.
    */
   readonly key: string;
 
@@ -318,8 +323,9 @@ export const CONFIG_EXCLUSION_NOTES: readonly {
   {
     what: 'Access tokens and encryption keys',
     reason:
-      'They live in secure storage, which nothing here reads. No secret can reach this ' +
-      'document.',
+      'They live in secure storage, which nothing here reads, so no account credential ' +
+      'or key material can reach this document. The GIF API key is the one third-party ' +
+      'secret it does carry — it is a service quota key, not an account credential.',
   },
   {
     what: 'Unsent message drafts',
@@ -341,7 +347,13 @@ export const CONFIG_EXCLUSION_NOTES: readonly {
   },
 ];
 
-/** The keys one library is expected to contribute entries for. */
+/**
+ * The keys one library is expected to contribute entries for.
+ *
+ * Exported from the barrel because its consumers are the *other* libs' registry specs —
+ * `gif-config-entries.spec.ts` and `push-config-entries.spec.ts` assert their entries match
+ * this list — and the Nx boundaries route those through `@trinity/platform-native`.
+ */
 export function exportedKeysFor(owner: ConfigOwner): readonly string[] {
   const keys: string[] = [];
   for (const record of CONFIG_KEY_LEDGER) {

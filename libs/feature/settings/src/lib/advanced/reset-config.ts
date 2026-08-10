@@ -19,7 +19,8 @@ export const RESET_CONFIG_CONFIRMATION_WORD = 'DEFAULTS';
  */
 export const RESET_CONFIG_CONSEQUENCES = [
   'Every setting in this document goes back to its default on this device: appearance, privacy, timeline, date and time formats, keyboard shortcuts, the GIF provider and its API key, and the push gateway.',
-  'Nothing else is touched. You stay signed in, unsent drafts are kept, and nothing on your homeserver changes.',
+  'Clearing the push gateway also removes this device’s push registrations from your homeserver, so notifications stop until you set a gateway up again. Nothing else on the server changes.',
+  'You stay signed in, and unsent drafts are kept.',
   'There is no undo. Copy or export the document first if you might want these values back.',
 ].join('\n\n');
 

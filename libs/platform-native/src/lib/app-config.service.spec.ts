@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppConfigService } from './app-config.service';
 import {
   exportedKeysFor,
+  provideConfigEntries,
   type ConfigDocument,
+  type ConfigEntry,
   type ConfigSettings,
   type ConfigValue,
 } from './config-schema';
@@ -46,6 +48,39 @@ function at(settings: ConfigSettings, path: string): ConfigValue {
   return node;
 }
 
+/** A registry built from hand-written entries, one group per contributing library. */
+function setupWith(
+  ...groups: readonly (readonly ConfigEntry[])[]
+): AppConfigService {
+  TestBed.configureTestingModule({
+    providers: groups.map((group) => provideConfigEntries(() => group)),
+  });
+  return TestBed.inject(AppConfigService);
+}
+
+/** The smallest entry that reads and resets something. */
+function entry(
+  path: string,
+  overrides: Partial<ConfigEntry> = {},
+): ConfigEntry {
+  return {
+    path,
+    key: `trinity.${path}`,
+    read: () => null,
+    reset: () => undefined,
+    ...overrides,
+  };
+}
+
+/**
+ * Let every already-resolvable promise settle. A macrotask, not `await Promise.resolve()`:
+ * one microtask does not reach the end of the subscribe → complete → `then` chain, so the
+ * shorter wait would make the assertions below pass against a reset that never awaited.
+ */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 /** Run a cold action to completion. */
 function run(action: ReturnType<AppConfigService['resetToDefaults']>) {
   return new Promise<void>((resolve, reject) =>
@@ -79,10 +114,40 @@ describe('AppConfigService', () => {
     });
 
     it('gives each setting its own path, sorted so two exports diff cleanly', () => {
-      const paths = setup().entries.map((entry) => entry.path);
+      const paths = setup().entries.map(({ path }) => path);
 
       expect(new Set(paths).size).toBe(paths.length);
       expect(paths).toEqual([...paths].sort());
+    });
+
+    it('refuses a registry where one path is a prefix of another', () => {
+      // The collision that silently drops a setting: sorted, the string leaf is written
+      // first and the branch built for the longer path overwrites it. Across two libs, so
+      // no per-library uniqueness check could have caught it.
+      expect(() =>
+        setupWith([entry('push.gateway')], [entry('push.gateway.url')]),
+      ).toThrow(/'push\.gateway' is a prefix of 'push\.gateway\.url'/u);
+    });
+
+    it('refuses two entries claiming the same path', () => {
+      expect(() =>
+        setupWith([entry('theme.palette')], [entry('theme.palette')]),
+      ).toThrow(/claim the path 'theme\.palette'/u);
+    });
+
+    it('orders keys by code point rather than by the device locale', () => {
+      // `localeCompare` sorts these the other way round in an en locale, and differently
+      // again under another ICU version — key order in a committed document must not
+      // depend on the machine that wrote it.
+      const config = setupWith([
+        entry('theme.palette'),
+        entry('theme.Palette'),
+      ]);
+
+      expect(config.entries.map(({ path }) => path)).toEqual([
+        'theme.Palette',
+        'theme.palette',
+      ]);
     });
   });
 
@@ -202,6 +267,31 @@ describe('AppConfigService', () => {
       expect(written).not.toContain('trinity.composer.drafts');
       expect(written).not.toContain('trinity.accounts.mixed');
       expect(drafts.get('!room:hs')).toBe('half-typed secret');
+    });
+
+    it('completes only once every asynchronous reset has settled', async () => {
+      // What a caller is entitled to assume: when this completes, nothing is still being
+      // undone. The Advanced section closes its confirmation and re-reads the document on
+      // completion, and PR 2's import runs after a reset — both would read a half-reset app
+      // if completion raced the slowest setter.
+      let settle!: () => void;
+      const pending = new Promise<void>((resolve) => (settle = resolve));
+      const slow = vi.fn(async () => await pending);
+      const config = setupWith([entry('slow.setting', { reset: slow })]);
+      let completed = false;
+
+      const reset = run(config.resetToDefaults()).then(() => {
+        completed = true;
+      });
+      await flush();
+
+      expect(slow).toHaveBeenCalled();
+      expect(completed).toBe(false);
+
+      settle();
+      await reset;
+
+      expect(completed).toBe(true);
     });
   });
 });

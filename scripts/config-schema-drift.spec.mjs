@@ -1,6 +1,13 @@
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -25,7 +32,6 @@ const workspaceRoot = join(import.meta.dirname, '..');
 
 /** The single classification table; excluded from the scan below so it can't classify itself. */
 const LEDGER_FILE = 'libs/platform-native/src/lib/config-schema.ts';
-const LEDGER_BASENAME = 'config-schema.ts';
 
 /** A key literal: a quoted string starting `trinity.` — `[.]` to keep the shell out of it. */
 const KEY_PATTERN = /'trinity\.[^']*'/gu;
@@ -34,25 +40,41 @@ const KEY_PATTERN = /'trinity\.[^']*'/gu;
  * Shipped source only. Specs legitimately hold `trinity.*` strings that are not keys — a
  * fixture FILE named `trinity.gif`, a space-order key with a user id already appended — and
  * a new key is introduced in shipped source anyway, which is where a decision is owed.
+ *
+ * `-o` keeps the filename on each match so the ledger can be skipped **by path**. A grep
+ * `--exclude` matches basenames only, which would make any future `config-schema.ts` in any
+ * other lib invisible to this guard — precisely the "a key nobody classified" case it exists
+ * to catch.
  */
 const SCAN = [
-  'grep -rhoE',
+  'grep -roE',
   `"'trinity[.][^']*'"`,
   "--include='*.ts'",
   "--exclude='*.spec.ts'",
-  `--exclude='${LEDGER_BASENAME}'`,
   'libs apps',
   '|| true',
 ].join(' ');
 
+/** Every `trinity.*` key literal in shipped source under `root`, ignoring `exempt`. */
+function scanKeys(root, exempt) {
+  const output = execSync(SCAN, { cwd: root, encoding: 'utf8' });
+  const keys = [];
+  for (const line of output.split('\n')) {
+    const separator = line.indexOf(":'");
+    if (separator < 0) {
+      continue;
+    }
+    if (line.slice(0, separator) === exempt) {
+      continue;
+    }
+    keys.push(line.slice(separator + 2, -1));
+  }
+  return [...new Set(keys)].sort();
+}
+
 /** Every `trinity.*` key literal in shipped library and app source. */
 function keysInSource() {
-  const output = execSync(SCAN, { cwd: workspaceRoot, encoding: 'utf8' });
-  const keys = output
-    .split('\n')
-    .filter(Boolean)
-    .map((literal) => literal.slice(1, -1));
-  return [...new Set(keys)].sort();
+  return scanKeys(workspaceRoot, LEDGER_FILE);
 }
 
 /** Every key the ledger classifies. */
@@ -62,6 +84,40 @@ function keysInLedger() {
     literal.slice(1, -1),
   );
 }
+
+/** Scan a throwaway tree of `path → contents`, so the scanner itself can be tested. */
+function scanFixture(files) {
+  const root = mkdtempSync(join(tmpdir(), 'config-schema-drift-'));
+  try {
+    mkdirSync(join(root, 'apps'), { recursive: true });
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
+    }
+    return scanKeys(root, LEDGER_FILE);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+describe('the scanner', () => {
+  it('sees a config-schema.ts that is not the ledger', () => {
+    // The exemption is for the one classification table, not for the name. A lib adding its
+    // own `config-schema.ts` must still be scanned, or a key nobody classified hides in the
+    // one file shaped like the place a classification would live.
+    expect(
+      scanFixture({
+        'libs/other/src/lib/config-schema.ts': "const KEY = 'trinity.decoy';\n",
+      }),
+    ).toEqual(['trinity.decoy']);
+  });
+
+  it('still exempts the ledger, so it cannot classify itself', () => {
+    expect(
+      scanFixture({ [LEDGER_FILE]: "key: 'trinity.only-in-the-ledger',\n" }),
+    ).toEqual([]);
+  });
+});
 
 describe('config schema drift', () => {
   it('finds the keys at all', () => {
