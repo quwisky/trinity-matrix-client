@@ -20,7 +20,14 @@ import {
   vi,
 } from 'vitest';
 import { TimelineService } from './timeline.service';
-import { TYPING_REFRESH_MS, TYPING_TIMEOUT_MS } from '@trinity/util/matrix';
+import { CodeHighlightSettingsService } from '@trinity/platform-native';
+import {
+  DEFAULT_MAX_HIGHLIGHT_LINES,
+  TYPING_REFRESH_MS,
+  TYPING_TIMEOUT_MS,
+  setCodeHighlighter,
+  setMaxHighlightLines,
+} from '@trinity/util/matrix';
 import {
   fakeClient,
   fakeEvent,
@@ -2191,6 +2198,113 @@ describe('TimelineService system-line filtering', () => {
  * answers for the whole room and happily names an event this client has never loaded, so
  * scrolling to it would silently do nothing without the bounded backfill.
  */
+describe('TimelineService — the highlighting limit', () => {
+  /** One span per line, like the real highlighter: no token may span a newline. */
+  function linewiseHighlighter(code: string, _lang: string, doc: Document) {
+    const frag = doc.createDocumentFragment();
+    code.split('\n').forEach((line, index) => {
+      if (index > 0) {
+        frag.appendChild(doc.createTextNode('\n'));
+      }
+      if (line) {
+        const span = doc.createElement('span');
+        span.className = 'tok-keyword';
+        span.textContent = line;
+        frag.appendChild(span);
+      }
+    });
+    return frag;
+  }
+
+  /** A message whose body is a four-line fenced block. */
+  const codeEvent = () =>
+    fakeEvent({
+      id: '$code',
+      sender: '@alice:hs',
+      body: '```python\nx\nx\nx\nx\n```',
+      format: 'org.matrix.custom.html',
+      formattedBody:
+        '<pre><code class="language-python">x\nx\nx\nx\n</code></pre>',
+    });
+
+  /**
+   * The REAL CodeHighlightSettingsService, not a mock of it. A mock would move the signal
+   * this service listens to without pushing the new limit into the sanitizer, and the test
+   * would then pass while proving only half the wiring — which is exactly the half that
+   * already worked.
+   */
+  function setupWithLimit(lines: number) {
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        matrixProvider(
+          fakeClient(fakeRoom([codeEvent()], {}, false, [], null), []),
+        ),
+        mediaProvider(),
+      ],
+    });
+    const limit = TestBed.inject(CodeHighlightSettingsService);
+    limit.setMaxHighlightLines(lines);
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+    return { svc, limit };
+  }
+
+  const flush = async () => {
+    TestBed.tick();
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
+  beforeEach(() => {
+    setCodeHighlighter(linewiseHighlighter);
+    setMaxHighlightLines(DEFAULT_MAX_HIGHLIGHT_LINES);
+  });
+
+  afterEach(() => {
+    setCodeHighlighter(null);
+    setMaxHighlightLines(DEFAULT_MAX_HIGHLIGHT_LINES);
+  });
+
+  it('re-projects the open room when the limit is raised past a block', async () => {
+    // The whole point of the invalidation: the sanitize memo AND the view cache both hold
+    // markup built under the old limit, and neither is keyed by the preference. Without
+    // the cache drop this stays uncoloured until some unrelated event forces a rebuild.
+    const { svc, limit } = setupWithLimit(3);
+    // Baseline read of the effect first: its first run is not a change.
+    await flush();
+    expect(svc.messages()[0]?.html).not.toContain('tok-');
+
+    limit.setMaxHighlightLines(10);
+    await flush();
+
+    expect(svc.messages()[0]?.html).toContain('tok-');
+  });
+
+  it('re-projects when the limit is lowered under a block', async () => {
+    const { svc, limit } = setupWithLimit(10);
+    await flush();
+    expect(svc.messages()[0]?.html).toContain('tok-');
+
+    limit.setMaxHighlightLines(2);
+    await flush();
+
+    expect(svc.messages()[0]?.html).not.toContain('tok-');
+  });
+
+  it('hands back the same view object while the limit is untouched', async () => {
+    // The cache drop must be driven by the preference and nothing else — clearing on every
+    // refresh would re-run markdown and DOMPurify over the whole room on each live event.
+    const { svc } = setupWithLimit(10);
+    await flush();
+    const first = svc.messages()[0];
+
+    await flush();
+
+    expect(svc.messages()[0]).toBe(first);
+  });
+});
+
 describe('TimelineService.jumpToDate', () => {
   /**
    * A room whose live timeline starts with `loaded` events and grows by `pageSize` each

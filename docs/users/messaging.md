@@ -39,6 +39,17 @@ you wrote it — just without colour. The tag is shown in the corner of the bloc
 so a reader can tell what it was meant to be. C++ is deliberately not included: its grammar
 alone is larger than the first thirteen put together, and every reader downloads it.
 
+Length is the third reason a block can come out uncoloured. Colouring happens while the
+message is being drawn, so it stops after 250 lines of code in one message. That is a budget
+for the whole message rather than for each block, so several fences share it; past it a block
+renders normally, just without colour, so a very long paste stays readable instead of holding
+the conversation up while it is coloured.
+
+The 250 is yours to change, in Settings → Appearance → **Syntax highlighting**, and `0` means
+no limit at all. Raising it costs time before a message with a long listing in it can appear
+— and that cost is paid again for every such message when you scroll back through a room, so
+raise it if you read long pastes and lower it if rooms feel slow.
+
 ### The formatting toolbar
 
 The toolbar above the message box carries Bold, Italic, Link and Inline code as buttons,

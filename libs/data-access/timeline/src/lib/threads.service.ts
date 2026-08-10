@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import {
   Direction,
   EventType,
@@ -27,7 +27,10 @@ import {
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService } from '@trinity/data-access/media';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import {
+  CodeHighlightSettingsService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   safeBuildMessageView,
@@ -122,6 +125,7 @@ export class ThreadsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly mediaSvc = inject(MediaService);
   private readonly privacy = inject(PrivacySettingsService);
+  private readonly codeHighlight = inject(CodeHighlightSettingsService);
 
   private readonly _summaries = signal<Record<string, ThreadSummary>>({});
   /** Thread summaries for the active room, keyed by thread-root event id. */
@@ -245,6 +249,25 @@ export class ThreadsService {
 
   // Cross-signing / device trust changed: a thread message's shield may flip, so
   // force a full re-resolve of the opened thread's shields (mirrors TimelineService).
+  constructor() {
+    // The opened thread keeps its own projection cache, keyed by the same per-event
+    // fingerprint the timeline uses — so it needs the same treatment when the highlighting
+    // limit changes: drop the views, then re-project. See the matching effect in
+    // TimelineService for why the cache has to be cleared and not merely refreshed.
+    // `summaryCache` is deliberately left alone: a summary is built from the plain text
+    // body and never goes through the sanitizer.
+    let seenInitialHighlightLimit = false;
+    effect(() => {
+      this.codeHighlight.maxHighlightLines();
+      if (!seenInitialHighlightLimit) {
+        seenInitialHighlightLimit = true;
+        return;
+      }
+      this.threadViewCache.clear();
+      this.refreshThread();
+    });
+  }
+
   private readonly onThreadTrust = (): void => {
     if (this.threadRoom) {
       void this.resolveThreadShields(this.threadRoom, true);

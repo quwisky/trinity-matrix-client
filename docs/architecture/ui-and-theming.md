@@ -401,11 +401,22 @@ whatever the browser or a user stylesheet says still wins. Adding an axis means 
 that rule too — `applyX()` removes the class/attribute/property rather than writing an
 explicit default value.
 
-The last two exist because a rendered message body cannot carry a preference itself: its HTML
-is memoized per message and shared by every viewer (`sanitizedHtmlCache` in `message-view.ts`),
-so anything per-user has to reach it through CSS. What the markup may carry is
-content-derived only — a block records its own line count in `rows`, and the stylesheet
-decides what to do about it.
+The last two exist because a rendered message body does not carry a preference itself: its
+HTML is memoized per message and shared by every viewer (`sanitizedHtmlCache` in
+`message-view.ts`), so anything per-user reaches it through CSS instead. What the markup
+carries is content-derived only — a block records its own line count in `rows`, and the
+stylesheet decides what to do about it.
+
+**One preference is not on this table, and cannot be.** The syntax-highlighting limit
+(`trinity.code-highlight-lines`, owned by `CodeHighlightSettingsService`) decides whether a
+code block is tokenized at all, and no stylesheet can add the elements tokenizing produces.
+It reaches the sanitizer through the `setMaxHighlightLines` registration seam — the same
+shape as `setCodeHighlighter`, because `@trinity/util/matrix` is `[type:util]` and may not
+depend on the platform lib. Clearing `sanitizedHtmlCache` is only half of it: `TimelineService`
+and `ThreadsService` hand back the same `MessageView` object until their own per-event
+fingerprint changes, and that fingerprint does not include the preference, so both drop their
+view caches in an effect on it and re-project. That cost is the reason this is the exception
+and not the pattern: a preference that can be expressed in CSS should be.
 
 ### Seeing the tokens: Storybook
 

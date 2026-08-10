@@ -3,6 +3,7 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import {
+  CodeHighlightSettingsService,
   ThemeService,
   TRINITY_CODE_LINE_MODES,
   TRINITY_CODE_SCALES,
@@ -16,12 +17,16 @@ describe('CodeAppearanceBlockComponent', () => {
   let setCodeScale: Mock;
   let codeLines: ReturnType<typeof signal<CodeLineMode>>;
   let setCodeLines: Mock;
+  let maxHighlightLines: ReturnType<typeof signal<number>>;
+  let setMaxHighlightLines: Mock;
 
   beforeEach(() => {
     codeScale = signal<CodeScale>('default');
     setCodeScale = vi.fn();
     codeLines = signal<CodeLineMode>('auto');
     setCodeLines = vi.fn();
+    maxHighlightLines = signal(250);
+    setMaxHighlightLines = vi.fn();
   });
 
   function renderBlock() {
@@ -34,6 +39,10 @@ describe('CodeAppearanceBlockComponent', () => {
           codeLines,
           codeLineModes: TRINITY_CODE_LINE_MODES,
           setCodeLines,
+        }),
+        MockProvider(CodeHighlightSettingsService, {
+          maxHighlightLines,
+          setMaxHighlightLines,
         }),
       ],
     });
@@ -128,5 +137,88 @@ describe('CodeAppearanceBlockComponent', () => {
       'default',
       'larger',
     ]);
+  });
+
+  describe('the highlighting limit', () => {
+    /** The number field, which — unlike the selects above — renders fully in jsdom. */
+    const field = (container: HTMLElement) =>
+      container.querySelector<HTMLInputElement>(
+        '[data-testid=code-highlight-lines-input]',
+      );
+
+    const error = (container: HTMLElement) =>
+      container
+        .querySelector('[data-testid=code-highlight-lines-error]')
+        ?.textContent?.trim() ?? null;
+
+    it('shows the stored limit, named by its heading', async () => {
+      maxHighlightLines.set(120);
+      const { container } = await renderBlock();
+
+      expect(field(container)?.value).toBe('120');
+      const id = field(container)?.getAttribute('aria-labelledby');
+      expect(container.querySelector(`#${id}`)?.textContent?.trim()).toBe(
+        'Syntax highlighting',
+      );
+    });
+
+    it('applies a valid limit only once the value settles', async () => {
+      // Per keystroke would re-project every message in the open room three times on the
+      // way to typing "250", so the commit hangs off `change`, not `input`.
+      const { fixture, container } = await renderBlock();
+      const cmp = fixture.componentInstance;
+
+      cmp.onHighlightLinesInput('40');
+      fixture.detectChanges();
+      expect(setMaxHighlightLines).not.toHaveBeenCalled();
+      expect(error(container)).toBeNull();
+
+      cmp.commitHighlightLines();
+
+      expect(setMaxHighlightLines).toHaveBeenCalledExactlyOnceWith(40);
+    });
+
+    it('takes 0 as the no-limit value rather than refusing it', async () => {
+      const { fixture } = await renderBlock();
+      const cmp = fixture.componentInstance;
+
+      cmp.onHighlightLinesInput('0');
+      cmp.commitHighlightLines();
+
+      expect(setMaxHighlightLines).toHaveBeenCalledExactlyOnceWith(0);
+    });
+
+    it.each([
+      ['empty', ''],
+      ['blank', '  '],
+      ['fractional', '12.5'],
+      ['negative', '-1'],
+      ['past the ceiling', '10001'],
+      ['not a number', 'lots'],
+    ])(
+      'explains a limit that is %s, and applies nothing',
+      async (_l, typed) => {
+        const { fixture, container } = await renderBlock();
+        const cmp = fixture.componentInstance;
+
+        cmp.onHighlightLinesInput(typed);
+        cmp.commitHighlightLines();
+        fixture.detectChanges();
+
+        expect(error(container)).not.toBeNull();
+        expect(setMaxHighlightLines).not.toHaveBeenCalled();
+      },
+    );
+
+    it('says what no limit costs once no limit is what is set', async () => {
+      // The one setting here that can make the app slower, so the hint has to say so —
+      // and only when it applies, or it reads as a warning against a default nobody chose.
+      maxHighlightLines.set(0);
+      const { container } = await renderBlock();
+
+      expect(
+        container.querySelector('#appearance-code-highlight-hint')?.textContent,
+      ).toContain('hold the room up');
+    });
   });
 });

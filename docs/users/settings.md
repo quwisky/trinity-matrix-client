@@ -85,6 +85,15 @@ once a block is long enough to be worth pointing at by line. The numbers are nev
 the message: selecting or copying a block gives you the code alone, and they never appear in
 what you send.
 
+**Syntax highlighting.** How many lines of code in one message Trinity will colour. 250 by
+default; `0` means no limit. This is a different rule from the 500-line numbering limit
+above, and for a different reason: numbering is turned off on a very long block because a
+gutter stops being useful there, while colouring is limited because it costs time — the
+message cannot appear until its code has been coloured, and scrolling back through a room
+pays that cost again for every message it loads. Raise it if you read long pastes and rooms
+still feel quick; lower it if they do not. Past the limit a block renders exactly as it was
+written, just without colour, so nothing is ever hidden by it.
+
 **Time format.** Match system, 12-hour, or 24-hour.
 
 **Date format.** Match system, Day first, Month first, or ISO. Every option is previewed

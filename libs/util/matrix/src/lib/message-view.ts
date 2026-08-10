@@ -865,11 +865,35 @@ export type CodeHighlighter = (
 let codeHighlighter: CodeHighlighter | null = null;
 
 /**
- * Total characters of code one message may have highlighted. The highlighter caps a single
- * block; this caps their sum, so a sender cannot spend the main thread by splitting a huge
- * listing across many fenced blocks in one event.
+ * Lines of code one message may have highlighted when the reader has expressed no
+ * preference — the ceiling {@link setMaxHighlightLines} starts from and can replace.
+ *
+ * Set by what the main thread can absorb, not by what fits. Measured in Chromium over
+ * realistic TypeScript: 250 lines costs ~55 ms to tokenize and ~12 ms to paint, where the
+ * same block left plain is ~0.5 ms — and a back-pagination projects a page of events in one
+ * synchronous pass, so the ceiling is per message but the cost lands in batches.
  */
-const MAX_HIGHLIGHT_CHARS_PER_MESSAGE = 20_000;
+export const DEFAULT_MAX_HIGHLIGHT_LINES = 250;
+
+/**
+ * Lines one message may have highlighted, and the only ceiling there is: it bounds a single
+ * listing and the sum across fences alike, so a sender cannot spend the main thread either
+ * by pasting one huge block or by splitting it across many.
+ *
+ * One number rather than a per-block cap under it, because the cost tracks the total and not
+ * how it is arranged — measured in Chromium, one 20,000-character block costs 54 ms against
+ * 57 ms for four 5,000-character ones, with fewer DOM nodes. A smaller per-block cap bought
+ * nothing a sender could not walk around by pressing Return, while refusing exactly the long
+ * listings worth colouring.
+ *
+ * Lines rather than characters because that is the unit the reader sets it in, and the unit
+ * a listing is measured in on screen. It does mean a message of very long lines costs more
+ * per line than this number suggests; what bounds that is shiki's own per-line ceiling,
+ * `tokenizeTimeLimit`, which we inherit at its 500 ms default.
+ *
+ * `0` is no ceiling at all — see {@link setMaxHighlightLines}.
+ */
+let maxHighlightLines: number = DEFAULT_MAX_HIGHLIGHT_LINES;
 
 /** Class on each wrapped line of a code block; the numbering gutter hangs off it. */
 const CODE_LINE_CLASS = 'code-line';
@@ -879,7 +903,9 @@ const CODE_LINE_CLASS = 'code-line';
  *
  * A gutter on a two-line snippet is noise, and most code in a conversation is a snippet.
  * The line-number setting's automatic mode — its default — shows numbers only past this;
- * "Always" ignores it, in CSS, since a preference must not reach the memoized markup.
+ * "Always" ignores it in CSS, because a preference reaching the memoized markup has to pay
+ * for it (see {@link setMaxHighlightLines}) and a gutter does not need to: it is generated
+ * content over markup this pass already emits.
  */
 const LINE_NUMBER_THRESHOLD = 5;
 
@@ -896,11 +922,11 @@ const MAX_NUMBERED_LINES = 500;
 /**
  * Lines one message may have wrapped in total.
  *
- * The per-block cap above is defeated by splitting, exactly as the tokenization cap is:
- * 125 blocks each one line under it is 62,000 spans and a two-megabyte serialization from a
- * single 64 KiB event — and that string is what {@link sanitizedHtmlCache} then retains,
- * bounded by entry count rather than bytes. This bounds their sum, so how the sender
- * arranges the lines stops mattering.
+ * The per-block cap above is defeated by splitting, which is why tokenization is bounded per
+ * message rather than per block: 125 blocks each one line under it is 62,000 spans and a
+ * two-megabyte serialization from a single 64 KiB event — and that string is what
+ * {@link sanitizedHtmlCache} then retains, bounded by entry count rather than bytes. This
+ * bounds their sum, so how the sender arranges the lines stops mattering.
  */
 const MAX_NUMBERED_LINES_PER_MESSAGE = 2_000;
 
@@ -920,6 +946,33 @@ const NODE_TYPE_TEXT = 3;
  */
 export function setCodeHighlighter(highlighter: CodeHighlighter | null): void {
   codeHighlighter = highlighter;
+  sanitizedHtmlCache.clear();
+}
+
+/**
+ * Set how many lines of code one message may have syntax-highlighted; `0` removes the
+ * ceiling entirely.
+ *
+ * The one preference that reaches the memoized markup rather than going through CSS, which
+ * it can only do by invalidating that memo — highlighting adds elements, and no stylesheet
+ * can add elements. Clearing the memo is necessary but NOT sufficient: whatever holds
+ * already-projected views (`TimelineService.viewCache` and its thread twin) has to drop them
+ * too, or a room already on screen keeps the markup it was rendered with. A registration
+ * seam rather than an injected service because this module is `[type:util]` and may not
+ * depend on the platform lib that owns the preference.
+ *
+ * Ignores a value that is not a whole number of lines, falling back to the default rather
+ * than to `0`: garbage must not silently remove a ceiling on synchronous work.
+ */
+export function setMaxHighlightLines(lines: number): void {
+  const limit =
+    Number.isInteger(lines) && lines >= 0 ? lines : DEFAULT_MAX_HIGHLIGHT_LINES;
+  if (limit === maxHighlightLines) {
+    // Guarded so the startup read at the default, or an apply-all that rewrites every
+    // setting to what it already was, does not throw away a warm memo for nothing.
+    return;
+  }
+  maxHighlightLines = limit;
   sanitizedHtmlCache.clear();
 }
 
@@ -1159,11 +1212,14 @@ function fencedLanguage(code: Element): string | null {
  * it produces can be re-parsed as markup.
  */
 function renderCodeBlocks(root: ParentNode): void {
-  // A per-block cap alone is defeated by splitting: forty blocks just under the limit are
-  // still a quarter-megabyte of synchronous tokenization. This bounds their sum within one
-  // message. It does NOT bound a whole back-pagination, where each event is sanitized
-  // separately — see the note on MAX_HIGHLIGHT_CHARS_PER_MESSAGE.
-  let budget = MAX_HIGHLIGHT_CHARS_PER_MESSAGE;
+  // Spent across the blocks of one message, in document order, because a per-block cap on
+  // its own is defeated by splitting: any number of blocks each just under it is still
+  // unbounded synchronous tokenization. It does NOT bound a whole back-pagination, where
+  // each event is sanitized separately — see the note on maxHighlightLines.
+  //
+  // Infinity for the reader who asked for no limit, so the arithmetic below is untouched by
+  // the special case: nothing exceeds it and subtracting from it changes nothing.
+  let budget = maxHighlightLines === 0 ? Infinity : maxHighlightLines;
   // The same argument applies to line wrapping, which adds DOM rather than spending CPU:
   // a per-block cap is defeated by splitting just as a per-block tokenization cap is.
   let lineBudget = MAX_NUMBERED_LINES_PER_MESSAGE;
@@ -1177,9 +1233,9 @@ function renderCodeBlocks(root: ParentNode): void {
         pre.setAttribute('language', lang);
       }
       const source = code.textContent ?? '';
-      // Charged only when tokenization actually happened. The highlighter declines
-      // oversized blocks and unknown languages without doing the work, and charging for
-      // those would starve blocks that could have been highlighted.
+      // Charged only when tokenization actually happened. The highlighter declines a
+      // language it holds no grammar for without doing the work, and charging for that
+      // would starve blocks that could have been highlighted.
       const charged = highlightBlock(code, lang, source, budget);
       budget -= charged;
       lineBudget -= markCodeLines(code, source, charged > 0, lineBudget);
@@ -1188,12 +1244,12 @@ function renderCodeBlocks(root: ParentNode): void {
 }
 
 /**
- * Tokenize one block in place, returning the characters to charge against the message
- * budget — 0 when nothing was highlighted.
+ * Tokenize one block in place, returning the lines to charge against the message budget —
+ * 0 when nothing was highlighted.
  *
  * Extracted from the loop so declining a block does not skip the passes after it: the
- * blocks this refuses (no language, no grammar, oversized, budget exhausted) are exactly
- * the long listings most worth numbering.
+ * blocks this refuses (no language, no grammar, past the budget) are exactly the long
+ * listings most worth numbering.
  */
 function highlightBlock(
   code: Element,
@@ -1208,9 +1264,14 @@ function highlightBlock(
   if (!lang || !codeHighlighter || !source || code.children.length > 0) {
     return 0;
   }
-  // Declining, not aborting: a later block small enough to fit should still be coloured
-  // rather than being starved by one oversized listing earlier in the message.
-  if (source.length > budget) {
+  // Counted the same way the numbering gutter counts, so a block sitting exactly on the
+  // limit is treated as the same size by both and the two never disagree by one.
+  const lines = countCodeLines(source);
+  // Declining, not aborting: what does not fit the REMAINING budget is skipped and the loop
+  // goes on, so a short block after a long listing is still coloured. First come, first
+  // served, which does mean a listing big enough to spend the budget leaves nothing for the
+  // fences below it — the trade for colouring long listings at all.
+  if (lines > budget) {
     return 0;
   }
   const highlighted = codeHighlighter(source, lang, code.ownerDocument);
@@ -1218,7 +1279,21 @@ function highlightBlock(
     return 0;
   }
   code.replaceChildren(highlighted);
-  return source.length;
+  return lines;
+}
+
+/**
+ * Lines in a fenced block.
+ *
+ * marked puts a trailing newline inside `<code>`, and so does commonmark, so very nearly
+ * every real fence ends with one — from this client and from Element alike. Counting it
+ * would charge a phantom blank row against the highlighting budget and fire the numbering
+ * threshold a line early, numbering a five-line block under a setting labelled "over 5
+ * lines".
+ */
+function countCodeLines(source: string): number {
+  const lines = source.split('\n');
+  return source.endsWith('\n') ? lines.length - 1 : lines.length;
 }
 
 /**
@@ -1241,8 +1316,9 @@ function highlightBlock(
  * would silently drop `numbered` or `data-lines`. It carries no meaning on `<pre>`, and the
  * count is what a threshold rule would want anyway. The threshold is applied HERE, from the
  * content, rather than in CSS, because `:has()` is below this app's browser floor — and
- * because a preference must never reach the markup, which is memoized per message and not
- * per viewer.
+ * because the markup is memoized per message and not per viewer, so a preference reaching it
+ * must invalidate that memo and every projection cache downstream. Only the highlighting
+ * limit pays that price ({@link setMaxHighlightLines}); the numbering modes stay in CSS.
  */
 function markCodeLines(
   code: Element,
@@ -1259,13 +1335,8 @@ function markCodeLines(
   if (!highlighted && code.children.length > 0) {
     return 0;
   }
-  const lines = source.split('\n');
-  // marked puts a trailing newline inside `<code>`, and so does commonmark, so very nearly
-  // every real fence ends with one — from this client and from Element alike. Counting it
-  // would number a phantom blank row at the end of every block and fire the threshold a
-  // line early, numbering a five-line block under a setting labelled "over 5 lines".
   const trailingNewline = source.endsWith('\n');
-  const count = trailingNewline ? lines.length - 1 : lines.length;
+  const count = countCodeLines(source);
   // Two bounds, because a sender controls both the size of a block and how many of them a
   // message contains. Declining, not truncating: half a numbered listing would be worse
   // than an unnumbered one, and the block still renders normally either way.

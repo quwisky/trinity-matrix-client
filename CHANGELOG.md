@@ -318,6 +318,14 @@ All notable changes to this project are documented here. The format is based on
   they are never part of the message — selecting or copying a block gives you the code alone,
   and nothing extra is sent.
 
+  And **Syntax highlighting**, which is how much of a long paste gets coloured: 250 lines in
+  one message by default, and `0` for no limit. Colouring is not free — a message cannot
+  appear until its code has been coloured, and scrolling back through a room pays that again
+  for every message it loads — so this is the dial between "colour everything I paste" and
+  "keep rooms quick", rather than a number picked for you. It takes effect on the messages
+  already in front of you, not just the next ones. Past the limit a block renders exactly as
+  it was written, just without colour, so raising or lowering it never hides anything.
+
 - **Code blocks are coloured for eighteen more languages.** Pasting C, C#, Dart, a
   Dockerfile, HTML, an INI or TOML config, Kotlin, Lua, a Makefile, Markdown, Perl, PHP,
   PowerShell, Ruby, Scala, a shell session or Swift now highlights the same way Python or
@@ -617,6 +625,17 @@ All notable changes to this project are documented here. The format is based on
   points you at where to get a KLIPY key. A configuration file exported before this change
   still imports: it is read as KLIPY and tells you the same thing, rather than being rejected
   for naming a provider that no longer exists.
+
+- **A pasted file gets colour, not just a snippet.** Syntax highlighting gave up on any block
+  over about eighty lines, so the listings most worth reading arrived as plain monospace while
+  a five-line snippet beside them was coloured, with nothing on screen to say why — and past
+  five lines the block was even numbered, which made the missing colour look like a fault
+  rather than a limit. Blocks now stay coloured to 250 lines by default, and you can set that
+  yourself (see **Syntax highlighting** above). There is still a ceiling by default, because
+  colouring happens while the message is being drawn, but it is now one budget for the whole
+  message instead of a second, much smaller one per block: the old limit refused a single long
+  listing while colouring the same code split across several fences, which costs the same.
+  Past the ceiling a block renders exactly as it was written, just without colour.
 
 - **Tapping a notification opens the room it came from.** It focused the window and switched to
   the right account, then left you wherever you already were — the one thing a notification is

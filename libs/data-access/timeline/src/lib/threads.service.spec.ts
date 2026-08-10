@@ -14,11 +14,19 @@ import {
   EventShieldColour,
   EventShieldReason,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { describe, expect, it, type Mock, vi } from 'vitest';
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { ThreadsService } from './threads.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import {
+  CodeHighlightSettingsService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
+import {
+  DEFAULT_MAX_HIGHLIGHT_LINES,
+  setCodeHighlighter,
+  setMaxHighlightLines,
+} from '@trinity/util/matrix';
 import { switchableMatrixProvider } from './timeline.spec-harness';
 
 const MEMBERS: Record<string, string> = {
@@ -58,6 +66,8 @@ function fakeEvent(o: {
   replyTo?: string;
   status?: string | null;
   editRelation?: boolean;
+  format?: string;
+  formattedBody?: string;
 }) {
   return {
     getId: () => o.id,
@@ -65,7 +75,16 @@ function fakeEvent(o: {
     getTs: () => o.ts ?? 0,
     getType: () => o.type ?? 'm.room.message',
     getRoomId: () => '!r:hs',
-    getContent: () => ({ body: o.body ?? '', msgtype: 'm.text' }),
+    getContent: () => ({
+      body: o.body ?? '',
+      msgtype: 'm.text',
+      ...(o.formattedBody
+        ? {
+            format: o.format ?? 'org.matrix.custom.html',
+            formatted_body: o.formattedBody,
+          }
+        : {}),
+    }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
     isEncrypted: () => o.encrypted ?? false,
@@ -1316,5 +1335,69 @@ describe('ThreadsService', () => {
       expect(list[0].latestActivityTs).toBe(900);
       expect(list[0].rootPreview).toBe('new root');
     });
+  });
+});
+
+describe('ThreadsService — the highlighting limit', () => {
+  /** One span per line, like the real highlighter: no token may span a newline. */
+  function linewiseHighlighter(code: string, _lang: string, doc: Document) {
+    const frag = doc.createDocumentFragment();
+    code.split('\n').forEach((line, index) => {
+      if (index > 0) {
+        frag.appendChild(doc.createTextNode('\n'));
+      }
+      if (line) {
+        const span = doc.createElement('span');
+        span.className = 'tok-keyword';
+        span.textContent = line;
+        frag.appendChild(span);
+      }
+    });
+    return frag;
+  }
+
+  afterEach(() => {
+    setCodeHighlighter(null);
+    setMaxHighlightLines(DEFAULT_MAX_HIGHLIGHT_LINES);
+  });
+
+  /** An open thread whose root is a four-line fenced block. */
+  function openWithLimit(lines: number) {
+    const root = fakeEvent({
+      id: '$root',
+      sender: '@a:hs',
+      body: '```python\nx\nx\nx\nx\n```',
+      formattedBody:
+        '<pre><code class="language-python">x\nx\nx\nx\n</code></pre>',
+    });
+    const out = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [root] }),
+    ]);
+    // The real service, not a mock: only it pushes the limit into the sanitizer, and that
+    // coupling is half of what this test exists to prove.
+    const limit = TestBed.inject(CodeHighlightSettingsService);
+    limit.setMaxHighlightLines(lines);
+    setCodeHighlighter(linewiseHighlighter);
+    out.svc.openThread('!r:hs', '$root');
+    return { ...out, limit };
+  }
+
+  const flush = async () => {
+    TestBed.tick();
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
+  it('re-projects the open thread when the limit changes', async () => {
+    // threadViewCache keys on the same per-event fingerprint the timeline uses, so it holds
+    // markup built under the old limit just as stubbornly.
+    const { svc, limit } = openWithLimit(3);
+    await flush();
+    expect(svc.threadMessages()[0]?.html).not.toContain('tok-');
+
+    limit.setMaxHighlightLines(10);
+    await flush();
+
+    expect(svc.threadMessages()[0]?.html).toContain('tok-');
   });
 });

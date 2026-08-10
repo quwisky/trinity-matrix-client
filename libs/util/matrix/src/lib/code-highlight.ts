@@ -56,8 +56,11 @@ import { setCodeHighlighter } from './message-view';
  * download conditional means a dynamic `import()` on the first fenced block, which turns
  * highlighting async — and because the timeline's view and row caches key on event
  * revision and object identity, a late install would leave already-projected messages
- * unhighlighted until something else invalidated them. Doing it properly needs a
- * generation counter threaded into those caches, which is why it is not done here.
+ * unhighlighted until something else invalidated them. `setCodeHighlighter` does clear the
+ * sanitize memo, but that memo is not what holds a projected message: `TimelineService`
+ * hands back the same view object until its own fingerprint changes. The highlighting-limit
+ * preference solved that half — the timeline drops its view cache and re-projects when the
+ * limit changes — so what remains here is triggering the same thing from an async install.
  */
 
 /**
@@ -168,14 +171,6 @@ const THEME: ThemeRegistrationRaw = {
 // be dead code that reads as a supported feature.
 const FONT_ITALIC = 1;
 
-/**
- * Ceiling on what we will tokenize. Highlighting runs synchronously inside the timeline
- * projection, and a sender can put a 60 KiB fenced block in every event — an uncapped
- * grammar pass over a page of backscroll is a trivial main-thread freeze. Past the cap the
- * block still renders, just as plain monospace.
- */
-const MAX_CODE_CHARS = 6_000;
-
 let highlighter: HighlighterCore | null = null;
 // Latched on the first construction failure. Without it a throwing constructor would be
 // retried — and re-thrown — for every code block in every message, forever.
@@ -245,8 +240,21 @@ function classFor(
 }
 
 /**
- * Tokenize `code` into `<span class="tok-*">` runs, or null when the language is unknown,
- * the block is oversized, or the grammar fails.
+ * Tokenize `code` into `<span class="tok-*">` runs, or null when the language is unknown or
+ * the grammar fails.
+ *
+ * **Holds no size of its own, deliberately.** Tokenization is synchronous and a sender
+ * controls block size, so it does need a ceiling — but that ceiling is the reader's
+ * `maxHighlightLines`, applied by `renderCodeBlocks` before this is ever called. This
+ * function is registered rather than exported, so that is the only way in and a cap here
+ * could not fire: the budget refuses anything larger first, on the first block as much as
+ * the last. It used to hold a second, smaller number, and all that number decided was that
+ * one long listing went uncoloured while the same code split across several fences did not
+ * — the cost is the same either way, because it tracks the total rather than how it is
+ * arranged.
+ *
+ * A reader may set that ceiling to "no limit", at which point there is none at any layer.
+ * That is deliberate and it is their call: what it costs is stated where the setting is.
  *
  * Built with createElement/createTextNode, never innerHTML — no string of ours can become
  * markup, so this cannot reintroduce anything DOMPurify has just removed.
@@ -256,7 +264,7 @@ function highlight(
   lang: string,
   doc: Document,
 ): DocumentFragment | null {
-  if (unavailable || code.length > MAX_CODE_CHARS) {
+  if (unavailable) {
     return null;
   }
   let lines;

@@ -5,6 +5,7 @@ import {
   flagSetting,
   isConfigRecord,
   listOptions,
+  numberSetting,
   textSetting,
 } from './config-validation';
 
@@ -150,5 +151,61 @@ describe('textSetting', () => {
     textSetting({ maxLength: 10, set }).write('  abc  ');
 
     expect(set).toHaveBeenCalledWith('abc');
+  });
+});
+
+describe('numberSetting', () => {
+  const build = () => {
+    const set = vi.fn<(value: number) => void>();
+    return {
+      set,
+      setting: numberSetting({
+        isValid: (value) =>
+          Number.isInteger(value) && value >= 0 && value <= 100,
+        noun: 'a highlighting limit',
+        expected:
+          'a whole number of lines from 0 to 100, where 0 means no limit',
+        set,
+      }),
+    };
+  };
+
+  it('accepts a number in range, including the zero sentinel', () => {
+    expect(build().setting.validate(40)).toEqual({ ok: true, value: 40 });
+    expect(build().setting.validate(0)).toEqual({ ok: true, value: 0 });
+  });
+
+  it('is strict about the type: the string is not the number', () => {
+    // A document that round-trips through the schema has to be the document the schema
+    // describes, and the schema says `number`.
+    expect(build().setting.validate('40')).toEqual({
+      ok: false,
+      problem:
+        "'40' is not a highlighting limit (expected a whole number of lines from 0 to 100, where 0 means no limit)",
+    });
+  });
+
+  it.each([
+    ['fractional', 12.5],
+    ['negative', -1],
+    ['past the ceiling', 101],
+    ['not a number', Number.NaN],
+    ['infinite', Number.POSITIVE_INFINITY],
+  ])('rejects a value that is %s', (_label, value) => {
+    expect(build().setting.validate(value).ok).toBe(false);
+  });
+
+  it('writes only what validate would have accepted', () => {
+    const { set, setting } = build();
+
+    setting.write(40);
+    setting.write('40');
+    setting.write(101);
+
+    expect(set).toHaveBeenCalledExactlyOnceWith(40);
+  });
+
+  it('declares itself a number, so the schema and the editor agree', () => {
+    expect(build().setting.type).toBe('number');
   });
 });

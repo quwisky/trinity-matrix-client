@@ -30,6 +30,7 @@ import {
   MatrixClientService,
 } from '@trinity/data-access/matrix-client';
 import {
+  CodeHighlightSettingsService,
   PrivacySettingsService,
   SystemLineSettingsService,
 } from '@trinity/platform-native';
@@ -157,6 +158,7 @@ export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);
   private readonly systemLines = inject(SystemLineSettingsService);
+  private readonly codeHighlight = inject(CodeHighlightSettingsService);
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();
@@ -262,6 +264,24 @@ export class TimelineService {
         seenInitial = true;
         return;
       }
+      this.scheduleRefresh();
+    });
+
+    // The highlighting limit needs its OWN effect, not a fourth read in the one above:
+    // unlike the system-line filter, it changes the MARKUP buildMessageView produces, so
+    // scheduling a refresh is not enough on its own. eventRevision fingerprints per-event
+    // inputs only, and the limit is not one of them — every cached view would still match
+    // its key and be handed back verbatim. Dropping the cache first is what makes the
+    // refresh rebuild anything. Kept separate so toggling "show joins" does not also throw
+    // away every projection and re-run markdown and DOMPurify over the whole room.
+    let seenInitialHighlightLimit = false;
+    effect(() => {
+      this.codeHighlight.maxHighlightLines();
+      if (!seenInitialHighlightLimit) {
+        seenInitialHighlightLimit = true;
+        return;
+      }
+      this.viewCache.clear();
       this.scheduleRefresh();
     });
   }

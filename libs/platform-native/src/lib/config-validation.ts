@@ -97,6 +97,44 @@ export function choiceSetting<T extends string>(spec: {
   };
 }
 
+/**
+ * A setting that is a number.
+ *
+ * Strict about the type for the same reason {@link flagSetting} is: `'250'` is not `250`,
+ * and accepting the string would mean a document that round-trips through this schema is not
+ * the document the schema describes.
+ *
+ * `isValid` is the owning service's own guard, so an imported value is held to exactly the
+ * standard a typed-in one is; `noun` and `expected` complete the sentence
+ * "'250' is not … (expected …)" — spelled out rather than derived, because the range a
+ * number takes is not something the type can say.
+ */
+export function numberSetting(spec: {
+  readonly isValid: (value: number) => boolean;
+  readonly noun: string;
+  readonly expected: string;
+  readonly set: (value: number) => void;
+}): Pick<ConfigEntry, 'validate' | 'write' | 'type'> {
+  const accepts = (value: unknown): value is number =>
+    typeof value === 'number' && spec.isValid(value);
+  return {
+    type: 'number',
+    validate: (value) =>
+      accepts(value)
+        ? { ok: true, value }
+        : {
+            ok: false,
+            problem: `${describeConfigValue(value)} is not ${spec.noun} (expected ${spec.expected})`,
+          },
+    // Re-narrowed rather than asserted, as in choiceSetting above.
+    write: (value) => {
+      if (accepts(value)) {
+        spec.set(value);
+      }
+    },
+  };
+}
+
 /** A setting that is on or off. Strict about the type: `'true'` is not `true`. */
 export function flagSetting(
   set: (on: boolean) => void,

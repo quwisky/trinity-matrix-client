@@ -1,17 +1,24 @@
 import { inject, type EnvironmentProviders } from '@angular/core';
 import {
   DEFAULT_DATE_FORMAT,
+  DEFAULT_MAX_HIGHLIGHT_LINES,
   DEFAULT_TIME_FORMAT,
   TRINITY_DATE_FORMATS,
   TRINITY_TIME_FORMATS,
   isDateFormat,
   isTimeFormat,
 } from '@trinity/util/matrix';
+import {
+  CodeHighlightSettingsService,
+  MAX_HIGHLIGHT_LINES_CEILING,
+  isMaxHighlightLines,
+} from './code-highlight-settings.service';
 import { provideConfigEntries, type ConfigEntry } from './config-schema';
 import {
   boundedNumberSetting,
   choiceSetting,
   flagSetting,
+  numberSetting,
 } from './config-validation';
 import {
   DEFAULT_RIGHT_PANEL_WIDTH,
@@ -89,6 +96,7 @@ export function providePlatformConfigEntries(): EnvironmentProviders {
   return provideConfigEntries(() => [
     ...themeEntries(inject(ThemeService)),
     ...shellEntries(inject(ShellLayoutService)),
+    ...codeHighlightEntries(inject(CodeHighlightSettingsService)),
     ...privacyEntries(inject(PrivacySettingsService)),
     ...timelineEntries(inject(SystemLineSettingsService)),
     ...formatEntries(inject(DateTimeFormatService)),
@@ -211,6 +219,32 @@ function shellEntries(shell: ShellLayoutService): readonly ConfigEntry[] {
         ...RIGHT_PANEL_WIDTH_BOUNDS,
         noun: `a width between ${RIGHT_PANEL_WIDTH_BOUNDS.min} and ${RIGHT_PANEL_WIDTH_BOUNDS.max} pixels`,
         set: (value) => shell.setRightPanelWidth(value),
+      }),
+    },
+  ];
+}
+
+/**
+ * Grouped under `theme.` with the other two code settings even though a different service
+ * owns it: the exported document is read by a person, and the three belong together on the
+ * page they are set on.
+ */
+function codeHighlightEntries(
+  code: CodeHighlightSettingsService,
+): readonly ConfigEntry[] {
+  return [
+    {
+      path: 'theme.codeHighlightLines',
+      key: 'trinity.code-highlight-lines',
+      description:
+        'The most lines of code in one message Trinity will colour, or 0 for no limit.',
+      read: () => code.maxHighlightLines(),
+      reset: () => code.setMaxHighlightLines(DEFAULT_MAX_HIGHLIGHT_LINES),
+      ...numberSetting({
+        isValid: isMaxHighlightLines,
+        noun: 'a highlighting limit',
+        expected: `a whole number of lines from 0 to ${MAX_HIGHLIGHT_LINES_CEILING}, where 0 means no limit`,
+        set: (value) => code.setMaxHighlightLines(value),
       }),
     },
   ];

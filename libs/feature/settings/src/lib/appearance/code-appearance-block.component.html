@@ -42,3 +42,50 @@
   Numbers the lines of a code block, so you can point at one. They are never
   part of the message: selecting or copying a block gives you the code alone.
 </p>
+
+<h2
+  id="appearance-code-highlight-heading"
+  class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+>
+  Syntax highlighting
+</h2>
+<div class="px-4 py-2">
+  <input
+    hlmInput
+    class="w-full"
+    type="number"
+    inputmode="numeric"
+    min="0"
+    step="1"
+    [max]="maxLines"
+    data-testid="code-highlight-lines-input"
+    aria-labelledby="appearance-code-highlight-heading"
+    aria-describedby="appearance-code-highlight-hint"
+    [attr.aria-invalid]="errorText() ? 'true' : null"
+    [value]="linesDraft()"
+    (input)="onHighlightLinesInput($any($event.target).value)"
+    (change)="commitHighlightLines()"
+  />
+  @if (errorText(); as error) {
+    <p
+      class="mt-1 text-13 text-danger"
+      role="alert"
+      data-testid="code-highlight-lines-error"
+    >
+      {{ error }}
+    </p>
+  }
+</div>
+<p
+  id="appearance-code-highlight-hint"
+  class="block px-4 py-2 text-13 text-muted-foreground"
+>
+  Colouring a long listing takes time before the message can appear, so Trinity
+  stops after this many lines in one message and shows the rest as plain code.
+  @if (appliedLines() === 0) {
+    Set to 0, so every block is coloured however long it is — a very long paste
+    can hold the room up while that happens.
+  } @else {
+    Set it to 0 for no limit.
+  }
+</p>

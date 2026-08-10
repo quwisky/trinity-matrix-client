@@ -38,6 +38,7 @@ import {
   PrivacySettingsService,
   StoragePersistenceService,
   SystemLineSettingsService,
+  CodeHighlightSettingsService,
   ComposerSettingsService,
   MessageGestureSettingsService,
   ShellLayoutService,
@@ -119,6 +120,10 @@ bootstrapApplication(AppComponent, {
     provideAppInitializer(() => inject(SystemLineSettingsService).init()),
     provideAppInitializer(() => inject(ComposerSettingsService).init()),
     provideAppInitializer(() => inject(MessageGestureSettingsService).init()),
+    // Load how much code may be syntax-highlighted before the first message is sanitized:
+    // that markup is memoized per message, so hydrating late would render the room under
+    // the default ceiling and then have to throw the whole projection away.
+    provideAppInitializer(() => inject(CodeHighlightSettingsService).init()),
     // Load the saved date/time formats before the first timeline paints — every message
     // header carries a timestamp, so hydrating late would render the whole room in the
     // default format and then reflow it.

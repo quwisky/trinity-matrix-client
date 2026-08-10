@@ -246,6 +246,13 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     owner: 'platform-native',
   },
 
+  // — code-highlight-settings.service.ts —
+  {
+    disposition: 'exported',
+    key: 'trinity.code-highlight-lines',
+    owner: 'platform-native',
+  },
+
   // — privacy-settings.service.ts —
   {
     disposition: 'exported',

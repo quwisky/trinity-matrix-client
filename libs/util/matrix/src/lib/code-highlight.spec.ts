@@ -138,8 +138,22 @@ describe('code highlighting', () => {
     expect(code.textContent).toBe('whatever this is');
   });
 
-  it('leaves an oversized block unhighlighted rather than freezing the timeline', () => {
-    const code = highlight('typescript', 'const a = 1;\n'.repeat(1000));
+  it('colours a whole pasted file, not just a snippet', () => {
+    // The regression this pins. Tokenization used to stop at 6,000 characters — around
+    // eighty lines of real code — so exactly the listings most worth reading arrived as
+    // plain monospace, while a five-line snippet beside them was coloured and nothing on
+    // screen said why. ~8,100 characters over 150 lines.
+    const source =
+      'const value = compute(input, { retries: 3 }); // step\n'.repeat(150);
+
+    expect(roles(highlight('typescript', source)).length).toBeGreaterThan(0);
+  });
+
+  it('leaves a block past the message budget unhighlighted rather than freezing the timeline', () => {
+    // Far past the lines one message may spend on tokenization, so renderCodeBlocks declines
+    // it before a grammar is consulted — the highlighter itself holds no size of its own,
+    // and the budget is the reader's to raise. The block still renders, just uncoloured.
+    const code = highlight('typescript', 'const a = 1;\n'.repeat(4_000));
 
     expect(roles(code)).toEqual([]);
   });

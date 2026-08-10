@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
+  DEFAULT_MAX_HIGHLIGHT_LINES,
   MAX_NAMED_REACTORS,
   collectMessageSenders,
   firstUrl,
@@ -15,6 +16,7 @@ import {
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
   setCodeHighlighter,
+  setMaxHighlightLines,
   type MessageKind,
   type MessageView,
 } from './message-view';
@@ -551,26 +553,32 @@ describe('sanitizeMatrixHtml — code highlighting', () => {
   });
 
   describe('the per-message tokenization budget', () => {
-    /** Records what the highlighter was actually asked to tokenize. */
+    /** Records how many lines the highlighter was actually asked to tokenize. */
     function recorder() {
       const seen: number[] = [];
       setCodeHighlighter((code, _lang, doc) => {
-        seen.push(code.length);
+        seen.push(lineCount(code));
         return doc.createDocumentFragment();
       });
       return seen;
     }
 
-    const block = (chars: number) =>
-      `<pre><code class="language-python">${'x'.repeat(chars)}</code></pre>`;
+    /** The count renderCodeBlocks charges: the trailing newline is not a line. */
+    const lineCount = (source: string) =>
+      source.endsWith('\n')
+        ? source.split('\n').length - 1
+        : source.split('\n').length;
+
+    const block = (lines: number) =>
+      `<pre><code class="language-python">${'x\n'.repeat(lines)}</code></pre>`;
 
     it('stops tokenizing once a message has spent its budget', () => {
       const seen = recorder();
 
-      // 20_000 of budget: the first two fit, the third does not.
-      sanitizeMatrixHtml(block(9_000) + block(9_000) + block(9_000));
+      // 250 lines of budget: the first two fit, the third does not.
+      sanitizeMatrixHtml(block(100) + block(100) + block(100));
 
-      expect(seen).toEqual([9_000, 9_000]);
+      expect(seen).toEqual([100, 100]);
     });
 
     it('still highlights a small block after one too large to fit', () => {
@@ -578,9 +586,9 @@ describe('sanitizeMatrixHtml — code highlighting', () => {
       // below it.
       const seen = recorder();
 
-      sanitizeMatrixHtml(block(19_000) + block(5_000) + block(500));
+      sanitizeMatrixHtml(block(240) + block(40) + block(5));
 
-      expect(seen).toEqual([19_000, 500]);
+      expect(seen).toEqual([240, 5]);
     });
 
     it('does not charge for a block the highlighter declines', () => {
@@ -588,13 +596,98 @@ describe('sanitizeMatrixHtml — code highlighting', () => {
       // blocks that could have been highlighted.
       const seen: number[] = [];
       setCodeHighlighter((code, _lang, doc) => {
-        seen.push(code.length);
-        return code.length > 15_000 ? null : doc.createDocumentFragment();
+        seen.push(lineCount(code));
+        return lineCount(code) > 150 ? null : doc.createDocumentFragment();
       });
 
-      sanitizeMatrixHtml(block(16_000) + block(9_000) + block(9_000));
+      sanitizeMatrixHtml(block(200) + block(100) + block(100));
 
-      expect(seen).toEqual([16_000, 9_000, 9_000]);
+      expect(seen).toEqual([200, 100, 100]);
+    });
+
+    it('charges a block the same number of lines the gutter numbers', () => {
+      // The budget and the numbering must agree about how big a block is, or a block
+      // sitting on the limit is refused by one and accepted by the other.
+      const seen = recorder();
+
+      // Exactly the default limit, trailing newline and all.
+      const host = document.createElement('div');
+      host.innerHTML = sanitizeMatrixHtml(block(250));
+
+      expect(seen).toEqual([250]);
+      expect(host.querySelector('code')?.getAttribute('rows')).toBe('250');
+    });
+  });
+
+  describe('the reader’s highlighting limit', () => {
+    const block = (lines: number) =>
+      `<pre><code class="language-python">${'x\n'.repeat(lines)}</code></pre>`;
+
+    /**
+     * One span per line, like the real highlighter: no token may span a newline, or the
+     * line-wrapping pass folds two visual lines into one wrapper and the numbering lies.
+     * `fakeHighlighter` above returns a single span and so cannot be used on a multi-line
+     * block — it would be dropped by that pass, and every assertion here would read as
+     * "not highlighted" for the wrong reason.
+     */
+    function linewiseHighlighter(code: string, _lang: string, doc: Document) {
+      const frag = doc.createDocumentFragment();
+      code.split('\n').forEach((line, index) => {
+        if (index > 0) {
+          frag.appendChild(doc.createTextNode('\n'));
+        }
+        if (line) {
+          const span = doc.createElement('span');
+          span.className = 'tok-keyword';
+          span.textContent = line;
+          frag.appendChild(span);
+        }
+      });
+      return frag;
+    }
+
+    afterEach(() => {
+      setMaxHighlightLines(DEFAULT_MAX_HIGHLIGHT_LINES);
+    });
+
+    it('refuses a block longer than the limit', () => {
+      setMaxHighlightLines(3);
+      setCodeHighlighter(linewiseHighlighter);
+
+      expect(sanitizeMatrixHtml(block(4))).not.toContain('tok-');
+      expect(sanitizeMatrixHtml(block(3))).toContain('tok-');
+    });
+
+    it('highlights any length at all when the limit is zero', () => {
+      setMaxHighlightLines(0);
+      setCodeHighlighter(linewiseHighlighter);
+
+      expect(sanitizeMatrixHtml(block(5_000))).toContain('tok-');
+    });
+
+    it('re-sanitizes after the limit changes, rather than serving a stale memo', () => {
+      // The memo is keyed by the raw html, which does not change when the preference
+      // does — so without the flush a room would keep the markup it was rendered with.
+      setCodeHighlighter(linewiseHighlighter);
+      setMaxHighlightLines(3);
+      expect(sanitizeMatrixHtml(block(4))).not.toContain('tok-');
+
+      setMaxHighlightLines(10);
+
+      expect(sanitizeMatrixHtml(block(4))).toContain('tok-');
+    });
+
+    it('falls back to the default rather than to no limit on a bad value', () => {
+      // Garbage must not silently remove the ceiling on synchronous work.
+      setCodeHighlighter(linewiseHighlighter);
+      setMaxHighlightLines(Number.NaN);
+
+      expect(
+        sanitizeMatrixHtml(block(DEFAULT_MAX_HIGHLIGHT_LINES + 1)),
+      ).not.toContain('tok-');
+      expect(sanitizeMatrixHtml(block(DEFAULT_MAX_HIGHLIGHT_LINES))).toContain(
+        'tok-',
+      );
     });
   });
 
