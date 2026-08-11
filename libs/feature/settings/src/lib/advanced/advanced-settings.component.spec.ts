@@ -1,9 +1,12 @@
+import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { Capacitor } from '@capacitor/core';
 import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import {
   APP_CONFIG_ENTRIES,
   AppConfigService,
   type ConfigEntry,
+  type ConfigValidation,
 } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -18,42 +21,123 @@ import {
   type Mock,
 } from 'vitest';
 import { AdvancedSettingsComponent } from './advanced-settings.component';
+import { CLIPBOARD_UNREADABLE_MESSAGE } from './import-config';
 import {
   RESET_CONFIG_CONFIRMATION_WORD,
   RESET_CONFIG_CONSEQUENCES,
   RESET_CONFIG_MISTYPED_MESSAGE,
 } from './reset-config';
 
+/**
+ * The fixture's stored state. Signals rather than plain values because that is what the
+ * real entries read from: the document is a `computed` over the owning services' signals,
+ * and the dirty-state rule this component exists to get right is only testable if a write
+ * really does push a new document at the view.
+ */
+const palette = signal('violet');
+const apiKey = signal('gif-key');
+const desktopOnly = signal(false);
+
+/** Text in, text out — enough for the two settings the document's shape is checked against. */
+function acceptsText(store: { set: (value: string) => void }) {
+  return {
+    write: (value) => store.set(String(value)),
+    validate: (value) =>
+      typeof value === 'string'
+        ? { ok: true, value }
+        : { ok: false, problem: 'is not text' },
+  } satisfies Pick<ConfigEntry, 'write' | 'validate'>;
+}
+
+/**
+ * A setting that is accepted but inert here — the shape every cross-platform warning has
+ * (a desktop shortcut on a phone, a push gateway where there is no push).
+ */
+function validateDesktopOnly(value: unknown): ConfigValidation {
+  if (typeof value !== 'boolean') {
+    return { ok: false, problem: 'is not true or false' };
+  }
+  return value
+    ? {
+        ok: true,
+        value,
+        warning: 'the desktop app is the only place this does anything',
+      }
+    : { ok: true, value };
+}
+
 /** A registry standing in for the app's, wired the way `main.ts` wires the real one. */
 const ENTRIES: readonly ConfigEntry[] = [
   {
     path: 'theme.palette',
     key: 'trinity.palette',
-    read: () => 'violet',
-    reset: () => undefined,
+    read: () => palette(),
+    reset: () => palette.set('trinity'),
+    ...acceptsText(palette),
   },
   {
     path: 'gif.apiKey',
     key: 'trinity.gif.config',
-    read: () => 'gif-key',
-    reset: () => undefined,
+    read: () => apiKey(),
+    reset: () => apiKey.set(''),
+    ...acceptsText(apiKey),
+  },
+  {
+    path: 'desktop.only',
+    key: 'trinity.flags.virtual-timeline',
+    read: () => desktopOnly(),
+    reset: () => desktopOnly.set(false),
+    write: (value) => desktopOnly.set(value === true),
+    validate: validateDesktopOnly,
   },
 ];
+
+/** A document that sets only the paths given, as an import would arrive. */
+function documentJson(settings: object): string {
+  return JSON.stringify({
+    version: 1,
+    exportedAt: '2026-08-09T00:00:00.000Z',
+    settings,
+  });
+}
+
+/**
+ * A synthetic file-input change event carrying a text file. jsdom's `File` has no `.text()`,
+ * so stub just what the handler reads — the same shape the security section's spec uses.
+ */
+function fileEvent(text?: string): Event {
+  const files =
+    text === undefined ? [] : [{ text: () => Promise.resolve(text) }];
+  return { target: { files, value: '' } } as unknown as Event;
+}
 
 /** Let the pending promise chain (prompt → reset → toast) settle. */
 const flush = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve));
 
+function textarea(container: Element): HTMLTextAreaElement {
+  return container.querySelector(
+    '[data-testid=advanced-config-json]',
+  ) as HTMLTextAreaElement;
+}
+
 function textareaValue(container: Element): string {
-  return (
-    container.querySelector(
-      '[data-testid=advanced-config-json]',
-    ) as HTMLTextAreaElement
-  ).value;
+  return textarea(container).value;
+}
+
+/** Type into the box the way a user does: set the value, then let Angular hear about it. */
+function typeInto(container: Element, text: string): void {
+  const box = textarea(container);
+  box.value = text;
+  box.dispatchEvent(new Event('input'));
 }
 
 function button(container: Element, testid: string): HTMLButtonElement | null {
   return container.querySelector(`[data-testid=${testid}]`);
+}
+
+function textOf(container: Element, testid: string): string {
+  return container.querySelector(`[data-testid=${testid}]`)?.textContent ?? '';
 }
 
 /** The exported envelope, as these tests read it back. */
@@ -91,13 +175,19 @@ describe('AdvancedSettingsComponent', () => {
   let writeText: Mock;
   let resetToDefaults: Mock;
 
+  let readText: Mock;
+
   beforeEach(() => {
+    palette.set('violet');
+    apiKey.set('gif-key');
+    desktopOnly.set(false);
     alertPrompt = vi.fn().mockResolvedValue(RESET_CONFIG_CONFIRMATION_WORD);
     toastShow = vi.fn();
     writeText = vi.fn().mockResolvedValue(undefined);
+    readText = vi.fn().mockResolvedValue('');
     resetToDefaults = vi.fn(() => of(undefined));
     Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
+      value: { writeText, readText },
       configurable: true,
     });
   });
@@ -423,5 +513,326 @@ describe('AdvancedSettingsComponent', () => {
       'Could not reset every setting.',
       expect.objectContaining({ variant: 'destructive' }),
     );
+  });
+
+  describe('editing and applying', () => {
+    /**
+     * The real {@link AppConfigService} over {@link ENTRIES}, so the plan under test is the
+     * one the app would build — validation, the change summary and the warnings all come
+     * from the registry rather than from a stub agreeing with the component.
+     */
+    async function open() {
+      const rendered = await render(AdvancedSettingsComponent, {
+        providers: realConfig(),
+      });
+      return { ...rendered, config: TestBed.inject(AppConfigService) };
+    }
+
+    function changeLines(container: Element): readonly string[] {
+      return Array.from(
+        container.querySelectorAll('[data-testid=advanced-apply-changes] li'),
+      ).map((line) => line.textContent ?? '');
+    }
+
+    it('stops following the live settings the moment the box is edited', async () => {
+      const { container, fixture } = await open();
+      const mine = documentJson({ theme: { palette: 'amethyst' } });
+
+      typeInto(container, mine);
+      fixture.detectChanges();
+      // The document is derived from the owning services' signals, so without the dirty
+      // rule a preference moving anywhere would overwrite what is being typed.
+      palette.set('emerald');
+      fixture.detectChanges();
+
+      expect(textareaValue(container)).toBe(mine);
+      expect(textOf(container, 'advanced-edited-note')).toContain(
+        'stopped following',
+      );
+    });
+
+    it('gives the box back to the live document when the edit is discarded', async () => {
+      const { container, fixture } = await open();
+      typeInto(container, '{ not a document');
+      fixture.detectChanges();
+
+      button(container, 'advanced-discard')?.click();
+      fixture.detectChanges();
+
+      expect(JSON.parse(textareaValue(container))).toMatchObject({
+        settings: { theme: { palette: 'violet' } },
+      });
+      expect(button(container, 'advanced-discard')).toBeNull();
+    });
+
+    it('copies the edit on screen, not the document underneath it', async () => {
+      const { container, fixture } = await open();
+      const mine = documentJson({ theme: { palette: 'amethyst' } });
+      typeInto(container, mine);
+      fixture.detectChanges();
+
+      button(container, 'advanced-copy')?.click();
+      await flush();
+
+      expect(writeText).toHaveBeenCalledWith(mine);
+    });
+
+    it('names the offending path and writes nothing when a value is refused', async () => {
+      const { container, fixture, config } = await open();
+      const apply = vi.spyOn(config, 'apply');
+
+      typeInto(container, documentJson({ theme: { palette: 42 } }));
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      expect(textOf(container, 'advanced-apply-problems')).toContain(
+        'theme.palette',
+      );
+      expect(
+        container.querySelector('[data-testid=advanced-apply-summary]'),
+      ).toBeNull();
+      expect(apply).not.toHaveBeenCalled();
+      expect(palette()).toBe('violet');
+    });
+
+    it('reports unreadable JSON as a problem rather than throwing', async () => {
+      const { container, fixture } = await open();
+
+      typeInto(container, '{ "version": 1, ');
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      expect(textOf(container, 'advanced-apply-problems')).toContain(
+        'not valid JSON',
+      );
+    });
+
+    it('summarises exactly the settings that would change, and writes nothing yet', async () => {
+      const { container, fixture, config } = await open();
+      const apply = vi.spyOn(config, 'apply');
+
+      typeInto(
+        container,
+        documentJson({
+          theme: { palette: 'amethyst' },
+          gif: { apiKey: 'gif-key' },
+        }),
+      );
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      // gif.apiKey is in the document but unchanged, so it is not in the summary.
+      expect(changeLines(container)).toHaveLength(1);
+      expect(changeLines(container)[0]).toContain('theme.palette');
+      expect(changeLines(container)[0]).toContain('"violet" → "amethyst"');
+      expect(apply).not.toHaveBeenCalled();
+      expect(palette()).toBe('violet');
+    });
+
+    it('writes only once the summary is confirmed, and then follows the app again', async () => {
+      const { container, fixture } = await open();
+      typeInto(container, documentJson({ theme: { palette: 'amethyst' } }));
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      button(container, 'advanced-apply-confirm')?.click();
+      await flush();
+      fixture.detectChanges();
+
+      expect(palette()).toBe('amethyst');
+      expect(JSON.parse(textareaValue(container))).toMatchObject({
+        settings: { theme: { palette: 'amethyst' } },
+      });
+      expect(button(container, 'advanced-discard')).toBeNull();
+      expect(toastShow).toHaveBeenCalledWith(
+        '1 setting applied.',
+        expect.objectContaining({ variant: 'success' }),
+      );
+    });
+
+    it('writes nothing when the summary is cancelled', async () => {
+      const { container, fixture, config } = await open();
+      const apply = vi.spyOn(config, 'apply');
+      typeInto(container, documentJson({ theme: { palette: 'amethyst' } }));
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      button(container, 'advanced-apply-cancel')?.click();
+      fixture.detectChanges();
+
+      expect(apply).not.toHaveBeenCalled();
+      expect(
+        container.querySelector('[data-testid=advanced-apply-summary]'),
+      ).toBeNull();
+      // The text is kept: cancelling the write is not discarding the edit.
+      expect(textareaValue(container)).toContain('amethyst');
+    });
+
+    it('drops the summary when the document is edited again', async () => {
+      const { container, fixture } = await open();
+      typeInto(container, documentJson({ theme: { palette: 'amethyst' } }));
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+      expect(changeLines(container)).toHaveLength(1);
+
+      typeInto(container, documentJson({ theme: { palette: 'emerald' } }));
+      fixture.detectChanges();
+
+      // A summary that outlived its document could be confirmed against text nobody read.
+      expect(
+        container.querySelector('[data-testid=advanced-apply-summary]'),
+      ).toBeNull();
+    });
+
+    it('says the document already matches rather than offering a write', async () => {
+      const { container, fixture } = await open();
+
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      expect(textOf(container, 'advanced-apply-nothing')).toContain(
+        'already match',
+      );
+      expect(
+        container.querySelector('[data-testid=advanced-apply-summary]'),
+      ).toBeNull();
+    });
+
+    it('names a setting that will not do anything here, and applies it anyway', async () => {
+      const { container, fixture } = await open();
+      typeInto(
+        container,
+        documentJson({
+          desktop: { only: true },
+          theme: { palette: 'amethyst' },
+        }),
+      );
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      const warning = textOf(container, 'advanced-apply-warnings');
+      expect(warning).toContain('desktop.only');
+      expect(warning).toContain('desktop app is the only place');
+      // Decision 4: warned, not filtered — it is still in the summary and still written.
+      expect(changeLines(container).join(' ')).toContain('desktop.only');
+
+      button(container, 'advanced-apply-confirm')?.click();
+      await flush();
+      fixture.detectChanges();
+
+      expect(desktopOnly()).toBe(true);
+      // The warning outlives the summary: what did not apply is the part worth re-reading.
+      expect(textOf(container, 'advanced-apply-warnings')).toContain(
+        'desktop.only',
+      );
+    });
+
+    it('names a path this build does not have, and still applies the rest', async () => {
+      const { container, fixture } = await open();
+      typeInto(
+        container,
+        documentJson({
+          theme: { palette: 'amethyst', fromTheFuture: 'x' },
+        }),
+      );
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      expect(textOf(container, 'advanced-apply-warnings')).toContain(
+        'theme.fromTheFuture',
+      );
+      expect(changeLines(container)).toHaveLength(1);
+    });
+
+    it('opens the file picker from the import button', async () => {
+      const { container } = await open();
+      const input = container.querySelector(
+        '[data-testid=advanced-import-file-input]',
+      ) as HTMLInputElement;
+      const click = vi
+        .spyOn(input, 'click')
+        .mockImplementation(() => undefined);
+
+      button(container, 'advanced-import-file')?.click();
+
+      expect(click).toHaveBeenCalled();
+    });
+
+    it('loads a document from a file into the box and checks it', async () => {
+      const { container, fixture } = await open();
+
+      await fixture.componentInstance.importFile(
+        fileEvent(documentJson({ theme: { palette: 'amethyst' } })),
+      );
+      fixture.detectChanges();
+
+      expect(textareaValue(container)).toContain('amethyst');
+      expect(changeLines(container)[0]).toContain('theme.palette');
+      // Imported, summarised, not written: the same gate a hand edit goes through.
+      expect(palette()).toBe('violet');
+    });
+
+    it('does nothing when the file picker is dismissed', async () => {
+      const { container, fixture } = await open();
+
+      await fixture.componentInstance.importFile(fileEvent());
+      fixture.detectChanges();
+
+      expect(button(container, 'advanced-discard')).toBeNull();
+    });
+
+    it('loads a document from the clipboard into the box and checks it', async () => {
+      readText.mockResolvedValue(
+        documentJson({ theme: { palette: 'amethyst' } }),
+      );
+      const { container, fixture } = await open();
+
+      button(container, 'advanced-import-clipboard')?.click();
+      await flush();
+      fixture.detectChanges();
+
+      expect(textareaValue(container)).toContain('amethyst');
+      expect(changeLines(container)[0]).toContain('theme.palette');
+    });
+
+    it('says so rather than silently doing nothing when the clipboard cannot be read', async () => {
+      readText.mockRejectedValue(new Error('denied'));
+      const { container, fixture } = await open();
+
+      button(container, 'advanced-import-clipboard')?.click();
+      await flush();
+      fixture.detectChanges();
+
+      expect(toastShow).toHaveBeenCalledWith(
+        CLIPBOARD_UNREADABLE_MESSAGE,
+        expect.objectContaining({ variant: 'destructive' }),
+      );
+      expect(button(container, 'advanced-discard')).toBeNull();
+    });
+
+    it('keeps the edit but drops the summary when a write fails', async () => {
+      const { container, fixture, config } = await open();
+      vi.spyOn(config, 'apply').mockReturnValue(
+        throwError(() => new Error('nope')),
+      );
+      typeInto(container, documentJson({ theme: { palette: 'amethyst' } }));
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      button(container, 'advanced-apply-confirm')?.click();
+      fixture.detectChanges();
+
+      expect(toastShow).toHaveBeenCalledWith(
+        'Could not apply every setting.',
+        expect.objectContaining({ variant: 'destructive' }),
+      );
+      // Some writes may have landed and some not, so the stale summary goes; the text
+      // stays, and pressing Apply again re-checks against the app as it now is.
+      expect(
+        container.querySelector('[data-testid=advanced-apply-summary]'),
+      ).toBeNull();
+      expect(textareaValue(container)).toContain('amethyst');
+      expect(button(container, 'advanced-apply')?.disabled).toBe(false);
+    });
   });
 });

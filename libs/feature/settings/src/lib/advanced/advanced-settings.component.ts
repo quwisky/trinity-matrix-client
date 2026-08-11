@@ -3,9 +3,11 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   computed,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Capacitor } from '@capacitor/core';
@@ -16,8 +18,15 @@ import { HlmTextarea } from '@trinity/helm/textarea';
 import {
   AppConfigService,
   CONFIG_EXCLUSION_NOTES,
+  describeConfigChange,
+  type ConfigApplyPlan,
 } from '@trinity/platform-native';
 import { downloadTextFile } from '../download-text-file';
+import {
+  CLIPBOARD_UNREADABLE_MESSAGE,
+  readClipboardConfig,
+  readPickedConfigFile,
+} from './import-config';
 import {
   RESET_CONFIG_MISTYPED_MESSAGE,
   confirmResetConfigIntent,
@@ -41,14 +50,30 @@ function exportFileName(now: Date): string {
 
 /**
  * Advanced settings: the whole local preference layer as one pretty-printed JSON document,
- * with Copy, Export to file, and Reset to defaults.
+ * which can be copied, exported, edited, imported and applied back.
  *
- * Read-only in this pass — editing and importing land next. The document comes from
- * {@link AppConfigService}, which builds it from the registered settings only, so the
- * omissions are structural rather than filtered: accounts, tokens, drafts and anything the
- * server keeps for you cannot reach it. Those omissions are stated on the page
- * ({@link CONFIG_EXCLUSION_NOTES}) rather than left to be discovered, because someone
- * copying this to a new device needs to know it is a preferences transfer, not a sign-in.
+ * The document comes from {@link AppConfigService}, which builds it from the registered
+ * settings only, so the omissions are structural rather than filtered: accounts, tokens,
+ * drafts and anything the server keeps for you cannot reach it. Those omissions are stated
+ * on the page ({@link CONFIG_EXCLUSION_NOTES}) rather than left to be discovered, because
+ * someone copying this to a new device needs to know it is a preferences transfer, not a
+ * sign-in.
+ *
+ * ## The two rules that keep this surface honest
+ *
+ * **The editor detaches the moment it is dirty.** The document is derived from the owning
+ * services' signals, so it re-renders whenever any preference changes — which is right for a
+ * read-only view and fatal for an editable one, since a preference changing anywhere (a
+ * theme following the system, another tab, an apply landing) would overwrite what is being
+ * typed. So {@link draft} holds the user's own text, and while it is non-null the box shows
+ * that and ignores the live document entirely. Applying or discarding puts it back to null,
+ * and the view starts following the app again. There is no third state: the box is either
+ * a window onto the app or the user's own text.
+ *
+ * **Nothing is written from text that was not checked.** Apply validates the whole document
+ * first, and the plan it produces is what gets written — not the text. Editing the box
+ * throws away any plan that was on screen, so a summary can never belong to a document other
+ * than the one shown.
  */
 @Component({
   selector: 'trn-advanced-settings',
@@ -64,6 +89,21 @@ export class AdvancedSettingsComponent {
   private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
 
+  private readonly fileInput =
+    viewChild<ElementRef<HTMLInputElement>>('configFile');
+
+  /**
+   * The user's own text, or null while the box is following the app. See the class comment:
+   * this is the whole of the dirty-state rule.
+   */
+  private readonly draft = signal<string | null>(null);
+
+  /**
+   * The last plan {@link apply} produced, awaiting confirmation. Cleared by any edit, so the
+   * summary on screen always describes the text on screen.
+   */
+  private readonly reviewed = signal<ConfigApplyPlan | null>(null);
+
   /** What the export leaves out and why — the section's copy, not a hardcoded list. */
   readonly exclusions = CONFIG_EXCLUSION_NOTES;
 
@@ -71,28 +111,66 @@ export class AdvancedSettingsComponent {
    * Native WebViews lack a reliable file download, so the file path is web/desktop only —
    * the same reason recorded at `recovery-key-display.component.ts`. Capacitor reports the
    * Electron shell as non-native, which is correct here: it downloads like a browser.
+   * Importing is offered everywhere: picking a file works in a WebView, saving one does not.
    */
   readonly canExportFile = !Capacitor.isNativePlatform();
 
   /** True while a reset is in flight, so the button can't be pressed twice. */
   readonly resetting = signal(false);
 
+  /** True while an apply is in flight, for the same reason. */
+  readonly applying = signal(false);
+
   /**
    * The document, live: `exportJson()` reads the owning services' signals, so a preference
    * changed elsewhere (or reset here) re-renders this without a reload.
    *
-   * What is rendered, only. Copy and Export re-read the document instead of sending this
-   * string, because `exportedAt` is stamped at the moment of the read: memoized here it
-   * would freeze at the last re-render, and a file opened at 17:00 would claim it was taken
-   * at 09:00 while its own filename said today. The settings are identical either way —
+   * What is rendered, only. Copy and Export go through {@link outgoingDocument} instead of
+   * sending this string, because `exportedAt` is stamped at the moment of the read: memoized
+   * here it would freeze at the last re-render, and a file opened at 17:00 would claim it was
+   * taken at 09:00 while its own filename said today. The settings are identical either way —
    * both reads go to the same signals.
    */
   readonly configJson = computed(() => this.config.exportJson());
 
+  /** What the box shows — the user's text once it is dirty, the live document until then. */
+  readonly editorValue = computed(() => this.draft() ?? this.configJson());
+
+  /** True once the box holds the user's own text rather than the app's. */
+  readonly edited = computed(() => this.draft() !== null);
+
+  /** Why the document was refused, each line naming the path that refused it. */
+  readonly problems = computed(() => {
+    const plan = this.reviewed();
+    return plan && !plan.ok ? plan.problems : [];
+  });
+
+  /**
+   * Settings that will be applied but do nothing here, and paths this build does not have.
+   *
+   * Held separately from {@link reviewed} so they survive the apply that clears the summary:
+   * "this shortcut is desktop-only" is exactly the thing someone needs to still be able to
+   * read *after* pressing Apply. Decision 4 on the issue — warn and proceed, naming what
+   * will not apply here, rather than silently filtering.
+   */
+  readonly warnings = signal<readonly string[]>([]);
+
+  /** The change summary: one line per setting that would move, and where to. */
+  readonly changeLines = computed(() => {
+    const plan = this.reviewed();
+    return plan?.ok ? plan.changes.map(describeConfigChange) : [];
+  });
+
+  /** True when the document was readable and already matches the app exactly. */
+  readonly nothingToChange = computed(() => {
+    const plan = this.reviewed();
+    return !!plan?.ok && plan.changes.length === 0;
+  });
+
   /** Copy the document, toasting only once the write resolves — never on a rejection. */
   copy(): void {
     void (
-      navigator.clipboard?.writeText(this.config.exportJson()) ??
+      navigator.clipboard?.writeText(this.outgoingDocument()) ??
       Promise.reject()
     ).then(
       () => this.toast.show('Settings copied.', { duration: 2000 }),
@@ -109,8 +187,101 @@ export class AdvancedSettingsComponent {
     downloadTextFile(this.document, {
       name: exportFileName(new Date()),
       mimeType: 'application/json',
-      content: this.config.exportJson(),
+      content: this.outgoingDocument(),
     });
+  }
+
+  /** Take the box over from the live document, and drop any summary that described it. */
+  onEdit(event: Event): void {
+    this.draft.set((event.target as HTMLTextAreaElement).value);
+    this.clearReview();
+  }
+
+  /** Give the box back to the live document, dropping the edit. */
+  discard(): void {
+    this.draft.set(null);
+    this.clearReview();
+  }
+
+  /**
+   * Check what is in the box and say what applying it would do. Writes nothing — this is
+   * what the Apply button runs, and the summary it produces has to be confirmed
+   * ({@link confirmApply}) before anything moves.
+   */
+  review(): void {
+    const plan = this.config.validateJson(this.editorValue());
+    this.reviewed.set(plan);
+    this.warnings.set(plan.warnings);
+  }
+
+  /** Write the reviewed plan through the owning services, so the app follows immediately. */
+  confirmApply(): void {
+    const plan = this.reviewed();
+    if (!plan?.ok || plan.changes.length === 0) {
+      return;
+    }
+
+    const count = plan.changes.length;
+    this.applying.set(true);
+    this.config
+      .apply(plan)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.applying.set(false);
+          this.reviewed.set(null);
+          // Back to following the app: the settings the document asked for are now the
+          // app's own, and anything a warning named is not — so the live document is the
+          // only honest thing to show.
+          this.draft.set(null);
+          this.toast.show(
+            count === 1 ? '1 setting applied.' : `${count} settings applied.`,
+            { duration: 3000, variant: 'success' },
+          );
+        },
+        error: () => {
+          this.applying.set(false);
+          // The edit is kept deliberately: some writes may have landed and some not, and
+          // pressing Apply again re-checks against the app as it now is, so the next
+          // summary names exactly what still has not gone in.
+          this.reviewed.set(null);
+          this.toast.show('Could not apply every setting.', {
+            duration: 4000,
+            variant: 'destructive',
+          });
+        },
+      });
+  }
+
+  /** Drop the summary without writing anything; the text in the box is left alone. */
+  cancelApply(): void {
+    this.clearReview();
+  }
+
+  /** Open the file picker for a previously-exported document. */
+  pickFile(): void {
+    this.fileInput()?.nativeElement.click();
+  }
+
+  /** Load a picked file into the box and check it, the same path as a paste. */
+  async importFile(event: Event): Promise<void> {
+    const text = await readPickedConfigFile(event);
+    if (text !== null) {
+      this.loadAndReview(text);
+    }
+  }
+
+  /** Load the clipboard into the box and check it — the primary route on mobile. */
+  async importClipboard(): Promise<void> {
+    const text = await readClipboardConfig();
+    if (text === null) {
+      this.toast.show(CLIPBOARD_UNREADABLE_MESSAGE, {
+        duration: 4000,
+        variant: 'destructive',
+      });
+      return;
+    }
+    this.loadAndReview(text);
   }
 
   /** Put every exported setting back to its default, behind the type-to-confirm gate. */
@@ -131,6 +302,8 @@ export class AdvancedSettingsComponent {
       .subscribe({
         next: () => {
           this.resetting.set(false);
+          // A reset is an edit of the app, not of the box: show what the app now holds.
+          this.discard();
           this.toast.show('Settings reset to defaults.', {
             duration: 3000,
             variant: 'success',
@@ -144,5 +317,33 @@ export class AdvancedSettingsComponent {
           });
         },
       });
+  }
+
+  /**
+   * An imported document lands in the box like a paste — visible and editable before it is
+   * applied — and is checked straight away, so file and clipboard reach the same summary a
+   * hand edit does.
+   */
+  /**
+   * What leaves the app when Copy or Export is pressed.
+   *
+   * The two rules meet here. Once the box is dirty it is the user's own text, sent verbatim:
+   * re-reading would send the app's settings under the nose of someone who is looking at
+   * theirs, and there is nothing to re-stamp in text this component did not write. Until
+   * then it is a *fresh* read rather than {@link configJson}, whose `exportedAt` froze at the
+   * last re-render — see the note there.
+   */
+  private outgoingDocument(): string {
+    return this.draft() ?? this.config.exportJson();
+  }
+
+  private loadAndReview(text: string): void {
+    this.draft.set(text);
+    this.review();
+  }
+
+  private clearReview(): void {
+    this.reviewed.set(null);
+    this.warnings.set([]);
   }
 }

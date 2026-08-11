@@ -3,8 +3,10 @@ import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
+/** The mode choices offered, in the order the settings picker shows them. */
+export const TRINITY_THEME_MODES = ['system', 'light', 'dark'] as const;
 /** What the user picked: follow the OS, or force a mode. */
-export type ThemePreference = 'system' | 'light' | 'dark';
+export type ThemePreference = (typeof TRINITY_THEME_MODES)[number];
 /** The mode actually applied after resolving `system`. */
 export type ResolvedTheme = 'light' | 'dark';
 
@@ -198,7 +200,7 @@ export class ThemeService {
     }
     try {
       const { value } = await Preferences.get({ key: THEME_KEY });
-      if (isPreference(value)) {
+      if (isThemePreference(value)) {
         this._preference.set(value);
       }
     } catch {
@@ -399,23 +401,34 @@ export class ThemeService {
   }
 }
 
-function isPreference(value: string | null): value is ThemePreference {
-  return value === 'system' || value === 'light' || value === 'dark';
+// Exported as well as used on the way in from storage: the config import has to hold a
+// pasted value to exactly the standard a stored one is held to, and a second set of rules
+// living beside these is how the two drift.
+
+/** True when `value` names a mode this build applies. */
+export function isThemePreference(
+  value: string | null,
+): value is ThemePreference {
+  return TRINITY_THEME_MODES.some((mode) => mode === value);
 }
 
-function isPalette(value: string | null): value is Palette {
+/** True when `value` is a registered palette id. */
+export function isPalette(value: string | null): value is Palette {
   return TRINITY_PALETTES.some((p) => p.id === value);
 }
 
-function isTextScale(value: string | null): value is TextScale {
+/** True when `value` is a registered text scale id. */
+export function isTextScale(value: string | null): value is TextScale {
   return TRINITY_TEXT_SCALES.some((s) => s.id === value);
 }
 
-function isCodeScale(value: string | null): value is CodeScale {
+/** True when `value` is a registered code scale id. */
+export function isCodeScale(value: string | null): value is CodeScale {
   return TRINITY_CODE_SCALES.some((s) => s.id === value);
 }
 
-function isCodeLineMode(value: string | null): value is CodeLineMode {
+/** True when `value` is a registered line-number mode id. */
+export function isCodeLineMode(value: string | null): value is CodeLineMode {
   return TRINITY_CODE_LINE_MODES.some((m) => m.id === value);
 }
 

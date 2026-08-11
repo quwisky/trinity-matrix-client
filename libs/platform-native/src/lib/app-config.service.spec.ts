@@ -58,7 +58,14 @@ function setupWith(
   return TestBed.inject(AppConfigService);
 }
 
-/** The smallest entry that reads and resets something. */
+/**
+ * The smallest entry that reads and resets something.
+ *
+ * `write` and `validate` are required of every entry, so they are here — inert, and matched
+ * to a setting whose value is always `null`. The tests below are about the registry's shape
+ * (duplicate paths, overlapping paths, a slow reset), so nothing calls them; an override
+ * supplies a real pair where one is needed.
+ */
 function entry(
   path: string,
   overrides: Partial<ConfigEntry> = {},
@@ -68,6 +75,11 @@ function entry(
     key: `trinity.${path}`,
     read: () => null,
     reset: () => undefined,
+    write: () => undefined,
+    validate: (value) =>
+      value === null
+        ? { ok: true, value: null }
+        : { ok: false, problem: 'takes no value' },
     ...overrides,
   };
 }
@@ -86,6 +98,23 @@ function run(action: ReturnType<AppConfigService['resetToDefaults']>) {
   return new Promise<void>((resolve, reject) =>
     action.subscribe({ complete: resolve, error: reject }),
   );
+}
+
+/** A document carrying exactly the given settings, in the committed envelope. */
+function documentOf(settings: unknown, version = 1): unknown {
+  return { version, exportedAt: new Date().toISOString(), settings };
+}
+
+/** Check a document and apply it, failing loudly if it was not accepted. */
+async function applyDocument(
+  config: AppConfigService,
+  document: unknown,
+): Promise<void> {
+  const plan = config.validate(document);
+  if (!plan.ok) {
+    throw new Error(`rejected: ${plan.problems.join(' / ')}`);
+  }
+  await run(config.apply(plan));
 }
 
 describe('AppConfigService', () => {
@@ -221,6 +250,238 @@ describe('AppConfigService', () => {
 
       expect(config.exportJson()).not.toContain('half-typed secret');
       expect(config.exportJson()).not.toContain('drafts');
+    });
+  });
+
+  describe('validate', () => {
+    it("accepts the app's own export unchanged, with nothing to do", () => {
+      const config = setup();
+      TestBed.inject(ThemeService).setPalette('amethyst');
+
+      const plan = config.validate(config.export());
+
+      expect(plan.ok).toBe(true);
+      expect(plan.ok && plan.changes).toEqual([]);
+      expect(plan.warnings).toEqual([]);
+    });
+
+    it('names the settings that would move, and where to', () => {
+      const config = setup();
+
+      const plan = config.validate(
+        documentOf({
+          theme: { palette: 'amethyst', mode: 'dark' },
+          privacy: { linkPreviews: false },
+        }),
+      );
+
+      expect(plan.ok && plan.changes).toEqual([
+        { path: 'privacy.linkPreviews', from: true, to: false },
+        { path: 'theme.mode', from: 'system', to: 'dark' },
+        { path: 'theme.palette', from: 'trinity', to: 'amethyst' },
+      ]);
+    });
+
+    it('rejects the whole document for one bad value, naming its path', () => {
+      const config = setup();
+
+      const plan = config.validate(
+        documentOf({
+          theme: { palette: 'mauve' },
+          privacy: { linkPreviews: false },
+        }),
+      );
+
+      expect(plan.ok).toBe(false);
+      expect(plan.ok === false && plan.problems).toEqual([
+        "theme.palette: 'mauve' is not a known palette (expected trinity or amethyst)",
+      ]);
+    });
+
+    it('rejects a value of the wrong type where a switch is expected', () => {
+      const plan = setup().validate(
+        documentOf({ privacy: { linkPreviews: 'false' } }),
+      );
+
+      expect(plan.ok === false && plan.problems).toEqual([
+        "privacy.linkPreviews: 'false' is not true or false",
+      ]);
+    });
+
+    it('warns about a path it does not know instead of blocking the rest', () => {
+      const config = setup();
+
+      const plan = config.validate(
+        documentOf({
+          theme: { palette: 'amethyst', shadows: 'soft' },
+          matrix: { accounts: ['@someone:hs'] },
+        }),
+      );
+
+      expect(plan.ok).toBe(true);
+      expect(plan.warnings).toEqual([
+        'theme.shadows is not a setting this version of Trinity has, so it will not be applied.',
+        'matrix.accounts is not a setting this version of Trinity has, so it will not be applied.',
+      ]);
+      expect(plan.ok && plan.changes.map((change) => change.path)).toEqual([
+        'theme.palette',
+      ]);
+    });
+
+    it('warns about a document from a newer build rather than refusing it', () => {
+      const plan = setup().validate(
+        documentOf({ theme: { palette: 'amethyst' } }, 2),
+      );
+
+      expect(plan.ok).toBe(true);
+      expect(plan.warnings[0]).toContain('format version 2');
+    });
+
+    it('rejects anything that is not the committed envelope', () => {
+      const config = setup();
+
+      for (const notADocument of [
+        { theme: { palette: 'amethyst' } },
+        { version: 1 },
+        { version: '1', settings: {} },
+        'nonsense',
+      ]) {
+        expect(config.validate(notADocument).ok).toBe(false);
+      }
+    });
+
+    it('reports a syntax error in the pasted text as an ordinary rejection', () => {
+      const plan = setup().validateJson('{ "version": 1, ');
+
+      expect(plan.ok).toBe(false);
+      expect(plan.ok === false && plan.problems[0]).toContain('not valid JSON');
+    });
+
+    it('refuses a malformed shortcut binding rather than letting it reach resolve', () => {
+      const config = setup();
+      const shortcuts = TestBed.inject(KeyboardShortcutsService);
+
+      const plan = config.validate(
+        documentOf({
+          shortcuts: { overrides: { 'switcher.open': { accel: 'yes' } } },
+        }),
+      );
+
+      expect(plan.ok).toBe(false);
+      expect(plan.ok === false && plan.problems[0]).toContain(
+        "shortcuts.overrides: the binding for 'switcher.open'",
+      );
+      expect(shortcuts.list().every((shortcut) => shortcut.isDefault)).toBe(
+        true,
+      );
+      expect(set.mock.calls.map(([options]) => options.key)).not.toContain(
+        'trinity.shortcuts.overrides',
+      );
+    });
+  });
+
+  describe('apply', () => {
+    it('does nothing until it is subscribed', () => {
+      const config = setup();
+      const theme = TestBed.inject(ThemeService);
+      const plan = config.validate(
+        documentOf({ theme: { palette: 'amethyst' } }),
+      );
+
+      if (plan.ok) {
+        config.apply(plan);
+      }
+
+      expect(theme.palette()).toBe('trinity');
+    });
+
+    it('moves the running app, through the owning services', async () => {
+      const config = setup();
+      const theme = TestBed.inject(ThemeService);
+      const privacy = TestBed.inject(PrivacySettingsService);
+
+      await applyDocument(
+        config,
+        documentOf({
+          theme: { palette: 'amethyst', textScale: 'large' },
+          privacy: { sendReadReceipts: false },
+        }),
+      );
+
+      expect(theme.palette()).toBe('amethyst');
+      expect(theme.textScale()).toBe('large');
+      expect(privacy.sendReadReceipts()).toBe(false);
+      // Through the setter, so storage agrees with the signal without a reload.
+      expect(set).toHaveBeenCalledWith({
+        key: 'trinity.palette',
+        value: 'amethyst',
+      });
+    });
+
+    it('round-trips: applying an export leaves the document identical', async () => {
+      const config = setup();
+      TestBed.inject(ThemeService).setPalette('amethyst');
+      TestBed.inject(KeyboardShortcutsService).rebind('switcher.open', {
+        accel: true,
+        alt: false,
+        shift: false,
+        key: 'j',
+      });
+      const before = config.settings();
+
+      await applyDocument(config, { ...config.export() });
+
+      expect(config.settings()).toEqual(before);
+    });
+
+    it('writes only the settings that differ', async () => {
+      const config = setup();
+      TestBed.inject(ThemeService).setPalette('amethyst');
+      set.mockClear();
+
+      await applyDocument(
+        config,
+        documentOf({ theme: { palette: 'amethyst' } }),
+      );
+
+      expect(set).not.toHaveBeenCalled();
+    });
+
+    it('applies the shortcut bindings the document carries', async () => {
+      const config = setup();
+      const shortcuts = TestBed.inject(KeyboardShortcutsService);
+
+      await applyDocument(
+        config,
+        documentOf({
+          shortcuts: {
+            overrides: {
+              'format.bold': { accel: true, alt: false, shift: true, key: 'b' },
+            },
+          },
+        }),
+      );
+
+      expect(shortcuts.binding('format.bold')).toEqual({
+        accel: true,
+        alt: false,
+        shift: true,
+        key: 'b',
+      });
+    });
+
+    it('never touches a key the document does not carry', async () => {
+      const config = setup();
+      const drafts = TestBed.inject(DraftStoreService);
+      drafts.set('!room:hs', 'half-typed secret');
+      set.mockClear();
+
+      await applyDocument(config, documentOf({ theme: { mode: 'dark' } }));
+
+      expect(set.mock.calls.map(([options]) => options.key)).toEqual([
+        'trinity.theme',
+      ]);
+      expect(drafts.get('!room:hs')).toBe('half-typed secret');
     });
   });
 

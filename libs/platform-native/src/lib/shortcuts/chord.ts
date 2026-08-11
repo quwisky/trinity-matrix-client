@@ -55,6 +55,31 @@ export function matchesEvent(chord: Chord, event: KeyboardEvent): boolean {
   );
 }
 
+/**
+ * Whether an untrusted value is a chord.
+ *
+ * The shape check for anything that did not come from a keydown — a stored override written
+ * by an older build, a hand-edited store, an imported settings document. A chord always
+ * names a key: an empty one can match no event, so it is not a binding, it is a corrupt
+ * record of one.
+ */
+export function isChord(value: unknown): value is Chord {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  return (
+    'accel' in value &&
+    typeof value.accel === 'boolean' &&
+    'alt' in value &&
+    typeof value.alt === 'boolean' &&
+    'shift' in value &&
+    typeof value.shift === 'boolean' &&
+    'key' in value &&
+    typeof value.key === 'string' &&
+    value.key.length > 0
+  );
+}
+
 /** Whether two chords are the same binding. */
 export function sameChord(a: Chord, b: Chord): boolean {
   return (

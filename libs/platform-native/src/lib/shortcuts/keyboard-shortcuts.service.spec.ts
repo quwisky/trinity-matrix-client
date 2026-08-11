@@ -173,4 +173,78 @@ describe('KeyboardShortcutsService', () => {
     });
     expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toBeNull();
   });
+
+  it('drops a stored binding that is not a usable chord, rather than resolving through it', async () => {
+    // This used to parse straight into the signal, so a malformed binding was consulted on
+    // every keystroke for the life of the session.
+    get.mockResolvedValue({
+      value: JSON.stringify({
+        'switcher.open': { accel: 'yes', key: 42 },
+        'format.bold': { accel: false, alt: false, shift: false, key: 'b' },
+        'time.travel': { accel: true, alt: false, shift: false, key: 'z' },
+        'format.italic': { accel: true, alt: false, shift: false, key: 'q' },
+      }),
+    });
+    const svc = build();
+    await svc.init();
+
+    // The two broken ones fall back to their defaults; the good one is honoured.
+    expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toEqual({
+      id: 'switcher.open',
+    });
+    expect(svc.resolve(keydown({ key: 'b' }))).toBeNull();
+    expect(svc.resolve(keydown({ key: 'b', ctrlKey: true }))).toEqual({
+      id: 'format.bold',
+    });
+    expect(svc.resolve(keydown({ key: 'q', ctrlKey: true }))).toEqual({
+      id: 'format.italic',
+    });
+    expect(svc.list().find((s) => s.id === 'switcher.open')?.isDefault).toBe(
+      true,
+    );
+  });
+
+  describe('setOverrides', () => {
+    it('replaces the whole set and persists it', () => {
+      const svc = build();
+      svc.rebind('switcher.open', chord({ accel: true, key: 'p' }));
+      set.mockClear();
+
+      svc.setOverrides({ 'format.bold': chord({ accel: true, key: 'j' }) });
+
+      expect(svc.resolve(keydown({ key: 'j', ctrlKey: true }))).toEqual({
+        id: 'format.bold',
+      });
+      // Not mentioned by the new set, so it is back at its default rather than left as-is.
+      expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toEqual({
+        id: 'switcher.open',
+      });
+      expect(set).toHaveBeenCalledWith({
+        key: 'trinity.shortcuts.overrides',
+        value: JSON.stringify({
+          'format.bold': { accel: true, alt: false, shift: false, key: 'j' },
+        }),
+      });
+    });
+
+    it('keeps an explicitly unset shortcut unset', () => {
+      const svc = build();
+
+      svc.setOverrides({ 'switcher.open': null });
+
+      expect(svc.binding('switcher.open')).toBeNull();
+      expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toBeNull();
+    });
+
+    it('refuses a binding a stored one would have been refused', () => {
+      const svc = build();
+
+      svc.setOverrides({
+        'room.jump': chord({ accel: true, key: 'j' }),
+        'format.bold': chord({ key: 'b' }),
+      });
+
+      expect(svc.list().every((s) => s.isDefault)).toBe(true);
+    });
+  });
 });

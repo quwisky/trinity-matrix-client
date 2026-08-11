@@ -23,12 +23,24 @@ export type ConfigSettings = { readonly [key: string]: ConfigValue };
 /**
  * The outcome of checking one pasted value against the setting that owns it.
  *
- * Declared now, implemented in PR 2 — see {@link ConfigEntry.validate}. It is part of the
- * shape because the registry interface is a public commitment (every owning lib implements
- * it), and widening it later would touch every entry in the workspace.
+ * `value` is the value as it will actually be *stored*, which may differ from what was
+ * pasted — a gateway URL arrives normalised, an API key trimmed — so the change summary
+ * names what the app will end up holding rather than what was typed.
+ *
+ * `problem` is prose about the value alone; the plan prefixes it with the offending path,
+ * so a validator never has to know where in the document it sits.
+ *
+ * `warning` is for a value that is accepted and applied but will not *do* anything on this
+ * device — a push gateway on a platform with no push, a shortcut id this build does not
+ * have. Decision 4 on the issue: warn and proceed, naming what will not apply here, rather
+ * than silently filtering.
  */
 export type ConfigValidation =
-  | { readonly ok: true; readonly value: ConfigValue }
+  | {
+      readonly ok: true;
+      readonly value: ConfigValue;
+      readonly warning?: string;
+    }
   | { readonly ok: false; readonly problem: string };
 
 /**
@@ -74,11 +86,26 @@ export interface ConfigEntry {
    */
   readonly reset: () => void | Promise<void>;
 
-  /** PR 2: apply a validated value through the owning service's public setter. */
-  readonly write?: (value: ConfigValue) => void | Promise<void>;
+  /**
+   * Apply a validated value through the owning service's public setter — same rule as
+   * {@link reset}, and for the same reason: an applied document has to move the running app.
+   *
+   * Only ever called with a value {@link validate} accepted, so it may narrow with the same
+   * guard and ignore anything else. **Required**, not optional: an entry that can be
+   * exported but not imported would make the document silently asymmetric, and the whole
+   * point of the format is that what comes out goes back in.
+   */
+  readonly write: (value: ConfigValue) => void | Promise<void>;
 
-  /** PR 2: check a pasted value before anything is written. */
-  readonly validate?: (value: unknown) => ConfigValidation;
+  /**
+   * Check a pasted value before anything anywhere is written. This is the boundary — the
+   * owning services trust their own setters, so a document only ever reaches them through
+   * here.
+   *
+   * Reuses the owning service's guard wherever one exists, so an imported value is held to
+   * exactly the standard a stored one is.
+   */
+  readonly validate: (value: unknown) => ConfigValidation;
 }
 
 /**

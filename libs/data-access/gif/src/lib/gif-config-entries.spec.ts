@@ -44,6 +44,49 @@ describe('GIF config entries', () => {
     });
   });
 
+  it('refuses a provider it cannot talk to, naming what it takes', () => {
+    const { config } = setup();
+
+    const plan = config.validate({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings: { gif: { provider: 'giffy' } },
+    });
+
+    expect(plan.ok).toBe(false);
+    expect(plan.ok === false && plan.problems).toEqual([
+      "gif.provider: 'giffy' is not a GIF provider Trinity can talk to (expected tenor or giphy)",
+    ]);
+  });
+
+  it('applies both halves of the shared blob, whichever order they run in', async () => {
+    const { config, gif } = setup();
+    const plan = config.validate({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings: { gif: { provider: 'giphy', apiKey: '  abc123  ' } },
+    });
+    if (!plan.ok) {
+      throw new Error(plan.problems.join(' / '));
+    }
+
+    await new Promise<void>((resolve, reject) =>
+      config.apply(plan).subscribe({ complete: resolve, error: reject }),
+    );
+
+    expect(gif.provider()).toBe('giphy');
+    // Trimmed on the way in, and the plan said so: the change named 'abc123', not the paste.
+    expect(gif.apiKey()).toBe('abc123');
+    expect(plan.changes.map((change) => change.to)).toEqual([
+      'abc123',
+      'giphy',
+    ]);
+    expect(prefs.set).toHaveBeenLastCalledWith({
+      key: 'trinity.gif.config',
+      value: JSON.stringify({ provider: 'giphy', apiKey: 'abc123' }),
+    });
+  });
+
   it('resets to Tenor with no key, whichever half runs first', async () => {
     const { config, gif } = setup();
     gif.save('giphy', 'abc123');
