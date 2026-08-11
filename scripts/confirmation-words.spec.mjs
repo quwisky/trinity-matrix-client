@@ -32,6 +32,11 @@ const GATES = [
     file: 'libs/feature/auth/src/lib/login/clear-all-data.ts',
     constant: 'CLEAR_DATA_CONFIRMATION_WORD',
   },
+  {
+    what: 'reset settings to defaults',
+    file: 'libs/feature/settings/src/lib/advanced/reset-config.ts',
+    constant: 'RESET_CONFIG_CONFIRMATION_WORD',
+  },
 ];
 
 /** Pull `export const NAME = '...'` out of a module without importing it. */

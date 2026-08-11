@@ -23,7 +23,8 @@ export const TRINITY_PALETTES = [
 ] as const;
 /** The id of a registered palette. */
 export type Palette = (typeof TRINITY_PALETTES)[number]['id'];
-const DEFAULT_PALETTE: Palette = 'trinity';
+/** The palette an untouched install uses. */
+export const DEFAULT_PALETTE: Palette = 'trinity';
 
 /**
  * How large text is, as a multiplier on the ROOT font size.
@@ -56,7 +57,8 @@ export const TRINITY_TEXT_SCALES = [
 ] as const;
 /** The id of a registered text scale. */
 export type TextScale = (typeof TRINITY_TEXT_SCALES)[number]['id'];
-const DEFAULT_TEXT_SCALE: TextScale = 'default';
+/** The text size an untouched install uses. */
+export const DEFAULT_TEXT_SCALE: TextScale = 'default';
 
 /**
  * How large code is, as a multiplier on the optical correction already applied to it.
@@ -80,7 +82,8 @@ export const TRINITY_CODE_SCALES = [
 ] as const;
 /** The id of a registered code scale. */
 export type CodeScale = (typeof TRINITY_CODE_SCALES)[number]['id'];
-const DEFAULT_CODE_SCALE: CodeScale = 'default';
+/** The code size an untouched install uses. */
+export const DEFAULT_CODE_SCALE: CodeScale = 'default';
 
 /**
  * When a code block shows line numbers.
@@ -103,7 +106,11 @@ export const TRINITY_CODE_LINE_MODES = [
 ] as const;
 /** The id of a registered line-number mode. */
 export type CodeLineMode = (typeof TRINITY_CODE_LINE_MODES)[number]['id'];
-const DEFAULT_CODE_LINE_MODE: CodeLineMode = 'auto';
+/** The line-number mode an untouched install uses. */
+export const DEFAULT_CODE_LINE_MODE: CodeLineMode = 'auto';
+
+/** The mode preference an untouched install uses: follow the OS. */
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'system';
 
 const THEME_KEY = 'trinity.theme';
 const PALETTE_KEY = 'trinity.palette';
@@ -139,7 +146,9 @@ const PALETTE_ATTR = 'data-theme';
  */
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
-  private readonly _preference = signal<ThemePreference>('system');
+  private readonly _preference = signal<ThemePreference>(
+    DEFAULT_THEME_PREFERENCE,
+  );
   /** The user's chosen preference (system/light/dark). */
   readonly preference = this._preference.asReadonly();
 

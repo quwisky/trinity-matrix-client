@@ -5,6 +5,13 @@ const SEND_READ_RECEIPTS_KEY = 'trinity.privacy.send-read-receipts';
 const LINK_PREVIEWS_KEY = 'trinity.privacy.link-previews';
 const LINK_PREVIEWS_ENCRYPTED_KEY = 'trinity.privacy.link-previews-encrypted';
 
+/** Public read receipts are on unless the user turns them off. */
+export const DEFAULT_SEND_READ_RECEIPTS = true;
+/** Link previews are on unless the user turns them off. */
+export const DEFAULT_LINK_PREVIEWS = true;
+/** Previews in encrypted rooms are off unless the user opts in. */
+export const DEFAULT_LINK_PREVIEWS_IN_ENCRYPTED = false;
+
 /**
  * Device-scoped privacy preferences, persisted across launches.
  *
@@ -18,9 +25,11 @@ const LINK_PREVIEWS_ENCRYPTED_KEY = 'trinity.privacy.link-previews-encrypted';
  */
 @Injectable({ providedIn: 'root' })
 export class PrivacySettingsService {
-  private readonly _sendReadReceipts = signal(true);
-  private readonly _linkPreviews = signal(true);
-  private readonly _linkPreviewsInEncrypted = signal(false);
+  private readonly _sendReadReceipts = signal(DEFAULT_SEND_READ_RECEIPTS);
+  private readonly _linkPreviews = signal(DEFAULT_LINK_PREVIEWS);
+  private readonly _linkPreviewsInEncrypted = signal(
+    DEFAULT_LINK_PREVIEWS_IN_ENCRYPTED,
+  );
 
   /**
    * Whether this device sends *public* read receipts (`m.read`) others can see.
@@ -46,10 +55,17 @@ export class PrivacySettingsService {
 
   /** Read the saved preferences and apply them. Call once at app startup. */
   async init(): Promise<void> {
-    this._sendReadReceipts.set(await this.read(SEND_READ_RECEIPTS_KEY, true));
-    this._linkPreviews.set(await this.read(LINK_PREVIEWS_KEY, true));
+    this._sendReadReceipts.set(
+      await this.read(SEND_READ_RECEIPTS_KEY, DEFAULT_SEND_READ_RECEIPTS),
+    );
+    this._linkPreviews.set(
+      await this.read(LINK_PREVIEWS_KEY, DEFAULT_LINK_PREVIEWS),
+    );
     this._linkPreviewsInEncrypted.set(
-      await this.read(LINK_PREVIEWS_ENCRYPTED_KEY, false),
+      await this.read(
+        LINK_PREVIEWS_ENCRYPTED_KEY,
+        DEFAULT_LINK_PREVIEWS_IN_ENCRYPTED,
+      ),
     );
   }
 

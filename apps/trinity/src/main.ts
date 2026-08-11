@@ -15,7 +15,10 @@ import {
 import { provideServiceWorker } from '@angular/service-worker';
 import { Capacitor } from '@capacitor/core';
 import { AvatarService } from '@trinity/data-access/media';
-import { GifSettingsService } from '@trinity/data-access/gif';
+import {
+  GifSettingsService,
+  provideGifConfigEntries,
+} from '@trinity/data-access/gif';
 import {
   AccountScopeService,
   SpaceRoomOrderService,
@@ -24,6 +27,7 @@ import {
   AppBadgeService,
   PUSH_CONFIG,
   PushGatewayService,
+  providePushConfigEntries,
 } from '@trinity/data-access/notifications';
 import {
   BUILD_INFO,
@@ -38,6 +42,7 @@ import {
   ThemeService,
   TrinityErrorHandler,
   isElectronRenderer,
+  providePlatformConfigEntries,
 } from '@trinity/platform-native';
 import {
   AVATAR_RESOLVER,
@@ -148,6 +153,15 @@ bootstrapApplication(AppComponent, {
           avatars.resolve(mxc, size, accountId);
       },
     },
+    // Which settings Settings -> Advanced reads, exports and resets. Each owning lib
+    // contributes its own through the multi: true APP_CONFIG_ENTRIES token, so the
+    // settings feature never imports a data-access service it may not reach and
+    // platform-native never imports data-access (which the Nx rules forbid). Every key in
+    // the workspace is classified in CONFIG_KEY_LEDGER, exported or not; a new one that is
+    // not fails scripts/config-schema-drift.spec.mjs.
+    providePlatformConfigEntries(),
+    provideGifConfigEntries(),
+    providePushConfigEntries(),
     // Push-gateway config for PushService (null = push disabled; see environment.ts).
     { provide: PUSH_CONFIG, useValue: environment.push },
     // Running build's version/commit (regenerated at build), shown in Settings.

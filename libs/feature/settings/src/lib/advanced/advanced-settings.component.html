@@ -1,0 +1,99 @@
+<div>
+  <h2
+    class="px-4 pt-5 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+  >
+    Advanced
+  </h2>
+
+  <p class="block px-4 py-2 text-13 text-muted-foreground">
+    Every setting Trinity keeps on this device, in one document — to copy to
+    another device, keep a copy before experimenting, or paste into a support
+    thread. It carries preferences only: no accounts, no access tokens, no
+    unsent drafts. It
+    <span
+      class="font-medium text-foreground"
+      data-testid="advanced-gif-key-note"
+      >does include the GIF API key you saved</span
+    >, which is a key to a third-party service — treat a copy you share the way
+    you would treat that key. It is read-only for now; editing and importing
+    come next.
+  </p>
+
+  <div class="px-4 py-2">
+    <label hlmLabel for="advanced-config-json">Settings JSON</label>
+    <textarea
+      id="advanced-config-json"
+      hlmTextarea
+      readonly
+      spellcheck="false"
+      autocapitalize="none"
+      class="advanced__json mt-1 font-mono text-xs"
+      [value]="configJson()"
+      data-testid="advanced-config-json"
+    ></textarea>
+  </div>
+
+  <div class="flex flex-wrap items-center gap-2 px-4 py-2">
+    <button
+      hlmBtn
+      variant="outline"
+      size="sm"
+      (click)="copy()"
+      data-testid="advanced-copy"
+    >
+      Copy
+    </button>
+    @if (canExportFile) {
+      <button
+        hlmBtn
+        variant="outline"
+        size="sm"
+        (click)="exportFile()"
+        data-testid="advanced-export"
+      >
+        Export to file
+      </button>
+    }
+  </div>
+
+  @if (!canExportFile) {
+    <p
+      class="block px-4 py-2 text-13 text-muted-foreground"
+      data-testid="advanced-export-unavailable"
+    >
+      Saving a file isn't offered here — the mobile app has no reliable
+      download. Copy puts the same document on your clipboard: paste it into a
+      note, or a message to yourself, to get it onto another device.
+    </p>
+  }
+
+  <h3 class="px-4 pt-4 pb-1 text-13 font-semibold">
+    What this document leaves out
+  </h3>
+  <ul class="px-4 pb-2" data-testid="advanced-exclusions">
+    @for (note of exclusions; track note.what) {
+      <li class="py-1 text-13 text-muted-foreground">
+        <span class="font-medium text-foreground">{{ note.what }}</span> —
+        {{ note.reason }}
+      </li>
+    }
+  </ul>
+
+  <div class="border-t border-solid border-border px-4 py-3">
+    <button
+      hlmBtn
+      variant="destructive"
+      size="sm"
+      [disabled]="resetting()"
+      (click)="reset()"
+      data-testid="advanced-reset"
+    >
+      Reset to defaults
+    </button>
+    <p class="pt-2 text-13 text-danger" data-testid="advanced-reset-warning">
+      ⚠ Puts every setting above back to its default on this device, with no
+      undo — copy or export first. Your signed-in accounts and unsent drafts are
+      left alone.
+    </p>
+  </div>
+</div>

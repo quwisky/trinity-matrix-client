@@ -7,7 +7,8 @@ import {
 } from './gif.model';
 
 const CONFIG_KEY = 'trinity.gif.config';
-const DEFAULT_PROVIDER: GifProviderId = 'tenor';
+/** The provider a fresh install offers, before any key is set. */
+export const DEFAULT_GIF_PROVIDER: GifProviderId = 'tenor';
 
 /**
  * Persists the user's GIF-picker configuration (provider + API key). Like the
@@ -19,7 +20,7 @@ const DEFAULT_PROVIDER: GifProviderId = 'tenor';
  */
 @Injectable({ providedIn: 'root' })
 export class GifSettingsService {
-  private readonly _provider = signal<GifProviderId>(DEFAULT_PROVIDER);
+  private readonly _provider = signal<GifProviderId>(DEFAULT_GIF_PROVIDER);
   /** The active GIF provider (defaults to Tenor even before a key is set). */
   readonly provider = this._provider.asReadonly();
 
@@ -62,7 +63,7 @@ export class GifSettingsService {
     this._apiKey.set('');
     // Rewrite the blob with an empty key rather than removing it: provider and
     // apiKey share one stored value, so a remove() would drop the provider too
-    // and the next boot would silently fall back to DEFAULT_PROVIDER.
+    // and the next boot would silently fall back to DEFAULT_GIF_PROVIDER.
     void Preferences.set({
       key: CONFIG_KEY,
       value: JSON.stringify({
