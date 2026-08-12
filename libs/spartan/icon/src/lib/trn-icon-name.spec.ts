@@ -24,8 +24,9 @@ describe('TrnIconName', () => {
    * every icon reference itself through this library's own union. A second version fixed
    * that but still counted any literal in feature code — measured, that left **10 of 82**
    * names unfalsifiable, because `'shield'`, `'play'`, `'user'` and friends appear in specs
-   * and unrelated code. So: the attribute in templates, and quoted literals only in the
-   * files that actually import the icon type (the five typed `TrnIconName` maps).
+   * and unrelated code. So three narrow channels: the `name="…"` attribute, literals inside
+   * a `[name]` binding, and literals in the files that name `TrnIconName` — the five typed
+   * maps, which is a different and much smaller set than "files importing the icon alias".
    */
   const grep = (args: readonly string[]): string =>
     execFileSync('grep', args, {
@@ -47,13 +48,10 @@ describe('TrnIconName', () => {
     .map((line) => line.replace(/^name="|"$/g, ''))
     .filter(Boolean);
 
-  // Files that name the icon type at all — i.e. the maps whose values are TrnIconName.
-  const mapFiles = grep([
-    '-rl',
-    '--include=*.ts',
-    '@trinity/helm/icon',
-    ...CALL_SITES,
-  ])
+  // The typed maps, and only those: files naming `TrnIconName` itself. Matching the alias
+  // instead would pull in all 33 files that import `TrnIconComponent` for their template,
+  // and any stray literal in one of them would then vouch for an icon nothing renders.
+  const mapFiles = grep(['-rl', '--include=*.ts', 'TrnIconName', ...CALL_SITES])
     .split('\n')
     .filter(Boolean)
     .filter((file) => !file.endsWith('.spec.ts'));

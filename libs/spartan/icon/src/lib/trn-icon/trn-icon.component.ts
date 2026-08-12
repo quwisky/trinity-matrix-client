@@ -29,7 +29,16 @@ import type { TrnIconName } from '../trn-icon-name';
     // without this the wrapper is `display: inline` and every icon in the app changes box
     // model — harmless inside a flex parent, which blockifies its children, but in true
     // inline flow an inline host participates in baseline and line-height in a way the
-    // inline-block element did not, and icons shift.
+    // inline-block element did not, and icons shift. `HlmSpinner` — the same shape, a
+    // wrapper whose template is one `<ng-icon>` — declares `inline-flex` for this reason.
+    //
+    // It does so through `classes()` from @trinity/helm/utils, which is the kit's house
+    // pattern and what this would otherwise use. A component style is deliberate here on
+    // two counts: it ships with the component, so the box model does not depend on a
+    // consuming app emitting the `inline-block` utility; and it is assertable, which a
+    // Tailwind class is not, because jsdom loads no stylesheet. Switching to `classes()`
+    // would silently make the box-model test in the spec vacuous — change both together
+    // or neither. Keeping it also leaves this library importing nothing but @ng-icons.
     ':host { display: inline-block; }',
   ],
   host: {

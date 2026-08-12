@@ -71,6 +71,11 @@ describe('TrnIconComponent', () => {
     // ng-icon is `display: inline-block`. A wrapper defaulting to `inline` changes inline
     // layout at all 116 call sites — invisible to every test in this repo, since jsdom
     // does no layout, which is exactly why it is pinned here rather than trusted.
+    //
+    // This assertion only works because the rule is a component STYLE. jsdom loads no
+    // stylesheet, so moving the display onto a Tailwind class — the kit's usual `classes()`
+    // pattern — would leave this passing against `display: inline`. See the note on the
+    // component: the two decisions are coupled.
     const { fixture } = await setup({ name: 'lock' });
     const host = fixture.nativeElement as HTMLElement;
 
