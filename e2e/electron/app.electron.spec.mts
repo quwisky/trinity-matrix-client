@@ -5,10 +5,15 @@ import { launchApp } from './support/launch.mts';
 // One Electron instance for the whole file (launching is expensive).
 let app: ElectronApplication;
 let page: Page;
+/** Every URL the renderer asked for, from the first window onward. */
+const requested: string[] = [];
 
 test.beforeAll(async () => {
   app = await launchApp();
   page = await app.firstWindow();
+  // Attached before the load settles: Angular registers a service worker on app
+  // stabilisation, which is after this point, so the boot traffic is all captured.
+  page.on('request', (request) => requested.push(request.url()));
   await page.waitForLoadState('domcontentloaded');
 });
 
@@ -199,13 +204,34 @@ test('registers no service worker in the desktop shell', async () => {
   // because the predicate reads a global that exists only in the real shell.
   const registrations = await page.evaluate(async () => {
     if (!('serviceWorker' in navigator)) {
-      return { supported: false, count: 0 };
+      return { state: 'absent', count: 0 };
     }
-    const all = await navigator.serviceWorker.getRegistrations();
-    return { supported: true, count: all.length };
+    try {
+      const all = await navigator.serviceWorker.getRegistrations();
+      return { state: 'queryable', count: all.length };
+    } catch (error) {
+      // `trinity://` is not a service-worker-capable origin, so the container is present
+      // on `navigator` but throws InvalidStateError the moment it is used. The `in`
+      // check above is therefore not enough on its own — this test spent its life
+      // failing on the query rather than on the thing it asserts. A throw here is not a
+      // problem to route around: an origin that cannot answer the question cannot be
+      // hosting a registration either, which is exactly the state we want.
+      return { state: 'unusable', count: 0, reason: String(error) };
+    }
   });
 
   expect(registrations.count).toBe(0);
+
+  // The assertion that actually discriminates. Under `trinity://` the container throws on
+  // use, so the query above can only ever report zero here — it cannot tell "no service
+  // worker" from "one registered and the API is unusable", which is precisely the
+  // regression this test is named for. What a wrong predicate WOULD do is make Angular
+  // fetch the worker script on stabilisation, and that is observable no matter what the
+  // container does afterwards.
+  expect(requested.some((url) => /ngsw-worker\.js/.test(url))).toBe(false);
+  // Non-vacuity: prove the collector saw the boot at all, or the line above passes for a
+  // renderer that requested nothing.
+  expect(requested.length).toBeGreaterThan(0);
 });
 
 test('exposes the CORS-allowlist bridge (a plain send, not an invoke)', async () => {
