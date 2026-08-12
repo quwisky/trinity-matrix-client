@@ -9,7 +9,7 @@
       aria-label="Cancel reply"
       (click)="cancelReply.emit()"
     >
-      <ng-icon name="lucideX" aria-hidden="true" />
+      <trn-icon name="x" />
     </button>
   </div>
 }
@@ -60,7 +60,7 @@
         data-testid="composer-voice-cancel"
         (click)="cancelVoiceRecording()"
       >
-        <ng-icon name="lucideTrash2" aria-hidden="true" />
+        <trn-icon name="trash-2" />
       </button>
       <span class="composer__recording-dot" aria-hidden="true"></span>
       <span class="composer__recording-time" data-testid="composer-voice-time">
@@ -73,7 +73,7 @@
         data-testid="composer-voice-send"
         (click)="stopVoiceRecording()"
       >
-        <ng-icon name="lucideSend" aria-hidden="true" />
+        <trn-icon name="send" />
       </button>
     </div>
   }
@@ -184,7 +184,7 @@
       [attr.aria-expanded]="pickerOpen()"
       (click)="toggleEmojiPicker()"
     >
-      <ng-icon name="lucideSmile" aria-hidden="true" />
+      <trn-icon name="smile" />
     </button>
     <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on
        a pointer device it is still the discoverable way to send when Enter is ambiguous
@@ -200,7 +200,7 @@
         [disabled]="!text().trim() && !pendingFile()"
         (click)="submit()"
       >
-        <ng-icon name="lucideSend" aria-hidden="true" />
+        <trn-icon name="send" />
       </button>
     }
   </div>

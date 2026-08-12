@@ -6,11 +6,10 @@ import {
 } from '@angular/core';
 import { DialogRef } from '@trinity/helm/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideX } from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnIconComponent } from '@trinity/helm/icon';
 import {
   ThreadsService,
   type ThreadSummary,
@@ -35,8 +34,7 @@ const MAX_AVATARS = 4;
 @Component({
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, AvatarComponent, HlmButton, HlmTooltip],
-  viewProviders: [provideIcons({ lucideX })],
+  imports: [TrnIconComponent, AvatarComponent, HlmButton, HlmTooltip],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',
 })

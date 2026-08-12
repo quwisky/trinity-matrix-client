@@ -72,18 +72,9 @@
           }
         </span>
         @if (result.encrypted) {
-          <ng-icon
-            class="qs-lock"
-            name="lucideLock"
-            aria-label="Encrypted"
-            aria-hidden="false"
-          />
+          <trn-icon class="qs-lock" name="lock" label="Encrypted" />
         }
-        <ng-icon
-          class="qs-kind"
-          [name]="kindIcon(result.kind)"
-          [attr.aria-label]="kindLabel(result.kind)"
-        />
+        <trn-icon class="qs-kind" [name]="kindIcon(result.kind)" />
         <span class="text-xs text-muted-foreground">{{
           kindLabel(result.kind)
         }}</span>

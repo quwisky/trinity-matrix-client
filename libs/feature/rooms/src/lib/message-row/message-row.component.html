@@ -233,14 +233,13 @@
          it. tabindex makes that reachable by keyboard (brn opens on focus as well as
          hover) and the open tooltip is wired up as the icon's aria-describedby. -->
     @if (r.shield; as shield) {
-      <ng-icon
+      <trn-icon
         [name]="shieldIcon(shield.level)"
         class="msg__shield"
         [class.msg__shield--red]="shield.level === 'red'"
         [hlmTooltip]="shieldTip"
         tabindex="0"
-        [attr.aria-label]="shield.reason"
-        aria-hidden="false"
+        [label]="shield.reason"
         [attr.data-testid]="'msg-shield-' + shield.level"
       />
       <ng-template #shieldTip>
@@ -258,11 +257,7 @@
         [attr.aria-label]="threadLabel(thread)"
         (click)="action.emit({ type: 'thread' })"
       >
-        <ng-icon
-          class="msg__thread-icon"
-          name="lucideMessagesSquare"
-          aria-hidden="true"
-        />
+        <trn-icon class="msg__thread-icon" name="messages-square" />
         <span class="msg__thread-count"
           >{{ thread.replyCount }}
           {{ thread.replyCount === 1 ? 'reply' : 'replies' }}</span

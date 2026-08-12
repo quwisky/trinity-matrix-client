@@ -45,7 +45,7 @@
           data-testid="rename-device"
           (click)="rename(device)"
         >
-          <ng-icon name="lucidePencil" class="text-lg" />
+          <trn-icon name="pencil" class="text-lg" />
         </button>
         @if (!device.isCurrent) {
           <button
@@ -59,7 +59,7 @@
             data-testid="remove-device"
             (click)="remove(device)"
           >
-            <ng-icon name="lucideTrash2" class="text-lg" />
+            <trn-icon name="trash-2" class="text-lg" />
           </button>
         }
       </div>
@@ -91,7 +91,7 @@
         data-testid="verify-devices"
         (click)="verifyDevices()"
       >
-        <ng-icon name="lucideShieldCheck" class="text-lg" />
+        <trn-icon name="shield-check" class="text-lg" />
         Verify another session
       </button>
     </div>

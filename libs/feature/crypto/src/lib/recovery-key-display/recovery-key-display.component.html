@@ -6,15 +6,12 @@
 
 <div class="actions">
   <button hlmBtn variant="outline" size="sm" (click)="copy()">
-    <ng-icon
-      [name]="copied() ? 'lucideCheck' : 'lucideCopy'"
-      aria-hidden="true"
-    />
+    <trn-icon [name]="copied() ? 'check' : 'copy'" />
     {{ copied() ? 'Copied' : 'Copy' }}
   </button>
   @if (canDownload) {
     <button hlmBtn variant="outline" size="sm" (click)="download()">
-      <ng-icon name="lucideDownload" aria-hidden="true" />
+      <trn-icon name="download" />
       Download
     </button>
   }

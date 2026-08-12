@@ -9,8 +9,6 @@ import {
 } from '@angular/core';
 import { DialogRef } from '@trinity/helm/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideLock, lucideServer, lucideX } from '@ng-icons/lucide';
 import {
   SearchService,
   type LoadedMessageSearch,
@@ -21,6 +19,7 @@ import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
 interface HighlightPart {
@@ -54,8 +53,7 @@ interface HighlightPart {
 @Component({
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
-  viewProviders: [provideIcons({ lucideLock, lucideServer, lucideX })],
+  imports: [TrnIconComponent, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
   templateUrl: './message-search.component.html',
   styleUrl: './message-search.component.scss',
 })

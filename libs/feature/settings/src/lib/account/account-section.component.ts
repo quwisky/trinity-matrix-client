@@ -16,14 +16,13 @@ import {
   validateTree,
 } from '@angular/forms/signals';
 import { Browser } from '@capacitor/browser';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideEye, lucideEyeOff } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { TrnToastService } from '@trinity/helm/overlay';
 import { runWithBusy } from '@trinity/ui';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** Minimum length we require for a new password (a light client-side guard). */
 const MIN_PASSWORD = 8;
@@ -89,8 +88,14 @@ const passwordSchema = schema<PasswordModel>((path) => {
   selector: 'trn-account-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './account-section.component.html',
-  imports: [FormField, FormRoot, NgIcon, HlmButton, HlmInput, HlmLabel],
-  viewProviders: [provideIcons({ lucideEye, lucideEyeOff })],
+  imports: [
+    FormField,
+    FormRoot,
+    TrnIconComponent,
+    HlmButton,
+    HlmInput,
+    HlmLabel,
+  ],
 })
 export class AccountSectionComponent {
   private readonly auth = inject(AuthService);

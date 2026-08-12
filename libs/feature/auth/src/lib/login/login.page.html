@@ -105,10 +105,7 @@
                   [disabled]="busy()"
                   (click)="passwordVisible.set(!passwordVisible())"
                 >
-                  <ng-icon
-                    [name]="passwordVisible() ? 'lucideEyeOff' : 'lucideEye'"
-                    aria-hidden="true"
-                  />
+                  <trn-icon [name]="passwordVisible() ? 'eye-off' : 'eye'" />
                 </button>
               </div>
             </div>

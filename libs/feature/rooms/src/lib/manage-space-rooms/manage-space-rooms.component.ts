@@ -10,8 +10,6 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideChevronDown, lucideChevronUp } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
@@ -23,6 +21,7 @@ import {
 } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util/matrix';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /**
  * How long the write lock survives without an echo. Long enough for a healthy round trip
@@ -60,8 +59,7 @@ export interface ManagedChild {
 @Component({
   selector: 'trn-manage-space-rooms',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, HlmCheckbox, AvatarComponent, NgIcon],
-  providers: [provideIcons({ lucideChevronUp, lucideChevronDown })],
+  imports: [HlmButton, HlmCheckbox, AvatarComponent, TrnIconComponent],
   templateUrl: './manage-space-rooms.component.html',
   styleUrl: './manage-space-rooms.component.scss',
 })

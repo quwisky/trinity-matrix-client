@@ -6,7 +6,7 @@
 </span>
 @if (visible()) {
   <trn-banner tone="accent">
-    <ng-icon trnBannerIcon name="lucideLock" aria-hidden="true" />
+    <trn-icon trnBannerIcon name="lock" />
     {{ message() }}
     <span trnBannerActions>
       @for (action of actions(); track action.kind) {

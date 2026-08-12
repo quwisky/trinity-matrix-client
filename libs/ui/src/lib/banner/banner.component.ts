@@ -8,7 +8,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
  *
  * ```html
  * <trn-banner tone="accent">
- *   <ng-icon trnBannerIcon name="lucideLock" aria-hidden="true" />
+ *   <trn-icon trnBannerIcon name="lock" />
  *   Set up encryption to secure your messages.
  *   <span trnBannerActions>
  *     <button hlmBtn size="sm">Set up</button>

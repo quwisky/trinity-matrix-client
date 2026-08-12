@@ -334,8 +334,8 @@ describe('MessageRowComponent', () => {
 
     // Red = warning (alert), grey = caution (question) — different shapes so the two
     // are distinguishable without colour. The template binds both shields to this.
-    expect(cmp.shieldIcon('red')).toBe('lucideShieldAlert');
-    expect(cmp.shieldIcon('grey')).toBe('lucideShieldQuestion');
+    expect(cmp.shieldIcon('red')).toBe('shield-alert');
+    expect(cmp.shieldIcon('grey')).toBe('shield-question');
   });
 
   // The shield qualifies the whole message, so it hangs off the row itself rather than

@@ -6,17 +6,11 @@ import {
   input,
   output,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideCrown,
-  lucideKeyRound,
-  lucideShield,
-  lucideUser,
-} from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import { type MemberSummary } from '@trinity/data-access/rooms';
 import { PresenceService } from '@trinity/data-access/profile';
 import { type PresenceState } from '@trinity/util/matrix';
+import { TrnIconComponent, type TrnIconName } from '@trinity/helm/icon';
 import {
   MEMBER_ROLE_LABEL,
   MEMBER_ROLE_ORDER,
@@ -36,8 +30,8 @@ interface MemberSection {
   readonly role: MemberRole;
   /** Visible header, e.g. "Admin". */
   readonly label: string;
-  /** Registered ng-icon name shown beside the header, e.g. "lucideCrown". */
-  readonly icon: string;
+  /** Icon shown beside the header, from Trinity's vocabulary, e.g. "crown". */
+  readonly icon: TrnIconName;
   /** Accessible name for the group landmark, e.g. "Admin, 2 members". */
   readonly ariaLabel: string;
   readonly rows: MemberRow[];
@@ -55,21 +49,18 @@ const PRESENCE_RANK: Record<PresenceState, number> = {
  * glyphs stacked above each other is exactly the "which of these is which?" the separate
  * section exists to remove.
  */
-const ROLE_ICON: Record<MemberRole, string> = {
-  owner: 'lucideKeyRound',
-  admin: 'lucideCrown',
-  moderator: 'lucideShield',
-  member: 'lucideUser',
+const ROLE_ICON: Record<MemberRole, TrnIconName> = {
+  owner: 'key-round',
+  admin: 'crown',
+  moderator: 'shield',
+  member: 'user',
 };
 
 /** Discord member list (right column): joined members grouped into role sections. */
 @Component({
   selector: 'trn-member-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, NgIcon],
-  viewProviders: [
-    provideIcons({ lucideCrown, lucideKeyRound, lucideShield, lucideUser }),
-  ],
+  imports: [AvatarComponent, TrnIconComponent],
   templateUrl: './member-list.component.html',
   styleUrl: './member-list.component.scss',
 })

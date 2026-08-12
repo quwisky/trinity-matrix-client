@@ -27,7 +27,7 @@
       class="flex items-center gap-1.5 text-sm text-muted-foreground"
       data-testid="manual-location-preview"
     >
-      <ng-icon name="lucideMapPin" aria-hidden="true" />
+      <trn-icon name="map-pin" />
       <span>{{ point.lat.toFixed(5) }}, {{ point.lng.toFixed(5) }}</span>
     </p>
   }
@@ -45,7 +45,7 @@
       @if (locating()) {
         <hlm-spinner class="mr-2" />
       } @else {
-        <ng-icon name="lucideLocateFixed" class="mr-2" aria-hidden="true" />
+        <trn-icon name="locate-fixed" class="mr-2" />
       }
       Use my approximate location
     </button>

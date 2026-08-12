@@ -53,7 +53,7 @@ major rather than editing numbers by hand.
 | `@spartan-ng/brain`                   | 1.3.0   | Headless UI primitives. The styled Helm layer is copied into `libs/spartan/*` and aliased `@trinity/helm/*` |
 | `tailwindcss`                         | 4.3.3   | v4, configured from CSS. Tokens live in `theme/variables.scss`, framework wiring in `theme/spartan.css`     |
 | `tw-animate-css`                      | 1.4.0   | Animation utilities the Helm components expect                                                              |
-| `@ng-icons/lucide`                    | 34.0.0  | Icon set behind `<ng-icon name="lucide…">`; `@ng-icons/core` moves with it                                  |
+| `@ng-icons/lucide`                    | 34.0.0  | Icon set behind `<trn-icon>`; imported only by `@trinity/helm/icon`; `@ng-icons/core` moves with it         |
 | `matrix-js-sdk`                       | 42.1.0  | The single source of truth for rooms, timelines and crypto. Crypto types are a deep import, see below       |
 | `@matrix-org/matrix-sdk-crypto-wasm`  | 18.4.0  | Rust crypto backend. Its `.wasm` needs an explicit URL, see below                                           |
 | `rxjs`                                | 7.8.2   | One-shot actions return cold Observables; state is signals                                                  |
