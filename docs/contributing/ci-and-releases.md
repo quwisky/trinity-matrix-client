@@ -159,6 +159,22 @@ asserts its **shape**:
 - Angular templates resolve through a parser whose name contains `template-parser`,
   because a config change collapsing templates onto the TypeScript parser would leave
   them reporting nothing while `pnpm lint` stayed green.
+- `libs/ui` and the vendored kit carry **distinct** `ui:*` tags. If those collapse back to
+  being equal, every UI vendor ban below covers both or neither, and lint still passes.
+- The UI vendor bans hold as a table of tier against package, asserting both what each tier
+  is refused **and** what it must keep — a ban that widens onto the wrapper layer is as much
+  a regression as one that disappears.
+- Every `bannedExternalImports` glob ends in `*`. Without it the pattern matches only the
+  bare specifier, which nothing imports, so the rule reports success while enforcing
+  nothing.
+- The staged `type:feature` ban sits on the **core** `no-restricted-imports` at severity 1,
+  while `@typescript-eslint/no-restricted-imports` stays at 2. Folding them into one entry
+  would promote 103 known violations to errors, since a rule entry has one severity.
+- `no-restricted-syntax` over `libs/feature/**` still carries the `matrix-js-sdk`
+  `ImportExpression` selector. Flat config replaces a rule's options wholesale, so a second
+  entry over those globs would delete it without a word — leaving
+  `await import('matrix-js-sdk')` legal in feature code while lint stayed green. Every route
+  here is lazy, so that selector is the half that matters.
 
 Counting rules was rejected deliberately: that fails on every legitimate rule
 addition and gets deleted the first time it cries wolf.

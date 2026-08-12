@@ -4,7 +4,7 @@
   "projectType": "library",
   "sourceRoot": "libs/spartan/overlay/src",
   "prefix": "trn",
-  "tags": ["type:ui", "scope:shared"],
+  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
   "targets": {
     "test": {},
     "typecheck": {}

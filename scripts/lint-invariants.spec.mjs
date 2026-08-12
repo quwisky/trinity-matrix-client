@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
@@ -119,5 +120,143 @@ describe('lint invariants', () => {
       'template-parser',
     );
     expect(Object.keys(template.rules ?? {}).length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Which tier may reach which third-party UI package, as a table rather than a rule, so the
+ * asymmetries are stated instead of inferred. Every `banned` entry must be refused and
+ * every `allowed` entry must stay reachable — a ban that widens onto the wrapper layer is
+ * as much a regression as one that disappears.
+ */
+const ALL_UI_VENDORS = [
+  '@spartan-ng/brain',
+  '@angular/cdk',
+  '@ng-icons',
+  '@ctrl/ngx-emoji-mart',
+];
+
+const UI_BOUNDARY = [
+  // libs/ui is the layer the wrappers live IN: #148 step 4 puts <trn-icon> and its vendor
+  // mapping here, so @ng-icons must stay reachable. Brain is the exception — that one
+  // belongs to the vendored kit, and libs/ui consumes the kit's public API instead.
+  {
+    tier: 'ui:wrapper',
+    banned: ['@spartan-ng/brain'],
+    allowed: ['@angular/cdk', '@ng-icons', '@ctrl/ngx-emoji-mart'],
+  },
+  { tier: 'type:data-access', banned: ALL_UI_VENDORS, allowed: [] },
+  { tier: 'type:util', banned: ALL_UI_VENDORS, allowed: [] },
+  { tier: 'type:platform', banned: ALL_UI_VENDORS, allowed: [] },
+  { tier: 'type:app', banned: ALL_UI_VENDORS, allowed: [] },
+];
+
+describe('UI vendor boundary', () => {
+  const tagsOf = (project) =>
+    JSON.parse(
+      readFileSync(join(workspaceRoot, project, 'project.json'), 'utf8'),
+    ).tags ?? [];
+
+  it('gives the wrapper and the vendored kit distinct tags, which is what any rule keys on', () => {
+    // Both were ['type:ui', 'scope:shared'] and nothing else, so no boundary rule could
+    // express "only the kit may import brain" — the two were indistinguishable to Nx.
+    // If these collapse back to being equal, every ban below silently covers both or
+    // neither, and lint still passes.
+    expect(tagsOf('libs/ui')).toContain('ui:wrapper');
+    expect(tagsOf('libs/spartan/button')).toContain('ui:vendor-wrapper');
+    expect(tagsOf('libs/ui')).not.toContain('ui:vendor-wrapper');
+  });
+
+  it('bans the vendors from every tier that should not render third-party UI', async () => {
+    const config = await resolve('libs/ui/src/index.ts');
+    const constraints =
+      config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
+    const bannedFor = (tier) =>
+      constraints.find((entry) => entry.sourceTag === tier)
+        ?.bannedExternalImports ?? [];
+    // Deliberately ignores the trailing `*`: this test asks whether a ban for the vendor
+    // was DECLARED, and the test below asks whether it can actually match. Keeping those
+    // apart means a star-less glob fails exactly one of them, naming the real defect. Do
+    // not fold them together — a combined check would report "no ban" for what is really
+    // "a ban that silently matches nothing".
+    const covers = (globs, vendor) =>
+      globs.some((glob) => vendor.startsWith(glob.replace(/\*$/, '')));
+
+    for (const { tier, banned, allowed } of UI_BOUNDARY) {
+      const globs = bannedFor(tier);
+      for (const vendor of banned) {
+        expect(
+          covers(globs, vendor),
+          `${tier} must not be allowed to import ${vendor}`,
+        ).toBe(true);
+      }
+      for (const vendor of allowed) {
+        expect(
+          covers(globs, vendor),
+          `${tier} must stay able to import ${vendor} — it is the layer that wraps it`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('keeps a trailing * on every banned glob, without which the ban matches nothing', async () => {
+    const config = await resolve('libs/ui/src/index.ts');
+    const constraints =
+      config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
+
+    // The failure mode this exists for: `bannedExternalImports` is matched as a glob, so
+    // a bare '@angular/cdk' matches only the bare specifier — which nothing imports, since
+    // every real import is a deep '@angular/cdk/dialog'. The rule then reports SUCCESS,
+    // and the ban reads as enforced while enforcing nothing. Measured, not assumed.
+    const globs = constraints.flatMap(
+      (entry) => entry.bannedExternalImports ?? [],
+    );
+    expect(globs.length).toBeGreaterThan(0);
+    expect(globs.filter((glob) => !glob.endsWith('*'))).toEqual([]);
+  });
+
+  it('leaves the vendored kit itself free to import its own vendor', async () => {
+    const kit = await resolve('libs/spartan/tooltip/src/lib/hlm-tooltip.ts');
+    const constraints =
+      kit.rules['@nx/enforce-module-boundaries'][1].depConstraints;
+
+    // The kit IS the wrapper; banning brain there would ban the layer from existing.
+    //
+    // Asserted against `bannedExternalImports` specifically, not against the entry: a
+    // future `ui:vendor-wrapper` constraint that does something else entirely — an
+    // `onlyDependOnLibsWithTags`, say — is not a violation of this invariant, and a test
+    // that failed on it would be crying wolf.
+    expect(
+      constraints.find((entry) => entry.sourceTag === 'ui:vendor-wrapper')
+        ?.bannedExternalImports,
+    ).toBeUndefined();
+    expect(kit.rules['no-restricted-imports']).toBeUndefined();
+  });
+
+  it('stages the feature ban on the core rule without disarming the matrix-js-sdk ban', async () => {
+    const feature = await resolve('libs/feature/rooms/src/lib/rooms.routes.ts');
+
+    // Two separate invariants, both about flat config replacing options wholesale.
+    //
+    // The staged ban has to live on the CORE rule at `warn`: the @typescript-eslint one
+    // already carries the matrix-js-sdk patterns at `error` over these same files, and a
+    // rule entry has ONE severity — folding these in would promote the 103 known
+    // violations to errors and redden CI.
+    expect(severityOf(feature, 'no-restricted-imports')).toBe(1);
+    expect(
+      severityOf(feature, '@typescript-eslint/no-restricted-imports'),
+    ).toBe(2);
+
+    // And the selector that a second `no-restricted-syntax` entry over libs/feature/**
+    // would delete without a word — leaving `await import('matrix-js-sdk')` legal in
+    // feature code while lint stayed green. Every route here is lazy, so this selector is
+    // the half that matters.
+    const syntax = feature.rules['no-restricted-syntax'];
+    expect(syntax[0]).toBe(2);
+    expect(
+      syntax
+        .slice(1)
+        .some((option) => /matrix-js-sdk/.test(option?.selector ?? '')),
+    ).toBe(true);
   });
 });
