@@ -65,7 +65,7 @@ describe('GIF config entries', () => {
 
     expect(plan.ok).toBe(false);
     expect(plan.ok === false && plan.problems).toEqual([
-      "gif.provider: 'giffy' is not a GIF provider Trinity can talk to (expected tenor or giphy)",
+      "gif.provider: 'giffy' is not a GIF provider Trinity can talk to (expected klipy or giphy)",
     ]);
   });
 
@@ -97,7 +97,7 @@ describe('GIF config entries', () => {
     });
   });
 
-  it('resets to Tenor with no key, whichever half runs first', async () => {
+  it('resets to KLIPY with no key, whichever half runs first', async () => {
     const { config, gif } = setup();
     gif.save('giphy', 'abc123');
 
@@ -105,14 +105,73 @@ describe('GIF config entries', () => {
       config.resetToDefaults().subscribe({ complete: resolve, error: reject }),
     );
 
-    expect(gif.provider()).toBe('tenor');
+    expect(gif.provider()).toBe('klipy');
     expect(gif.apiKey()).toBe('');
     // Rewritten rather than removed: both fields share one stored blob, so a remove()
     // would drop the provider with the key.
     expect(prefs.remove).not.toHaveBeenCalled();
     expect(prefs.set).toHaveBeenLastCalledWith({
       key: 'trinity.gif.config',
-      value: JSON.stringify({ provider: 'tenor', apiKey: '' }),
+      value: JSON.stringify({ provider: 'klipy', apiKey: '' }),
+    });
+  });
+
+  describe('a document exported before Tenor was retired', () => {
+    it('is accepted and migrated rather than rejected', async () => {
+      // Every export taken before this change carries "provider": "tenor". Rejecting it
+      // would make a file produced by our own Export button fail to import, naming a path
+      // the user cannot fix without hand-editing the JSON.
+      const { config, gif } = setup();
+      // Start on GIPHY, so migrating to KLIPY is a real change the plan has to report.
+      // Against the default it would be a no-op and the assertion would prove nothing.
+      gif.save('giphy', '');
+
+      const plan = config.validate({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        settings: { gif: { provider: 'tenor' } },
+      });
+
+      expect(plan.ok).toBe(true);
+      if (!plan.ok) {
+        throw new Error(plan.problems.join(' / '));
+      }
+      expect(plan.changes.map((change) => change.to)).toEqual(['klipy']);
+
+      await new Promise<void>((resolve, reject) =>
+        config.apply(plan).subscribe({ complete: resolve, error: reject }),
+      );
+
+      expect(gif.provider()).toBe('klipy');
+    });
+
+    it('says why, and that the old key will not work', () => {
+      const { config } = setup();
+
+      const plan = config.validate({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        settings: { gif: { provider: 'tenor' } },
+      });
+
+      expect(plan.warnings).toHaveLength(1);
+      expect(plan.warnings[0]).toContain('gif.provider');
+      expect(plan.warnings[0]).toContain('klipy');
+      expect(plan.warnings[0]).toContain('key');
+    });
+
+    it('still refuses an id that was never a provider', () => {
+      // The migration is one named retired id, not a general escape hatch — the set stays
+      // closed, which is what configSchemaDrift asserts about this entry.
+      const { config } = setup();
+
+      const plan = config.validate({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        settings: { gif: { provider: 'giffy' } },
+      });
+
+      expect(plan.ok).toBe(false);
     });
   });
 });

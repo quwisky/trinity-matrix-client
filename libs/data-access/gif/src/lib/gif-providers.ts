@@ -1,6 +1,10 @@
 import type { GifProviderId, GifResult } from './gif.model';
 
-const TENOR_BASE = 'https://tenor.googleapis.com/v2';
+// KLIPY is a deliberate drop-in for the Tenor API it replaces: their migration guide is
+// "replace tenor.googleapis.com with api.klipy.com … and your GIF experience continues to
+// work", so the paths, the parameter names and the response shape below are Tenor's, and the
+// parser is the Tenor one renamed. Google shut the Tenor API down on 30 June 2026.
+const KLIPY_BASE = 'https://api.klipy.com/v2';
 const GIPHY_BASE = 'https://api.giphy.com/v1/gifs';
 
 /**
@@ -14,10 +18,11 @@ export function buildGifRequestUrl(
   apiKey: string,
   limit: number,
 ): string {
-  if (provider === 'tenor') {
+  if (provider === 'klipy') {
+    // `client_key` is not carried over: it was Tenor's registered-app identifier and means
+    // nothing to KLIPY, which authenticates on `key` alone.
     const params = new URLSearchParams({
       key: apiKey,
-      client_key: 'trinity',
       limit: String(limit),
       media_filter: 'gif,tinygif',
       contentfilter: 'high',
@@ -25,7 +30,7 @@ export function buildGifRequestUrl(
     if (query) {
       params.set('q', query);
     }
-    return `${TENOR_BASE}/${query ? 'search' : 'featured'}?${params.toString()}`;
+    return `${KLIPY_BASE}/${query ? 'search' : 'featured'}?${params.toString()}`;
   }
   const params = new URLSearchParams({
     api_key: apiKey,
@@ -44,21 +49,21 @@ export function parseGifResults(
   provider: GifProviderId,
   body: unknown,
 ): GifResult[] {
-  return provider === 'tenor' ? parseTenor(body) : parseGiphy(body);
+  return provider === 'klipy' ? parseKlipy(body) : parseGiphy(body);
 }
 
-interface TenorFormat {
+interface KlipyFormat {
   url?: string;
   dims?: number[];
 }
-interface TenorItem {
+interface KlipyItem {
   id?: string;
   content_description?: string;
-  media_formats?: { gif?: TenorFormat; tinygif?: TenorFormat };
+  media_formats?: { gif?: KlipyFormat; tinygif?: KlipyFormat };
 }
 
-function parseTenor(body: unknown): GifResult[] {
-  const results = (body as { results?: TenorItem[] } | null)?.results;
+function parseKlipy(body: unknown): GifResult[] {
+  const results = (body as { results?: KlipyItem[] } | null)?.results;
   if (!Array.isArray(results)) {
     return [];
   }

@@ -46,7 +46,7 @@ describe('GifService', () => {
   });
 
   it('searches the configured provider and normalizes the results', async () => {
-    settings.save('tenor', 'KEY');
+    settings.save('klipy', 'KEY');
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -65,14 +65,14 @@ describe('GifService', () => {
     const out = await firstValueFrom(gifs.search('cat'));
     expect(fetchMock).toHaveBeenCalledOnce();
     const calledUrl = String(fetchMock.mock.calls[0][0]);
-    expect(calledUrl).toContain('tenor.googleapis.com');
+    expect(calledUrl).toContain('api.klipy.com');
     expect(calledUrl).toContain('q=cat');
     expect(out).toHaveLength(1);
     expect(out[0].url).toBe('https://x/gif');
   });
 
   it('falls back to trending for a blank query', async () => {
-    settings.save('tenor', 'KEY');
+    settings.save('klipy', 'KEY');
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({ results: [] }),
@@ -82,7 +82,7 @@ describe('GifService', () => {
   });
 
   it('throws when the search response is not ok', async () => {
-    settings.save('tenor', 'KEY');
+    settings.save('klipy', 'KEY');
     fetchMock.mockResolvedValue({ ok: false, status: 403 });
     await expect(firstValueFrom(gifs.search('cat'))).rejects.toThrow(/403/);
   });

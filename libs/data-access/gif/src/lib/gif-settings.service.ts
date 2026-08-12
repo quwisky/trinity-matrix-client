@@ -2,13 +2,14 @@ import { Injectable, computed, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 import {
   isGifProviderId,
+  retiredGifProvider,
   type GifConfig,
   type GifProviderId,
 } from './gif.model';
 
 const CONFIG_KEY = 'trinity.gif.config';
 /** The provider a fresh install offers, before any key is set. */
-export const DEFAULT_GIF_PROVIDER: GifProviderId = 'tenor';
+export const DEFAULT_GIF_PROVIDER: GifProviderId = 'klipy';
 
 /**
  * Persists the user's GIF-picker configuration (provider + API key). Like the
@@ -21,7 +22,7 @@ export const DEFAULT_GIF_PROVIDER: GifProviderId = 'tenor';
 @Injectable({ providedIn: 'root' })
 export class GifSettingsService {
   private readonly _provider = signal<GifProviderId>(DEFAULT_GIF_PROVIDER);
-  /** The active GIF provider (defaults to Tenor even before a key is set). */
+  /** The active GIF provider (defaults to KLIPY even before a key is set). */
   readonly provider = this._provider.asReadonly();
 
   private readonly _apiKey = signal('');
@@ -31,15 +32,36 @@ export class GifSettingsService {
   /** True once a non-empty API key is set — gates the GIF picker. */
   readonly configured = computed(() => this._apiKey().trim().length > 0);
 
+  private readonly _migratedFrom = signal<string | null>(null);
+  /**
+   * The retired provider this device was moved off at startup, or null. Set once, on the
+   * boot that migrates; the settings page reads it to explain why the key box is empty.
+   */
+  readonly migratedFrom = this._migratedFrom.asReadonly();
+
   /** Read the saved config. Wired as an app initializer at startup. */
   async init(): Promise<void> {
     try {
       const { value } = await Preferences.get({ key: CONFIG_KEY });
       const parsed = value ? (JSON.parse(value) as Partial<GifConfig>) : null;
-      if (parsed && isGifProviderId(parsed.provider)) {
+      if (!parsed) {
+        return;
+      }
+      const replacement = retiredGifProvider(parsed.provider);
+      if (replacement) {
+        // A retired provider keeps NEITHER its id nor its key. Reading the two fields
+        // independently — as the branches below do — would leave the dead provider's key
+        // attached to its replacement, and `configured` only asks whether a key is
+        // non-empty: the picker would open against KLIPY holding a Tenor key and fail
+        // every search, which reads as a broken new provider rather than a migration.
+        this._migratedFrom.set(String(parsed.provider));
+        this.save(replacement, '');
+        return;
+      }
+      if (isGifProviderId(parsed.provider)) {
         this._provider.set(parsed.provider);
       }
-      if (parsed && typeof parsed.apiKey === 'string') {
+      if (typeof parsed.apiKey === 'string') {
         this._apiKey.set(parsed.apiKey);
       }
     } catch {

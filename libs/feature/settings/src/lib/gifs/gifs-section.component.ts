@@ -5,6 +5,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { TitleCasePipe } from '@angular/common';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
@@ -21,7 +22,7 @@ import {
 } from '@trinity/data-access/gif';
 
 /**
- * GIF-picker settings: choose a provider (Tenor / GIPHY) and paste its API key.
+ * GIF-picker settings: choose a provider (KLIPY / GIPHY) and paste its API key.
  * Until a key is saved the composer hides its GIF button. The key is low-
  * sensitivity third-party config, persisted in Preferences by GifSettingsService.
  */
@@ -31,6 +32,7 @@ import {
   templateUrl: './gifs-section.component.html',
   styleUrl: './gifs-section.component.scss',
   imports: [
+    TitleCasePipe,
     HlmButton,
     HlmInput,
     HlmLabel,
@@ -44,6 +46,14 @@ export class GifsSectionComponent {
 
   readonly providers = GIF_PROVIDERS;
   readonly configured = this.settings.configured;
+
+  /**
+   * The retired provider this device was moved off at startup, or null. Shown so the empty
+   * key box reads as "your old provider is gone" rather than "your key vanished" — the
+   * migration clears the key deliberately, because a key for a shut-down API cannot work
+   * against its replacement.
+   */
+  readonly migratedFrom = this.settings.migratedFrom;
 
   /** Local draft of the provider choice (committed on Save). */
   readonly provider = signal<GifProviderId>(this.settings.provider());
