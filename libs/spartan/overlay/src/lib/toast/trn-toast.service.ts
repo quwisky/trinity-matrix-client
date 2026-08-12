@@ -7,6 +7,14 @@ export interface ToastOptions {
   /** Auto-dismiss after this many ms; 0 keeps it until tapped. Default 3000. */
   duration?: number;
   variant?: ToastVariant;
+  /**
+   * Renders a button on the toast; clicking it runs `onClick` and dismisses.
+   *
+   * Pair it with `duration: 0` for anything the user must actually decide on — a
+   * toast that offers an action and then vanishes on a timer is a prompt the user
+   * can lose by looking away.
+   */
+  action?: { label: string; onClick: () => void };
 }
 
 /**
@@ -28,8 +36,22 @@ export class TrnToastService {
     const duration = opts.duration ?? 3000;
     // sonner keeps a toast until dismissed when the duration is Infinity; our `0`
     // (Ionic "stay until tapped") maps to that.
+    // The `action` key is added only when one was passed, rather than spelled out as
+    // `action: opts.action`. sonner treats the key's presence as "render a button",
+    // and call sites (and their mocks) assert on this object with exact literals.
     const options = {
       duration: duration > 0 ? duration : Number.POSITIVE_INFINITY,
+      ...(opts.action
+        ? {
+            action: {
+              label: opts.action.label,
+              // sonner hands the button's MouseEvent to the handler; ours takes no
+              // argument, so it is dropped here rather than leaking a DOM type into
+              // the option shape every call site would then have to accept.
+              onClick: () => opts.action?.onClick(),
+            },
+          }
+        : {}),
     };
     switch (opts.variant) {
       case 'success':

@@ -1,6 +1,6 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Dialog, DialogRef } from '@angular/cdk/dialog';
+import { DialogRef, TrnDialogService } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import {
   SearchService,
@@ -117,7 +117,7 @@ describe('MessageSearchComponent', () => {
     expect(query).not.toBeNull();
     expect(document.activeElement).toBe(query);
 
-    TestBed.inject(Dialog).closeAll();
+    TestBed.inject(TrnDialogService).closeAll();
     expect(await searched).toBeNull();
   });
 

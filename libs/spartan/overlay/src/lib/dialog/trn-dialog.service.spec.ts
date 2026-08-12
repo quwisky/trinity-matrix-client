@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
+import { TrnAlertService } from '../alert/trn-alert.service';
 import { TrnDialogService } from './trn-dialog.service';
 
 @Component({ standalone: true, template: `<p>{{ label() }}</p>` })
@@ -92,6 +93,69 @@ describe('TrnDialogService', () => {
     expect(svc.hasOpen()).toBe(true);
 
     ref.close();
+    expect(svc.hasOpen()).toBe(false);
+  });
+
+  it('closes the top of the stack, not the bottom', async () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const bottom = svc.open<string, TestDialogComponent>(TestDialogComponent, {
+      inputs: { label: 'Bottom' },
+    });
+    const top = svc.open<string, TestDialogComponent>(TestDialogComponent, {
+      inputs: { label: 'Top' },
+    });
+    TestBed.inject(ApplicationRef).tick();
+
+    const topClosed = firstValueFrom(top.closed);
+    expect(svc.closeTopmost()).toBe(true);
+    await topClosed;
+
+    // The assertion that matters for the back button: one press dismisses one
+    // overlay. Closing the whole stack, or the wrong end of it, would both leave
+    // `hasOpen()` looking plausible while the user lost work they could still see.
+    expect(svc.hasOpen()).toBe(true);
+    TestBed.inject(ApplicationRef).tick();
+    expect(document.body.textContent).toContain('Bottom');
+    expect(document.body.textContent).not.toContain('Top');
+
+    bottom.close();
+  });
+
+  it('reports false when there is nothing to close, so back can fall through to navigation', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    expect(svc.hasOpen()).toBe(false);
+    expect(svc.closeTopmost()).toBe(false);
+  });
+
+  it('also closes an alert, because the CDK dialog stack is shared', async () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const alerts = TestBed.inject(TrnAlertService);
+
+    // `Dialog` is providedIn: 'root', so TrnAlertService and TrnActionSheetService
+    // push onto the same `openDialogs` this service reads. If closeTopmost() were
+    // ever narrowed to "dialogs opened through open()", the Android back button
+    // would silently stop dismissing alerts and action sheets — and every test that
+    // only opened dialogs would still pass.
+    const confirmed = alerts.confirm({
+      header: 'Delete this room?',
+      confirmText: 'Delete',
+    });
+    TestBed.inject(ApplicationRef).tick();
+    expect(svc.hasOpen()).toBe(true);
+
+    expect(svc.closeTopmost()).toBe(true);
+    expect(await confirmed).toBe(false);
+    expect(svc.hasOpen()).toBe(false);
+  });
+
+  it('closes every open overlay at once (teardown)', async () => {
+    const svc = TestBed.inject(TrnDialogService);
+    svc.open<string, TestDialogComponent>(TestDialogComponent);
+    svc.open<string, TestDialogComponent>(TestDialogComponent);
+    TestBed.inject(ApplicationRef).tick();
+    expect(svc.hasOpen()).toBe(true);
+
+    svc.closeAll();
     expect(svc.hasOpen()).toBe(false);
   });
 });
