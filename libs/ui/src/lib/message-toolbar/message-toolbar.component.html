@@ -22,7 +22,7 @@
       data-testid="react-more"
       (click)="pickMore()"
     >
-      <ng-icon name="lucidePlus" aria-hidden="true" />
+      <trn-icon name="plus" />
     </button>
   </div>
 }
@@ -38,7 +38,7 @@
     (keydown.escape)="pickerOpen.set(false)"
     (click)="pickerOpen.set(!pickerOpen())"
   >
-    <ng-icon name="lucideSmile" aria-hidden="true" />
+    <trn-icon name="smile" />
   </button>
 
   <button
@@ -48,7 +48,7 @@
     aria-label="Reply"
     (click)="action.emit({ type: 'reply' })"
   >
-    <ng-icon name="lucideReply" aria-hidden="true" />
+    <trn-icon name="reply" />
   </button>
 
   @if (caps().canThread) {
@@ -59,7 +59,7 @@
       aria-label="Reply in thread"
       (click)="action.emit({ type: 'thread' })"
     >
-      <ng-icon name="lucideMessagesSquare" aria-hidden="true" />
+      <trn-icon name="messages-square" />
     </button>
   }
 
@@ -72,7 +72,7 @@
     aria-label="More actions"
     data-testid="msg-more"
   >
-    <ng-icon name="lucideEllipsis" aria-hidden="true" />
+    <trn-icon name="ellipsis" />
   </button>
 </div>
 
@@ -84,7 +84,7 @@
         (triggered)="action.emit({ type: 'pin' })"
         data-testid="msg-pin"
       >
-        <ng-icon name="lucidePin" />
+        <trn-icon name="pin" />
         {{ caps().pinned ? 'Unpin message' : 'Pin message' }}
       </button>
     }
@@ -94,7 +94,7 @@
         (triggered)="action.emit({ type: 'quote' })"
         data-testid="msg-quote"
       >
-        <ng-icon name="lucideQuote" />
+        <trn-icon name="quote" />
         Quote
       </button>
     }
@@ -103,7 +103,7 @@
       (triggered)="action.emit({ type: 'copy' })"
       data-testid="msg-copy"
     >
-      <ng-icon name="lucideCopy" />
+      <trn-icon name="copy" />
       Copy text
     </button>
     <button
@@ -111,7 +111,7 @@
       (triggered)="action.emit({ type: 'copy-link' })"
       data-testid="msg-copy-link"
     >
-      <ng-icon name="lucideLink" />
+      <trn-icon name="link" />
       Copy link
     </button>
     <button
@@ -119,7 +119,7 @@
       (triggered)="action.emit({ type: 'forward' })"
       data-testid="msg-forward"
     >
-      <ng-icon name="lucideForward" />
+      <trn-icon name="forward" />
       Forward
     </button>
     <button
@@ -127,7 +127,7 @@
       (triggered)="action.emit({ type: 'view-source' })"
       data-testid="msg-view-source"
     >
-      <ng-icon name="lucideCode" />
+      <trn-icon name="code" />
       View source
     </button>
     <button
@@ -135,7 +135,7 @@
       (triggered)="action.emit({ type: 'report' })"
       data-testid="msg-report"
     >
-      <ng-icon name="lucideFlag" />
+      <trn-icon name="flag" />
       Report message
     </button>
     @if (caps().canEdit) {
@@ -144,7 +144,7 @@
         (triggered)="action.emit({ type: 'edit' })"
         data-testid="msg-edit"
       >
-        <ng-icon name="lucidePencil" />
+        <trn-icon name="pencil" />
         Edit message
       </button>
     }
@@ -156,7 +156,7 @@
         (triggered)="action.emit({ type: 'delete' })"
         data-testid="msg-delete"
       >
-        <ng-icon name="lucideTrash2" />
+        <trn-icon name="trash-2" />
         Delete message
       </button>
     }

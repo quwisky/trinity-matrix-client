@@ -14,7 +14,7 @@
     @if (locationSharing() || gifDownloading()) {
       <hlm-spinner class="text-base" />
     } @else {
-      <ng-icon name="lucidePlus" aria-hidden="true" />
+      <trn-icon name="plus" />
     }
   </button>
   <ng-template #insertMenu>
@@ -29,7 +29,7 @@
         (triggered)="attachFile.emit()"
         data-testid="insert-attach"
       >
-        <ng-icon name="lucidePaperclip" />
+        <trn-icon name="paperclip" />
         Attach a file
       </button>
       @if (gifEnabled()) {
@@ -40,7 +40,7 @@
           (triggered)="pickGif.emit()"
           data-testid="insert-gif"
         >
-          <ng-icon name="lucideImagePlay" />
+          <trn-icon name="image-play" />
           GIF
         </button>
       }
@@ -51,7 +51,7 @@
           (triggered)="createPoll.emit()"
           data-testid="insert-poll"
         >
-          <ng-icon name="lucideVote" />
+          <trn-icon name="vote" />
           Poll
         </button>
         <button
@@ -61,7 +61,7 @@
           (triggered)="shareLocation.emit()"
           data-testid="insert-location"
         >
-          <ng-icon name="lucideMapPin" />
+          <trn-icon name="map-pin" />
           Location
         </button>
         @if (voiceSupported() && !recording()) {
@@ -72,7 +72,7 @@
             (triggered)="recordVoice.emit()"
             data-testid="insert-voice"
           >
-            <ng-icon name="lucideMic" />
+            <trn-icon name="mic" />
             Voice message
           </button>
         }
@@ -91,6 +91,6 @@
     [disabled]="uploading() || editing()"
     (click)="attachFile.emit()"
   >
-    <ng-icon name="lucidePlus" aria-hidden="true" />
+    <trn-icon name="plus" />
   </button>
 }

@@ -1,0 +1,9 @@
+<!--
+  Written as a static attribute, not a binding. NgIcon reads `aria-hidden` via
+  HostAttributeToken at construction and force-hides itself when it is absent, so the icon
+  ends up hidden either way — this states the intent rather than inheriting it from vendor
+  default behaviour. What actually matters is above: the label goes on the HOST. Putting an
+  `[attr.aria-label]` here instead is silently suppressed by that same force-hiding, which
+  is the bug this component was built to make unwritable.
+-->
+<ng-icon aria-hidden="true" [name]="name()" />

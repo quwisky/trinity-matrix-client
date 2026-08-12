@@ -282,4 +282,17 @@ describe('QuickSwitcherComponent', () => {
 
     expect(localResults).toHaveBeenLastCalledWith('', undefined, undefined);
   });
+
+  it('does not label the kind icon, because the text beside it already says the same thing', async () => {
+    // The kind icon used to carry `[attr.aria-label]` with no static `aria-hidden`.
+    // NgIcon reads that attribute in its constructor and, finding none, force-hides the
+    // element — so the label was announced to nobody while looking correct in review.
+    // The adjacent <span> already shows the kind visibly, so the icon is decorative and
+    // must carry no ARIA at all. Dead ARIA is worse than none: it reads as handled.
+    const { container } = await renderSwitcher();
+
+    const kindIcon = container.querySelector('.qs-kind');
+    expect(kindIcon).toBeTruthy();
+    expect(kindIcon?.getAttribute('aria-label')).toBeNull();
+  });
 });

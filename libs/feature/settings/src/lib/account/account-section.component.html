@@ -50,10 +50,7 @@
             [attr.aria-pressed]="revealed().currentPassword"
             (click)="toggleReveal('currentPassword')"
           >
-            <ng-icon
-              [name]="revealed().currentPassword ? 'lucideEyeOff' : 'lucideEye'"
-              aria-hidden="true"
-            />
+            <trn-icon [name]="revealed().currentPassword ? 'eye-off' : 'eye'" />
           </button>
         </div>
       </div>
@@ -79,10 +76,7 @@
             [attr.aria-pressed]="revealed().newPassword"
             (click)="toggleReveal('newPassword')"
           >
-            <ng-icon
-              [name]="revealed().newPassword ? 'lucideEyeOff' : 'lucideEye'"
-              aria-hidden="true"
-            />
+            <trn-icon [name]="revealed().newPassword ? 'eye-off' : 'eye'" />
           </button>
         </div>
       </div>
@@ -108,10 +102,7 @@
             [attr.aria-pressed]="revealed().confirmPassword"
             (click)="toggleReveal('confirmPassword')"
           >
-            <ng-icon
-              [name]="revealed().confirmPassword ? 'lucideEyeOff' : 'lucideEye'"
-              aria-hidden="true"
-            />
+            <trn-icon [name]="revealed().confirmPassword ? 'eye-off' : 'eye'" />
           </button>
         </div>
       </div>

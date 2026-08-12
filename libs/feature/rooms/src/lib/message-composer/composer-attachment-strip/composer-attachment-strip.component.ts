@@ -4,9 +4,8 @@ import {
   input,
   output,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucidePaperclip, lucideX } from '@ng-icons/lucide';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /**
  * The strip above the composer input: an upload progress bar while an attachment is in flight,
@@ -20,8 +19,7 @@ import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
 @Component({
   selector: 'trn-composer-attachment-strip',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, HlmProgress, HlmProgressIndicator],
-  viewProviders: [provideIcons({ lucidePaperclip, lucideX })],
+  imports: [TrnIconComponent, HlmProgress, HlmProgressIndicator],
   templateUrl: './composer-attachment-strip.component.html',
   styleUrl: './composer-attachment-strip.component.scss',
 })

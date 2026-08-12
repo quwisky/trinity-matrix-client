@@ -8,7 +8,7 @@
       <!-- The group's aria-label already names the role and count, so hide the
            visual header (icon included) from assistive tech to avoid a double read. -->
       <span class="category members__section-label" aria-hidden="true">
-        <ng-icon class="members__section-icon" [name]="section.icon" />
+        <trn-icon class="members__section-icon" [name]="section.icon" />
         {{ section.label }} — {{ section.rows.length }}
       </span>
       <ul class="members__list" role="list">

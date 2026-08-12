@@ -20,27 +20,6 @@ import {
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
 import { HlmInput } from '@trinity/helm/input';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideArrowDownWideNarrow,
-  lucideBell,
-  lucideCheck,
-  lucideCheckCheck,
-  lucideCircleMinus,
-  lucideCommand,
-  lucideEllipsisVertical,
-  lucideLogOut,
-  lucideMailOpen,
-  lucidePlus,
-  lucideFolderPlus,
-  lucideLayers,
-  lucideListOrdered,
-  lucideSettings,
-  lucideStar,
-  lucideUserPlus,
-  lucideUsers,
-  lucideX,
-} from '@ng-icons/lucide';
 import {
   AvatarComponent,
   BELOW_MD_QUERY,
@@ -77,6 +56,7 @@ import {
   type AccountSummary,
 } from './sidebar-user-panel/sidebar-user-panel.component';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 export type { AccountSummary };
 
@@ -88,7 +68,7 @@ export type { AccountSummary };
     SidebarUserPanelComponent,
     SidebarRoomListComponent,
     AvatarComponent,
-    NgIcon,
+    TrnIconComponent,
     HlmInput,
     HlmDropdownMenuTrigger,
     HlmDropdownMenu,
@@ -100,28 +80,6 @@ export type { AccountSummary };
     HlmDropdownMenuSeparator,
     HlmDropdownMenuSub,
     HlmDropdownMenuSubTrigger,
-  ],
-  viewProviders: [
-    provideIcons({
-      lucideArrowDownWideNarrow,
-      lucideBell,
-      lucideCheck,
-      lucideCheckCheck,
-      lucideCircleMinus,
-      lucideCommand,
-      lucideEllipsisVertical,
-      lucideLogOut,
-      lucideMailOpen,
-      lucidePlus,
-      lucideFolderPlus,
-      lucideLayers,
-      lucideListOrdered,
-      lucideSettings,
-      lucideStar,
-      lucideUserPlus,
-      lucideUsers,
-      lucideX,
-    }),
   ],
   templateUrl: './channel-sidebar.component.html',
   styleUrl: './channel-sidebar.component.scss',

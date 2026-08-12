@@ -16,7 +16,9 @@ once.
 | `@trinity/ui` | `libs/ui`                                                               | Trinity's own presentational components and small UI utilities.         |
 | Features      | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
 
-Seventeen Helm libraries are installed: avatar, badge, button, card, checkbox,
+Eighteen libraries live under `libs/spartan/`. Two are Trinity-authored rather than
+generated — `overlay` (the dialog/alert/toast adapters) and `icon` (`<trn-icon>`, below).
+The other sixteen are Helm: avatar, badge, button, card, checkbox,
 dropdown-menu, input, label, overlay, progress, radio-group, select, sonner, spinner,
 textarea, tooltip, utils. All are tagged `type:ui` and `scope:shared`, plus
 `ui:vendor-wrapper`.
@@ -30,11 +32,19 @@ below the UI one. The kit is deliberately unrestricted: it **is** the wrapper. `
 banned from Brain only, since it is where Trinity's own wrappers over the other three live.
 
 `type:feature` is the one tier still exempt, because it has 103 violations over 60 files to
-clear first, and they belong to three different sub-issues rather than one: 62 `@ng-icons`
-imports (#154), 28 `@angular/cdk/dialog` (#151), 11 `@ctrl/ngx-emoji-mart` (#152) and 2
-`@spartan-ng/brain/sonner` (#151). Its ban is staged as a **warning** so the count is visible
-while it shrinks, and is promoted to an error only once all three are closed — closing the
-dialog work alone leaves 73 standing.
+clear first. It started at 103 across three sub-issues; #151 closed the 30 dialog and toast
+imports and #154 the 62 icon ones, leaving **11** `@ctrl/ngx-emoji-mart` imports for #152.
+The ban is staged as a **warning** so the count is visible while it shrinks, and is promoted
+to an error once that last group is gone.
+
+Icons are the clearest illustration of what the wrapper buys. `@ng-icons` types its `name`
+as `IconName | (string & {})` — any string at all — so `name="lucideTrash"` (no `2`) used to
+type-check, build, and render nothing. `<trn-icon>` takes a closed `TrnIconName` union
+instead, so that is a compile error, and the vendor identifiers live in exactly one file.
+Accessibility moved from incidental to systematic in the same step: `NgIcon` force-hides any
+icon lacking a **static** `aria-hidden`, which silently suppressed a bound `aria-label` — a
+label the quick switcher was announcing to nobody. `<trn-icon>` is decorative by default and
+puts a `label` on its own host, where nothing can suppress it.
 
 `@trinity/ui` holds `AvatarComponent` (`<trn-avatar>`), `BannerComponent`,
 `PageHeaderComponent`, `MediaBubbleComponent`, `MessageToolbarComponent`, plus

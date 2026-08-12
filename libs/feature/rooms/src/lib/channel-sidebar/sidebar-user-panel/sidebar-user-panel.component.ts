@@ -5,14 +5,6 @@ import {
   input,
   output,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideCheck,
-  lucideLogOut,
-  lucideSettings,
-  lucideUserPlus,
-  lucideUsers,
-} from '@ng-icons/lucide';
 import { AvatarComponent } from '@trinity/ui';
 import { type UserProfile } from '@trinity/data-access/profile';
 import {
@@ -29,6 +21,7 @@ import {
 } from '@trinity/helm/dropdown-menu';
 import { initialOf } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** Most avatars drawn in the mixed-account stack before it collapses to a "+N" count. */
 const STACK_MAX = 3;
@@ -45,7 +38,7 @@ export interface AccountSummary extends UserProfile {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarComponent,
-    NgIcon,
+    TrnIconComponent,
     HlmDropdownMenuTrigger,
     HlmDropdownMenu,
     HlmDropdownMenuCheckbox,
@@ -56,15 +49,6 @@ export interface AccountSummary extends UserProfile {
     HlmDropdownMenuSeparator,
     HlmDropdownMenuSub,
     HlmDropdownMenuSubTrigger,
-  ],
-  viewProviders: [
-    provideIcons({
-      lucideCheck,
-      lucideLogOut,
-      lucideSettings,
-      lucideUserPlus,
-      lucideUsers,
-    }),
   ],
   templateUrl: './sidebar-user-panel.component.html',
   styleUrl: './sidebar-user-panel.component.scss',

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileService, type UserProfile } from '@trinity/data-access/profile';
 import { AvatarComponent } from '@trinity/ui';
 import { ProfileSettingsComponent } from './profile-settings.component';
+import { provideTrnIcons } from '@trinity/helm/icon';
 
 describe('ProfileSettingsComponent', () => {
   let profile: ReturnType<typeof signal<UserProfile | null>>;
@@ -25,6 +26,10 @@ describe('ProfileSettingsComponent', () => {
     const result = await render(ProfileSettingsComponent, {
       imports: [MockComponent(AvatarComponent)],
       providers: [
+        // Icons are registered once at the app root now (provideTrnIcons in main.ts),
+        // not by each component, so a spec that asserts a real <svg> has to mirror that
+        // root registration the way the running app provides it.
+        provideTrnIcons(),
         MockProvider(ProfileService, {
           profile,
           // load() reflects the current signal so a test can preset an empty profile.

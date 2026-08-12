@@ -25,10 +25,9 @@
         "
         data-testid="change-avatar"
       >
-        <ng-icon
-          [name]="savingAvatar() ? 'lucideLoaderCircle' : 'lucideCamera'"
+        <trn-icon
+          [name]="savingAvatar() ? 'loader-circle' : 'camera'"
           [class.animate-spin]="savingAvatar()"
-          aria-hidden="true"
         />
       </button>
     </div>

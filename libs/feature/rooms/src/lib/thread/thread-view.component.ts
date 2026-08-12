@@ -14,8 +14,6 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, type Observable } from 'rxjs';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideX } from '@ng-icons/lucide';
 import {
   DialogRef,
   TrnAlertService,
@@ -52,6 +50,7 @@ import { ReportService } from '../report/report.service';
 import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -84,13 +83,12 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
   selector: 'trn-thread-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    NgIcon,
+    TrnIconComponent,
     HlmButton,
     HlmTooltip,
     MessageRowComponent,
     MessageComposerComponent,
   ],
-  viewProviders: [provideIcons({ lucideX })],
   templateUrl: './thread-view.component.html',
   styleUrl: './thread-view.component.scss',
 })

@@ -8,22 +8,27 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideCamera, lucideLoaderCircle } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { ProfileService } from '@trinity/data-access/profile';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** Profile settings sub-page: avatar (with a corner change badge) + display name. */
 @Component({
   selector: 'trn-profile-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './profile-settings.component.html',
-  imports: [AvatarComponent, NgIcon, HlmButton, HlmTooltip, HlmInput, HlmLabel],
-  viewProviders: [provideIcons({ lucideCamera, lucideLoaderCircle })],
+  imports: [
+    AvatarComponent,
+    TrnIconComponent,
+    HlmButton,
+    HlmTooltip,
+    HlmInput,
+    HlmLabel,
+  ],
 })
 export class ProfileSettingsComponent {
   private readonly profileSvc = inject(ProfileService);

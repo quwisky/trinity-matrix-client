@@ -4,10 +4,9 @@ import {
   computed,
   inject,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideCloudOff } from '@ng-icons/lucide';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { BannerComponent } from '@trinity/ui';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /**
  * Slim banner shown in the rooms shell when the sync connection is lost. The
@@ -18,8 +17,7 @@ import { BannerComponent } from '@trinity/ui';
 @Component({
   selector: 'trn-connectivity-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, BannerComponent],
-  viewProviders: [provideIcons({ lucideCloudOff })],
+  imports: [TrnIconComponent, BannerComponent],
   templateUrl: './connectivity-banner.component.html',
 })
 export class ConnectivityBannerComponent {
