@@ -21,21 +21,28 @@ try {
 
   await page.getByText('Continue', { exact: true }).click();
 
-  // After discovery, the homeserver line and at least one login option appear.
-  // (matrix.org's .well-known resolves to https://matrix-client.matrix.org.)
-  const hsLine = page.getByText(/Homeserver: https:\/\//);
+  // Discovery resolving the DELEGATED host is the whole point: `matrix.org` publishes a
+  // .well-known pointing at `matrix-client.matrix.org`, so seeing the second one proves the
+  // lookup ran rather than the typed value being echoed back. Asserted on that host rather
+  // than on the surrounding copy — this used to grep for a "Homeserver: " prefix the page
+  // stopped rendering, so the test failed for thirty seconds against a working app.
+  const hsLine = page.getByText(/https:\/\/matrix-client\.matrix\.org/);
   await hsLine.waitFor({ timeout: 30000 });
+  console.log(`PASS: discovered ${(await hsLine.innerText()).trim()}`);
+
+  // Whatever the homeserver offers. matrix.org is OIDC now (MSC3861), so the old
+  // password/SSO pair alone would report "no login options" on a page showing two buttons.
+  const visible = async (locator) => locator.isVisible().catch(() => false);
+  const hasOidc = await visible(page.getByTestId('oidc-continue'));
+  const hasPassword = await visible(
+    page.getByRole('button', { name: 'Sign in' }),
+  );
+  const hasSso = await visible(page.getByRole('button', { name: /SSO/ }));
   console.log(
-    `PASS: discovered ${(await hsLine.innerText()).replace('Homeserver: ', '')}`,
+    `login options -> oidc: ${hasOidc}, password: ${hasPassword}, sso: ${hasSso}`,
   );
 
-  const hasPassword = await page
-    .getByRole('button', { name: 'Sign in' })
-    .isVisible();
-  const hasSso = await page.getByRole('button', { name: /SSO/ }).isVisible();
-  console.log(`login options -> password: ${hasPassword}, sso: ${hasSso}`);
-
-  if (hasPassword || hasSso) {
+  if (hasOidc || hasPassword || hasSso) {
     console.log('\nRESULT: PASS');
     exit = 0;
   } else {
