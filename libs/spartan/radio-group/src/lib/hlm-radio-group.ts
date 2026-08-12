@@ -12,7 +12,8 @@ import type { ClassValue } from 'clsx';
       inputs: ['name', 'value', 'disabled', 'required'],
       outputs: ['valueChange'],
     },
-    BrnFieldControlDescribedBy,
+    // See hlm-input.ts: without `inputs`, aria-describedby is silently removed.
+    { directive: BrnFieldControlDescribedBy, inputs: ['aria-describedby'] },
   ],
   host: {
     'data-slot': 'radio-group',

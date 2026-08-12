@@ -290,4 +290,23 @@ describe('PushGatewayBlockComponent', () => {
     const status = container.querySelector('[data-testid=push-gateway-status]');
     expect(status?.textContent).toContain('Config Error: bad path');
   });
+
+  it('describes the URL field with its help text, for a screen reader', async () => {
+    // Two of the three places in the app that describe a helm control. The hint was in the
+    // markup all along but never reached the accessibility tree: hlmInput composes
+    // BrnFieldControlDescribedBy, which owns [attr.aria-describedby], and the hostDirectives
+    // entry did not publish that input — so the attribute was computed as null and removed.
+    // Asserted here as well as in the kit's own contract test, because this is the screen a
+    // person actually uses.
+    const { container } = await render(PushGatewayBlockComponent, {
+      providers: providers(),
+    });
+
+    expect(
+      container
+        .querySelector('[data-testid=push-gateway-url]')
+        ?.getAttribute('aria-describedby'),
+    ).toBe('push-gateway-help');
+    expect(container.querySelector('#push-gateway-help')).not.toBeNull();
+  });
 });

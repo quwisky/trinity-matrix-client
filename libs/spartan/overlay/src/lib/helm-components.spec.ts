@@ -9,7 +9,9 @@ import { badgeVariants } from '@trinity/helm/badge';
 import { buttonVariants, HlmButton } from '@trinity/helm/button';
 import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { HlmInput } from '@trinity/helm/input';
+import { HlmRadio, HlmRadioGroup } from '@trinity/helm/radio-group';
 import { HlmSpinner } from '@trinity/helm/spinner';
+import { HlmTextarea } from '@trinity/helm/textarea';
 
 // The generated helm libs (libs/spartan/*) shipped with no specs of their own, and
 // the old Trn* wrapper specs were deleted when the app swapped to these directly.
@@ -111,5 +113,96 @@ describe('helm component render smoke tests', () => {
     const { fixture, container } = await build();
     expect(container.querySelector('[data-testid=checkbox]')).toBeTruthy();
     expect(fixture.debugElement.query(By.directive(HlmCheckbox))).toBeTruthy();
+  });
+});
+
+/**
+ * `aria-describedby` on a helm form control.
+ *
+ * These are contract tests, not smoke tests, and they exist because the contract was broken:
+ * every one of these controls composes `BrnFieldControlDescribedBy` through `hostDirectives`,
+ * and that directive owns `[attr.aria-describedby]` as a host binding. A `hostDirectives` entry
+ * publishes a composed directive's input ONLY if it lists it in `inputs: [...]`; where it did
+ * not, the directive's binding computed `null` and removed the attribute — so a hint set by a
+ * consumer never reached a screen reader, silently, whether it was written as a static attribute
+ * or as a binding.
+ *
+ * The two shapes are asserted separately on purpose: they fail independently, and one of them
+ * still does — see the `[attr.…]` case at the end.
+ */
+describe('aria-describedby on helm form controls', () => {
+  @Component({
+    imports: [HlmInput, HlmTextarea, HlmRadioGroup, HlmRadio, HlmCheckbox],
+    template: `
+      <input hlmInput data-testid="static" aria-describedby="hint" />
+      <input hlmInput data-testid="bound" [aria-describedby]="id" />
+      <textarea
+        hlmTextarea
+        data-testid="textarea"
+        aria-describedby="hint"
+      ></textarea>
+      <hlm-radio-group data-testid="radio-group" aria-describedby="hint" />
+      <hlm-checkbox data-testid="checkbox" aria-describedby="hint" />
+    `,
+  })
+  class Host {
+    readonly id = 'hint';
+  }
+
+  const describedBy = async (testId: string) => {
+    const { fixture } = await render(Host);
+    return fixture.debugElement
+      .query(By.css(`[data-testid=${testId}]`))
+      .nativeElement.getAttribute('aria-describedby');
+  };
+
+  it('survives as a static attribute on an input', async () => {
+    expect(await describedBy('static')).toBe('hint');
+  });
+
+  it('survives as a binding on an input', async () => {
+    expect(await describedBy('bound')).toBe('hint');
+  });
+
+  it('survives on a textarea', async () => {
+    expect(await describedBy('textarea')).toBe('hint');
+  });
+
+  it('survives on a radio group', async () => {
+    expect(await describedBy('radio-group')).toBe('hint');
+  });
+
+  it('is NOT rescued in the [attr.…] form — a known limitation', async () => {
+    // Exposing the input fixes the static and bound forms but not this one: the composed
+    // directive's host binding runs after the template's attribute binding and overwrites it.
+    // Pinned rather than left to prose so that if a future Angular or brain release changes
+    // it, this fails and the rule in docs/architecture/ui-and-theming.md gets revisited.
+    @Component({
+      imports: [HlmInput],
+      template: `<input
+        hlmInput
+        data-testid="attr"
+        [attr.aria-describedby]="id"
+      />`,
+    })
+    class AttrHost {
+      readonly id = 'hint';
+    }
+
+    const { fixture } = await render(AttrHost);
+
+    expect(
+      fixture.debugElement
+        .query(By.css('[data-testid=attr]'))
+        .nativeElement.getAttribute('aria-describedby'),
+    ).toBeNull();
+  });
+
+  it('is still forwarded, not kept, on a checkbox', async () => {
+    // The deliberate asymmetry. `hlm-checkbox` declares its own `aria-describedby` input and
+    // forwards it to the inner `<brn-checkbox>`, nulling the host attribute on purpose — the
+    // host is `display: contents` and is not the focusable control. Pinned so a later sweep
+    // over `hostDirectives` does not "fix" it into describing the wrong element.
+    expect(await describedBy('checkbox')).toBeNull();
   });
 });

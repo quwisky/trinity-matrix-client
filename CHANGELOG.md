@@ -298,6 +298,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Hints under text boxes are read out again.** Where a field had explanatory text beneath it —
+  the push gateway URL, its app id, and the manual location entry — screen readers never announced
+  it. The text was in the page and visually correct, so the gap was invisible unless you used one:
+  the description was being removed from the field before it reached the accessibility tree. It is
+  now attached properly, and a test covers each of those fields so it cannot go quiet again.
+
 - **GIF search works again: Tenor is replaced by KLIPY.** Google shut the Tenor API down on
   30 June 2026, and Tenor was the provider Trinity offered first — so the default path led to
   a sign-up page that had been closed since January and an API that no longer answers. GIF
