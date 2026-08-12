@@ -4,7 +4,7 @@
   "sourceRoot": "libs/spartan/badge/src",
   "prefix": "hlm",
   "projectType": "library",
-  "tags": ["type:ui", "scope:shared"],
+  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
   "targets": {
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",

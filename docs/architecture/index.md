@@ -53,6 +53,14 @@ declared once at `eslint.config.mjs`.
 | `type:platform`    | `platform`, `util`                                 | Capability wrappers sit below everything except pure code                                    |
 | `type:util`        | `util`                                             | Pure, DI-free code. `libs/util/matrix` may depend on npm packages and nothing else           |
 
+A third axis, `ui:*`, separates the two halves of the UI tier so third-party UI can be
+contained: `libs/ui` is `ui:wrapper`, the vendored Helm kit is `ui:vendor-wrapper`, and
+`bannedExternalImports` keeps `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and
+`@ctrl/ngx-emoji-mart` out of `data-access`, `util`, `platform` and `app` entirely. The kit is
+unrestricted because it is the wrapper. Each glob carries a trailing `*` — without it the
+pattern matches only the bare specifier, nothing imports that, and the ban silently enforces
+nothing while lint reports success. See [UI and theming](ui-and-theming.md).
+
 There is no escape hatch. The rule is configured with `allow: []`, and there is not a single
 `eslint-disable` for `@nx/enforce-module-boundaries` anywhere under `apps/` or `libs/`. A violation
 fails `pnpm lint`, and the `pre-commit` hook runs lint-staged, so it fails the commit too.

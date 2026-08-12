@@ -18,7 +18,21 @@ once.
 
 Seventeen Helm libraries are installed: avatar, badge, button, card, checkbox,
 dropdown-menu, input, label, overlay, progress, radio-group, select, sonner, spinner,
-textarea, tooltip, utils. All are tagged `type:ui` and `scope:shared`.
+textarea, tooltip, utils. All are tagged `type:ui` and `scope:shared`, plus
+`ui:vendor-wrapper`.
+
+That third tag is what makes the layering above enforceable rather than merely described.
+`libs/ui` and every Helm library used to carry identical tags, so no boundary rule could say
+"only the kit may import Brain" — the two were indistinguishable to Nx. `libs/ui` now carries
+`ui:wrapper`, the kit carries `ui:vendor-wrapper`, and `bannedExternalImports` keeps
+`@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every tier
+below the UI one. The kit is deliberately unrestricted: it **is** the wrapper. `libs/ui` is
+banned from Brain only, since it is where Trinity's own wrappers over the other three live.
+
+`type:feature` is the one tier still exempt, because it has 103 violations to clear first —
+28 files importing `@angular/cdk/dialog` and the shell importing `@spartan-ng/brain/sonner`.
+Its ban is staged as a **warning** so the count is visible while it shrinks, and is promoted
+to an error once the last one is gone.
 
 `@trinity/ui` holds `AvatarComponent` (`<trn-avatar>`), `BannerComponent`,
 `PageHeaderComponent`, `MediaBubbleComponent`, `MessageToolbarComponent`, plus
