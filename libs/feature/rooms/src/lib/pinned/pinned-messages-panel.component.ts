@@ -5,13 +5,12 @@ import {
   inject,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { DialogRef } from '@angular/cdk/dialog';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucidePinOff, lucideX } from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 
 /**

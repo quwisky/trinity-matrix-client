@@ -4,7 +4,7 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { DialogRef } from '@angular/cdk/dialog';
+import { DialogRef } from '@trinity/helm/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideX } from '@ng-icons/lucide';

@@ -1,4 +1,4 @@
-import { DialogRef } from '@angular/cdk/dialog';
+import { DialogRef } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';

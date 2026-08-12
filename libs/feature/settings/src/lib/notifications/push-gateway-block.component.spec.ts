@@ -1,5 +1,5 @@
 import { signal, type WritableSignal } from '@angular/core';
-import { Dialog } from '@angular/cdk/dialog';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -52,8 +52,13 @@ function providers(overrides: Partial<Stub> = {}) {
       register: registerSpy,
       unregister: unregisterSpy,
     }),
-    MockProvider(Dialog, {
-      open: vi.fn(() => ({ closed: of(dialogResult()) })) as never,
+    MockProvider(TrnDialogService, {
+      // `openAndWait` is generic in its return type (`Promise<R | null>`), so a stub
+      // resolving a concrete boolean cannot satisfy it without a cast. The component
+      // only ever calls it as `openAndWait<boolean>`, which is what this yields.
+      openAndWait: vi.fn(async () =>
+        dialogResult(),
+      ) as TrnDialogService['openAndWait'],
     }),
   ];
 }

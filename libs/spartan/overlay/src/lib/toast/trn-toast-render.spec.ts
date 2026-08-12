@@ -40,4 +40,35 @@ describe('TrnToastService → <hlm-toaster/> (shared brain sonner state)', () =>
 
     expect(document.body.textContent).toContain('regression-toast-marker');
   });
+
+  it('renders an action button and runs its handler on click', async () => {
+    // The same class of bug as the store mismatch above, one layer up: an `action`
+    // the service accepts but never forwards produces a toast that looks right and
+    // does nothing. Only mounting the real toaster and clicking the button proves
+    // the option survives the trip — asserting on the object handed to `toast()`
+    // would pass just as happily against a key sonner ignores.
+    await render(ToasterHost);
+    let activated = 0;
+
+    TestBed.inject(TrnToastService).show('A new version is available.', {
+      duration: 0,
+      action: {
+        label: 'Reload',
+        onClick: () => {
+          activated += 1;
+        },
+      },
+    });
+    await settle();
+
+    const button = [...document.querySelectorAll('button')].find(
+      (candidate) => candidate.textContent?.trim() === 'Reload',
+    );
+    expect(button).toBeTruthy();
+
+    button!.click();
+    await settle();
+
+    expect(activated).toBe(1);
+  });
 });

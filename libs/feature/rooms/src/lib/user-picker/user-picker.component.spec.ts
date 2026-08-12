@@ -1,4 +1,4 @@
-import { DialogRef } from '@angular/cdk/dialog';
+import { DialogRef } from '@trinity/helm/overlay';
 import {
   RoomsService,
   type UserSearchResult,

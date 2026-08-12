@@ -1,6 +1,6 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Dialog, DialogRef } from '@angular/cdk/dialog';
+import { DialogRef, TrnDialogService } from '@trinity/helm/overlay';
 import {
   SearchService,
   type SwitcherResult,
@@ -115,7 +115,7 @@ describe('QuickSwitcherComponent', () => {
     expect(search).not.toBeNull();
     expect(document.activeElement).toBe(search);
 
-    TestBed.inject(Dialog).closeAll();
+    TestBed.inject(TrnDialogService).closeAll();
     expect(await picked).toBeNull();
   });
 

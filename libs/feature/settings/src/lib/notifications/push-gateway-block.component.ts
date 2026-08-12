@@ -7,11 +7,10 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Dialog } from '@angular/cdk/dialog';
-import { firstValueFrom } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import {
   PushGatewayService,
   PushService,
@@ -42,7 +41,7 @@ import {
 export class PushGatewayBlockComponent {
   private readonly gateway = inject(PushGatewayService);
   private readonly push = inject(PushService);
-  private readonly dialog = inject(Dialog);
+  private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
 
   // PushService.registration drives the status line via appliedAccounts/errorMessage.
@@ -176,11 +175,12 @@ export class PushGatewayBlockComponent {
 
   private async confirmTrust(url: string, insecure: boolean): Promise<boolean> {
     const data: PushGatewayTrustData = { url, insecure };
-    const ref = this.dialog.open<boolean>(PushGatewayTrustDialogComponent, {
-      data,
-      backdropClass: ['cdk-overlay-dark-backdrop'],
-    });
-    return (await firstValueFrom(ref.closed)) ?? false;
+    return (
+      (await this.dialog.openAndWait<boolean>(PushGatewayTrustDialogComponent, {
+        inputs: { data },
+        ariaLabel: 'Trust this push gateway?',
+      })) ?? false
+    );
   }
 }
 

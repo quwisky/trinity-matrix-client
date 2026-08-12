@@ -7,7 +7,7 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { DialogRef } from '@angular/cdk/dialog';
+import { DialogRef } from '@trinity/helm/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideLock, lucideServer, lucideX } from '@ng-icons/lucide';
