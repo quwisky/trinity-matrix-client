@@ -31,7 +31,7 @@
   <button
     type="button"
     class="toolbar__btn"
-    hlmTooltip="Add reaction"
+    trnTooltip="Add reaction"
     aria-label="Add reaction"
     [attr.aria-expanded]="pickerOpen()"
     [attr.aria-controls]="pickerOpen() ? pickerId : null"
@@ -44,7 +44,7 @@
   <button
     type="button"
     class="toolbar__btn"
-    hlmTooltip="Reply"
+    trnTooltip="Reply"
     aria-label="Reply"
     (click)="action.emit({ type: 'reply' })"
   >
@@ -55,7 +55,7 @@
     <button
       type="button"
       class="toolbar__btn"
-      hlmTooltip="Reply in thread"
+      trnTooltip="Reply in thread"
       aria-label="Reply in thread"
       (click)="action.emit({ type: 'thread' })"
     >
@@ -66,9 +66,9 @@
   <button
     type="button"
     class="toolbar__btn"
-    [hlmDropdownMenuTrigger]="moreMenu"
+    [trnDropdownMenuTrigger]="moreMenu"
     align="end"
-    hlmTooltip="More actions"
+    trnTooltip="More actions"
     aria-label="More actions"
     data-testid="msg-more"
   >
@@ -77,10 +77,10 @@
 </div>
 
 <ng-template #moreMenu>
-  <div hlmDropdownMenu>
+  <div trnDropdownMenu>
     @if (caps().canPin) {
       <button
-        hlmDropdownMenuItem
+        trnDropdownMenuItem
         (triggered)="action.emit({ type: 'pin' })"
         data-testid="msg-pin"
       >
@@ -90,7 +90,7 @@
     }
     @if (caps().canQuote) {
       <button
-        hlmDropdownMenuItem
+        trnDropdownMenuItem
         (triggered)="action.emit({ type: 'quote' })"
         data-testid="msg-quote"
       >
@@ -99,7 +99,7 @@
       </button>
     }
     <button
-      hlmDropdownMenuItem
+      trnDropdownMenuItem
       (triggered)="action.emit({ type: 'copy' })"
       data-testid="msg-copy"
     >
@@ -107,7 +107,7 @@
       Copy text
     </button>
     <button
-      hlmDropdownMenuItem
+      trnDropdownMenuItem
       (triggered)="action.emit({ type: 'copy-link' })"
       data-testid="msg-copy-link"
     >
@@ -115,7 +115,7 @@
       Copy link
     </button>
     <button
-      hlmDropdownMenuItem
+      trnDropdownMenuItem
       (triggered)="action.emit({ type: 'forward' })"
       data-testid="msg-forward"
     >
@@ -123,7 +123,7 @@
       Forward
     </button>
     <button
-      hlmDropdownMenuItem
+      trnDropdownMenuItem
       (triggered)="action.emit({ type: 'view-source' })"
       data-testid="msg-view-source"
     >
@@ -131,7 +131,7 @@
       View source
     </button>
     <button
-      hlmDropdownMenuItem
+      trnDropdownMenuItem
       (triggered)="action.emit({ type: 'report' })"
       data-testid="msg-report"
     >
@@ -140,7 +140,7 @@
     </button>
     @if (caps().canEdit) {
       <button
-        hlmDropdownMenuItem
+        trnDropdownMenuItem
         (triggered)="action.emit({ type: 'edit' })"
         data-testid="msg-edit"
       >
@@ -149,9 +149,9 @@
       </button>
     }
     @if (caps().canDelete) {
-      <div hlmDropdownMenuSeparator></div>
+      <div trnDropdownMenuSeparator></div>
       <button
-        hlmDropdownMenuItem
+        trnDropdownMenuItem
         variant="destructive"
         (triggered)="action.emit({ type: 'delete' })"
         data-testid="msg-delete"

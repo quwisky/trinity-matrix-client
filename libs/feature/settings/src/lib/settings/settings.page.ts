@@ -18,11 +18,11 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { filter, map } from 'rxjs';
-import { HlmButton } from '@trinity/helm/button';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnButton } from '@trinity/kit/button';
+import { TrnTooltip } from '@trinity/kit/tooltip';
 import { PageHeaderComponent } from '@trinity/ui';
 import { BUILD_INFO } from '@trinity/platform-native';
-import { TrnIconComponent, type TrnIconName } from '@trinity/helm/icon';
+import { TrnIconComponent, type TrnIconName } from '@trinity/kit/icon';
 
 /** One row of the settings submenu, routing to its section sub-page. */
 interface SettingsMenuItem {
@@ -63,8 +63,8 @@ const WIDE_QUERY = '(min-width: 768px)';
   imports: [
     PageHeaderComponent,
     TrnIconComponent,
-    HlmButton,
-    HlmTooltip,
+    TrnButton,
+    TrnTooltip,
     RouterLink,
     RouterLinkActive,
     RouterOutlet,

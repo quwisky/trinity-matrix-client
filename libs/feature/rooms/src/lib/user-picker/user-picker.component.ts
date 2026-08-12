@@ -22,10 +22,10 @@ import {
 } from '@trinity/data-access/rooms';
 import { isValidUserId } from '@trinity/util/matrix';
 import { AvatarComponent } from '@trinity/ui';
-import { DialogRef } from '@trinity/helm/overlay';
-import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { DialogRef } from '@trinity/kit/overlay';
+import { TrnButton } from '@trinity/kit/button';
+import { TrnInput } from '@trinity/kit/input';
+import { TrnSpinner } from '@trinity/kit/spinner';
 
 /** Don't hit the directory until the term is at least this long. */
 const MIN_SEARCH_LENGTH = 2;
@@ -47,7 +47,7 @@ const MIN_SEARCH_LENGTH = 2;
 @Component({
   selector: 'trn-user-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, HlmSpinner, HlmButton, HlmInput],
+  imports: [AvatarComponent, TrnSpinner, TrnButton, TrnInput],
   templateUrl: './user-picker.component.html',
   styleUrl: './user-picker.component.scss',
 })

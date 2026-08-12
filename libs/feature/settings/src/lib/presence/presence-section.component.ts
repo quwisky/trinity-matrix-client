@@ -6,14 +6,14 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
+import { TrnButton } from '@trinity/kit/button';
+import { TrnInput } from '@trinity/kit/input';
+import { TrnLabel } from '@trinity/kit/label';
 import {
-  HlmRadio,
-  HlmRadioGroup,
-  HlmRadioIndicator,
-} from '@trinity/helm/radio-group';
+  TrnRadio,
+  TrnRadioGroup,
+  TrnRadioIndicator,
+} from '@trinity/kit/radio-group';
 import { PresenceService } from '@trinity/data-access/profile';
 import { presenceLabel, type PresenceState } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/ui';
@@ -38,12 +38,12 @@ const MAX_STATUS_LENGTH = 60;
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './presence-section.component.html',
   imports: [
-    HlmButton,
-    HlmInput,
-    HlmLabel,
-    HlmRadioGroup,
-    HlmRadio,
-    HlmRadioIndicator,
+    TrnButton,
+    TrnInput,
+    TrnLabel,
+    TrnRadioGroup,
+    TrnRadio,
+    TrnRadioIndicator,
   ],
 })
 export class PresenceSectionComponent {

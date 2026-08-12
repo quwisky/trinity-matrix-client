@@ -12,12 +12,12 @@
   class="confirm flex cursor-pointer items-center gap-2 text-sm font-medium"
   data-testid="recovery-key-saved"
 >
-  <hlm-checkbox [checked]="saved()" (checkedChange)="saved.set($event)" />
+  <trn-checkbox [checked]="saved()" (checkedChange)="saved.set($event)" />
   I've saved my recovery key somewhere safe
 </label>
 
 <button
-  hlmBtn
+  trnBtn
   class="w-full"
   [disabled]="!saved()"
   [attr.data-testid]="confirmTestId()"

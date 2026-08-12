@@ -14,7 +14,7 @@ import {
   type MessageAction,
   type MessageToolbarCaps,
 } from '@trinity/ui';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/kit/tooltip';
 import { type ThreadSummary } from '@trinity/data-access/timeline';
 import {
   type MatrixLinkTarget,
@@ -29,7 +29,7 @@ import { PollComponent } from '../poll/poll.component';
 import { LinkPreviewComponent } from '../link-preview/link-preview.component';
 import { LocationComponent } from '../location-share/location.component';
 import { VoiceMessageComponent } from '../voice-message/voice-message.component';
-import { TrnIconComponent, type TrnIconName } from '@trinity/helm/icon';
+import { TrnIconComponent, type TrnIconName } from '@trinity/kit/icon';
 
 /** A {@link MessageView} plus the presentation state the list derives for it. */
 export interface MessageRow extends MessageView {
@@ -103,7 +103,7 @@ export type MessageRowAction =
     LinkPreviewComponent,
     LocationComponent,
     VoiceMessageComponent,
-    HlmTooltip,
+    TrnTooltip,
   ],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',

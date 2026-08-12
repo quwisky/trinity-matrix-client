@@ -5,7 +5,7 @@
   Code size
 </h2>
 <div class="px-4 py-2">
-  <hlm-select
+  <trn-select
     class="block"
     data-testid="code-scale-select"
     aria-labelledby="appearance-code-size-heading"
@@ -13,20 +13,20 @@
     [itemToString]="codeScaleLabel"
     (valueChange)="onCodeScaleChange($event)"
   >
-    <hlm-select-trigger class="w-full">
-      <hlm-select-value placeholder="Select a code size" />
-    </hlm-select-trigger>
-    <hlm-select-content *hlmSelectPortal>
+    <trn-select-trigger class="w-full">
+      <trn-select-value placeholder="Select a code size" />
+    </trn-select-trigger>
+    <trn-select-content *trnSelectPortal>
       @for (scale of theme.codeScales; track scale.id) {
-        <hlm-select-item
+        <trn-select-item
           [value]="scale.id"
           [attr.data-testid]="'code-scale-' + scale.id"
         >
           {{ scale.label }}
-        </hlm-select-item>
+        </trn-select-item>
       }
-    </hlm-select-content>
-  </hlm-select>
+    </trn-select-content>
+  </trn-select>
 </div>
 <p class="block px-4 py-2 text-13 text-muted-foreground">
   Sizes code in messages — both code written inside a sentence and whole blocks.
@@ -41,7 +41,7 @@
   Line numbers
 </h2>
 <div class="px-4 py-2">
-  <hlm-select
+  <trn-select
     class="block"
     data-testid="code-lines-select"
     aria-labelledby="appearance-code-lines-heading"
@@ -49,20 +49,20 @@
     [itemToString]="codeLineLabel"
     (valueChange)="onCodeLinesChange($event)"
   >
-    <hlm-select-trigger class="w-full">
-      <hlm-select-value placeholder="Select when to number lines" />
-    </hlm-select-trigger>
-    <hlm-select-content *hlmSelectPortal>
+    <trn-select-trigger class="w-full">
+      <trn-select-value placeholder="Select when to number lines" />
+    </trn-select-trigger>
+    <trn-select-content *trnSelectPortal>
       @for (mode of theme.codeLineModes; track mode.id) {
-        <hlm-select-item
+        <trn-select-item
           [value]="mode.id"
           [attr.data-testid]="'code-lines-' + mode.id"
         >
           {{ mode.label }}
-        </hlm-select-item>
+        </trn-select-item>
       }
-    </hlm-select-content>
-  </hlm-select>
+    </trn-select-content>
+  </trn-select>
 </div>
 <p class="block px-4 py-2 text-13 text-muted-foreground">
   Numbers the lines of a code block, so you can point at one. They are never

@@ -2,7 +2,7 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/kit/overlay';
 import {
   RoomModerationService,
   type BannedMember,

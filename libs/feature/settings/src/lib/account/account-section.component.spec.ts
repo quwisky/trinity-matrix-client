@@ -4,7 +4,7 @@ import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/kit/overlay';
 import { AccountSectionComponent } from './account-section.component';
 
 vi.mock('@capacitor/browser', () => ({

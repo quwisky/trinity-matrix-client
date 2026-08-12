@@ -13,17 +13,17 @@ which library may import which.
 
 ## Where things live
 
-| Path           | What it is                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------- |
-| `apps/trinity` | The deployable Angular app. Thin: routing, bootstrap, global styles.                                          |
-| `libs/*`       | Every reusable library, imported as `@trinity/` plus its path under `libs/`.                                  |
-| `libs/spartan` | Generated spartan-ng Helm components, the one alias exception: `@trinity/helm/*`, owned by `@spartan-ng/cli`. |
-| `electron/`    | The desktop shell. Its own `package.json`, own lockfile, own TypeScript version, installed separately.        |
-| `e2e/`         | Playwright specs, standalone protocol harnesses, and the disposable Synapse Docker stack they run against.    |
-| `scripts/`     | Node build scripts plus the invariant specs that guard configuration a green test run cannot see.             |
-| `android/`     | The checked-in Capacitor Android project.                                                                     |
-| `ios/`         | The checked-in Capacitor iOS project, using Swift Package Manager.                                            |
-| `www/`         | Generated. The web build output that the native and desktop wrappers consume. Not tracked in git.             |
+| Path           | What it is                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------- |
+| `apps/trinity` | The deployable Angular app. Thin: routing, bootstrap, global styles.                                        |
+| `libs/*`       | Every reusable library, imported as `@trinity/` plus its path under `libs/`.                                |
+| `libs/kit`     | Generated spartan-ng kit components, the one alias exception: `@trinity/kit/*`, owned by `@spartan-ng/cli`. |
+| `electron/`    | The desktop shell. Its own `package.json`, own lockfile, own TypeScript version, installed separately.      |
+| `e2e/`         | Playwright specs, standalone protocol harnesses, and the disposable Synapse Docker stack they run against.  |
+| `scripts/`     | Node build scripts plus the invariant specs that guard configuration a green test run cannot see.           |
+| `android/`     | The checked-in Capacitor Android project.                                                                   |
+| `ios/`         | The checked-in Capacitor iOS project, using Swift Package Manager.                                          |
+| `www/`         | Generated. The web build output that the native and desktop wrappers consume. Not tracked in git.           |
 
 `libs/` is not a flat list of libraries. It holds seven entries, four of which are
 parent directories with one folder per library inside — `data-access/`, `feature/`,

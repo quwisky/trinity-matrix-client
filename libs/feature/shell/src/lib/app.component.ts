@@ -14,15 +14,15 @@ import { Capacitor } from '@capacitor/core';
 import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
 import { filter, fromEvent } from 'rxjs';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
-import { HlmToaster } from '@trinity/helm/sonner';
-import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnToaster } from '@trinity/kit/sonner';
+import { TrnDialogService, TrnToastService } from '@trinity/kit/overlay';
 import { VerificationHostComponent } from './verification-host.component';
 
 @Component({
   selector: 'trn-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'app.component.html',
-  imports: [RouterOutlet, VerificationHostComponent, HlmToaster],
+  imports: [RouterOutlet, VerificationHostComponent, TrnToaster],
 })
 export class AppComponent implements OnInit {
   private readonly router = inject(Router);

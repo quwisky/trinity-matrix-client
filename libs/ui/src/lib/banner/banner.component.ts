@@ -11,7 +11,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
  *   <trn-icon trnBannerIcon name="lock" />
  *   Set up encryption to secure your messages.
  *   <span trnBannerActions>
- *     <button hlmBtn size="sm">Set up</button>
+ *     <button trnBtn size="sm">Set up</button>
  *   </span>
  * </trn-banner>
  * ```

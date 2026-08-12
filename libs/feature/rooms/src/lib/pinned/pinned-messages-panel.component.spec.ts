@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render, fireEvent } from '@trinity/testing';
-import { DialogRef } from '@trinity/helm/overlay';
+import { DialogRef } from '@trinity/kit/overlay';
 import {
   PinnedMessagesService,
   type PinnedMessageView,

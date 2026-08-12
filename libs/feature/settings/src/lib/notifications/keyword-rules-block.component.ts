@@ -9,10 +9,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
-import { HlmButton } from '@trinity/helm/button';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
-import { HlmInput } from '@trinity/helm/input';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnButton } from '@trinity/kit/button';
+import { TrnCheckbox } from '@trinity/kit/checkbox';
+import { TrnInput } from '@trinity/kit/input';
+import { TrnToastService } from '@trinity/kit/overlay';
 import {
   KeywordRulesService,
   KeywordValidationError,
@@ -34,7 +34,7 @@ import {
   selector: 'trn-keyword-rules',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './keyword-rules-block.component.html',
-  imports: [FormField, HlmButton, HlmCheckbox, HlmInput],
+  imports: [FormField, TrnButton, TrnCheckbox, TrnInput],
 })
 export class KeywordRulesBlockComponent implements OnInit {
   private readonly keywordsSvc = inject(KeywordRulesService);
@@ -63,7 +63,7 @@ export class KeywordRulesBlockComponent implements OnInit {
    * Sound states shown ahead of the server, keyed by rule id — the same optimistic shape
    * the section's own toggles use (see NotificationsSectionComponent).
    *
-   * `HlmCheckbox` flips itself on click and holds that in a `linkedSignal` over its
+   * `TrnCheckbox` flips itself on click and holds that in a `linkedSignal` over its
    * `checked` input, which only recomputes when the INPUT changes. Binding the input to
    * this map means a rejected write moves it back to the server's value, which IS a
    * transition, so the control resyncs — without reaching into Helm internals or relying

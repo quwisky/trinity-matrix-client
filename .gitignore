@@ -88,3 +88,7 @@ Thumbs.db
 .claude/settings.local.json
 .angular
 .env
+
+# Playwright run artifacts (created by any local e2e run; the reporters write here)
+test-results/
+playwright-report/

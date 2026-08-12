@@ -11,7 +11,7 @@ Libraries are imported through `@trinity/*` path aliases declared in
 never by relative path across a library boundary. Imports _within_ a library stay relative.
 
 `libs/` itself has seven entries. Three are layer parents holding that layer's libraries:
-`data-access/` (12), `feature/` (5) and `util/` (1). `spartan/` (17) groups the Helm components and
+`data-access/` (12), `feature/` (5) and `util/` (1). `kit/` (18) groups the vendored kit and
 the overlay adapters. The remaining three are single libraries sitting directly under `libs/`:
 `platform-native`, `testing` and `ui`.
 
@@ -107,41 +107,41 @@ into another chunk.
 Presentational only. `type:ui` may not depend on `type:data-access`, so a component here can never
 reach a service.
 
-| Library                | Alias                   | Tags                                           | Purpose                                                                                                                                                                                                                                                             |
-| ---------------------- | ----------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/ui`              | `@trinity/ui`           | `type:ui`, `scope:shared`, `ui:wrapper`        | Trinity's own presentational components (`trn-avatar`, banner, page header, media bubble, message toolbar), the `AVATAR_RESOLVER` and `ENCRYPTION_DIALOG_COMPONENTS` tokens, `EncryptionDialogService`, and the `runWithBusy`, media-query and internal-URL helpers |
-| `libs/spartan/icon`    | `@trinity/helm/icon`    | `type:ui`, `scope:shared`, `ui:vendor-wrapper` | Trinity-authored: `<trn-icon>` over a closed `TrnIconName` union of the 82 icons in use, the single `TRN_ICONS` vendor map, and `provideTrnIcons()` — the only importer of `@ng-icons` outside the generated kit                                                    |
-| `libs/spartan/overlay` | `@trinity/helm/overlay` | `type:ui`, `scope:shared`, `ui:vendor-wrapper` | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus a re-export of CDK's `DialogRef` so modalled components can close themselves without importing `@angular/cdk`                 |
+| Library            | Alias                  | Tags                                           | Purpose                                                                                                                                                                                                                                                             |
+| ------------------ | ---------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs/ui`          | `@trinity/ui`          | `type:ui`, `scope:shared`, `ui:wrapper`        | Trinity's own presentational components (`trn-avatar`, banner, page header, media bubble, message toolbar), the `AVATAR_RESOLVER` and `ENCRYPTION_DIALOG_COMPONENTS` tokens, `EncryptionDialogService`, and the `runWithBusy`, media-query and internal-URL helpers |
+| `libs/kit/icon`    | `@trinity/kit/icon`    | `type:ui`, `scope:shared`, `ui:vendor-wrapper` | Trinity-authored: `<trn-icon>` over a closed `TrnIconName` union of the 82 icons in use, the single `TRN_ICONS` vendor map, and `provideTrnIcons()` — the only importer of `@ng-icons` outside the generated kit                                                    |
+| `libs/kit/overlay` | `@trinity/kit/overlay` | `type:ui`, `scope:shared`, `ui:vendor-wrapper` | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus a re-export of CDK's `DialogRef` so modalled components can close themselves without importing `@angular/cdk`                 |
 
-The remaining sixteen libraries under `libs/spartan/` are `@spartan-ng/cli`-generated Helm
-components, all tagged `type:ui`, `scope:shared`, `ui:vendor-wrapper`, all with the `hlm`
+The remaining sixteen libraries under `libs/kit/` are `@spartan-ng/cli`-generated
+components, all tagged `type:ui`, `scope:shared`, `ui:vendor-wrapper`, all with the `trn`
 selector prefix:
 
-| Directory                    | Alias                         |
-| ---------------------------- | ----------------------------- |
-| `libs/spartan/avatar`        | `@trinity/helm/avatar`        |
-| `libs/spartan/badge`         | `@trinity/helm/badge`         |
-| `libs/spartan/button`        | `@trinity/helm/button`        |
-| `libs/spartan/card`          | `@trinity/helm/card`          |
-| `libs/spartan/checkbox`      | `@trinity/helm/checkbox`      |
-| `libs/spartan/dropdown-menu` | `@trinity/helm/dropdown-menu` |
-| `libs/spartan/input`         | `@trinity/helm/input`         |
-| `libs/spartan/label`         | `@trinity/helm/label`         |
-| `libs/spartan/progress`      | `@trinity/helm/progress`      |
-| `libs/spartan/radio-group`   | `@trinity/helm/radio-group`   |
-| `libs/spartan/select`        | `@trinity/helm/select`        |
-| `libs/spartan/sonner`        | `@trinity/helm/sonner`        |
-| `libs/spartan/spinner`       | `@trinity/helm/spinner`       |
-| `libs/spartan/textarea`      | `@trinity/helm/textarea`      |
-| `libs/spartan/tooltip`       | `@trinity/helm/tooltip`       |
-| `libs/spartan/utils`         | `@trinity/helm/utils`         |
+| Directory                | Alias                        |
+| ------------------------ | ---------------------------- |
+| `libs/kit/avatar`        | `@trinity/kit/avatar`        |
+| `libs/kit/badge`         | `@trinity/kit/badge`         |
+| `libs/kit/button`        | `@trinity/kit/button`        |
+| `libs/kit/card`          | `@trinity/kit/card`          |
+| `libs/kit/checkbox`      | `@trinity/kit/checkbox`      |
+| `libs/kit/dropdown-menu` | `@trinity/kit/dropdown-menu` |
+| `libs/kit/input`         | `@trinity/kit/input`         |
+| `libs/kit/label`         | `@trinity/kit/label`         |
+| `libs/kit/progress`      | `@trinity/kit/progress`      |
+| `libs/kit/radio-group`   | `@trinity/kit/radio-group`   |
+| `libs/kit/select`        | `@trinity/kit/select`        |
+| `libs/kit/sonner`        | `@trinity/kit/sonner`        |
+| `libs/kit/spinner`       | `@trinity/kit/spinner`       |
+| `libs/kit/textarea`      | `@trinity/kit/textarea`      |
+| `libs/kit/tooltip`       | `@trinity/kit/tooltip`       |
+| `libs/kit/utils`         | `@trinity/kit/utils`         |
 
 These are the widest case of the three-way naming split described above: the directory is
-`libs/spartan/*`, the alias namespace is `@trinity/helm/*`, and the Nx project name is the bare
-component name. The button library lives at `libs/spartan/button`, is imported as
-`@trinity/helm/button`, and is built with `nx build button`.
+`libs/kit/*`, the alias namespace is `@trinity/kit/*`, and the Nx project name is the bare
+component name. The button library lives at `libs/kit/button`, is imported as
+`@trinity/kit/button`, and is built with `nx build button`.
 
-`libs/spartan/overlay` is the exception in that group — it is hand-written Trinity code with the
+`libs/kit/overlay` is the exception in that group — it is hand-written Trinity code with the
 `trn` prefix and no ng-package, not generated Helm. Regenerating or adding Helm components goes
 through the CLI; see [UI and theming](ui-and-theming.md).
 
@@ -161,17 +161,17 @@ drags along.
 
 ## Libraries are not buildable
 
-None of the 21 libraries outside `libs/spartan/` has a `build` target, and neither does
-`libs/spartan/overlay`. There is no intermediate compilation step: the application build
+None of the 21 libraries outside `libs/kit/` has a `build` target, and neither does
+`libs/kit/overlay`. There is no intermediate compilation step: the application build
 (`@angular/build:application`) compiles library sources directly, resolved through the tsconfig
 path aliases. That is what makes a cross-library change a one-step edit rather than a
 build-and-consume cycle.
 
 The sixteen generated Helm libraries do carry an `@nx/angular:ng-packagr-lite` build target from
-the spartan generator, emitting to `dist/libs/spartan/<name>`. The application does not consume
+the spartan generator, emitting to `dist/libs/kit/<name>`. The application does not consume
 those outputs.
 
-Every library except `libs/testing` and the sixteen generated Helm ones has a `test` target, wired
+Every library except `libs/testing` and the sixteen generated kit ones has a `test` target, wired
 through `nx:run-commands` running `vitest run` with the project directory as `cwd` — which is why
 arguments to a single test run have to be forwarded after `--`. `lint` and `e2e` targets are not
 declared in any `project.json` at all; they are inferred by the `@nx/eslint` and `@nx/playwright`

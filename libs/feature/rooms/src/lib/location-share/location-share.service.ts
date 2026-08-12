@@ -7,7 +7,7 @@ import {
   throwError,
   timeout,
 } from 'rxjs';
-import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/kit/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   GeolocationService,

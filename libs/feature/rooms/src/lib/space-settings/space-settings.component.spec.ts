@@ -1,5 +1,5 @@
 import { render } from '@trinity/testing';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { DialogRef, TrnToastService } from '@trinity/kit/overlay';
 import {
   RoomAliasesService,
   RoomModerationService,

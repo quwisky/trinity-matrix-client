@@ -4,7 +4,7 @@
       type="button"
       class="toolbar__button"
       [disabled]="formatDisabled()"
-      [hlmTooltip]="entry.label"
+      [trnTooltip]="entry.label"
       [attr.aria-label]="entry.label"
       [attr.data-testid]="'format-' + entry.action"
       (click)="format.emit(entry.action)"
@@ -19,11 +19,11 @@
   <button
     type="button"
     class="toolbar__button"
-    [hlmDropdownMenuTrigger]="moreMenu"
+    [trnDropdownMenuTrigger]="moreMenu"
     side="top"
     align="start"
     [disabled]="formatDisabled()"
-    hlmTooltip="More formatting"
+    trnTooltip="More formatting"
     aria-label="More formatting"
     data-testid="format-more"
   >
@@ -31,10 +31,10 @@
   </button>
 
   <ng-template #moreMenu>
-    <div hlmDropdownMenu aria-label="More formatting">
+    <div trnDropdownMenu aria-label="More formatting">
       @for (entry of overflow(); track entry.action) {
         <button
-          hlmDropdownMenuItem
+          trnDropdownMenuItem
           class="toolbar__menu-item"
           (triggered)="format.emit(entry.action)"
           [attr.data-testid]="'format-' + entry.action"
@@ -55,7 +55,7 @@
     class="toolbar__button"
     [class.toolbar__button--on]="previewing()"
     [attr.aria-pressed]="previewing()"
-    [hlmTooltip]="previewing() ? 'Back to writing' : 'Preview'"
+    [trnTooltip]="previewing() ? 'Back to writing' : 'Preview'"
     [attr.aria-label]="previewing() ? 'Back to writing' : 'Preview'"
     data-testid="composer-preview-toggle"
     (click)="togglePreview.emit()"

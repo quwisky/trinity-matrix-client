@@ -2,7 +2,7 @@
   <h2 class="add-to-space__title">Add rooms to {{ spaceName() }}</h2>
 
   <input
-    hlmInput
+    trnInput
     class="w-full"
     [formField]="search.query"
     type="search"
@@ -16,7 +16,7 @@
     @for (candidate of visible(); track candidate.id) {
       <li class="add-to-space__row">
         <label class="add-to-space__label">
-          <hlm-checkbox
+          <trn-checkbox
             [checked]="isSelected(candidate.id)"
             (checkedChange)="toggle(candidate.id, $event)"
             [attr.data-testid]="'add-to-space-pick-' + candidate.id"
@@ -49,7 +49,7 @@
 
   <div class="add-to-space__actions">
     <button
-      hlmBtn
+      trnBtn
       type="button"
       variant="ghost"
       (click)="close()"
@@ -58,7 +58,7 @@
       Cancel
     </button>
     <button
-      hlmBtn
+      trnBtn
       type="button"
       [disabled]="adding() || selectedCount() === 0"
       (click)="add()"

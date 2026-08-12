@@ -2,8 +2,8 @@
 
 Trinity is an Nx **integrated** monorepo: one deployable application, `apps/trinity`, and 38
 libraries under `libs/`, grouped by layer into `libs/data-access/`, `libs/feature/` and
-`libs/util/`, alongside `libs/platform-native`, `libs/ui`, `libs/testing` and the `libs/spartan/`
-Helm components. Web, iOS, Android and desktop are all the same compiled bundle wrapped
+`libs/util/`, alongside `libs/platform-native`, `libs/ui`, `libs/testing` and the `libs/kit/`
+kit components. Web, iOS, Android and desktop are all the same compiled bundle wrapped
 differently, so there is no per-platform source tree — platform differences are branches inside
 `libs/platform-native`, not forks of the app.
 
@@ -54,7 +54,7 @@ declared once at `eslint.config.mjs`.
 | `type:util`        | `util`                                             | Pure, DI-free code. `libs/util/matrix` may depend on npm packages and nothing else           |
 
 A third axis, `ui:*`, separates the two halves of the UI tier so third-party UI can be
-contained: `libs/ui` is `ui:wrapper`, the vendored Helm kit is `ui:vendor-wrapper`, and
+contained: `libs/ui` is `ui:wrapper`, the vendored kit is `ui:vendor-wrapper`, and
 `bannedExternalImports` keeps `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and
 `@ctrl/ngx-emoji-mart` out of `data-access`, `util`, `platform` and `app` entirely, and the
 first three out of `feature` as well (`@ctrl/ngx-emoji-mart` is still staged there, pending
@@ -77,7 +77,7 @@ both.
 | `scope:matrix` | `scope:matrix`, `scope:shared` |
 | `scope:shared` | `scope:shared` only            |
 
-`scope:shared` is the kernel: `util-matrix`, `platform-native`, `ui`, the Helm libraries — and,
+`scope:shared` is the kernel: `util-matrix`, `platform-native`, `ui`, the kit libraries — and,
 deliberately, `data-access-matrix-client`. Tagging the client and session foundation as shared
 rather than matrix is what structurally prevents it from importing a domain library. `RoomsService`
 depends on `MatrixClientService`; `MatrixClientService` can never depend on `RoomsService`, and
@@ -240,4 +240,4 @@ WASM as bundled assets and must not layer a second cache over them.
 - [State and reactivity](state-and-reactivity.md) — the projection idiom, `projectFromClient`, and
   the traps around it.
 - [Matrix and encryption](matrix-and-encryption.md) — the client registry, sessions, and E2EE.
-- [UI and theming](ui-and-theming.md) — Helm, Tailwind and the design tokens.
+- [UI and theming](ui-and-theming.md) — the kit, Tailwind and the design tokens.

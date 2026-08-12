@@ -1,4 +1,4 @@
-import type { TrnAlertService } from '@trinity/helm/overlay';
+import type { TrnAlertService } from '@trinity/kit/overlay';
 
 /**
  * The word the user has to type before every setting goes back to its default.

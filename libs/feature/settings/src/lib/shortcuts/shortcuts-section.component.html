@@ -7,7 +7,7 @@
     </h2>
     @if (hasCustomBindings()) {
       <button
-        hlmBtn
+        trnBtn
         variant="ghost"
         size="sm"
         (click)="resetAll()"
@@ -54,7 +54,7 @@
             >
               Press a combination… (Esc to cancel)
             </span>
-            <button hlmBtn variant="ghost" size="sm" (click)="cancelCapture()">
+            <button trnBtn variant="ghost" size="sm" (click)="cancelCapture()">
               Cancel
             </button>
           } @else {
@@ -88,7 +88,7 @@
 
             @if (row.rebindable) {
               <button
-                hlmBtn
+                trnBtn
                 variant="outline"
                 size="sm"
                 (click)="edit(row)"
@@ -98,7 +98,7 @@
               </button>
               @if (!row.isDefault) {
                 <button
-                  hlmBtn
+                  trnBtn
                   variant="ghost"
                   size="sm"
                   (click)="reset(row.id)"

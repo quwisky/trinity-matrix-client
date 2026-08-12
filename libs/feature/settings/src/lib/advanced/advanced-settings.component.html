@@ -27,17 +27,17 @@
     @if (editor(); as loaded) {
       <!-- Not a <label for>: the editor's own text area is built by CodeMirror and has no id
            to point at, so it carries the accessible name itself (aria-label). -->
-      <span hlmLabel class="block">Settings JSON</span>
+      <span trnLabel class="block">Settings JSON</span>
       <ng-container
         [trnConfigEditorOutlet]="loaded"
         [value]="editorValue()"
         (edited)="onEditText($event)"
       />
     } @else {
-      <label hlmLabel for="advanced-config-json">Settings JSON</label>
+      <label trnLabel for="advanced-config-json">Settings JSON</label>
       <textarea
         id="advanced-config-json"
-        hlmTextarea
+        trnTextarea
         spellcheck="false"
         autocapitalize="none"
         autocomplete="off"
@@ -63,7 +63,7 @@
 
   <div class="flex flex-wrap items-center gap-2 px-4 py-2">
     <button
-      hlmBtn
+      trnBtn
       variant="outline"
       size="sm"
       (click)="copy()"
@@ -73,7 +73,7 @@
     </button>
     @if (canExportFile) {
       <button
-        hlmBtn
+        trnBtn
         variant="outline"
         size="sm"
         (click)="exportFile()"
@@ -84,7 +84,7 @@
     }
     @if (canEdit) {
       <button
-        hlmBtn
+        trnBtn
         variant="outline"
         size="sm"
         (click)="pickFile()"
@@ -93,7 +93,7 @@
         Import from file
       </button>
       <button
-        hlmBtn
+        trnBtn
         variant="outline"
         size="sm"
         (click)="importClipboard()"
@@ -103,7 +103,7 @@
       </button>
       @if (edited()) {
         <button
-          hlmBtn
+          trnBtn
           variant="ghost"
           size="sm"
           (click)="discard()"
@@ -126,7 +126,7 @@
   @if (canEdit) {
     <div class="flex flex-wrap items-center gap-2 px-4 py-2">
       <button
-        hlmBtn
+        trnBtn
         size="sm"
         [disabled]="applying()"
         (click)="review()"
@@ -200,7 +200,7 @@
         </ul>
         <div class="flex flex-wrap items-center gap-2 pt-2">
           <button
-            hlmBtn
+            trnBtn
             size="sm"
             [disabled]="applying()"
             (click)="confirmApply()"
@@ -210,7 +210,7 @@
             {{ changeLines().length === 1 ? 'change' : 'changes' }}
           </button>
           <button
-            hlmBtn
+            trnBtn
             variant="ghost"
             size="sm"
             [disabled]="applying()"
@@ -256,7 +256,7 @@
 
   <div class="border-t border-solid border-border px-4 py-3">
     <button
-      hlmBtn
+      trnBtn
       variant="destructive"
       size="sm"
       [disabled]="resetting()"

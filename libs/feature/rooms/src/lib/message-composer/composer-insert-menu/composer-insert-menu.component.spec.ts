@@ -7,7 +7,7 @@ import { ComposerInsertMenuComponent } from './composer-insert-menu.component';
 function trayItems(): HTMLButtonElement[] {
   return [
     ...document.querySelectorAll<HTMLButtonElement>(
-      '[hlmdropdownmenuitem][data-testid^=insert-]',
+      '[trndropdownmenuitem][data-testid^=insert-]',
     ),
   ];
 }
@@ -154,7 +154,7 @@ describe('ComposerInsertMenuComponent', () => {
       inputs: { hasMenu: true, gifDownloading: true },
     });
 
-    expect(container.querySelector('hlm-spinner')).not.toBeNull();
+    expect(container.querySelector('trn-spinner')).not.toBeNull();
   });
 
   it('emits the action each tray item stands for', async () => {

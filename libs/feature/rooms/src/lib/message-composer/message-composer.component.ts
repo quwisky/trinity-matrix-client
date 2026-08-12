@@ -13,8 +13,8 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { HlmTextarea } from '@trinity/helm/textarea';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTextarea } from '@trinity/kit/textarea';
+import { TrnTooltip } from '@trinity/kit/tooltip';
 import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
 import { EmojiService, type EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import {
@@ -47,7 +47,7 @@ import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { ComposerAttachmentsService } from './composer-attachments.service';
 import { EmojiAutocomplete } from './emoji-autocomplete';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/kit/icon';
 import {
   MentionAutocomplete,
   type MentionMember,
@@ -95,8 +95,8 @@ const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconComponent,
-    HlmTooltip,
-    HlmTextarea,
+    TrnTooltip,
+    TrnTextarea,
     PickerComponent,
     GifPickerComponent,
     ComposerToolbarComponent,

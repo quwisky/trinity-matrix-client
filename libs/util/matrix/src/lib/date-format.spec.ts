@@ -334,4 +334,46 @@ describe('type guards', () => {
     expect(DEFAULT_TIME_FORMAT).toBe('system');
     expect(DEFAULT_DATE_FORMAT).toBe('system');
   });
+
+  describe('locale tags Intl will not accept', () => {
+    // `navigator.languages` is not guaranteed to be BCP 47. A box with `LANG=C.UTF-8` hands
+    // Chromium `en-US@posix` — a valid POSIX locale and an invalid language tag — and
+    // `new Intl.DateTimeFormat` throws RangeError on it. Thrown from a template expression
+    // that blanks the whole message row, so the reader loses the timeline rather than the
+    // timestamp. Five of the eight e2e harnesses died on exactly this.
+    const posix = ['en-US@posix'];
+
+    it('formats a time instead of throwing', () => {
+      expect(() =>
+        formatClockTime(Date.UTC(2026, 0, 2, 15, 4), {
+          locales: posix,
+          time: 'system',
+          date: 'system',
+        }),
+      ).not.toThrow();
+    });
+
+    it('keeps the usable tags in a mixed chain', () => {
+      // The bad tag must not discard the good ones behind it — a per-tag filter, not one
+      // catch around the whole construction.
+      const mixed = formatClockTime(Date.UTC(2026, 0, 2, 15, 4), {
+        locales: ['en-US@posix', 'en-GB'],
+        time: 'h24',
+        date: 'system',
+      });
+      // A 24-hour clock, which only `en-GB` can produce here — the hour itself moves with
+      // the runner's timezone, so the shape is what proves the good tag survived.
+      expect(mixed).toMatch(/^\d{2}:04$/);
+    });
+
+    it('formats a day separator instead of throwing', () => {
+      expect(() =>
+        formatDaySeparator(
+          Date.UTC(2026, 0, 2),
+          { locales: posix, time: 'system', date: 'system' },
+          false,
+        ),
+      ).not.toThrow();
+    });
+  });
 });

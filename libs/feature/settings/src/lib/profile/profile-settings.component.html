@@ -17,7 +17,7 @@
         class="absolute -right-1 -bottom-1 grid size-7 place-items-center rounded-full border-2 border-solid border-background bg-primary text-sm text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
         [disabled]="savingAvatar()"
         (click)="pickAvatar()"
-        hlmTooltip="Change profile picture"
+        trnTooltip="Change profile picture"
         [attr.aria-label]="
           savingAvatar()
             ? 'Uploading profile picture'
@@ -47,10 +47,10 @@
     class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
   >
     <div class="min-w-0 flex-1">
-      <label hlmLabel for="display-name">Display name</label>
+      <label trnLabel for="display-name">Display name</label>
       <input
         id="display-name"
-        hlmInput
+        trnInput
         class="mt-1"
         [value]="nameDraft()"
         (input)="onNameInput($event)"
@@ -58,7 +58,7 @@
       />
     </div>
     <button
-      hlmBtn
+      trnBtn
       size="sm"
       class="ml-auto shrink-0"
       [disabled]="savingName() || !nameDirty()"

@@ -20,13 +20,13 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/kit/button';
 import {
-  HlmDropdownMenu,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+  TrnDropdownMenu,
+  TrnDropdownMenuItem,
+  TrnDropdownMenuTrigger,
+} from '@trinity/kit/dropdown-menu';
+import { TrnTooltip } from '@trinity/kit/tooltip';
 import { CryptoService } from '@trinity/data-access/crypto';
 import {
   InvitesService,
@@ -76,7 +76,7 @@ import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/kit/icon';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -108,11 +108,11 @@ import { TrnIconComponent } from '@trinity/helm/icon';
   styleUrls: ['rooms.page.scss'],
   imports: [
     PageHeaderComponent,
-    HlmButton,
-    HlmDropdownMenu,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuTrigger,
-    HlmTooltip,
+    TrnButton,
+    TrnDropdownMenu,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuTrigger,
+    TrnTooltip,
     TrnIconComponent,
     AvatarComponent,
     ServerRailComponent,

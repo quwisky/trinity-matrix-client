@@ -10,9 +10,9 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
-import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnButton } from '@trinity/kit/button';
+import { TrnInput } from '@trinity/kit/input';
+import { DialogRef, TrnToastService } from '@trinity/kit/overlay';
 import { JoinRule, RoomSettingsService } from '@trinity/data-access/rooms';
 import { initialOf } from '@trinity/util/matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
@@ -63,8 +63,8 @@ const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
   imports: [
     FormField,
     FormRoot,
-    HlmButton,
-    HlmInput,
+    TrnButton,
+    TrnInput,
     AvatarFieldComponent,
     BannedMembersComponent,
     RoomAliasesComponent,

@@ -3,7 +3,7 @@ import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of, throwError, Subject } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { DialogRef, TrnToastService } from '@trinity/kit/overlay';
 import {
   PublicRoomsService,
   type PublicRoomsPage,

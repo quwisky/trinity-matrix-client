@@ -7,8 +7,8 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
-import { HlmButton } from '@trinity/helm/button';
+import { DialogRef } from '@trinity/kit/overlay';
+import { TrnButton } from '@trinity/kit/button';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/ui';
 import { type ReactionDetail } from '@trinity/util/matrix';
@@ -26,7 +26,7 @@ import { type ReactionDetail } from '@trinity/util/matrix';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './reactions-dialog.component.html',
   styleUrl: './reactions-dialog.component.scss',
-  imports: [AvatarComponent, HlmButton],
+  imports: [AvatarComponent, TrnButton],
 })
 export class ReactionsDialogComponent implements OnInit {
   private readonly timeline = inject(TimelineService);

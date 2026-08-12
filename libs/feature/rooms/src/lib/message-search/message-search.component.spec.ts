@@ -1,6 +1,6 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { DialogRef, TrnDialogService } from '@trinity/helm/overlay';
+import { DialogRef, TrnDialogService } from '@trinity/kit/overlay';
 import { render } from '@trinity/testing';
 import {
   SearchService,

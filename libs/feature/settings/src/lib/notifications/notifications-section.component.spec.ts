@@ -4,14 +4,14 @@ import { MockProvider } from 'ng-mocks';
 import { signal, type DebugElement } from '@angular/core';
 import { NEVER, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckbox } from '@trinity/kit/checkbox';
 import {
   KeywordRulesService,
   NotificationSoundService,
   PushRulesService,
   type PushRuleToggle,
 } from '@trinity/data-access/notifications';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/kit/overlay';
 import { NotificationsSectionComponent } from './notifications-section.component';
 
 const TOGGLES = [
@@ -66,8 +66,8 @@ function ruleCheckboxes(fixture: {
 
 function checkboxes(fixture: {
   debugElement: DebugElement;
-}): { componentInstance: HlmCheckbox }[] {
-  return fixture.debugElement.queryAll(By.directive(HlmCheckbox));
+}): { componentInstance: TrnCheckbox }[] {
+  return fixture.debugElement.queryAll(By.directive(TrnCheckbox));
 }
 
 describe('NotificationsSectionComponent', () => {

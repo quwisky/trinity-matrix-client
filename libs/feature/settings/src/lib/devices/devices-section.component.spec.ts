@@ -5,7 +5,7 @@ import {
   EncryptionDialogService,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
-import { TrnAlertService, TrnDialogService } from '@trinity/helm/overlay';
+import { TrnAlertService, TrnDialogService } from '@trinity/kit/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';

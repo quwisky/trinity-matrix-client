@@ -1,11 +1,11 @@
 @if (uploadProgress() !== null) {
   <div class="composer__upload" data-testid="upload-progress">
-    <hlm-progress
+    <trn-progress
       [value]="uploadDeterminate() ? (uploadProgress() ?? 0) * 100 : null"
       aria-label="Uploading attachment"
     >
-      <hlm-progress-indicator />
-    </hlm-progress>
+      <trn-progress-indicator />
+    </trn-progress>
     <span class="composer__upload-label" aria-live="polite">
       Uploading…{{ uploadDeterminate() ? ' ' + uploadPercent() + '%' : '' }}
     </span>

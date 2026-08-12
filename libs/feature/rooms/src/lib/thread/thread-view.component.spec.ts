@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { DialogRef } from '@trinity/helm/overlay';
+import { DialogRef } from '@trinity/kit/overlay';
 import { render } from '@trinity/testing';
 import {
   ThreadsService,

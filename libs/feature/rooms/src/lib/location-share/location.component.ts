@@ -5,7 +5,7 @@ import {
   input,
 } from '@angular/core';
 import { type LocationView } from '@trinity/util/matrix';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/kit/icon';
 
 /**
  * A shared-location (`m.location`) card: a pin, the coordinates, and an "Open in maps"

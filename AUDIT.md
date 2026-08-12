@@ -454,7 +454,7 @@ app most. This is live for every production web/PWA user (`main.ts:171-175`).
 
 **Fix.** In the same `if (this.swUpdate.isEnabled)` block, subscribe to
 `versionUpdates.pipe(filter((e): e is VersionReadyEvent => e.type === 'VERSION_READY'))` and surface a
-toast (`HlmToaster` is already mounted here) offering reload via
+toast (`TrnToaster` is already mounted here) offering reload via
 `activateUpdate().then(() => location.reload())`. Add a periodic `checkForUpdate()` on an interval or on
 `visibilitychange` so a long-lived tab notices a deploy without a navigation.
 
@@ -668,7 +668,7 @@ symmetric everywhere, always against the client they attached to, and **no liste
 **Code quality.** Zero `any` in 316 non-spec files — for a codebase wrapping matrix-js-sdk, that is
 rare. Strictness is set once at the root and not weakened by a single one of 45 per-project tsconfigs.
 SDK data is narrowed to `Record<string, unknown>` and validated rather than asserted. Every component
-outside generated `libs/spartan` is `OnPush`, no exceptions. `saveFields` anticipates two traps at once
+outside generated `libs/kit` is `OnPush`, no exceptions. `saveFields` anticipates two traps at once
 (per-write `catchError` so one rejection cannot cancel siblings; an empty-list special case because
 `forkJoin([])` completes without emitting and would strand the `saving` flag) and writes both down at
 the site. Deliberate swallows are labelled with their reason, so they read as decisions.
@@ -724,5 +724,5 @@ both severity adjustments were then independently re-checked before this report 
 - **Bundle figures** come from the local `www/` output (gitignored build artefact), which may lag the
   tree by a commit or two. M11 rests on the ratio, not the exact byte count.
 - **Not audited:** the 87 Playwright specs' individual logic (only their shape and discipline), the
-  Android/iOS native projects beyond manifest and plist, and `libs/spartan/*` (generated, exempt by
+  Android/iOS native projects beyond manifest and plist, and `libs/kit/*` (generated, exempt by
   repo convention).

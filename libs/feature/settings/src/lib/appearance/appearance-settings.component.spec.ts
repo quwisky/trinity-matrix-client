@@ -19,7 +19,7 @@ import {
   type ThemePreference,
 } from '@trinity/platform-native';
 import { By } from '@angular/platform-browser';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckbox } from '@trinity/kit/checkbox';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   SpaceRoomOrderService,
@@ -129,7 +129,7 @@ describe('AppearanceSettingsComponent', () => {
     const { container } = await renderPage();
 
     const labelled = [
-      container.querySelector('hlm-radio-group'),
+      container.querySelector('trn-radio-group'),
       container.querySelector('[data-testid=palette-select]'),
       container.querySelector('[data-testid=text-scale-select]'),
       container.querySelector('[data-testid=code-scale-select]'),
@@ -188,7 +188,7 @@ describe('AppearanceSettingsComponent', () => {
 
       for (const testid of ['time-format-select', 'date-format-select']) {
         const select = container.querySelector(`[data-testid=${testid}]`);
-        expect(select?.tagName.toLowerCase(), testid).toBe('hlm-select');
+        expect(select?.tagName.toLowerCase(), testid).toBe('trn-select');
         expect(select?.querySelector('button'), testid).not.toBeNull();
       }
     });
@@ -221,7 +221,7 @@ describe('AppearanceSettingsComponent', () => {
       expect(format.timeFormat()).toBe('h12');
     });
 
-    // hlm-select's valueChange is typed `string | null | undefined`, so the handlers guard
+    // trn-select's valueChange is typed `string | null | undefined`, so the handlers guard
     // rather than cast — a stray value must not become the app-wide format.
     it('ignores a value that is not one of the offered ids', async () => {
       const { fixture } = await renderPage();
@@ -250,7 +250,7 @@ describe('AppearanceSettingsComponent', () => {
     });
 
     it('shows the label on the collapsed trigger, not the stored id', async () => {
-      // hlm-select renders the trigger from the bound value rather than the chosen option's
+      // trn-select renders the trigger from the bound value rather than the chosen option's
       // markup, so without itemToString this control would read "recent".
       const { fixture } = await renderPage();
 
@@ -296,11 +296,11 @@ describe('AppearanceSettingsComponent', () => {
     // The option list renders in a CDK overlay only once opened (needs a real browser —
     // ResizeObserver/scrollIntoView are absent in jsdom), so the open→select round-trip
     // is covered in e2e (settings.spec.mts). Here: the control is present and is an
-    // hlm-select with a trigger button.
+    // trn-select with a trigger button.
     const { container } = await renderPage();
 
     const select = container.querySelector('[data-testid=palette-select]');
-    expect(select?.tagName.toLowerCase()).toBe('hlm-select');
+    expect(select?.tagName.toLowerCase()).toBe('trn-select');
     expect(select?.querySelector('button')).not.toBeNull();
   });
 
@@ -322,17 +322,17 @@ describe('AppearanceSettingsComponent', () => {
     expect(TestBed.inject(ThemeService).setPalette).not.toHaveBeenCalled();
   });
 
-  /** The `hlm-checkbox` inside the labelled toggle with the given testid. */
+  /** The `trn-checkbox` inside the labelled toggle with the given testid. */
   function checkboxFor(fixture: unknown, testid: string) {
     return (
       fixture as { debugElement: { queryAll: (p: unknown) => unknown[] } }
     ).debugElement
-      .queryAll(By.directive(HlmCheckbox))
+      .queryAll(By.directive(TrnCheckbox))
       .find((c) =>
         (c as { nativeElement: HTMLElement }).nativeElement.closest(
           `[data-testid=${testid}]`,
         ),
-      ) as { componentInstance: HlmCheckbox } | undefined;
+      ) as { componentInstance: TrnCheckbox } | undefined;
   }
 
   // Each switch is a separate binding, so a copy-paste slip (profile bound to

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogService } from '@trinity/kit/overlay';
 import { UserPickerComponent } from './user-picker.component';
 
 /** Heading / labels for a {@link UserPickerService.pick} presentation. */
