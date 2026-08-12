@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogService } from '@trinity/kit/overlay';
 import { ThreadViewComponent } from './thread-view.component';
 import { ThreadsListComponent } from './threads-list.component';
 

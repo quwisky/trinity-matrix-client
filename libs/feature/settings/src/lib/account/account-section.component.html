@@ -12,7 +12,7 @@
         Your password and sessions are managed by your identity provider.
       </p>
       <button
-        hlmBtn
+        trnBtn
         type="button"
         class="self-start"
         (click)="openAccountManagement()"
@@ -30,10 +30,10 @@
       <p class="text-13 text-muted-foreground">Change your account password.</p>
 
       <div class="flex flex-col gap-1.5">
-        <label hlmLabel for="current-password">Current password</label>
+        <label trnLabel for="current-password">Current password</label>
         <div class="relative">
           <input
-            hlmInput
+            trnInput
             id="current-password"
             [type]="revealed().currentPassword ? 'text' : 'password'"
             class="pr-10"
@@ -56,10 +56,10 @@
       </div>
 
       <div class="flex flex-col gap-1.5">
-        <label hlmLabel for="new-password">New password</label>
+        <label trnLabel for="new-password">New password</label>
         <div class="relative">
           <input
-            hlmInput
+            trnInput
             id="new-password"
             [type]="revealed().newPassword ? 'text' : 'password'"
             class="pr-10"
@@ -82,10 +82,10 @@
       </div>
 
       <div class="flex flex-col gap-1.5">
-        <label hlmLabel for="confirm-password">Confirm new password</label>
+        <label trnLabel for="confirm-password">Confirm new password</label>
         <div class="relative">
           <input
-            hlmInput
+            trnInput
             id="confirm-password"
             [type]="revealed().confirmPassword ? 'text' : 'password'"
             class="pr-10"
@@ -114,7 +114,7 @@
       }
 
       <button
-        hlmBtn
+        trnBtn
         type="submit"
         class="self-start"
         [disabled]="saving()"

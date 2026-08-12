@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { DialogRef } from '@trinity/helm/overlay';
+import { DialogRef } from '@trinity/kit/overlay';
 import { AccountScopeService } from '@trinity/data-access/rooms';
 import { AccountPickerComponent } from './account-picker.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -40,7 +40,7 @@ describe('AccountPickerComponent', () => {
     )!;
 
   // These two attributes are the contract multi-account.spec.mts asserts against the SUBMENU,
-  // where hlmDropdownMenuCheckbox supplies them for free. The dialog has to reproduce them or
+  // where trnDropdownMenuCheckbox supplies them for free. The dialog has to reproduce them or
   // the mobile path silently diverges from the desktop one.
   it('marks each row checked or unchecked, and locks the active account', async () => {
     const { container } = await renderPicker();

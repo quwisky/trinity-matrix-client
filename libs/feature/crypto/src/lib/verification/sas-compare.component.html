@@ -14,7 +14,7 @@
     role="status"
     aria-live="polite"
   >
-    <hlm-spinner />
+    <trn-spinner />
     <p class="hint">Waiting for the other device to confirm the emoji match…</p>
   </div>
 } @else {
@@ -24,7 +24,7 @@
 <div class="actions">
   @if (!confirmed()) {
     <button
-      hlmBtn
+      trnBtn
       class="w-full"
       data-testid="sas-match"
       [disabled]="busy()"
@@ -33,7 +33,7 @@
       They match
     </button>
     <button
-      hlmBtn
+      trnBtn
       class="w-full text-danger hover:text-danger"
       variant="outline"
       data-testid="sas-mismatch"
@@ -44,7 +44,7 @@
     </button>
   }
   <button
-    hlmBtn
+    trnBtn
     class="w-full"
     variant="ghost"
     [disabled]="busy()"

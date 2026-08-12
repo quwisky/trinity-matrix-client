@@ -1,4 +1,4 @@
-import type { TrnAlertService } from '@trinity/helm/overlay';
+import type { TrnAlertService } from '@trinity/kit/overlay';
 
 /**
  * Why leaving right now would cost something.

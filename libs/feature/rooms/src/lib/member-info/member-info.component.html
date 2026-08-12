@@ -20,7 +20,7 @@
   <div class="member-info__actions">
     @if (!isSelf()) {
       <button
-        hlmBtn
+        trnBtn
         class="w-full"
         (click)="message()"
         data-testid="member-info-message"
@@ -29,7 +29,7 @@
       </button>
     }
     <button
-      hlmBtn
+      trnBtn
       variant="ghost"
       class="w-full"
       (click)="copyId()"
@@ -40,7 +40,7 @@
 
     @if (!isSelf()) {
       <button
-        hlmBtn
+        trnBtn
         variant="ghost"
         class="w-full"
         (click)="verify()"
@@ -49,7 +49,7 @@
         Verify
       </button>
       <button
-        hlmBtn
+        trnBtn
         variant="ghost"
         class="w-full"
         (click)="toggleIgnore()"
@@ -64,7 +64,7 @@
         @if (canSetPower()) {
           @for (option of roleOptions(); track option.level) {
             <button
-              hlmBtn
+              trnBtn
               variant="outline"
               class="w-full"
               (click)="setRole(option)"
@@ -76,7 +76,7 @@
         }
         @if (canKick()) {
           <button
-            hlmBtn
+            trnBtn
             variant="outline"
             class="member-info__danger w-full"
             (click)="kick()"
@@ -87,7 +87,7 @@
         }
         @if (canBan()) {
           <button
-            hlmBtn
+            trnBtn
             variant="destructive"
             class="w-full"
             (click)="ban()"

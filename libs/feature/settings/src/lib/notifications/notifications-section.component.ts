@@ -8,8 +8,8 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnCheckbox } from '@trinity/kit/checkbox';
+import { TrnToastService } from '@trinity/kit/overlay';
 import {
   NotificationSoundService,
   PushRulesService,
@@ -28,7 +28,7 @@ import { PushGatewayBlockComponent } from './push-gateway-block.component';
   selector: 'trn-notifications-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './notifications-section.component.html',
-  imports: [HlmCheckbox, KeywordRulesBlockComponent, PushGatewayBlockComponent],
+  imports: [TrnCheckbox, KeywordRulesBlockComponent, PushGatewayBlockComponent],
 })
 export class NotificationsSectionComponent implements OnInit, OnDestroy {
   private readonly push = inject(PushRulesService);

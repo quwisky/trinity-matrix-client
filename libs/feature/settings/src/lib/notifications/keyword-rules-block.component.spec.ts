@@ -4,13 +4,13 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckbox } from '@trinity/kit/checkbox';
 import {
   KeywordRulesService,
   KeywordValidationError,
   type KeywordRule,
 } from '@trinity/data-access/notifications';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/kit/overlay';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 
 const LOUD: KeywordRule = {
@@ -88,8 +88,8 @@ const rows = (fixture: { nativeElement: HTMLElement }) =>
 /** The rendered checkbox instances, so a test asserts pixels rather than the model. */
 const checkboxes = (fixture: {
   debugElement: DebugElement;
-}): { componentInstance: HlmCheckbox }[] =>
-  fixture.debugElement.queryAll(By.directive(HlmCheckbox));
+}): { componentInstance: TrnCheckbox }[] =>
+  fixture.debugElement.queryAll(By.directive(TrnCheckbox));
 
 describe('KeywordRulesBlockComponent', () => {
   it('lists the account’s keywords', async () => {
@@ -303,7 +303,7 @@ describe('KeywordRulesBlockComponent', () => {
   });
 
   it('puts the RENDERED checkbox back when the write fails', async () => {
-    // The bug this exists for: HlmCheckbox flips itself on click and holds that in a
+    // The bug this exists for: TrnCheckbox flips itself on click and holds that in a
     // linkedSignal over its `checked` INPUT, which only recomputes when the input
     // changes. Re-reading the unchanged server value therefore cannot un-flip it — the
     // binding has to genuinely transition. Asserting the component's model instead of
@@ -357,7 +357,7 @@ describe('KeywordRulesBlockComponent', () => {
         .querySelector('[data-testid="keyword-remove"]')
         ?.getAttribute('aria-label'),
     ).toBe('Remove keyword oncall');
-    // HlmCheckbox nulls its own host aria-label by design and forwards an input to the
+    // TrnCheckbox nulls its own host aria-label by design and forwards an input to the
     // inner control, so the label is asserted wherever it actually lands in the row.
     expect(
       el.querySelector('[aria-label="Play a sound for oncall"]'),

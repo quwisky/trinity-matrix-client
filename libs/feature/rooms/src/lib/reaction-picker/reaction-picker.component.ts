@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';
 import { type EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
-import { DialogRef } from '@trinity/helm/overlay';
+import { DialogRef } from '@trinity/kit/overlay';
 import { ThemeService } from '@trinity/platform-native';
 
 /**

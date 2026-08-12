@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { type SwitcherSelection } from '@trinity/data-access/search';
-import { TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogService } from '@trinity/kit/overlay';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuickSwitcherComponent } from './quick-switcher.component';

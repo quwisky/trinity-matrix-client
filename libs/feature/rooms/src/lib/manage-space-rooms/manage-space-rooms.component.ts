@@ -10,9 +10,9 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { HlmButton } from '@trinity/helm/button';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnButton } from '@trinity/kit/button';
+import { TrnCheckbox } from '@trinity/kit/checkbox';
+import { DialogRef, TrnToastService } from '@trinity/kit/overlay';
 import {
   RoomsService,
   SpaceChildrenService,
@@ -21,7 +21,7 @@ import {
 } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util/matrix';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/kit/icon';
 
 /**
  * How long the write lock survives without an echo. Long enough for a healthy round trip
@@ -59,7 +59,7 @@ export interface ManagedChild {
 @Component({
   selector: 'trn-manage-space-rooms',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, HlmCheckbox, AvatarComponent, TrnIconComponent],
+  imports: [TrnButton, TrnCheckbox, AvatarComponent, TrnIconComponent],
   templateUrl: './manage-space-rooms.component.html',
   styleUrl: './manage-space-rooms.component.scss',
 })
@@ -110,7 +110,7 @@ export class ManageSpaceRoomsComponent {
    * `suggested` writes overlaid on the projected links, from the click until the echo.
    *
    * The one place this dialog is deliberately optimistic, and only because the checkbox
-   * gives it no choice. `HlmCheckbox.checked` is a `linkedSignal` over the `checked` input
+   * gives it no choice. `TrnCheckbox.checked` is a `linkedSignal` over the `checked` input
    * which its own click handler sets locally, so it re-derives only when that INPUT
    * changes value. A rejected write leaves the link at `suggested: false` — the same value
    * the input already had — so nothing re-derives and the box stays ticked for a change

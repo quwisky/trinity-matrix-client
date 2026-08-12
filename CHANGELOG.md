@@ -296,6 +296,15 @@ All notable changes to this project are documented here. The format is based on
   labels instead of unlabelled glyphs and **Leave space** is no longer one mis-tap from
   **Invite people**. Home is unchanged — it has room.
 
+### Changed
+
+- **Internal: the bundled UI kit is Trinity's own now.** The vendored spartan-ng components
+  were still named after the library they came from — `TrnButton`, `trnBtn`,
+  `@trinity/kit/*`, `libs/kit/`. They are `TrnButton`, `trnBtn`, `@trinity/kit/*` and
+  `libs/kit/` throughout. Nothing about the app changes; this only makes the boundary between
+  "our components" and "third-party components" legible, which is what the lint rules around
+  it depend on.
+
 ### Fixed
 
 - **Hints under text boxes are read out again.** Where a field had explanatory text beneath it —

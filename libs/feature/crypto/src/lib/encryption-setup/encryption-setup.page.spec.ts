@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { render, screen } from '@trinity/testing';
 import { CryptoService } from '@trinity/data-access/crypto';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { TrnAlertService } from '@trinity/kit/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';

@@ -7,7 +7,7 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { DialogRef } from '@trinity/helm/overlay';
+import { DialogRef } from '@trinity/kit/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   SearchService,
@@ -16,10 +16,10 @@ import {
 } from '@trinity/data-access/search';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
-import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmSpinner } from '@trinity/helm/spinner';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnButton } from '@trinity/kit/button';
+import { TrnInput } from '@trinity/kit/input';
+import { TrnSpinner } from '@trinity/kit/spinner';
+import { TrnIconComponent } from '@trinity/kit/icon';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
 interface HighlightPart {
@@ -53,7 +53,7 @@ interface HighlightPart {
 @Component({
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
+  imports: [TrnIconComponent, AvatarComponent, TrnSpinner, TrnButton, TrnInput],
   templateUrl: './message-search.component.html',
   styleUrl: './message-search.component.scss',
 })

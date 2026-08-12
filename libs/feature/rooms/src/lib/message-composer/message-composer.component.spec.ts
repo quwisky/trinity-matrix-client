@@ -17,7 +17,7 @@ import {
   type GifProviderId,
   type GifResult,
 } from '@trinity/data-access/gif';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/kit/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   MessageComposerComponent,
@@ -286,7 +286,7 @@ describe('MessageComposerComponent', () => {
     const wrapper = () =>
       container.querySelector('[data-testid=upload-progress]');
     const bar = () =>
-      container.querySelector('hlm-progress') as HTMLElement | null;
+      container.querySelector('trn-progress') as HTMLElement | null;
 
     // Idle: no progress UI.
     expect(wrapper()).toBeNull();
@@ -322,7 +322,7 @@ describe('MessageComposerComponent', () => {
       .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
       ?.click();
     await fixture.whenStable();
-    // hlmDropdownMenuItem reflects [disabled] as the data-disabled attribute.
+    // trnDropdownMenuItem reflects [disabled] as the data-disabled attribute.
     const disabled = (): string | null | undefined =>
       document
         .querySelector('[data-testid=insert-attach]')
@@ -1146,7 +1146,7 @@ describe('MessageComposerComponent', () => {
     // The `+` trigger swaps its icon for a spinner while a share (or GIF fetch) runs;
     // the tray's own Location item carries the disabled state.
     const trigger = container.querySelector('[data-testid=composer-insert]');
-    expect(trigger?.querySelector('hlm-spinner')).not.toBeNull();
+    expect(trigger?.querySelector('trn-spinner')).not.toBeNull();
   });
 
   describe('voice messages', () => {

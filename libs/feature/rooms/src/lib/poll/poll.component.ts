@@ -6,7 +6,7 @@ import {
   output,
 } from '@angular/core';
 import { type PollView } from '@trinity/util/matrix';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/kit/button';
 
 /**
  * Renders a poll (MSC3381): the question, each answer with its live tally and share
@@ -19,7 +19,7 @@ import { HlmButton } from '@trinity/helm/button';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './poll.component.html',
   styleUrl: './poll.component.scss',
-  imports: [HlmButton],
+  imports: [TrnButton],
 })
 export class PollComponent {
   readonly poll = input.required<PollView>();

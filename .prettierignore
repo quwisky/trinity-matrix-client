@@ -22,10 +22,18 @@ pnpm-lock.yaml
 CLAUDE.md
 skills-lock.json
 
-# Canonical @spartan-ng/cli-generated helm directives — leave them in the
-# generator's own class order so a re-sync doesn't fight prettier-plugin-tailwindcss.
-# (Only the generated hlm-*.ts; the hand-authored trn-* overlay adapters stay formatted.)
-libs/spartan/**/hlm-*.ts
+# Canonical @spartan-ng/cli-generated kit directives — leave them in the generator's own
+# class order so a re-sync doesn't fight prettier-plugin-tailwindcss.
+#
+# The negations below are load-bearing and fail SILENTLY if dropped. The old glob used the
+# generator's own file prefix as the discriminator — generated code carried it, hand-authored
+# code did not. #150 renamed both to `trn-*`, so that signal is gone and the hand-authored
+# libs have to be named explicitly instead.
+# Without them `pnpm format:check` does not fail — there is simply less to check, and the
+# adapters drift unnoticed.
+libs/kit/**/trn-*.ts
+!libs/kit/overlay/**/trn-*.ts
+!libs/kit/icon/**/trn-*.ts
 
 .pnpm-store/
 **/.pnpm-store/

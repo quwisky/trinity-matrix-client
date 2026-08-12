@@ -23,7 +23,7 @@
         }}</span>
 
         <label class="manage-rooms__suggested">
-          <hlm-checkbox
+          <trn-checkbox
             [checked]="child.suggested"
             [disabled]="writeLocked()"
             (checkedChange)="toggleSuggested(child.childId, $event)"
@@ -33,7 +33,7 @@
         </label>
 
         <button
-          hlmBtn
+          trnBtn
           type="button"
           variant="ghost"
           size="icon"
@@ -45,7 +45,7 @@
           <trn-icon name="chevron-up" />
         </button>
         <button
-          hlmBtn
+          trnBtn
           type="button"
           variant="ghost"
           size="icon"
@@ -64,7 +64,7 @@
 
   <div class="manage-rooms__actions">
     <button
-      hlmBtn
+      trnBtn
       type="button"
       (click)="close()"
       data-testid="manage-space-rooms-done"

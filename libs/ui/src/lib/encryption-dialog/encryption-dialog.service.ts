@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import type { Type } from '@angular/core';
-import { TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogService } from '@trinity/kit/overlay';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogKind,

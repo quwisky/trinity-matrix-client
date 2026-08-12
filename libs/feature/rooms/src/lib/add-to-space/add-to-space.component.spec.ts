@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { DialogRef, TrnToastService } from '@trinity/kit/overlay';
 import {
   RoomsService,
   SpaceChildrenService,

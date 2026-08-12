@@ -23,11 +23,11 @@ import {
   resolveInternalReturnTo,
   runWithBusy,
 } from '@trinity/ui';
-import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
-import { HlmSpinner } from '@trinity/helm/spinner';
-import { DialogRef, TrnAlertService } from '@trinity/helm/overlay';
+import { TrnButton } from '@trinity/kit/button';
+import { TrnInput } from '@trinity/kit/input';
+import { TrnLabel } from '@trinity/kit/label';
+import { TrnSpinner } from '@trinity/kit/spinner';
+import { DialogRef, TrnAlertService } from '@trinity/kit/overlay';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
   confirmLeaving,
@@ -56,10 +56,10 @@ import {
     NgTemplateOutlet,
     PageHeaderComponent,
     RecoveryKeySaveComponent,
-    HlmButton,
-    HlmInput,
-    HlmLabel,
-    HlmSpinner,
+    TrnButton,
+    TrnInput,
+    TrnLabel,
+    TrnSpinner,
   ],
 })
 export class EncryptionUnlockPage {

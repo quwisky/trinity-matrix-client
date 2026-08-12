@@ -4,14 +4,14 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { HlmButton } from '@trinity/helm/button';
-import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnButton } from '@trinity/kit/button';
+import { DialogRef, TrnToastService } from '@trinity/kit/overlay';
 
 /** Dialog that shows a message event's raw JSON ("view source"), with a copy action. */
 @Component({
   selector: 'trn-message-source',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton],
+  imports: [TrnButton],
   template: `
     <div
       class="flex max-h-[80vh] w-[min(90vw,40rem)] flex-col gap-3 rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
@@ -24,7 +24,7 @@ import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
         >{{ source() }}</pre>
       <div class="flex justify-end gap-2">
         <button
-          hlmBtn
+          trnBtn
           variant="outline"
           size="sm"
           (click)="copy()"
@@ -32,7 +32,7 @@ import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
         >
           Copy
         </button>
-        <button hlmBtn variant="ghost" size="sm" (click)="close()">
+        <button trnBtn variant="ghost" size="sm" (click)="close()">
           Close
         </button>
       </div>

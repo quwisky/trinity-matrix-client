@@ -9,7 +9,7 @@ import {
   AppRestartService,
   SessionStorageService,
 } from '@trinity/platform-native';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { TrnAlertService } from '@trinity/kit/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
@@ -368,7 +368,7 @@ describe('LoginPage', () => {
 
     it('does not use the Helm destructive variant, which would out-weigh signing in', async () => {
       // The fast canary for the one wrong edit this button attracts: reaching for
-      // `variant="destructive"`, the only thing in hlm-button that emits `bg-destructive`.
+      // `variant="destructive"`, the only thing in trn-button that emits `bg-destructive`.
       // It used to fail contrast on this card as well; the tint is pinned opaque now, so
       // what remains is weighting — a filled control reads as this screen's primary action,
       // and that is the sign-in button, not the escape hatch. Deliberately a NEGATIVE

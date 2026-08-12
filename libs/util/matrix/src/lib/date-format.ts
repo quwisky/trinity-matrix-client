@@ -234,7 +234,7 @@ export function formatDaySeparator(
 }
 
 // Both accept `undefined` as well as `null` so a caller can narrow the value it actually
-// holds. `hlm-select`'s valueChange is `string | null | undefined`, and narrowing a massaged
+// holds. `trn-select`'s valueChange is `string | null | undefined`, and narrowing a massaged
 // expression (`isTimeFormat(value ?? null)`) leaves the original binding un-narrowed — which
 // type-checks under vitest and fails only in the Angular build.
 export function isTimeFormat(

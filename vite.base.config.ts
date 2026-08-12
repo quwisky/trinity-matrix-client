@@ -21,7 +21,7 @@ function workspaceRootFrom(projectDir: string): string {
  * jsdom, `@trinity/*` alias resolution, and coverage. Each project's
  * `vite.config.ts` calls this with its own `__dirname`; the workspace root (and
  * therefore cacheDir / coverage output) is derived by walking up to nx.json, so
- * this works at any directory depth (libs/* and libs/spartan/* alike).
+ * this works at any directory depth (libs/* and libs/kit/* alike).
  * Per-project extras (e.g. `passWithNoTests`) go in `overrides`.
  */
 export function createVitestConfig(

@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { type SwitcherSelection } from '@trinity/data-access/search';
-import { TrnDialogService } from '@trinity/helm/overlay';
+import { TrnDialogService } from '@trinity/kit/overlay';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 
 /**

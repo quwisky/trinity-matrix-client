@@ -41,7 +41,7 @@ const SETUP_TIMEOUT = 90_000;
 
 const log = (m) => console.log(`[verify] ${m}`);
 
-/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
+/** Fill a native `<input trnInput>` by its associated `<label for="…">`. */
 async function fillLabeledInput(page, label, value) {
   // Exact match: the password field's "Show password" reveal button (aria-label)
   // otherwise also matches a substring `getByLabel('Password')`, tripping strict mode.
@@ -166,7 +166,7 @@ async function assertWaitingOnPeer(scope) {
   if ((await waiting.getAttribute('aria-live')) !== 'polite') {
     throw new Error('the waiting status is not an aria-live region');
   }
-  if ((await waiting.locator('hlm-spinner').count()) !== 1) {
+  if ((await waiting.locator('trn-spinner').count()) !== 1) {
     throw new Error('no spinner inside the waiting status');
   }
   const names = await emojiNames(scope);

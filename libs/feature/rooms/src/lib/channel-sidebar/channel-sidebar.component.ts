@@ -8,18 +8,18 @@ import {
   output,
 } from '@angular/core';
 import {
-  HlmDropdownMenu,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuItemSubIndicator,
-  HlmDropdownMenuLabel,
-  HlmDropdownMenuRadio,
-  HlmDropdownMenuRadioIndicator,
-  HlmDropdownMenuSeparator,
-  HlmDropdownMenuSub,
-  HlmDropdownMenuSubTrigger,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
-import { HlmInput } from '@trinity/helm/input';
+  TrnDropdownMenu,
+  TrnDropdownMenuItem,
+  TrnDropdownMenuItemSubIndicator,
+  TrnDropdownMenuLabel,
+  TrnDropdownMenuRadio,
+  TrnDropdownMenuRadioIndicator,
+  TrnDropdownMenuSeparator,
+  TrnDropdownMenuSub,
+  TrnDropdownMenuSubTrigger,
+  TrnDropdownMenuTrigger,
+} from '@trinity/kit/dropdown-menu';
+import { TrnInput } from '@trinity/kit/input';
 import {
   AvatarComponent,
   BELOW_MD_QUERY,
@@ -56,7 +56,7 @@ import {
   type AccountSummary,
 } from './sidebar-user-panel/sidebar-user-panel.component';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/kit/icon';
 
 export type { AccountSummary };
 
@@ -69,17 +69,17 @@ export type { AccountSummary };
     SidebarRoomListComponent,
     AvatarComponent,
     TrnIconComponent,
-    HlmInput,
-    HlmDropdownMenuTrigger,
-    HlmDropdownMenu,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuItemSubIndicator,
-    HlmDropdownMenuLabel,
-    HlmDropdownMenuRadio,
-    HlmDropdownMenuRadioIndicator,
-    HlmDropdownMenuSeparator,
-    HlmDropdownMenuSub,
-    HlmDropdownMenuSubTrigger,
+    TrnInput,
+    TrnDropdownMenuTrigger,
+    TrnDropdownMenu,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuItemSubIndicator,
+    TrnDropdownMenuLabel,
+    TrnDropdownMenuRadio,
+    TrnDropdownMenuRadioIndicator,
+    TrnDropdownMenuSeparator,
+    TrnDropdownMenuSub,
+    TrnDropdownMenuSubTrigger,
   ],
   templateUrl: './channel-sidebar.component.html',
   styleUrl: './channel-sidebar.component.scss',

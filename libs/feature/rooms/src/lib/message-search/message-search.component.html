@@ -6,7 +6,7 @@
   >
     <h2 class="flex-1 text-base font-semibold">Search messages</h2>
     <button
-      hlmBtn
+      trnBtn
       variant="ghost"
       size="icon"
       aria-label="Close search"
@@ -18,7 +18,7 @@
 
   <div class="border-b border-solid border-border p-3">
     <input
-      hlmInput
+      trnInput
       data-autofocus
       placeholder="Search this conversation"
       autocapitalize="off"
@@ -39,7 +39,7 @@
           {{ scanned() === 1 ? 'message' : 'messages' }} only.
         </span>
         <button
-          hlmBtn
+          trnBtn
           variant="outline"
           size="sm"
           [disabled]="loadingHistory()"
@@ -47,7 +47,7 @@
           data-testid="load-older"
         >
           @if (loadingHistory()) {
-            <hlm-spinner />
+            <trn-spinner />
           }
           Load older messages
         </button>
@@ -62,7 +62,7 @@
           </span>
         } @else {
           <button
-            hlmBtn
+            trnBtn
             variant="outline"
             size="sm"
             [disabled]="searching()"
@@ -70,7 +70,7 @@
             data-testid="search-server"
           >
             @if (searching()) {
-              <hlm-spinner />
+              <trn-spinner />
             } @else {
               <trn-icon name="server" />
             }
@@ -122,7 +122,7 @@
     @if (serverMode() && serverNextBatch()) {
       <div class="ms-more">
         <button
-          hlmBtn
+          trnBtn
           variant="ghost"
           size="sm"
           [disabled]="searching()"
@@ -130,7 +130,7 @@
           data-testid="load-more-server"
         >
           @if (searching()) {
-            <hlm-spinner />
+            <trn-spinner />
           }
           Load more results
         </button>

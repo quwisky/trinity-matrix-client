@@ -12,11 +12,11 @@ once.
 | Layer         | Where                                                                   | What it is                                                              |
 | ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | Brain         | `@spartan-ng/brain` 1.3.0 in `node_modules`, plus `@angular/cdk` 22.1.0 | Headless primitives: behaviour, accessibility, positioning. No styling. |
-| Helm          | `libs/spartan/*`, aliased `@trinity/helm/*`                             | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
+| Kit           | `libs/kit/*`, aliased `@trinity/kit/*`                                  | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
 | `@trinity/ui` | `libs/ui`                                                               | Trinity's own presentational components and small UI utilities.         |
 | Features      | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
 
-Eighteen libraries live under `libs/spartan/`. Two are Trinity-authored rather than
+Eighteen libraries live under `libs/kit/`. Two are Trinity-authored rather than
 generated — `overlay` (the dialog/alert/toast adapters) and `icon` (`<trn-icon>`, below).
 The other sixteen are Helm: avatar, badge, button, card, checkbox,
 dropdown-menu, input, label, overlay, progress, radio-group, select, sonner, spinner,
@@ -24,7 +24,7 @@ textarea, tooltip, utils. All are tagged `type:ui` and `scope:shared`, plus
 `ui:vendor-wrapper`.
 
 That third tag is what makes the layering above enforceable rather than merely described.
-`libs/ui` and every Helm library used to carry identical tags, so no boundary rule could say
+`libs/ui` and every kit library used to carry identical tags, so no boundary rule could say
 "only the kit may import Brain" — the two were indistinguishable to Nx. `libs/ui` now carries
 `ui:wrapper`, the kit carries `ui:vendor-wrapper`, and `bannedExternalImports` keeps
 `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every tier
@@ -35,9 +35,9 @@ Composition is the other half of that containment. `hostDirectives` **is** publi
 composed directive's input is bindable on our element only if the entry lists it — so every
 entry in the kit states its `inputs`, even when the answer is `[]`. The shorthand
 (`hostDirectives: [BrnFoo]`) exposes nothing, which is usually right but is a decision nobody
-made, and it hides the opposite case equally well: `HlmInput` composed
+made, and it hides the opposite case equally well: `TrnInput` composed
 `BrnFieldControlDescribedBy` without listing `aria-describedby`, so setting that attribute on
-an `hlmInput` was silently overwritten with null and could not be set at all. The same is true of `outputs`, which Angular
+an `trnInput` was silently overwritten with null and could not be set at all. The same is true of `outputs`, which Angular
 validates and merges identically. All 43 entries state both, and
 `scripts/host-directives.spec.mjs` fails on one that does not — which is also what a
 `@spartan-ng/cli` regenerate would produce, so it is registered as a vendored divergence
@@ -74,9 +74,9 @@ input. The same shape appears in `ENCRYPTION_DIALOG_COMPONENTS`, which lets a `t
 service present a `type:feature` page as a modal without importing it. See
 [libraries](libraries.md) for the boundary rules in full.
 
-## The Helm libraries are generated
+## The kit libraries are generated
 
-`libs/spartan/*` is canonical spartan-ng Helm code produced by `@spartan-ng/cli`. Add or
+`libs/kit/*` is canonical spartan-ng Helm code produced by `@spartan-ng/cli`. Add or
 regenerate a component with the CLI rather than hand-authoring it:
 
 ```bash
@@ -87,38 +87,38 @@ Configuration lives in the root `components.json`:
 
 ```json
 {
-  "componentsPath": "libs/spartan",
+  "componentsPath": "libs/kit",
   "buildable": false,
   "generateAs": "library",
   "style": "nova",
-  "importAlias": "@trinity/helm"
+  "importAlias": "@trinity/kit"
 }
 ```
 
-Generated code intentionally breaks the app's own conventions — `hlm` and `brn` selector
-prefixes, un-suffixed class names such as `HlmButton`, and aliased inputs including
+Generated code intentionally breaks the app's own conventions — `trn` and `brn` selector
+prefixes, un-suffixed class names such as `TrnButton`, and aliased inputs including
 `class`. Rather than fight the generator on every resync, `eslint.config.mjs` exempts
-`libs/spartan/**/*.ts` from `component-class-suffix`, `component-selector`,
+`libs/kit/**/*.ts` from `component-class-suffix`, `component-selector`,
 `directive-selector` and `no-input-rename`.
 
-Only `libs/spartan/overlay` has a Vitest target; every other Helm library is build and lint
-only. That is why the specs pinning Helm behaviour live in `overlay` and import across the
+Only `libs/kit/overlay` has a Vitest target; every other kit library is build and lint
+only. That is why the specs pinning kit behaviour live in `overlay` and import across the
 library boundary.
 
-!!! warning "Never assert on a Helm component's host class string"
+!!! warning "Never assert on a kit component's host class string"
 
-    Helm styles its host through the asynchronous `classes()` manager in
-    `libs/spartan/utils/src/lib/hlm.ts` — an `effect()` plus a document-wide
+    The kit styles its host through the asynchronous `classes()` manager in
+    `libs/kit/utils/src/lib/trn.ts` — an `effect()` plus a document-wide
     `MutationObserver` that applies the merged class string on a microtask or
     animation-frame schedule. Asserting the applied host classes produces flaky specs.
     Assert the pure, synchronous `cva` functions instead (`buttonVariants`,
     `badgeVariants`) plus the fact that the component renders without throwing. This is
     stated as a rule in
-    [`helm-components.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/overlay/src/lib/helm-components.spec.ts).
+    [`kit-components.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/kit/overlay/src/lib/kit-components.spec.ts).
 
 ## The overlay library is Trinity code
 
-Despite living under `libs/spartan/` and being aliased `@trinity/helm/overlay`, this
+Despite living under `libs/kit/` and being aliased `@trinity/kit/overlay`, this
 library is **hand-authored**, not generated. It holds the imperative overlay adapters:
 `TrnDialogService`, `TrnAlertService` with `TrnAlertDialogComponent`, `TrnActionSheetService`
 with `TrnActionSheetComponent`, and `TrnToastService` — built on CDK Dialog and Overlay plus
@@ -151,7 +151,7 @@ message-search panels use, sized `w-screen md:w-[480px]` so they go full-screen 
 
 !!! warning "Import toast from brain, not ngx-sonner"
 
-    `<hlm-toaster/>` wraps brain's `<brn-sonner-toaster/>`, which reads **brain's own**
+    `<trn-toaster/>` wraps brain's `<brn-sonner-toaster/>`, which reads **brain's own**
     `toastState`. Since spartan 1.1 brain ships its own sonner port and no longer depends on
     `ngx-sonner`, so calling `ngx-sonner`'s `toast()` pushes into a store the mounted toaster
     never observes. The toast silently never appears — no error, no console output, nothing in
@@ -165,7 +165,7 @@ lists it in `inputs: [...]`.** Anything not listed is not merely unavailable —
 directive owns a host binding for it, the binding still runs and _overwrites whatever the
 consumer set_.
 
-That is not hypothetical. `hlmInput`, `hlmTextarea` and `hlmRadioGroup` each compose
+That is not hypothetical. `trnInput`, `trnTextarea` and `trnRadioGroup` each compose
 `BrnFieldControlDescribedBy`, which owns `[attr.aria-describedby]`, and none of them published
 the input. Every `aria-describedby` on those controls was computed as `null` and removed from the
 DOM — silently, on three shipped screens, for as long as the components have existed.
@@ -176,41 +176,41 @@ DOM — silently, on three shipped screens, for as long as the components have e
    answer is `[]`. An empty list is a decision; an omitted one is an accident that publishes or
    swallows an API nobody chose. Angular validates and merges the two identically, so the same
    applies to both — `CdkMenu.closed`, for instance, stays internal by decision, because
-   closure is already public on the trigger as `hlmDropdownMenuClosed` and two names for one
+   closure is already public on the trigger as `trnDropdownMenuClosed` and two names for one
    lifecycle is easy to add and hard to withdraw.
 2. **Set `aria-describedby` as an attribute or a property binding, never `[attr.aria-describedby]`.**
    Even with the input published, the attribute form is still overwritten: the directive's host
    binding runs after the template's. Pinned by a test in
-   `libs/spartan/overlay/src/lib/helm-components.spec.ts` so a future upstream fix is noticed.
-3. **`hlm-checkbox` and `hlm-radio` are deliberately different.** Each declares its own
+   `libs/kit/overlay/src/lib/kit-components.spec.ts` so a future upstream fix is noticed.
+3. **`trn-checkbox` and `trn-radio` are deliberately different.** Each declares its own
    `aria-describedby` input, forwards it to the inner `brn-*` control and nulls the host
    attribute, because the host is `display: contents` and is not the focusable element. That
    asymmetry is pinned by a test — do not "fix" it into describing the wrong node.
 
-Still open: `hlm-select-trigger` applies `brnFieldControlDescribedBy` to its inner `<button>` with
+Still open: `trn-select-trigger` applies `brnFieldControlDescribedBy` to its inner `<button>` with
 nothing bound and exposes no input, so a select trigger cannot be described at all. No call site
 needs it today; tracked rather than fixed here.
 
 ## Registered vendored divergences
 
-Local changes to generated Helm code. A regenerate silently drops all of them, so each is
+Local changes to generated kit code. A regenerate silently drops all of them, so each is
 commented at its site, listed in a banner at the top of its file, and **pinned by a test** —
 a lost override fails the suite rather than shipping. This table is the register; keep it in
 step with the banner in
-[`hlm-dropdown-menu.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts).
+[`trn-dropdown-menu.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/kit/dropdown-menu/src/lib/trn-dropdown-menu.ts).
 
 | File and symbol                                              | Override                                                                                                                                           | Pinned by                       |
 | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection                     | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                                      | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                                             | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                                                  | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                            | `dropdown-menu-submenu.spec.ts` |
-| `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                                             | `helm-components.spec.ts`       |
+| `dropdown-menu` · `TrnDropdownMenuSubTrigger`                | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection                     | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `TrnDropdownMenuSubTrigger`                | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                                      | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `TrnDropdownMenuSubTrigger`                | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                                             | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `TrnDropdownMenu` and `TrnDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                                                  | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `TrnDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                            | `dropdown-menu-submenu.spec.ts` |
+| `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                                             | `kit-components.spec.ts`        |
 | All 11 kit files with `hostDirectives`                       | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission | `host-directives.spec.mjs`      |
 
 The specs live in
-[`libs/spartan/overlay/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/spartan/overlay/src/lib).
+[`libs/kit/overlay/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/kit/overlay/src/lib).
 
 The `CdkTargetMenuAim` row is a consequence of the row above it. CDK closes an open submenu
 the moment the pointer enters any non-trigger sibling row, unless a `MENU_AIM` is provided —
@@ -220,12 +220,12 @@ diagonal move into the submenu closed it before arrival.
 
 One more directive in that file is worth checking against upstream before a resync, even
 though it is not a divergence from a shipped upstream behaviour:
-`HlmDropdownMenuFocusOnHover`, applied as a host directive to every dropdown item type. It
+`TrnDropdownMenuFocusOnHover`, applied as a host directive to every dropdown item type. It
 moves DOM focus on `mouseenter`, because CDK menus only move focus with the keyboard — so a
 closing submenu would drop focus to `<body>`, the menu stack would report no focus, and the
 whole dropdown would collapse.
 
-`hlm-dropdown-menu.ts` has also diverged in **shape**: the generator emits roughly sixteen
+`trn-dropdown-menu.ts` has also diverged in **shape**: the generator emits roughly sixteen
 one-directive files where the repo keeps a single module. Reconciling a regenerate is manual
 work regardless of the overrides.
 
@@ -650,4 +650,4 @@ deep-link and mobile target, and the service falls back to routing whenever the 
 component loaders are absent. See
 [matrix and encryption](matrix-and-encryption.md) for what those flows do.
 
-Toasts render through a single `<hlm-toaster/>` mounted in `AppComponent`.
+Toasts render through a single `<trn-toaster/>` mounted in `AppComponent`.

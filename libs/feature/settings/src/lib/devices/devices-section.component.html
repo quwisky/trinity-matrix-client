@@ -16,12 +16,12 @@
         >
           <span class="device-name">{{ device.displayName }}</span>
           @if (device.isCurrent) {
-            <span hlmBadge>This device</span>
+            <span trnBadge>This device</span>
           }
           @if (device.isVerified) {
-            <span hlmBadge variant="success">Verified</span>
+            <span trnBadge variant="success">Verified</span>
           } @else {
-            <span hlmBadge variant="warning">Unverified</span>
+            <span trnBadge variant="warning">Unverified</span>
           }
         </div>
         <div class="truncate text-xs text-muted-foreground">
@@ -36,11 +36,11 @@
 
       <div class="ml-auto flex shrink-0 items-center gap-1">
         <button
-          hlmBtn
+          trnBtn
           variant="ghost"
           size="icon"
           [disabled]="busy()"
-          [hlmTooltip]="'Rename ' + device.displayName"
+          [trnTooltip]="'Rename ' + device.displayName"
           [attr.aria-label]="'Rename ' + device.displayName"
           data-testid="rename-device"
           (click)="rename(device)"
@@ -49,12 +49,12 @@
         </button>
         @if (!device.isCurrent) {
           <button
-            hlmBtn
+            trnBtn
             variant="ghost"
             size="icon"
             class="text-danger hover:text-danger"
             [disabled]="busy()"
-            [hlmTooltip]="'Sign out ' + device.displayName"
+            [trnTooltip]="'Sign out ' + device.displayName"
             [attr.aria-label]="'Sign out ' + device.displayName"
             data-testid="remove-device"
             (click)="remove(device)"
@@ -85,7 +85,7 @@
   @if (hasUnverified()) {
     <div class="px-4 py-2">
       <button
-        hlmBtn
+        trnBtn
         variant="ghost"
         size="sm"
         data-testid="verify-devices"

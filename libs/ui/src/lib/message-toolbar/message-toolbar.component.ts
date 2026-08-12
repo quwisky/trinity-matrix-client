@@ -5,14 +5,14 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { HlmTooltip } from '@trinity/helm/tooltip';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnTooltip } from '@trinity/kit/tooltip';
+import { TrnIconComponent } from '@trinity/kit/icon';
 import {
-  HlmDropdownMenu,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuSeparator,
-  HlmDropdownMenuTrigger,
-} from '@trinity/helm/dropdown-menu';
+  TrnDropdownMenu,
+  TrnDropdownMenuItem,
+  TrnDropdownMenuSeparator,
+  TrnDropdownMenuTrigger,
+} from '@trinity/kit/dropdown-menu';
 
 /** Which optional actions the toolbar offers for a given message. */
 export interface MessageToolbarCaps {
@@ -66,11 +66,11 @@ let nextPickerId = 0;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconComponent,
-    HlmTooltip,
-    HlmDropdownMenu,
-    HlmDropdownMenuItem,
-    HlmDropdownMenuSeparator,
-    HlmDropdownMenuTrigger,
+    TrnTooltip,
+    TrnDropdownMenu,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuSeparator,
+    TrnDropdownMenuTrigger,
   ],
   templateUrl: './message-toolbar.component.html',
   styleUrl: './message-toolbar.component.scss',

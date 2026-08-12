@@ -1,7 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { DialogRef } from '@trinity/helm/overlay';
+import { DialogRef } from '@trinity/kit/overlay';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
@@ -61,7 +61,7 @@ async function renderPage(
   return { ...result, svc, router, close };
 }
 
-// Every control on the page is now a native `<button hlmBtn>`: the body buttons,
+// Every control on the page is now a native `<button trnBtn>`: the body buttons,
 // the routed header's Close (converted to the app-shell <header>), and the SAS
 // "They match"/"They don't match"/"Cancel" controls owned by <trn-sas-compare>.
 function button(host: HTMLElement, text: string): HTMLElement {
@@ -157,7 +157,7 @@ describe('DeviceVerificationPage', () => {
     );
 
     expect(
-      container.querySelector('[data-testid="sas-waiting"] hlm-spinner'),
+      container.querySelector('[data-testid="sas-waiting"] trn-spinner'),
     ).not.toBeNull();
     expect(container.querySelector('[data-testid="sas-match"]')).toBeNull();
   });

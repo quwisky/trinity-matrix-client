@@ -1,0 +1,25 @@
+{
+  "name": "dropdown-menu",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/kit/dropdown-menu/src",
+  "prefix": "trn",
+  "projectType": "library",
+  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:ng-packagr-lite",
+      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "project": "libs/kit/dropdown-menu/ng-package.json",
+        "tsConfig": "libs/kit/dropdown-menu/tsconfig.lib.json"
+      },
+      "configurations": {
+        "production": {
+          "tsConfig": "libs/kit/dropdown-menu/tsconfig.lib.prod.json"
+        },
+        "development": {}
+      }
+    }
+  }
+}

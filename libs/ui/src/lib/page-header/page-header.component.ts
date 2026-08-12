@@ -14,7 +14,7 @@ import {
  *    `.main` column already pads the safe-area top), and the chat background.
  *
  * Everything caller-specific is projected, so this shell imports nothing from
- * helm or the feature libs: consumers supply `hlmBtn` / `hlmTooltip` / `ng-icon`
+ * helm or the feature libs: consumers supply `trnBtn` / `trnTooltip` / `ng-icon`
  * in the projected content, and projected nodes keep their origin component's
  * style encapsulation (so e.g. rooms' scoped `.title-hash` / `.title-lock` still
  * apply to a projected title).
@@ -26,8 +26,8 @@ import {
  *
  * ```html
  * <trn-page-header title="Settings">
- *   <button trnHeaderLeading hlmBtn variant="ghost" size="icon"
- *           hlmTooltip="Back" aria-label="Back" (click)="goBack()">
+ *   <button trnHeaderLeading trnBtn variant="ghost" size="icon"
+ *           trnTooltip="Back" aria-label="Back" (click)="goBack()">
  *     <trn-icon name="arrow-left" />
  *   </button>
  * </trn-page-header>

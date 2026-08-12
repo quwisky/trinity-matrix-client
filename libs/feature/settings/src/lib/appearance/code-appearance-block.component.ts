@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
-  HlmSelect,
-  HlmSelectContent,
-  HlmSelectItem,
-  HlmSelectPortal,
-  HlmSelectTrigger,
-  HlmSelectValue,
-} from '@trinity/helm/select';
+  TrnSelect,
+  TrnSelectContent,
+  TrnSelectItem,
+  TrnSelectPortal,
+  TrnSelectTrigger,
+  TrnSelectValue,
+} from '@trinity/kit/select';
 import {
   ThemeService,
   TRINITY_CODE_LINE_MODES,
@@ -27,19 +27,19 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './code-appearance-block.component.html',
   imports: [
-    HlmSelect,
-    HlmSelectTrigger,
-    HlmSelectValue,
-    HlmSelectContent,
-    HlmSelectPortal,
-    HlmSelectItem,
+    TrnSelect,
+    TrnSelectTrigger,
+    TrnSelectValue,
+    TrnSelectContent,
+    TrnSelectPortal,
+    TrnSelectItem,
   ],
 })
 export class CodeAppearanceBlockComponent {
   readonly theme = inject(ThemeService);
 
   /**
-   * Label for a code-scale id. `hlm-select` renders the collapsed trigger from the bound
+   * Label for a code-scale id. `trn-select` renders the collapsed trigger from the bound
    * VALUE rather than the chosen option's markup, so without this the control would read
    * "larger" instead of "Larger". A stable field, not an inline arrow, which would be a new
    * reference every change detection.
