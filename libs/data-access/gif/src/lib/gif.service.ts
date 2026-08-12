@@ -8,7 +8,7 @@ import type { GifResult } from './gif.model';
 const RESULT_LIMIT = 24;
 
 /**
- * Searches the configured GIF provider (Tenor or Giphy) and downloads a chosen
+ * Searches the configured GIF provider (KLIPY or Giphy) and downloads a chosen
  * GIF as a `File` for the media send path. Provider selection + the API key come
  * from {@link GifSettingsService}; the provider REST shapes are normalized in
  * `gif-providers.ts`. Follows the app convention of `fetch()` wrapped in RxJS

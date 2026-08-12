@@ -161,9 +161,14 @@ from this page.
 
 ## GIFs
 
-Pick Tenor or GIPHY and paste that provider's API key. Until a key is saved, the composer
+Pick KLIPY or GIPHY and paste that provider's API key. Until a key is saved, the composer
 does not offer a GIF option at all — Trinity ships no shared key, so there would be nothing
 to search with.
+
+Trinity used to offer Tenor. Google shut the Tenor API down on 30 June 2026, so if you had
+chosen it you will find KLIPY selected and the key box empty, with a note saying why: a Tenor
+key cannot authenticate against a different service, and leaving it in place would have looked
+like a working setup that failed every search. Paste a KLIPY key to switch GIF search back on.
 
 The key is third-party configuration rather than a credential of yours, so it is stored
 alongside the other preferences, on this device.

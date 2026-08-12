@@ -2,20 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { buildGifRequestUrl, parseGifResults } from './gif-providers';
 
 describe('buildGifRequestUrl', () => {
-  it('builds a Tenor search URL with key, query and gif filters', () => {
-    const url = new URL(buildGifRequestUrl('tenor', 'cat', 'KEY', 24));
-    expect(url.origin + url.pathname).toBe(
-      'https://tenor.googleapis.com/v2/search',
-    );
+  it('builds a KLIPY search URL with key, query and gif filters', () => {
+    const url = new URL(buildGifRequestUrl('klipy', 'cat', 'KEY', 24));
+    expect(url.origin + url.pathname).toBe('https://api.klipy.com/v2/search');
     expect(url.searchParams.get('q')).toBe('cat');
     expect(url.searchParams.get('key')).toBe('KEY');
     expect(url.searchParams.get('limit')).toBe('24');
     expect(url.searchParams.get('media_filter')).toContain('gif');
     expect(url.searchParams.get('contentfilter')).toBe('high');
+    // Tenor's registered-app identifier; KLIPY authenticates on `key` alone, so carrying
+    // it over would send a parameter naming a service we no longer talk to.
+    expect(url.searchParams.has('client_key')).toBe(false);
   });
 
-  it('targets the Tenor featured feed when the query is null', () => {
-    const url = new URL(buildGifRequestUrl('tenor', null, 'KEY', 24));
+  it('targets the KLIPY featured feed when the query is null', () => {
+    const url = new URL(buildGifRequestUrl('klipy', null, 'KEY', 24));
     expect(url.pathname).toBe('/v2/featured');
     expect(url.searchParams.has('q')).toBe(false);
   });
@@ -39,7 +40,7 @@ describe('buildGifRequestUrl', () => {
 });
 
 describe('parseGifResults', () => {
-  it('normalizes Tenor results and skips items missing a gif url', () => {
+  it('normalizes KLIPY results and skips items missing a gif url', () => {
     const body = {
       results: [
         {
@@ -54,7 +55,7 @@ describe('parseGifResults', () => {
         { id: '2', media_formats: { tinygif: { url: 'https://x/only-tiny' } } },
       ],
     };
-    const out = parseGifResults('tenor', body);
+    const out = parseGifResults('klipy', body);
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({
       id: '1',
@@ -69,7 +70,7 @@ describe('parseGifResults', () => {
   });
 
   it('falls back to the full gif as its own preview when tinygif is absent', () => {
-    const out = parseGifResults('tenor', {
+    const out = parseGifResults('klipy', {
       results: [
         {
           id: '3',
@@ -107,8 +108,8 @@ describe('parseGifResults', () => {
   });
 
   it('returns [] for a malformed or empty body', () => {
-    expect(parseGifResults('tenor', null)).toEqual([]);
-    expect(parseGifResults('tenor', {})).toEqual([]);
+    expect(parseGifResults('klipy', null)).toEqual([]);
+    expect(parseGifResults('klipy', {})).toEqual([]);
     expect(parseGifResults('giphy', { data: 'nope' })).toEqual([]);
   });
 });

@@ -832,7 +832,7 @@ describe('MessageComposerComponent', () => {
   ): Provider[] {
     return [
       MockProvider(GifSettingsService, {
-        provider: signal<GifProviderId>('tenor').asReadonly(),
+        provider: signal<GifProviderId>('klipy').asReadonly(),
         apiKey: signal('KEY').asReadonly(),
         configured: signal(true).asReadonly(),
       }),

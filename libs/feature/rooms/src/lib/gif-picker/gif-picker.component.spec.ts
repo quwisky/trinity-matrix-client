@@ -37,7 +37,7 @@ const results: GifResult[] = [
 /** Build a detached fixture (avoids ATL render()'s sync-rAF re-entrancy). */
 function setup(
   search = vi.fn(() => of(results)),
-  provider: GifProviderId = 'tenor',
+  provider: GifProviderId = 'klipy',
 ) {
   TestBed.configureTestingModule({
     imports: [GifPickerComponent],

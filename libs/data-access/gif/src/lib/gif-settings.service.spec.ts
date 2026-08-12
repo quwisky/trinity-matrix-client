@@ -21,8 +21,8 @@ describe('GifSettingsService', () => {
     svc = TestBed.inject(GifSettingsService);
   });
 
-  it('defaults to Tenor and unconfigured', () => {
-    expect(svc.provider()).toBe('tenor');
+  it('defaults to KLIPY and unconfigured', () => {
+    expect(svc.provider()).toBe('klipy');
     expect(svc.apiKey()).toBe('');
     expect(svc.configured()).toBe(false);
   });
@@ -40,7 +40,7 @@ describe('GifSettingsService', () => {
   it('keeps defaults when nothing is stored', async () => {
     prefs.get.mockResolvedValue({ value: null });
     await svc.init();
-    expect(svc.provider()).toBe('tenor');
+    expect(svc.provider()).toBe('klipy');
     expect(svc.configured()).toBe(false);
   });
 
@@ -55,9 +55,71 @@ describe('GifSettingsService', () => {
       value: JSON.stringify({ provider: 'nope', apiKey: 'x' }),
     });
     await svc.init();
-    expect(svc.provider()).toBe('tenor');
-    // The key still hydrates so the feature is usable with the default provider.
+    expect(svc.provider()).toBe('klipy');
+    // The key still hydrates so the feature is usable with the default provider. This is
+    // NOT the retired-provider path: an id we never had says nothing about the key beside
+    // it, whereas a Tenor key is known to be dead. See the migration tests below.
     expect(svc.apiKey()).toBe('x');
+  });
+
+  describe('migrating off a retired provider', () => {
+    it('moves a stored Tenor config to KLIPY and drops the dead key', async () => {
+      // The bug this pins (#136). `configured` only asks whether a key is non-empty, so
+      // hydrating the two fields independently would open the picker against KLIPY holding
+      // a Tenor key: every search 401s and it reads as a broken new provider.
+      prefs.get.mockResolvedValue({
+        value: JSON.stringify({ provider: 'tenor', apiKey: 'dead-tenor-key' }),
+      });
+
+      await svc.init();
+
+      expect(svc.provider()).toBe('klipy');
+      expect(svc.apiKey()).toBe('');
+      expect(svc.configured()).toBe(false);
+      expect(svc.migratedFrom()).toBe('tenor');
+    });
+
+    it('persists the migration, so it does not run again on the next boot', async () => {
+      const store = new Map<string, string>([
+        [
+          'trinity.gif.config',
+          JSON.stringify({ provider: 'tenor', apiKey: 'dead' }),
+        ],
+      ]);
+      prefs.get.mockImplementation(async ({ key }) => ({
+        value: store.get(key) ?? null,
+      }));
+      prefs.set.mockImplementation(async ({ key, value }) => {
+        store.set(key, value);
+      });
+
+      await svc.init();
+      expect(store.get('trinity.gif.config')).toBe(
+        JSON.stringify({ provider: 'klipy', apiKey: '' }),
+      );
+
+      // A genuinely fresh instance, not TestBed.inject() again — that returns the same
+      // root singleton and would assert nothing about a second boot.
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const nextBoot = TestBed.inject(GifSettingsService);
+      await nextBoot.init();
+
+      expect(nextBoot.provider()).toBe('klipy');
+      expect(nextBoot.migratedFrom()).toBeNull();
+    });
+
+    it('leaves a current provider alone, key and all', async () => {
+      prefs.get.mockResolvedValue({
+        value: JSON.stringify({ provider: 'giphy', apiKey: 'live' }),
+      });
+
+      await svc.init();
+
+      expect(svc.provider()).toBe('giphy');
+      expect(svc.apiKey()).toBe('live');
+      expect(svc.migratedFrom()).toBeNull();
+    });
   });
 
   it('save() trims the key, updates the signals and persists JSON', () => {
@@ -86,7 +148,7 @@ describe('GifSettingsService', () => {
   it('clear() keeps the provider choice across a reload', async () => {
     // provider + apiKey share a single stored blob, so clearing the key must not
     // take the provider with it: a GIPHY user who clears their key and reloads
-    // should still see GIPHY selected, not silently fall back to the Tenor default.
+    // should still see GIPHY selected, not silently fall back to the KLIPY default.
     // Round-trips through a real (in-memory) Preferences store rather than
     // asserting on the mock calls, so it pins behaviour and not implementation.
     const store = new Map<string, string>();

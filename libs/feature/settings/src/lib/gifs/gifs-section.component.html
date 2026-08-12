@@ -5,6 +5,18 @@
     GIFs
   </h2>
 
+  @if (migratedFrom(); as retired) {
+    <p
+      class="mx-4 my-2 rounded-md border border-solid border-border px-3 py-2 text-13 text-muted-foreground"
+      role="status"
+      data-testid="gif-provider-migrated"
+    >
+      {{ retired | titlecase }} shut its API down, so GIF search moved to
+      {{ selected().label }}. Your old key cannot work with it — paste a new one
+      below to switch GIF search back on.
+    </p>
+  }
+
   <hlm-radio-group
     class="px-4 py-2"
     [value]="provider()"

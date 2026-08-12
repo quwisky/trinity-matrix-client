@@ -14,15 +14,17 @@ function providers(
     provider?: GifProviderId;
     apiKey?: string;
     configured?: boolean;
+    migratedFrom?: string | null;
   } = {},
 ) {
   return [
     MockProvider(GifSettingsService, {
       provider: signal<GifProviderId>(
-        overrides.provider ?? 'tenor',
+        overrides.provider ?? 'klipy',
       ).asReadonly(),
       apiKey: signal(overrides.apiKey ?? '').asReadonly(),
       configured: signal(overrides.configured ?? false).asReadonly(),
+      migratedFrom: signal(overrides.migratedFrom ?? null).asReadonly(),
     }),
   ];
 }
@@ -33,7 +35,7 @@ describe('GifsSectionComponent', () => {
       providers: providers(),
     });
     expect(
-      container.querySelector('[data-testid=gif-provider-tenor]'),
+      container.querySelector('[data-testid=gif-provider-klipy]'),
     ).not.toBeNull();
     expect(
       container.querySelector('[data-testid=gif-provider-giphy]'),
@@ -68,7 +70,7 @@ describe('GifsSectionComponent', () => {
     save.click();
 
     const settings = TestBed.inject(GifSettingsService);
-    expect(settings.save).toHaveBeenCalledWith('tenor', 'my-key');
+    expect(settings.save).toHaveBeenCalledWith('klipy', 'my-key');
   });
 
   it('hides Clear when not configured', async () => {
@@ -90,5 +92,32 @@ describe('GifsSectionComponent', () => {
 
     const settings = TestBed.inject(GifSettingsService);
     expect(settings.clear).toHaveBeenCalled();
+  });
+
+  describe('after migrating off a retired provider', () => {
+    it('explains why the key box is empty, naming both providers', async () => {
+      const { container } = await render(GifsSectionComponent, {
+        providers: providers({ migratedFrom: 'tenor' }),
+      });
+
+      const note = container.querySelector(
+        '[data-testid=gif-provider-migrated]',
+      );
+      expect(note).not.toBeNull();
+      // Without this the key simply vanishes on upgrade and the picker goes quiet, which
+      // reads as data loss rather than as a provider that no longer exists.
+      expect(note?.textContent).toContain('Tenor');
+      expect(note?.textContent).toContain('KLIPY');
+    });
+
+    it('says nothing when there was no migration', async () => {
+      const { container } = await render(GifsSectionComponent, {
+        providers: providers(),
+      });
+
+      expect(
+        container.querySelector('[data-testid=gif-provider-migrated]'),
+      ).toBeNull();
+    });
   });
 });

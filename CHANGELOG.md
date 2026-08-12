@@ -298,6 +298,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **GIF search works again: Tenor is replaced by KLIPY.** Google shut the Tenor API down on
+  30 June 2026, and Tenor was the provider Trinity offered first — so the default path led to
+  a sign-up page that had been closed since January and an API that no longer answers. GIF
+  search now uses KLIPY, with GIPHY still there as the second option, and Trinity still ships
+  no key of its own: you bring your own, so a GIF search only ever leaves your device once you
+  have chosen to enable it.
+
+  If you had configured Tenor, this device moves itself to KLIPY on the next start and clears
+  the old key, because a Tenor key cannot work against another service — keeping it would have
+  looked like a working setup that failed every search instead. Settings → GIFs says so, and
+  points you at where to get a KLIPY key. A configuration file exported before this change
+  still imports: it is read as KLIPY and tells you the same thing, rather than being rejected
+  for naming a provider that no longer exists.
+
 - **Tapping a notification opens the room it came from.** It focused the window and switched to
   the right account, then left you wherever you already were — the one thing a notification is
   for was the one thing it did not do. Every platform was affected. The room now opens, and the

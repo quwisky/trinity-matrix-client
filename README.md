@@ -9,7 +9,7 @@ End-to-end encryption is a first-class, in-MVP feature.
 > Status: **early development.** Scaffold, native platforms, the E2EE crypto spike,
 > authentication (password + SSO, incl. native deep-link), a Discord-style room shell,
 > and a working **timeline — read, send, edit, delete, react, reply, markdown,
-> emoji, and GIFs** (Tenor/GIPHY search, configured in Settings) — are done. **End-to-end encryption** is complete through device trust:
+> emoji, and GIFs** (KLIPY/GIPHY search, configured in Settings) — are done. **End-to-end encryption** is complete through device trust:
 > crypto bootstrap (cross-signing, key backup, recovery) and **device verification**
 > (emoji-SAS, with an incoming-request prompt). **Encrypted media** (M8 — sending and
 > displaying images/files/video/audio with attachment encryption) and **MVP polish**

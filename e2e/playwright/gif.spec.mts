@@ -14,7 +14,7 @@ import {
 
 // GIF picker journeys. The send path round-trips through the REAL disposable
 // Synapse (upload → m.image → sync), like every app-journey spec; only the
-// external GIF provider (Tenor) + its CDN are stubbed with page.route, so the
+// external GIF provider (KLIPY) + its CDN are stubbed with page.route, so the
 // suite stays offline of any third-party API and needs no real API key. Requires
 // the Synapse homeserver, so it self-skips when Docker is absent.
 const session = synapseSession();
@@ -30,8 +30,8 @@ const GIF_1x1 = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
   'base64',
 );
-const PREVIEW_URL = 'https://media.tenor.com/e2e-preview/trinity.gif';
-const FULL_URL = 'https://media.tenor.com/e2e-full/trinity.gif';
+const PREVIEW_URL = 'https://media.klipy.com/e2e-preview/trinity.gif';
+const FULL_URL = 'https://media.klipy.com/e2e-full/trinity.gif';
 
 // Capacitor Preferences persists non-secret prefs to localStorage under this key
 // (GifSettingsService reads `trinity.gif.config` at startup).
@@ -157,10 +157,10 @@ async function latestImageSender(
   return image?.sender ?? null;
 }
 
-/** Stub the Tenor search API + its CDN so the picker is hermetic of any provider. */
-async function stubTenor(page: Page): Promise<void> {
+/** Stub the KLIPY search API + its CDN so the picker is hermetic of any provider. */
+async function stubKlipy(page: Page): Promise<void> {
   // Both /featured (trending) and /search return the same single result.
-  await page.route('https://tenor.googleapis.com/**', (route) =>
+  await page.route('https://api.klipy.com/**', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -179,7 +179,7 @@ async function stubTenor(page: Page): Promise<void> {
     }),
   );
   // Preview + full-download hits both resolve to real GIF bytes.
-  await page.route('https://media.tenor.com/**', (route) =>
+  await page.route('https://media.klipy.com/**', (route) =>
     route.fulfill({ status: 200, contentType: 'image/gif', body: GIF_1x1 }),
   );
 }
@@ -228,7 +228,7 @@ test.describe('GIF picker', () => {
 
     // Clear drops the API key (disabling the picker) but must REMEMBER the provider:
     // both live in one stored blob, so removing the whole thing would silently reset
-    // the choice to the Tenor default.
+    // the choice to the KLIPY default.
     await page.getByTestId('gif-clear').click();
     await expect
       .poll(async () => JSON.parse((await read()) ?? '{}'))
@@ -236,7 +236,7 @@ test.describe('GIF picker', () => {
     await expect(page.getByTestId('gif-clear')).toHaveCount(0); // picker disabled
 
     // The remembered choice survives a reload: the deep-linked GIFs sub-page
-    // restores and the key field is still GIPHY's, not Tenor's (GifSettingsService
+    // restores and the key field is still GIPHY's, not KLIPY's (GifSettingsService
     // .init reads the provider back at startup).
     await page.reload();
     await page.waitForURL(/\/settings\/gifs$/, { timeout: 20_000 });
@@ -278,10 +278,10 @@ test.describe('GIF picker', () => {
       ([k, v]) => localStorage.setItem(k, v),
       [
         GIF_CONFIG_KEY,
-        JSON.stringify({ provider: 'tenor', apiKey: 'e2e-key' }),
+        JSON.stringify({ provider: 'klipy', apiKey: 'e2e-key' }),
       ],
     );
-    await stubTenor(page);
+    await stubKlipy(page);
 
     await login(page, reader);
     await openSeededRoom(page, roomName);
@@ -325,10 +325,10 @@ test.describe('GIF picker', () => {
       ([k, v]) => localStorage.setItem(k, v),
       [
         GIF_CONFIG_KEY,
-        JSON.stringify({ provider: 'tenor', apiKey: 'e2e-key' }),
+        JSON.stringify({ provider: 'klipy', apiKey: 'e2e-key' }),
       ],
     );
-    await stubTenor(page);
+    await stubKlipy(page);
 
     // Sign in as account A (the seeded session user), then add B — B becomes active.
     await login(page, session);
