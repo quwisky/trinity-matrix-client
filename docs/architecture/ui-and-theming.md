@@ -29,13 +29,15 @@ That third tag is what makes the layering above enforceable rather than merely d
 `ui:wrapper`, the kit carries `ui:vendor-wrapper`, and `bannedExternalImports` keeps
 `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every tier
 below the UI one. The kit is deliberately unrestricted: it **is** the wrapper. `libs/ui` is
-banned from Brain only, since it is where Trinity's own wrappers over the other three live.
+banned from Brain and `@ng-icons`, both of which the kit now wraps.
 
-`type:feature` is the one tier still exempt, because it has 103 violations over 60 files to
-clear first. It started at 103 across three sub-issues; #151 closed the 30 dialog and toast
-imports and #154 the 62 icon ones, leaving **11** `@ctrl/ngx-emoji-mart` imports for #152.
-The ban is staged as a **warning** so the count is visible while it shrinks, and is promoted
-to an error once that last group is gone.
+`type:feature` started with **103** violations across 60 files and is now down to 11. #151
+closed the 30 dialog and toast imports, #154 the 62 icon ones, and those three vendors are
+enforced there like everywhere else — a new one fails `pnpm lint`, statically or through a
+lazy `import()`. Only `@ctrl/ngx-emoji-mart` remains, staged as a **warning** so its 7
+importers stay visible without reddening CI. That one waits on #152, which is deliberately
+scheduled with the composer redesign: the picker's placement lives in feature SCSS today, and
+a wrapper that grew its own positioning would only have to be undone.
 
 Icons are the clearest illustration of what the wrapper buys. `@ng-icons` types its `name`
 as `IconName | (string & {})` — any string at all — so `name="lucideTrash"` (no `2`) used to
