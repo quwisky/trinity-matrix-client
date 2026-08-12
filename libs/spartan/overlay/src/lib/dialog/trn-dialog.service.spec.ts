@@ -136,15 +136,26 @@ describe('TrnDialogService', () => {
     // ever narrowed to "dialogs opened through open()", the Android back button
     // would silently stop dismissing alerts and action sheets — and every test that
     // only opened dialogs would still pass.
+    // A dialog underneath, so this discriminates on both axes at once: an
+    // implementation that tracked only its own refs would never resolve the alert,
+    // and one that closed the whole stack would take the dialog with it.
+    const beneath = svc.open<string, TestDialogComponent>(TestDialogComponent, {
+      inputs: { label: 'Beneath' },
+    });
     const confirmed = alerts.confirm({
       header: 'Delete this room?',
       confirmText: 'Delete',
     });
     TestBed.inject(ApplicationRef).tick();
-    expect(svc.hasOpen()).toBe(true);
 
     expect(svc.closeTopmost()).toBe(true);
     expect(await confirmed).toBe(false);
+
+    expect(svc.hasOpen()).toBe(true);
+    TestBed.inject(ApplicationRef).tick();
+    expect(document.body.textContent).toContain('Beneath');
+
+    beneath.close();
     expect(svc.hasOpen()).toBe(false);
   });
 

@@ -298,10 +298,6 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- **The push gateway confirmation announces itself.** The dialog that asks you to trust a
-  custom push gateway opened with no accessible name, so a screen reader introduced the most
-  security-sensitive prompt in Settings as just "dialog". It now announces what it is asking.
-
 - **Hints under text boxes are read out again.** Where a field had explanatory text beneath it —
   the push gateway URL, its app id, and the manual location entry — screen readers never announced
   it. The text was in the page and visually correct, so the gap was invisible unless you used one:
