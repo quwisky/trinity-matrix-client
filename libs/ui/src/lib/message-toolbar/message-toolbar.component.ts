@@ -5,30 +5,14 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
 import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnIconComponent } from '@trinity/helm/icon';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
   HlmDropdownMenuSeparator,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import {
-  lucideCode,
-  lucideCopy,
-  lucideEllipsis,
-  lucideFlag,
-  lucideForward,
-  lucideLink,
-  lucideMessagesSquare,
-  lucidePencil,
-  lucidePin,
-  lucidePlus,
-  lucideQuote,
-  lucideReply,
-  lucideSmile,
-  lucideTrash2,
-} from '@ng-icons/lucide';
 
 /** Which optional actions the toolbar offers for a given message. */
 export interface MessageToolbarCaps {
@@ -81,7 +65,7 @@ let nextPickerId = 0;
   selector: 'trn-message-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    NgIcon,
+    TrnIconComponent,
     HlmTooltip,
     HlmDropdownMenu,
     HlmDropdownMenuItem,
@@ -90,24 +74,6 @@ let nextPickerId = 0;
   ],
   templateUrl: './message-toolbar.component.html',
   styleUrl: './message-toolbar.component.scss',
-  viewProviders: [
-    provideIcons({
-      lucideSmile,
-      lucideReply,
-      lucideMessagesSquare,
-      lucideEllipsis,
-      lucidePin,
-      lucidePlus,
-      lucideQuote,
-      lucideCopy,
-      lucideLink,
-      lucideCode,
-      lucideForward,
-      lucideFlag,
-      lucidePencil,
-      lucideTrash2,
-    }),
-  ],
 })
 export class MessageToolbarComponent {
   readonly caps = input<MessageToolbarCaps>({

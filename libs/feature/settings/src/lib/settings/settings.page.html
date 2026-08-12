@@ -8,7 +8,7 @@
     aria-label="Back"
     (click)="goBack()"
   >
-    <ng-icon name="lucideArrowLeft" />
+    <trn-icon name="arrow-left" />
   </button>
 </trn-page-header>
 
@@ -23,17 +23,9 @@
         ariaCurrentWhenActive="page"
         [attr.data-testid]="'settings-nav-' + item.path"
       >
-        <ng-icon
-          [name]="item.icon"
-          class="settings__item-icon"
-          aria-hidden="true"
-        />
+        <trn-icon [name]="item.icon" class="settings__item-icon" />
         <span class="settings__item-label">{{ item.label }}</span>
-        <ng-icon
-          name="lucideChevronRight"
-          class="settings__item-chevron"
-          aria-hidden="true"
-        />
+        <trn-icon name="chevron-right" class="settings__item-chevron" />
       </a>
     }
     <p class="settings__build" data-testid="settings-build">{{ buildLabel }}</p>

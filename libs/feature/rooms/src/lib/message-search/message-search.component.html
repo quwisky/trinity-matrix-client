@@ -12,7 +12,7 @@
       aria-label="Close search"
       (click)="dismiss()"
     >
-      <ng-icon name="lucideX" class="text-xl" />
+      <trn-icon name="x" class="text-xl" />
     </button>
   </div>
 
@@ -33,7 +33,7 @@
   <div class="flex-1 overflow-y-auto">
     @if (encrypted()) {
       <div class="ms-banner" data-testid="e2ee-note">
-        <ng-icon name="lucideLock" aria-hidden="true" />
+        <trn-icon name="lock" />
         <span>
           Encrypted room — searching the {{ scanned() }} loaded
           {{ scanned() === 1 ? 'message' : 'messages' }} only.
@@ -72,7 +72,7 @@
             @if (searching()) {
               <hlm-spinner />
             } @else {
-              <ng-icon name="lucideServer" aria-hidden="true" />
+              <trn-icon name="server" />
             }
             Search all messages
           </button>

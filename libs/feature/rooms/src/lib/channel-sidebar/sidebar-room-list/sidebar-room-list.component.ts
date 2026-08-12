@@ -7,21 +7,6 @@ import {
   output,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideArrowDownWideNarrow,
-  lucideBell,
-  lucideBellOff,
-  lucideBellRing,
-  lucideCheck,
-  lucideCheckCheck,
-  lucideCircleMinus,
-  lucideDoorOpen,
-  lucideEllipsisVertical,
-  lucideHash,
-  lucideMailOpen,
-  lucideStar,
-} from '@ng-icons/lucide';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,
@@ -43,6 +28,7 @@ import {
 import { PresenceService } from '@trinity/data-access/profile';
 import { type PresenceState } from '@trinity/util/matrix';
 import { type PendingInvite } from '@trinity/data-access/invites';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /**
  * The scrolling body of the channel sidebar: pending invites, the favourite and
@@ -65,7 +51,7 @@ import { type PendingInvite } from '@trinity/data-access/invites';
   styleUrls: ['sidebar-room-list.component.scss'],
   imports: [
     AvatarComponent,
-    NgIcon,
+    TrnIconComponent,
     NgTemplateOutlet,
     HlmDropdownMenuTrigger,
     HlmDropdownMenu,
@@ -76,22 +62,6 @@ import { type PendingInvite } from '@trinity/data-access/invites';
     HlmDropdownMenuSeparator,
     HlmDropdownMenuSub,
     HlmDropdownMenuSubTrigger,
-  ],
-  viewProviders: [
-    provideIcons({
-      lucideArrowDownWideNarrow,
-      lucideBell,
-      lucideBellOff,
-      lucideBellRing,
-      lucideCheck,
-      lucideCheckCheck,
-      lucideCircleMinus,
-      lucideDoorOpen,
-      lucideEllipsisVertical,
-      lucideHash,
-      lucideMailOpen,
-      lucideStar,
-    }),
   ],
 })
 export class SidebarRoomListComponent {

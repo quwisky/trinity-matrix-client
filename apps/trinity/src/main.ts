@@ -49,6 +49,7 @@ import {
   ENCRYPTION_DIALOG_COMPONENTS,
   type EncryptionDialogLoaders,
 } from '@trinity/ui';
+import { provideTrnIcons } from '@trinity/helm/icon';
 import { provideSpartanHlm } from '@trinity/helm/utils';
 
 import { routes } from './app/app.routes';
@@ -68,6 +69,10 @@ bootstrapApplication(AppComponent, {
     // event handlers write signals, which schedule change detection directly. See
     // docs/architecture/state-and-reactivity.md.
     provideZonelessChangeDetection(),
+    // Every icon, registered once. Replaces 32 per-component provideIcons() calls, each
+    // of which declared only the subset its own component used — so an icon rendered in
+    // one place and silently nowhere in another.
+    provideTrnIcons(),
     // Installs the window 'error'/'unhandledrejection' listeners that forward to
     // ErrorHandler. REQUIRED here: zone.js used to do this via NgZone.onUnhandledError,
     // and without it the handler below only ever sees errors thrown *inside* Angular —

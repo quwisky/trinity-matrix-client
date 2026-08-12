@@ -28,7 +28,7 @@ import {
  * <trn-page-header title="Settings">
  *   <button trnHeaderLeading hlmBtn variant="ghost" size="icon"
  *           hlmTooltip="Back" aria-label="Back" (click)="goBack()">
- *     <ng-icon name="lucideArrowLeft" />
+ *     <trn-icon name="arrow-left" />
  *   </button>
  * </trn-page-header>
  * ```

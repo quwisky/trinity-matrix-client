@@ -23,7 +23,7 @@
       />
     } @else {
       <span class="composer__pending-icon" aria-hidden="true">
-        <ng-icon name="lucidePaperclip" />
+        <trn-icon name="paperclip" />
       </span>
     }
     <span class="composer__pending-name" [title]="file.name">{{
@@ -36,7 +36,7 @@
       data-testid="composer-pending-remove"
       (click)="removePending.emit()"
     >
-      <ng-icon name="lucideX" aria-hidden="true" />
+      <trn-icon name="x" />
     </button>
   </div>
 }

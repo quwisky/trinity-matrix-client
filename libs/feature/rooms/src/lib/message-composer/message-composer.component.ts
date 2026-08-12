@@ -13,13 +13,6 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideSend,
-  lucideSmile,
-  lucideTrash2,
-  lucideX,
-} from '@ng-icons/lucide';
 import { HlmTextarea } from '@trinity/helm/textarea';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
@@ -54,6 +47,7 @@ import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { ComposerAttachmentsService } from './composer-attachments.service';
 import { EmojiAutocomplete } from './emoji-autocomplete';
+import { TrnIconComponent } from '@trinity/helm/icon';
 import {
   MentionAutocomplete,
   type MentionMember,
@@ -100,7 +94,7 @@ const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    NgIcon,
+    TrnIconComponent,
     HlmTooltip,
     HlmTextarea,
     PickerComponent,
@@ -115,14 +109,6 @@ const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
   // Per composer instance, not per app: the room composer and the thread composer are alive
   // at once and each needs its own staged file, GIF grid and recording.
   providers: [ComposerAttachmentsService],
-  viewProviders: [
-    provideIcons({
-      lucideSend,
-      lucideSmile,
-      lucideTrash2,
-      lucideX,
-    }),
-  ],
   // Escape is handled at the host, not on the textarea, because the pickers it
   // dismisses can be opened without the textarea ever holding focus — pick GIF from the
   // insert tray on a narrow layout and CDK restores focus to the `+` trigger. The

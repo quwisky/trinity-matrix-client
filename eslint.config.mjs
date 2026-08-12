@@ -59,17 +59,20 @@ export default defineConfig([
             // reports success and the ban enforces nothing. `lint-invariants.spec.mjs`
             // pins the `*` for exactly this reason.
             //
-            // `ui:wrapper` (libs/ui) is banned from brain only: it is the layer our own
-            // wrappers live in, so it keeps @ng-icons — see #148 step 4. The vendored kit
-            // (`ui:vendor-wrapper`) is deliberately absent from this list; it IS the
-            // wrapper, and banning brain there would ban the layer from existing.
+            // `ui:wrapper` (libs/ui) keeps only @ctrl/ngx-emoji-mart, until #152 decides
+            // where that wrapper lives. It used to keep @ng-icons too, on the assumption
+            // the icon wrapper would land here; #154 put it in the kit instead (as
+            // `@trinity/helm/icon`, which is where a lib that may name a vendor belongs),
+            // so that exemption is gone. The vendored kit (`ui:vendor-wrapper`) is
+            // deliberately absent from this list; it IS the wrapper layer, and banning its
+            // vendors there would ban the layer from existing.
             //
             // `type:feature` is missing on purpose. It still has 103 violations, so its ban
             // is staged as a warning further down and moves up here once ALL of #151, #152
             // and #154 have closed them — see the breakdown at that block.
             {
               sourceTag: 'ui:wrapper',
-              bannedExternalImports: ['@spartan-ng/brain*'],
+              bannedExternalImports: ['@spartan-ng/brain*', '@ng-icons*'],
             },
             {
               sourceTag: 'type:data-access',

@@ -4,11 +4,10 @@ import {
   input,
   output,
 } from '@angular/core';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideClock, lucideDoorOpen, lucideHouse } from '@ng-icons/lucide';
 import { AvatarComponent, type AccountBadge } from '@trinity/ui';
 import { type SpaceSummary } from '@trinity/data-access/rooms';
 import { unreadBadgeLabel } from '../shared/unread-badge';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** Unread notification counts driving the rail's badges. */
 export interface RailUnread {
@@ -29,8 +28,7 @@ export interface RailUnread {
 @Component({
   selector: 'trn-server-rail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, NgIcon],
-  viewProviders: [provideIcons({ lucideClock, lucideDoorOpen, lucideHouse })],
+  imports: [AvatarComponent, TrnIconComponent],
   templateUrl: './server-rail.component.html',
   styleUrl: './server-rail.component.scss',
 })

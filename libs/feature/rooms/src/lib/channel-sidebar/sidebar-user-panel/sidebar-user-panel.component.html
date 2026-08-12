@@ -55,7 +55,7 @@
     title="Settings"
     data-testid="open-settings"
   >
-    <ng-icon name="lucideSettings" />
+    <trn-icon name="settings" />
   </button>
 </footer>
 
@@ -89,7 +89,7 @@
           >
         }
         @if (account.userId === activeUserId()) {
-          <ng-icon name="lucideCheck" class="account-row__check" />
+          <trn-icon name="check" class="account-row__check" />
         }
       </button>
     }
@@ -118,7 +118,7 @@
           (triggered)="openAccountPicker.emit()"
           data-testid="show-accounts"
         >
-          <ng-icon name="lucideUsers" />
+          <trn-icon name="users" />
           Show accounts
         </button>
       } @else {
@@ -127,7 +127,7 @@
           [hlmDropdownMenuSubTrigger]="showAccountsMenu"
           data-testid="show-accounts"
         >
-          <ng-icon name="lucideUsers" />
+          <trn-icon name="users" />
           Show accounts
           <hlm-dropdown-menu-item-sub-indicator />
         </button>
@@ -139,7 +139,7 @@
       (triggered)="addAccount.emit()"
       data-testid="add-account"
     >
-      <ng-icon name="lucideUserPlus" />
+      <trn-icon name="user-plus" />
       Add account
     </button>
     <div hlmDropdownMenuSeparator></div>
@@ -149,7 +149,7 @@
       (triggered)="logout.emit(activeUserId() ?? '')"
       data-testid="logout"
     >
-      <ng-icon name="lucideLogOut" />
+      <trn-icon name="log-out" />
       Sign out
     </button>
   </div>

@@ -9,7 +9,7 @@
       [attr.data-testid]="'format-' + entry.action"
       (click)="format.emit(entry.action)"
     >
-      <ng-icon [name]="entry.icon" aria-hidden="true" />
+      <trn-icon [name]="entry.icon" />
     </button>
   }
 
@@ -27,7 +27,7 @@
     aria-label="More formatting"
     data-testid="format-more"
   >
-    <ng-icon name="lucideEllipsis" aria-hidden="true" />
+    <trn-icon name="ellipsis" />
   </button>
 
   <ng-template #moreMenu>
@@ -39,7 +39,7 @@
           (triggered)="format.emit(entry.action)"
           [attr.data-testid]="'format-' + entry.action"
         >
-          <ng-icon [name]="entry.icon" aria-hidden="true" />
+          <trn-icon [name]="entry.icon" />
           {{ entry.label }}
         </button>
       }
@@ -60,6 +60,6 @@
     data-testid="composer-preview-toggle"
     (click)="togglePreview.emit()"
   >
-    <ng-icon name="lucideEye" aria-hidden="true" />
+    <trn-icon name="eye" />
   </button>
 </div>

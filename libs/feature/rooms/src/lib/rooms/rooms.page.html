@@ -105,7 +105,7 @@
           aria-label="Back to rooms"
           data-testid="back-to-rooms"
         >
-          <ng-icon class="text-xl" name="lucideArrowLeft" />
+          <trn-icon class="text-xl" name="arrow-left" />
         </button>
 
         <!-- Projected into the shell's single <h1>: inline spans + icon only, no
@@ -116,12 +116,7 @@
               <span class="title-hash">#</span>{{ room.name }}
             </span>
             @if (room.encrypted) {
-              <ng-icon
-                class="title-lock"
-                name="lucideLock"
-                aria-label="Encrypted room"
-                aria-hidden="false"
-              />
+              <trn-icon class="title-lock" name="lock" label="Encrypted room" />
             }
             <!-- Which identity you are acting as. Opening another account's room switches
                  the active account silently, and below md the sidebar (the only other
@@ -160,7 +155,7 @@
               aria-label="Search messages in this room"
               data-testid="search-messages"
             >
-              <ng-icon class="text-xl" name="lucideSearch" />
+              <trn-icon class="text-xl" name="search" />
             </button>
             <button
               hlmBtn
@@ -172,7 +167,7 @@
               aria-label="Invite people"
               data-testid="invite-people"
             >
-              <ng-icon class="text-xl" name="lucideUserPlus" />
+              <trn-icon class="text-xl" name="user-plus" />
             </button>
             <button
               hlmBtn
@@ -184,7 +179,7 @@
               aria-label="Room settings"
               data-testid="open-room-settings"
             >
-              <ng-icon class="text-xl" name="lucideSettings" />
+              <trn-icon class="text-xl" name="settings" />
             </button>
             <button
               hlmBtn
@@ -195,7 +190,7 @@
               aria-label="Threads"
               data-testid="open-threads"
             >
-              <ng-icon class="text-xl" name="lucideMessagesSquare" />
+              <trn-icon class="text-xl" name="messages-square" />
             </button>
             <button
               hlmBtn
@@ -207,7 +202,7 @@
               aria-label="Pinned messages"
               data-testid="open-pinned"
             >
-              <ng-icon class="text-xl" name="lucidePin" />
+              <trn-icon class="text-xl" name="pin" />
               @if (pinned.pinnedMessages().length > 0) {
                 <span class="header-pin__badge" aria-hidden="true">{{
                   pinned.pinnedMessages().length
@@ -225,7 +220,7 @@
               aria-label="Members"
               data-testid="toggle-members"
             >
-              <ng-icon class="text-xl" name="lucideUsers" />
+              <trn-icon class="text-xl" name="users" />
             </button>
 
             <!-- Present at EVERY breakpoint. Below md it also absorbs the demoted header
@@ -243,7 +238,7 @@
               aria-label="More actions"
               data-testid="room-actions-overflow"
             >
-              <ng-icon class="text-xl" name="lucideEllipsisVertical" />
+              <trn-icon class="text-xl" name="ellipsis-vertical" />
               @if (pinned.pinnedMessages().length > 0) {
                 <span class="header-pin__badge" aria-hidden="true">{{
                   pinned.pinnedMessages().length
@@ -258,7 +253,7 @@
                   (triggered)="roomActions.onInviteToRoom()"
                   data-testid="overflow-invite-people"
                 >
-                  <ng-icon name="lucideUserPlus" />
+                  <trn-icon name="user-plus" />
                   Invite people
                 </button>
                 <button
@@ -267,7 +262,7 @@
                   (triggered)="roomActions.onOpenRoomSettings()"
                   data-testid="overflow-open-room-settings"
                 >
-                  <ng-icon name="lucideSettings" />
+                  <trn-icon name="settings" />
                   Room settings
                 </button>
                 <button
@@ -276,7 +271,7 @@
                   (triggered)="messageActions.openPinnedPanel()"
                   data-testid="overflow-open-pinned"
                 >
-                  <ng-icon name="lucidePin" />
+                  <trn-icon name="pin" />
                   Pinned messages
                   @if (pinned.pinnedMessages().length > 0) {
                     <span class="ml-auto tabular-nums">{{
@@ -289,7 +284,7 @@
                   (triggered)="messageActions.jumpToDate()"
                   data-testid="overflow-jump-to-date"
                 >
-                  <ng-icon name="lucideCalendarSearch" />
+                  <trn-icon name="calendar-search" />
                   Jump to date
                 </button>
                 <button
@@ -298,7 +293,7 @@
                   (triggered)="toggleMembers()"
                   data-testid="overflow-toggle-members"
                 >
-                  <ng-icon name="lucideUsers" />
+                  <trn-icon name="users" />
                   Members
                 </button>
               </div>

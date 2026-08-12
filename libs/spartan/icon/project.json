@@ -1,0 +1,12 @@
+{
+  "name": "kit-icon",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/spartan/icon/src",
+  "prefix": "trn",
+  "projectType": "library",
+  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

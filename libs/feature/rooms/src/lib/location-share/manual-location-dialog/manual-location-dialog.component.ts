@@ -7,8 +7,6 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideLocateFixed, lucideMapPin } from '@ng-icons/lucide';
 import { parseLocationInput } from '@trinity/util/matrix';
 import { GeolocationService, type GeoPoint } from '@trinity/platform-native';
 import { HlmButton } from '@trinity/helm/button';
@@ -16,6 +14,7 @@ import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { HlmSpinner } from '@trinity/helm/spinner';
 import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /**
  * Desktop location picker: paste a map link or type `lat, lng`. Closes with the
@@ -28,8 +27,7 @@ import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 @Component({
   selector: 'trn-manual-location-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon, HlmButton, HlmInput, HlmLabel, HlmSpinner],
-  viewProviders: [provideIcons({ lucideMapPin, lucideLocateFixed })],
+  imports: [TrnIconComponent, HlmButton, HlmInput, HlmLabel, HlmSpinner],
   templateUrl: './manual-location-dialog.component.html',
 })
 export class ManualLocationDialogComponent {

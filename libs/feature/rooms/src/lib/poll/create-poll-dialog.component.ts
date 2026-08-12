@@ -9,8 +9,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { DialogRef } from '@trinity/helm/overlay';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideX } from '@ng-icons/lucide';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** The poll a {@link CreatePollDialogComponent} resolves with. */
 export interface NewPoll {
@@ -30,8 +29,7 @@ const MAX_OPTIONS = 8;
 @Component({
   selector: 'trn-create-poll-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, HlmInput, HlmLabel, NgIcon],
-  viewProviders: [provideIcons({ lucideX })],
+  imports: [HlmButton, HlmInput, HlmLabel, TrnIconComponent],
   templateUrl: './create-poll-dialog.component.html',
 })
 export class CreatePollDialogComponent {

@@ -137,13 +137,13 @@ const ALL_UI_VENDORS = [
 ];
 
 const UI_BOUNDARY = [
-  // libs/ui is the layer the wrappers live IN: #148 step 4 puts <trn-icon> and its vendor
-  // mapping here, so @ng-icons must stay reachable. Brain is the exception — that one
-  // belongs to the vendored kit, and libs/ui consumes the kit's public API instead.
+  // libs/ui may still reach @ctrl/ngx-emoji-mart, pending #152. It may no longer reach
+  // @ng-icons: #154 put <trn-icon> in the kit as @trinity/helm/icon rather than here,
+  // since a lib tagged ui:wrapper is precisely the tier that may not name a vendor.
   {
     tier: 'ui:wrapper',
-    banned: ['@spartan-ng/brain'],
-    allowed: ['@angular/cdk', '@ng-icons', '@ctrl/ngx-emoji-mart'],
+    banned: ['@spartan-ng/brain', '@ng-icons'],
+    allowed: ['@angular/cdk', '@ctrl/ngx-emoji-mart'],
   },
   { tier: 'type:data-access', banned: ALL_UI_VENDORS, allowed: [] },
   { tier: 'type:util', banned: ALL_UI_VENDORS, allowed: [] },

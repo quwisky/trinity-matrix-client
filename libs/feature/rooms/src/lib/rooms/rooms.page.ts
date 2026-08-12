@@ -20,19 +20,6 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import {
-  lucideArrowLeft,
-  lucideEllipsisVertical,
-  lucideLock,
-  lucideMessagesSquare,
-  lucideCalendarSearch,
-  lucidePin,
-  lucideSearch,
-  lucideSettings,
-  lucideUserPlus,
-  lucideUsers,
-} from '@ng-icons/lucide';
 import { HlmButton } from '@trinity/helm/button';
 import {
   HlmDropdownMenu,
@@ -89,6 +76,7 @@ import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
 import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -125,7 +113,7 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     HlmDropdownMenuItem,
     HlmDropdownMenuTrigger,
     HlmTooltip,
-    NgIcon,
+    TrnIconComponent,
     AvatarComponent,
     ServerRailComponent,
     ChannelSidebarComponent,
@@ -145,20 +133,6 @@ import { isMobileMasterDetail, membersShownAsDrawer } from './shell-layout';
     '(document:keydown)': 'onGlobalKeydown($event)',
     '(document:keydown.escape)': 'onEscapeKey()',
   },
-  viewProviders: [
-    provideIcons({
-      lucideArrowLeft,
-      lucideEllipsisVertical,
-      lucideLock,
-      lucideMessagesSquare,
-      lucideCalendarSearch,
-      lucidePin,
-      lucideSearch,
-      lucideSettings,
-      lucideUserPlus,
-      lucideUsers,
-    }),
-  ],
 })
 export class RoomsPage implements OnInit, OnDestroy {
   readonly rooms = inject(RoomsService);

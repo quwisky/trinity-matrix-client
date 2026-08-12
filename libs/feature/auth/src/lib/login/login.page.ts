@@ -30,8 +30,6 @@ import { HlmCardImports } from '@trinity/helm/card';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideEye, lucideEyeOff } from '@ng-icons/lucide';
 import {
   AuthService,
   FactoryResetService,
@@ -53,6 +51,7 @@ import {
   confirmClearDataIntent,
 } from './clear-all-data';
 import { OidcStateStore } from '../oidc-state.store';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 @Component({
   selector: 'trn-login',
@@ -66,9 +65,8 @@ import { OidcStateStore } from '../oidc-state.store';
     HlmInput,
     HlmLabel,
     HlmSpinner,
-    NgIcon,
+    TrnIconComponent,
   ],
-  viewProviders: [provideIcons({ lucideEye, lucideEyeOff })],
 })
 export class LoginPage {
   private readonly auth = inject(AuthService);
