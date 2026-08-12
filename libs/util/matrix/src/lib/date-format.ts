@@ -77,6 +77,35 @@ type Shape =
 const formatters = new Map<string, Intl.DateTimeFormat>();
 let cachedOffset: number | undefined;
 
+/**
+ * Drops locale tags `Intl` will not accept, falling back to the runtime default.
+ *
+ * `navigator.languages` is not guaranteed to be BCP 47. A machine whose environment says
+ * `LANG=C.UTF-8` gives Chromium `en-US@posix`, which is a valid POSIX locale and an invalid
+ * language tag, so `new Intl.DateTimeFormat(['en-US@posix'])` throws `RangeError`. That
+ * throw happens inside a template expression, so the whole message row fails to render and
+ * the timeline goes blank — no error surfaces to the reader, the messages are simply gone.
+ * Observed for real: it took out five of the eight end-to-end harnesses on a box with that
+ * locale, while every unit test passed because they pin `locales` to `['en-US']`.
+ *
+ * Filtered rather than caught, so one bad tag in the chain does not discard the good ones
+ * behind it; `undefined` then means "use the runtime default", which is the same thing the
+ * reader would have got had the browser reported nothing.
+ */
+function usableLocales(
+  locales: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (!locales?.length) return undefined;
+  const usable = locales.filter((locale) => {
+    try {
+      return Intl.DateTimeFormat.supportedLocalesOf(locale) !== undefined;
+    } catch {
+      return false;
+    }
+  });
+  return usable.length ? usable : undefined;
+}
+
 function formatterFor(shape: Shape, prefs: DateTimePrefs): Intl.DateTimeFormat {
   const offset = new Date().getTimezoneOffset();
   if (offset !== cachedOffset) {
@@ -89,7 +118,7 @@ function formatterFor(shape: Shape, prefs: DateTimePrefs): Intl.DateTimeFormat {
     return cached;
   }
   const built = new Intl.DateTimeFormat(
-    prefs.locales,
+    usableLocales(prefs.locales),
     optionsFor(shape, prefs),
   );
   formatters.set(key, built);
