@@ -60,14 +60,19 @@ const topLevelEntries = (body) => {
 };
 
 describe('hostDirectives', () => {
-  const files = globSync('libs/spartan/**/*.ts', { cwd: workspaceRoot }).filter(
-    (file) => !file.endsWith('.spec.ts'),
-  );
+  // Scanned workspace-wide, not just over the kit. The kit is where every composition
+  // lives today — the only `hostDirectives` match outside it is a comment — but the rule
+  // is about not inheriting a directive's template API by accident, which is not a
+  // kit-specific hazard. Cheap enough to be worth the coverage: most files are skipped on
+  // a substring test before they are parsed.
+  const files = globSync(['libs/**/*.ts', 'apps/**/*.ts'], {
+    cwd: workspaceRoot,
+  }).filter((file) => !file.endsWith('.spec.ts'));
 
   const entries = files.flatMap((file) => {
-    const source = stripComments(
-      readFileSync(join(workspaceRoot, file), 'utf8'),
-    );
+    const raw = readFileSync(join(workspaceRoot, file), 'utf8');
+    if (!raw.includes('hostDirectives')) return [];
+    const source = stripComments(raw);
     return [...source.matchAll(/hostDirectives:/g)].flatMap((match) =>
       topLevelEntries(arrayBody(source, match.index)).map((entry) => ({
         file,
