@@ -117,6 +117,37 @@ message-search panels use, sized `w-screen md:w-[480px]` so they go full-screen 
     never observes. The toast silently never appears — no error, no console output, nothing in
     the DOM. `TrnToastService` is the one place that imports it.
 
+## `hostDirectives` is public API
+
+A helm component composes a headless Brain directive through `hostDirectives`, and that entry
+decides what a consumer may bind. **A composed directive's input is bindable only if the entry
+lists it in `inputs: [...]`.** Anything not listed is not merely unavailable — if the composed
+directive owns a host binding for it, the binding still runs and _overwrites whatever the
+consumer set_.
+
+That is not hypothetical. `hlmInput`, `hlmTextarea` and `hlmRadioGroup` each compose
+`BrnFieldControlDescribedBy`, which owns `[attr.aria-describedby]`, and none of them published
+the input. Every `aria-describedby` on those controls was computed as `null` and removed from the
+DOM — silently, on three shipped screens, for as long as the components have existed.
+
+**The rules:**
+
+1. **Every `hostDirectives` entry lists `inputs` explicitly**, even when the answer is `[]`. An
+   empty list is a decision; an omitted one is an accident that publishes or swallows an API
+   nobody chose.
+2. **Set `aria-describedby` as an attribute or a property binding, never `[attr.aria-describedby]`.**
+   Even with the input published, the attribute form is still overwritten: the directive's host
+   binding runs after the template's. Pinned by a test in
+   `libs/spartan/overlay/src/lib/helm-components.spec.ts` so a future upstream fix is noticed.
+3. **`hlm-checkbox` and `hlm-radio` are deliberately different.** Each declares its own
+   `aria-describedby` input, forwards it to the inner `brn-*` control and nulls the host
+   attribute, because the host is `display: contents` and is not the focusable element. That
+   asymmetry is pinned by a test — do not "fix" it into describing the wrong node.
+
+Still open: `hlm-select-trigger` applies `brnFieldControlDescribedBy` to its inner `<button>` with
+nothing bound and exposes no input, so a select trigger cannot be described at all. No call site
+needs it today; tracked rather than fixed here.
+
 ## Registered vendored divergences
 
 Local changes to generated Helm code. A regenerate silently drops all of them, so each is
