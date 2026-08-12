@@ -6,14 +6,13 @@ import { classes } from '@trinity/helm/utils';
 @Directive({
   selector: '[hlmInput]',
   hostDirectives: [
-    { directive: BrnInput, inputs: ['id', 'forceInvalid'] },
+    { directive: BrnInput, inputs: ['id', 'forceInvalid'] , outputs: [] },
     // `inputs` is not optional here even though we forward nothing ourselves: a
     // hostDirectives entry publishes a composed directive's input only if it lists it, and
     // BrnFieldControlDescribedBy owns [attr.aria-describedby] as a host binding. Without
     // this, a consumer's aria-describedby — static or bound — was computed as null and
     // removed from the DOM, silently. See helm-components.spec.ts.
-    { directive: BrnFieldControlDescribedBy, inputs: ['aria-describedby'] },
-  ],
+    { directive: BrnFieldControlDescribedBy, inputs: ['aria-describedby'] , outputs: [] }],
   host: { 'data-slot': 'input' },
 })
 export class HlmInput {

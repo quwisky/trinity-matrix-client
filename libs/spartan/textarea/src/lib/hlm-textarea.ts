@@ -6,10 +6,9 @@ import { classes } from '@trinity/helm/utils';
 @Directive({
 	selector: '[hlmTextarea]',
 	hostDirectives: [
-		{ directive: BrnTextarea, inputs: ['id', 'forceInvalid'] },
+		{ directive: BrnTextarea, inputs: ['id', 'forceInvalid'] , outputs: [] },
 		// See hlm-input.ts: without `inputs`, aria-describedby is silently removed.
-		{ directive: BrnFieldControlDescribedBy, inputs: ['aria-describedby'] },
-	],
+		{ directive: BrnFieldControlDescribedBy, inputs: ['aria-describedby'] , outputs: [] }],
 	host: { 'data-slot': 'textarea' },
 })
 export class HlmTextarea {

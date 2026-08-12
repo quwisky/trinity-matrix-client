@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { globSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -16,11 +15,15 @@ const workspaceRoot = join(import.meta.dirname, '..');
  * `aria-describedby` on an `hlmInput` — static or bound — was silently overwritten with
  * null. It could not be set at all, and nothing said so (#153).
  *
- * Writing `inputs: []` is not ceremony, then: it is the difference between "we chose to
- * expose nothing" and "nobody looked". Audited once at 43 entries — only
- * `BrnFieldControlDescribedBy` declares an input at all, and the one place it is composed
- * without exposing it (`hlm-checkbox`) is deliberate and pinned separately. This keeps the
+ * Writing `inputs: []` and `outputs: []` is not ceremony, then: it is the difference between
+ * "we chose to expose nothing" and "nobody looked". Audited once at 43 entries — across every
+ * composed directive only `BrnFieldControlDescribedBy` declares an input and only `CdkMenu`
+ * declares an output, and both are unexposed on purpose (see their sites). This keeps the
  * next composed directive from arriving unexamined.
+ *
+ * These files are `.prettierignore`d (`libs/spartan/**` + `hlm-*.ts`, so a CLI re-sync does
+ * not fight prettier-plugin-tailwindcss), which means formatting here is hand-maintained —
+ * `pnpm format:check` will not catch a stray comma in them.
  */
 const stripComments = (source) =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
@@ -79,10 +82,18 @@ describe('hostDirectives', () => {
     expect(entries.length).toBeGreaterThan(30);
   });
 
-  it('states inputs on every entry, even when empty', () => {
+  it('states inputs and outputs on every entry, even when empty', () => {
+    // Both, because Angular treats them identically: `validateHostDirective` checks each
+    // with the same `validateMappings`, and `trackHostDirectiveDef` merges each with the
+    // same `mergeBindingMaps`. An unstated `outputs` swallows a composed directive's output
+    // exactly the way an unstated `inputs` swallowed `aria-describedby`. `CdkMenu.closed`
+    // is the one such output in this kit, and it is now silent by decision, not omission.
     const bare = entries
       .filter(
-        ({ entry }) => !entry.startsWith('{') || !/\binputs\b/.test(entry),
+        ({ entry }) =>
+          !entry.startsWith('{') ||
+          !/\binputs\b/.test(entry) ||
+          !/\boutputs\b/.test(entry),
       )
       .map(({ file, entry }) => `${file}: ${entry.split('\n')[0].trim()}`);
 

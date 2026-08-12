@@ -13,8 +13,7 @@ import type { ClassValue } from 'clsx';
       outputs: ['valueChange'],
     },
     // See hlm-input.ts: without `inputs`, aria-describedby is silently removed.
-    { directive: BrnFieldControlDescribedBy, inputs: ['aria-describedby'] },
-  ],
+    { directive: BrnFieldControlDescribedBy, inputs: ['aria-describedby'] , outputs: [] }],
   host: {
     'data-slot': 'radio-group',
     '[attr.aria-invalid]': '_ariaInvalid() ? "true" : null',

@@ -4,7 +4,7 @@ import { classes } from '@trinity/helm/utils';
 
 @Directive({
 	selector: '[hlmSelectSeparator],hlm-select-separator',
-	hostDirectives: [{ directive: BrnSelectSeparator, inputs: ['orientation'] }],
+	hostDirectives: [{ directive: BrnSelectSeparator, inputs: ['orientation'] , outputs: [] }],
 	host: { 'data-slot': 'select-separator' },
 })
 export class HlmSelectSeparator {

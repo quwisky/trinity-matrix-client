@@ -4,7 +4,7 @@ import { classes } from '@trinity/helm/utils';
 
 @Directive({
 	selector: '[hlmSelectLabel],hlm-select-label',
-	hostDirectives: [{ directive: BrnSelectLabel, inputs: ['id'] }],
+	hostDirectives: [{ directive: BrnSelectLabel, inputs: ['id'] , outputs: [] }],
 	host: { 'data-slot': 'select-label' },
 })
 export class HlmSelectLabel {

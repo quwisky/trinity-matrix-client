@@ -4,7 +4,7 @@ import { classes } from '@trinity/helm/utils';
 
 @Directive({
 	selector: '[hlmSelectValue],hlm-select-value',
-	hostDirectives: [{ directive: BrnSelectValue, inputs: ['placeholder'] }],
+	hostDirectives: [{ directive: BrnSelectValue, inputs: ['placeholder'] , outputs: [] }],
 	host: { '[attr.data-slot]': '!_hidden() ? "select-value" : null' },
 })
 export class HlmSelectValue {

@@ -47,7 +47,7 @@ export type ButtonVariants = VariantProps<typeof buttonVariants>;
 @Directive({
   selector: 'button[hlmBtn], a[hlmBtn]',
   exportAs: 'hlmBtn',
-  hostDirectives: [{ directive: BrnButton, inputs: ['disabled'] }],
+  hostDirectives: [{ directive: BrnButton, inputs: ['disabled'] , outputs: [] }],
   host: { 'data-slot': 'button' },
 })
 export class HlmButton {
