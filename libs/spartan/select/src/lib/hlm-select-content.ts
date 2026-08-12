@@ -5,11 +5,29 @@ import { classes, hlm } from '@trinity/helm/utils';
 import { HlmSelectScrollDown } from './hlm-select-scroll-down';
 import { HlmSelectScrollUp } from './hlm-select-scroll-up';
 
+/**
+ * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ────────────────────────────┐
+ *
+ * One deliberate local override: every `hostDirectives` entry states its `inputs` and
+ * `outputs` explicitly, even when both are empty. `hostDirectives` is public API — a
+ * composed directive's input or output is bindable on our element only if the entry lists
+ * it — so the generator's shorthand form makes that decision by omission. It hid a real
+ * defect once: `HlmInput` composed `BrnFieldControlDescribedBy` without listing
+ * `aria-describedby`, so the attribute was silently overwritten with null (#153).
+ *
+ * A regenerate drops this and restores the shorthand. `scripts/host-directives.spec.mjs`
+ * fails when it does, rather than letting it ship. See "Registered vendored divergences"
+ * in docs/architecture/ui-and-theming.md.
+ * └──────────────────────────────────────────────────────────────────────────────────────┘
+ */
+
 @Component({
 	selector: 'hlm-select-content',
 	imports: [HlmSelectScrollUp, HlmSelectScrollDown],
 	changeDetection: ChangeDetectionStrategy.OnPush,
-	hostDirectives: [BrnSelectContent],
+	hostDirectives: [
+    { directive: BrnSelectContent, inputs: [], outputs: [] },
+  ],
 	template: `
 		@if (showScroll()) {
 			<hlm-select-scroll-up />

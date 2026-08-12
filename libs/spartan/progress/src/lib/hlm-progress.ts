@@ -5,8 +5,7 @@ import { classes } from '@trinity/helm/utils';
 @Directive({
   selector: 'hlm-progress,[hlmProgress]',
   hostDirectives: [
-    { directive: BrnProgress, inputs: ['value', 'max', 'getValueLabel'] },
-  ],
+    { directive: BrnProgress, inputs: ['value', 'max', 'getValueLabel'] , outputs: [] }],
   host: { 'data-slot': 'progress' },
 })
 export class HlmProgress {

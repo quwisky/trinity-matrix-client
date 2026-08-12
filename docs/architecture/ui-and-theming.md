@@ -31,6 +31,18 @@ That third tag is what makes the layering above enforceable rather than merely d
 below the UI one. The kit is deliberately unrestricted: it **is** the wrapper. `libs/ui` is
 banned from Brain and `@ng-icons`, both of which the kit now wraps.
 
+Composition is the other half of that containment. `hostDirectives` **is** public API — a
+composed directive's input is bindable on our element only if the entry lists it — so every
+entry in the kit states its `inputs`, even when the answer is `[]`. The shorthand
+(`hostDirectives: [BrnFoo]`) exposes nothing, which is usually right but is a decision nobody
+made, and it hides the opposite case equally well: `HlmInput` composed
+`BrnFieldControlDescribedBy` without listing `aria-describedby`, so setting that attribute on
+an `hlmInput` was silently overwritten with null and could not be set at all. The same is true of `outputs`, which Angular
+validates and merges identically. All 43 entries state both, and
+`scripts/host-directives.spec.mjs` fails on one that does not — which is also what a
+`@spartan-ng/cli` regenerate would produce, so it is registered as a vendored divergence
+below.
+
 `type:feature` started with **103** violations across 60 files and is now down to 11. #151
 closed the 30 dialog and toast imports, #154 the 62 icon ones, and those three vendors are
 enforced there like everywhere else — a new one fails `pnpm lint`, statically or through a
@@ -160,9 +172,12 @@ DOM — silently, on three shipped screens, for as long as the components have e
 
 **The rules:**
 
-1. **Every `hostDirectives` entry lists `inputs` explicitly**, even when the answer is `[]`. An
-   empty list is a decision; an omitted one is an accident that publishes or swallows an API
-   nobody chose.
+1. **Every `hostDirectives` entry lists `inputs` AND `outputs` explicitly**, even when the
+   answer is `[]`. An empty list is a decision; an omitted one is an accident that publishes or
+   swallows an API nobody chose. Angular validates and merges the two identically, so the same
+   applies to both — `CdkMenu.closed`, for instance, stays internal by decision, because
+   closure is already public on the trigger as `hlmDropdownMenuClosed` and two names for one
+   lifecycle is easy to add and hard to withdraw.
 2. **Set `aria-describedby` as an attribute or a property binding, never `[attr.aria-describedby]`.**
    Even with the input published, the attribute form is still overwritten: the directive's host
    binding runs after the template's. Pinned by a test in
@@ -184,14 +199,15 @@ a lost override fails the suite rather than shipping. This table is the register
 step with the banner in
 [`hlm-dropdown-menu.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts).
 
-| File and symbol                                              | Override                                                                                                                       | Pinned by                       |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                  | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                         | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                              | `dropdown-menu-submenu.spec.ts` |
-| `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                        | `dropdown-menu-submenu.spec.ts` |
-| `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                         | `helm-components.spec.ts`       |
+| File and symbol                                              | Override                                                                                                                                           | Pinned by                       |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection                     | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                                      | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                                             | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | `CdkTargetMenuAim` host directive                                                                                                                  | `dropdown-menu-submenu.spec.ts` |
+| `dropdown-menu` · `HlmDropdownMenuItem`                      | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                            | `dropdown-menu-submenu.spec.ts` |
+| `badge` · `badgeVariants`                                    | Adds `success` and `warning` variants that upstream Helm does not ship                                                                             | `helm-components.spec.ts`       |
+| All 11 kit files with `hostDirectives`                       | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission | `host-directives.spec.mjs`      |
 
 The specs live in
 [`libs/spartan/overlay/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/spartan/overlay/src/lib).

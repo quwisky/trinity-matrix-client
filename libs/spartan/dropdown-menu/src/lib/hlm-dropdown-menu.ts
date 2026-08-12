@@ -33,6 +33,9 @@ import { type BooleanInput, type NumberInput } from '@angular/cdk/coercion';
  * The register lives in docs/architecture/ui-and-theming.md. Note this file is already a fork in shape as
  * well as content: the generator emits ~16 one-directive files, this is one module.
  *
+ *   6. Every `hostDirectives` entry states its `inputs` and `outputs` explicitly, even when
+ *      empty — the generator's shorthand decides the element's public API by omission.
+ *      Pinned by scripts/host-directives.spec.mjs.
  * └───────────────────────────────────────────────────────────────────────────────────────┘
  */
 
@@ -112,7 +115,7 @@ export class HlmDropdownMenuCheckboxCdk extends CdkMenuItemCheckbox {
       inputs: ['cdkMenuItemDisabled: disabled', 'cdkMenuItemChecked: checked', 'keepOpen'],
       outputs: ['cdkMenuItemTriggered: triggered'],
     },
-    HlmDropdownMenuFocusOnHover,
+    { directive: HlmDropdownMenuFocusOnHover, inputs: [], outputs: [] },
   ],
   host: {
     'data-slot': 'dropdown-menu-checkbox-item',
@@ -139,7 +142,9 @@ export class HlmDropdownMenuCheckbox {
 
 @Directive({
   selector: '[hlmDropdownMenuGroup],hlm-dropdown-menu-group',
-  hostDirectives: [CdkMenuGroup],
+  hostDirectives: [
+    { directive: CdkMenuGroup, inputs: [], outputs: [] },
+  ],
   host: { 'data-slot': 'dropdown-menu-group' },
 })
 export class HlmDropdownMenuGroup {
@@ -171,7 +176,7 @@ export class HlmDropdownMenuItemSubIndicator {
       inputs: ['cdkMenuItemDisabled: disabled'],
       outputs: ['cdkMenuItemTriggered: triggered'],
     },
-    HlmDropdownMenuFocusOnHover,
+    { directive: HlmDropdownMenuFocusOnHover, inputs: [], outputs: [] },
   ],
   host: {
     'data-slot': 'dropdown-menu-item',
@@ -265,7 +270,7 @@ export class HlmDropdownMenuRadioCdk extends CdkMenuItemRadio {
       inputs: ['cdkMenuItemDisabled: disabled', 'cdkMenuItemChecked: checked', 'keepOpen'],
       outputs: ['cdkMenuItemTriggered: triggered'],
     },
-    HlmDropdownMenuFocusOnHover,
+    { directive: HlmDropdownMenuFocusOnHover, inputs: [], outputs: [] },
   ],
   host: {
     'data-slot': 'dropdown-menu-radio-item',
@@ -312,8 +317,7 @@ export class HlmDropdownMenuShortcut {
       directive: CdkMenuTrigger,
       inputs: ['cdkMenuTriggerFor: hlmDropdownMenuSubTrigger', 'cdkMenuTriggerData: hlmDropdownMenuTriggerData'],
       outputs: ['cdkMenuOpened: hlmDropdownMenuSubOpened', 'cdkMenuClosed: hlmDropdownMenuSubClosed'],
-    },
-  ],
+    }],
   host: { 'data-slot': 'dropdown-menu-sub-trigger' },
 })
 export class HlmDropdownMenuSubTrigger {
@@ -385,7 +389,14 @@ export class HlmDropdownMenuSubTrigger {
 
 @Directive({
   selector: '[hlmDropdownMenuSub],hlm-dropdown-menu-sub',
-  hostDirectives: [CdkMenu, CdkTargetMenuAim],
+  hostDirectives: [
+    // CdkMenu declares one output, `closed`, and it stays internal deliberately. Closure is
+    // already public on the TRIGGER as `hlmDropdownMenuClosed` (and `…SubClosed`), which is
+    // the element consumers bind to; re-exposing it here would give the same lifecycle two
+    // names on two different elements — easy to add, hard to withdraw.
+    { directive: CdkMenu, inputs: [], outputs: [] },
+    { directive: CdkTargetMenuAim, inputs: [], outputs: [] },
+  ],
   host: {
     'data-slot': 'dropdown-menu-sub',
     '[attr.data-state]': '_state()',
@@ -447,8 +458,7 @@ export function injectHlmDropdownMenuConfig(): HlmDropdownMenuConfig {
       directive: CdkMenuTrigger,
       inputs: ['cdkMenuTriggerFor: hlmDropdownMenuTrigger', 'cdkMenuTriggerData: hlmDropdownMenuTriggerData'],
       outputs: ['cdkMenuOpened: hlmDropdownMenuOpened', 'cdkMenuClosed: hlmDropdownMenuClosed'],
-    },
-  ],
+    }],
   host: { 'data-slot': 'dropdown-menu-trigger' },
 })
 export class HlmDropdownMenuTrigger {
@@ -474,7 +484,14 @@ export class HlmDropdownMenuTrigger {
 
 @Directive({
   selector: '[hlmDropdownMenu],hlm-dropdown-menu',
-  hostDirectives: [CdkMenu, CdkTargetMenuAim],
+  hostDirectives: [
+    // CdkMenu declares one output, `closed`, and it stays internal deliberately. Closure is
+    // already public on the TRIGGER as `hlmDropdownMenuClosed` (and `…SubClosed`), which is
+    // the element consumers bind to; re-exposing it here would give the same lifecycle two
+    // names on two different elements — easy to add, hard to withdraw.
+    { directive: CdkMenu, inputs: [], outputs: [] },
+    { directive: CdkTargetMenuAim, inputs: [], outputs: [] },
+  ],
   host: {
     'data-slot': 'dropdown-menu',
     '[attr.data-state]': '_state()',

@@ -20,6 +20,22 @@ import type { ChangeFn, TouchFn } from '@spartan-ng/brain/forms';
 import { hlm } from '@trinity/helm/utils';
 import type { ClassValue } from 'clsx';
 
+/**
+ * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ────────────────────────────┐
+ *
+ * One deliberate local override: every `hostDirectives` entry states its `inputs` and
+ * `outputs` explicitly, even when both are empty. `hostDirectives` is public API — a
+ * composed directive's input or output is bindable on our element only if the entry lists
+ * it — so the generator's shorthand form makes that decision by omission. It hid a real
+ * defect once: `HlmInput` composed `BrnFieldControlDescribedBy` without listing
+ * `aria-describedby`, so the attribute was silently overwritten with null (#153).
+ *
+ * A regenerate drops this and restores the shorthand. `scripts/host-directives.spec.mjs`
+ * fails when it does, rather than letting it ship. See "Registered vendored divergences"
+ * in docs/architecture/ui-and-theming.md.
+ * └──────────────────────────────────────────────────────────────────────────────────────┘
+ */
+
 export const HLM_CHECKBOX_VALUE_ACCESSOR = {
   provide: NG_VALUE_ACCESSOR,
   useExisting: forwardRef(() => HlmCheckbox),
@@ -32,7 +48,14 @@ export const HLM_CHECKBOX_VALUE_ACCESSOR = {
   providers: [HLM_CHECKBOX_VALUE_ACCESSOR],
   viewProviders: [provideIcons({ lucideCheck })],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  hostDirectives: [BrnFieldControlDescribedBy],
+  hostDirectives: [
+    // Deliberately NOT exposing `aria-describedby`, unlike HlmInput/HlmTextarea/HlmRadioGroup
+    // which do. This host is `display: contents` and is not the focusable control: the
+    // component declares its own `aria-describedby` input and forwards it to the inner
+    // <brn-checkbox>. Exposing it here would describe the wrong element. Pinned by
+    // "is still forwarded, not kept, on a checkbox" in helm-components.spec.ts.
+    { directive: BrnFieldControlDescribedBy, inputs: [], outputs: [] },
+  ],
   host: {
     class: 'contents peer',
     'data-slot': 'checkbox',
