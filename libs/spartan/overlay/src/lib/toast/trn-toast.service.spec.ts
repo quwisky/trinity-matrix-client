@@ -45,4 +45,45 @@ describe('TrnToastService', () => {
       duration: Number.POSITIVE_INFINITY,
     });
   });
+
+  it('omits the action key entirely when none was passed', () => {
+    svc.show('Plain', { duration: 1000 });
+    // Asserted as an exact literal on purpose: sonner treats the presence of the key
+    // as "render a button", so an `action: undefined` would be a different toast.
+    expect(toast).toHaveBeenCalledWith('Plain', { duration: 1000 });
+  });
+
+  it('forwards an action on every variant, not just the default one', () => {
+    // The variants take separate sonner entry points, so a spread that only reached
+    // `toast()` would leave a success or error toast quietly button-less.
+    const onClick = vi.fn();
+    const withAction = { label: 'Undo', onClick };
+
+    svc.show('Plain', { action: withAction });
+    svc.show('Saved', { variant: 'success', action: withAction });
+    svc.show('Failed', { variant: 'destructive', action: withAction });
+
+    for (const spy of [toast, toast.success, toast.error]) {
+      expect(spy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          action: expect.objectContaining({ label: 'Undo' }),
+        }),
+      );
+    }
+  });
+
+  it('runs the caller handler when sonner invokes the button', () => {
+    // sonner hands its own MouseEvent to onClick; ours takes none. The wrapper has to
+    // absorb that, and calling through is the only thing that proves it does.
+    const onClick = vi.fn();
+    svc.show('Plain', { action: { label: 'Undo', onClick } });
+
+    const forwarded = vi.mocked(toast).mock.calls[0][1] as {
+      action: { onClick: (event: MouseEvent) => void };
+    };
+    forwarded.action.onClick(new MouseEvent('click'));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
 });

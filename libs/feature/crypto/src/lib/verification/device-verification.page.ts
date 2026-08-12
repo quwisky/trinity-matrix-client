@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { DialogRef } from '@angular/cdk/dialog';
+import { DialogRef } from '@trinity/helm/overlay';
 import { Observable } from 'rxjs';
 import { VerificationService } from '@trinity/data-access/crypto';
 import {

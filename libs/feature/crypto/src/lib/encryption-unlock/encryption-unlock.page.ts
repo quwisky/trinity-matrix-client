@@ -13,7 +13,6 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
-import { DialogRef } from '@angular/cdk/dialog';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Browser } from '@capacitor/browser';
 import { Observable, finalize, firstValueFrom } from 'rxjs';
@@ -28,7 +27,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { DialogRef, TrnAlertService } from '@trinity/helm/overlay';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
   confirmLeaving,

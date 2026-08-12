@@ -18,8 +18,6 @@ export interface DialogOptions {
   side?: 'center' | 'end';
   /** Prevent backdrop/escape close (Ionic backdropDismiss: false). */
   disableClose?: boolean;
-  /** Injected as DIALOG_DATA, for components that read data instead of inputs. */
-  data?: unknown;
   /**
    * Accessible name announced when the dialog opens — CDK renders role="dialog"
    * with no name otherwise, so screen readers just say "dialog". Pass the dialog's
@@ -58,7 +56,6 @@ export class TrnDialogService {
       panelClass: opts.panelClass ?? 'trn-dialog-panel',
       backdropClass: ['cdk-overlay-dark-backdrop'],
       disableClose: opts.disableClose ?? false,
-      data: opts.data,
       ariaLabel: opts.ariaLabel,
       // Spelled out rather than left off: CDK merges the config over its defaults with
       // a spread, so an `autoFocus: undefined` key would clobber the default instead of
@@ -89,11 +86,49 @@ export class TrnDialogService {
   }
 
   /**
-   * Whether any dialog opened through here is currently presented — the
-   * replacement for Ionic's `ModalController.getTop()` guard (e.g. "don't stack
-   * the quick switcher over an open panel").
+   * Whether any overlay is currently presented — the replacement for Ionic's
+   * `ModalController.getTop()` guard (e.g. "don't stack the quick switcher over an
+   * open panel").
+   *
+   * This reads CDK's shared root stack, so it counts alerts and action sheets too,
+   * not only dialogs opened through {@link open}. That is deliberate and always has
+   * been true — the JSDoc used to claim otherwise. `Dialog` is `providedIn: 'root'`,
+   * so {@link TrnAlertService} and {@link TrnActionSheetService} push onto the same
+   * `openDialogs`, and a guard that ignored them would let a dialog stack on top of
+   * an alert.
    */
   hasOpen(): boolean {
     return this.dialog.openDialogs.length > 0;
+  }
+
+  /**
+   * Close the most recently opened overlay, returning whether there was one.
+   *
+   * This is the hardware back-button primitive: Android's back should dismiss what
+   * is on top before it navigates. It closes the *last* entry of the shared stack
+   * described on {@link hasOpen} — so back dismisses an alert or action sheet just
+   * as it dismisses a dialog, and dismisses them in the order the user sees them.
+   *
+   * Named rather than exposing CDK's `Dialog`: handing feature code the class back
+   * would let it call `open()` with unmediated config, and this service would stop
+   * being the only door.
+   */
+  closeTopmost(): boolean {
+    const before = this.dialog.openDialogs.length;
+    this.dialog.openDialogs.at(-1)?.close();
+    // Whether one actually CLOSED, not whether one was found. CDK's `close()` consults
+    // the dialog's `closePredicate` and can decline; when it does close it splices the
+    // ref out of `openDialogs` synchronously, so the lengths tell them apart. Reporting
+    // a refusal as success would make the back button swallow the press while the dialog
+    // stayed on screen — the one outcome worse than either branch on its own.
+    return this.dialog.openDialogs.length < before;
+  }
+
+  /**
+   * Close every open overlay. Intended for teardown — a spec that opened a real
+   * dialog, or a flow that navigates away from everything at once.
+   */
+  closeAll(): void {
+    this.dialog.closeAll();
   }
 }
