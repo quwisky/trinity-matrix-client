@@ -8,7 +8,9 @@ import { classes } from '@trinity/helm/utils';
 
 @Directive({
   selector: '[hlmProgressIndicator],hlm-progress-indicator',
-  hostDirectives: [BrnProgressIndicator],
+  hostDirectives: [
+    { directive: BrnProgressIndicator, inputs: [] },
+  ],
   host: {
     'data-slot': 'progress-indicator',
     '[class.animate-indeterminate]': '_indeterminate()',

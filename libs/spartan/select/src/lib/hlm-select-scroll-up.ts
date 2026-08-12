@@ -9,7 +9,9 @@ import { classes } from '@trinity/helm/utils';
 	imports: [NgIcon],
 	providers: [provideIcons({ lucideChevronUp })],
 	changeDetection: ChangeDetectionStrategy.OnPush,
-	hostDirectives: [BrnSelectScrollUp],
+	hostDirectives: [
+    { directive: BrnSelectScrollUp, inputs: [] },
+  ],
 	template: `
 		<ng-icon name="lucideChevronUp" />
 	`,

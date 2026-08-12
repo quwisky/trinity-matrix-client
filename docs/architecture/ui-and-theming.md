@@ -31,6 +31,15 @@ That third tag is what makes the layering above enforceable rather than merely d
 below the UI one. The kit is deliberately unrestricted: it **is** the wrapper. `libs/ui` is
 banned from Brain and `@ng-icons`, both of which the kit now wraps.
 
+Composition is the other half of that containment. `hostDirectives` **is** public API — a
+composed directive's input is bindable on our element only if the entry lists it — so every
+entry in the kit states its `inputs`, even when the answer is `[]`. The shorthand
+(`hostDirectives: [BrnFoo]`) exposes nothing, which is usually right but is a decision nobody
+made, and it hides the opposite case equally well: `HlmInput` composed
+`BrnFieldControlDescribedBy` without listing `aria-describedby`, so setting that attribute on
+an `hlmInput` was silently overwritten with null and could not be set at all. All 43 entries
+are explicit, and `scripts/host-directives.spec.mjs` fails on a bare one.
+
 `type:feature` started with **103** violations across 60 files and is now down to 11. #151
 closed the 30 dialog and toast imports, #154 the 62 icon ones, and those three vendors are
 enforced there like everywhere else — a new one fails `pnpm lint`, statically or through a

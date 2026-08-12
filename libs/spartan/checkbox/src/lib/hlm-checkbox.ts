@@ -32,7 +32,14 @@ export const HLM_CHECKBOX_VALUE_ACCESSOR = {
   providers: [HLM_CHECKBOX_VALUE_ACCESSOR],
   viewProviders: [provideIcons({ lucideCheck })],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  hostDirectives: [BrnFieldControlDescribedBy],
+  hostDirectives: [
+    // Deliberately NOT exposing `aria-describedby`, unlike HlmInput/HlmTextarea/HlmRadioGroup
+    // which do. This host is `display: contents` and is not the focusable control: the
+    // component declares its own `aria-describedby` input and forwards it to the inner
+    // <brn-checkbox>. Exposing it here would describe the wrong element. Pinned by
+    // "is still forwarded, not kept, on a checkbox" in helm-components.spec.ts.
+    { directive: BrnFieldControlDescribedBy, inputs: [] },
+  ],
   host: {
     class: 'contents peer',
     'data-slot': 'checkbox',

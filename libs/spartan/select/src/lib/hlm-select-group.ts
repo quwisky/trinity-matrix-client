@@ -4,7 +4,7 @@ import { classes } from '@trinity/helm/utils';
 
 @Directive({
 	selector: '[hlmSelectGroup],hlm-select-group',
-	hostDirectives: [{ directive: BrnSelectGroup }],
+	hostDirectives: [{ directive: BrnSelectGroup, inputs: [] }],
 	host: { 'data-slot': 'select-group' },
 })
 export class HlmSelectGroup {

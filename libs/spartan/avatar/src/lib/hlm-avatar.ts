@@ -32,7 +32,9 @@ export class HlmAvatarBadge {
 @Directive({
   selector: '[hlmAvatarFallback]',
   exportAs: 'hlmAvatarFallback',
-  hostDirectives: [BrnAvatarFallback],
+  hostDirectives: [
+    { directive: BrnAvatarFallback, inputs: [] },
+  ],
   host: {
     'data-slot': 'avatar-fallback',
   },
@@ -79,7 +81,9 @@ export class HlmAvatarGroup {
 @Directive({
   selector: 'img[hlmAvatarImage]',
   exportAs: 'hlmAvatarImage',
-  hostDirectives: [BrnAvatarImage],
+  hostDirectives: [
+    { directive: BrnAvatarImage, inputs: [] },
+  ],
   host: {
     'data-slot': 'avatar-image',
   },

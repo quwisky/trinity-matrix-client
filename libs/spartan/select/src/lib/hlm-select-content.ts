@@ -9,7 +9,9 @@ import { HlmSelectScrollUp } from './hlm-select-scroll-up';
 	selector: 'hlm-select-content',
 	imports: [HlmSelectScrollUp, HlmSelectScrollDown],
 	changeDetection: ChangeDetectionStrategy.OnPush,
-	hostDirectives: [BrnSelectContent],
+	hostDirectives: [
+    { directive: BrnSelectContent, inputs: [] },
+  ],
 	template: `
 		@if (showScroll()) {
 			<hlm-select-scroll-up />

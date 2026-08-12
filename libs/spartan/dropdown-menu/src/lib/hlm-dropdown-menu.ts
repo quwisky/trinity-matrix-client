@@ -112,7 +112,7 @@ export class HlmDropdownMenuCheckboxCdk extends CdkMenuItemCheckbox {
       inputs: ['cdkMenuItemDisabled: disabled', 'cdkMenuItemChecked: checked', 'keepOpen'],
       outputs: ['cdkMenuItemTriggered: triggered'],
     },
-    HlmDropdownMenuFocusOnHover,
+    { directive: HlmDropdownMenuFocusOnHover, inputs: [] },
   ],
   host: {
     'data-slot': 'dropdown-menu-checkbox-item',
@@ -139,7 +139,9 @@ export class HlmDropdownMenuCheckbox {
 
 @Directive({
   selector: '[hlmDropdownMenuGroup],hlm-dropdown-menu-group',
-  hostDirectives: [CdkMenuGroup],
+  hostDirectives: [
+    { directive: CdkMenuGroup, inputs: [] },
+  ],
   host: { 'data-slot': 'dropdown-menu-group' },
 })
 export class HlmDropdownMenuGroup {
@@ -171,7 +173,7 @@ export class HlmDropdownMenuItemSubIndicator {
       inputs: ['cdkMenuItemDisabled: disabled'],
       outputs: ['cdkMenuItemTriggered: triggered'],
     },
-    HlmDropdownMenuFocusOnHover,
+    { directive: HlmDropdownMenuFocusOnHover, inputs: [] },
   ],
   host: {
     'data-slot': 'dropdown-menu-item',
@@ -265,7 +267,7 @@ export class HlmDropdownMenuRadioCdk extends CdkMenuItemRadio {
       inputs: ['cdkMenuItemDisabled: disabled', 'cdkMenuItemChecked: checked', 'keepOpen'],
       outputs: ['cdkMenuItemTriggered: triggered'],
     },
-    HlmDropdownMenuFocusOnHover,
+    { directive: HlmDropdownMenuFocusOnHover, inputs: [] },
   ],
   host: {
     'data-slot': 'dropdown-menu-radio-item',
@@ -385,7 +387,10 @@ export class HlmDropdownMenuSubTrigger {
 
 @Directive({
   selector: '[hlmDropdownMenuSub],hlm-dropdown-menu-sub',
-  hostDirectives: [CdkMenu, CdkTargetMenuAim],
+  hostDirectives: [
+    { directive: CdkMenu, inputs: [] },
+    { directive: CdkTargetMenuAim, inputs: [] },
+  ],
   host: {
     'data-slot': 'dropdown-menu-sub',
     '[attr.data-state]': '_state()',
@@ -474,7 +479,10 @@ export class HlmDropdownMenuTrigger {
 
 @Directive({
   selector: '[hlmDropdownMenu],hlm-dropdown-menu',
-  hostDirectives: [CdkMenu, CdkTargetMenuAim],
+  hostDirectives: [
+    { directive: CdkMenu, inputs: [] },
+    { directive: CdkTargetMenuAim, inputs: [] },
+  ],
   host: {
     'data-slot': 'dropdown-menu',
     '[attr.data-state]': '_state()',

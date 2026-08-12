@@ -4,7 +4,9 @@ import { classes } from '@trinity/helm/utils';
 
 @Directive({
 	selector: '[hlmSelectPlaceholder],hlm-select-placeholder',
-	hostDirectives: [BrnSelectPlaceholder],
+	hostDirectives: [
+    { directive: BrnSelectPlaceholder, inputs: [] },
+  ],
 	host: { 'data-slot': 'select-placeholder' },
 })
 export class HlmSelectPlaceholder {
