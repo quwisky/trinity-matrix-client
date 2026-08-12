@@ -174,6 +174,11 @@ describe('UI vendor boundary', () => {
     const bannedFor = (tier) =>
       constraints.find((entry) => entry.sourceTag === tier)
         ?.bannedExternalImports ?? [];
+    // Deliberately ignores the trailing `*`: this test asks whether a ban for the vendor
+    // was DECLARED, and the test below asks whether it can actually match. Keeping those
+    // apart means a star-less glob fails exactly one of them, naming the real defect. Do
+    // not fold them together — a combined check would report "no ban" for what is really
+    // "a ban that silently matches nothing".
     const covers = (globs, vendor) =>
       globs.some((glob) => vendor.startsWith(glob.replace(/\*$/, '')));
 
@@ -216,10 +221,16 @@ describe('UI vendor boundary', () => {
       kit.rules['@nx/enforce-module-boundaries'][1].depConstraints;
 
     // The kit IS the wrapper; banning brain there would ban the layer from existing.
+    //
+    // Asserted against `bannedExternalImports` specifically, not against the entry: a
+    // future `ui:vendor-wrapper` constraint that does something else entirely — an
+    // `onlyDependOnLibsWithTags`, say — is not a violation of this invariant, and a test
+    // that failed on it would be crying wolf.
     expect(
-      constraints.find((entry) => entry.sourceTag === 'ui:vendor-wrapper'),
+      constraints.find((entry) => entry.sourceTag === 'ui:vendor-wrapper')
+        ?.bannedExternalImports,
     ).toBeUndefined();
-    expect(severityOf(kit, 'no-restricted-imports') ?? 0).toBe(0);
+    expect(kit.rules['no-restricted-imports']).toBeUndefined();
   });
 
   it('stages the feature ban on the core rule without disarming the matrix-js-sdk ban', async () => {
@@ -229,8 +240,8 @@ describe('UI vendor boundary', () => {
     //
     // The staged ban has to live on the CORE rule at `warn`: the @typescript-eslint one
     // already carries the matrix-js-sdk patterns at `error` over these same files, and a
-    // rule entry has ONE severity — folding these in would promote 103 known violations
-    // to errors and redden CI.
+    // rule entry has ONE severity — folding these in would promote the 103 known
+    // violations to errors and redden CI.
     expect(severityOf(feature, 'no-restricted-imports')).toBe(1);
     expect(
       severityOf(feature, '@typescript-eslint/no-restricted-imports'),

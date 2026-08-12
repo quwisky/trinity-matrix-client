@@ -29,10 +29,12 @@ That third tag is what makes the layering above enforceable rather than merely d
 below the UI one. The kit is deliberately unrestricted: it **is** the wrapper. `libs/ui` is
 banned from Brain only, since it is where Trinity's own wrappers over the other three live.
 
-`type:feature` is the one tier still exempt, because it has 103 violations to clear first —
-28 files importing `@angular/cdk/dialog` and the shell importing `@spartan-ng/brain/sonner`.
-Its ban is staged as a **warning** so the count is visible while it shrinks, and is promoted
-to an error once the last one is gone.
+`type:feature` is the one tier still exempt, because it has 103 violations over 60 files to
+clear first, and they belong to three different sub-issues rather than one: 62 `@ng-icons`
+imports (#154), 28 `@angular/cdk/dialog` (#151), 11 `@ctrl/ngx-emoji-mart` (#152) and 2
+`@spartan-ng/brain/sonner` (#151). Its ban is staged as a **warning** so the count is visible
+while it shrinks, and is promoted to an error only once all three are closed — closing the
+dialog work alone leaves 73 standing.
 
 `@trinity/ui` holds `AvatarComponent` (`<trn-avatar>`), `BannerComponent`,
 `PageHeaderComponent`, `MediaBubbleComponent`, `MessageToolbarComponent`, plus

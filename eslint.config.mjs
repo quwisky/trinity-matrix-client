@@ -65,7 +65,8 @@ export default defineConfig([
             // wrapper, and banning brain there would ban the layer from existing.
             //
             // `type:feature` is missing on purpose. It still has 103 violations, so its ban
-            // is staged as a warning further down and moves up here when #151 closes them.
+            // is staged as a warning further down and moves up here once ALL of #151, #152
+            // and #154 have closed them — see the breakdown at that block.
             {
               sourceTag: 'ui:wrapper',
               bannedExternalImports: ['@spartan-ng/brain*'],
@@ -370,17 +371,33 @@ export default defineConfig([
   {
     // TEMPORARY, and deliberately at `warn` — the staging half of #148.
     //
-    // `type:feature` is the one tier that still reaches past the kit: 28 files import
-    // @angular/cdk/dialog and libs/feature/shell imports @spartan-ng/brain/sonner, 103
-    // warnings in all. Those are closed by #151; until then an entry beside the others in
-    // depConstraints would redden CI, so the ban is staged here and moved up there by the
-    // flip commit at the end of the epic. Delete this whole block then — it exists only so
-    // the count is visible while it shrinks.
+    // `type:feature` is the one tier that still reaches past the kit — 103 warnings over
+    // 60 files, and they do NOT all belong to one sub-issue:
+    //
+    //     62  @ng-icons/{core,lucide}             -> #154
+    //     28  @angular/cdk/dialog                 -> #151
+    //     11  @ctrl/ngx-emoji-mart{,/ngx-emoji}   -> #152
+    //      2  @spartan-ng/brain/sonner            -> #151
+    //
+    // So the flip to `error` needs #151, #152 AND #154 closed. Closing #151 alone leaves 73
+    // warnings standing, which is worth knowing before someone tries. 22 of the 103 are in
+    // .spec.ts files, and Nx boundaries apply to specs too — whether those get an exemption
+    // is #151's call, recorded there.
+    //
+    // Until then an entry beside the others in depConstraints would redden CI, so the ban is
+    // staged here and moved up by the flip commit. Delete this whole block then — it exists
+    // only so the count is visible while it shrinks.
+    //
+    // The cost of staging is real and worth stating: libs/feature/** had ZERO lint warnings
+    // before this, so any warning from any other rule is now buried in 103, and
+    // `--max-warnings` is off the table for the duration. A spec-side ratchet was considered
+    // and rejected: it would mean running ESLint over libs/feature/** on every test run to
+    // guard scaffolding that is deleted at the end of the epic.
     //
     // It MUST be the core `no-restricted-imports`, not the @typescript-eslint one: that
     // one is already configured at `error` over libs/feature/** carrying the matrix-js-sdk
     // patterns, and one rule entry has one severity, so folding these in would promote all
-    // 103 to errors. The two rule ids are distinct and both apply.
+    // 103 of those to errors. The two rule ids are distinct and both apply.
     //
     // There is deliberately NO companion `no-restricted-syntax` entry. Flat config replaces
     // a rule's options wholesale, so a second entry over these globs would delete the
