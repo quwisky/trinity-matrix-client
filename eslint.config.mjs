@@ -67,12 +67,24 @@ export default defineConfig([
             // deliberately absent from this list; it IS the wrapper layer, and banning its
             // vendors there would ban the layer from existing.
             //
-            // `type:feature` is missing on purpose. It still has 103 violations, so its ban
-            // is staged as a warning further down and moves up here once ALL of #151, #152
-            // and #154 have closed them — see the breakdown at that block.
+            // `type:feature` carries three of the four vendors now; #151 and #154 closed
+            // those. Only @ctrl/ngx-emoji-mart is still staged as a warning further down,
+            // waiting on #152.
             {
               sourceTag: 'ui:wrapper',
               bannedExternalImports: ['@spartan-ng/brain*', '@ng-icons*'],
+            },
+            {
+              // Closed by #151 (@angular/cdk, @spartan-ng/brain) and #154 (@ng-icons), so
+              // these are enforced rather than staged. @ctrl/ngx-emoji-mart is absent on
+              // purpose: it still has 7 importers, and #152 is gated on the composer
+              // redesign, so its ban stays a warning further down until then.
+              sourceTag: 'type:feature',
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@angular/cdk*',
+                '@ng-icons*',
+              ],
             },
             {
               sourceTag: 'type:data-access',
@@ -372,53 +384,31 @@ export default defineConfig([
     },
   },
   {
-    // TEMPORARY, and deliberately at `warn` — the staging half of #148.
+    // TEMPORARY, and the last of the staging from #148 — one vendor, not four.
     //
-    // `type:feature` is the one tier that still reaches past the kit — 103 warnings over
-    // 60 files, and they do NOT all belong to one sub-issue:
+    // The other three moved up into depConstraints as errors: #151 closed the 28
+    // @angular/cdk/dialog and 2 @spartan-ng/brain/sonner imports, #154 the 62 @ng-icons
+    // ones. @ctrl/ngx-emoji-mart still has 7 importers in libs/feature/rooms and #152 is
+    // gated on the composer redesign, because the picker's placement lives in feature SCSS
+    // today and a wrapper that grew its own positioning would then have to be undone. So
+    // this stays a warning until that lands. Delete the whole block then.
     //
-    //     62  @ng-icons/{core,lucide}             -> #154
-    //     28  @angular/cdk/dialog                 -> #151
-    //     11  @ctrl/ngx-emoji-mart{,/ngx-emoji}   -> #152
-    //      2  @spartan-ng/brain/sonner            -> #151
-    //
-    // So the flip to `error` needs #151, #152 AND #154 closed. Closing #151 alone leaves 73
-    // warnings standing, which is worth knowing before someone tries. 22 of the 103 are in
-    // .spec.ts files, and Nx boundaries apply to specs too — whether those get an exemption
-    // is #151's call, recorded there.
-    //
-    // Until then an entry beside the others in depConstraints would redden CI, so the ban is
-    // staged here and moved up by the flip commit. Delete this whole block then — it exists
-    // only so the count is visible while it shrinks.
-    //
-    // The cost of staging is real and worth stating: libs/feature/** had ZERO lint warnings
-    // before this, so any warning from any other rule is now buried in 103, and
-    // `--max-warnings` is off the table for the duration. A spec-side ratchet was considered
-    // and rejected: it would mean running ESLint over libs/feature/** on every test run to
-    // guard scaffolding that is deleted at the end of the epic.
-    //
-    // It MUST be the core `no-restricted-imports`, not the @typescript-eslint one: that
-    // one is already configured at `error` over libs/feature/** carrying the matrix-js-sdk
-    // patterns, and one rule entry has one severity, so folding these in would promote all
-    // 103 of those to errors. The two rule ids are distinct and both apply.
+    // It MUST be the core `no-restricted-imports`, not the @typescript-eslint one: that one
+    // is already configured at `error` over libs/feature/** carrying the matrix-js-sdk
+    // patterns, and one rule entry has one severity, so folding this in would promote the
+    // 7 known violations to errors. The two rule ids are distinct and both apply.
     //
     // There is deliberately NO companion `no-restricted-syntax` entry. Flat config replaces
     // a rule's options wholesale, so a second entry over these globs would delete the
-    // matrix-js-sdk ImportExpression selector above without a word. It is also unnecessary:
-    // @nx/enforce-module-boundaries visits ImportExpression itself, so the depConstraints
-    // bans already cover `await import(...)` — verified with a planted probe.
+    // matrix-js-sdk ImportExpression selector above without a word. It is also unnecessary
+    // for the three now in depConstraints: @nx/enforce-module-boundaries visits
+    // ImportExpression itself, verified with a planted probe.
     files: ['libs/feature/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'warn',
         {
           patterns: [
-            {
-              group: ['@spartan-ng/brain*'],
-              message: UI_VENDOR_IMPORT_MESSAGE,
-            },
-            { group: ['@angular/cdk*'], message: UI_VENDOR_IMPORT_MESSAGE },
-            { group: ['@ng-icons*'], message: UI_VENDOR_IMPORT_MESSAGE },
             {
               group: ['@ctrl/ngx-emoji-mart*'],
               message: UI_VENDOR_IMPORT_MESSAGE,

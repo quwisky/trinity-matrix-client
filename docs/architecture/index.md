@@ -56,7 +56,9 @@ declared once at `eslint.config.mjs`.
 A third axis, `ui:*`, separates the two halves of the UI tier so third-party UI can be
 contained: `libs/ui` is `ui:wrapper`, the vendored Helm kit is `ui:vendor-wrapper`, and
 `bannedExternalImports` keeps `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and
-`@ctrl/ngx-emoji-mart` out of `data-access`, `util`, `platform` and `app` entirely. The kit is
+`@ctrl/ngx-emoji-mart` out of `data-access`, `util`, `platform` and `app` entirely, and the
+first three out of `feature` as well (`@ctrl/ngx-emoji-mart` is still staged there, pending
+#152). The kit is
 unrestricted because it is the wrapper. Each glob carries a trailing `*` — without it the
 pattern matches only the bare specifier, nothing imports that, and the ban silently enforces
 nothing while lint reports success. See [UI and theming](ui-and-theming.md).
