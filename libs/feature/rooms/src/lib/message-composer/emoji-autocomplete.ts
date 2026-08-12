@@ -1,6 +1,8 @@
 import { computed, signal } from '@angular/core';
-import type { EmojiSearch } from '@ctrl/ngx-emoji-mart';
-import type { EmojiData, EmojiService } from '@ctrl/ngx-emoji-mart/ngx-emoji';
+import type {
+  TrnEmojiIndex,
+  TrnEmojiSuggestion,
+} from '@trinity/kit/emoji-picker';
 import { type CaretReplacement } from './caret-replacement';
 
 /**
@@ -37,12 +39,12 @@ export class EmojiAutocomplete {
   readonly query = signal<string | null>(null);
 
   /** Ranked emoji suggestions for the current query (from emoji-mart's index). */
-  readonly matches = computed<EmojiData[]>(() => {
+  readonly matches = computed<readonly TrnEmojiSuggestion[]>(() => {
     const q = this.query();
     if (q === null) {
       return [];
     }
-    return this.search.search(q, undefined, EMOJI_SUGGESTION_LIMIT) ?? [];
+    return this.index.suggest(q, EMOJI_SUGGESTION_LIMIT);
   });
 
   /** The menu is shown only when a query yields at least one match. */
@@ -51,10 +53,7 @@ export class EmojiAutocomplete {
   /** Index of the highlighted suggestion. */
   readonly activeIndex = signal(0);
 
-  constructor(
-    private readonly search: EmojiSearch,
-    private readonly emoji: EmojiService,
-  ) {}
+  constructor(private readonly index: TrnEmojiIndex) {}
 
   /**
    * Recompute the menu from the text before the caret. A fully typed `:shortcode:` is
@@ -113,9 +112,7 @@ export class EmojiAutocomplete {
 
   /** Native emoji for an exact shortcode, or undefined if it isn't a real one. */
   private nativeForShortcode(code: string): string | undefined {
-    const data = this.emoji.getData(code);
-    return data
-      ? (this.emoji.getSanitizedData(data).native ?? undefined)
-      : undefined;
+    // The facade returns null for "not an emoji"; this class's callers expect undefined.
+    return this.index.nativeFor(code) ?? undefined;
   }
 }

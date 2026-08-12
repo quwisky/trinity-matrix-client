@@ -1,0 +1,80 @@
+// Bridges @ctrl/ngx-emoji-mart onto Trinity's design tokens.
+// ---
+// The vendor's picker.css is 453 lines with ZERO custom properties — every colour is a
+// literal (#fff, #222427, #d9d9d9, and an #ae65c5 accent). So this cannot be a variable
+// remap; it has to be an override sheet. And because the vendor's inner DOM carries no
+// `_ngcontent` attribute, an encapsulated stylesheet cannot reach it at all — hence
+// `ViewEncapsulation.None` on the component, scoped by the `.trn-emoji-picker` host class
+// so nothing leaks past this element.
+// ---
+// Every rule below is keyed on a token, never a literal, so the picker follows light/dark
+// AND the palette. That is four combinations the vendor's own `darkMode` boolean could
+// never express — which is exactly why it is not passed: leaving it off keeps
+// `.emoji-mart-dark` (ten rules, specificity 0,3,0) off the element, so these only have to
+// beat `.emoji-mart` base rules.
+
+.trn-emoji-picker {
+  display: block;
+
+  .emoji-mart {
+    background: var(--background);
+    border-color: var(--border);
+    color: var(--foreground);
+    font-family: inherit;
+  }
+
+  // The anchor bar is the vendor's accent surface — #ae65c5 by default, bound at neither
+  // call site, so it rendered emoji-mart purple against both Trinity palettes.
+  .emoji-mart-anchor-bar {
+    background-color: var(--trinity-accent) !important;
+  }
+
+  .emoji-mart-anchor {
+    color: var(--muted-foreground);
+
+    &:hover,
+    &.emoji-mart-anchor-selected {
+      color: var(--trinity-accent);
+    }
+  }
+
+  .emoji-mart-bar {
+    border-color: var(--border);
+  }
+
+  .emoji-mart-search {
+    input {
+      background: var(--background);
+      border-color: var(--border);
+      color: var(--foreground);
+
+      &::placeholder {
+        color: var(--muted-foreground);
+      }
+
+      &:focus-visible {
+        border-color: var(--trinity-accent);
+        outline: none;
+      }
+    }
+  }
+
+  .emoji-mart-search-icon svg {
+    fill: var(--muted-foreground);
+  }
+
+  // Category headings are sticky and painted opaque by the vendor so rows do not show
+  // through; that opaque fill has to be OUR surface or a band of #fff crosses dark mode.
+  .emoji-mart-category-label span {
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  .emoji-mart-category .emoji-mart-emoji:hover::before {
+    background-color: var(--muted);
+  }
+
+  .emoji-mart-no-results {
+    color: var(--muted-foreground);
+  }
+}

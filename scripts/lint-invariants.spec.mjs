@@ -138,23 +138,22 @@ const ALL_UI_VENDORS = [
 ];
 
 const UI_BOUNDARY = [
-  // libs/ui may still reach @ctrl/ngx-emoji-mart, pending #152. It may no longer reach
-  // @ng-icons: #154 put <trn-icon> in the kit as @trinity/kit/icon rather than here,
-  // since a lib tagged ui:wrapper is precisely the tier that may not name a vendor.
+  // libs/ui keeps only @angular/cdk. Both wrappers it was once expected to host went to
+  // the kit instead — <trn-icon> in #154, <trn-emoji-picker> in #152 — because a lib
+  // tagged ui:wrapper is precisely the tier that may not name a vendor.
   {
     tier: 'ui:wrapper',
-    banned: ['@spartan-ng/brain', '@ng-icons'],
-    allowed: ['@angular/cdk', '@ctrl/ngx-emoji-mart'],
+    banned: ['@spartan-ng/brain', '@ng-icons', '@ctrl/ngx-emoji-mart'],
+    allowed: ['@angular/cdk'],
   },
   // #151 and #154 closed the dialog, toast and icon imports, so those three are enforced
   // for features rather than staged. @ctrl/ngx-emoji-mart is the last one still allowed
   // here, and only because #152 is gated on the composer redesign — it stays a WARNING
   // (asserted below) so its 7 remaining violations stay visible without reddening CI.
-  {
-    tier: 'type:feature',
-    banned: ['@spartan-ng/brain', '@angular/cdk', '@ng-icons'],
-    allowed: ['@ctrl/ngx-emoji-mart'],
-  },
+  // #152 closed the last one. Every tier below the UI layer is now banned from every
+  // vendor, and nothing is staged — the `warn` block that made the count visible while it
+  // shrank has been deleted, which is what "the gate is closed" means for #148.
+  { tier: 'type:feature', banned: ALL_UI_VENDORS, allowed: [] },
   { tier: 'type:data-access', banned: ALL_UI_VENDORS, allowed: [] },
   { tier: 'type:util', banned: ALL_UI_VENDORS, allowed: [] },
   { tier: 'type:platform', banned: ALL_UI_VENDORS, allowed: [] },
@@ -243,32 +242,15 @@ describe('UI vendor boundary', () => {
     expect(kit.rules['no-restricted-imports']).toBeUndefined();
   });
 
-  it('stages the feature ban on the core rule without disarming the matrix-js-sdk ban', async () => {
+  it('keeps the matrix-js-sdk dynamic-import ban after the staging block was deleted', async () => {
     const feature = await resolve('libs/feature/rooms/src/lib/rooms.routes.ts');
 
-    // Two separate invariants, both about flat config replacing options wholesale.
-    //
-    // The staged ban has to live on the CORE rule at `warn`: the @typescript-eslint one
-    // already carries the matrix-js-sdk patterns at `error` over these same files, and a
-    // rule entry has ONE severity — folding this in would promote the 7 remaining
-    // @ctrl/ngx-emoji-mart violations to errors and redden CI.
-    expect(severityOf(feature, 'no-restricted-imports')).toBe(1);
-
-    // And it now stages exactly ONE vendor. If a pattern that #151 or #154 already closed
-    // reappears here, someone has demoted an enforced ban back to a warning — which reads
-    // as progress in a diff and is the opposite.
-    const staged = feature.rules['no-restricted-imports'][1].patterns.flatMap(
-      (pattern) => pattern.group,
-    );
-    expect(staged).toEqual(['@ctrl/ngx-emoji-mart*']);
-    expect(
-      severityOf(feature, '@typescript-eslint/no-restricted-imports'),
-    ).toBe(2);
-
-    // And the selector that a second `no-restricted-syntax` entry over libs/feature/**
-    // would delete without a word — leaving `await import('matrix-js-sdk')` legal in
-    // feature code while lint stayed green. Every route here is lazy, so this selector is
-    // the half that matters.
+    // #148's staged `no-restricted-imports` block is gone — every vendor is enforced
+    // through depConstraints now. What must NOT have gone with it is the matrix-js-sdk
+    // selector: flat config replaces a rule's options wholesale, so removing a block that
+    // configured `no-restricted-syntax` over the same glob is exactly how that ban would
+    // disappear silently. Every route here is lazy, so this selector is the half that
+    // matters.
     const syntax = feature.rules['no-restricted-syntax'];
     expect(syntax[0]).toBe(2);
     expect(
@@ -276,5 +258,11 @@ describe('UI vendor boundary', () => {
         .slice(1)
         .some((option) => /matrix-js-sdk/.test(option?.selector ?? '')),
     ).toBe(true);
+
+    // And nothing is staged at `warn` any more.
+    expect(severityOf(feature, 'no-restricted-imports') ?? 0).toBe(0);
+    expect(
+      severityOf(feature, '@typescript-eslint/no-restricted-imports'),
+    ).toBe(2);
   });
 });

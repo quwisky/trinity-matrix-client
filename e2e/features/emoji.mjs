@@ -248,7 +248,11 @@ async function main() {
     // ── SCENARIO 4: the emoji-mart picker inserts a native emoji ──────────
     log('--- Scenario 4: emoji-mart picker → search → insert ---');
     await page.getByRole('button', { name: 'Insert emoji' }).click();
-    const picker = page.locator('emoji-mart');
+    // Handled by OUR testid, not the vendor's tag: a swap of @ctrl/ngx-emoji-mart should
+    // break one file — the kit wrapper — rather than two e2e suites. The inner
+    // `.emoji-mart-*` locators below are still the vendor's, and deliberately so: they
+    // drive its search box and result grid, which only it can provide.
+    const picker = page.getByTestId('emoji-picker');
     await picker.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     log('emoji-mart picker open ✓');
 

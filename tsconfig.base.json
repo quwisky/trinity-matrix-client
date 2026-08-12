@@ -75,7 +75,8 @@
       "@trinity/kit/textarea": ["./libs/kit/textarea/src/index.ts"],
       "@trinity/kit/card": ["./libs/kit/card/src/index.ts"],
       "@trinity/kit/select": ["./libs/kit/select/src/index.ts"],
-      "@trinity/kit/icon": ["./libs/kit/icon/src/index.ts"]
+      "@trinity/kit/icon": ["./libs/kit/icon/src/index.ts"],
+      "@trinity/kit/emoji-picker": ["./libs/kit/emoji-picker/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

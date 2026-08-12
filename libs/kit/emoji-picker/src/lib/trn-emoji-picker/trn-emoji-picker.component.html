@@ -1,0 +1,13 @@
+<!--
+  `isNative` and `showPreview` are pinned, not inputs: native glyphs mean no sprite-sheet
+  requests, and the preview row is dead weight in both call sites. `title` and `emoji` are
+  deliberately absent — the vendor guards its preview with `*ngIf="showPreview"`, so with
+  the preview off both were inert, and a `title` that renders nowhere is a lie in the diff.
+  `darkMode` is absent by design; see the component's note on theming.
+-->
+<emoji-mart
+  [isNative]="true"
+  [showPreview]="false"
+  [emojiSize]="emojiSize()"
+  (emojiSelect)="onSelect($event)"
+/>

@@ -34,15 +34,11 @@
     />
   }
   @if (pickerOpen()) {
-    <emoji-mart
+    <trn-emoji-picker
       class="composer__picker"
-      [isNative]="true"
-      [showPreview]="false"
-      [darkMode]="isDarkMode()"
-      [emojiSize]="20"
-      title="Pick an emoji"
-      emoji=""
-      (emojiSelect)="onPickerSelect($event)"
+      pickerId="composer-emoji-picker"
+      label="Pick an emoji"
+      (picked)="onPickerSelect($event)"
     />
   }
   @if (gifPickerOpen()) {
@@ -182,6 +178,7 @@
       trnTooltip="Emoji"
       aria-label="Insert emoji"
       [attr.aria-expanded]="pickerOpen()"
+      [attr.aria-controls]="pickerOpen() ? 'composer-emoji-picker' : null"
       (click)="toggleEmojiPicker()"
     >
       <trn-icon name="smile" />

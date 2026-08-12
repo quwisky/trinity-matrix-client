@@ -1,0 +1,12 @@
+{
+  "name": "emoji-picker",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/kit/emoji-picker/src",
+  "prefix": "trn",
+  "projectType": "library",
+  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

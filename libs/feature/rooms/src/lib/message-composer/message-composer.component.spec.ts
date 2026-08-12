@@ -4,11 +4,9 @@ import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { render, type ComponentInput } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import {
   ComposerSettingsService,
   DraftStoreService,
-  ThemeService,
   VoiceRecorderService,
 } from '@trinity/platform-native';
 import {
@@ -364,24 +362,13 @@ describe('MessageComposerComponent', () => {
     cmp.pickerOpen.set(true);
 
     cmp.onPickerSelect({
-      emoji: { native: '😎' },
-      $event: new Event('click'),
-    } as unknown as EmojiEvent);
+      native: '😎',
+      id: 'sunglasses',
+      colons: ':sunglasses:',
+    });
 
     expect(cmp.text()).toBe('a😎b');
     expect(cmp.pickerOpen()).toBe(false);
-  });
-
-  it('mirrors the active app theme into the picker dark mode', async () => {
-    const resolved = signal<'light' | 'dark'>('dark');
-    const { fixture } = await renderComposer({}, [
-      MockProvider(ThemeService, { resolved: resolved.asReadonly() }),
-    ]);
-    const cmp = fixture.componentInstance;
-
-    expect(cmp.isDarkMode()).toBe(true);
-    resolved.set('light');
-    expect(cmp.isDarkMode()).toBe(false);
   });
 
   function pasteEvent(opts: { files?: File[]; items?: unknown[] }): {

@@ -43,13 +43,20 @@ validates and merges identically. All 43 entries state both, and
 `@spartan-ng/cli` regenerate would produce, so it is registered as a vendored divergence
 below.
 
-`type:feature` started with **103** violations across 60 files and is now down to 11. #151
-closed the 30 dialog and toast imports, #154 the 62 icon ones, and those three vendors are
-enforced there like everywhere else — a new one fails `pnpm lint`, statically or through a
-lazy `import()`. Only `@ctrl/ngx-emoji-mart` remains, staged as a **warning** so its 7
-importers stay visible without reddening CI. That one waits on #152, which is deliberately
-scheduled with the composer redesign: the picker's placement lives in feature SCSS today, and
-a wrapper that grew its own positioning would only have to be undone.
+`type:feature` started with **103** violations across 60 files and is now at **zero**. #151
+closed the 30 dialog and toast imports, #154 the 62 icon ones and #152 the last 11, so every
+tier below the UI layer is enforced the same way: a new vendor import fails `pnpm lint`,
+statically or through a lazy `import()`. Nothing is staged any more — the temporary `warn`
+block that kept the count visible while it shrank is gone, which is what closing this gate
+meant.
+
+The emoji picker is the clearest case of what the vendor layer costs when it is not wrapped.
+`@ctrl/ngx-emoji-mart`'s `picker.css` is 453 lines with **zero** custom properties — every
+colour a literal — and its whole idea of theming is one `darkMode` boolean that toggles an
+`.emoji-mart-dark` class. That cannot express Trinity's mode x palette grid, so the picker
+rendered its own purple accent and its own greys under all four combinations. `<trn-emoji-picker>`
+does not pass the boolean at all (which keeps ten rules at specificity 0,3,0 off the element)
+and paints the chrome from design tokens instead, so it re-themes with everything else.
 
 Icons are the clearest illustration of what the wrapper buys. `@ng-icons` types its `name`
 as `IconName | (string & {})` — any string at all — so `name="lucideTrash"` (no `2`) used to

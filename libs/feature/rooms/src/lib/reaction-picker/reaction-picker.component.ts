@@ -1,13 +1,9 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-} from '@angular/core';
-import { PickerComponent } from '@ctrl/ngx-emoji-mart';
-import { type EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef } from '@trinity/kit/overlay';
-import { ThemeService } from '@trinity/platform-native';
+import {
+  TrnEmojiPickerComponent,
+  type TrnEmojiPick,
+} from '@trinity/kit/emoji-picker';
 
 /**
  * The full `emoji-mart` picker presented as a dialog for reacting with any emoji,
@@ -19,20 +15,21 @@ import { ThemeService } from '@trinity/platform-native';
 @Component({
   selector: 'trn-reaction-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PickerComponent],
+  imports: [TrnEmojiPickerComponent],
   templateUrl: './reaction-picker.component.html',
   styleUrl: './reaction-picker.component.scss',
 })
 export class ReactionPickerComponent {
   private readonly dialogRef =
     inject<DialogRef<string | null, ReactionPickerComponent>>(DialogRef);
-  private readonly theme = inject(ThemeService);
-
-  /** Match the picker's chrome to the app's active theme. */
-  readonly isDarkMode = computed(() => this.theme.resolved() === 'dark');
-
-  /** A reaction was chosen — close with its native character. */
-  onSelect(event: EmojiEvent): void {
-    this.dialogRef.close(event.emoji.native ?? null);
+  /**
+   * A reaction was chosen — close with its character.
+   *
+   * No `?? null` any more: the wrapper drops a pick that has no `native`, so anything
+   * arriving here is insertable. Previously this closed the dialog with `null` on such an
+   * event, which the caller could not distinguish from a dismissal.
+   */
+  onSelect(pick: TrnEmojiPick): void {
+    this.dialogRef.close(pick.native);
   }
 }

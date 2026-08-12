@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import type { EmojiData } from '@ctrl/ngx-emoji-mart/ngx-emoji';
+import type { TrnEmojiSuggestion } from '@trinity/kit/emoji-picker';
 import { render } from '@trinity/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ComposerSuggestionsComponent } from './composer-suggestions.component';
@@ -7,7 +7,7 @@ import { type MentionMember } from '../mention-autocomplete';
 
 /** Only the four fields the menu reads; the real objects carry emoji-mart's whole record. */
 const emoji = (id: string, native: string) =>
-  ({ id, native, colons: `:${id}:` }) as EmojiData;
+  ({ id, native, colons: `:${id}:` }) satisfies TrnEmojiSuggestion;
 
 const members: MentionMember[] = [
   { userId: '@ada:x', name: 'Ada' },
