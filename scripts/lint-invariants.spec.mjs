@@ -145,6 +145,15 @@ const UI_BOUNDARY = [
     banned: ['@spartan-ng/brain', '@ng-icons'],
     allowed: ['@angular/cdk', '@ctrl/ngx-emoji-mart'],
   },
+  // #151 and #154 closed the dialog, toast and icon imports, so those three are enforced
+  // for features rather than staged. @ctrl/ngx-emoji-mart is the last one still allowed
+  // here, and only because #152 is gated on the composer redesign — it stays a WARNING
+  // (asserted below) so its 7 remaining violations stay visible without reddening CI.
+  {
+    tier: 'type:feature',
+    banned: ['@spartan-ng/brain', '@angular/cdk', '@ng-icons'],
+    allowed: ['@ctrl/ngx-emoji-mart'],
+  },
   { tier: 'type:data-access', banned: ALL_UI_VENDORS, allowed: [] },
   { tier: 'type:util', banned: ALL_UI_VENDORS, allowed: [] },
   { tier: 'type:platform', banned: ALL_UI_VENDORS, allowed: [] },
@@ -240,9 +249,17 @@ describe('UI vendor boundary', () => {
     //
     // The staged ban has to live on the CORE rule at `warn`: the @typescript-eslint one
     // already carries the matrix-js-sdk patterns at `error` over these same files, and a
-    // rule entry has ONE severity — folding these in would promote the 103 known
-    // violations to errors and redden CI.
+    // rule entry has ONE severity — folding this in would promote the 7 remaining
+    // @ctrl/ngx-emoji-mart violations to errors and redden CI.
     expect(severityOf(feature, 'no-restricted-imports')).toBe(1);
+
+    // And it now stages exactly ONE vendor. If a pattern that #151 or #154 already closed
+    // reappears here, someone has demoted an enforced ban back to a warning — which reads
+    // as progress in a diff and is the opposite.
+    const staged = feature.rules['no-restricted-imports'][1].patterns.flatMap(
+      (pattern) => pattern.group,
+    );
+    expect(staged).toEqual(['@ctrl/ngx-emoji-mart*']);
     expect(
       severityOf(feature, '@typescript-eslint/no-restricted-imports'),
     ).toBe(2);
