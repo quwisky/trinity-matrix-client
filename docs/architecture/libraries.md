@@ -1,7 +1,8 @@
 # Library inventory
 
 The workspace holds one application and 38 libraries. Every library carries a `type:*` and a
-`scope:*` tag in its `project.json`; those two tags are what
+`scope:*` tag in its `project.json`, and the UI libraries carry a third `ui:*` tag that
+separates Trinity's own wrapper layer from the vendored kit; those tags are what
 [`@nx/enforce-module-boundaries`](https://github.com/quwisky/trinity-matrix-client/blob/develop/eslint.config.mjs)
 checks. See [the architecture overview](index.md) for what each tag permits.
 
@@ -106,13 +107,14 @@ into another chunk.
 Presentational only. `type:ui` may not depend on `type:data-access`, so a component here can never
 reach a service.
 
-| Library                | Alias                   | Tags                      | Purpose                                                                                                                                                                                                                                                             |
-| ---------------------- | ----------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/ui`              | `@trinity/ui`           | `type:ui`, `scope:shared` | Trinity's own presentational components (`trn-avatar`, banner, page header, media bubble, message toolbar), the `AVATAR_RESOLVER` and `ENCRYPTION_DIALOG_COMPONENTS` tokens, `EncryptionDialogService`, and the `runWithBusy`, media-query and internal-URL helpers |
-| `libs/spartan/overlay` | `@trinity/helm/overlay` | `type:ui`, `scope:shared` | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus a re-export of CDK's `DialogRef` so modalled components can close themselves without importing `@angular/cdk`                 |
+| Library                | Alias                   | Tags                                           | Purpose                                                                                                                                                                                                                                                             |
+| ---------------------- | ----------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs/ui`              | `@trinity/ui`           | `type:ui`, `scope:shared`, `ui:wrapper`        | Trinity's own presentational components (`trn-avatar`, banner, page header, media bubble, message toolbar), the `AVATAR_RESOLVER` and `ENCRYPTION_DIALOG_COMPONENTS` tokens, `EncryptionDialogService`, and the `runWithBusy`, media-query and internal-URL helpers |
+| `libs/spartan/overlay` | `@trinity/helm/overlay` | `type:ui`, `scope:shared`, `ui:vendor-wrapper` | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus a re-export of CDK's `DialogRef` so modalled components can close themselves without importing `@angular/cdk`                 |
 
 The remaining sixteen libraries under `libs/spartan/` are `@spartan-ng/cli`-generated Helm
-components, all tagged `type:ui`, `scope:shared`, all with the `hlm` selector prefix:
+components, all tagged `type:ui`, `scope:shared`, `ui:vendor-wrapper`, all with the `hlm`
+selector prefix:
 
 | Directory                    | Alias                         |
 | ---------------------------- | ----------------------------- |

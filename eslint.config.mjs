@@ -18,6 +18,9 @@ const tailwindCssConfigPath = join(
 const SDK_IMPORT_MESSAGE =
   'Only libs/data-access/* (and libs/util/matrix, which models the SDK types) may import matrix-js-sdk. Re-export what you need from the data-access lib that owns the domain.';
 
+const UI_VENDOR_IMPORT_MESSAGE =
+  'Only libs/spartan/* (the vendored kit) and libs/ui may import a third-party UI package. Use the kit component, or @trinity/helm/overlay for dialogs and toasts — see docs/architecture/ui-and-theming.md.';
+
 export default defineConfig([
   globalIgnores([
     '**/dist',
@@ -47,6 +50,63 @@ export default defineConfig([
           enforceBuildableLibDependency: true,
           allow: [],
           depConstraints: [
+            // Third-party UI stops at the UI tier.
+            //
+            // The trailing `*` on each glob is load-bearing, and its absence is silent:
+            // `bannedExternalImports` is matched as a glob against the whole specifier, so
+            // a bare '@angular/cdk' matches only that exact string — which nothing imports,
+            // because every real import is a deep '@angular/cdk/dialog'. The rule then
+            // reports success and the ban enforces nothing. `lint-invariants.spec.mjs`
+            // pins the `*` for exactly this reason.
+            //
+            // `ui:wrapper` (libs/ui) is banned from brain only: it is the layer our own
+            // wrappers live in, so it keeps @ng-icons — see #148 step 4. The vendored kit
+            // (`ui:vendor-wrapper`) is deliberately absent from this list; it IS the
+            // wrapper, and banning brain there would ban the layer from existing.
+            //
+            // `type:feature` is missing on purpose. It still has 103 violations, so its ban
+            // is staged as a warning further down and moves up here once ALL of #151, #152
+            // and #154 have closed them — see the breakdown at that block.
+            {
+              sourceTag: 'ui:wrapper',
+              bannedExternalImports: ['@spartan-ng/brain*'],
+            },
+            {
+              sourceTag: 'type:data-access',
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@angular/cdk*',
+                '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
+              ],
+            },
+            {
+              sourceTag: 'type:util',
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@angular/cdk*',
+                '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
+              ],
+            },
+            {
+              sourceTag: 'type:platform',
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@angular/cdk*',
+                '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
+              ],
+            },
+            {
+              sourceTag: 'type:app',
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@angular/cdk*',
+                '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
+              ],
+            },
             {
               sourceTag: 'scope:matrix',
               onlyDependOnLibsWithTags: ['scope:matrix', 'scope:shared'],
@@ -306,6 +366,63 @@ export default defineConfig([
       '@angular-eslint/component-selector': 'off',
       '@angular-eslint/directive-selector': 'off',
       '@angular-eslint/no-input-rename': 'off',
+    },
+  },
+  {
+    // TEMPORARY, and deliberately at `warn` — the staging half of #148.
+    //
+    // `type:feature` is the one tier that still reaches past the kit — 103 warnings over
+    // 60 files, and they do NOT all belong to one sub-issue:
+    //
+    //     62  @ng-icons/{core,lucide}             -> #154
+    //     28  @angular/cdk/dialog                 -> #151
+    //     11  @ctrl/ngx-emoji-mart{,/ngx-emoji}   -> #152
+    //      2  @spartan-ng/brain/sonner            -> #151
+    //
+    // So the flip to `error` needs #151, #152 AND #154 closed. Closing #151 alone leaves 73
+    // warnings standing, which is worth knowing before someone tries. 22 of the 103 are in
+    // .spec.ts files, and Nx boundaries apply to specs too — whether those get an exemption
+    // is #151's call, recorded there.
+    //
+    // Until then an entry beside the others in depConstraints would redden CI, so the ban is
+    // staged here and moved up by the flip commit. Delete this whole block then — it exists
+    // only so the count is visible while it shrinks.
+    //
+    // The cost of staging is real and worth stating: libs/feature/** had ZERO lint warnings
+    // before this, so any warning from any other rule is now buried in 103, and
+    // `--max-warnings` is off the table for the duration. A spec-side ratchet was considered
+    // and rejected: it would mean running ESLint over libs/feature/** on every test run to
+    // guard scaffolding that is deleted at the end of the epic.
+    //
+    // It MUST be the core `no-restricted-imports`, not the @typescript-eslint one: that
+    // one is already configured at `error` over libs/feature/** carrying the matrix-js-sdk
+    // patterns, and one rule entry has one severity, so folding these in would promote all
+    // 103 of those to errors. The two rule ids are distinct and both apply.
+    //
+    // There is deliberately NO companion `no-restricted-syntax` entry. Flat config replaces
+    // a rule's options wholesale, so a second entry over these globs would delete the
+    // matrix-js-sdk ImportExpression selector above without a word. It is also unnecessary:
+    // @nx/enforce-module-boundaries visits ImportExpression itself, so the depConstraints
+    // bans already cover `await import(...)` — verified with a planted probe.
+    files: ['libs/feature/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: ['@spartan-ng/brain*'],
+              message: UI_VENDOR_IMPORT_MESSAGE,
+            },
+            { group: ['@angular/cdk*'], message: UI_VENDOR_IMPORT_MESSAGE },
+            { group: ['@ng-icons*'], message: UI_VENDOR_IMPORT_MESSAGE },
+            {
+              group: ['@ctrl/ngx-emoji-mart*'],
+              message: UI_VENDOR_IMPORT_MESSAGE,
+            },
+          ],
+        },
+      ],
     },
   },
   {
