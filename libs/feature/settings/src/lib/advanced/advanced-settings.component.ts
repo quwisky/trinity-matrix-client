@@ -8,6 +8,7 @@ import {
   inject,
   signal,
   viewChild,
+  type Type,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Capacitor } from '@capacitor/core';
@@ -22,6 +23,12 @@ import {
   type ConfigApplyPlan,
 } from '@trinity/platform-native';
 import { downloadTextFile } from '../download-text-file';
+import {
+  CONFIG_EDITOR_LOADER,
+  supportsConfigEditor,
+  type ConfigEditorHost,
+} from './config-editor-loader';
+import { ConfigEditorOutletDirective } from './config-editor-outlet.directive';
 import {
   CLIPBOARD_UNREADABLE_MESSAGE,
   readClipboardConfig,
@@ -74,13 +81,27 @@ function exportFileName(now: Date): string {
  * first, and the plan it produces is what gets written — not the text. Editing the box
  * throws away any plan that was on screen, so a summary can never belong to a document other
  * than the one shown.
+ *
+ * ## Two boxes, one document
+ *
+ * On web and desktop the box is a real editor — completion over the settings the registry
+ * knows, hover text from their descriptions, and the Apply gate's own verdict underlined as
+ * you type. It arrives through {@link CONFIG_EDITOR_LOADER}, a dynamic import, so its ~430 kB
+ * is a chunk of its own that nothing else on any settings page pays for.
+ *
+ * The `<textarea>` is not dead weight behind it. It is what renders while that chunk is in
+ * flight, what renders if it never arrives — a service worker holding the editor lazily by
+ * design means an offline first visit has no chunk to load — and what renders on the mobile
+ * app, read-only, where a JSON editor over a phone keyboard is a worse way to change a setting
+ * than the switch that owns it. Either way the text is this component's, not the box's, so
+ * everything below works the same whichever one is on screen.
  */
 @Component({
   selector: 'trn-advanced-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './advanced-settings.component.html',
   styleUrl: './advanced-settings.component.scss',
-  imports: [HlmButton, HlmLabel, HlmTextarea],
+  imports: [ConfigEditorOutletDirective, HlmButton, HlmLabel, HlmTextarea],
 })
 export class AdvancedSettingsComponent {
   private readonly config = inject(AppConfigService);
@@ -88,6 +109,15 @@ export class AdvancedSettingsComponent {
   private readonly toast = inject(TrnToastService);
   private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
+
+  /**
+   * The rich editor, where this platform offers one and the app wired it up. Optional in the
+   * `ENCRYPTION_DIALOG_COMPONENTS` idiom: without it the section still renders and still
+   * edits, in its textarea.
+   */
+  private readonly editorLoader = inject(CONFIG_EDITOR_LOADER, {
+    optional: true,
+  });
 
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('configFile');
@@ -114,6 +144,19 @@ export class AdvancedSettingsComponent {
    * Importing is offered everywhere: picking a file works in a WebView, saving one does not.
    */
   readonly canExportFile = !Capacitor.isNativePlatform();
+
+  /**
+   * Whether this platform offers editing at all — web and desktop, not the mobile app. See
+   * {@link supportsConfigEditor} for why, and for why the Electron shell counts as desktop
+   * even though Capacitor calls it non-native.
+   *
+   * Read-only elsewhere rather than absent: the document, Copy and Reset are the useful half
+   * on a phone, and the section says why the other half is missing rather than leaving a gap.
+   */
+  readonly canEdit = supportsConfigEditor();
+
+  /** The editor component, once its chunk has arrived; null until then, and on native. */
+  readonly editor = signal<Type<ConfigEditorHost> | null>(null);
 
   /** True while a reset is in flight, so the button can't be pressed twice. */
   readonly resetting = signal(false);
@@ -167,6 +210,20 @@ export class AdvancedSettingsComponent {
     return !!plan?.ok && plan.changes.length === 0;
   });
 
+  constructor() {
+    const load = this.editorLoader;
+    if (load) {
+      void load().then(
+        (component) => this.editor.set(component),
+        // The chunk did not arrive: offline on a first visit, since it is held lazily by the
+        // service worker precisely so it is not downloaded by people who never open this
+        // page, or a deploy that moved it. The textarea is a complete editing surface, so
+        // there is nothing to report and nothing to retry.
+        () => this.editor.set(null),
+      );
+    }
+  }
+
   /** Copy the document, toasting only once the write resolves — never on a rejection. */
   copy(): void {
     void (
@@ -192,9 +249,14 @@ export class AdvancedSettingsComponent {
   }
 
   /** Take the box over from the live document, and drop any summary that described it. */
-  onEdit(event: Event): void {
-    this.draft.set((event.target as HTMLTextAreaElement).value);
+  onEditText(text: string): void {
+    this.draft.set(text);
     this.clearReview();
+  }
+
+  /** The same edit, arriving from the textarea rather than from the editor. */
+  onEdit(event: Event): void {
+    this.onEditText((event.target as HTMLTextAreaElement).value);
   }
 
   /** Give the box back to the live document, dropping the edit. */

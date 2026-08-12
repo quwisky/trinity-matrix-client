@@ -81,6 +81,8 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
     {
       path: 'theme.mode',
       key: 'trinity.theme',
+      description:
+        'Whether the app follows your system theme, or is always light or always dark.',
       read: () => theme.preference(),
       reset: () => theme.setPreference(DEFAULT_THEME_PREFERENCE),
       ...choiceSetting({
@@ -93,6 +95,7 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
     {
       path: 'theme.palette',
       key: 'trinity.palette',
+      description: 'The accent colour the whole app is themed from.',
       read: () => theme.palette(),
       reset: () => theme.setPalette(DEFAULT_PALETTE),
       ...choiceSetting({
@@ -105,6 +108,7 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
     {
       path: 'theme.textScale',
       key: 'trinity.text-scale',
+      description: 'How large text is throughout the app.',
       read: () => theme.textScale(),
       reset: () => theme.setTextScale(DEFAULT_TEXT_SCALE),
       ...choiceSetting({
@@ -117,6 +121,8 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
     {
       path: 'theme.codeScale',
       key: 'trinity.code-scale',
+      description:
+        'How large text is inside code blocks, set separately from the rest.',
       read: () => theme.codeScale(),
       reset: () => theme.setCodeScale(DEFAULT_CODE_SCALE),
       ...choiceSetting({
@@ -129,6 +135,7 @@ function themeEntries(theme: ThemeService): readonly ConfigEntry[] {
     {
       path: 'theme.codeLineNumbers',
       key: 'trinity.code-lines',
+      description: 'When code blocks show line numbers down the side.',
       read: () => theme.codeLines(),
       reset: () => theme.setCodeLines(DEFAULT_CODE_LINE_MODE),
       ...choiceSetting({
@@ -148,6 +155,7 @@ function privacyEntries(
     {
       path: 'privacy.sendReadReceipts',
       key: 'trinity.privacy.send-read-receipts',
+      description: 'Whether reading a message tells the room that you read it.',
       read: () => privacy.sendReadReceipts(),
       reset: () => privacy.setSendReadReceipts(DEFAULT_SEND_READ_RECEIPTS),
       ...flagSetting((on) => privacy.setSendReadReceipts(on)),
@@ -155,6 +163,8 @@ function privacyEntries(
     {
       path: 'privacy.linkPreviews',
       key: 'trinity.privacy.link-previews',
+      description:
+        'Whether links in messages are expanded into previews fetched by your homeserver.',
       read: () => privacy.linkPreviews(),
       reset: () => privacy.setLinkPreviews(DEFAULT_LINK_PREVIEWS),
       ...flagSetting((on) => privacy.setLinkPreviews(on)),
@@ -162,6 +172,8 @@ function privacyEntries(
     {
       path: 'privacy.linkPreviewsInEncryptedRooms',
       key: 'trinity.privacy.link-previews-encrypted',
+      description:
+        'Whether link previews are fetched in encrypted rooms too, where asking for one tells your homeserver a link was sent.',
       read: () => privacy.linkPreviewsInEncrypted(),
       reset: () =>
         privacy.setLinkPreviewsInEncrypted(DEFAULT_LINK_PREVIEWS_IN_ENCRYPTED),
@@ -177,6 +189,8 @@ function timelineEntries(
     {
       path: 'timeline.showMembership',
       key: 'trinity.timeline.show-membership',
+      description:
+        'Whether joins, leaves, invites and kicks appear as lines in the timeline.',
       read: () => lines.showMembership(),
       reset: () => lines.setShowMembership(DEFAULT_SHOW_MEMBERSHIP),
       ...flagSetting((on) => lines.setShowMembership(on)),
@@ -184,6 +198,8 @@ function timelineEntries(
     {
       path: 'timeline.showProfile',
       key: 'trinity.timeline.show-profile',
+      description:
+        'Whether display-name and avatar changes appear as lines in the timeline.',
       read: () => lines.showProfile(),
       reset: () => lines.setShowProfile(DEFAULT_SHOW_PROFILE),
       ...flagSetting((on) => lines.setShowProfile(on)),
@@ -191,6 +207,8 @@ function timelineEntries(
     {
       path: 'timeline.showRoomChanges',
       key: 'trinity.timeline.show-room-changes',
+      description:
+        'Whether room name, topic and avatar changes appear as lines in the timeline.',
       read: () => lines.showRoomChanges(),
       reset: () => lines.setShowRoomChanges(DEFAULT_SHOW_ROOM_CHANGES),
       ...flagSetting((on) => lines.setShowRoomChanges(on)),
@@ -203,6 +221,7 @@ function formatEntries(format: DateTimeFormatService): readonly ConfigEntry[] {
     {
       path: 'format.time',
       key: 'trinity.format.time',
+      description: 'How times of day are written.',
       read: () => format.timeFormat(),
       reset: () => format.setTimeFormat(DEFAULT_TIME_FORMAT),
       ...choiceSetting({
@@ -215,6 +234,7 @@ function formatEntries(format: DateTimeFormatService): readonly ConfigEntry[] {
     {
       path: 'format.date',
       key: 'trinity.format.date',
+      description: 'How dates are written.',
       read: () => format.dateFormat(),
       reset: () => format.setDateFormat(DEFAULT_DATE_FORMAT),
       ...choiceSetting({
@@ -234,6 +254,7 @@ function composerEntries(
     {
       path: 'composer.showFormattingToolbar',
       key: 'trinity.composer.show-toolbar',
+      description: 'Whether the message box shows its formatting toolbar.',
       read: () => composer.showFormattingToolbar(),
       reset: () =>
         composer.setShowFormattingToolbar(DEFAULT_SHOW_FORMATTING_TOOLBAR),
@@ -247,6 +268,8 @@ function flagEntries(flags: FeatureFlagsService): readonly ConfigEntry[] {
     {
       path: 'flags.virtualTimeline',
       key: 'trinity.flags.virtual-timeline',
+      description:
+        'Whether long timelines render only the rows on screen, keeping big rooms fast.',
       read: () => flags.virtualTimeline(),
       reset: () => flags.setVirtualTimeline(DEFAULT_VIRTUAL_TIMELINE),
       ...flagSetting((on) => flags.setVirtualTimeline(on)),

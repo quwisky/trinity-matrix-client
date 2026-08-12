@@ -1,6 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { Preferences } from '@capacitor/preferences';
-import { AppConfigService, exportedKeysFor } from '@trinity/platform-native';
+import {
+  AppConfigService,
+  configSchemaDrift,
+  exportedKeysFor,
+} from '@trinity/platform-native';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { provideGifConfigEntries } from './gif-config-entries';
 import { GifSettingsService } from './gif-settings.service';
@@ -33,6 +37,12 @@ describe('GIF config entries', () => {
     const keys = new Set(setup().config.entries.map((entry) => entry.key));
 
     expect([...keys]).toEqual([...exportedKeysFor('data-access/gif')]);
+  });
+
+  it('describes each of its settings the way the schema publishes it', () => {
+    // The runtime half of the drift guard, over this lib's contribution: its Nx boundary
+    // stops any other project from checking these, so a setting added here fails here.
+    expect(configSchemaDrift(setup().config.entries)).toEqual([]);
   });
 
   it('exports the picker config under its own group', () => {

@@ -26,6 +26,12 @@ export function shortcutOverridesEntry(
   return {
     path: 'shortcuts.overrides',
     key: 'trinity.shortcuts.overrides',
+    description:
+      'The shortcuts you have rebound, by shortcut id; null means one you left unbound. ' +
+      'Shortcuts you have not changed are not listed.',
+    // An object of ids to bindings, always — an empty one when nothing is rebound, so the
+    // setting has no "absent" shape to describe.
+    type: 'object',
     // Only what the user actually changed: the defaults are the catalog's business and
     // differ by platform, so exporting them would pin one device's desktop bindings into
     // a document another device has to ignore. `null` is a shortcut left unbound after

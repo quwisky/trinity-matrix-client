@@ -41,12 +41,13 @@ const desktopOnly = signal(false);
 /** Text in, text out — enough for the two settings the document's shape is checked against. */
 function acceptsText(store: { set: (value: string) => void }) {
   return {
+    type: 'string',
     write: (value) => store.set(String(value)),
     validate: (value) =>
       typeof value === 'string'
         ? { ok: true, value }
         : { ok: false, problem: 'is not text' },
-  } satisfies Pick<ConfigEntry, 'write' | 'validate'>;
+  } satisfies Pick<ConfigEntry, 'write' | 'validate' | 'type'>;
 }
 
 /**
@@ -71,6 +72,7 @@ const ENTRIES: readonly ConfigEntry[] = [
   {
     path: 'theme.palette',
     key: 'trinity.palette',
+    description: 'The accent colour the whole app is themed from.',
     read: () => palette(),
     reset: () => palette.set('trinity'),
     ...acceptsText(palette),
@@ -78,6 +80,7 @@ const ENTRIES: readonly ConfigEntry[] = [
   {
     path: 'gif.apiKey',
     key: 'trinity.gif.config',
+    description: 'Your own API key for the GIF service.',
     read: () => apiKey(),
     reset: () => apiKey.set(''),
     ...acceptsText(apiKey),
@@ -85,6 +88,8 @@ const ENTRIES: readonly ConfigEntry[] = [
   {
     path: 'desktop.only',
     key: 'trinity.flags.virtual-timeline',
+    description: 'A setting only the desktop app acts on.',
+    type: 'boolean',
     read: () => desktopOnly(),
     reset: () => desktopOnly.set(false),
     write: (value) => desktopOnly.set(value === true),

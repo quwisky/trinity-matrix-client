@@ -37,6 +37,7 @@ export function provideGifConfigEntries(): EnvironmentProviders {
       {
         path: 'gif.provider',
         key: 'trinity.gif.config',
+        description: 'Which GIF service the picker searches.',
         read: () => gif.provider(),
         reset: () => gif.save(DEFAULT_GIF_PROVIDER, gif.apiKey()),
         ...choiceSetting({
@@ -52,6 +53,8 @@ export function provideGifConfigEntries(): EnvironmentProviders {
       {
         path: 'gif.apiKey',
         key: 'trinity.gif.config',
+        description:
+          'Your own API key for that GIF service, or empty to leave the picker switched off.',
         read: () => gif.apiKey(),
         reset: () => gif.clear(),
         ...textSetting({

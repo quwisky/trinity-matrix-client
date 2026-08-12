@@ -15,7 +15,14 @@ All notable changes to this project are documented here. The format is based on
   second device up, keeping a copy before experimenting, or answering "what's your config?"
   without a screenshot tour.
 
-  You can also edit the document in place, or bring one in with **Import from file** or
+  On the web and desktop apps you can also edit the document in place, in a real editor: it
+  suggests the settings a group holds as you type a name, offers exactly the values a setting
+  accepts — so `amethyst` is picked from a list rather than guessed at as `mauve` — describes
+  any setting you point at, and underlines a value it would refuse while you are still typing
+  it, with the same wording Apply would give you. In the mobile app the document stays
+  read-only, with Copy and Reset: settings there are changed on their own screens.
+
+  You can also bring a document in with **Import from file** or
   **Paste from clipboard**, and apply it. Applying always checks the whole document first and
   then shows exactly which settings would change and to what, so nothing is written until you
   confirm it; if any value is wrong, Trinity names the setting that refused it and writes

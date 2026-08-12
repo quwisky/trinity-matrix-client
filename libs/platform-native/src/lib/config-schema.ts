@@ -21,6 +21,17 @@ export type ConfigValue =
 export type ConfigSettings = { readonly [key: string]: ConfigValue };
 
 /**
+ * A JSON type name, spelled exactly as JSON Schema spells it.
+ *
+ * The vocabulary is deliberately JSON's and not TypeScript's: this is what a setting looks
+ * like *in the document*, which is the only thing the editor and the published schema can
+ * see. A setting whose value may be absent is expressed by listing `'null'`, never by an
+ * optional type.
+ */
+export type ConfigJsonType =
+  'string' | 'number' | 'boolean' | 'object' | 'array' | 'null';
+
+/**
  * The outcome of checking one pasted value against the setting that owns it.
  *
  * `value` is the value as it will actually be *stored*, which may differ from what was
@@ -75,6 +86,38 @@ export interface ConfigEntry {
    * Two entries may share a key when one stored blob holds two independently-edited fields.
    */
   readonly key: string;
+
+  /**
+   * What this setting is, in one line, in the words the user would use.
+   *
+   * **Required**, so a setting cannot join the document without saying what it is. It is the
+   * only description there will ever be: it is the hover text in the editor, the
+   * `description` in {@link configJsonSchema}, and the note beside a completion — one
+   * sentence, no trailing context, because all three render it as a single line.
+   */
+  readonly description: string;
+
+  /**
+   * The JSON type this setting's value takes in the document — one name, or the list of
+   * names when more than one shape is legitimate (the push gateway is an object *or* null).
+   *
+   * Supplied by {@link choiceSetting}/{@link flagSetting}/{@link textSetting} for the
+   * settings built from them, so the type the schema publishes is the one the validator
+   * actually enforces rather than a second, hand-copied claim about it.
+   */
+  readonly type: ConfigJsonType | readonly ConfigJsonType[];
+
+  /**
+   * The complete set of accepted values, when the setting is a closed choice — and absent
+   * when it is not, which is what tells the editor to offer a completion list rather than a
+   * free-text field.
+   *
+   * Declared **once**, in the call to {@link choiceSetting} that also builds the validator,
+   * so the published enum and the accepted set are the same array. That they stay the same
+   * is not left to reading: `configSchemaDrift` runs every listed value back through
+   * `validate` and reports any that the setting would actually refuse.
+   */
+  readonly choices?: readonly string[];
 
   /** The current value, read from the owning service's public getter. */
   readonly read: () => ConfigValue;

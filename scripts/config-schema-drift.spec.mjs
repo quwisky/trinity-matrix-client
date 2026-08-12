@@ -77,6 +77,36 @@ function keysInSource() {
   return scanKeys(workspaceRoot, LEDGER_FILE);
 }
 
+/**
+ * The dotted paths the config entries declare, across every library that contributes them.
+ *
+ * Textual for the reason the key scan is: the entries live in four libraries the Nx
+ * boundaries stop from importing one another, so no single suite can hold all of them at
+ * once. The runtime guard (`configSchemaDrift`) checks each library's own contribution
+ * thoroughly; a path claimed by *two* libraries is the one fault it structurally cannot see,
+ * and it is the fault that silently drops a setting out of the document.
+ *
+ * Narrow includes rather than a bare `*config*.ts`, which would sweep in `vite.config.ts` and
+ * every other build file that happens to have a `path:` in it.
+ */
+const PATH_SCAN = [
+  'grep -rhoE',
+  `"path: '[^']+'"`,
+  "--include='*-config-entries.ts'",
+  "--include='*-config.ts'",
+  "--exclude='*.spec.ts'",
+  'libs',
+  '|| true',
+].join(' ');
+
+function pathsInEntries() {
+  const output = execSync(PATH_SCAN, { cwd: workspaceRoot, encoding: 'utf8' });
+  return output
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => line.slice(line.indexOf("'") + 1, -1));
+}
+
 /** Every key the ledger classifies. */
 function keysInLedger() {
   const source = readFileSync(join(workspaceRoot, LEDGER_FILE), 'utf8');
@@ -141,6 +171,29 @@ describe('config schema drift', () => {
       unclassified,
       `Add these keys to CONFIG_KEY_LEDGER in ${LEDGER_FILE}, as 'exported' (with an ` +
         `entry in the owning lib's config entries) or as 'excluded'/'internal' with a reason.`,
+    ).toEqual([]);
+  });
+
+  it('finds the document paths at all', () => {
+    // Guard the guard, as above: a scan that stops matching would leave the check below
+    // passing on an empty list.
+    expect(pathsInEntries().length).toBeGreaterThan(15);
+  });
+
+  it('has no document path claimed by two libraries', () => {
+    const paths = pathsInEntries();
+    const seen = new Set();
+    const duplicated = paths.filter((path) => {
+      const already = seen.has(path);
+      seen.add(path);
+      return already;
+    });
+
+    expect(
+      duplicated,
+      'Two config entries declare the same path, so only one of them can reach the ' +
+        'document and the other is silently absent from every export. Give each its own ' +
+        "path, under its own library's top-level group.",
     ).toEqual([]);
   });
 

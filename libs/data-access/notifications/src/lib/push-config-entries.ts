@@ -44,6 +44,11 @@ export function providePushConfigEntries(): EnvironmentProviders {
       {
         path: 'push.gateway',
         key: 'trinity.push.gateway',
+        description:
+          'Your own push gateway and its app id, or null to use the one this build ships with.',
+        // An object or nothing: `appId` is meaningless without a URL, so the pair is one
+        // value and "no override" is `null` rather than an empty object.
+        type: ['object', 'null'],
         read: () => {
           const override = push.override();
           return override
