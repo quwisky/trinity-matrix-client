@@ -1,6 +1,6 @@
 import { ApplicationRef, Component, inject, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { DialogRef } from '@angular/cdk/dialog';
+import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { TrnAlertService } from '../alert/trn-alert.service';
@@ -124,6 +124,22 @@ describe('TrnDialogService', () => {
   it('reports false when there is nothing to close, so back can fall through to navigation', () => {
     const svc = TestBed.inject(TrnDialogService);
     expect(svc.hasOpen()).toBe(false);
+    expect(svc.closeTopmost()).toBe(false);
+  });
+
+  it('reports false when the overlay declines to close, rather than swallowing the press', () => {
+    // CDK's `close()` consults `closePredicate` and can decline, leaving the dialog on
+    // screen. A `closeTopmost()` that reported "I found one" as "I closed one" would make
+    // the back button do nothing at all — no dismissal AND no navigation. Faked here
+    // because nothing in the workspace sets a predicate today; the point is that the
+    // contract holds the first time something does.
+    const declining = { close: () => undefined } as unknown as DialogRef;
+    TestBed.configureTestingModule({
+      providers: [{ provide: Dialog, useValue: { openDialogs: [declining] } }],
+    });
+    const svc = TestBed.inject(TrnDialogService);
+
+    expect(svc.hasOpen()).toBe(true);
     expect(svc.closeTopmost()).toBe(false);
   });
 

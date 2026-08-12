@@ -114,9 +114,14 @@ export class TrnDialogService {
    * being the only door.
    */
   closeTopmost(): boolean {
-    const topmost = this.dialog.openDialogs.at(-1);
-    topmost?.close();
-    return topmost !== undefined;
+    const before = this.dialog.openDialogs.length;
+    this.dialog.openDialogs.at(-1)?.close();
+    // Whether one actually CLOSED, not whether one was found. CDK's `close()` consults
+    // the dialog's `closePredicate` and can decline; when it does close it splices the
+    // ref out of `openDialogs` synchronously, so the lengths tell them apart. Reporting
+    // a refusal as success would make the back button swallow the press while the dialog
+    // stayed on screen — the one outcome worse than either branch on its own.
+    return this.dialog.openDialogs.length < before;
   }
 
   /**
