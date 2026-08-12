@@ -12,7 +12,7 @@ once.
 | Layer         | Where                                                                   | What it is                                                              |
 | ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | Brain         | `@spartan-ng/brain` 1.3.0 in `node_modules`, plus `@angular/cdk` 22.1.0 | Headless primitives: behaviour, accessibility, positioning. No styling. |
-| Kit           | `libs/kit/*`, aliased `@trinity/kit/*`                                  | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
+| The kit       | `libs/kit/*`, aliased `@trinity/kit/*`                                  | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
 | `@trinity/ui` | `libs/ui`                                                               | Trinity's own presentational components and small UI utilities.         |
 | Features      | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
 
