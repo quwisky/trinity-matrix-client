@@ -56,23 +56,24 @@ describe('TrnIconComponent', () => {
     ).toBeTruthy();
   });
 
-  it('renders at the inherited font-size by default', async () => {
-    const { fixture } = await setup({ name: 'lock' });
-    const icon = (fixture.nativeElement as HTMLElement).querySelector(
-      'ng-icon',
-    ) as HTMLElement;
+  it('treats an empty label as no label, rather than an empty accessible name', async () => {
+    // `[attr.x]` only removes the attribute on null, so a naive binding would render
+    // `aria-label=""` here — an element that looks announceable and names nothing. An
+    // unresolved signal reaching `label` is the ordinary way to hit this.
+    const { fixture } = await setup({ name: 'lock', label: '' });
+    const host = fixture.nativeElement as HTMLElement;
 
-    // `md` must be 1em, not a pixel value: ng-icon's own default inherits font-size, and
-    // ~90 icons in the app take their size from an ancestor. A px default resizes them all.
-    expect(icon.style.getPropertyValue('--ng-icon__size')).toBe('1em');
+    expect(host.getAttribute('role')).toBeNull();
+    expect(host.getAttribute('aria-label')).toBeNull();
   });
 
-  it('maps the size tokens to lengths', async () => {
-    const { fixture } = await setup({ name: 'lock', size: 'xl' });
-    const icon = (fixture.nativeElement as HTMLElement).querySelector(
-      'ng-icon',
-    ) as HTMLElement;
+  it('keeps the box model of the element it replaced', async () => {
+    // ng-icon is `display: inline-block`. A wrapper defaulting to `inline` changes inline
+    // layout at all 116 call sites — invisible to every test in this repo, since jsdom
+    // does no layout, which is exactly why it is pinned here rather than trusted.
+    const { fixture } = await setup({ name: 'lock' });
+    const host = fixture.nativeElement as HTMLElement;
 
-    expect(icon.style.getPropertyValue('--ng-icon__size')).toBe('1.25rem');
+    expect(getComputedStyle(host).display).toBe('inline-block');
   });
 });

@@ -16,29 +16,74 @@ const workspaceRoot = join(import.meta.dirname, '../../../../..');
  * of centralising, and this is the check that stops it.
  */
 describe('TrnIconName', () => {
-  const sources = execFileSync(
-    'grep',
-    [
-      '-rho',
-      '--include=*.html',
-      '--include=*.ts',
-      '-E',
-      '(name="[a-z0-9-]+"|\'[a-z0-9-]+\')',
-      // Call sites only. Scanning `libs` wholesale would include THIS library, whose
-      // union and vendor map quote every name — so every icon would reference itself and
-      // the check below could never fail. It did exactly that until a control caught it.
-      'libs/feature',
-      'libs/ui',
-      'apps',
-    ],
-    { cwd: workspaceRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
-  );
-  const referenced = new Set(
-    sources
-      .split('\n')
-      .map((line) => line.replace(/^name="|"$|^'|'$/g, ''))
-      .filter(Boolean),
-  );
+  /**
+   * Only real icon contexts count as a reference, and this is the part that took two
+   * attempts to get right.
+   *
+   * A first version matched any quoted lowercase literal anywhere under `libs`, which made
+   * every icon reference itself through this library's own union. A second version fixed
+   * that but still counted any literal in feature code — measured, that left **10 of 82**
+   * names unfalsifiable, because `'shield'`, `'play'`, `'user'` and friends appear in specs
+   * and unrelated code. So: the attribute in templates, and quoted literals only in the
+   * files that actually import the icon type (the five typed `TrnIconName` maps).
+   */
+  const grep = (args: readonly string[]): string =>
+    execFileSync('grep', args, {
+      cwd: workspaceRoot,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+
+  const CALL_SITES = ['libs/feature', 'libs/ui', 'apps'];
+
+  const templateNames = grep([
+    '-rho',
+    '--include=*.html',
+    '-E',
+    'name="[a-z0-9-]+"',
+    ...CALL_SITES,
+  ])
+    .split('\n')
+    .map((line) => line.replace(/^name="|"$/g, ''))
+    .filter(Boolean);
+
+  // Files that name the icon type at all — i.e. the maps whose values are TrnIconName.
+  const mapFiles = grep([
+    '-rl',
+    '--include=*.ts',
+    '@trinity/helm/icon',
+    ...CALL_SITES,
+  ])
+    .split('\n')
+    .filter(Boolean)
+    .filter((file) => !file.endsWith('.spec.ts'));
+
+  const mapNames = mapFiles.length
+    ? grep(['-ho', '-E', "'[a-z0-9-]+'", ...mapFiles])
+        .split('\n')
+        .map((line) => line.replace(/'/g, ''))
+        .filter(Boolean)
+    : [];
+
+  // Inline ternaries — `[name]="copied() ? 'check' : 'copy'"`. Matched inside the binding
+  // itself rather than as "any quoted literal in a template": templates quote 110 distinct
+  // lowercase words, only 15 of which are icons, so the broad form would let 95 unrelated
+  // strings vouch for icons that nothing renders. `{{ n === 1 ? 'vote' : 'votes' }}` is a
+  // real example — it would otherwise keep the `vote` icon alive on its own.
+  const inlineNames = grep([
+    '-rho',
+    '--include=*.html',
+    '-E',
+    '\\[name\\]="[^"]*"',
+    ...CALL_SITES,
+  ])
+    .split('\n')
+    .flatMap((binding) =>
+      [...binding.matchAll(/'([a-z0-9-]+)'/g)].map((m) => m[1]),
+    )
+    .filter(Boolean);
+
+  const referenced = new Set([...templateNames, ...mapNames, ...inlineNames]);
 
   it('registers no icon that nothing renders', () => {
     const dead = TRN_ICON_NAMES.filter((name) => !referenced.has(name));

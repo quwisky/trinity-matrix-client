@@ -5,19 +5,7 @@ import {
   input,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
-import type { TrnIconName, TrnIconSize } from '../trn-icon-name';
-
-/**
- * `md` is `1em` rather than a fixed length on purpose: `ng-icon`'s own default is
- * `width: var(--ng-icon__size, 1em)`, so every icon in the app currently takes its size
- * from the surrounding font-size. A pixel default here would silently resize all of them.
- */
-const SIZE: Record<TrnIconSize, string> = {
-  sm: '0.875rem',
-  md: '1em',
-  lg: '1.125rem',
-  xl: '1.25rem',
-};
+import type { TrnIconName } from '../trn-icon-name';
 
 /**
  * Trinity's icon.
@@ -36,11 +24,22 @@ const SIZE: Record<TrnIconSize, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './trn-icon.component.html',
   imports: [NgIcon],
+  styles: [
+    // Matches the element this replaced. `ng-icon` sets `:host{display:inline-block}`, so
+    // without this the wrapper is `display: inline` and every icon in the app changes box
+    // model — harmless inside a flex parent, which blockifies its children, but in true
+    // inline flow an inline host participates in baseline and line-height in a way the
+    // inline-block element did not, and icons shift.
+    ':host { display: inline-block; }',
+  ],
   host: {
     // Null rather than absent-when-false: an unlabelled icon must expose no role at all,
-    // or every decorative icon becomes an announceable image with no name.
-    '[attr.role]': 'label() ? "img" : null',
-    '[attr.aria-label]': 'label()',
+    // or every decorative icon becomes an announceable image with no name. An EMPTY label
+    // counts as unlabelled for the same reason — `[attr.x]` only removes on null, so
+    // passing '' would otherwise render `aria-label=""`: an announceable-looking element
+    // with no name, which is the exact dead ARIA this component exists to prevent.
+    '[attr.role]': 'announced() ? "img" : null',
+    '[attr.aria-label]': 'announced()',
   },
 })
 export class TrnIconComponent {
@@ -51,7 +50,6 @@ export class TrnIconComponent {
    * already says the same thing, where a label is duplicate noise rather than help.
    */
   readonly label = input<string | null>(null);
-  readonly size = input<TrnIconSize>('md');
 
-  protected readonly cssSize = computed(() => SIZE[this.size()]);
+  protected readonly announced = computed(() => this.label() || null);
 }

@@ -97,6 +97,3 @@ export const TRN_ICON_NAMES = [
 ] as const;
 
 export type TrnIconName = (typeof TRN_ICON_NAMES)[number];
-
-/** Rendered size. `md` inherits the surrounding font-size, which is ng-icon's own default. */
-export type TrnIconSize = 'sm' | 'md' | 'lg' | 'xl';
