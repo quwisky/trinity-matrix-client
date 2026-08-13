@@ -200,11 +200,13 @@ describe('AppComponent', () => {
   // here is only the branch: overlay wins over navigation, which wins over minimize.
   describe('native back button handling', () => {
     let closeTopmost: Mock;
+    let hasOpen: Mock;
     let locationBack: Mock;
 
     beforeEach(() => {
       backButtonListeners.length = 0;
       closeTopmost = vi.fn(() => false);
+      hasOpen = vi.fn(() => false);
       locationBack = vi.fn();
       vi.mocked(App.minimizeApp).mockClear();
     });
@@ -215,7 +217,7 @@ describe('AppComponent', () => {
           provideRouter([]),
           provideServiceWorker('ngsw-worker.js', { enabled: false }),
           ...hostProviders,
-          MockProvider(TrnDialogService, { closeTopmost }),
+          MockProvider(TrnDialogService, { closeTopmost, hasOpen }),
           MockProvider(Location, { back: locationBack }),
         ],
       });
@@ -230,7 +232,26 @@ describe('AppComponent', () => {
 
     it('dismisses an open overlay instead of navigating back or minimizing', async () => {
       const listener = await create();
+      hasOpen.mockReturnValue(true);
       closeTopmost.mockReturnValue(true);
+
+      listener({ canGoBack: true });
+
+      expect(closeTopmost).toHaveBeenCalled();
+      expect(locationBack).not.toHaveBeenCalled();
+      expect(App.minimizeApp).not.toHaveBeenCalled();
+    });
+
+    it('swallows the press when an overlay refuses to close, rather than navigating under it', async () => {
+      // The branch is on "is something open", NOT on "did it close". A dialog can decline
+      // — `disableClose` on the encryption and verification flows, or a `closePredicate` —
+      // and treating that refusal as "nothing here" would step the router backwards
+      // beneath a modal the user is still looking at, or minimize the app out from under
+      // it. Gating on `closeTopmost()`'s return alone is exactly that bug, which is why
+      // this asserts the navigation did NOT happen while close reported false.
+      const listener = await create();
+      hasOpen.mockReturnValue(true);
+      closeTopmost.mockReturnValue(false);
 
       listener({ canGoBack: true });
 

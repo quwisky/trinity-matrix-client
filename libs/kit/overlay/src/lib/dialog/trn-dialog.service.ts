@@ -104,12 +104,24 @@ export class TrnDialogService {
   }
 
   /**
-   * Close the most recently opened overlay, returning whether there was one.
+   * Close the most recently opened overlay, returning whether one actually closed.
    *
    * This is the hardware back-button primitive: Android's back should dismiss what
    * is on top before it navigates. It closes the *last* entry of the shared stack
    * described on {@link hasOpen} — so back dismisses an alert or action sheet just
    * as it dismisses a dialog, and dismisses them in the order the user sees them.
+   *
+   * **`disableClose` is honoured here, and it has to be.** CDK does not do it for us:
+   * `DialogRef.close()` gates only on `closePredicate`, so a programmatic close
+   * dismisses a dialog that was explicitly opened as non-dismissible. Without this
+   * guard the back button walked straight through the encryption-unlock and
+   * device-verification dialogs, whose whole reason for setting the flag is that a
+   * stray dismissal must not be possible mid-flow.
+   *
+   * A `false` return means "nothing closed", NOT "nothing was there" — the two are
+   * distinguished by {@link hasOpen}, and a caller that navigates on `false` alone
+   * would navigate underneath a modal still on screen. The back-button handler in
+   * the app shell branches on `hasOpen()` for exactly that reason.
    *
    * Named rather than exposing CDK's `Dialog`: handing feature code the class back
    * would let it call `open()` with unmediated config, and this service would stop
@@ -117,7 +129,11 @@ export class TrnDialogService {
    */
   closeTopmost(): boolean {
     const before = this.dialog.openDialogs.length;
-    this.dialog.openDialogs.at(-1)?.close();
+    const top = this.dialog.openDialogs.at(-1);
+    if (top?.disableClose) {
+      return false;
+    }
+    top?.close();
     // Whether one actually CLOSED, not whether one was found. CDK's `close()` consults
     // the dialog's `closePredicate` and can decline; when it does close it splices the
     // ref out of `openDialogs` synchronously, so the lengths tell them apart. Reporting

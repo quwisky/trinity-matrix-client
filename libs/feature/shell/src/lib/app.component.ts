@@ -62,11 +62,18 @@ export class AppComponent implements OnInit {
     // history, and only minimize when there's nowhere left to go. iOS has no hardware
     // back button, so this never fires there.
     //
-    // `closeTopmost()` spans dialogs, alerts and action sheets alike — they share one
-    // overlay stack — and reports whether it found one, which is what lets this fall
-    // through to navigation when nothing is open.
+    // `hasOpen()` spans dialogs, alerts and action sheets alike — they share one overlay
+    // stack — and it, not `closeTopmost()`'s return, is what gates navigation. The two
+    // answer different questions: "is something on screen" versus "did something close".
+    // A dialog can legitimately refuse to close (`disableClose`, or a `closePredicate`),
+    // and navigating on that refusal would step the router backwards UNDERNEATH a modal
+    // the user can still see — or minimize the app out from under it. So an open overlay
+    // always consumes the press, whether or not it was dismissible; that is what Android
+    // does for a modal, and it is why the flow-critical encryption dialogs can set
+    // `disableClose` and have it mean something.
     void App.addListener('backButton', ({ canGoBack }) => {
-      if (this.dialog.closeTopmost()) {
+      if (this.dialog.hasOpen()) {
+        this.dialog.closeTopmost();
         return;
       }
       if (canGoBack) {

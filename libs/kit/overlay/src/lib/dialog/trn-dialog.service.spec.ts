@@ -127,12 +127,14 @@ describe('TrnDialogService', () => {
     expect(svc.closeTopmost()).toBe(false);
   });
 
-  it('reports false when the overlay declines to close, rather than swallowing the press', () => {
+  it('reports false when the overlay declines to close', () => {
     // CDK's `close()` consults `closePredicate` and can decline, leaving the dialog on
-    // screen. A `closeTopmost()` that reported "I found one" as "I closed one" would make
-    // the back button do nothing at all — no dismissal AND no navigation. Faked here
-    // because nothing in the workspace sets a predicate today; the point is that the
-    // contract holds the first time something does.
+    // screen. The return value means "did one close", not "was one there" — reporting a
+    // refusal as success would tell a caller the screen changed when it did not. What the
+    // back button then does with an overlay that refused is the SHELL's decision, and it
+    // swallows the press rather than navigating under it; see app.component.spec.ts.
+    // Faked here because nothing in the workspace sets a predicate today; the point is
+    // that the contract holds the first time something does.
     const declining = { close: () => undefined } as unknown as DialogRef;
     TestBed.configureTestingModule({
       providers: [{ provide: Dialog, useValue: { openDialogs: [declining] } }],
@@ -141,6 +143,33 @@ describe('TrnDialogService', () => {
 
     expect(svc.hasOpen()).toBe(true);
     expect(svc.closeTopmost()).toBe(false);
+  });
+
+  it('leaves a disableClose dialog alone, which CDK would not', async () => {
+    // The flag exists so a flow-critical dialog cannot be dismissed out from under
+    // itself — encryption-unlock and device-verification both set it. CDK enforces it
+    // only for the backdrop and Escape: `DialogRef.close()` gates on `closePredicate`
+    // and never looks at `disableClose`, so the programmatic close behind the Android
+    // back button walked straight through it. Driven against the REAL CDK stack rather
+    // than a stub, because a stub would assert our own belief about CDK back to us —
+    // and that belief is precisely what was wrong.
+    const svc = TestBed.inject(TrnDialogService);
+    const locked = svc.open<string, TestDialogComponent>(TestDialogComponent, {
+      inputs: { label: 'Locked' },
+      disableClose: true,
+    });
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(svc.closeTopmost()).toBe(false);
+    expect(svc.hasOpen()).toBe(true);
+    TestBed.inject(ApplicationRef).tick();
+    expect(document.body.textContent).toContain('Locked');
+
+    // Still closable by the code that owns the flow — the guard is about who decides,
+    // not about making the dialog permanent.
+    locked.close();
+    TestBed.inject(ApplicationRef).tick();
+    expect(svc.hasOpen()).toBe(false);
   });
 
   it('also closes an alert, because the CDK dialog stack is shared', async () => {
