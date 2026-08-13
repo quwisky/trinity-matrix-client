@@ -25,8 +25,18 @@ describe('TrnEmojiIndex', () => {
     expect(found.some((entry) => entry.native === '🚀')).toBe(true);
   });
 
-  it('honours the limit, which is what keeps the menu a menu', () => {
+  it('honours an explicit limit, which is what keeps the menu a menu', () => {
     expect(index().suggest('a', 3).length).toBeLessThanOrEqual(3);
+  });
+
+  it('caps an unbounded query with its own default', () => {
+    // The default became load-bearing when the caller's own constant was removed: the
+    // autocomplete now calls `suggest(q)` with no limit, so an uncapped facade would put
+    // every match for a one-letter query into the suggestion menu.
+    const wide = index().suggest('a');
+
+    expect(wide.length).toBeGreaterThan(0);
+    expect(wide.length).toBeLessThanOrEqual(8);
   });
 
   it('resolves a shortcode to its character', () => {
