@@ -97,7 +97,23 @@ regenerate a component with the CLI rather than hand-authoring it:
 
 ```bash
 pnpm exec nx g @spartan-ng/cli:ui <name>
+node scripts/rebrand-kit.mjs
 ```
+
+**The second command is not optional.** The CLI is upstream code, so it generates upstream's
+own naming — its selector prefix, its class names, its path alias — into a kit this repo
+renamed to `trn` wholesale. `rebrand-kit.mjs` re-applies that rename. It is a pure prefix
+substitution and idempotent, so running it when nothing needs changing is a no-op.
+
+Skip it and the kit ends up half upstream's naming and half Trinity's, which **lints clean** —
+the kit is deliberately exempt from the selector and class-suffix rules, so nothing there
+objects. `scripts/rebrand-kit.spec.mjs` is what actually catches it, by asserting the working
+tree is already a fixpoint of the codemod.
+
+(This page deliberately does not spell the old prefix out. The codemod rewrites every
+`git ls-files` path outside its own exclusion list, documentation included, so a doc that
+quotes the old identifiers rewrites itself into nonsense on the next run — and fails the
+fixpoint test on the way. The substitution table is in `scripts/rebrand-kit.mjs`.)
 
 Configuration lives in the root `components.json`:
 

@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { globSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
 
@@ -171,6 +171,33 @@ describe('UI vendor boundary', () => {
     expect(tagsOf('libs/ui')).toContain('ui:wrapper');
     expect(tagsOf('libs/kit/button')).toContain('ui:vendor-wrapper');
     expect(tagsOf('libs/ui')).not.toContain('ui:vendor-wrapper');
+  });
+
+  it('tags every project, since a rule that matches no tag enforces nothing', () => {
+    // The failure mode this exists for is silent and unbounded. `depConstraints` entries
+    // are keyed on `sourceTag`, and there is deliberately no `sourceTag: '*'` catch-all —
+    // so a project whose tags match NO entry gets no layering rule and, worse, none of the
+    // `bannedExternalImports` below. A new lib generated without tags, or one carrying
+    // `type:featrue`, may import @ctrl/ngx-emoji-mart or reach across any boundary it
+    // likes, and `pnpm lint` reports success. Every ban in this file is only as complete
+    // as the tagging is.
+    const projects = globSync('{apps,libs}/**/project.json', {
+      cwd: workspaceRoot,
+    });
+    // An empty sweep must not pass as a clean one — the same trap the host-directives
+    // guard was written around.
+    expect(projects.length).toBeGreaterThan(30);
+
+    const untagged = projects
+      .map((path) => ({ path, tags: tagsOf(dirname(path)) }))
+      .filter(
+        ({ tags }) =>
+          !tags.some((tag) => tag.startsWith('type:')) ||
+          !tags.some((tag) => tag.startsWith('scope:')),
+      )
+      .map(({ path, tags }) => `${path}: ${JSON.stringify(tags)}`);
+
+    expect(untagged).toEqual([]);
   });
 
   it('bans the vendors from every tier that should not render third-party UI', async () => {

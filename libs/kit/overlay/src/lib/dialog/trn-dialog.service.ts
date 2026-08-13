@@ -7,8 +7,6 @@ import { firstValueFrom } from 'rxjs';
 export interface DialogOptions {
   /** Set on the opened component as @Inputs after creation (Ionic componentProps). */
   inputs?: Record<string, unknown>;
-  /** Extra class(es) on the dialog panel (for width/height/position styling). */
-  panelClass?: string | string[];
   /**
    * Where the panel sits. `'center'` (default) is a centered modal card;
    * `'end'` pins it full-height against the inline-end (right) edge — the
@@ -52,8 +50,12 @@ export class TrnDialogService {
     component: ComponentType<C>,
     opts: DialogOptions = {},
   ): DialogRef<R, C> {
+    // No `panelClass`. The option and its `trn-dialog-panel` default were both dead: no
+    // call site ever passed one, and the class name occurred exactly once in the whole
+    // workspace — here, styled by nothing. Same reason `DialogOptions.data` went in #151.
+    // Every dialog paints its own surface (see the `dialog-surface()` mixin), so there is
+    // no shared panel styling for a hook to carry. Re-add it with a real consumer.
     const ref = this.dialog.open<R, unknown, C>(component, {
-      panelClass: opts.panelClass ?? 'trn-dialog-panel',
       backdropClass: ['cdk-overlay-dark-backdrop'],
       disableClose: opts.disableClose ?? false,
       ariaLabel: opts.ariaLabel,

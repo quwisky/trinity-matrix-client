@@ -149,8 +149,11 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
 - **Selectors**: `trn` prefix — elements kebab-case (`trn-avatar`), directives camelCase. Class
   suffix must be `Page` or `Component`.
 - **`libs/kit/*` is generated and owned via `@spartan-ng/cli`** (config in root
-  `components.json`). Add/regenerate Helm components with the CLI rather than hand-authoring;
-  it's intentionally exempt from the `trn`-prefix and class-suffix ESLint rules. Where upstream
+  `components.json`). Add/regenerate Helm components with the CLI rather than hand-authoring,
+  then **always** run `node scripts/rebrand-kit.mjs` — the CLI generates upstream's own
+  naming into a kit renamed to `trn`, and the codemod re-normalises it (idempotent, safe to
+  run any time; `scripts/rebrand-kit.spec.mjs` fails if you forget). It's intentionally exempt from the `trn`-prefix and
+  class-suffix ESLint rules. Where upstream
   is wrong we *do* diverge — but on the record: comment it at the site, add it to the banner at
   the top of the file, pin it with a test, and list it under **Vendored spartan overrides** in
   [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).
