@@ -298,7 +298,7 @@ describe('PushGatewayBlockComponent', () => {
 
   it('describes the URL field with its help text, for a screen reader', async () => {
     // Two of the three places in the app that describe a helm control. The hint was in the
-    // markup all along but never reached the accessibility tree: hlmInput composes
+    // markup all along but never reached the accessibility tree: trnInput composes
     // BrnFieldControlDescribedBy, which owns [attr.aria-describedby], and the hostDirectives
     // entry did not publish that input — so the attribute was computed as null and removed.
     // Asserted here as well as in the kit's own contract test, because this is the screen a

@@ -7,7 +7,7 @@
     <label trnLabel for="poll-question">Question</label>
     <input
       id="poll-question"
-      hlmInput
+      trnInput
       class="mt-1 w-full"
       placeholder="Ask something…"
       [value]="question()"
@@ -20,7 +20,7 @@
     @for (option of options(); track $index) {
       <div class="flex items-center gap-2">
         <input
-          hlmInput
+          trnInput
           class="w-full"
           [placeholder]="'Option ' + ($index + 1)"
           [value]="option"

@@ -18,7 +18,7 @@ import { AccountBadgesService } from '../shared/account-badges.service';
 import { AvatarComponent, type AccountBadge } from '@trinity/ui';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 import {
@@ -73,7 +73,7 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
     AvatarComponent,
     TrnSpinnerComponent,
     HlmButton,
-    HlmInput,
+    TrnInput,
   ],
   templateUrl: './quick-switcher.component.html',
   styleUrl: './quick-switcher.component.scss',

@@ -14,7 +14,7 @@ import {
   type MessageAction,
   type MessageToolbarCaps,
 } from '@trinity/ui';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { type ThreadSummary } from '@trinity/data-access/timeline';
 import {
   type MatrixLinkTarget,
@@ -103,7 +103,7 @@ export type MessageRowAction =
     LinkPreviewComponent,
     LocationComponent,
     VoiceMessageComponent,
-    HlmTooltip,
+    TrnTooltip,
   ],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',

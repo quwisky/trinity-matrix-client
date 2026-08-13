@@ -10,7 +10,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { parseLocationInput } from '@trinity/util/matrix';
 import { GeolocationService, type GeoPoint } from '@trinity/platform-native';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
@@ -30,7 +30,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   imports: [
     TrnIconComponent,
     HlmButton,
-    HlmInput,
+    TrnInput,
     TrnLabel,
     TrnSpinnerComponent,
   ],

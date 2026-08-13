@@ -5,7 +5,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { type ReactionView } from '@trinity/util/matrix';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -43,7 +43,7 @@ function reactorsHint(reaction: ReactionView): string {
 @Component({
   selector: 'trn-message-reactions',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, HlmTooltip],
+  imports: [TrnIconComponent, TrnTooltip],
   templateUrl: './message-reactions.component.html',
   styleUrl: './message-reactions.component.scss',
 })

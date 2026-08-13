@@ -7,7 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import {
   TrnRadioGroupComponent,
@@ -36,7 +36,7 @@ const MAX_STATUS_LENGTH = 60;
   selector: 'trn-presence-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './presence-section.component.html',
-  imports: [HlmButton, HlmInput, TrnLabel, TrnRadioGroupComponent],
+  imports: [HlmButton, TrnInput, TrnLabel, TrnRadioGroupComponent],
 })
 export class PresenceSectionComponent {
   private readonly presence = inject(PresenceService);

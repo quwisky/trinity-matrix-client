@@ -11,7 +11,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   KeywordRulesService,
@@ -34,7 +34,7 @@ import {
   selector: 'trn-keyword-rules',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './keyword-rules-block.component.html',
-  imports: [FormField, HlmButton, TrnCheckboxComponent, HlmInput],
+  imports: [FormField, HlmButton, TrnCheckboxComponent, TrnInput],
 })
 export class KeywordRulesBlockComponent implements OnInit {
   private readonly keywordsSvc = inject(KeywordRulesService);

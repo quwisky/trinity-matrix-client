@@ -17,7 +17,7 @@ import {
 import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -58,7 +58,7 @@ interface HighlightPart {
     AvatarComponent,
     TrnSpinnerComponent,
     HlmButton,
-    HlmInput,
+    TrnInput,
   ],
   templateUrl: './message-search.component.html',
   styleUrl: './message-search.component.scss',

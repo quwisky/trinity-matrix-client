@@ -134,7 +134,7 @@
     }
     <textarea
       #ta
-      hlmTextarea
+      trnTextarea
       class="composer__input"
       [class.composer__input--hidden]="previewing()"
       data-testid="composer-input"
@@ -174,7 +174,7 @@
     <button
       type="button"
       class="composer__emoji"
-      hlmTooltip="Emoji"
+      trnTooltip="Emoji"
       aria-label="Insert emoji"
       [attr.aria-expanded]="pickerOpen()"
       [attr.aria-controls]="pickerOpen() ? pickerId : null"
@@ -190,7 +190,7 @@
       <button
         type="button"
         class="composer__send"
-        hlmTooltip="Send"
+        trnTooltip="Send"
         aria-label="Send message"
         data-testid="composer-send"
         [disabled]="!text().trim() && !pendingFile()"

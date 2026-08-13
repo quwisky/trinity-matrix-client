@@ -26,7 +26,7 @@ import {
   HlmDropdownMenuItem,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { CryptoService } from '@trinity/data-access/crypto';
 import {
   InvitesService,
@@ -112,7 +112,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
     HlmDropdownMenu,
     HlmDropdownMenuItem,
     HlmDropdownMenuTrigger,
-    HlmTooltip,
+    TrnTooltip,
     TrnIconComponent,
     AvatarComponent,
     ServerRailComponent,

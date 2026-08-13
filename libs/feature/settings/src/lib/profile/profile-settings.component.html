@@ -17,7 +17,7 @@
         class="absolute -right-1 -bottom-1 grid size-7 place-items-center rounded-full border-2 border-solid border-background bg-primary text-sm text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
         [disabled]="savingAvatar()"
         (click)="pickAvatar()"
-        hlmTooltip="Change profile picture"
+        trnTooltip="Change profile picture"
         [attr.aria-label]="
           savingAvatar()
             ? 'Uploading profile picture'
@@ -50,7 +50,7 @@
       <label trnLabel for="display-name">Display name</label>
       <input
         id="display-name"
-        hlmInput
+        trnInput
         class="mt-1"
         [value]="nameDraft()"
         (input)="onNameInput($event)"

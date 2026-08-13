@@ -5,7 +5,7 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnIconComponent } from '@trinity/components/icon';
 import {
   HlmDropdownMenu,
@@ -66,7 +66,7 @@ let nextPickerId = 0;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconComponent,
-    HlmTooltip,
+    TrnTooltip,
     HlmDropdownMenu,
     HlmDropdownMenuItem,
     HlmDropdownMenuSeparator,

@@ -13,8 +13,8 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { HlmTextarea } from '@trinity/helm/textarea';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTextarea } from '@trinity/components/textarea';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   ComposerSettingsService,
   DraftStoreService,
@@ -100,8 +100,8 @@ let nextPickerId = 0;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconComponent,
-    HlmTooltip,
-    HlmTextarea,
+    TrnTooltip,
+    TrnTextarea,
     TrnEmojiPickerComponent,
     GifPickerComponent,
     ComposerToolbarComponent,

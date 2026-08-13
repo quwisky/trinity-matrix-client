@@ -95,7 +95,12 @@
       "@trinity/components/radio-group": [
         "./libs/components/radio-group/src/index.ts"
       ],
-      "@trinity/components/select": ["./libs/components/select/src/index.ts"]
+      "@trinity/components/select": ["./libs/components/select/src/index.ts"],
+      "@trinity/components/input": ["./libs/components/input/src/index.ts"],
+      "@trinity/components/tooltip": ["./libs/components/tooltip/src/index.ts"],
+      "@trinity/components/textarea": [
+        "./libs/components/textarea/src/index.ts"
+      ]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

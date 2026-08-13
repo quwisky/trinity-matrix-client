@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnDialogService } from '@trinity/components/overlay';
 import {
@@ -36,7 +36,7 @@ import {
   selector: 'trn-push-gateway-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './push-gateway-block.component.html',
-  imports: [HlmButton, HlmInput, TrnLabel],
+  imports: [HlmButton, TrnInput, TrnLabel],
 })
 export class PushGatewayBlockComponent {
   private readonly gateway = inject(PushGatewayService);

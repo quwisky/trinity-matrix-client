@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import {
   TrnRadioGroupComponent,
@@ -33,7 +33,7 @@ import {
   imports: [
     TitleCasePipe,
     HlmButton,
-    HlmInput,
+    TrnInput,
     TrnLabel,
     TrnRadioGroupComponent,
   ],

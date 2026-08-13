@@ -15,7 +15,7 @@ import { Capacitor } from '@capacitor/core';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
-import { HlmTextarea } from '@trinity/helm/textarea';
+import { TrnTextarea } from '@trinity/components/textarea';
 import {
   AppConfigService,
   CONFIG_EXCLUSION_NOTES,
@@ -101,7 +101,7 @@ function exportFileName(now: Date): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './advanced-settings.component.html',
   styleUrl: './advanced-settings.component.scss',
-  imports: [ConfigEditorOutletDirective, HlmButton, TrnLabel, HlmTextarea],
+  imports: [ConfigEditorOutletDirective, HlmButton, TrnLabel, TrnTextarea],
 })
 export class AdvancedSettingsComponent {
   private readonly config = inject(AppConfigService);

@@ -27,7 +27,7 @@ import {
 } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnCardImports } from '@trinity/components/card';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import {
@@ -62,7 +62,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
     FormField,
     HlmButton,
     TrnCardImports,
-    HlmInput,
+    TrnInput,
     TrnLabel,
     TrnSpinnerComponent,
     TrnIconComponent,

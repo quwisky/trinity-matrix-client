@@ -6,7 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -29,7 +29,7 @@ const MAX_OPTIONS = 8;
 @Component({
   selector: 'trn-create-poll-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, HlmInput, TrnLabel, TrnIconComponent],
+  imports: [HlmButton, TrnInput, TrnLabel, TrnIconComponent],
   templateUrl: './create-poll-dialog.component.html',
 })
 export class CreatePollDialogComponent {

@@ -12,7 +12,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, disabled, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   HistoryVisibility,
@@ -77,7 +77,7 @@ const HISTORY_OPTIONS = [
     FormRoot,
     HlmButton,
     TrnCheckboxComponent,
-    HlmInput,
+    TrnInput,
     AvatarFieldComponent,
     BannedMembersComponent,
     RoomAliasesComponent,

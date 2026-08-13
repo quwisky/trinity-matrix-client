@@ -9,7 +9,7 @@ import {
 import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnBadge } from '@trinity/components/badge';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/data-access/crypto';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -25,7 +25,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './devices-section.component.html',
   styleUrl: './devices-section.component.scss',
-  imports: [TrnIconComponent, TrnBadge, HlmButton, HlmTooltip],
+  imports: [TrnIconComponent, TrnBadge, HlmButton, TrnTooltip],
 })
 export class DevicesSectionComponent {
   private readonly devicesSvc = inject(DevicesService);

@@ -19,7 +19,7 @@ import {
 } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { PageHeaderComponent } from '@trinity/ui';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
@@ -64,7 +64,7 @@ const WIDE_QUERY = '(min-width: 768px)';
     PageHeaderComponent,
     TrnIconComponent,
     HlmButton,
-    HlmTooltip,
+    TrnTooltip,
     RouterLink,
     RouterLinkActive,
     RouterOutlet,

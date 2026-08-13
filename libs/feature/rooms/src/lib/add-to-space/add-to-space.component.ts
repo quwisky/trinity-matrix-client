@@ -11,7 +11,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
 import { HlmButton } from '@trinity/helm/button';
 import { TrnCheckboxComponent } from '@trinity/components/checkbox';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomsService,
@@ -54,7 +54,7 @@ export interface AddCandidate {
     FormField,
     HlmButton,
     TrnCheckboxComponent,
-    HlmInput,
+    TrnInput,
     AvatarComponent,
   ],
   templateUrl: './add-to-space.component.html',

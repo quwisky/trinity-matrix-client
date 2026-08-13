@@ -20,7 +20,7 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import {
   ThreadsService,
   TimelineActionsService,
@@ -85,7 +85,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
   imports: [
     TrnIconComponent,
     HlmButton,
-    HlmTooltip,
+    TrnTooltip,
     MessageRowComponent,
     MessageComposerComponent,
   ],

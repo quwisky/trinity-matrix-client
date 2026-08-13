@@ -8,7 +8,7 @@ import { TrnDialogRef } from '@trinity/components/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnTooltip } from '@trinity/components/tooltip';
 import { TrnIconComponent } from '@trinity/components/icon';
 import {
   ThreadsService,
@@ -34,7 +34,7 @@ const MAX_AVATARS = 4;
 @Component({
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, AvatarComponent, HlmButton, HlmTooltip],
+  imports: [TrnIconComponent, AvatarComponent, HlmButton, TrnTooltip],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',
 })

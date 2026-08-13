@@ -17,7 +17,7 @@ import {
 } from '@angular/forms/signals';
 import { Browser } from '@capacitor/browser';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnToastService } from '@trinity/components/overlay';
 import { runWithBusy } from '@trinity/ui';
@@ -93,7 +93,7 @@ const passwordSchema = schema<PasswordModel>((path) => {
     FormRoot,
     TrnIconComponent,
     HlmButton,
-    HlmInput,
+    TrnInput,
     TrnLabel,
   ],
 })

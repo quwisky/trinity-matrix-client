@@ -19,7 +19,7 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import {
   AvatarComponent,
   BELOW_MD_QUERY,
@@ -69,7 +69,7 @@ export type { AccountSummary };
     SidebarRoomListComponent,
     AvatarComponent,
     TrnIconComponent,
-    HlmInput,
+    TrnInput,
     HlmDropdownMenuTrigger,
     HlmDropdownMenu,
     HlmDropdownMenuItem,

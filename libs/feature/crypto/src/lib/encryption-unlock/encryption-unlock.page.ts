@@ -24,7 +24,7 @@ import {
   runWithBusy,
 } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnInput } from '@trinity/components/input';
 import { TrnLabel } from '@trinity/components/label';
 import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
@@ -57,7 +57,7 @@ import {
     PageHeaderComponent,
     RecoveryKeySaveComponent,
     HlmButton,
-    HlmInput,
+    TrnInput,
     TrnLabel,
     TrnSpinnerComponent,
   ],
