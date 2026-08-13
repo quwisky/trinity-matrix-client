@@ -15,13 +15,10 @@ import {
 } from '@angular/core';
 import { TrnTextarea } from '@trinity/kit/textarea';
 import { TrnTooltip } from '@trinity/kit/tooltip';
-import { EmojiSearch, PickerComponent } from '@ctrl/ngx-emoji-mart';
-import { EmojiService, type EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import {
   ComposerSettingsService,
   DraftStoreService,
   KeyboardShortcutsService,
-  ThemeService,
 } from '@trinity/platform-native';
 import { type GifResult } from '@trinity/data-access/gif';
 import {
@@ -48,6 +45,11 @@ import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { ComposerAttachmentsService } from './composer-attachments.service';
 import { EmojiAutocomplete } from './emoji-autocomplete';
 import { TrnIconComponent } from '@trinity/kit/icon';
+import {
+  TrnEmojiIndex,
+  TrnEmojiPickerComponent,
+  type TrnEmojiPick,
+} from '@trinity/kit/emoji-picker';
 import {
   MentionAutocomplete,
   type MentionMember,
@@ -97,7 +99,7 @@ const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
     TrnIconComponent,
     TrnTooltip,
     TrnTextarea,
-    PickerComponent,
+    TrnEmojiPickerComponent,
     GifPickerComponent,
     ComposerToolbarComponent,
     ComposerAttachmentStripComponent,
@@ -258,8 +260,6 @@ export class MessageComposerComponent {
   readonly hasInsertMenu = computed(
     () => this.richActions() || this.gifEnabled(),
   );
-  /** Match the emoji picker's chrome to the app's active theme. */
-  readonly isDarkMode = computed(() => this.theme.resolved() === 'dark');
   /**
    * The two autocomplete engines. Each owns its trigger detection, suggestion list,
    * highlighted index and the caret splice an acceptance resolves to; this component owns
@@ -267,8 +267,7 @@ export class MessageComposerComponent {
    * That is the boundary the two used to lack — they shared one caret model in-line here.
    */
   private readonly emojiAutocomplete = new EmojiAutocomplete(
-    inject(EmojiSearch),
-    inject(EmojiService),
+    inject(TrnEmojiIndex),
   );
   private readonly mentionAutocomplete = new MentionAutocomplete(this.members);
   /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
@@ -304,7 +303,6 @@ export class MessageComposerComponent {
   get voiceSupported(): boolean {
     return this.attachments.voiceSupported;
   }
-  private readonly theme = inject(ThemeService);
   private readonly drafts = inject(DraftStoreService);
   private readonly composerSettings = inject(ComposerSettingsService);
   /**
@@ -781,11 +779,10 @@ export class MessageComposerComponent {
   }
 
   /** The emoji picker chose an emoji → insert its native character at the cursor. */
-  onPickerSelect(event: EmojiEvent): void {
-    const native = event.emoji.native;
-    if (native) {
-      this.insertEmoji(native);
-    }
+  onPickerSelect(pick: TrnEmojiPick): void {
+    // No emptiness check: the wrapper drops picks with no character, so anything that
+    // arrives here is insertable. This used to no-op silently on such an event.
+    this.insertEmoji(pick.native);
   }
 
   /** Open the create-poll dialog (starts a poll in the active room on confirm). */

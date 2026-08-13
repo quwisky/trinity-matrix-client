@@ -1,49 +1,45 @@
 import { DialogRef } from '@trinity/kit/overlay';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
-import { PickerComponent } from '@ctrl/ngx-emoji-mart';
-import { type EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import { describe, expect, it, vi } from 'vitest';
-import { ThemeService } from '@trinity/platform-native';
 import { ReactionPickerComponent } from './reaction-picker.component';
+import {
+  TrnEmojiPickerComponent,
+  type TrnEmojiPick,
+} from '@trinity/kit/emoji-picker';
 
-/** An EmojiEvent carrying just the native character onSelect reads. */
-function emojiEvent(native: string | undefined): EmojiEvent {
-  return { emoji: { native } } as unknown as EmojiEvent;
-}
+/** A pick as the wrapper emits it — always with a character; see TrnEmojiPick. */
+const pick = (native: string): TrnEmojiPick => ({
+  native,
+  id: 'rocket',
+  colons: ':rocket:',
+});
 
 describe('ReactionPickerComponent', () => {
-  async function setup(resolved: 'light' | 'dark' = 'light') {
+  async function setup() {
     const close = vi.fn();
     const { fixture } = await render(ReactionPickerComponent, {
-      providers: [
-        { provide: DialogRef, useValue: { close } },
-        { provide: ThemeService, useValue: { resolved: () => resolved } },
-      ],
-      componentImports: [MockComponent(PickerComponent)],
+      providers: [{ provide: DialogRef, useValue: { close } }],
+      componentImports: [MockComponent(TrnEmojiPickerComponent)],
     });
     return { cmp: fixture.componentInstance, close };
   }
 
   it('closes with the chosen native emoji', async () => {
     const { cmp, close } = await setup();
-    cmp.onSelect(emojiEvent('🚀'));
+    cmp.onSelect(pick('🚀'));
     expect(close).toHaveBeenCalledWith('🚀');
   });
 
-  it('closes with null when the emoji has no native character', async () => {
-    const { cmp, close } = await setup();
-    cmp.onSelect(emojiEvent(undefined));
-    expect(close).toHaveBeenCalledWith(null);
-  });
+  // The "no native character" case is gone on purpose: it is now unreachable here. The
+  // wrapper drops such a pick, so this component can no longer be asked to close with
+  // null — which the caller could not tell apart from a dismissal. That guarantee is
+  // asserted where it now lives, in the kit's own picker spec.
 
-  it('reports a light picker chrome under the light theme', async () => {
-    const { cmp } = await setup('light');
-    expect(cmp.isDarkMode()).toBe(false);
-  });
-
-  it('reports a dark picker chrome under the dark theme', async () => {
-    const { cmp } = await setup('dark');
-    expect(cmp.isDarkMode()).toBe(true);
-  });
+  // The two theme tests that stood here are gone with the boolean they asserted. The
+  // vendor's `darkMode` could only express light-or-dark, so it was wrong under two of
+  // Trinity's four mode x palette combinations regardless of what it was set to. The
+  // picker is painted from design tokens now, which no unit test can meaningfully assert
+  // — jsdom applies no stylesheet — so this is covered by the tokens themselves rather
+  // than by a boolean that no longer exists.
 });

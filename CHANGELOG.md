@@ -222,6 +222,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The emoji picker follows your theme.** It came from a third-party library that only knew
+  "light or dark", so it showed its own purple accent and its own greys whichever Trinity
+  theme and palette you had chosen. It now uses the same colours as the rest of the app, in
+  all four combinations of light/dark and palette.
+
 - **Mentions now have to be meant.** Quoting a message put the quoted words into the
   message you sent, so quoting "Bob, can you look at this?" notified Bob a second time for
   a message that addressed nobody — and quoting anything containing `@room` pinged the

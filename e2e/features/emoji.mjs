@@ -248,9 +248,37 @@ async function main() {
     // ── SCENARIO 4: the emoji-mart picker inserts a native emoji ──────────
     log('--- Scenario 4: emoji-mart picker → search → insert ---');
     await page.getByRole('button', { name: 'Insert emoji' }).click();
-    const picker = page.locator('emoji-mart');
+    // Handled by OUR testid, not the vendor's tag: a swap of @ctrl/ngx-emoji-mart should
+    // break one file — the kit wrapper — rather than two e2e suites. The inner
+    // `.emoji-mart-*` locators below are still the vendor's, and deliberately so: they
+    // drive its search box and result grid, which only it can provide.
+    const picker = page.getByTestId('emoji-picker');
     await picker.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     log('emoji-mart picker open ✓');
+
+    // The trigger must point at the panel that is actually in the document. `pickerId` and
+    // the trigger's `aria-controls` are two independent string literals in the template, so
+    // a typo in either leaves the attribute present and resolving to nothing — invisible in
+    // a browser and to every rendering test. Checked here as well as in the unit spec
+    // because this is the only place the real DOM is available to resolve the id against.
+    const trigger = page.getByRole('button', { name: 'Insert emoji' });
+    const controls = await trigger.getAttribute('aria-controls');
+    if (!controls) {
+      throw new Error(
+        'emoji trigger has no aria-controls while the picker is open',
+      );
+    }
+    if ((await trigger.getAttribute('aria-expanded')) !== 'true') {
+      throw new Error(
+        'emoji trigger is not marked expanded while the picker is open',
+      );
+    }
+    if ((await page.locator(`#${controls}`).count()) !== 1) {
+      throw new Error(
+        `emoji trigger's aria-controls="${controls}" resolves to no element`,
+      );
+    }
+    log(`trigger controls #${controls} ✓`);
 
     // Drive selection through the picker's search box: emoji-mart lazy-renders
     // grid emojis only when scrolled into view, but search results render in a

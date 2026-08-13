@@ -59,31 +59,36 @@ export default defineConfig([
             // reports success and the ban enforces nothing. `lint-invariants.spec.mjs`
             // pins the `*` for exactly this reason.
             //
-            // `ui:wrapper` (libs/ui) keeps only @ctrl/ngx-emoji-mart, until #152 decides
-            // where that wrapper lives. It used to keep @ng-icons too, on the assumption
-            // the icon wrapper would land here; #154 put it in the kit instead (as
-            // `@trinity/kit/icon`, which is where a lib that may name a vendor belongs),
-            // so that exemption is gone. The vendored kit (`ui:vendor-wrapper`) is
-            // deliberately absent from this list; it IS the wrapper layer, and banning its
-            // vendors there would ban the layer from existing.
+            // `ui:wrapper` (libs/ui) now keeps nothing. It was expected to host both the
+            // icon and emoji wrappers; #154 put the first in the kit (as
+            // `@trinity/kit/icon`) and #152 the second (`@trinity/kit/emoji-picker`),
+            // because a lib tagged `ui:wrapper` is precisely the tier that may not name a
+            // vendor. The vendored kit (`ui:vendor-wrapper`) is deliberately absent from
+            // this list; it IS the wrapper layer, and banning its vendors there would ban
+            // the layer from existing.
             //
-            // `type:feature` carries three of the four vendors now; #151 and #154 closed
-            // those. Only @ctrl/ngx-emoji-mart is still staged as a warning further down,
-            // waiting on #152.
+            // `type:feature` carries all four. #151 closed @angular/cdk and
+            // @spartan-ng/brain, #154 @ng-icons, #152 @ctrl/ngx-emoji-mart — and with the
+            // last one nothing is staged any more, so the temporary `warn` block that used
+            // to sit further down is gone.
             {
               sourceTag: 'ui:wrapper',
-              bannedExternalImports: ['@spartan-ng/brain*', '@ng-icons*'],
+              bannedExternalImports: [
+                '@spartan-ng/brain*',
+                '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
+              ],
             },
             {
-              // Closed by #151 (@angular/cdk, @spartan-ng/brain) and #154 (@ng-icons), so
-              // these are enforced rather than staged. @ctrl/ngx-emoji-mart is absent on
-              // purpose: it still has 7 importers, and #152 is gated on the composer
-              // redesign, so its ban stays a warning further down until then.
+              // Closed by #151 (@angular/cdk, @spartan-ng/brain), #154 (@ng-icons) and
+              // #152 (@ctrl/ngx-emoji-mart), so all four are enforced rather than staged:
+              // a new one fails `pnpm lint`, statically or through a lazy `import()`.
               sourceTag: 'type:feature',
               bannedExternalImports: [
                 '@spartan-ng/brain*',
                 '@angular/cdk*',
                 '@ng-icons*',
+                '@ctrl/ngx-emoji-mart*',
               ],
             },
             {
@@ -386,41 +391,6 @@ export default defineConfig([
     rules: {
       '@angular-eslint/component-class-suffix': 'off',
       '@angular-eslint/no-input-rename': 'off',
-    },
-  },
-  {
-    // TEMPORARY, and the last of the staging from #148 — one vendor, not four.
-    //
-    // The other three moved up into depConstraints as errors: #151 closed the 28
-    // @angular/cdk/dialog and 2 @spartan-ng/brain/sonner imports, #154 the 62 @ng-icons
-    // ones. @ctrl/ngx-emoji-mart still has 7 importers in libs/feature/rooms and #152 is
-    // gated on the composer redesign, because the picker's placement lives in feature SCSS
-    // today and a wrapper that grew its own positioning would then have to be undone. So
-    // this stays a warning until that lands. Delete the whole block then.
-    //
-    // It MUST be the core `no-restricted-imports`, not the @typescript-eslint one: that one
-    // is already configured at `error` over libs/feature/** carrying the matrix-js-sdk
-    // patterns, and one rule entry has one severity, so folding this in would promote the
-    // 7 known violations to errors. The two rule ids are distinct and both apply.
-    //
-    // There is deliberately NO companion `no-restricted-syntax` entry. Flat config replaces
-    // a rule's options wholesale, so a second entry over these globs would delete the
-    // matrix-js-sdk ImportExpression selector above without a word. It is also unnecessary
-    // for the three now in depConstraints: @nx/enforce-module-boundaries visits
-    // ImportExpression itself, verified with a planted probe.
-    files: ['libs/feature/**/*.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'warn',
-        {
-          patterns: [
-            {
-              group: ['@ctrl/ngx-emoji-mart*'],
-              message: UI_VENDOR_IMPORT_MESSAGE,
-            },
-          ],
-        },
-      ],
     },
   },
   {

@@ -4,11 +4,9 @@ import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { render, type ComponentInput } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import {
   ComposerSettingsService,
   DraftStoreService,
-  ThemeService,
   VoiceRecorderService,
 } from '@trinity/platform-native';
 import {
@@ -364,24 +362,36 @@ describe('MessageComposerComponent', () => {
     cmp.pickerOpen.set(true);
 
     cmp.onPickerSelect({
-      emoji: { native: '😎' },
-      $event: new Event('click'),
-    } as unknown as EmojiEvent);
+      native: '😎',
+      id: 'sunglasses',
+      colons: ':sunglasses:',
+    });
 
     expect(cmp.text()).toBe('a😎b');
     expect(cmp.pickerOpen()).toBe(false);
   });
 
-  it('mirrors the active app theme into the picker dark mode', async () => {
-    const resolved = signal<'light' | 'dark'>('dark');
-    const { fixture } = await renderComposer({}, [
-      MockProvider(ThemeService, { resolved: resolved.asReadonly() }),
-    ]);
+  it('points the emoji trigger at the panel that actually exists', async () => {
+    // Two independent string literals — `pickerId` on the panel and `aria-controls` on the
+    // trigger — with nothing tying them together. A typo in either leaves a button
+    // referencing an id that is not in the document, which is silent: the attribute is
+    // present, it just resolves to nothing. Same shape as the aria-describedby defect in
+    // #153, which is why it is asserted rather than assumed.
+    const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
+    const trigger = container.querySelector<HTMLElement>('.composer__emoji');
 
-    expect(cmp.isDarkMode()).toBe(true);
-    resolved.set('light');
-    expect(cmp.isDarkMode()).toBe(false);
+    // Closed: nothing to control, so no dangling reference.
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false');
+    expect(trigger?.getAttribute('aria-controls')).toBeNull();
+
+    cmp.pickerOpen.set(true);
+    fixture.detectChanges();
+
+    const controls = trigger?.getAttribute('aria-controls');
+    expect(trigger?.getAttribute('aria-expanded')).toBe('true');
+    expect(controls).toBeTruthy();
+    expect(container.querySelector(`#${controls}`)).not.toBeNull();
   });
 
   function pasteEvent(opts: { files?: File[]; items?: unknown[] }): {

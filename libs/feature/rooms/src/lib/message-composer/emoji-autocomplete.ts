@@ -1,6 +1,8 @@
 import { computed, signal } from '@angular/core';
-import type { EmojiSearch } from '@ctrl/ngx-emoji-mart';
-import type { EmojiData, EmojiService } from '@ctrl/ngx-emoji-mart/ngx-emoji';
+import type {
+  TrnEmojiIndex,
+  TrnEmojiSuggestion,
+} from '@trinity/kit/emoji-picker';
 import { type CaretReplacement } from './caret-replacement';
 
 /**
@@ -11,8 +13,6 @@ import { type CaretReplacement } from './caret-replacement';
 const EMOJI_TRIGGER = /(?:^|\s):([a-z0-9_+-]{2,})$/i;
 /** A fully typed `:shortcode:` (closing colon present) for inline replacement. */
 const EMOJI_COMPLETE = /(?:^|\s):([a-z0-9_+-]+):$/i;
-/** How many suggestions the menu offers at once. */
-const EMOJI_SUGGESTION_LIMIT = 8;
 
 /**
  * What accepting an emoji suggestion resolves to: normally a splice over the `:fragment`
@@ -29,20 +29,21 @@ export type EmojiAcceptance =
  * Owns the trigger regexes, the ranked suggestion list, the highlighted index and the
  * caret splice an acceptance resolves to — everything except the textarea. A plain class
  * rather than an `@Injectable`: every composer instance (room and thread) needs its own,
- * it holds no injectable dependency of its own beyond the two emoji-mart collaborators
- * handed to it, and staying DI-free keeps it constructible in a bare unit test.
+ * it holds no injectable dependency of its own beyond the emoji index handed to it, and
+ * staying DI-free keeps it constructible in a bare unit test.
  */
 export class EmojiAutocomplete {
   /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
   readonly query = signal<string | null>(null);
 
   /** Ranked emoji suggestions for the current query (from emoji-mart's index). */
-  readonly matches = computed<EmojiData[]>(() => {
+  readonly matches = computed<readonly TrnEmojiSuggestion[]>(() => {
     const q = this.query();
     if (q === null) {
       return [];
     }
-    return this.search.search(q, undefined, EMOJI_SUGGESTION_LIMIT) ?? [];
+    // Limit left to the facade, which owns it and already defaults it to a menu's worth.
+    return this.index.suggest(q);
   });
 
   /** The menu is shown only when a query yields at least one match. */
@@ -51,10 +52,7 @@ export class EmojiAutocomplete {
   /** Index of the highlighted suggestion. */
   readonly activeIndex = signal(0);
 
-  constructor(
-    private readonly search: EmojiSearch,
-    private readonly emoji: EmojiService,
-  ) {}
+  constructor(private readonly index: TrnEmojiIndex) {}
 
   /**
    * Recompute the menu from the text before the caret. A fully typed `:shortcode:` is
@@ -113,9 +111,7 @@ export class EmojiAutocomplete {
 
   /** Native emoji for an exact shortcode, or undefined if it isn't a real one. */
   private nativeForShortcode(code: string): string | undefined {
-    const data = this.emoji.getData(code);
-    return data
-      ? (this.emoji.getSanitizedData(data).native ?? undefined)
-      : undefined;
+    // The facade returns null for "not an emoji"; this class's callers expect undefined.
+    return this.index.nativeFor(code) ?? undefined;
   }
 }

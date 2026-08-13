@@ -4,7 +4,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import type { EmojiData } from '@ctrl/ngx-emoji-mart/ngx-emoji';
+import type { TrnEmojiSuggestion } from '@trinity/kit/emoji-picker';
 import { type MentionMember } from '../mention-autocomplete';
 
 /**
@@ -32,7 +32,7 @@ export class ComposerSuggestionsComponent {
   /** Whether the emoji menu is shown (a query yielded at least one match). */
   readonly emojiOpen = input(false);
   /** Ranked emoji suggestions for the current query. */
-  readonly emojiMatches = input<readonly EmojiData[]>([]);
+  readonly emojiMatches = input<readonly TrnEmojiSuggestion[]>([]);
   /** Index of the highlighted emoji suggestion. */
   readonly emojiActiveIndex = input(0);
   /** Whether the mention menu is shown (a query yielded at least one member). */

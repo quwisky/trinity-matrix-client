@@ -44,38 +44,38 @@ major rather than editing numbers by hand.
 
 ## Application dependencies
 
-| Package                               | Version | Notes                                                                                                     |
-| ------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
-| `@angular/core`                       | 22.1.0  | Standalone components, signals, zoneless. `polyfills.ts` is empty on purpose: no zone.js                  |
-| `@angular/forms`                      | 22.1.0  | Signal Forms (`@angular/forms/signals`) only. No `FormControl`, `FormGroup` or `ngModel` anywhere         |
-| `@angular/cdk`                        | 22.1.0  | Overlay and Dialog under the Helm overlays, and the encryption route dialogs                              |
-| `@angular/service-worker`             | 22.1.0  | PWA service worker, production web build only. Off in the Electron shell                                  |
-| `@spartan-ng/brain`                   | 1.3.0   | Headless UI primitives. The styled Helm layer is copied into `libs/kit/*` and aliased `@trinity/kit/*`    |
-| `tailwindcss`                         | 4.3.3   | v4, configured from CSS. Tokens live in `theme/variables.scss`, framework wiring in `theme/spartan.css`   |
-| `tw-animate-css`                      | 1.4.0   | Animation utilities the Helm components expect                                                            |
-| `@ng-icons/lucide`                    | 34.0.0  | Icon set behind `<trn-icon>`; imported only by `@trinity/kit/icon`; `@ng-icons/core` moves with it        |
-| `matrix-js-sdk`                       | 42.1.0  | The single source of truth for rooms, timelines and crypto. Crypto types are a deep import, see below     |
-| `@matrix-org/matrix-sdk-crypto-wasm`  | 18.4.0  | Rust crypto backend. Its `.wasm` needs an explicit URL, see below                                         |
-| `rxjs`                                | 7.8.2   | One-shot actions return cold Observables; state is signals                                                |
-| `marked`                              | 18.0.7  | Markdown to HTML for the composer and the timeline                                                        |
-| `dompurify`                           | 3.4.13  | Sanitizes `formatted_body` against the Matrix allowlist, inbound and outbound, from one config            |
-| `@shikijs/core`                       | 4.4.1   | Syntax highlighting for fenced code blocks                                                                |
-| `@shikijs/engine-javascript`          | 4.4.1   | Pure-JS RegExp engine, chosen over the default Oniguruma WASM to avoid a second wasm asset and its loader |
-| `@shikijs/langs`                      | 4.4.1   | TextMate grammars; 31 languages imported explicitly. Must move in lockstep with the two rows above        |
-| `@sanity/diff-match-patch`            | 3.2.0   | Character-level diff behind the edit-history highlights. Apache-2.0, no dependencies                      |
-| `luxon`                               | 3.7.2   | Date and time arithmetic, including the day-separator rollover                                            |
-| `@ctrl/ngx-emoji-mart`                | 9.3.0   | Emoji picker for the composer and reactions                                                               |
-| `@capacitor/core`                     | 8.5.0   | Capacitor 8. `@capacitor/android` and `@capacitor/ios` track it exactly                                   |
-| `@capacitor/app`                      | 8.1.1   | App URL-open events; the native deep-link callback for SSO and OIDC                                       |
-| `@capacitor/browser`                  | 8.0.4   | System browser for native sign-in, which keeps the app WebView alive                                      |
-| `@capacitor/camera`                   | 8.2.2   | Native photo and gallery picker, with a web `<input>` fallback                                            |
-| `@capacitor/filesystem`               | 8.1.2   | Writes a downloaded attachment to cache before handing it to the share sheet                              |
-| `@capacitor/share`                    | 8.0.1   | Native save and share sheet, with a web `<a download>` fallback                                           |
-| `@capacitor/status-bar`               | 8.0.3   | Matches the native status bar to the light or dark theme                                                  |
-| `@capacitor/preferences`              | 8.0.1   | Device-local settings, including the push gateway override                                                |
-| `@capacitor/push-notifications`       | 8.1.2   | FCM and APNs device token for the Matrix pusher, see [push notifications](push-notifications.md)          |
-| `@capawesome/capacitor-badge`         | 8.0.2   | Native launcher badge on iOS and Android                                                                  |
-| `@aparajita/capacitor-secure-storage` | 8.0.0   | Keychain and Keystore for the access token on native                                                      |
+| Package                                                                        | Version | Notes                                                                                                     |
+| ------------------------------------------------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------- |
+| `@angular/core`                                                                | 22.1.0  | Standalone components, signals, zoneless. `polyfills.ts` is empty on purpose: no zone.js                  |
+| `@angular/forms`                                                               | 22.1.0  | Signal Forms (`@angular/forms/signals`) only. No `FormControl`, `FormGroup` or `ngModel` anywhere         |
+| `@angular/cdk`                                                                 | 22.1.0  | Overlay and Dialog under the Helm overlays, and the encryption route dialogs                              |
+| `@angular/service-worker`                                                      | 22.1.0  | PWA service worker, production web build only. Off in the Electron shell                                  |
+| `@spartan-ng/brain`                                                            | 1.3.0   | Headless UI primitives. The styled Helm layer is copied into `libs/kit/*` and aliased `@trinity/kit/*`    |
+| `tailwindcss`                                                                  | 4.3.3   | v4, configured from CSS. Tokens live in `theme/variables.scss`, framework wiring in `theme/spartan.css`   |
+| `tw-animate-css`                                                               | 1.4.0   | Animation utilities the Helm components expect                                                            |
+| `@ng-icons/lucide`                                                             | 34.0.0  | Icon set behind `<trn-icon>`; imported only by `@trinity/kit/icon`; `@ng-icons/core` moves with it        |
+| `matrix-js-sdk`                                                                | 42.1.0  | The single source of truth for rooms, timelines and crypto. Crypto types are a deep import, see below     |
+| `@matrix-org/matrix-sdk-crypto-wasm`                                           | 18.4.0  | Rust crypto backend. Its `.wasm` needs an explicit URL, see below                                         |
+| `rxjs`                                                                         | 7.8.2   | One-shot actions return cold Observables; state is signals                                                |
+| `marked`                                                                       | 18.0.7  | Markdown to HTML for the composer and the timeline                                                        |
+| `dompurify`                                                                    | 3.4.13  | Sanitizes `formatted_body` against the Matrix allowlist, inbound and outbound, from one config            |
+| `@shikijs/core`                                                                | 4.4.1   | Syntax highlighting for fenced code blocks                                                                |
+| `@shikijs/engine-javascript`                                                   | 4.4.1   | Pure-JS RegExp engine, chosen over the default Oniguruma WASM to avoid a second wasm asset and its loader |
+| `@shikijs/langs`                                                               | 4.4.1   | TextMate grammars; 31 languages imported explicitly. Must move in lockstep with the two rows above        |
+| `@sanity/diff-match-patch`                                                     | 3.2.0   | Character-level diff behind the edit-history highlights. Apache-2.0, no dependencies                      |
+| `luxon`                                                                        | 3.7.2   | Date and time arithmetic, including the day-separator rollover                                            |
+| `@ctrl/ngx-emoji-mart` <!-- reached only through @trinity/kit/emoji-picker --> | 9.3.0   | Emoji picker for the composer and reactions                                                               |
+| `@capacitor/core`                                                              | 8.5.0   | Capacitor 8. `@capacitor/android` and `@capacitor/ios` track it exactly                                   |
+| `@capacitor/app`                                                               | 8.1.1   | App URL-open events; the native deep-link callback for SSO and OIDC                                       |
+| `@capacitor/browser`                                                           | 8.0.4   | System browser for native sign-in, which keeps the app WebView alive                                      |
+| `@capacitor/camera`                                                            | 8.2.2   | Native photo and gallery picker, with a web `<input>` fallback                                            |
+| `@capacitor/filesystem`                                                        | 8.1.2   | Writes a downloaded attachment to cache before handing it to the share sheet                              |
+| `@capacitor/share`                                                             | 8.0.1   | Native save and share sheet, with a web `<a download>` fallback                                           |
+| `@capacitor/status-bar`                                                        | 8.0.3   | Matches the native status bar to the light or dark theme                                                  |
+| `@capacitor/preferences`                                                       | 8.0.1   | Device-local settings, including the push gateway override                                                |
+| `@capacitor/push-notifications`                                                | 8.1.2   | FCM and APNs device token for the Matrix pusher, see [push notifications](push-notifications.md)          |
+| `@capawesome/capacitor-badge`                                                  | 8.0.2   | Native launcher badge on iOS and Android                                                                  |
+| `@aparajita/capacitor-secure-storage`                                          | 8.0.0   | Keychain and Keystore for the access token on native                                                      |
 
 `matrix-encrypt-attachment` was removed rather than upgraded: it has been unmaintained
 since 2022, and its logic is ported into `attachment-crypto.ts` in `@trinity/util/matrix`.
