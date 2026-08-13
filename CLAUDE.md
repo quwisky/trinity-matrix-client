@@ -111,14 +111,21 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   Cross-domain injects are inter-lib edges (search→rooms/invites, auth→media/notifications, notification→timeline).
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
-- `@trinity/ui` + `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]` — **presentational** only; no
-  state/SDK deps. Most of `libs/spartan/*` is `@spartan-ng/cli`-generated Helm (`hlm-*.ts`);
-  `overlay`, `icon` and `emoji-picker` are hand-authored Trinity code with the `trn` prefix.
-- **Third-party UI stops at the UI tier.** A third `ui:*` tag splits that tier — `libs/ui` is
-  `ui:wrapper`, the kit is `ui:vendor-wrapper` — and `bannedExternalImports` keeps
-  `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every tier
-  below, `libs/ui` included. Only the kit may name them. Reach for a `@trinity/helm/*` component,
-  or `@trinity/helm/overlay` for dialogs and toasts; a new vendor import fails `pnpm lint`.
+- `@trinity/components/*` (`libs/components/*`) `[type:ui]`, tagged `ui:public` — the **public
+  component tier**: Trinity-authored wrappers (`overlay`, `icon`, `emoji-picker`, and the
+  wrappers being added) whose API is ours, so the library underneath can be swapped without
+  touching a call site. This is the UI tier feature code should reach for.
+- `@trinity/ui` (`libs/ui`) `[type:ui]` — Trinity's own presentational components (`trn-avatar`,
+  banner, page header, media bubble, message toolbar).
+- `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]`, tagged `ui:vendor-wrapper` — the vendored
+  `@spartan-ng/cli`-generated kit, `hlm` prefix. Consume it through `@trinity/components/*`
+  rather than directly.
+  All three are **presentational** only; no state/SDK deps.
+- **Third-party UI stops at the UI tier.** The `ui:*` tag splits it — `libs/components` is
+  `ui:public`, `libs/ui` is `ui:wrapper`, the vendored kit is `ui:vendor-wrapper` — and
+  `bannedExternalImports` keeps `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` and
+  `@ctrl/ngx-emoji-mart` out of every tier below, `libs/ui` included. Only the public tier and
+  the kit may name them; a new vendor import elsewhere fails `pnpm lint`.
 - **Scopes:** `scope:shared` (the kernel: util/platform/matrix-client/ui/helm) may not reach into
   `scope:matrix` (domain data-access + feature libs); the thin `apps/trinity` composes both.
 

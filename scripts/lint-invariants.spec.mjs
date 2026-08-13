@@ -163,14 +163,21 @@ const ALL_UI_VENDORS = [
 ];
 
 const UI_BOUNDARY = [
-  // libs/ui keeps nothing. Both wrappers it was once expected to host went to the kit
-  // instead — <trn-icon> in #154, <trn-emoji-picker> in #152 — because a lib tagged
+  // `ui:public` (libs/components) may name every vendor, and that is the point rather than
+  // an oversight: it IS a wrapper layer, the same status `ui:vendor-wrapper` has. What makes
+  // it a boundary is the other direction — it is the only tier feature code may reach, which
+  // is enforced on the CONSUMER side. Stated here so the asymmetry is on the record: the one
+  // library whose job is to absorb a substrate swap is also the one place a fifth vendor
+  // could appear without any lint signal, so a change to this row has to be argued for.
+  { tier: 'ui:public', banned: [], allowed: ALL_UI_VENDORS },
+  // libs/ui keeps nothing. Both wrappers it was once expected to host went to the public
+  // tier instead — <trn-icon> in #154, <trn-emoji-picker> in #152 — because a lib tagged
   // ui:wrapper is precisely the tier that may not name a vendor.
   //
   // @angular/cdk was the last vendor still allowed here, and this table used to assert that
   // it must STAY allowed "because it is the layer that wraps it". That was never true of
   // libs/ui: it imports no vendor at all, and the layer that wraps CDK is
-  // @trinity/helm/overlay, tagged ui:vendor-wrapper. The assertion was pinning open a hole
+  // @trinity/components/overlay, tagged ui:public. The assertion was pinning open a hole
   // rather than protecting a need — and since libs/ui is type:ui, which every feature lib
   // may depend on, unmediated CDK reaching it would have propagated straight to features.
   { tier: 'ui:wrapper', banned: ALL_UI_VENDORS, allowed: [] },
@@ -276,11 +283,14 @@ describe('UI vendor boundary', () => {
       .filter(
         ({ tags }) =>
           !tags.some((tag) => tagsCarryingBans.has(tag)) &&
-          // The vendored kit is uncovered on purpose — it IS the wrapper layer, and a ban
-          // there would ban the layer from existing. Exempted by its TAG rather than by
-          // listing 19 paths, so adding a kit library is not a test edit, while a lib that
-          // is uncovered for any OTHER reason still fails below.
-          !tags.includes('ui:vendor-wrapper'),
+          // Both wrapper tiers are uncovered on purpose — they ARE the layers that name a
+          // vendor, and a ban there would ban them from existing. `ui:public`
+          // (libs/components) wraps for feature code, `ui:vendor-wrapper` (the generated
+          // kit) wraps for us; the table above records what each may reach. Exempted by
+          // TAG rather than by listing ~34 paths, so adding a wrapper library is not a test
+          // edit, while a lib uncovered for any OTHER reason still fails below.
+          !tags.includes('ui:vendor-wrapper') &&
+          !tags.includes('ui:public'),
       )
       .map(({ path }) => path)
       .sort();

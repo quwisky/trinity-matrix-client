@@ -4,7 +4,7 @@ import {
   TrnDialogRef,
   TrnAlertService,
   TrnToastService,
-} from '@trinity/helm/overlay';
+} from '@trinity/components/overlay';
 import {
   IgnoredUsersService,
   PresenceService,

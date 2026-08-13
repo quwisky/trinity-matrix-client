@@ -13,7 +13,7 @@ import {
   TrnDialogRef,
   TrnAlertService,
   TrnToastService,
-} from '@trinity/helm/overlay';
+} from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmSpinner } from '@trinity/helm/spinner';
 import { EditHistoryService } from '@trinity/data-access/timeline';

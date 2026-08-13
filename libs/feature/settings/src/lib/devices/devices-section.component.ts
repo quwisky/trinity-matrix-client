@@ -6,13 +6,13 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { TrnAlertService } from '@trinity/components/overlay';
 import { HlmBadge } from '@trinity/helm/badge';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/data-access/crypto';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * Device-management section of the Settings page: lists the user's sessions with

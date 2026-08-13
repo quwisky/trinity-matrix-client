@@ -6,7 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { HlmTooltip } from '@trinity/helm/tooltip';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuItem,

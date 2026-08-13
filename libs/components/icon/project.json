@@ -1,10 +1,10 @@
 {
-  "name": "icon",
+  "name": "components-icon",
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/spartan/icon/src",
+  "sourceRoot": "libs/components/icon/src",
   "prefix": "trn",
   "projectType": "library",
-  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
+  "tags": ["type:ui", "scope:shared", "ui:public"],
   "targets": {
     "test": {},
     "typecheck": {}

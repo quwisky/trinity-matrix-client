@@ -3,7 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { render, screen } from '@trinity/testing';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { AuthService } from '@trinity/data-access/auth';
-import { TrnDialogRef, TrnAlertService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
 import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util/matrix';
 import { Browser } from '@capacitor/browser';
 import { MockProvider } from 'ng-mocks';

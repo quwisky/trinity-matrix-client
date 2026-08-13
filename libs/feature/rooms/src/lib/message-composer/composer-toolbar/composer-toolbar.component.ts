@@ -12,7 +12,7 @@ import {
 } from '@trinity/helm/dropdown-menu';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { type FormatAction } from '@trinity/util/matrix';
-import { TrnIconComponent, type TrnIconName } from '@trinity/helm/icon';
+import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 
 /** One toolbar button: the action it applies, its icon and its label. */
 interface ToolbarAction {

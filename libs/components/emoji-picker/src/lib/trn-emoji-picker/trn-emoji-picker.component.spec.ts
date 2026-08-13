@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { TrnEmojiPick } from '../trn-emoji.model';
 import { TrnEmojiPickerComponent } from './trn-emoji-picker.component';
 
-/** Host so the output can be observed the way a call site sees it. */
+/** Host component, so the output can be observed the way a call site sees it. */
 @Component({
   imports: [TrnEmojiPickerComponent],
   template: `<trn-emoji-picker (picked)="picks.set([...picks(), $event])" />`,

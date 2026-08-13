@@ -3,7 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { GeolocationService } from '@trinity/platform-native';
-import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { ManualLocationDialogComponent } from './manual-location-dialog.component';
 
 async function setup(

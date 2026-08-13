@@ -5,7 +5,7 @@ import {
   output,
 } from '@angular/core';
 import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * The strip above the composer input: an upload progress bar while an attachment is in flight,

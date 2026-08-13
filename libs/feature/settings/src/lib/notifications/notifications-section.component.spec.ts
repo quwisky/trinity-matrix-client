@@ -11,7 +11,7 @@ import {
   PushRulesService,
   type PushRuleToggle,
 } from '@trinity/data-access/notifications';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { NotificationsSectionComponent } from './notifications-section.component';
 
 const TOGGLES = [

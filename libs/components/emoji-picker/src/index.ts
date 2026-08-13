@@ -1,4 +1,4 @@
-// @trinity/helm/emoji-picker — Trinity's emoji surface.
+// @trinity/components/emoji-picker — Trinity's emoji surface.
 //
 // Two exports, because the vendor is reached two ways: the picker ELEMENT (composer panel,
 // reaction dialog) and the emoji INDEX (the `:shortcode` autocomplete, which never renders

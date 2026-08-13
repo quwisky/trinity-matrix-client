@@ -10,7 +10,10 @@ import {
 } from '@trinity/data-access/crypto';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ENCRYPTION_DIALOG_COMPONENTS } from '@trinity/ui';
-import { TrnDialogService, type TrnDialogRef } from '@trinity/helm/overlay';
+import {
+  TrnDialogService,
+  type TrnDialogRef,
+} from '@trinity/components/overlay';
 
 /**
  * App-level, route-independent host for device verification. Incoming requests can

@@ -29,7 +29,7 @@ import { PollComponent } from '../poll/poll.component';
 import { LinkPreviewComponent } from '../link-preview/link-preview.component';
 import { LocationComponent } from '../location-share/location.component';
 import { VoiceMessageComponent } from '../voice-message/voice-message.component';
-import { TrnIconComponent, type TrnIconName } from '@trinity/helm/icon';
+import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 
 /** A {@link MessageView} plus the presentation state the list derives for it. */
 export interface MessageRow extends MessageView {

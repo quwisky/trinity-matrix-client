@@ -13,8 +13,8 @@ import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { TrnDialogRef, TrnToastService } from '@trinity/helm/overlay';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
  * Desktop location picker: paste a map link or type `lat, lng`. Closes with the

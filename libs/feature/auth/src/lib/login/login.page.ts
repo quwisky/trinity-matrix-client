@@ -42,7 +42,7 @@ import {
   AppRestartService,
   SessionStorageService,
 } from '@trinity/platform-native';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { TrnAlertService } from '@trinity/components/overlay';
 import { runWithBusy } from '@trinity/ui';
 import { SsoStateStore } from '../sso-state.store';
 import {
@@ -51,7 +51,7 @@ import {
   confirmClearDataIntent,
 } from './clear-all-data';
 import { OidcStateStore } from '../oidc-state.store';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 @Component({
   selector: 'trn-login',

@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { TrnDialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import {
   ThreadsService,

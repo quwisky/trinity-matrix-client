@@ -22,7 +22,7 @@ import {
 } from '@trinity/data-access/rooms';
 import { isValidUserId } from '@trinity/util/matrix';
 import { AvatarComponent } from '@trinity/ui';
-import { TrnDialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmSpinner } from '@trinity/helm/spinner';

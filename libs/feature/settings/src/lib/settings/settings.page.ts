@@ -22,7 +22,7 @@ import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { PageHeaderComponent } from '@trinity/ui';
 import { BUILD_INFO } from '@trinity/platform-native';
-import { TrnIconComponent, type TrnIconName } from '@trinity/helm/icon';
+import { TrnIconComponent, type TrnIconName } from '@trinity/components/icon';
 
 /** One row of the settings submenu, routing to its section sub-page. */
 interface SettingsMenuItem {

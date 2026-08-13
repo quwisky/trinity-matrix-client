@@ -68,7 +68,6 @@
       "@trinity/helm/progress": ["./libs/spartan/progress/src/index.ts"],
       "@trinity/helm/spinner": ["./libs/spartan/spinner/src/index.ts"],
       "@trinity/helm/sonner": ["./libs/spartan/sonner/src/index.ts"],
-      "@trinity/helm/overlay": ["./libs/spartan/overlay/src/index.ts"],
       "@trinity/helm/tooltip": ["./libs/spartan/tooltip/src/index.ts"],
       "@trinity/helm/dropdown-menu": [
         "./libs/spartan/dropdown-menu/src/index.ts"
@@ -77,8 +76,11 @@
       "@trinity/helm/textarea": ["./libs/spartan/textarea/src/index.ts"],
       "@trinity/helm/card": ["./libs/spartan/card/src/index.ts"],
       "@trinity/helm/select": ["./libs/spartan/select/src/index.ts"],
-      "@trinity/helm/icon": ["./libs/spartan/icon/src/index.ts"],
-      "@trinity/helm/emoji-picker": ["./libs/spartan/emoji-picker/src/index.ts"]
+      "@trinity/components/overlay": ["./libs/components/overlay/src/index.ts"],
+      "@trinity/components/icon": ["./libs/components/icon/src/index.ts"],
+      "@trinity/components/emoji-picker": [
+        "./libs/components/emoji-picker/src/index.ts"
+      ]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

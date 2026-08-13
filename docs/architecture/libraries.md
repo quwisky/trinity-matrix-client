@@ -107,16 +107,21 @@ into another chunk.
 Presentational only. `type:ui` may not depend on `type:data-access`, so a component here can never
 reach a service.
 
-| Library                     | Alias                        | Tags                                           | Purpose                                                                                                                                                                                                                                                                                           |
-| --------------------------- | ---------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/ui`                   | `@trinity/ui`                | `type:ui`, `scope:shared`, `ui:wrapper`        | Trinity's own presentational components (`trn-avatar`, banner, page header, media bubble, message toolbar), the `AVATAR_RESOLVER` and `ENCRYPTION_DIALOG_COMPONENTS` tokens, `EncryptionDialogService`, and the `runWithBusy`, media-query and internal-URL helpers                               |
-| `libs/spartan/emoji-picker` | `@trinity/helm/emoji-picker` | `type:ui`, `scope:shared`, `ui:vendor-wrapper` | Trinity-authored: `<trn-emoji-picker>` over `TrnEmojiPick`, plus the `TrnEmojiIndex` facade the `:shortcode` autocomplete uses — the only importer of `@ctrl/ngx-emoji-mart`                                                                                                                      |
-| `libs/spartan/icon`         | `@trinity/helm/icon`         | `type:ui`, `scope:shared`, `ui:vendor-wrapper` | Trinity-authored: `<trn-icon>` over a closed `TrnIconName` union of the 82 icons in use, the single `TRN_ICONS` vendor map, and `provideTrnIcons()` — the only importer of `@ng-icons` outside the generated kit                                                                                  |
-| `libs/spartan/overlay`      | `@trinity/helm/overlay`      | `type:ui`, `scope:shared`, `ui:vendor-wrapper` | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus `TrnDialogRef`, Trinity's own two-method handle (`close`, `closed`) so a modalled component can close itself without naming `@angular/cdk` in its signature |
+| Library                        | Alias                              | Tags                                    | Purpose                                                                                                                                                                                                                                                                                           |
+| ------------------------------ | ---------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `libs/ui`                      | `@trinity/ui`                      | `type:ui`, `scope:shared`, `ui:wrapper` | Trinity's own presentational components (`trn-avatar`, banner, page header, media bubble, message toolbar), the `AVATAR_RESOLVER` and `ENCRYPTION_DIALOG_COMPONENTS` tokens, `EncryptionDialogService`, and the `runWithBusy`, media-query and internal-URL helpers                               |
+| `libs/components/emoji-picker` | `@trinity/components/emoji-picker` | `type:ui`, `scope:shared`, `ui:public`  | Trinity-authored: `<trn-emoji-picker>` over `TrnEmojiPick`, plus the `TrnEmojiIndex` facade the `:shortcode` autocomplete uses — the only importer of `@ctrl/ngx-emoji-mart`                                                                                                                      |
+| `libs/components/icon`         | `@trinity/components/icon`         | `type:ui`, `scope:shared`, `ui:public`  | Trinity-authored: `<trn-icon>` over a closed `TrnIconName` union of the 82 icons in use, the single `TRN_ICONS` vendor map, and `provideTrnIcons()` — the only importer of `@ng-icons` outside the generated kit                                                                                  |
+| `libs/components/overlay`      | `@trinity/components/overlay`      | `type:ui`, `scope:shared`, `ui:public`  | Trinity-authored imperative overlay adapters: `TrnDialogService`, `TrnAlertService`, `TrnActionSheetService`, `TrnToastService`, plus `TrnDialogRef`, Trinity's own two-method handle (`close`, `closed`) so a modalled component can close itself without naming `@angular/cdk` in its signature |
 
-The remaining sixteen libraries under `libs/spartan/` are `@spartan-ng/cli`-generated Helm
-components, all tagged `type:ui`, `scope:shared`, `ui:vendor-wrapper`, all with the `hlm`
-selector prefix:
+`libs/components/*` is the **public tier**, tagged `ui:public`: Trinity-authored wrappers whose
+API is ours, so the library underneath can be swapped without touching a call site. It is the
+only UI tier feature code is meant to reach.
+
+The seventeen libraries under `libs/spartan/` are `@spartan-ng/cli`-generated Helm components,
+all tagged `type:ui`, `scope:shared`, `ui:vendor-wrapper`, all with the `hlm` selector prefix
+(`libs/spartan/tests` is the odd one out — no components, just the two specs that pin
+generated-kit behaviour across several libraries at once):
 
 | Directory                    | Alias                         |
 | ---------------------------- | ----------------------------- |
@@ -142,12 +147,10 @@ These are the widest case of the three-way naming split described above: the dir
 component name. The button library lives at `libs/spartan/button`, is imported as
 `@trinity/helm/button`, and is built with `nx build button`.
 
-Three libraries in that directory are the exception — `libs/spartan/overlay`,
-`libs/spartan/icon` and `libs/spartan/emoji-picker` are hand-written Trinity code with the
-`trn` prefix and no ng-package, not generated Helm. The presence of `ng-package.json` is what
-separates the two groups, and `.prettierignore` and the lint config both draw the line at the
-generated `hlm-*.ts` files rather than at the directory. Regenerating or adding Helm components
-goes through the CLI; see [UI and theming](ui-and-theming.md).
+Everything under `libs/spartan/` is generated; the hand-written Trinity code that used to sit
+among it — the overlay adapters, the icon and the emoji picker — now lives in `libs/components/`.
+Regenerating or adding Helm components goes through the CLI; see
+[UI and theming](ui-and-theming.md).
 
 ## The two secondary entry points
 
@@ -165,9 +168,7 @@ drags along.
 
 ## Libraries are not buildable
 
-None of the 21 libraries outside `libs/spartan/` has a `build` target, and neither do the three
-hand-authored ones inside it — `overlay`, `icon` and `emoji-picker`. There is no intermediate
-compilation step: the application build
+No library outside `libs/spartan/` has a `build` target. There is no intermediate compilation step: the application build
 (`@angular/build:application`) compiles library sources directly, resolved through the tsconfig
 path aliases. That is what makes a cross-library change a one-step edit rather than a
 build-and-consume cycle.

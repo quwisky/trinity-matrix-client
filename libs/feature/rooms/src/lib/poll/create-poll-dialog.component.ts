@@ -8,8 +8,8 @@ import {
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmLabel } from '@trinity/helm/label';
-import { TrnDialogRef } from '@trinity/helm/overlay';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnDialogRef } from '@trinity/components/overlay';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /** The poll a {@link CreatePollDialogComponent} resolves with. */
 export interface NewPoll {

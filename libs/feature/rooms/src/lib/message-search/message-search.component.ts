@@ -7,7 +7,7 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { TrnDialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   SearchService,
@@ -19,7 +19,7 @@ import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { HlmSpinner } from '@trinity/helm/spinner';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
 interface HighlightPart {

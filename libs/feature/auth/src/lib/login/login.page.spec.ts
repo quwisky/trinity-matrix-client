@@ -9,7 +9,7 @@ import {
   AppRestartService,
   SessionStorageService,
 } from '@trinity/platform-native';
-import { TrnAlertService } from '@trinity/helm/overlay';
+import { TrnAlertService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';

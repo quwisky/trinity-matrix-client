@@ -8,7 +8,7 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { DOCUMENT } from '@angular/common';
 import { HlmButton } from '@trinity/helm/button';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /** How long the "Copied" affordance stays visible after a successful copy. */
 const COPIED_FEEDBACK_MS = 2000;

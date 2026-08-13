@@ -221,6 +221,12 @@ export default defineConfig([
       'libs/feature/**/*.ts',
       'libs/ui/**/*.ts',
       'libs/spartan/**/*.ts',
+      // The public component tier, for the same reason libs/spartan is here: it is
+      // presentational UI that must never reach the SDK. Absence from this list is how a
+      // library is PERMITTED to import matrix-js-sdk (that is how data-access and
+      // util/matrix are allowed), so a new UI lib that is merely forgotten lands in the
+      // allowed bucket — silently, and with nothing else to catch it.
+      'libs/components/**/*.ts',
       'libs/platform-native/**/*.ts',
       'libs/testing/**/*.ts',
       'apps/**/*.ts',

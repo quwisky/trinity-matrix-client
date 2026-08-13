@@ -3,7 +3,7 @@ import {
   UiaUnsupportedError,
   type PasswordPrompt,
 } from '@trinity/util/matrix';
-import type { TrnAlertService } from '@trinity/helm/overlay';
+import type { TrnAlertService } from '@trinity/components/overlay';
 
 /**
  * The MSC2965 account-management action for resetting cross-signing.

@@ -5,7 +5,7 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { TrnDialogRef } from '@trinity/helm/overlay';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
 
 /** What the confirmation needs to describe the gateway the user is about to trust. */

@@ -2,7 +2,7 @@ import { computed, signal } from '@angular/core';
 import type {
   TrnEmojiIndex,
   TrnEmojiSuggestion,
-} from '@trinity/helm/emoji-picker';
+} from '@trinity/components/emoji-picker';
 import { type CaretReplacement } from './caret-replacement';
 
 /**

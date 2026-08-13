@@ -5,7 +5,7 @@ import * as overlay from '../index';
 /**
  * Guards how much Angular CDK this barrel hands out.
  *
- * `@trinity/helm/overlay` is the only door feature code has to dialogs — since #151 no
+ * `@trinity/components/overlay` is the only door feature code has to dialogs — since #151 no
  * file outside `libs/spartan/` imports `@angular/cdk` at all, and #148 turns that into a
  * lint ban. The ban is only worth as much as this barrel: re-export `Dialog` and any
  * feature can call `.open()` with unmediated CDK config while lint stays green, which
@@ -17,7 +17,7 @@ import * as overlay from '../index';
  * clearly than the dozen legitimate mentions around it. Type-only re-exports are erased
  * and therefore invisible here, which is correct: a type cannot open a dialog.
  */
-describe('@trinity/helm/overlay vendor surface', () => {
+describe('@trinity/components/overlay vendor surface', () => {
   it('re-exports no CDK symbol at all', () => {
     const cdkValues = new Set<unknown>(Object.values(cdkDialog));
     const leaked = Object.entries(overlay)

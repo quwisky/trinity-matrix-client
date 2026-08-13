@@ -4,7 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomSettingsService } from '@trinity/data-access/rooms';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { AvatarFieldComponent } from './avatar-field.component';
 
 // These cases moved here verbatim from room-settings.component.spec.ts when the avatar row was

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { RoomModerationService } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';

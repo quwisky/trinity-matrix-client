@@ -1,6 +1,6 @@
 import { Component, input, output, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
-import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { APP_CONFIG_ENTRIES, type ConfigEntry } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';

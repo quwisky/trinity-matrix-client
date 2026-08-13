@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { type ReactionView } from '@trinity/util/matrix';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /** A reaction pill plus the "reacted by …" line shown on hover/focus. */
 interface ReactionPill extends ReactionView {

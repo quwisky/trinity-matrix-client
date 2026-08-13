@@ -21,7 +21,7 @@ import {
 } from '@trinity/helm/dropdown-menu';
 import { initialOf } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 
 /** Most avatars drawn in the mixed-account stack before it collapses to a "+N" count. */
 const STACK_MAX = 3;

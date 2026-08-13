@@ -14,7 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Capacitor } from '@capacitor/core';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmLabel } from '@trinity/helm/label';
-import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HlmTextarea } from '@trinity/helm/textarea';
 import {
   AppConfigService,

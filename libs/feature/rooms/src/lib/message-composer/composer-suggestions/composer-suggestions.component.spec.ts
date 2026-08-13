@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import type { TrnEmojiSuggestion } from '@trinity/helm/emoji-picker';
+import type { TrnEmojiSuggestion } from '@trinity/components/emoji-picker';
 import { render } from '@trinity/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ComposerSuggestionsComponent } from './composer-suggestions.component';

@@ -1,4 +1,4 @@
-// @trinity/helm/icon — Trinity's icon, and the only place the app names a vendor icon.
+// @trinity/components/icon — Trinity's icon, and the only place the app names a vendor icon.
 //
 // Deliberately a kit library (`ui:vendor-wrapper`) rather than part of `@trinity/ui`:
 // that lib is tagged `ui:wrapper` and, since #149, may not import a vendor UI package at

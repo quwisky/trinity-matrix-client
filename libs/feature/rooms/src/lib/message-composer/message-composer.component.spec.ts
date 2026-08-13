@@ -15,7 +15,7 @@ import {
   type GifProviderId,
   type GifResult,
 } from '@trinity/data-access/gif';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   MessageComposerComponent,

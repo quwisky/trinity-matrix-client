@@ -15,7 +15,7 @@ import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
 import { filter, fromEvent } from 'rxjs';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
 import { HlmToaster } from '@trinity/helm/sonner';
-import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { VerificationHostComponent } from './verification-host.component';
 
 @Component({

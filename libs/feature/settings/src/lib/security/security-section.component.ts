@@ -12,7 +12,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { HlmButton } from '@trinity/helm/button';
-import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { EncryptionDialogService } from '@trinity/ui';
 import { downloadTextFile } from '../download-text-file';

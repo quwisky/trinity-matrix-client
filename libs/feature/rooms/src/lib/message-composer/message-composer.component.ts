@@ -44,12 +44,12 @@ import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { ComposerAttachmentsService } from './composer-attachments.service';
 import { EmojiAutocomplete } from './emoji-autocomplete';
-import { TrnIconComponent } from '@trinity/helm/icon';
+import { TrnIconComponent } from '@trinity/components/icon';
 import {
   TrnEmojiIndex,
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
-} from '@trinity/helm/emoji-picker';
+} from '@trinity/components/emoji-picker';
 import {
   MentionAutocomplete,
   type MentionMember,

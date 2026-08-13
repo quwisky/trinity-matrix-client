@@ -10,7 +10,7 @@ import {
   KeywordValidationError,
   type KeywordRule,
 } from '@trinity/data-access/notifications';
-import { TrnToastService } from '@trinity/helm/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 
 const LOUD: KeywordRule = {

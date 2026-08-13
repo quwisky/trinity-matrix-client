@@ -137,10 +137,10 @@ prefixes, un-suffixed class names such as `HlmButton`, and aliased inputs includ
 `libs/spartan/**/*.ts` from `component-class-suffix`, `component-selector`,
 `directive-selector` and `no-input-rename`.
 
-The three Trinity-authored libraries under `libs/spartan/` — `overlay`, `icon` and
-`emoji-picker` — carry a Vitest target (and no build target); the sixteen generated Helm
-libraries are build and lint only. That is why the specs pinning _Helm_ behaviour live in
-`overlay` and import across the library boundary: there is nowhere else to put them.
+Only `libs/spartan/tests` has a Vitest target; every other Helm library is build and lint only.
+That is why the specs pinning Helm behaviour live there rather than beside the components they
+cover, and import across the library boundary. That project holds nothing else — it exists so
+those specs stay in the vendor tier now that the hand-authored libraries have left it.
 
 !!! warning "Never assert on a Helm component's host class string"
 
@@ -151,12 +151,13 @@ libraries are build and lint only. That is why the specs pinning _Helm_ behaviou
     Assert the pure, synchronous `cva` functions instead (`buttonVariants`,
     `badgeVariants`) plus the fact that the component renders without throwing. This is
     stated as a rule in
-    [`helm-components.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/overlay/src/lib/helm-components.spec.ts).
+    [`helm-components.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/tests/src/lib/helm-components.spec.ts).
 
 ## The overlay library is Trinity code
 
-Despite living under `libs/spartan/` and being aliased `@trinity/helm/overlay`, this
-library is **hand-authored**, not generated. It holds the imperative overlay adapters:
+`@trinity/components/overlay` is **hand-authored**, not generated — it sat under `libs/spartan/`
+for historical reasons until it moved to the public tier with the icon and emoji-picker
+wrappers. It holds the imperative overlay adapters:
 `TrnDialogService`, `TrnAlertService` with `TrnAlertDialogComponent`, `TrnActionSheetService`
 with `TrnActionSheetComponent`, and `TrnToastService` — built on CDK Dialog and Overlay plus
 brain sonner. A modal'd component closes itself with `inject(TrnDialogRef).close(data)`.
@@ -226,7 +227,7 @@ DOM — silently, on three shipped screens, for as long as the components have e
 2. **Set `aria-describedby` as an attribute or a property binding, never `[attr.aria-describedby]`.**
    Even with the input published, the attribute form is still overwritten: the directive's host
    binding runs after the template's. Pinned by a test in
-   `libs/spartan/overlay/src/lib/helm-components.spec.ts` so a future upstream fix is noticed.
+   `libs/spartan/tests/src/lib/helm-components.spec.ts` so a future upstream fix is noticed.
 3. **`hlm-checkbox` and `hlm-radio` are deliberately different.** Each declares its own
    `aria-describedby` input, forwards it to the inner `brn-*` control and nulls the host
    attribute, because the host is `display: contents` and is not the focusable element. That
@@ -255,7 +256,7 @@ step with the banner in
 | All 25 kit files with `hostDirectives`, across 11 libraries  | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission | `host-directives.spec.mjs`      |
 
 The specs live in
-[`libs/spartan/overlay/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/spartan/overlay/src/lib).
+[`libs/components/overlay/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/components/overlay/src/lib).
 
 The `CdkTargetMenuAim` row is a consequence of the row above it. CDK closes an open submenu
 the moment the pointer enters any non-trigger sibling row, unless a `MENU_AIM` is provided —
