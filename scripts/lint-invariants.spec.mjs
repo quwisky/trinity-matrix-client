@@ -146,13 +146,10 @@ const UI_BOUNDARY = [
     banned: ['@spartan-ng/brain', '@ng-icons', '@ctrl/ngx-emoji-mart'],
     allowed: ['@angular/cdk'],
   },
-  // #151 and #154 closed the dialog, toast and icon imports, so those three are enforced
-  // for features rather than staged. @ctrl/ngx-emoji-mart is the last one still allowed
-  // here, and only because #152 is gated on the composer redesign — it stays a WARNING
-  // (asserted below) so its 7 remaining violations stay visible without reddening CI.
-  // #152 closed the last one. Every tier below the UI layer is now banned from every
-  // vendor, and nothing is staged — the `warn` block that made the count visible while it
-  // shrank has been deleted, which is what "the gate is closed" means for #148.
+  // #151 and #154 closed the dialog, toast and icon imports; #152 closed the last one.
+  // Every tier below the UI layer is now banned from every vendor, and nothing is staged —
+  // the `warn` block that made the count visible while it shrank has been deleted, which
+  // is what "the gate is closed" means for #148.
   { tier: 'type:feature', banned: ALL_UI_VENDORS, allowed: [] },
   { tier: 'type:data-access', banned: ALL_UI_VENDORS, allowed: [] },
   { tier: 'type:util', banned: ALL_UI_VENDORS, allowed: [] },

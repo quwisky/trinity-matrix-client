@@ -1,5 +1,9 @@
-<trn-emoji-picker
-  class="reaction-picker"
-  data-testid="reaction-picker"
-  (picked)="onSelect($event)"
-/>
+<!--
+  No `data-testid` here. The wrapper carries `emoji-picker` as a host attribute, and a
+  template attribute of the same name does not sit alongside it — it REPLACES it (Angular
+  merges the template's `TAttributes` over the directive's `hostAttrs`), so declaring one
+  here silently stripped the kit's own handle at this call site while leaving it in place
+  at the other. The dialog is what distinguishes this picker from the composer's, and the
+  dialog is addressable by its accessible name.
+-->
+<trn-emoji-picker class="reaction-picker" (picked)="onSelect($event)" />

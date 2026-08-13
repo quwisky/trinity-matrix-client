@@ -1,30 +1,29 @@
 /**
- * What Trinity needs from a picked emoji.
+ * The three fields Trinity reads off an emoji, whatever produced it.
  *
- * The vendor's own `EmojiEvent` is loosely typed and carries far more than either call
- * site reads — both only ever wanted `native`. Narrowing here means a swap of
- * `@ctrl/ngx-emoji-mart` is a change to this library rather than to the composer and the
- * reaction picker, and it makes the one real failure mode explicit: an entry with no
- * `native` (custom emoji, or a set the browser cannot render) is not a usable insertion.
+ * The vendor's own types are loose and carry far more than any call site wants — an
+ * `EmojiEvent`'s payload, an `EmojiData` record — so this is narrowed from what the call
+ * sites actually read rather than mirrored from the library. Declared once because the
+ * picker and the index genuinely agree on the shape; the two aliases below name the two
+ * directions it travels, and either can grow fields without disturbing the other.
  */
-export interface TrnEmojiPick {
-  /** The character to insert or react with. Never empty — the wrapper drops the event. */
-  readonly native: string;
+interface TrnEmojiFields {
   /** Stable vendor id, e.g. `+1`. Useful as a track-by key. */
   readonly id: string;
+  /** The character to insert or react with. */
+  readonly native: string;
   /** Shortcode form, e.g. `:+1:`. */
   readonly colons: string;
 }
 
 /**
- * One `:shortcode` completion.
+ * What the picker emits when someone chooses an emoji.
  *
- * Exactly the three fields the autocomplete and its suggestion list read — verified
- * against both call sites rather than mirrored from the vendor's `EmojiData`, which is
- * large and mostly irrelevant here.
+ * Its `native` is never empty: an entry without one (a custom emoji, or a set the browser
+ * cannot render) is not a usable insertion, so the wrapper drops the event rather than
+ * forwarding a pick no call site could act on.
  */
-export interface TrnEmojiSuggestion {
-  readonly id: string;
-  readonly native: string;
-  readonly colons: string;
-}
+export type TrnEmojiPick = TrnEmojiFields;
+
+/** One `:shortcode` completion, as the autocomplete and its suggestion list read it. */
+export type TrnEmojiSuggestion = TrnEmojiFields;

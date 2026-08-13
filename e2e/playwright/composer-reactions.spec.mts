@@ -130,7 +130,14 @@ test.describe('Full emoji reaction picker', () => {
 
     // The full picker opens in a dialog; drive it through its search box (emoji-mart
     // lazy-renders, so search first) and pick the first result.
-    const picker = page.getByTestId('reaction-picker');
+    //
+    // Addressed as "the picker inside the reaction dialog" rather than by a testid of its
+    // own: the panel is the kit's `<trn-emoji-picker>` at both call sites and carries the
+    // kit's `emoji-picker` handle, so what separates this one from the composer's is the
+    // dialog around it. Naming that dialog also asserts its accessible name, which is the
+    // only thing a screen reader has to go on here.
+    const dialog = page.getByRole('dialog', { name: 'Pick a reaction' });
+    const picker = dialog.getByTestId('emoji-picker');
     // emoji-mart is a heavy legacy library that lazy-renders — give the dialog the
     // same 20s headroom under load.
     await expect(picker).toBeVisible({ timeout: 20_000 });

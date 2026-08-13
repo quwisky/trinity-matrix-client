@@ -59,17 +59,18 @@ export default defineConfig([
             // reports success and the ban enforces nothing. `lint-invariants.spec.mjs`
             // pins the `*` for exactly this reason.
             //
-            // `ui:wrapper` (libs/ui) keeps only @ctrl/ngx-emoji-mart, until #152 decides
-            // where that wrapper lives. It used to keep @ng-icons too, on the assumption
-            // the icon wrapper would land here; #154 put it in the kit instead (as
-            // `@trinity/kit/icon`, which is where a lib that may name a vendor belongs),
-            // so that exemption is gone. The vendored kit (`ui:vendor-wrapper`) is
-            // deliberately absent from this list; it IS the wrapper layer, and banning its
-            // vendors there would ban the layer from existing.
+            // `ui:wrapper` (libs/ui) now keeps nothing. It was expected to host both the
+            // icon and emoji wrappers; #154 put the first in the kit (as
+            // `@trinity/kit/icon`) and #152 the second (`@trinity/kit/emoji-picker`),
+            // because a lib tagged `ui:wrapper` is precisely the tier that may not name a
+            // vendor. The vendored kit (`ui:vendor-wrapper`) is deliberately absent from
+            // this list; it IS the wrapper layer, and banning its vendors there would ban
+            // the layer from existing.
             //
-            // `type:feature` carries three of the four vendors now; #151 and #154 closed
-            // those. Only @ctrl/ngx-emoji-mart is still staged as a warning further down,
-            // waiting on #152.
+            // `type:feature` carries all four. #151 closed @angular/cdk and
+            // @spartan-ng/brain, #154 @ng-icons, #152 @ctrl/ngx-emoji-mart — and with the
+            // last one nothing is staged any more, so the temporary `warn` block that used
+            // to sit further down is gone.
             {
               sourceTag: 'ui:wrapper',
               bannedExternalImports: [
@@ -79,10 +80,9 @@ export default defineConfig([
               ],
             },
             {
-              // Closed by #151 (@angular/cdk, @spartan-ng/brain) and #154 (@ng-icons), so
-              // these are enforced rather than staged. @ctrl/ngx-emoji-mart is absent on
-              // purpose: it still has 7 importers, and #152 is gated on the composer
-              // redesign, so its ban stays a warning further down until then.
+              // Closed by #151 (@angular/cdk, @spartan-ng/brain), #154 (@ng-icons) and
+              // #152 (@ctrl/ngx-emoji-mart), so all four are enforced rather than staged:
+              // a new one fails `pnpm lint`, statically or through a lazy `import()`.
               sourceTag: 'type:feature',
               bannedExternalImports: [
                 '@spartan-ng/brain*',

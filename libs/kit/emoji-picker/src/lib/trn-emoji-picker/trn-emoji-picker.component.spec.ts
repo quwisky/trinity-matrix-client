@@ -17,6 +17,78 @@ class Host {
   readonly picks = signal<TrnEmojiPick[]>([]);
 }
 
+/**
+ * Runs `body` with the OS reporting a dark colour scheme.
+ *
+ * Restored by hand rather than through `vi.unstubAllGlobals()`, which would strip the
+ * suite-wide stub `test-setup.base.ts` installs and leave the rest of the file rendering
+ * against a jsdom that has no `matchMedia` at all.
+ */
+async function withDarkOs<T>(body: () => Promise<T>): Promise<T> {
+  const real = globalThis.matchMedia;
+  globalThis.matchMedia = ((query: string) => ({
+    ...real(query),
+    matches: true,
+  })) as typeof globalThis.matchMedia;
+  try {
+    return await body();
+  } finally {
+    globalThis.matchMedia = real;
+  }
+}
+
+/**
+ * Selectors that would escape the host class once this sheet is global.
+ *
+ * Brace-depth aware rather than line-shaped. The line-shaped version this replaces looked
+ * only at lines that both began at column 0 and contained `{`, which let two shapes
+ * through: a multi-line selector list whose LAST line happens to be scoped
+ * (`.emoji-mart .a,` / `.trn-emoji-picker .b {`), and anything nested inside a top-level
+ * at-rule, since `@media` never matched the filter in the first place.
+ */
+function unscopedSelectors(scss: string): string[] {
+  const source = scss.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const escaped: string[] = [];
+  /** One entry per open block: whether it scopes what it contains. */
+  const scoping: boolean[] = [];
+  let prelude = '';
+
+  for (const char of source) {
+    if (char === '{') {
+      const selectors = prelude
+        .split(',')
+        .map((selector) => selector.trim())
+        .filter(Boolean);
+      // An at-rule (`@media`, `@supports`) scopes nothing — its contents are still subject
+      // to whatever encloses IT, so it must not reset the check.
+      const isAtRule = selectors[0]?.startsWith('@') ?? false;
+      if (!isAtRule && !scoping.some(Boolean)) {
+        escaped.push(
+          ...selectors.filter(
+            (selector) => !selector.startsWith('.trn-emoji-picker'),
+          ),
+        );
+      }
+      scoping.push(
+        !isAtRule &&
+          selectors.every((selector) =>
+            selector.startsWith('.trn-emoji-picker'),
+          ),
+      );
+      prelude = '';
+    } else if (char === '}') {
+      scoping.pop();
+      prelude = '';
+    } else if (char === ';') {
+      prelude = '';
+    } else {
+      prelude += char;
+    }
+  }
+
+  return escaped;
+}
+
 describe('TrnEmojiPickerComponent', () => {
   /**
    * Fires the VENDOR's own output rather than calling our handler.
@@ -80,13 +152,29 @@ describe('TrnEmojiPickerComponent', () => {
     expect(host.getAttribute('aria-label')).toBeNull();
   });
 
-  it('never puts the vendor dark class on the element', async () => {
-    // `darkMode` is not passed, and that is load-bearing rather than an omission: the
-    // vendor turns it into `.emoji-mart-dark`, ten rules at specificity (0,3,0) that our
-    // token overrides would then have to outrank. Keeping it off means they only have to
-    // beat `.emoji-mart` base rules. If anyone re-enables the boolean, this fails.
+  it('hands the vendor Trinity’s accent token', async () => {
+    // The accent reaches the DOM as an INLINE style — the anchor bar's background, and
+    // `color` on the selected category anchor, which its icon inherits through
+    // `fill: currentColor`. Neither can be reached from our stylesheet without
+    // `!important`, so the token is passed through the vendor's own input. Drop this
+    // binding and the selected category renders emoji-mart's #ae65c5 again.
     const { fixture } = await render(TrnEmojiPickerComponent);
-    const html = (fixture.nativeElement as HTMLElement).innerHTML;
+    const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+
+    expect(vendor.componentInstance.color).toBe('var(--trinity-accent)');
+  });
+
+  it('never puts the vendor dark class on the element, even on a dark OS', async () => {
+    // `darkMode` is pinned `false`, and the dark OS here is the whole point. The vendor's
+    // default is not `false` — it is `matchMedia('(prefers-color-scheme: dark)').matches`,
+    // so an UNBOUND input follows the desktop. This suite's global matchMedia stub reports
+    // light, which is exactly what let an earlier version of this test pass against a
+    // picker that would have carried `.emoji-mart-dark`, and its ten rules at (0,3,0), for
+    // every user on a dark desktop. Removing the binding fails this.
+    const html = await withDarkOs(async () => {
+      const { fixture } = await render(TrnEmojiPickerComponent);
+      return (fixture.nativeElement as HTMLElement).innerHTML;
+    });
 
     expect(html).not.toContain('emoji-mart-dark');
   });
@@ -100,13 +188,29 @@ describe('TrnEmojiPickerComponent', () => {
       join(import.meta.dirname, 'trn-emoji-picker.component.scss'),
       'utf8',
     );
-    const topLevel = sheet
-      .split('\n')
-      .filter((line) => /^[.&#a-z\[]/i.test(line) && line.includes('{'));
+    expect(unscopedSelectors(sheet)).toEqual([]);
+  });
 
-    expect(topLevel).not.toEqual([]);
+  it('catches the two shapes the line-based scoping check used to miss', () => {
+    // The guard above is only worth anything if it can fail, and its predecessor could not
+    // fail on either of these: the first hides an unscoped selector on a line carrying no
+    // `{`, the second behind an at-rule that never matched the old line filter at all.
     expect(
-      topLevel.filter((line) => !line.startsWith('.trn-emoji-picker')),
+      unscopedSelectors(
+        '.emoji-mart .a,\n.trn-emoji-picker .b { color: red; }',
+      ),
+    ).toEqual(['.emoji-mart .a']);
+    expect(
+      unscopedSelectors(
+        '@media (min-width: 40rem) {\n  .emoji-mart { color: red; }\n}',
+      ),
+    ).toEqual(['.emoji-mart']);
+
+    // And it still passes what it should: nesting under the host class, at any depth.
+    expect(
+      unscopedSelectors(
+        '.trn-emoji-picker {\n  @media (min-width: 40rem) {\n    .emoji-mart { color: red; }\n  }\n}',
+      ),
     ).toEqual([]);
   });
 });

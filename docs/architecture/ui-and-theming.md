@@ -54,9 +54,18 @@ The emoji picker is the clearest case of what the vendor layer costs when it is 
 `@ctrl/ngx-emoji-mart`'s `picker.css` is 453 lines with **zero** custom properties — every
 colour a literal — and its whole idea of theming is one `darkMode` boolean that toggles an
 `.emoji-mart-dark` class. That cannot express Trinity's mode x palette grid, so the picker
-rendered its own purple accent and its own greys under all four combinations. `<trn-emoji-picker>`
-does not pass the boolean at all (which keeps ten rules at specificity 0,3,0 off the element)
-and paints the chrome from design tokens instead, so it re-themes with everything else.
+rendered its own purple accent and its own greys under all four combinations.
+`<trn-emoji-picker>` pins that boolean to `false` and paints the chrome from design tokens
+instead, so it re-themes with everything else.
+
+Two details there are easy to get wrong, and both are pinned by tests. The boolean has to be
+**pinned**, not merely left unbound: the vendor defaults it to
+`matchMedia('(prefers-color-scheme: dark)').matches`, so an absent binding follows the
+desktop rather than switching the class off, and jsdom reports light — so a rendering test
+will happily confirm an invariant that does not hold in a browser. And the **accent is
+passed, not overridden**: the vendor emits it as an inline style on the anchor bar and the
+selected category, which no rule in a stylesheet can outrank without `!important`, so
+`var(--trinity-accent)` goes in through the vendor's own `color` input.
 
 Icons are the clearest illustration of what the wrapper buys. `@ng-icons` types its `name`
 as `IconName | (string & {})` — any string at all — so `name="lucideTrash"` (no `2`) used to

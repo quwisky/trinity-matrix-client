@@ -17,13 +17,21 @@ import type { TrnEmojiPick } from '../trn-emoji.model';
  * five inputs and read `event.emoji.native` out of a loosely typed event; that repetition
  * is now one place, and the narrowing is enforced by {@link TrnEmojiPick}.
  *
- * **`darkMode` is deliberately not exposed and never passed.** The vendor's idea of theming
- * is one boolean that toggles an `.emoji-mart-dark` class, which cannot express Trinity's
- * mode x palette grid — so the picker rendered its own purple and its own greys under all
- * four combinations. Leaving the boolean off keeps that class off the element entirely,
- * which means our overrides only have to beat `.emoji-mart` base rules rather than the ten
- * more specific `.emoji-mart-dark` ones. `trn-emoji-picker.component.scss` then paints it
- * from design tokens, so it re-themes with everything else.
+ * **`darkMode` is deliberately not exposed, and pinned `false`.** The vendor's idea of
+ * theming is one boolean that toggles an `.emoji-mart-dark` class, which cannot express
+ * Trinity's mode x palette grid — so the picker rendered its own purple and its own greys
+ * under all four combinations. It has to be pinned rather than simply left unbound: the
+ * vendor's default is `matchMedia('(prefers-color-scheme: dark)').matches`, so an absent
+ * binding follows the OS. Pinned `false`, the class stays off the element entirely, which
+ * means our overrides only have to beat `.emoji-mart` base rules rather than the ten more
+ * specific `.emoji-mart-dark` ones. `trn-emoji-picker.component.scss` then paints it from
+ * design tokens, so it re-themes with everything else.
+ *
+ * **The accent goes in through the vendor's `color` input, not through the stylesheet.**
+ * It is rendered as an inline style in both places it appears — the anchor bar's background
+ * and the selected category anchor, whose icon inherits it via `fill: currentColor` — and
+ * an inline style outranks any rule we could write short of `!important`. Handing the
+ * vendor `var(--trinity-accent)` puts one token in charge of both.
  *
  * **It claims no ARIA role of its own, and that is deliberate.** An earlier revision made
  * the host a `role="dialog"` with a label, which is wrong at both call sites. In the
@@ -62,6 +70,14 @@ export class TrnEmojiPickerComponent {
   readonly pickerId = input<string | null>(null);
   /** Emoji glyph size in px. */
   readonly emojiSize = input(20);
+
+  /**
+   * Trinity's accent, handed to the vendor as its own `color`.
+   *
+   * A token rather than a literal, and passed rather than overridden: the vendor writes
+   * this value into inline styles, which a stylesheet cannot outrank without `!important`.
+   */
+  protected readonly accent = 'var(--trinity-accent)';
 
   /** A usable pick. Entries without a `native` character never reach here. */
   readonly picked = output<TrnEmojiPick>();
