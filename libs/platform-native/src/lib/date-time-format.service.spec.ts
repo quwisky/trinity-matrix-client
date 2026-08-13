@@ -147,4 +147,41 @@ describe('DateTimeFormatService', () => {
     expect(svc.prefs().locales).not.toEqual(before);
     expect(svc.prefs().locales).toEqual(['de-DE', 'en-US']);
   });
+
+  // A tag the browser really does report, and `Intl` really does refuse.
+  //
+  // Chromium derives `navigator.languages` from the OS locale, and a POSIX-style one —
+  // `LANG=en_US`, `C`, or the `@posix` modifier — arrives as `en-US@posix`. That is not
+  // valid BCP-47, so `new Intl.DateTimeFormat(['en-US@posix'])` throws a RangeError. The
+  // chain goes straight into that constructor (`date-format.ts`), which runs while the
+  // timeline renders — so the throw happens inside change detection and the room paints
+  // nothing at all. Found by `pnpm e2e:media` failing on a box with a POSIX locale, where
+  // the media bubble simply never attached.
+  it('drops a locale tag Intl would refuse, rather than letting it blank the timeline', () => {
+    const svc = make();
+
+    vi.spyOn(navigator, 'languages', 'get').mockReturnValue([
+      'en-US@posix',
+      'en-GB',
+    ]);
+    window.dispatchEvent(new Event('languagechange'));
+
+    const locales = svc.prefs().locales;
+    expect(locales).toEqual(['en-GB']);
+    // The assertion that actually matters: whatever survives must be constructible.
+    expect(() => new Intl.DateTimeFormat(locales as string[])).not.toThrow();
+  });
+
+  it('falls back to the runtime default when every tag is unusable', () => {
+    const svc = make();
+
+    vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['en-US@posix']);
+    window.dispatchEvent(new Event('languagechange'));
+
+    // `undefined`, not an empty array: an empty list is a valid argument to Intl meaning
+    // "no preference", but it is a different thing from "we have nothing to say", and the
+    // cache key in date-format.ts distinguishes them.
+    expect(svc.prefs().locales).toBeUndefined();
+    expect(() => new Intl.DateTimeFormat(undefined)).not.toThrow();
+  });
 });

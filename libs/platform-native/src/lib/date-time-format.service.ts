@@ -37,10 +37,46 @@ function systemLocales(): readonly string[] | undefined {
     return undefined;
   }
   const chain = navigator.languages;
-  if (chain?.length) {
-    return [...chain];
+  const raw = chain?.length
+    ? [...chain]
+    : navigator.language
+      ? [navigator.language]
+      : undefined;
+  return usable(raw);
+}
+
+/**
+ * The tags `Intl` will actually accept, or `undefined` if none of them are.
+ *
+ * **Not defensive programming — this throws in the wild.** Chromium derives
+ * `navigator.languages` from the OS locale, and a POSIX-style one (`LANG=en_US`, `C`, or an
+ * `@posix` modifier) arrives as `en-US@posix`, which is not valid BCP-47. The chain is
+ * handed straight to `new Intl.DateTimeFormat(...)` in `date-format.ts`, and that
+ * constructor throws a `RangeError` on a malformed tag. Because the timeline formats
+ * timestamps *while it renders*, the throw lands inside change detection: no timestamp, no
+ * message, no room — the screen is simply blank, with a `RangeError` in the console and
+ * nothing to connect it to a locale.
+ *
+ * Filtered per tag rather than all-or-nothing, so one bad entry cannot cost the reader the
+ * rest of their preference order. `undefined` rather than `[]` when nothing survives: an
+ * empty array is a legal argument meaning "no preference", but it is a distinct cache key
+ * downstream and would misreport what we know.
+ */
+function usable(
+  tags: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (!tags?.length) {
+    return undefined;
   }
-  return navigator.language ? [navigator.language] : undefined;
+  const accepted = tags.filter((tag) => {
+    try {
+      Intl.getCanonicalLocales(tag);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  return accepted.length ? accepted : undefined;
 }
 
 /**

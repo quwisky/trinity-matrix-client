@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Trinity no longer opens to a blank screen on some systems.** If your computer's language
+  was set in an older style — common on Linux, and on anything configured with `LANG=en_US`
+  or a `POSIX` locale — the app could not read your date and time preferences, and rather
+  than falling back it stopped drawing the room entirely: no messages, no timestamps,
+  nothing. Unusable, with nothing on screen to explain why. Trinity now ignores a language
+  setting it cannot understand and carries on with the rest, or with your system default.
+
 ### Added
 
 - **Your settings, readable and editable in one place.** Settings → **Advanced** shows
