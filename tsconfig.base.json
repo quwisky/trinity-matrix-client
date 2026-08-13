@@ -94,7 +94,8 @@
       ],
       "@trinity/components/radio-group": [
         "./libs/components/radio-group/src/index.ts"
-      ]
+      ],
+      "@trinity/components/select": ["./libs/components/select/src/index.ts"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]
