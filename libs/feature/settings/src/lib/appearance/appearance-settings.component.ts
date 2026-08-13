@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
-  HlmRadio,
-  HlmRadioGroup,
-  HlmRadioIndicator,
-} from '@trinity/helm/radio-group';
+  TrnRadioGroupComponent,
+  type TrnRadioOption,
+} from '@trinity/components/radio-group';
 import {
   HlmSelect,
   HlmSelectContent,
@@ -12,7 +11,7 @@ import {
   HlmSelectTrigger,
   HlmSelectValue,
 } from '@trinity/helm/select';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import {
   DateTimeFormatService,
   ComposerSettingsService,
@@ -44,21 +43,25 @@ import { CodeAppearanceBlockComponent } from './code-appearance-block.component'
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './appearance-settings.component.html',
   imports: [
-    HlmRadioGroup,
-    HlmRadio,
-    HlmRadioIndicator,
+    TrnRadioGroupComponent,
     HlmSelect,
     HlmSelectTrigger,
     HlmSelectValue,
     HlmSelectContent,
     HlmSelectPortal,
     HlmSelectItem,
-    HlmCheckbox,
+    TrnCheckboxComponent,
     CodeAppearanceBlockComponent,
   ],
 })
 export class AppearanceSettingsComponent {
   readonly theme = inject(ThemeService);
+  /** Light/dark/system, in the shape the radio group takes. */
+  readonly themeOptions: readonly TrnRadioOption<ThemePreference>[] = [
+    { value: 'system', label: 'Use system setting', testId: 'theme-system' },
+    { value: 'light', label: 'Light', testId: 'theme-light' },
+    { value: 'dark', label: 'Dark', testId: 'theme-dark' },
+  ];
   readonly systemLines = inject(SystemLineSettingsService);
   readonly composer = inject(ComposerSettingsService);
   readonly format = inject(DateTimeFormatService);

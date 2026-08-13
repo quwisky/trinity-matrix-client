@@ -88,7 +88,13 @@
       "@trinity/components/progress": [
         "./libs/components/progress/src/index.ts"
       ],
-      "@trinity/components/card": ["./libs/components/card/src/index.ts"]
+      "@trinity/components/card": ["./libs/components/card/src/index.ts"],
+      "@trinity/components/checkbox": [
+        "./libs/components/checkbox/src/index.ts"
+      ],
+      "@trinity/components/radio-group": [
+        "./libs/components/radio-group/src/index.ts"
+      ]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]

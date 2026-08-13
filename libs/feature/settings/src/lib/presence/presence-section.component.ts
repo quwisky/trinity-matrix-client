@@ -10,10 +10,9 @@ import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
 import { TrnLabel } from '@trinity/components/label';
 import {
-  HlmRadio,
-  HlmRadioGroup,
-  HlmRadioIndicator,
-} from '@trinity/helm/radio-group';
+  TrnRadioGroupComponent,
+  type TrnRadioOption,
+} from '@trinity/components/radio-group';
 import { PresenceService } from '@trinity/data-access/profile';
 import { presenceLabel, type PresenceState } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/ui';
@@ -37,20 +36,20 @@ const MAX_STATUS_LENGTH = 60;
   selector: 'trn-presence-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './presence-section.component.html',
-  imports: [
-    HlmButton,
-    HlmInput,
-    TrnLabel,
-    HlmRadioGroup,
-    HlmRadio,
-    HlmRadioIndicator,
-  ],
+  imports: [HlmButton, HlmInput, TrnLabel, TrnRadioGroupComponent],
 })
 export class PresenceSectionComponent {
   private readonly presence = inject(PresenceService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly options = PRESENCE_OPTIONS;
+  /** The same states, in the shape the radio group takes. */
+  readonly presenceOptions: readonly TrnRadioOption<PresenceState>[] =
+    PRESENCE_OPTIONS.map((state) => ({
+      value: state,
+      label: presenceLabel(state),
+      testId: `presence-${state}`,
+    }));
   readonly maxLength = MAX_STATUS_LENGTH;
 
   /** Local drafts, committed on Save; seeded from the server's current state on open. */

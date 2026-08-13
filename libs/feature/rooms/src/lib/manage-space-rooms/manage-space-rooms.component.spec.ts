@@ -452,7 +452,7 @@ describe('ManageSpaceRoomsComponent', () => {
     });
 
     it('un-ticks the rendered checkbox, not just the row model', async () => {
-      // At the DOM, because that is where the bug is. `HlmCheckbox.checked` is a
+      // At the DOM, because that is where the bug is. `TrnCheckboxComponent.checked` is a
       // linkedSignal the click handler sets locally, so the row model going back to false
       // is necessary but not sufficient — the INPUT has to transition for the checkbox to
       // re-derive. Asserting `childList()[0].suggested` alone passes while the box stays

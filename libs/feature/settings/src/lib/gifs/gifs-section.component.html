@@ -17,21 +17,12 @@
     </p>
   }
 
-  <hlm-radio-group
+  <trn-radio-group
     class="px-4 py-2"
+    [options]="providerOptions"
     [value]="provider()"
     (valueChange)="onProviderChange($event)"
-  >
-    @for (p of providers; track p.id) {
-      <label
-        class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-        [attr.data-testid]="'gif-provider-' + p.id"
-      >
-        <hlm-radio [value]="p.id"><hlm-radio-indicator /></hlm-radio>
-        {{ p.label }}
-      </label>
-    }
-  </hlm-radio-group>
+  />
 
   <div
     class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"

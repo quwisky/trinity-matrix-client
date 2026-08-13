@@ -4,7 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { signal, type DebugElement } from '@angular/core';
 import { NEVER, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import {
   KeywordRulesService,
   NotificationSoundService,
@@ -66,8 +66,8 @@ function ruleCheckboxes(fixture: {
 
 function checkboxes(fixture: {
   debugElement: DebugElement;
-}): { componentInstance: HlmCheckbox }[] {
-  return fixture.debugElement.queryAll(By.directive(HlmCheckbox));
+}): { componentInstance: TrnCheckboxComponent }[] {
+  return fixture.debugElement.queryAll(By.directive(TrnCheckboxComponent));
 }
 
 describe('NotificationsSectionComponent', () => {

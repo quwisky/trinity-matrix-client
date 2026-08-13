@@ -23,7 +23,7 @@
         }}</span>
 
         <label class="manage-rooms__suggested">
-          <hlm-checkbox
+          <trn-checkbox
             [checked]="child.suggested"
             [disabled]="writeLocked()"
             (checkedChange)="toggleSuggested(child.childId, $event)"

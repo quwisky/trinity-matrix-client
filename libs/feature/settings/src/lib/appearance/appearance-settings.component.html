@@ -4,34 +4,13 @@
 >
   Appearance
 </h2>
-<hlm-radio-group
+<trn-radio-group
   class="px-4 py-2"
   aria-labelledby="appearance-mode-heading"
+  [options]="themeOptions"
   [value]="theme.preference()"
   (valueChange)="onThemeChange($event)"
->
-  <label
-    class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-    data-testid="theme-system"
-  >
-    <hlm-radio value="system"><hlm-radio-indicator /></hlm-radio>
-    Use system setting
-  </label>
-  <label
-    class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-    data-testid="theme-light"
-  >
-    <hlm-radio value="light"><hlm-radio-indicator /></hlm-radio>
-    Light
-  </label>
-  <label
-    class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-    data-testid="theme-dark"
-  >
-    <hlm-radio value="dark"><hlm-radio-indicator /></hlm-radio>
-    Dark
-  </label>
-</hlm-radio-group>
+/>
 <p class="block px-4 py-2 text-13 text-muted-foreground">
   Showing the {{ theme.resolved() }} theme.
 </p>
@@ -232,7 +211,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-membership"
 >
-  <hlm-checkbox
+  <trn-checkbox
     [checked]="systemLines.showMembership()"
     (checkedChange)="systemLines.setShowMembership($event)"
   />
@@ -246,7 +225,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-profile"
 >
-  <hlm-checkbox
+  <trn-checkbox
     [checked]="systemLines.showProfile()"
     (checkedChange)="systemLines.setShowProfile($event)"
   />
@@ -257,7 +236,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="timeline-show-room-changes"
 >
-  <hlm-checkbox
+  <trn-checkbox
     [checked]="systemLines.showRoomChanges()"
     (checkedChange)="systemLines.setShowRoomChanges($event)"
   />
@@ -279,7 +258,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="composer-show-toolbar"
 >
-  <hlm-checkbox
+  <trn-checkbox
     [checked]="composer.showFormattingToolbar()"
     (checkedChange)="composer.setShowFormattingToolbar($event)"
   />

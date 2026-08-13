@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { FeatureFlagsService } from '@trinity/platform-native';
 
 /** Experimental settings sub-page: opt-in feature flags. */
@@ -7,7 +7,7 @@ import { FeatureFlagsService } from '@trinity/platform-native';
   selector: 'trn-experimental-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './experimental-settings.component.html',
-  imports: [HlmCheckbox],
+  imports: [TrnCheckboxComponent],
 })
 export class ExperimentalSettingsComponent {
   readonly flags = inject(FeatureFlagsService);

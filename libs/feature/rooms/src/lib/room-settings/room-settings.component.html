@@ -55,7 +55,7 @@
         </legend>
         @for (space of parentSpaces(); track space.id) {
           <label class="room-settings__space">
-            <hlm-checkbox
+            <trn-checkbox
               [checked]="isSpaceChecked(space.id)"
               (checkedChange)="toggleSpace(space.id, $event)"
               [attr.data-testid]="'room-settings-space-' + space.id"

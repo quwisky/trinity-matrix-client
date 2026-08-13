@@ -19,7 +19,7 @@ import {
   type ThemePreference,
 } from '@trinity/platform-native';
 import { By } from '@angular/platform-browser';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   SpaceRoomOrderService,
@@ -322,17 +322,17 @@ describe('AppearanceSettingsComponent', () => {
     expect(TestBed.inject(ThemeService).setPalette).not.toHaveBeenCalled();
   });
 
-  /** The `hlm-checkbox` inside the labelled toggle with the given testid. */
+  /** The `trn-checkbox` inside the labelled toggle with the given testid. */
   function checkboxFor(fixture: unknown, testid: string) {
     return (
       fixture as { debugElement: { queryAll: (p: unknown) => unknown[] } }
     ).debugElement
-      .queryAll(By.directive(HlmCheckbox))
+      .queryAll(By.directive(TrnCheckboxComponent))
       .find((c) =>
         (c as { nativeElement: HTMLElement }).nativeElement.closest(
           `[data-testid=${testid}]`,
         ),
-      ) as { componentInstance: HlmCheckbox } | undefined;
+      ) as { componentInstance: TrnCheckboxComponent } | undefined;
   }
 
   // Each switch is a separate binding, so a copy-paste slip (profile bound to

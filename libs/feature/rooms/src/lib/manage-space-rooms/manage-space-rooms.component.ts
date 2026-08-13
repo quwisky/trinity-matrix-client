@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomsService,
@@ -59,7 +59,7 @@ export interface ManagedChild {
 @Component({
   selector: 'trn-manage-space-rooms',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, HlmCheckbox, AvatarComponent, TrnIconComponent],
+  imports: [HlmButton, TrnCheckboxComponent, AvatarComponent, TrnIconComponent],
   templateUrl: './manage-space-rooms.component.html',
   styleUrl: './manage-space-rooms.component.scss',
 })
@@ -109,7 +109,7 @@ export class ManageSpaceRoomsComponent {
    * `suggested` writes overlaid on the projected links, from the click until the echo.
    *
    * The one place this dialog is deliberately optimistic, and only because the checkbox
-   * gives it no choice. `HlmCheckbox.checked` is a `linkedSignal` over the `checked` input
+   * gives it no choice. `TrnCheckboxComponent.checked` is a `linkedSignal` over the `checked` input
    * which its own click handler sets locally, so it re-derives only when that INPUT
    * changes value. A rejected write leaves the link at `suggested: false` — the same value
    * the input already had — so nothing re-derives and the box stays ticked for a change

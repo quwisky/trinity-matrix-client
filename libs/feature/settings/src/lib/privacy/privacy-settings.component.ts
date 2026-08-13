@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { TrnCheckboxComponent } from '@trinity/components/checkbox';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 
@@ -8,7 +8,7 @@ import { UrlPreviewService } from '@trinity/data-access/timeline';
   selector: 'trn-privacy-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './privacy-settings.component.html',
-  imports: [HlmCheckbox],
+  imports: [TrnCheckboxComponent],
 })
 export class PrivacySettingsComponent {
   readonly privacy = inject(PrivacySettingsService);
