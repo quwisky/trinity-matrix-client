@@ -1,4 +1,4 @@
-<trn-avatar-root
+<hlm-avatar
   [style.width.px]="size()"
   [style.height.px]="size()"
   [style.borderRadius]="square() ? '30%' : null"
@@ -6,14 +6,14 @@
   @if (src()) {
     <img
       decoding="async"
-      trnAvatarImage
+      hlmAvatarImage
       [src]="src()"
       [alt]="name()"
       [style.borderRadius]="square() ? '30%' : null"
     />
   }
   <span
-    trnAvatarFallback
+    hlmAvatarFallback
     class="leading-none font-semibold"
     [style.background]="color()"
     [style.color]="initialColor()"
@@ -21,7 +21,7 @@
     [style.borderRadius]="square() ? '30%' : null"
     >{{ initial() }}</span
   >
-</trn-avatar-root>
+</hlm-avatar>
 @if (presence(); as state) {
   <span
     class="presence-dot"

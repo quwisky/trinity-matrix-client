@@ -9,8 +9,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnToastService } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { RoomSettingsService } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 
@@ -37,7 +37,7 @@ const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
 @Component({
   selector: 'trn-avatar-field',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnButton],
+  imports: [AvatarComponent, HlmButton],
   templateUrl: './avatar-field.component.html',
   styleUrl: './avatar-field.component.scss',
 })

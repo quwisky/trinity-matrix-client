@@ -5,8 +5,8 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { TrnButton } from '@trinity/kit/button';
-import { DialogRef } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { DialogRef } from '@trinity/helm/overlay';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { AvatarComponent } from '@trinity/ui';
 import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
@@ -29,7 +29,7 @@ import { MEMBER_ROLE_LABEL, memberRole } from '../shared/member-role';
 @Component({
   selector: 'trn-space-members',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, AvatarComponent],
+  imports: [HlmButton, AvatarComponent],
   templateUrl: './space-members.component.html',
   styleUrl: './space-members.component.scss',
 })

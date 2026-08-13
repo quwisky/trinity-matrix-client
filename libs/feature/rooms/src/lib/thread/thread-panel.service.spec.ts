@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { TrnDialogService } from '@trinity/kit/overlay';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadPanelService } from './thread-panel.service';

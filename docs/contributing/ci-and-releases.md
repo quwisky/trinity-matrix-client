@@ -149,7 +149,7 @@ point is that a green lint was not evidence of that.
 resolves the real ESLint config for specific files with `calculateConfigForFile` and
 asserts its **shape**:
 
-- `libs/kit/*` is exempt from exactly four generated-code rules and nothing else.
+- `libs/spartan/*` is exempt from exactly four generated-code rules and nothing else.
   It diffs the entire resolved rule set between a spartan file and a first-party one,
   so a glob that starts matching more than it was written to fails here.
 - `@typescript-eslint/no-deprecated` is severity 2 with

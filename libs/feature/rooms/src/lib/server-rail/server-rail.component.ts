@@ -7,7 +7,7 @@ import {
 import { AvatarComponent, type AccountBadge } from '@trinity/ui';
 import { type SpaceSummary } from '@trinity/data-access/rooms';
 import { unreadBadgeLabel } from '../shared/unread-badge';
-import { TrnIconComponent } from '@trinity/kit/icon';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** Unread notification counts driving the rail's badges. */
 export interface RailUnread {

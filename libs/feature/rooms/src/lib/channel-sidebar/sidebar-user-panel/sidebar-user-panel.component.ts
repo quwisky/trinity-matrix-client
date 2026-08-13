@@ -8,20 +8,20 @@ import {
 import { AvatarComponent } from '@trinity/ui';
 import { type UserProfile } from '@trinity/data-access/profile';
 import {
-  TrnDropdownMenu,
-  TrnDropdownMenuCheckbox,
-  TrnDropdownMenuCheckboxIndicator,
-  TrnDropdownMenuItem,
-  TrnDropdownMenuItemSubIndicator,
-  TrnDropdownMenuLabel,
-  TrnDropdownMenuSeparator,
-  TrnDropdownMenuSub,
-  TrnDropdownMenuSubTrigger,
-  TrnDropdownMenuTrigger,
-} from '@trinity/kit/dropdown-menu';
+  HlmDropdownMenu,
+  HlmDropdownMenuCheckbox,
+  HlmDropdownMenuCheckboxIndicator,
+  HlmDropdownMenuItem,
+  HlmDropdownMenuItemSubIndicator,
+  HlmDropdownMenuLabel,
+  HlmDropdownMenuSeparator,
+  HlmDropdownMenuSub,
+  HlmDropdownMenuSubTrigger,
+  HlmDropdownMenuTrigger,
+} from '@trinity/helm/dropdown-menu';
 import { initialOf } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
-import { TrnIconComponent } from '@trinity/kit/icon';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** Most avatars drawn in the mixed-account stack before it collapses to a "+N" count. */
 const STACK_MAX = 3;
@@ -39,16 +39,16 @@ export interface AccountSummary extends UserProfile {
   imports: [
     AvatarComponent,
     TrnIconComponent,
-    TrnDropdownMenuTrigger,
-    TrnDropdownMenu,
-    TrnDropdownMenuCheckbox,
-    TrnDropdownMenuCheckboxIndicator,
-    TrnDropdownMenuItem,
-    TrnDropdownMenuItemSubIndicator,
-    TrnDropdownMenuLabel,
-    TrnDropdownMenuSeparator,
-    TrnDropdownMenuSub,
-    TrnDropdownMenuSubTrigger,
+    HlmDropdownMenuTrigger,
+    HlmDropdownMenu,
+    HlmDropdownMenuCheckbox,
+    HlmDropdownMenuCheckboxIndicator,
+    HlmDropdownMenuItem,
+    HlmDropdownMenuItemSubIndicator,
+    HlmDropdownMenuLabel,
+    HlmDropdownMenuSeparator,
+    HlmDropdownMenuSub,
+    HlmDropdownMenuSubTrigger,
   ],
   templateUrl: './sidebar-user-panel.component.html',
   styleUrl: './sidebar-user-panel.component.scss',

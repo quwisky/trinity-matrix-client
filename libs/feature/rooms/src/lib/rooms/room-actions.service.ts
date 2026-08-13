@@ -13,7 +13,7 @@ import {
   TrnActionSheetService,
   TrnAlertService,
   TrnDialogService,
-} from '@trinity/kit/overlay';
+} from '@trinity/helm/overlay';
 import { runWithBusy } from '@trinity/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import {

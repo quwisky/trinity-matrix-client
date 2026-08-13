@@ -32,7 +32,7 @@ import {
   TrnAlertService,
   TrnDialogService,
   TrnToastService,
-} from '@trinity/kit/overlay';
+} from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';

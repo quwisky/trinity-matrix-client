@@ -5,14 +5,14 @@
   <button
     type="button"
     class="composer__attach"
-    [trnDropdownMenuTrigger]="insertMenu"
-    trnTooltip="Add to message"
+    [hlmDropdownMenuTrigger]="insertMenu"
+    hlmTooltip="Add to message"
     aria-label="Add to message"
     data-testid="composer-insert"
     [disabled]="editing()"
   >
     @if (locationSharing() || gifDownloading()) {
-      <trn-spinner class="text-base" />
+      <hlm-spinner class="text-base" />
     } @else {
       <trn-icon name="plus" />
     }
@@ -21,9 +21,9 @@
     <!-- Each item repeats its inline twin's [disabled] rather than the trigger
        carrying the union: an upload in flight blocks another *attachment*, it is
        no reason to stop someone starting a poll. Only editing() is whole-tray. -->
-    <div trnDropdownMenu aria-label="Add to message">
+    <div hlmDropdownMenu aria-label="Add to message">
       <button
-        trnDropdownMenuItem
+        hlmDropdownMenuItem
         class="composer__insert-item"
         [disabled]="uploading()"
         (triggered)="attachFile.emit()"
@@ -34,7 +34,7 @@
       </button>
       @if (gifEnabled()) {
         <button
-          trnDropdownMenuItem
+          hlmDropdownMenuItem
           class="composer__insert-item"
           [disabled]="uploading() || gifDownloading()"
           (triggered)="pickGif.emit()"
@@ -46,7 +46,7 @@
       }
       @if (richActions()) {
         <button
-          trnDropdownMenuItem
+          hlmDropdownMenuItem
           class="composer__insert-item"
           (triggered)="createPoll.emit()"
           data-testid="insert-poll"
@@ -55,7 +55,7 @@
           Poll
         </button>
         <button
-          trnDropdownMenuItem
+          hlmDropdownMenuItem
           class="composer__insert-item"
           [disabled]="locationSharing()"
           (triggered)="shareLocation.emit()"
@@ -66,7 +66,7 @@
         </button>
         @if (voiceSupported() && !recording()) {
           <button
-            trnDropdownMenuItem
+            hlmDropdownMenuItem
             class="composer__insert-item"
             [disabled]="uploading()"
             (triggered)="recordVoice.emit()"
@@ -85,7 +85,7 @@
   <button
     type="button"
     class="composer__attach"
-    trnTooltip="Attach"
+    hlmTooltip="Attach"
     aria-label="Attach a file"
     data-testid="composer-insert-attach"
     [disabled]="uploading() || editing()"

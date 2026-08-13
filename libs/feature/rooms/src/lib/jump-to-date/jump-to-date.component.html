@@ -9,7 +9,7 @@
   <label class="jump__label" for="jump-date">Date</label>
   <input
     id="jump-date"
-    trnInput
+    hlmInput
     class="w-full"
     type="date"
     [max]="today"
@@ -18,11 +18,11 @@
     data-testid="jump-to-date-input"
   />
   <div class="jump__actions">
-    <button trnBtn type="button" variant="ghost" (click)="cancel()">
+    <button hlmBtn type="button" variant="ghost" (click)="cancel()">
       Cancel
     </button>
     <button
-      trnBtn
+      hlmBtn
       type="submit"
       [disabled]="!canJump()"
       data-testid="jump-to-date-confirm"

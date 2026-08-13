@@ -4,7 +4,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import type { TrnEmojiSuggestion } from '@trinity/kit/emoji-picker';
+import type { TrnEmojiSuggestion } from '@trinity/helm/emoji-picker';
 import { type MentionMember } from '../mention-autocomplete';
 
 /**

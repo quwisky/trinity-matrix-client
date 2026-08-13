@@ -1,5 +1,5 @@
 import { render } from '@trinity/testing';
-import { TrnAlertService, TrnToastService } from '@trinity/kit/overlay';
+import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import {

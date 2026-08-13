@@ -155,7 +155,7 @@ async function poll(fn, { tries = 30, delayMs = 1000 } = {}) {
 // UI helpers
 // ---------------------------------------------------------------------------
 
-/** Fill a native `<input trnInput>` by its associated `<label for="…">`. */
+/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
 async function fillLabeledInput(page, label, value) {
   // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
   // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as
@@ -217,7 +217,7 @@ async function clickActionSheetButton(page, buttonText) {
  * canConfirm() computed re-evaluates), click the confirm button, then wait for
  * the modal to dismiss.
  *
- * The confirm button is a plain `<button trnBtn>` in the modal header whose
+ * The confirm button is a plain `<button hlmBtn>` in the modal header whose
  * text matches `confirmLabelText`; Playwright's click() already waits for it
  * to lose its `disabled` attribute (actionability), so no manual poll is
  * needed — `[disabled]="!canConfirm()"` clears once the MXID validates.
@@ -226,7 +226,7 @@ async function fillUserPickerAndConfirm(page, mxid, confirmLabelText) {
   const modal = page.locator('.cdk-dialog-container');
   await modal.waitFor({ state: 'visible', timeout: 15_000 });
 
-  // UserPickerComponent's free-text field — a native <input trnInput> with a
+  // UserPickerComponent's free-text field — a native <input hlmInput> with a
   // fixed default placeholder (no ion-searchbar shadow DOM to pierce anymore).
   const searchInput = modal.getByPlaceholder('@user:server or a name');
   await searchInput.waitFor({ state: 'visible', timeout: 10_000 });

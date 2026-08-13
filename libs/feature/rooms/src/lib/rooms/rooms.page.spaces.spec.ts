@@ -23,7 +23,7 @@ import {
   TimelineActionsService,
   TimelineService,
 } from '@trinity/data-access/timeline';
-import { TrnDialogService, TrnToastService } from '@trinity/kit/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 
 import { describe, expect, it, vi } from 'vitest';

@@ -52,7 +52,7 @@
 }
 
 // Outside `.sidebar__scroll` on purpose: the box stays put while the list it narrows
-// scrolls under it. The input itself is `trnInput`, so this only positions the row and
+// scrolls under it. The input itself is `hlmInput`, so this only positions the row and
 // overlays the clear button — no colours here, or it would stop re-theming.
 .sidebar__filter {
   position: relative;

@@ -15,7 +15,7 @@
     <label class="space-settings__field">
       <span class="space-settings__label">Name</span>
       <input
-        trnInput
+        hlmInput
         class="w-full"
         [formField]="form.name"
         autocomplete="off"
@@ -26,7 +26,7 @@
     <label class="space-settings__field">
       <span class="space-settings__label">Topic</span>
       <textarea
-        trnInput
+        hlmInput
         class="w-full"
         rows="3"
         [formField]="form.topic"
@@ -37,7 +37,7 @@
     <label class="space-settings__field">
       <span class="space-settings__label">Who can join</span>
       <select
-        trnInput
+        hlmInput
         class="w-full"
         [formField]="form.joinRule"
         data-testid="space-settings-join-rule"
@@ -68,7 +68,7 @@
 
     <div class="space-settings__actions">
       <button
-        trnBtn
+        hlmBtn
         type="button"
         variant="ghost"
         (click)="close()"
@@ -77,7 +77,7 @@
         Cancel
       </button>
       <button
-        trnBtn
+        hlmBtn
         type="submit"
         [disabled]="saving() || !canSave()"
         data-testid="space-settings-save"

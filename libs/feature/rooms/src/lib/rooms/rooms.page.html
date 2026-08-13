@@ -96,12 +96,12 @@
       <trn-page-header variant="chat">
         <button
           trnHeaderLeading
-          trnBtn
+          hlmBtn
           variant="ghost"
           size="icon"
           class="md:hidden"
           (click)="backToList()"
-          trnTooltip="Back to rooms"
+          hlmTooltip="Back to rooms"
           aria-label="Back to rooms"
           data-testid="back-to-rooms"
         >
@@ -147,58 +147,58 @@
         <ng-container trnHeaderActions>
           @if (vm.activeRoom()) {
             <button
-              trnBtn
+              hlmBtn
               variant="ghost"
               size="icon"
               (click)="messageActions.openMessageSearch()"
-              trnTooltip="Search messages in this room"
+              hlmTooltip="Search messages in this room"
               aria-label="Search messages in this room"
               data-testid="search-messages"
             >
               <trn-icon class="text-xl" name="search" />
             </button>
             <button
-              trnBtn
+              hlmBtn
               variant="ghost"
               size="icon"
               class="max-md:hidden"
               (click)="roomActions.onInviteToRoom()"
-              trnTooltip="Invite people"
+              hlmTooltip="Invite people"
               aria-label="Invite people"
               data-testid="invite-people"
             >
               <trn-icon class="text-xl" name="user-plus" />
             </button>
             <button
-              trnBtn
+              hlmBtn
               variant="ghost"
               size="icon"
               class="max-md:hidden"
               (click)="roomActions.onOpenRoomSettings()"
-              trnTooltip="Room settings"
+              hlmTooltip="Room settings"
               aria-label="Room settings"
               data-testid="open-room-settings"
             >
               <trn-icon class="text-xl" name="settings" />
             </button>
             <button
-              trnBtn
+              hlmBtn
               variant="ghost"
               size="icon"
               (click)="messageActions.openThreadsList()"
-              trnTooltip="Threads"
+              hlmTooltip="Threads"
               aria-label="Threads"
               data-testid="open-threads"
             >
               <trn-icon class="text-xl" name="messages-square" />
             </button>
             <button
-              trnBtn
+              hlmBtn
               variant="ghost"
               size="icon"
               class="header-pin max-md:hidden"
               (click)="messageActions.openPinnedPanel()"
-              trnTooltip="Pinned messages"
+              hlmTooltip="Pinned messages"
               aria-label="Pinned messages"
               data-testid="open-pinned"
             >
@@ -210,13 +210,13 @@
               }
             </button>
             <button
-              trnBtn
+              hlmBtn
               variant="ghost"
               size="icon"
               class="max-md:hidden"
               (click)="toggleMembers()"
               [attr.aria-pressed]="store.membersOpen()"
-              trnTooltip="Members"
+              hlmTooltip="Members"
               aria-label="Members"
               data-testid="toggle-members"
             >
@@ -229,11 +229,11 @@
                here at all widths rather than spending a permanent slot in a header that
                already carries six. -->
             <button
-              trnBtn
+              hlmBtn
               variant="ghost"
               size="icon"
               class="header-pin"
-              [trnDropdownMenuTrigger]="roomActionsMenu"
+              [hlmDropdownMenuTrigger]="roomActionsMenu"
               align="end"
               aria-label="More actions"
               data-testid="room-actions-overflow"
@@ -246,10 +246,10 @@
               }
             </button>
             <ng-template #roomActionsMenu>
-              <div trnDropdownMenu>
+              <div hlmDropdownMenu>
                 <button
                   class="md:hidden"
-                  trnDropdownMenuItem
+                  hlmDropdownMenuItem
                   (triggered)="roomActions.onInviteToRoom()"
                   data-testid="overflow-invite-people"
                 >
@@ -258,7 +258,7 @@
                 </button>
                 <button
                   class="md:hidden"
-                  trnDropdownMenuItem
+                  hlmDropdownMenuItem
                   (triggered)="roomActions.onOpenRoomSettings()"
                   data-testid="overflow-open-room-settings"
                 >
@@ -267,7 +267,7 @@
                 </button>
                 <button
                   class="md:hidden"
-                  trnDropdownMenuItem
+                  hlmDropdownMenuItem
                   (triggered)="messageActions.openPinnedPanel()"
                   data-testid="overflow-open-pinned"
                 >
@@ -280,7 +280,7 @@
                   }
                 </button>
                 <button
-                  trnDropdownMenuItem
+                  hlmDropdownMenuItem
                   (triggered)="messageActions.jumpToDate()"
                   data-testid="overflow-jump-to-date"
                 >
@@ -289,7 +289,7 @@
                 </button>
                 <button
                   class="md:hidden"
-                  trnDropdownMenuItem
+                  hlmDropdownMenuItem
                   (triggered)="toggleMembers()"
                   data-testid="overflow-toggle-members"
                 >

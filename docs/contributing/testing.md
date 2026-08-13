@@ -87,7 +87,7 @@ Every project's `src/test-setup.ts` is a one-line import of that shared file. Tw
 projects append a local shim: `feature-rooms` a controllable `ResizeObserver` with
 a static instance registry and an `emit()` hook, so the virtualized-list specs can
 drive the measurement path; `feature-settings` a no-op `ResizeObserver`, because
-Brain's `trn-select` installs one on render. `util-matrix` is the exception that
+Brain's `hlm-select` installs one on render. `util-matrix` is the exception that
 imports only `@testing-library/jest-dom/vitest` — that library is DI-free and has
 no TestBed.
 
@@ -177,7 +177,7 @@ Three shims live in `test-setup.base.ts`, each recorded against a specific failu
 | Shim                             | Why it is there                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | A patched `_virtualConsole.emit` | Filters two known-benign `jsdomError` messages: `Could not parse CSS stylesheet` (Tailwind v4 emits `@property`, `color-mix` and nested rules that jsdom's CSS parser rejects) and `Not implemented: navigation` (any component redirecting via `location.href`). It has to patch the VirtualConsole rather than `console.error`, because jsdom captured the original console reference before Vitest swapped in its capturing one.                                                                                                                                                  |
-| `matchMedia`                     | Brain's sonner toaster reads it in an `afterRender` hook, so rendering `<trn-toaster>` throws without it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `matchMedia`                     | Brain's sonner toaster reads it in an `afterRender` hook, so rendering `<hlm-toaster>` throws without it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `PointerEvent`                   | jsdom has shipped PointerEvent since 27, so this is no longer a polyfill — it survives for its **defaults**. The native constructor is spec-correct (`pointerType: ''`, `isPrimary: false`), and Brain's `BrnTooltip` opens only for `pointerType` of `mouse` or `pen`. On stock jsdom a plain `fireEvent.pointerEnter` therefore builds an event Brain silently rejects, and the spec fails in a way indistinguishable from the bug it was written to catch. The stub subclasses `MouseEvent`, because Brain reads `clientX`/`clientY` off the same object for overlay positioning. |
 
 Two limits are recorded as verified against jsdom 30. Pointer _capture_ is still
@@ -282,11 +282,11 @@ Every item below is a real shape this repository has shipped. They are worth
 recognising, because each one is green.
 
 **Mocking the collaborator can make a spec structurally incapable of seeing the
-bug.** `<trn-toaster/>` renders from `@spartan-ng/brain/sonner`'s own toast store.
+bug.** `<hlm-toaster/>` renders from `@spartan-ng/brain/sonner`'s own toast store.
 A service spec that mocked `ngx-sonner` passed while no toast ever rendered in the
 app, because the call pushed into a store the toaster never observes — and it failed
 silently, with no error anywhere. The guard is
-[`trn-toast-render.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/kit/overlay/src/lib/toast/trn-toast-render.spec.ts),
+[`trn-toast-render.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/overlay/src/lib/toast/trn-toast-render.spec.ts),
 which mounts the real toaster and asserts the string reaches
 `document.body.textContent`. When the defect is "the two sides disagree about which
 object they share", only driving the real objects can catch it.
@@ -306,10 +306,10 @@ runner with no keyring it asserts the _degradation_ contract instead. Only
 the refusal path; the round trip is proven only when a human runs `pnpm electron:e2e`
 locally.
 
-**A kit host class assertion is a race, not a check.** The kit styles component hosts
+**A Helm host class assertion is a race, not a check.** Helm styles component hosts
 through an asynchronous `classes()` manager built on an effect and a global
 MutationObserver, so asserting on the rendered `class` string is flaky. The smoke
-tests in `libs/kit/overlay` assert the `cva` functions directly instead, because
+tests in `libs/spartan/overlay` assert the `cva` functions directly instead, because
 those are pure and synchronous.
 
 **An effect that nothing flushed after the interesting moment.** The rooms shell turns

@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
-import { TrnButton } from '@trinity/kit/button';
+import { HlmButton } from '@trinity/helm/button';
 import { PageHeaderComponent } from '@trinity/ui';
 import {
   CryptoSpikeResult,
@@ -18,7 +18,7 @@ import {
   selector: 'trn-home',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'home.page.html',
-  imports: [TrnButton, PageHeaderComponent],
+  imports: [HlmButton, PageHeaderComponent],
 })
 export class HomePage {
   private readonly spike = inject(CryptoSpikeService);

@@ -33,8 +33,8 @@
   }
 }
 
-// Card surface (spartan trnCard):
-// The trn card supplies the surface (bg-card / ring / rounded / padding); we
+// Card surface (spartan hlmCard):
+// The hlm card supplies the surface (bg-card / ring / rounded / padding); we
 // override it to the Discord palette and drive its internal rhythm via
 // --card-spacing (header + content horizontal padding, card vertical padding,
 // and the header↔content gap all read this token).
@@ -46,7 +46,7 @@
   background: var(--trinity-sidebar);
   flex: 1;
   border-radius: 0;
-  box-shadow: none; // drop the trn 1px ring on the full-bleed mobile surface
+  box-shadow: none; // drop the hlm 1px ring on the full-bleed mobile surface
 
   @media (min-width: 480px) {
     --card-spacing: 32px;
@@ -60,7 +60,7 @@
 }
 
 // Branding: Trinity wordmark + dynamic subtitle. Spacing to the form below is
-// handled by the trn card's header↔content gap.
+// handled by the hlm card's header↔content gap.
 .login-card__brand {
   text-align: center;
 }

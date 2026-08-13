@@ -111,7 +111,7 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   Cross-domain injects are inter-lib edges (search→rooms/invites, auth→media/notifications, notification→timeline).
 - `@trinity/feature/*` `[type:feature]` — screens/pages incl. `feature-shell` (the app shell moved out of
   `apps/trinity`). May depend on `data-access-*` + `ui` + `util` + `platform`, **never another feature**.
-- `@trinity/ui` + `@trinity/kit/*` (`libs/kit/*`) `[type:ui]` — **presentational** only; no
+- `@trinity/ui` + `@trinity/helm/*` (`libs/spartan/*`) `[type:ui]` — **presentational** only; no
   state/SDK deps. Helm is `@spartan-ng/cli`-generated.
 - **Scopes:** `scope:shared` (the kernel: util/platform/matrix-client/ui/helm) may not reach into
   `scope:matrix` (domain data-access + feature libs); the thin `apps/trinity` composes both.
@@ -148,12 +148,9 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
   `.html` + `.scss` + `.spec.ts` (logic in `.ts`, styles in `.scss`, template in `.html`).
 - **Selectors**: `trn` prefix — elements kebab-case (`trn-avatar`), directives camelCase. Class
   suffix must be `Page` or `Component`.
-- **`libs/kit/*` is generated and owned via `@spartan-ng/cli`** (config in root
-  `components.json`). Add/regenerate Helm components with the CLI rather than hand-authoring,
-  then **always** run `node scripts/rebrand-kit.mjs` — the CLI generates upstream's own
-  naming into a kit renamed to `trn`, and the codemod re-normalises it (idempotent, safe to
-  run any time; `scripts/rebrand-kit.spec.mjs` fails if you forget). It's intentionally exempt from the `trn`-prefix and
-  class-suffix ESLint rules. Where upstream
+- **`libs/spartan/*` is generated and owned via `@spartan-ng/cli`** (config in root
+  `components.json`). Add/regenerate Helm components with the CLI rather than hand-authoring;
+  it's intentionally exempt from the `trn`-prefix and class-suffix ESLint rules. Where upstream
   is wrong we *do* diverge — but on the record: comment it at the site, add it to the banner at
   the top of the file, pin it with a test, and list it under **Vendored spartan overrides** in
   [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).

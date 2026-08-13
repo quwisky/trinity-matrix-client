@@ -10,7 +10,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { TrnAlertService } from '@trinity/kit/overlay';
+import { TrnAlertService } from '@trinity/helm/overlay';
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
 import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';

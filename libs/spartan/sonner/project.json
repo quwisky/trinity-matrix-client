@@ -1,0 +1,25 @@
+{
+  "name": "sonner",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/spartan/sonner/src",
+  "prefix": "hlm",
+  "projectType": "library",
+  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:ng-packagr-lite",
+      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "project": "libs/spartan/sonner/ng-package.json",
+        "tsConfig": "libs/spartan/sonner/tsconfig.lib.json"
+      },
+      "configurations": {
+        "production": {
+          "tsConfig": "libs/spartan/sonner/tsconfig.lib.prod.json"
+        },
+        "development": {}
+      }
+    }
+  }
+}

@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { DialogRef } from '@trinity/kit/overlay';
+import { DialogRef } from '@trinity/helm/overlay';
 import {
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
-} from '@trinity/kit/emoji-picker';
+} from '@trinity/helm/emoji-picker';
 
 /**
  * The full `emoji-mart` picker presented as a dialog for reacting with any emoji,

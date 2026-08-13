@@ -1,4 +1,4 @@
-import { DialogRef } from '@trinity/kit/overlay';
+import { DialogRef } from '@trinity/helm/overlay';
 import { render } from '@trinity/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { isoDateOf } from '@trinity/util/matrix';

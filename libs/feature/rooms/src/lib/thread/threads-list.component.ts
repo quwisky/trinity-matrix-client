@@ -4,12 +4,12 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { DialogRef } from '@trinity/kit/overlay';
+import { DialogRef } from '@trinity/helm/overlay';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/ui';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnTooltip } from '@trinity/kit/tooltip';
-import { TrnIconComponent } from '@trinity/kit/icon';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnIconComponent } from '@trinity/helm/icon';
 import {
   ThreadsService,
   type ThreadSummary,
@@ -34,7 +34,7 @@ const MAX_AVATARS = 4;
 @Component({
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, AvatarComponent, TrnButton, TrnTooltip],
+  imports: [TrnIconComponent, AvatarComponent, HlmButton, HlmTooltip],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',
 })

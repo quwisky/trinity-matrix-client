@@ -6,13 +6,13 @@ import {
   output,
 } from '@angular/core';
 import {
-  TrnDropdownMenu,
-  TrnDropdownMenuItem,
-  TrnDropdownMenuTrigger,
-} from '@trinity/kit/dropdown-menu';
-import { TrnTooltip } from '@trinity/kit/tooltip';
+  HlmDropdownMenu,
+  HlmDropdownMenuItem,
+  HlmDropdownMenuTrigger,
+} from '@trinity/helm/dropdown-menu';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import { type FormatAction } from '@trinity/util/matrix';
-import { TrnIconComponent, type TrnIconName } from '@trinity/kit/icon';
+import { TrnIconComponent, type TrnIconName } from '@trinity/helm/icon';
 
 /** One toolbar button: the action it applies, its icon and its label. */
 interface ToolbarAction {
@@ -56,10 +56,10 @@ const SECONDARY: readonly ToolbarAction[] = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconComponent,
-    TrnDropdownMenu,
-    TrnDropdownMenuItem,
-    TrnDropdownMenuTrigger,
-    TrnTooltip,
+    HlmDropdownMenu,
+    HlmDropdownMenuItem,
+    HlmDropdownMenuTrigger,
+    HlmTooltip,
   ],
   templateUrl: './composer-toolbar.component.html',
   styleUrl: './composer-toolbar.component.scss',

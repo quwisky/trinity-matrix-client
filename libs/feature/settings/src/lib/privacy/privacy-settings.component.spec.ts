@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TrnCheckbox } from '@trinity/kit/checkbox';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PrivacySettingsComponent } from './privacy-settings.component';
@@ -35,7 +35,7 @@ describe('PrivacySettingsComponent', () => {
     });
   }
 
-  /** The `trn-checkbox` inside the labelled toggle with the given testid. */
+  /** The `hlm-checkbox` inside the labelled toggle with the given testid. */
   function checkboxFor(
     container: HTMLElement,
     fixture: unknown,
@@ -44,12 +44,12 @@ describe('PrivacySettingsComponent', () => {
     return (
       fixture as { debugElement: { queryAll: (p: unknown) => unknown[] } }
     ).debugElement
-      .queryAll(By.directive(TrnCheckbox))
+      .queryAll(By.directive(HlmCheckbox))
       .find((c) =>
         (c as { nativeElement: HTMLElement }).nativeElement.closest(
           `[data-testid=${testid}]`,
         ),
-      ) as { componentInstance: TrnCheckbox } | undefined;
+      ) as { componentInstance: HlmCheckbox } | undefined;
   }
 
   it('reflects and toggles the send-read-receipts preference', async () => {

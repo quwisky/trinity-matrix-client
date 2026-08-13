@@ -19,14 +19,14 @@
       read what's sent. We'll generate a recovery key for you to save.
     </p>
 
-    <button trnBtn class="w-full" [disabled]="busy()" (click)="setUp()">
+    <button hlmBtn class="w-full" [disabled]="busy()" (click)="setUp()">
       Set up encryption
     </button>
   }
 
   @if (busy()) {
     <div class="pt-4 text-center" role="status" aria-live="polite">
-      <trn-spinner />
+      <hlm-spinner />
       <p class="text-muted-foreground">Setting up encryption…</p>
     </div>
   }

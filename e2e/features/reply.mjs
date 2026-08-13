@@ -109,7 +109,7 @@ async function setupRoom() {
 // UI helpers (mirrors threads.mjs / send-media.mjs / verify-sas.mjs)
 // ---------------------------------------------------------------------------
 
-/** Fill a native `<input trnInput>` by its associated `<label for="…">`. */
+/** Fill a native `<input hlmInput>` by its associated `<label for="…">`. */
 async function fillLabeledInput(page, label, value) {
   // Exact match: the password field's "Show password" reveal button (aria-label) otherwise
   // also matches a substring `getByLabel('Password')`, tripping strict mode. Same fix as

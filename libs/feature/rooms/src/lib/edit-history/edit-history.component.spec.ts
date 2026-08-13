@@ -6,7 +6,7 @@ import {
   DialogRef,
   TrnAlertService,
   TrnToastService,
-} from '@trinity/kit/overlay';
+} from '@trinity/helm/overlay';
 import {
   EditHistoryService,
   type EditHistoryResult,

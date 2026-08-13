@@ -233,7 +233,7 @@ export const DEFAULT_ROOM_SORT: RoomSortMode = 'recent';
 /**
  * Whether a stored or bound string is one of the orderings we ship.
  *
- * `undefined` is in the parameter type deliberately: `trn-select`'s `valueChange` is
+ * `undefined` is in the parameter type deliberately: `hlm-select`'s `valueChange` is
  * `string | null | undefined`, and guarding a massaged expression (`isRoomSortMode(v ?? null)`)
  * narrows only that expression, leaving the original binding wide. That type-checks under
  * Vitest and fails only in the Angular build.

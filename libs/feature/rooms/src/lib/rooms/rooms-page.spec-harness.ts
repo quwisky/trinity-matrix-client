@@ -20,7 +20,7 @@ import {
 } from '@trinity/data-access/invites';
 import { PinnedMessagesService } from '@trinity/data-access/pinned';
 
-import { TrnActionSheetService } from '@trinity/kit/overlay';
+import { TrnActionSheetService } from '@trinity/helm/overlay';
 import { MockProvider } from 'ng-mocks';
 import { BehaviorSubject, of } from 'rxjs';
 import { vi } from 'vitest';

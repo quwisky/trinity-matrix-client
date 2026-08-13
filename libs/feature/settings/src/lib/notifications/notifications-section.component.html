@@ -14,7 +14,7 @@
       class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
       [attr.data-testid]="'notif-' + rule.id"
     >
-      <trn-checkbox
+      <hlm-checkbox
         [checked]="checked(rule)"
         (checkedChange)="toggle(rule, $event)"
       />
@@ -26,7 +26,7 @@
     class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
     data-testid="notif-sound"
   >
-    <trn-checkbox
+    <hlm-checkbox
       [checked]="soundChecked()"
       (checkedChange)="toggleSound($event)"
     />

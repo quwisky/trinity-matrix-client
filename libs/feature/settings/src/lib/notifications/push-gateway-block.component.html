@@ -21,10 +21,10 @@
     </p>
   } @else {
     <div class="px-4 py-2">
-      <label trnLabel for="push-gateway-url">Gateway URL</label>
+      <label hlmLabel for="push-gateway-url">Gateway URL</label>
       <input
         id="push-gateway-url"
-        trnInput
+        hlmInput
         type="url"
         inputmode="url"
         autocomplete="off"
@@ -78,10 +78,10 @@
 
       @if (advancedOpen()) {
         <div class="mt-2">
-          <label trnLabel for="push-gateway-appid">App ID</label>
+          <label hlmLabel for="push-gateway-appid">App ID</label>
           <input
             id="push-gateway-appid"
-            trnInput
+            hlmInput
             type="text"
             autocomplete="off"
             autocapitalize="none"
@@ -105,7 +105,7 @@
 
       <div class="mt-3 flex items-center gap-2">
         <button
-          trnBtn
+          hlmBtn
           size="sm"
           [disabled]="!canSave()"
           (click)="save()"
@@ -115,7 +115,7 @@
         </button>
         @if (hasOverride()) {
           <button
-            trnBtn
+            hlmBtn
             size="sm"
             variant="outline"
             (click)="clear()"

@@ -9,12 +9,12 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { switchMap, type Observable } from 'rxjs';
-import { TrnButton } from '@trinity/kit/button';
+import { HlmButton } from '@trinity/helm/button';
 import {
   DialogRef,
   TrnAlertService,
   TrnToastService,
-} from '@trinity/kit/overlay';
+} from '@trinity/helm/overlay';
 import {
   RoomModerationService,
   RoomsService,
@@ -53,7 +53,7 @@ const ROLE_PRESETS = [
 @Component({
   selector: 'trn-member-info',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnButton],
+  imports: [AvatarComponent, HlmButton],
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
 })

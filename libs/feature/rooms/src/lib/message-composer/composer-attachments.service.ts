@@ -7,7 +7,7 @@ import {
   type Signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnToastService } from '@trinity/kit/overlay';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { VoiceRecorderService } from '@trinity/platform-native';
 import {
   GifService,

@@ -9,10 +9,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnCheckbox } from '@trinity/kit/checkbox';
-import { TrnInput } from '@trinity/kit/input';
-import { DialogRef, TrnToastService } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { HlmInput } from '@trinity/helm/input';
+import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
   RoomsService,
   SpaceChildrenService,
@@ -50,7 +50,7 @@ export interface AddCandidate {
 @Component({
   selector: 'trn-add-to-space',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, TrnButton, TrnCheckbox, TrnInput, AvatarComponent],
+  imports: [FormField, HlmButton, HlmCheckbox, HlmInput, AvatarComponent],
   templateUrl: './add-to-space.component.html',
   styleUrl: './add-to-space.component.scss',
 })

@@ -97,7 +97,7 @@ pnpm -C electron test
 
 Also outside `pnpm test`: `trinity-e2e` (Playwright, run separately), `libs/testing`
 (the shared render wrapper has no specs of its own), and the generated
-`libs/kit/*` packages other than `overlay`, which are lint and build only.
+`libs/spartan/*` Helm packages other than `overlay`, which are lint and build only.
 
 ## Desktop
 

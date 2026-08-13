@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService } from '@trinity/kit/overlay';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { MessageSourceComponent } from './message-source.component';
 

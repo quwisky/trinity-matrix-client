@@ -5,13 +5,13 @@ import {
   output,
 } from '@angular/core';
 import {
-  TrnDropdownMenu,
-  TrnDropdownMenuItem,
-  TrnDropdownMenuTrigger,
-} from '@trinity/kit/dropdown-menu';
-import { TrnSpinner } from '@trinity/kit/spinner';
-import { TrnTooltip } from '@trinity/kit/tooltip';
-import { TrnIconComponent } from '@trinity/kit/icon';
+  HlmDropdownMenu,
+  HlmDropdownMenuItem,
+  HlmDropdownMenuTrigger,
+} from '@trinity/helm/dropdown-menu';
+import { HlmSpinner } from '@trinity/helm/spinner';
+import { HlmTooltip } from '@trinity/helm/tooltip';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /**
  * The composer's `+`: every way something other than typed text gets into a message.
@@ -26,11 +26,11 @@ import { TrnIconComponent } from '@trinity/kit/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnIconComponent,
-    TrnDropdownMenu,
-    TrnDropdownMenuItem,
-    TrnDropdownMenuTrigger,
-    TrnSpinner,
-    TrnTooltip,
+    HlmDropdownMenu,
+    HlmDropdownMenuItem,
+    HlmDropdownMenuTrigger,
+    HlmSpinner,
+    HlmTooltip,
   ],
   templateUrl: './composer-insert-menu.component.html',
   styleUrl: './composer-insert-menu.component.scss',

@@ -1,5 +1,5 @@
 /*
- * Tailwind v4 + spartan.ng framework wiring for the helm libs (@trinity/kit/*).
+ * Tailwind v4 + spartan.ng framework wiring for the helm libs (@trinity/helm/*).
  *
  * This file is *framework wiring only* — it owns no colour values. The design tokens
  * (both `--trinity-*` and the Helm `--background`/`--card`/… tokens) and every palette
@@ -64,7 +64,7 @@
   --text-13: 0.8125rem;
 
   /*
-   * Indeterminate progress sweep. TrnProgressIndicator toggles
+   * Indeterminate progress sweep. HlmProgressIndicator toggles
    * `.animate-indeterminate` when BrnProgress has no value; this animation drives
    * the fill (a running CSS animation overrides the indicator's inline transform).
    */
@@ -84,7 +84,7 @@
 /*
  * Repoint Helm's destructive *text* at the measured alert red.
  *
- * The generated Helm components (libs/kit/*, owned by @spartan-ng/cli — do not
+ * The generated Helm components (libs/spartan/*, owned by @spartan-ng/cli — do not
  * hand-edit) paint destructive buttons, badges and menu items as `bg-destructive/10..30`
  * with `text-destructive` on top: one token serving as both the background tint and the
  * text drawn on it. That is unfixable by retoning `--destructive`, because the tint IS

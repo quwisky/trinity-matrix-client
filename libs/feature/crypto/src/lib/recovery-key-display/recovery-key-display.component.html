@@ -5,12 +5,12 @@
 }}</code>
 
 <div class="actions">
-  <button trnBtn variant="outline" size="sm" (click)="copy()">
+  <button hlmBtn variant="outline" size="sm" (click)="copy()">
     <trn-icon [name]="copied() ? 'check' : 'copy'" />
     {{ copied() ? 'Copied' : 'Copy' }}
   </button>
   @if (canDownload) {
-    <button trnBtn variant="outline" size="sm" (click)="download()">
+    <button hlmBtn variant="outline" size="sm" (click)="download()">
       <trn-icon name="download" />
       Download
     </button>

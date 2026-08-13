@@ -7,7 +7,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="privacy-send-read-receipts"
 >
-  <trn-checkbox
+  <hlm-checkbox
     [checked]="privacy.sendReadReceipts()"
     (checkedChange)="privacy.setSendReadReceipts($event)"
   />
@@ -22,7 +22,7 @@
   class="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm font-medium"
   data-testid="privacy-link-previews"
 >
-  <trn-checkbox
+  <hlm-checkbox
     [checked]="privacy.linkPreviews()"
     (checkedChange)="privacy.setLinkPreviews($event)"
   />
@@ -47,7 +47,7 @@
     class="flex cursor-pointer items-center gap-3 py-2 pr-4 pl-8 text-sm font-medium"
     data-testid="privacy-link-previews-encrypted"
   >
-    <trn-checkbox
+    <hlm-checkbox
       [checked]="privacy.linkPreviewsInEncrypted()"
       (checkedChange)="privacy.setLinkPreviewsInEncrypted($event)"
     />

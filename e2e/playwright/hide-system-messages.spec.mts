@@ -146,7 +146,7 @@ test.describe('Hide system messages', () => {
     await page.waitForURL(/\/settings\/appearance$/, { timeout: 20_000 });
     const membershipToggle = page
       .getByTestId('timeline-show-membership')
-      .locator('trn-checkbox');
+      .locator('hlm-checkbox');
     await expect(membershipToggle).toBeVisible({ timeout: 15_000 });
     await membershipToggle.click();
 

@@ -10,10 +10,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot, disabled, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnCheckbox } from '@trinity/kit/checkbox';
-import { TrnInput } from '@trinity/kit/input';
-import { DialogRef, TrnToastService } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
+import { HlmInput } from '@trinity/helm/input';
+import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
   HistoryVisibility,
   JoinRule,
@@ -75,9 +75,9 @@ const HISTORY_OPTIONS = [
   imports: [
     FormField,
     FormRoot,
-    TrnButton,
-    TrnCheckbox,
-    TrnInput,
+    HlmButton,
+    HlmCheckbox,
+    HlmInput,
     AvatarFieldComponent,
     BannedMembersComponent,
     RoomAliasesComponent,

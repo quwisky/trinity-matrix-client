@@ -4,8 +4,8 @@ import {
   input,
   output,
 } from '@angular/core';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnSpinner } from '@trinity/kit/spinner';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { type SasEmoji } from '@trinity/data-access/crypto';
 
 /**
@@ -19,7 +19,7 @@ import { type SasEmoji } from '@trinity/data-access/crypto';
   selector: 'trn-sas-compare',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './sas-compare.component.scss',
-  imports: [TrnButton, TrnSpinner],
+  imports: [HlmButton, HlmSpinner],
   templateUrl: './sas-compare.component.html',
 })
 export class SasCompareComponent {

@@ -591,11 +591,11 @@ object form — passing a function or string directly is deprecated, and the typ
 `no-deprecated` rule fails the build on it. Related: a bare `<form>` whose only binding is
 a control triggers a native submit and a full page reload; put it under `[formRoot]`.
 
-### A spec asserting a kit component's host classes is flaky
+### A spec asserting a Helm component's host classes is flaky
 
 **Symptom.** The expected utility classes are sometimes present, sometimes not.
 
-**Cause.** The kit styles its host through an async class manager: an effect plus a
+**Cause.** Helm styles its host through an async class manager: an effect plus a
 document-wide MutationObserver, applying the merged class string on a microtask or
 animation-frame schedule.
 

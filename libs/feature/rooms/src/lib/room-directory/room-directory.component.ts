@@ -10,9 +10,9 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnInput } from '@trinity/kit/input';
-import { DialogRef, TrnToastService } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { DialogRef, TrnToastService } from '@trinity/helm/overlay';
 import {
   PublicRoomsService,
   type PublicRoomSummary,
@@ -37,7 +37,7 @@ export interface DirectoryJoin {
   selector: 'trn-room-directory',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './room-directory.component.html',
-  imports: [FormField, FormRoot, TrnButton, TrnInput, AvatarComponent],
+  imports: [FormField, FormRoot, HlmButton, HlmInput, AvatarComponent],
 })
 export class RoomDirectoryComponent implements OnInit {
   private readonly dialogRef =

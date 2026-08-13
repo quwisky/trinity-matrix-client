@@ -1,7 +1,7 @@
 <footer class="userbar">
   <button
     class="userbar__trigger"
-    [trnDropdownMenuTrigger]="accountMenu"
+    [hlmDropdownMenuTrigger]="accountMenu"
     side="top"
     align="start"
     [attr.aria-label]="accountSummaryLabel()"
@@ -60,13 +60,13 @@
 </footer>
 
 <ng-template #accountMenu>
-  <div trnDropdownMenu>
-    <div trnDropdownMenuLabel>Accounts</div>
-    <div trnDropdownMenuSeparator></div>
+  <div hlmDropdownMenu>
+    <div hlmDropdownMenuLabel>Accounts</div>
+    <div hlmDropdownMenuSeparator></div>
     @for (account of accounts(); track account.userId) {
       <button
         class="account-row"
-        trnDropdownMenuItem
+        hlmDropdownMenuItem
         (triggered)="switchAccount.emit(account.userId)"
         data-testid="account-row"
         [attr.aria-current]="account.userId === activeUserId()"
@@ -96,7 +96,7 @@
     @for (userId of reauthAccounts(); track userId) {
       <button
         class="account-row"
-        trnDropdownMenuItem
+        hlmDropdownMenuItem
         (triggered)="reauthAccount.emit(userId)"
         data-testid="reauth-row"
       >
@@ -109,12 +109,12 @@
       </button>
     }
     @if (canPickAccounts()) {
-      <div trnDropdownMenuSeparator></div>
+      <div hlmDropdownMenuSeparator></div>
       @if (pickAccountsInDialog()) {
         <!-- Narrow layout: a submenu would have nowhere to fly out to, so this opens a
              dialog instead. Same testid, so the affordance is one thing to drive either way. -->
         <button
-          trnDropdownMenuItem
+          hlmDropdownMenuItem
           (triggered)="openAccountPicker.emit()"
           data-testid="show-accounts"
         >
@@ -123,28 +123,28 @@
         </button>
       } @else {
         <button
-          trnDropdownMenuItem
-          [trnDropdownMenuSubTrigger]="showAccountsMenu"
+          hlmDropdownMenuItem
+          [hlmDropdownMenuSubTrigger]="showAccountsMenu"
           data-testid="show-accounts"
         >
           <trn-icon name="users" />
           Show accounts
-          <trn-dropdown-menu-item-sub-indicator />
+          <hlm-dropdown-menu-item-sub-indicator />
         </button>
       }
     }
-    <div trnDropdownMenuSeparator></div>
+    <div hlmDropdownMenuSeparator></div>
     <button
-      trnDropdownMenuItem
+      hlmDropdownMenuItem
       (triggered)="addAccount.emit()"
       data-testid="add-account"
     >
       <trn-icon name="user-plus" />
       Add account
     </button>
-    <div trnDropdownMenuSeparator></div>
+    <div hlmDropdownMenuSeparator></div>
     <button
-      trnDropdownMenuItem
+      hlmDropdownMenuItem
       variant="destructive"
       (triggered)="logout.emit(activeUserId() ?? '')"
       data-testid="logout"
@@ -155,25 +155,25 @@
   </div>
 
   <!-- Which accounts the room list, rail and space pills draw from. Checkboxes keep the
-       menu open (the Trn wrapper defaults keepOpen to true), so several accounts can be
+       menu open (the Hlm wrapper defaults keepOpen to true), so several accounts can be
        ticked in one visit. The active account is disabled rather than merely pre-checked:
        CDK early-returns on a disabled item, so it can neither be unticked nor drift out of
        sync with the state that refuses to drop it. -->
   <ng-template #showAccountsMenu>
-    <div trnDropdownMenuSub>
-      <div trnDropdownMenuLabel>Show accounts</div>
-      <div trnDropdownMenuSeparator></div>
+    <div hlmDropdownMenuSub>
+      <div hlmDropdownMenuLabel>Show accounts</div>
+      <div hlmDropdownMenuSeparator></div>
       @for (account of accounts(); track account.userId) {
         @let isActive = account.userId === activeUserId();
         <button
           class="account-pick"
-          trnDropdownMenuCheckbox
+          hlmDropdownMenuCheckbox
           [checked]="shownAccountIds().has(account.userId)"
           [disabled]="isActive"
           (triggered)="toggleAccountShown.emit(account.userId)"
           [attr.data-testid]="'show-account-' + account.userId"
         >
-          <trn-dropdown-menu-checkbox-indicator />
+          <hlm-dropdown-menu-checkbox-indicator />
           <trn-avatar
             [mxc]="account.avatarMxc"
             [accountId]="account.userId"

@@ -27,7 +27,7 @@
         </button>
         <button
           class="sidebar__action"
-          [trnDropdownMenuTrigger]="spaceMenu"
+          [hlmDropdownMenuTrigger]="spaceMenu"
           align="end"
           [attr.aria-label]="'More actions in ' + spaceName()"
           title="More actions"
@@ -67,7 +67,7 @@
   <div class="sidebar__filter">
     <input
       #filterBox
-      trnInput
+      hlmInput
       class="h-8 w-full pr-8 text-sm"
       type="text"
       [value]="filterQuery()"
@@ -222,10 +222,10 @@
        the old row, on exactly the platform where targets are hardest to hit. #40 adds Space
        settings here. -->
   <ng-template #spaceMenu>
-    <div trnDropdownMenu aria-label="Space actions">
+    <div hlmDropdownMenu aria-label="Space actions">
       @if (hasAnyUnread()) {
         <button
-          trnDropdownMenuItem
+          hlmDropdownMenuItem
           (triggered)="markAllRead.emit()"
           data-testid="mark-all-read"
         >
@@ -237,8 +237,8 @@
            opening the submenu — it was on the old trigger's aria-label, and a screen-reader
            user should not have to walk into a radio group to learn the current value. -->
       <button
-        trnDropdownMenuItem
-        [trnDropdownMenuSubTrigger]="sortMenu"
+        hlmDropdownMenuItem
+        [hlmDropdownMenuSubTrigger]="sortMenu"
         [attr.aria-label]="'Order rooms: ' + sortModeLabel()"
         data-testid="space-sort"
       >
@@ -250,10 +250,10 @@
         <span class="ps-3 text-xs font-normal text-muted-foreground">
           {{ sortModeLabel() }}
         </span>
-        <trn-dropdown-menu-item-sub-indicator />
+        <hlm-dropdown-menu-item-sub-indicator />
       </button>
       <button
-        trnDropdownMenuItem
+        hlmDropdownMenuItem
         (triggered)="inviteToSpace.emit()"
         data-testid="space-invite"
       >
@@ -261,7 +261,7 @@
         Invite people
       </button>
       <button
-        trnDropdownMenuItem
+        hlmDropdownMenuItem
         (triggered)="openSpaceMembers.emit()"
         data-testid="open-space-members"
       >
@@ -270,7 +270,7 @@
       </button>
       @if (canCurateSpace()) {
         <button
-          trnDropdownMenuItem
+          hlmDropdownMenuItem
           (triggered)="addToSpace.emit()"
           data-testid="space-add-rooms"
         >
@@ -278,7 +278,7 @@
           Add existing rooms
         </button>
         <button
-          trnDropdownMenuItem
+          hlmDropdownMenuItem
           (triggered)="manageSpaceRooms.emit()"
           data-testid="space-manage-rooms"
         >
@@ -286,7 +286,7 @@
           Organise rooms
         </button>
         <button
-          trnDropdownMenuItem
+          hlmDropdownMenuItem
           (triggered)="createSubspace.emit()"
           data-testid="space-create-subspace"
         >
@@ -296,7 +296,7 @@
       }
       @if (canConfigureSpace()) {
         <button
-          trnDropdownMenuItem
+          hlmDropdownMenuItem
           (triggered)="openSpaceSettings.emit()"
           data-testid="open-space-settings"
         >
@@ -304,9 +304,9 @@
           Space settings
         </button>
       }
-      <div trnDropdownMenuSeparator></div>
+      <div hlmDropdownMenuSeparator></div>
       <button
-        trnDropdownMenuItem
+        hlmDropdownMenuItem
         variant="destructive"
         (triggered)="leaveSpace.emit()"
         data-testid="space-leave"
@@ -317,28 +317,28 @@
     </div>
 
     <ng-template #sortMenu>
-      <div trnDropdownMenuSub>
-        <div trnDropdownMenuLabel>Order rooms in {{ spaceName() }}</div>
+      <div hlmDropdownMenuSub>
+        <div hlmDropdownMenuLabel>Order rooms in {{ spaceName() }}</div>
         <button
-          trnDropdownMenuRadio
+          hlmDropdownMenuRadio
           [checked]="!sortOverridden()"
           [keepOpen]="false"
           (triggered)="setSortMode.emit(null)"
           data-testid="space-sort-default"
         >
-          <trn-dropdown-menu-radio-indicator />
+          <hlm-dropdown-menu-radio-indicator />
           Use my default ({{ labelFor(defaultSortMode()) }})
         </button>
-        <div trnDropdownMenuSeparator></div>
+        <div hlmDropdownMenuSeparator></div>
         @for (option of sortModes; track option.id) {
           <button
-            trnDropdownMenuRadio
+            hlmDropdownMenuRadio
             [checked]="sortOverridden() && sortMode() === option.id"
             [keepOpen]="false"
             (triggered)="setSortMode.emit(option.id)"
             [attr.data-testid]="'space-sort-' + option.id"
           >
-            <trn-dropdown-menu-radio-indicator />
+            <hlm-dropdown-menu-radio-indicator />
             <span class="flex flex-col items-start gap-0.5">
               <span>{{ option.label }}</span>
               <span class="text-xs font-normal text-muted-foreground">
@@ -349,7 +349,7 @@
         }
         <!-- Favourites are lifted into their own group before any of these orderings is
            visible, so say so rather than letting "Space order" look broken. Trailing helper
-           text, NOT an trnDropdownMenuLabel: that directive captions the group that follows
+           text, NOT an hlmDropdownMenuLabel: that directive captions the group that follows
            it, and there is nothing after this. -->
         <p class="px-3 py-2.5 text-xs text-muted-foreground">
           Favourites stay in their own group.

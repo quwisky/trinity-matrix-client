@@ -7,10 +7,10 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnInput } from '@trinity/kit/input';
-import { TrnLabel } from '@trinity/kit/label';
-import { TrnDialogService } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmLabel } from '@trinity/helm/label';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import {
   PushGatewayService,
   PushService,
@@ -36,7 +36,7 @@ import {
   selector: 'trn-push-gateway-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './push-gateway-block.component.html',
-  imports: [TrnButton, TrnInput, TrnLabel],
+  imports: [HlmButton, HlmInput, HlmLabel],
 })
 export class PushGatewayBlockComponent {
   private readonly gateway = inject(PushGatewayService);

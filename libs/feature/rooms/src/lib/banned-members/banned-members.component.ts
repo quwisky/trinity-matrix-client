@@ -9,8 +9,8 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnToastService } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { TrnToastService } from '@trinity/helm/overlay';
 import {
   RoomModerationService,
   type BannedMember,
@@ -26,7 +26,7 @@ import {
   selector: 'trn-banned-members',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './banned-members.component.html',
-  imports: [TrnButton],
+  imports: [HlmButton],
 })
 export class BannedMembersComponent implements OnInit {
   readonly roomId = input.required<string>();

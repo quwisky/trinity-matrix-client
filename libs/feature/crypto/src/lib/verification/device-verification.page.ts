@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { DialogRef } from '@trinity/kit/overlay';
+import { DialogRef } from '@trinity/helm/overlay';
 import { Observable } from 'rxjs';
 import { VerificationService } from '@trinity/data-access/crypto';
 import {
@@ -17,8 +17,8 @@ import {
   resolveInternalReturnTo,
   runWithBusy,
 } from '@trinity/ui';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnSpinner } from '@trinity/kit/spinner';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -36,9 +36,9 @@ import { SasCompareComponent } from './sas-compare.component';
   imports: [
     NgTemplateOutlet,
     PageHeaderComponent,
-    TrnButton,
+    HlmButton,
     SasCompareComponent,
-    TrnSpinner,
+    HlmSpinner,
   ],
 })
 export class DeviceVerificationPage {

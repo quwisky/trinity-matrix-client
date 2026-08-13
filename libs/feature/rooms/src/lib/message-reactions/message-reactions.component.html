@@ -6,7 +6,7 @@
       [class.reaction--mine]="r.reacted"
       [attr.aria-pressed]="r.reacted"
       [attr.aria-label]="r.hint"
-      [trnTooltip]="r.hint"
+      [hlmTooltip]="r.hint"
       (click)="toggleReaction.emit(r.key)"
     >
       <span class="reaction__key">{{ r.key }}</span>
@@ -18,7 +18,7 @@
     class="reaction reaction--who"
     data-testid="reactions-who"
     aria-label="See who reacted"
-    trnTooltip="See who reacted"
+    hlmTooltip="See who reacted"
     (click)="showReactors.emit()"
   >
     <trn-icon name="users" />

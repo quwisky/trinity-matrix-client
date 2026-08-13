@@ -5,7 +5,7 @@
 # `@trinity/*` TypeScript path aliases (`tsconfig.base.json`) — not pnpm workspace
 # linking. So there are no pnpm sub-packages to install/symlink here:
 #
-#   - `libs/kit/*` carry a `package.json` (name `@trinity/kit/*`) only for the
+#   - `libs/spartan/*` carry a `package.json` (name `@trinity/helm/*`) only for the
 #     `@spartan-ng/cli` generator; they are consumed via the path aliases above.
 #   - `electron/` (name `trinity-desktop`) is a standalone app with its own dependency
 #     tree, installed separately via `pnpm electron:install` — intentionally not a member.

@@ -3,12 +3,12 @@
   <h1 class="sr-only">Sign in to Trinity</h1>
 
   <div class="login-wrapper">
-    <section trnCard class="login-card">
+    <section hlmCard class="login-card">
       <!-- ── Branding ───────────────────────────────────────── -->
-      <div trnCardHeader class="login-card__brand">
-        <h2 trnCardTitle class="login-card__wordmark">Trinity</h2>
+      <div hlmCardHeader class="login-card__brand">
+        <h2 hlmCardTitle class="login-card__wordmark">Trinity</h2>
         @if (!baseUrl()) {
-          <p trnCardDescription class="login-card__subtitle">
+          <p hlmCardDescription class="login-card__subtitle">
             @if (reauthUserId()) {
               Reconnecting your account…
             } @else if (addMode) {
@@ -18,7 +18,7 @@
             }
           </p>
         } @else {
-          <p trnCardDescription class="login-card__subtitle">
+          <p hlmCardDescription class="login-card__subtitle">
             @if (reauthUserId()) {
               Sign in again to reconnect this account
             } @else {
@@ -33,15 +33,15 @@
         }
       </div>
 
-      <div trnCardContent>
+      <div hlmCardContent>
         @if (!baseUrl() && !reauthUserId()) {
           <!-- ── Step 1: Homeserver (skipped in re-auth: the HS is known) ── -->
           <div class="login-card__field">
-            <label trnLabel for="homeserver" class="login-card__label"
+            <label hlmLabel for="homeserver" class="login-card__label"
               >Homeserver</label
             >
             <input
-              trnInput
+              hlmInput
               id="homeserver"
               autofocus
               autocapitalize="off"
@@ -53,7 +53,7 @@
           </div>
 
           <button
-            trnBtn
+            hlmBtn
             class="login-card__submit w-full"
             [disabled]="busy()"
             (click)="discover()"
@@ -64,12 +64,12 @@
           <!-- ── Step 2: Username + Password ────────────────── -->
           @if (passwordSupported()) {
             <div class="login-card__field">
-              <label trnLabel for="username" class="login-card__label"
+              <label hlmLabel for="username" class="login-card__label"
                 >Username</label
               >
               <input
                 #usernameInput
-                trnInput
+                hlmInput
                 id="username"
                 autofocus
                 autocapitalize="off"
@@ -80,12 +80,12 @@
             </div>
 
             <div class="login-card__field">
-              <label trnLabel for="password" class="login-card__label"
+              <label hlmLabel for="password" class="login-card__label"
                 >Password</label
               >
               <div class="relative">
                 <input
-                  trnInput
+                  hlmInput
                   id="password"
                   [type]="passwordVisible() ? 'text' : 'password'"
                   class="pr-10"
@@ -93,7 +93,7 @@
                   (keyup.enter)="loginPassword()"
                 />
                 <button
-                  trnBtn
+                  hlmBtn
                   variant="ghost"
                   size="icon"
                   type="button"
@@ -111,7 +111,7 @@
             </div>
 
             <button
-              trnBtn
+              hlmBtn
               class="login-card__submit w-full"
               [disabled]="busy()"
               (click)="loginPassword()"
@@ -123,7 +123,7 @@
           <!-- ── Step 2b: SSO ───────────────────────────────── -->
           @if (ssoSupported()) {
             <button
-              trnBtn
+              hlmBtn
               variant="outline"
               class="login-card__sso w-full"
               [disabled]="busy()"
@@ -136,7 +136,7 @@
           <!-- ── Step 2c: OIDC (next-gen auth) ──────────────── -->
           @if (oidcSupported()) {
             <button
-              trnBtn
+              hlmBtn
               class="login-card__submit w-full"
               [disabled]="busy()"
               (click)="startOidc()"
@@ -147,7 +147,7 @@
 
             @if (oidcRegistrationSupported() && !reauthUserId()) {
               <button
-                trnBtn
+                hlmBtn
                 variant="outline"
                 class="w-full"
                 [disabled]="busy()"
@@ -167,7 +167,7 @@
             role="status"
             aria-live="polite"
           >
-            <trn-spinner />
+            <hlm-spinner />
             <p class="text-muted-foreground">Working…</p>
           </div>
         }
@@ -182,7 +182,7 @@
         <!-- ── Add / re-auth: cancel back to the app ──────────── -->
         @if (addMode || reauthUserId()) {
           <button
-            trnBtn
+            hlmBtn
             variant="ghost"
             class="login-card__cancel w-full"
             [disabled]="busy()"
@@ -218,7 +218,7 @@
              they were sRGB and the resting tint comes out ~4.41:1, which is both wrong and
              plausible. Pinned by clear-all-data.spec.mts. -->
         <button
-          trnBtn
+          hlmBtn
           variant="ghost"
           size="sm"
           class="mt-4 w-full text-danger hover:text-danger"

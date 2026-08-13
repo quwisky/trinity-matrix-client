@@ -7,8 +7,8 @@ import {
 } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { DOCUMENT } from '@angular/common';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnIconComponent } from '@trinity/kit/icon';
+import { HlmButton } from '@trinity/helm/button';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** How long the "Copied" affordance stays visible after a successful copy. */
 const COPIED_FEEDBACK_MS = 2000;
@@ -24,7 +24,7 @@ const COPIED_FEEDBACK_MS = 2000;
   selector: 'trn-recovery-key-display',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['recovery-key-display.component.scss'],
-  imports: [TrnButton, TrnIconComponent],
+  imports: [HlmButton, TrnIconComponent],
   templateUrl: './recovery-key-display.component.html',
 })
 export class RecoveryKeyDisplayComponent {

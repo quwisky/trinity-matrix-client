@@ -1,18 +1,18 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
-  TrnRadio,
-  TrnRadioGroup,
-  TrnRadioIndicator,
-} from '@trinity/kit/radio-group';
+  HlmRadio,
+  HlmRadioGroup,
+  HlmRadioIndicator,
+} from '@trinity/helm/radio-group';
 import {
-  TrnSelect,
-  TrnSelectContent,
-  TrnSelectItem,
-  TrnSelectPortal,
-  TrnSelectTrigger,
-  TrnSelectValue,
-} from '@trinity/kit/select';
-import { TrnCheckbox } from '@trinity/kit/checkbox';
+  HlmSelect,
+  HlmSelectContent,
+  HlmSelectItem,
+  HlmSelectPortal,
+  HlmSelectTrigger,
+  HlmSelectValue,
+} from '@trinity/helm/select';
+import { HlmCheckbox } from '@trinity/helm/checkbox';
 import {
   DateTimeFormatService,
   ComposerSettingsService,
@@ -44,16 +44,16 @@ import { CodeAppearanceBlockComponent } from './code-appearance-block.component'
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './appearance-settings.component.html',
   imports: [
-    TrnRadioGroup,
-    TrnRadio,
-    TrnRadioIndicator,
-    TrnSelect,
-    TrnSelectTrigger,
-    TrnSelectValue,
-    TrnSelectContent,
-    TrnSelectPortal,
-    TrnSelectItem,
-    TrnCheckbox,
+    HlmRadioGroup,
+    HlmRadio,
+    HlmRadioIndicator,
+    HlmSelect,
+    HlmSelectTrigger,
+    HlmSelectValue,
+    HlmSelectContent,
+    HlmSelectPortal,
+    HlmSelectItem,
+    HlmCheckbox,
     CodeAppearanceBlockComponent,
   ],
 })
@@ -86,7 +86,7 @@ export class AppearanceSettingsComponent {
   }
 
   /**
-   * Label for a text-scale id. `trn-select` renders the collapsed trigger from the bound
+   * Label for a text-scale id. `hlm-select` renders the collapsed trigger from the bound
    * VALUE rather than the chosen option's markup, so without this the control would read
    * "larger" instead of "Larger". An unknown id falls through rather than blanking it.
    */
@@ -117,7 +117,7 @@ export class AppearanceSettingsComponent {
   /**
    * What the collapsed trigger shows for the stored id.
    *
-   * `trn-select` renders the trigger from the bound *value*, not from the chosen option's
+   * `hlm-select` renders the trigger from the bound *value*, not from the chosen option's
    * markup, so without this it would read `recent` rather than `Recent activity`. A stable
    * field rather than an inline arrow, which would be a new reference every change detection.
    */

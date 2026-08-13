@@ -15,7 +15,7 @@
     <label class="room-settings__field">
       <span class="room-settings__label">Name</span>
       <input
-        trnInput
+        hlmInput
         class="w-full"
         [formField]="form.name"
         autocomplete="off"
@@ -26,7 +26,7 @@
     <label class="room-settings__field">
       <span class="room-settings__label">Topic</span>
       <textarea
-        trnInput
+        hlmInput
         class="room-settings__topic w-full"
         [formField]="form.topic"
         rows="3"
@@ -37,7 +37,7 @@
     <label class="room-settings__field">
       <span class="room-settings__label">Who can join</span>
       <select
-        trnInput
+        hlmInput
         class="w-full"
         [formField]="form.joinRule"
         data-testid="room-settings-join-rule"
@@ -55,7 +55,7 @@
         </legend>
         @for (space of parentSpaces(); track space.id) {
           <label class="room-settings__space">
-            <trn-checkbox
+            <hlm-checkbox
               [checked]="isSpaceChecked(space.id)"
               (checkedChange)="toggleSpace(space.id, $event)"
               [attr.data-testid]="'room-settings-space-' + space.id"
@@ -74,7 +74,7 @@
     <label class="room-settings__field">
       <span class="room-settings__label">Who can read history</span>
       <select
-        trnInput
+        hlmInput
         class="w-full"
         [formField]="form.historyVisibility"
         data-testid="room-settings-history"
@@ -101,7 +101,7 @@
 
     <div class="room-settings__actions">
       <button
-        trnBtn
+        hlmBtn
         type="button"
         variant="ghost"
         (click)="close()"
@@ -110,7 +110,7 @@
         Cancel
       </button>
       <button
-        trnBtn
+        hlmBtn
         type="submit"
         [disabled]="saving() || !canSave() || noSpaceChosen()"
         data-testid="room-settings-save"

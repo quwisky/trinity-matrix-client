@@ -9,10 +9,10 @@
   </p>
 
   <div>
-    <label trnLabel for="manual-location">Location</label>
+    <label hlmLabel for="manual-location">Location</label>
     <input
       id="manual-location"
-      trnInput
+      hlmInput
       class="mt-1 w-full"
       placeholder="48.8584, 2.2945 or a map link"
       aria-describedby="manual-location-hint"
@@ -34,7 +34,7 @@
 
   @if (canLocate) {
     <button
-      trnBtn
+      hlmBtn
       variant="outline"
       size="sm"
       class="self-start"
@@ -43,7 +43,7 @@
       data-testid="manual-location-approx"
     >
       @if (locating()) {
-        <trn-spinner class="mr-2" />
+        <hlm-spinner class="mr-2" />
       } @else {
         <trn-icon name="locate-fixed" class="mr-2" />
       }
@@ -60,9 +60,9 @@
   </span>
 
   <div class="flex justify-end gap-2">
-    <button trnBtn variant="ghost" (click)="cancel()">Cancel</button>
+    <button hlmBtn variant="ghost" (click)="cancel()">Cancel</button>
     <button
-      trnBtn
+      hlmBtn
       [disabled]="!coords()"
       (click)="share()"
       data-testid="manual-location-share"

@@ -25,11 +25,11 @@ import {
   switchMap,
   throwError,
 } from 'rxjs';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnCardImports } from '@trinity/kit/card';
-import { TrnInput } from '@trinity/kit/input';
-import { TrnLabel } from '@trinity/kit/label';
-import { TrnSpinner } from '@trinity/kit/spinner';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmCardImports } from '@trinity/helm/card';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmLabel } from '@trinity/helm/label';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import {
   AuthService,
   FactoryResetService,
@@ -42,7 +42,7 @@ import {
   AppRestartService,
   SessionStorageService,
 } from '@trinity/platform-native';
-import { TrnAlertService } from '@trinity/kit/overlay';
+import { TrnAlertService } from '@trinity/helm/overlay';
 import { runWithBusy } from '@trinity/ui';
 import { SsoStateStore } from '../sso-state.store';
 import {
@@ -51,7 +51,7 @@ import {
   confirmClearDataIntent,
 } from './clear-all-data';
 import { OidcStateStore } from '../oidc-state.store';
-import { TrnIconComponent } from '@trinity/kit/icon';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 @Component({
   selector: 'trn-login',
@@ -60,11 +60,11 @@ import { TrnIconComponent } from '@trinity/kit/icon';
   styleUrl: 'login.page.scss',
   imports: [
     FormField,
-    TrnButton,
-    TrnCardImports,
-    TrnInput,
-    TrnLabel,
-    TrnSpinner,
+    HlmButton,
+    HlmCardImports,
+    HlmInput,
+    HlmLabel,
+    HlmSpinner,
     TrnIconComponent,
   ],
 })

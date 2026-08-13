@@ -13,9 +13,9 @@ import {
   DialogRef,
   TrnAlertService,
   TrnToastService,
-} from '@trinity/kit/overlay';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnSpinner } from '@trinity/kit/spinner';
+} from '@trinity/helm/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { EditHistoryService } from '@trinity/data-access/timeline';
 import {
   annotateRevision,
@@ -51,7 +51,7 @@ const REFRESH_DELAY_MS = 600;
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './edit-history.component.html',
   styleUrl: './edit-history.component.scss',
-  imports: [TrnButton, TrnSpinner, SpoilerRevealDirective, MatrixLinkDirective],
+  imports: [HlmButton, HlmSpinner, SpoilerRevealDirective, MatrixLinkDirective],
 })
 export class EditHistoryComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */

@@ -10,9 +10,9 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnInput } from '@trinity/kit/input';
-import { TrnToastService } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { RoomAliasesService } from '@trinity/data-access/rooms';
 
 /** Reject alias localparts containing characters an `#alias:server` can't hold. */
@@ -28,7 +28,7 @@ const INVALID_LOCALPART = /[\s:#]/;
   selector: 'trn-room-aliases',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './room-aliases.component.html',
-  imports: [FormField, TrnButton, TrnInput],
+  imports: [FormField, HlmButton, HlmInput],
 })
 export class RoomAliasesComponent implements OnInit {
   readonly roomId = input.required<string>();

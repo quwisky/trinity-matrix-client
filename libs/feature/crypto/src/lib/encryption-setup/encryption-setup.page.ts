@@ -7,9 +7,9 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
-import { TrnAlertService } from '@trinity/kit/overlay';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnSpinner } from '@trinity/kit/spinner';
+import { TrnAlertService } from '@trinity/helm/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { type PasswordPrompt } from '@trinity/util/matrix';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
@@ -33,8 +33,8 @@ import {
   styleUrls: ['encryption-setup.page.scss'],
   imports: [
     PageHeaderComponent,
-    TrnButton,
-    TrnSpinner,
+    HlmButton,
+    HlmSpinner,
     RecoveryKeySaveComponent,
   ],
 })

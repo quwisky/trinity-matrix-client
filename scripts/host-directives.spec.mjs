@@ -10,9 +10,9 @@ const workspaceRoot = join(import.meta.dirname, '..');
  * `hostDirectives` IS public API: a composed directive's input is bindable on our element
  * only if the entry lists it. The shorthand form (`hostDirectives: [BrnFoo]`) exposes
  * nothing, which is usually right — but it is a decision nobody made, and it hides the
- * opposite case just as well. Trinity shipped that bug: `TrnInput` composed
+ * opposite case just as well. Trinity shipped that bug: `HlmInput` composed
  * `BrnFieldControlDescribedBy`, whose `aria-describedby` input was not listed, so setting
- * `aria-describedby` on an `trnInput` — static or bound — was silently overwritten with
+ * `aria-describedby` on an `hlmInput` — static or bound — was silently overwritten with
  * null. It could not be set at all, and nothing said so (#153).
  *
  * Writing `inputs: []` and `outputs: []` is not ceremony, then: it is the difference between
@@ -21,7 +21,7 @@ const workspaceRoot = join(import.meta.dirname, '..');
  * declares an output, and both are unexposed on purpose (see their sites). This keeps the
  * next composed directive from arriving unexamined.
  *
- * These files are `.prettierignore`d (`libs/kit/**` + `trn-*.ts`, so a CLI re-sync does
+ * These files are `.prettierignore`d (`libs/spartan/**` + `hlm-*.ts`, so a CLI re-sync does
  * not fight prettier-plugin-tailwindcss), which means formatting here is hand-maintained —
  * `pnpm format:check` will not catch a stray comma in them.
  */

@@ -1,0 +1,25 @@
+{
+  "name": "utils",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/spartan/utils/src",
+  "prefix": "hlm",
+  "projectType": "library",
+  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:ng-packagr-lite",
+      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "project": "libs/spartan/utils/ng-package.json",
+        "tsConfig": "libs/spartan/utils/tsconfig.lib.json"
+      },
+      "configurations": {
+        "production": {
+          "tsConfig": "libs/spartan/utils/tsconfig.lib.prod.json"
+        },
+        "development": {}
+      }
+    }
+  }
+}

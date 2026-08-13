@@ -16,11 +16,11 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { AvatarComponent, type AccountBadge } from '@trinity/ui';
-import { DialogRef } from '@trinity/kit/overlay';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnInput } from '@trinity/kit/input';
-import { TrnSpinner } from '@trinity/kit/spinner';
-import { TrnIconComponent, type TrnIconName } from '@trinity/kit/icon';
+import { DialogRef } from '@trinity/helm/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnIconComponent, type TrnIconName } from '@trinity/helm/icon';
 import {
   debounceTime,
   distinctUntilChanged,
@@ -68,7 +68,7 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
 @Component({
   selector: 'trn-quick-switcher',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, AvatarComponent, TrnSpinner, TrnButton, TrnInput],
+  imports: [TrnIconComponent, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
   templateUrl: './quick-switcher.component.html',
   styleUrl: './quick-switcher.component.scss',
 })

@@ -8,7 +8,7 @@
       <!-- Variant carries the pressed state visually, as the room-directory tabs do;
            aria-pressed alone would leave a sighted user unable to tell it apart. -->
       <button
-        trnBtn
+        hlmBtn
         type="button"
         size="sm"
         [variant]="showDiff() ? 'default' : 'outline'"
@@ -23,7 +23,7 @@
 
   @if (busy()) {
     <div class="center" role="status" aria-live="polite">
-      <trn-spinner />
+      <hlm-spinner />
       <p class="text-muted-foreground">Loading earlier versions…</p>
     </div>
   } @else if (error(); as message) {
@@ -48,7 +48,7 @@
             }}</time>
             @if (entry.removable) {
               <button
-                trnBtn
+                hlmBtn
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -90,7 +90,7 @@
 
   <div class="flex justify-end">
     <button
-      trnBtn
+      hlmBtn
       variant="ghost"
       size="sm"
       data-testid="edit-history-close"

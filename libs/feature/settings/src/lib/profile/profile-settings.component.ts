@@ -8,13 +8,13 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnTooltip } from '@trinity/kit/tooltip';
-import { TrnInput } from '@trinity/kit/input';
-import { TrnLabel } from '@trinity/kit/label';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmLabel } from '@trinity/helm/label';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { ProfileService } from '@trinity/data-access/profile';
-import { TrnIconComponent } from '@trinity/kit/icon';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** Profile settings sub-page: avatar (with a corner change badge) + display name. */
 @Component({
@@ -24,10 +24,10 @@ import { TrnIconComponent } from '@trinity/kit/icon';
   imports: [
     AvatarComponent,
     TrnIconComponent,
-    TrnButton,
-    TrnTooltip,
-    TrnInput,
-    TrnLabel,
+    HlmButton,
+    HlmTooltip,
+    HlmInput,
+    HlmLabel,
   ],
 })
 export class ProfileSettingsComponent {

@@ -10,7 +10,7 @@ import { AvatarComponent } from '@trinity/ui';
 import { type MemberSummary } from '@trinity/data-access/rooms';
 import { PresenceService } from '@trinity/data-access/profile';
 import { type PresenceState } from '@trinity/util/matrix';
-import { TrnIconComponent, type TrnIconName } from '@trinity/kit/icon';
+import { TrnIconComponent, type TrnIconName } from '@trinity/helm/icon';
 import {
   MEMBER_ROLE_LABEL,
   MEMBER_ROLE_ORDER,

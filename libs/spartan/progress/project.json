@@ -1,0 +1,25 @@
+{
+  "name": "progress",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/spartan/progress/src",
+  "prefix": "hlm",
+  "projectType": "library",
+  "tags": ["type:ui", "scope:shared", "ui:vendor-wrapper"],
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:ng-packagr-lite",
+      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "project": "libs/spartan/progress/ng-package.json",
+        "tsConfig": "libs/spartan/progress/tsconfig.lib.json"
+      },
+      "configurations": {
+        "production": {
+          "tsConfig": "libs/spartan/progress/tsconfig.lib.prod.json"
+        },
+        "development": {}
+      }
+    }
+  }
+}

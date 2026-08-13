@@ -17,7 +17,7 @@
     </p>
   }
 
-  <trn-radio-group
+  <hlm-radio-group
     class="px-4 py-2"
     [value]="provider()"
     (valueChange)="onProviderChange($event)"
@@ -27,20 +27,20 @@
         class="flex cursor-pointer items-center gap-3 text-sm font-medium"
         [attr.data-testid]="'gif-provider-' + p.id"
       >
-        <trn-radio [value]="p.id"><trn-radio-indicator /></trn-radio>
+        <hlm-radio [value]="p.id"><hlm-radio-indicator /></hlm-radio>
         {{ p.label }}
       </label>
     }
-  </trn-radio-group>
+  </hlm-radio-group>
 
   <div
     class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
   >
     <div class="min-w-0 flex-1">
-      <label trnLabel for="gif-api-key">{{ selected().label }} API key</label>
+      <label hlmLabel for="gif-api-key">{{ selected().label }} API key</label>
       <input
         id="gif-api-key"
-        trnInput
+        hlmInput
         type="text"
         autocomplete="off"
         autocapitalize="none"
@@ -53,7 +53,7 @@
       />
     </div>
     <button
-      trnBtn
+      hlmBtn
       size="sm"
       class="ml-auto shrink-0"
       [disabled]="!dirty()"
@@ -64,7 +64,7 @@
     </button>
     @if (configured()) {
       <button
-        trnBtn
+        hlmBtn
         variant="ghost"
         size="sm"
         class="shrink-0"

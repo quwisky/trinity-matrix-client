@@ -160,7 +160,7 @@ test.describe('Read-receipt privacy', () => {
     await page.waitForURL(/\/settings\/privacy$/, { timeout: 20_000 });
     const toggle = page
       .getByTestId('privacy-send-read-receipts')
-      .locator('trn-checkbox');
+      .locator('hlm-checkbox');
     await expect(toggle).toBeVisible({ timeout: 15_000 });
     await toggle.click();
 

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService, TrnToastService } from '@trinity/kit/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/helm/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   CreatePollDialogComponent,

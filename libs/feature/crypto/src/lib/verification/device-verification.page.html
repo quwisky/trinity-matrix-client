@@ -6,7 +6,7 @@
       class="flex items-center gap-2 border-b border-solid border-border p-3"
     >
       <h2 class="flex-1 text-base font-semibold">Verify device</h2>
-      <button trnBtn variant="ghost" size="sm" (click)="cancelAndLeave()">
+      <button hlmBtn variant="ghost" size="sm" (click)="cancelAndLeave()">
         Close
       </button>
     </div>
@@ -18,7 +18,7 @@
   <trn-page-header title="Verify device">
     <button
       trnHeaderActions
-      trnBtn
+      hlmBtn
       variant="ghost"
       size="sm"
       (click)="cancelAndLeave()"
@@ -65,7 +65,7 @@
               </p>
             }
             <button
-              trnBtn
+              hlmBtn
               class="mt-4 w-full"
               data-testid="verify-accept"
               [disabled]="busy()"
@@ -74,7 +74,7 @@
               Accept
             </button>
             <button
-              trnBtn
+              hlmBtn
               variant="ghost"
               class="mt-2 w-full"
               [disabled]="busy()"
@@ -87,7 +87,7 @@
             <p class="text-muted-foreground">
               Accept the verification request on your other session.
             </p>
-            <div class="center"><trn-spinner /></div>
+            <div class="center"><hlm-spinner /></div>
           }
         }
         @case ('ready') {
@@ -96,7 +96,7 @@
             Both sessions are ready. Begin comparing emoji.
           </p>
           <button
-            trnBtn
+            hlmBtn
             class="mt-4 w-full"
             data-testid="verify-start-sas"
             [disabled]="busy()"
@@ -108,7 +108,7 @@
         @case ('waiting') {
           <h2 class="heading">Setting up…</h2>
           <div class="center" role="status" aria-live="polite">
-            <trn-spinner />
+            <hlm-spinner />
             <p>
               <span class="text-muted-foreground">Generating the emoji…</span>
             </p>
@@ -143,7 +143,7 @@
             <p class="text-muted-foreground">
               This session is now trusted. Your encrypted history will sync.
             </p>
-            <button trnBtn class="mt-4 w-full" (click)="finish()">Done</button>
+            <button hlmBtn class="mt-4 w-full" (click)="finish()">Done</button>
           </div>
         }
         @case ('cancelled') {
@@ -151,7 +151,7 @@
             <div class="result result--bad" aria-hidden="true">⚠️</div>
             <h2 class="heading">Verification stopped</h2>
             <p class="text-muted-foreground">{{ v.cancelReason }}</p>
-            <button trnBtn class="mt-4 w-full" (click)="finish()">Close</button>
+            <button hlmBtn class="mt-4 w-full" (click)="finish()">Close</button>
           </div>
         }
       }
@@ -163,7 +163,7 @@
         session that's already signed in — an alternative to your recovery key.
       </p>
       <button
-        trnBtn
+        hlmBtn
         class="mt-4 w-full"
         data-testid="verify-start"
         [disabled]="busy()"

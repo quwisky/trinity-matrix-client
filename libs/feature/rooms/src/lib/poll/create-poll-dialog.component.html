@@ -4,10 +4,10 @@
   <h2 class="text-base font-semibold">Create poll</h2>
 
   <div>
-    <label trnLabel for="poll-question">Question</label>
+    <label hlmLabel for="poll-question">Question</label>
     <input
       id="poll-question"
-      trnInput
+      hlmInput
       class="mt-1 w-full"
       placeholder="Ask something…"
       [value]="question()"
@@ -20,7 +20,7 @@
     @for (option of options(); track $index) {
       <div class="flex items-center gap-2">
         <input
-          trnInput
+          hlmInput
           class="w-full"
           [placeholder]="'Option ' + ($index + 1)"
           [value]="option"
@@ -30,7 +30,7 @@
         @if (options().length > minOptions) {
           <button
             type="button"
-            trnBtn
+            hlmBtn
             variant="ghost"
             size="icon"
             class="shrink-0"
@@ -45,7 +45,7 @@
     }
     @if (options().length < maxOptions) {
       <button
-        trnBtn
+        hlmBtn
         variant="ghost"
         size="sm"
         class="self-start"
@@ -58,9 +58,9 @@
   </div>
 
   <div class="flex justify-end gap-2">
-    <button trnBtn variant="ghost" (click)="cancel()">Cancel</button>
+    <button hlmBtn variant="ghost" (click)="cancel()">Cancel</button>
     <button
-      trnBtn
+      hlmBtn
       [disabled]="!valid()"
       (click)="create()"
       data-testid="poll-create"

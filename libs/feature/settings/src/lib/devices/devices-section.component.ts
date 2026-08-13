@@ -6,13 +6,13 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { TrnAlertService } from '@trinity/kit/overlay';
-import { TrnBadge } from '@trinity/kit/badge';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnTooltip } from '@trinity/kit/tooltip';
+import { TrnAlertService } from '@trinity/helm/overlay';
+import { HlmBadge } from '@trinity/helm/badge';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmTooltip } from '@trinity/helm/tooltip';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
 import { DevicesService, type DeviceInfo } from '@trinity/data-access/crypto';
-import { TrnIconComponent } from '@trinity/kit/icon';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /**
  * Device-management section of the Settings page: lists the user's sessions with
@@ -25,7 +25,7 @@ import { TrnIconComponent } from '@trinity/kit/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './devices-section.component.html',
   styleUrl: './devices-section.component.scss',
-  imports: [TrnIconComponent, TrnBadge, TrnButton, TrnTooltip],
+  imports: [TrnIconComponent, HlmBadge, HlmButton, HlmTooltip],
 })
 export class DevicesSectionComponent {
   private readonly devicesSvc = inject(DevicesService);

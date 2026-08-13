@@ -7,8 +7,8 @@ import {
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { catchError, of, switchMap } from 'rxjs';
-import { TrnButton } from '@trinity/kit/button';
-import { DialogRef } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { DialogRef } from '@trinity/helm/overlay';
 import { ProfileService, PresenceService } from '@trinity/data-access/profile';
 import { AvatarComponent } from '@trinity/ui';
 import { initialOf } from '@trinity/util/matrix';
@@ -21,7 +21,7 @@ import { initialOf } from '@trinity/util/matrix';
 @Component({
   selector: 'trn-user-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnButton],
+  imports: [AvatarComponent, HlmButton],
   templateUrl: './user-card.component.html',
   styleUrl: './user-card.component.scss',
 })

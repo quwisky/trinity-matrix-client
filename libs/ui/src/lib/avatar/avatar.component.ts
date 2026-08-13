@@ -8,10 +8,10 @@ import {
   signal,
 } from '@angular/core';
 import {
-  TrnAvatar,
-  TrnAvatarFallback,
-  TrnAvatarImage,
-} from '@trinity/kit/avatar';
+  HlmAvatar,
+  HlmAvatarFallback,
+  HlmAvatarImage,
+} from '@trinity/helm/avatar';
 import { type PresenceState, presenceLabel } from '@trinity/util/matrix';
 import { AVATAR_RESOLVER } from './avatar-resolver';
 
@@ -81,19 +81,19 @@ function readableInk(hex: string): string {
 }
 
 /**
- * Discord-style avatar over the spartan {@link TrnAvatar}: the image shows once it
+ * Discord-style avatar over the spartan {@link HlmAvatar}: the image shows once it
  * loads (BrnAvatar swaps to the initials fallback while loading or on error). Bind
  * either a ready `url`, or an `mxc` which is resolved via the injected
  * {@link AVATAR_RESOLVER} (authenticated blob URL) when one is provided.
  *
  * The helm avatar is fixed-size, circular, and neutral-filled, so `size` (arbitrary
  * px), `square` (rounded-rect for spaces), and the name-hashed fallback colour are
- * applied as inline styles, which win over trn's utility classes.
+ * applied as inline styles, which win over hlm's utility classes.
  */
 @Component({
   selector: 'trn-avatar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnAvatar, TrnAvatarImage, TrnAvatarFallback],
+  imports: [HlmAvatar, HlmAvatarImage, HlmAvatarFallback],
   templateUrl: './avatar.component.html',
   styles: [
     `

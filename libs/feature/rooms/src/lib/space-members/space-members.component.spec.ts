@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { DialogRef } from '@trinity/kit/overlay';
+import { DialogRef } from '@trinity/helm/overlay';
 import { RoomsService, type MemberSummary } from '@trinity/data-access/rooms';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';

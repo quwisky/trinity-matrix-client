@@ -7,7 +7,7 @@ import { type PresenceState } from '@trinity/util/matrix';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
 import { MemberListComponent } from './member-list.component';
-import { provideTrnIcons } from '@trinity/kit/icon';
+import { provideTrnIcons } from '@trinity/helm/icon';
 
 // Stub presence per user id (defaults to offline).
 const presenceMap: Record<string, PresenceState> = {

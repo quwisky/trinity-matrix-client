@@ -1,7 +1,7 @@
 {
-  "componentsPath": "libs/kit",
+  "componentsPath": "libs/spartan",
   "buildable": false,
   "generateAs": "library",
   "style": "nova",
-  "importAlias": "@trinity/kit"
+  "importAlias": "@trinity/helm"
 }

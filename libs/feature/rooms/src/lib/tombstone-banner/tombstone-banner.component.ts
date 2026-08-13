@@ -4,10 +4,10 @@ import {
   inject,
   output,
 } from '@angular/core';
-import { TrnButton } from '@trinity/kit/button';
+import { HlmButton } from '@trinity/helm/button';
 import { TimelineService } from '@trinity/data-access/timeline';
 import { BannerComponent } from '@trinity/ui';
-import { TrnIconComponent } from '@trinity/kit/icon';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /**
  * Banner shown at the top of a room that has been **upgraded** (`m.room.tombstone`):
@@ -18,7 +18,7 @@ import { TrnIconComponent } from '@trinity/kit/icon';
 @Component({
   selector: 'trn-tombstone-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, TrnButton, BannerComponent],
+  imports: [TrnIconComponent, HlmButton, BannerComponent],
   templateUrl: './tombstone-banner.component.html',
 })
 export class TombstoneBannerComponent {

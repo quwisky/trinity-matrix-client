@@ -34,8 +34,8 @@ Everything lives under [`docs/`](docs/index.md), grouped by who is reading.
 
 - **Monorepo:** Nx 23 (apps/libs, task graph + caching, enforced module boundaries)
 - **UI:** Angular 22 (standalone components, signals) + **spartan-ng** — Brain
-  (headless `@spartan-ng/brain`) + Helm (styled, copied into `libs/kit/*`,
-  aliased `@trinity/kit/*`) on **Tailwind CSS v4**
+  (headless `@spartan-ng/brain`) + Helm (styled, copied into `libs/spartan/*`,
+  aliased `@trinity/helm/*`) on **Tailwind CSS v4**
 - **Native:** Capacitor 8 (iOS via SPM, Android) + a hand-rolled Electron desktop
   shell (`electron/`) for Windows/macOS/Linux
 - **Protocol:** `matrix-js-sdk` 42
@@ -130,8 +130,8 @@ libs/
   ui/                 @trinity/ui — reusable presentational components (avatar +
                       mxc resolver token, banner, page header, media bubble,
                       message toolbar, encryption-dialog service); may use
-                      @trinity/kit/* + @trinity/util/* but no data-access/state deps  [type:ui]
-  spartan/*           @trinity/kit/* — styled spartan-ng Helm components over
+                      @trinity/helm/* + @trinity/util/* but no data-access/state deps  [type:ui]
+  spartan/*           @trinity/helm/* — styled spartan-ng Helm components over
                       headless Brain primitives (button, input, card, overlay,
                       dropdown-menu, …), generated via @spartan-ng/cli  [type:ui]
 e2e/playwright/     @nx/playwright app-journey specs (run: nx e2e trinity-e2e)

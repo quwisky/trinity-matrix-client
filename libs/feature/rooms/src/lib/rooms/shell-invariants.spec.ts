@@ -12,7 +12,7 @@ import { RoomsPage } from './rooms.page';
 import { runWithBusy } from '@trinity/ui';
 import { throwError } from 'rxjs';
 import { MockProvider } from 'ng-mocks';
-import { TrnToastService } from '@trinity/kit/overlay';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { describe, expect, it } from 'vitest';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';

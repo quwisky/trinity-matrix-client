@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService } from '@trinity/kit/overlay';
+import { TrnDialogService } from '@trinity/helm/overlay';
 import { AccountPickerComponent } from './account-picker.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 

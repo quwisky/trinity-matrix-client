@@ -6,14 +6,14 @@ import {
   signal,
 } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnInput } from '@trinity/kit/input';
-import { TrnLabel } from '@trinity/kit/label';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmLabel } from '@trinity/helm/label';
 import {
-  TrnRadio,
-  TrnRadioGroup,
-  TrnRadioIndicator,
-} from '@trinity/kit/radio-group';
+  HlmRadio,
+  HlmRadioGroup,
+  HlmRadioIndicator,
+} from '@trinity/helm/radio-group';
 import {
   GIF_PROVIDERS,
   GifSettingsService,
@@ -33,12 +33,12 @@ import {
   styleUrl: './gifs-section.component.scss',
   imports: [
     TitleCasePipe,
-    TrnButton,
-    TrnInput,
-    TrnLabel,
-    TrnRadioGroup,
-    TrnRadio,
-    TrnRadioIndicator,
+    HlmButton,
+    HlmInput,
+    HlmLabel,
+    HlmRadioGroup,
+    HlmRadio,
+    HlmRadioIndicator,
   ],
 })
 export class GifsSectionComponent {

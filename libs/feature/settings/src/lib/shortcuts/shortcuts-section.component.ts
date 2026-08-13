@@ -5,8 +5,8 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnAlertService, TrnToastService } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import {
   KeyboardShortcutsService,
   chordFromEvent,
@@ -38,7 +38,7 @@ interface ShortcutGroup {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shortcuts-section.component.html',
   styleUrl: './shortcuts-section.component.scss',
-  imports: [TrnButton],
+  imports: [HlmButton],
   host: {
     // Active only while capturing (guarded inside the handler), so it never intercepts
     // ordinary keys. `window` so a chord is caught wherever focus sits in the section.

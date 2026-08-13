@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnAlertService, TrnToastService } from '@trinity/kit/overlay';
+import { TrnAlertService, TrnToastService } from '@trinity/helm/overlay';
 import { RoomModerationService } from '@trinity/data-access/rooms';
 
 /**

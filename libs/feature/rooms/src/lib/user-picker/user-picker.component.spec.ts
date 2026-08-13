@@ -1,4 +1,4 @@
-import { DialogRef } from '@trinity/kit/overlay';
+import { DialogRef } from '@trinity/helm/overlay';
 import {
   RoomsService,
   type UserSearchResult,

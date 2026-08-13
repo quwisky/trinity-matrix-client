@@ -5,10 +5,10 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { DialogRef } from '@trinity/kit/overlay';
+import { DialogRef } from '@trinity/helm/overlay';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnInput } from '@trinity/kit/input';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
 import { isoDateOf, localDayStartFromIso } from '@trinity/util/matrix';
 
 /**
@@ -25,7 +25,7 @@ import { isoDateOf, localDayStartFromIso } from '@trinity/util/matrix';
 @Component({
   selector: 'trn-jump-to-date',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, FormRoot, TrnButton, TrnInput],
+  imports: [FormField, FormRoot, HlmButton, HlmInput],
   templateUrl: './jump-to-date.component.html',
   styleUrl: './jump-to-date.component.scss',
 })

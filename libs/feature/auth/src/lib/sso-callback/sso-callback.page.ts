@@ -9,8 +9,8 @@ import {
 import { Location } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnSpinner } from '@trinity/kit/spinner';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmSpinner } from '@trinity/helm/spinner';
 import { AuthService } from '@trinity/data-access/auth';
 import { SsoStateStore } from '../sso-state.store';
 import { OidcStateStore } from '../oidc-state.store';
@@ -33,7 +33,7 @@ import { OidcStateStore } from '../oidc-state.store';
   selector: 'trn-sso-callback',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './sso-callback.page.html',
-  imports: [TrnButton, TrnSpinner],
+  imports: [HlmButton, HlmSpinner],
 })
 export class SsoCallbackPage implements OnInit {
   private readonly auth = inject(AuthService);

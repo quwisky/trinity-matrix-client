@@ -5,10 +5,10 @@ import {
   inject,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { TrnButton } from '@trinity/kit/button';
+import { HlmButton } from '@trinity/helm/button';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { BannerComponent, EncryptionDialogService } from '@trinity/ui';
-import { TrnIconComponent } from '@trinity/kit/icon';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** Which encryption flow a banner action triggers. */
 type BannerActionKind = 'setup' | 'unlock' | 'verify';
@@ -33,7 +33,7 @@ interface BannerAction {
   selector: 'trn-encryption-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['encryption-banner.component.scss'],
-  imports: [TrnIconComponent, TrnButton, BannerComponent],
+  imports: [TrnIconComponent, HlmButton, BannerComponent],
   templateUrl: './encryption-banner.component.html',
 })
 export class EncryptionBannerComponent {

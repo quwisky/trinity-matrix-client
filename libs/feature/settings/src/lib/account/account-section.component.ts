@@ -16,13 +16,13 @@ import {
   validateTree,
 } from '@angular/forms/signals';
 import { Browser } from '@capacitor/browser';
-import { TrnButton } from '@trinity/kit/button';
-import { TrnInput } from '@trinity/kit/input';
-import { TrnLabel } from '@trinity/kit/label';
-import { TrnToastService } from '@trinity/kit/overlay';
+import { HlmButton } from '@trinity/helm/button';
+import { HlmInput } from '@trinity/helm/input';
+import { HlmLabel } from '@trinity/helm/label';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { runWithBusy } from '@trinity/ui';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
-import { TrnIconComponent } from '@trinity/kit/icon';
+import { TrnIconComponent } from '@trinity/helm/icon';
 
 /** Minimum length we require for a new password (a light client-side guard). */
 const MIN_PASSWORD = 8;
@@ -92,9 +92,9 @@ const passwordSchema = schema<PasswordModel>((path) => {
     FormField,
     FormRoot,
     TrnIconComponent,
-    TrnButton,
-    TrnInput,
-    TrnLabel,
+    HlmButton,
+    HlmInput,
+    HlmLabel,
   ],
 })
 export class AccountSectionComponent {

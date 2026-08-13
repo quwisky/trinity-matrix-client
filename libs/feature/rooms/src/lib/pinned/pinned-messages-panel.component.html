@@ -7,12 +7,12 @@
   >
     <h2 class="flex-1 text-base font-semibold">Pinned messages</h2>
     <button
-      trnBtn
+      hlmBtn
       variant="ghost"
       size="icon"
       (click)="close()"
       data-testid="pinned-close"
-      trnTooltip="Close pinned messages"
+      hlmTooltip="Close pinned messages"
       aria-label="Close pinned messages"
     >
       <trn-icon name="x" class="text-xl" />
@@ -38,13 +38,13 @@
 
         @if (canPin()) {
           <button
-            trnBtn
+            hlmBtn
             variant="ghost"
             size="icon"
             class="pin-item__unpin"
             data-testid="pinned-unpin"
             (click)="unpin(p.id)"
-            trnTooltip="Unpin message"
+            hlmTooltip="Unpin message"
             [attr.aria-label]="'Unpin message from ' + p.senderName"
           >
             <trn-icon name="pin-off" />

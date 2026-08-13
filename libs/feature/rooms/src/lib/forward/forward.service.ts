@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnToastService } from '@trinity/kit/overlay';
+import { TrnToastService } from '@trinity/helm/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 

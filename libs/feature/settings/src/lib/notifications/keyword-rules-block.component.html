@@ -47,7 +47,7 @@
             <label
               class="flex cursor-pointer items-center gap-2 text-13 text-muted-foreground"
             >
-              <trn-checkbox
+              <hlm-checkbox
                 [checked]="soundOf(keyword)"
                 [disabled]="isBusy(keyword.ruleId)"
                 (checkedChange)="toggleSound(keyword, $event)"
@@ -57,7 +57,7 @@
               Sound
             </label>
             <button
-              trnBtn
+              hlmBtn
               type="button"
               variant="outline"
               size="sm"
@@ -76,7 +76,7 @@
 
   <div class="flex items-center gap-2 px-4 py-2">
     <input
-      trnInput
+      hlmInput
       class="min-w-0 flex-1"
       [formField]="keywordForm.word"
       placeholder="Add a word…"
@@ -86,7 +86,7 @@
       data-testid="keyword-input"
     />
     <button
-      trnBtn
+      hlmBtn
       type="button"
       variant="outline"
       size="sm"
