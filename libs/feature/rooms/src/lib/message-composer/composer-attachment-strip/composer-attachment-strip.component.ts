@@ -4,7 +4,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import { HlmProgress, HlmProgressIndicator } from '@trinity/helm/progress';
+import { TrnProgressComponent } from '@trinity/components/progress';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /**
@@ -19,7 +19,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
 @Component({
   selector: 'trn-composer-attachment-strip',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, HlmProgress, HlmProgressIndicator],
+  imports: [TrnIconComponent, TrnProgressComponent],
   templateUrl: './composer-attachment-strip.component.html',
   styleUrl: './composer-attachment-strip.component.scss',
 })

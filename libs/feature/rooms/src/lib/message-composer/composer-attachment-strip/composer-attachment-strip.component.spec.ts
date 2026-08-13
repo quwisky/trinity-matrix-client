@@ -32,7 +32,9 @@ describe('ComposerAttachmentStripComponent', () => {
     // helm/BrnProgress scales the fraction onto its 0–100 range.
     expect(
       Number(
-        container.querySelector('hlm-progress')?.getAttribute('aria-valuenow'),
+        container
+          .querySelector('trn-progress [role="progressbar"]')
+          ?.getAttribute('aria-valuenow'),
       ),
     ).toBeCloseTo(42, 5);
   });
@@ -47,7 +49,9 @@ describe('ComposerAttachmentStripComponent', () => {
       container.querySelector('[data-testid=upload-progress]'),
     ).not.toBeNull();
     expect(
-      container.querySelector('hlm-progress')?.getAttribute('aria-valuenow'),
+      container
+        .querySelector('trn-progress [role="progressbar"]')
+        ?.getAttribute('aria-valuenow'),
     ).toBeNull();
     expect(
       container.querySelector('[data-testid=upload-progress]')?.textContent,
@@ -108,7 +112,9 @@ describe('ComposerAttachmentStripComponent', () => {
     });
 
     expect(
-      container.querySelector('hlm-progress')?.getAttribute('aria-label'),
+      container
+        .querySelector('trn-progress [role="progressbar"]')
+        ?.getAttribute('aria-label'),
     ).toBe('Uploading attachment');
     expect(
       container

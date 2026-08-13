@@ -9,7 +9,7 @@ import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { CryptoService } from '@trinity/data-access/crypto';
 import { type PasswordPrompt } from '@trinity/util/matrix';
 import { PageHeaderComponent, runWithBusy } from '@trinity/ui';
@@ -34,7 +34,7 @@ import {
   imports: [
     PageHeaderComponent,
     HlmButton,
-    HlmSpinner,
+    TrnSpinnerComponent,
     RecoveryKeySaveComponent,
   ],
 })

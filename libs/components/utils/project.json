@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "components-utils",
+  "projectType": "library",
+  "sourceRoot": "libs/components/utils/src",
+  "prefix": "trn",
+  "tags": ["type:ui", "scope:shared", "ui:public"],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

@@ -11,8 +11,8 @@ import { parseLocationInput } from '@trinity/util/matrix';
 import { GeolocationService, type GeoPoint } from '@trinity/platform-native';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnLabel } from '@trinity/components/label';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -27,7 +27,13 @@ import { TrnIconComponent } from '@trinity/components/icon';
 @Component({
   selector: 'trn-manual-location-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, HlmButton, HlmInput, HlmLabel, HlmSpinner],
+  imports: [
+    TrnIconComponent,
+    HlmButton,
+    HlmInput,
+    TrnLabel,
+    TrnSpinnerComponent,
+  ],
   templateUrl: './manual-location-dialog.component.html',
 })
 export class ManualLocationDialogComponent {

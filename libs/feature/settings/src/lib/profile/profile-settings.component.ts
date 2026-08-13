@@ -11,7 +11,7 @@ import {
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
+import { TrnLabel } from '@trinity/components/label';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { ProfileService } from '@trinity/data-access/profile';
 import { TrnIconComponent } from '@trinity/components/icon';
@@ -27,7 +27,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
     HlmButton,
     HlmTooltip,
     HlmInput,
-    HlmLabel,
+    TrnLabel,
   ],
 })
 export class ProfileSettingsComponent {

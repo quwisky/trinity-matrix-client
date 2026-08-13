@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
+import { TrnLabel } from '@trinity/components/label';
 import {
   HlmRadio,
   HlmRadioGroup,
@@ -40,7 +40,7 @@ const MAX_STATUS_LENGTH = 60;
   imports: [
     HlmButton,
     HlmInput,
-    HlmLabel,
+    TrnLabel,
     HlmRadioGroup,
     HlmRadio,
     HlmRadioIndicator,

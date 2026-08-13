@@ -18,7 +18,7 @@ import { TimelineService } from '@trinity/data-access/timeline';
 import { AvatarComponent, runWithBusy } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnIconComponent } from '@trinity/components/icon';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
@@ -53,7 +53,13 @@ interface HighlightPart {
 @Component({
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, AvatarComponent, HlmSpinner, HlmButton, HlmInput],
+  imports: [
+    TrnIconComponent,
+    AvatarComponent,
+    TrnSpinnerComponent,
+    HlmButton,
+    HlmInput,
+  ],
   templateUrl: './message-search.component.html',
   styleUrl: './message-search.component.scss',
 })

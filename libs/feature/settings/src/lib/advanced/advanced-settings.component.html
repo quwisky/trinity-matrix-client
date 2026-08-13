@@ -27,14 +27,14 @@
     @if (editor(); as loaded) {
       <!-- Not a <label for>: the editor's own text area is built by CodeMirror and has no id
            to point at, so it carries the accessible name itself (aria-label). -->
-      <span hlmLabel class="block">Settings JSON</span>
+      <span trnLabel class="block">Settings JSON</span>
       <ng-container
         [trnConfigEditorOutlet]="loaded"
         [value]="editorValue()"
         (edited)="onEditText($event)"
       />
     } @else {
-      <label hlmLabel for="advanced-config-json">Settings JSON</label>
+      <label trnLabel for="advanced-config-json">Settings JSON</label>
       <textarea
         id="advanced-config-json"
         hlmTextarea

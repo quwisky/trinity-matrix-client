@@ -9,7 +9,7 @@ import {
   HlmDropdownMenuItem,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { TrnIconComponent } from '@trinity/components/icon';
 
@@ -29,7 +29,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
     HlmDropdownMenu,
     HlmDropdownMenuItem,
     HlmDropdownMenuTrigger,
-    HlmSpinner,
+    TrnSpinnerComponent,
     HlmTooltip,
   ],
   templateUrl: './composer-insert-menu.component.html',

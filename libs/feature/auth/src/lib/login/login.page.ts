@@ -26,10 +26,10 @@ import {
   throwError,
 } from 'rxjs';
 import { HlmButton } from '@trinity/helm/button';
-import { HlmCardImports } from '@trinity/helm/card';
+import { TrnCardImports } from '@trinity/components/card';
 import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnLabel } from '@trinity/components/label';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import {
   AuthService,
   FactoryResetService,
@@ -61,10 +61,10 @@ import { TrnIconComponent } from '@trinity/components/icon';
   imports: [
     FormField,
     HlmButton,
-    HlmCardImports,
+    TrnCardImports,
     HlmInput,
-    HlmLabel,
-    HlmSpinner,
+    TrnLabel,
+    TrnSpinnerComponent,
     TrnIconComponent,
   ],
 })

@@ -284,7 +284,9 @@ describe('MessageComposerComponent', () => {
     const wrapper = () =>
       container.querySelector('[data-testid=upload-progress]');
     const bar = () =>
-      container.querySelector('hlm-progress') as HTMLElement | null;
+      container.querySelector(
+        'trn-progress [role="progressbar"]',
+      ) as HTMLElement | null;
 
     // Idle: no progress UI.
     expect(wrapper()).toBeNull();
@@ -1156,7 +1158,7 @@ describe('MessageComposerComponent', () => {
     // The `+` trigger swaps its icon for a spinner while a share (or GIF fetch) runs;
     // the tray's own Location item carries the disabled state.
     const trigger = container.querySelector('[data-testid=composer-insert]');
-    expect(trigger?.querySelector('hlm-spinner')).not.toBeNull();
+    expect(trigger?.querySelector('trn-spinner')).not.toBeNull();
   });
 
   describe('voice messages', () => {

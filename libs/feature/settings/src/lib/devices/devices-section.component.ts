@@ -7,7 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { HlmBadge } from '@trinity/helm/badge';
+import { TrnBadge } from '@trinity/components/badge';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmTooltip } from '@trinity/helm/tooltip';
 import { EncryptionDialogService, runWithBusy } from '@trinity/ui';
@@ -25,7 +25,7 @@ import { TrnIconComponent } from '@trinity/components/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './devices-section.component.html',
   styleUrl: './devices-section.component.scss',
-  imports: [TrnIconComponent, HlmBadge, HlmButton, HlmTooltip],
+  imports: [TrnIconComponent, TrnBadge, HlmButton, HlmTooltip],
 })
 export class DevicesSectionComponent {
   private readonly devicesSvc = inject(DevicesService);

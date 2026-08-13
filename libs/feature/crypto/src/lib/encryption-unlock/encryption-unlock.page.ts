@@ -25,8 +25,8 @@ import {
 } from '@trinity/ui';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
-import { HlmSpinner } from '@trinity/helm/spinner';
+import { TrnLabel } from '@trinity/components/label';
+import { TrnSpinnerComponent } from '@trinity/components/spinner';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
@@ -58,8 +58,8 @@ import {
     RecoveryKeySaveComponent,
     HlmButton,
     HlmInput,
-    HlmLabel,
-    HlmSpinner,
+    TrnLabel,
+    TrnSpinnerComponent,
   ],
 })
 export class EncryptionUnlockPage {

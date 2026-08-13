@@ -157,7 +157,7 @@ describe('DeviceVerificationPage', () => {
     );
 
     expect(
-      container.querySelector('[data-testid="sas-waiting"] hlm-spinner'),
+      container.querySelector('[data-testid="sas-waiting"] trn-spinner'),
     ).not.toBeNull();
     expect(container.querySelector('[data-testid="sas-match"]')).toBeNull();
   });

@@ -8,7 +8,7 @@ import {
 import { TitleCasePipe } from '@angular/common';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
+import { TrnLabel } from '@trinity/components/label';
 import {
   HlmRadio,
   HlmRadioGroup,
@@ -35,7 +35,7 @@ import {
     TitleCasePipe,
     HlmButton,
     HlmInput,
-    HlmLabel,
+    TrnLabel,
     HlmRadioGroup,
     HlmRadio,
     HlmRadioIndicator,

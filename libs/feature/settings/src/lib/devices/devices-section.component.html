@@ -16,12 +16,12 @@
         >
           <span class="device-name">{{ device.displayName }}</span>
           @if (device.isCurrent) {
-            <span hlmBadge>This device</span>
+            <span trnBadge>This device</span>
           }
           @if (device.isVerified) {
-            <span hlmBadge variant="success">Verified</span>
+            <span trnBadge variant="success">Verified</span>
           } @else {
-            <span hlmBadge variant="warning">Unverified</span>
+            <span trnBadge variant="warning">Unverified</span>
           }
         </div>
         <div class="truncate text-xs text-muted-foreground">

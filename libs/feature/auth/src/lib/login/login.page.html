@@ -3,12 +3,12 @@
   <h1 class="sr-only">Sign in to Trinity</h1>
 
   <div class="login-wrapper">
-    <section hlmCard class="login-card">
+    <section trnCard class="login-card">
       <!-- ── Branding ───────────────────────────────────────── -->
-      <div hlmCardHeader class="login-card__brand">
-        <h2 hlmCardTitle class="login-card__wordmark">Trinity</h2>
+      <div trnCardHeader class="login-card__brand">
+        <h2 trnCardTitle class="login-card__wordmark">Trinity</h2>
         @if (!baseUrl()) {
-          <p hlmCardDescription class="login-card__subtitle">
+          <p trnCardDescription class="login-card__subtitle">
             @if (reauthUserId()) {
               Reconnecting your account…
             } @else if (addMode) {
@@ -18,7 +18,7 @@
             }
           </p>
         } @else {
-          <p hlmCardDescription class="login-card__subtitle">
+          <p trnCardDescription class="login-card__subtitle">
             @if (reauthUserId()) {
               Sign in again to reconnect this account
             } @else {
@@ -33,11 +33,11 @@
         }
       </div>
 
-      <div hlmCardContent>
+      <div trnCardContent>
         @if (!baseUrl() && !reauthUserId()) {
           <!-- ── Step 1: Homeserver (skipped in re-auth: the HS is known) ── -->
           <div class="login-card__field">
-            <label hlmLabel for="homeserver" class="login-card__label"
+            <label trnLabel for="homeserver" class="login-card__label"
               >Homeserver</label
             >
             <input
@@ -64,7 +64,7 @@
           <!-- ── Step 2: Username + Password ────────────────── -->
           @if (passwordSupported()) {
             <div class="login-card__field">
-              <label hlmLabel for="username" class="login-card__label"
+              <label trnLabel for="username" class="login-card__label"
                 >Username</label
               >
               <input
@@ -80,7 +80,7 @@
             </div>
 
             <div class="login-card__field">
-              <label hlmLabel for="password" class="login-card__label"
+              <label trnLabel for="password" class="login-card__label"
                 >Password</label
               >
               <div class="relative">
@@ -167,7 +167,7 @@
             role="status"
             aria-live="polite"
           >
-            <hlm-spinner />
+            <trn-spinner />
             <p class="text-muted-foreground">Working…</p>
           </div>
         }

@@ -18,7 +18,7 @@ import {
 import { Browser } from '@capacitor/browser';
 import { HlmButton } from '@trinity/helm/button';
 import { HlmInput } from '@trinity/helm/input';
-import { HlmLabel } from '@trinity/helm/label';
+import { TrnLabel } from '@trinity/components/label';
 import { TrnToastService } from '@trinity/components/overlay';
 import { runWithBusy } from '@trinity/ui';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
@@ -94,7 +94,7 @@ const passwordSchema = schema<PasswordModel>((path) => {
     TrnIconComponent,
     HlmButton,
     HlmInput,
-    HlmLabel,
+    TrnLabel,
   ],
 })
 export class AccountSectionComponent {
