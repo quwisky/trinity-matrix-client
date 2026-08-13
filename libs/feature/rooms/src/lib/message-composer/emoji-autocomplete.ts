@@ -14,7 +14,6 @@ const EMOJI_TRIGGER = /(?:^|\s):([a-z0-9_+-]{2,})$/i;
 /** A fully typed `:shortcode:` (closing colon present) for inline replacement. */
 const EMOJI_COMPLETE = /(?:^|\s):([a-z0-9_+-]+):$/i;
 /** How many suggestions the menu offers at once. */
-const EMOJI_SUGGESTION_LIMIT = 8;
 
 /**
  * What accepting an emoji suggestion resolves to: normally a splice over the `:fragment`
@@ -44,7 +43,8 @@ export class EmojiAutocomplete {
     if (q === null) {
       return [];
     }
-    return this.index.suggest(q, EMOJI_SUGGESTION_LIMIT);
+    // Limit left to the facade, which owns the query and already defaults it.
+    return this.index.suggest(q);
   });
 
   /** The menu is shown only when a query yields at least one match. */

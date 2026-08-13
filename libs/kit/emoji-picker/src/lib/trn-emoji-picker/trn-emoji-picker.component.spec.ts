@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Component, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { PickerComponent } from '@ctrl/ngx-emoji-mart';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
 import type { TrnEmojiPick } from '../trn-emoji.model';
@@ -14,13 +18,22 @@ class Host {
 }
 
 describe('TrnEmojiPickerComponent', () => {
+  /**
+   * Fires the VENDOR's own output rather than calling our handler.
+   *
+   * Reaching for the protected `onSelect` directly left the `(emojiSelect)` binding
+   * uncovered: deleting it from the template kept every test in this file green while the
+   * picker emitted nothing at all. Going through `PickerComponent` covers the binding and
+   * the narrowing in one path, so breaking either fails here.
+   */
   const emit = async (emoji: unknown) => {
     const { fixture } = await render(Host);
-    const picker = fixture.debugElement.children[0]
-      .componentInstance as TrnEmojiPickerComponent & {
-      onSelect(event: unknown): void;
-    };
-    picker.onSelect({ emoji, $event: new Event('click') });
+    const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+    vendor.componentInstance.emojiSelect.emit({
+      emoji,
+      $event: new Event('click'),
+    });
+    fixture.detectChanges();
     return fixture.componentInstance.picks();
   };
 
@@ -49,16 +62,22 @@ describe('TrnEmojiPickerComponent', () => {
     expect(await emit(undefined)).toEqual([]);
   });
 
-  it('is announced as a dialog and can be targeted by aria-controls', async () => {
+  it('can be targeted by aria-controls, and claims no role of its own', async () => {
     const { fixture } = await render(TrnEmojiPickerComponent, {
-      inputs: { label: 'Pick a reaction', pickerId: 'reaction-emoji-picker' },
+      inputs: { pickerId: 'reaction-emoji-picker' },
     });
     const host = fixture.nativeElement as HTMLElement;
 
-    expect(host.getAttribute('role')).toBe('dialog');
-    expect(host.getAttribute('aria-label')).toBe('Pick a reaction');
     // The composer's trigger carries `aria-expanded` and had nothing to point at.
     expect(host.getAttribute('id')).toBe('reaction-emoji-picker');
+
+    // Deliberately roleless. In the reaction flow this sits inside a CDK dialog container
+    // that already has `role="dialog"` — a role here nests one dialog in another — and in
+    // the composer it is a non-modal inline panel with no focus trap, where `dialog`
+    // promises focus management that does not exist. Naming belongs to the CDK container
+    // or to the trigger, not here.
+    expect(host.getAttribute('role')).toBeNull();
+    expect(host.getAttribute('aria-label')).toBeNull();
   });
 
   it('never puts the vendor dark class on the element', async () => {
@@ -70,5 +89,24 @@ describe('TrnEmojiPickerComponent', () => {
     const html = (fixture.nativeElement as HTMLElement).innerHTML;
 
     expect(html).not.toContain('emoji-mart-dark');
+  });
+
+  it('keeps every unencapsulated rule inside the host class', () => {
+    // `ViewEncapsulation.None` means these rules are global the moment they load. A rule
+    // that forgot the `.trn-emoji-picker` prefix would restyle `.emoji-mart` anywhere —
+    // and, being a stylesheet, would do it silently: jsdom applies no CSS, so no rendering
+    // test could catch it. Asserted on the source instead.
+    const sheet = readFileSync(
+      join(import.meta.dirname, 'trn-emoji-picker.component.scss'),
+      'utf8',
+    );
+    const topLevel = sheet
+      .split('\n')
+      .filter((line) => /^[.&#a-z\[]/i.test(line) && line.includes('{'));
+
+    expect(topLevel).not.toEqual([]);
+    expect(
+      topLevel.filter((line) => !line.startsWith('.trn-emoji-picker')),
+    ).toEqual([]);
   });
 });

@@ -25,6 +25,15 @@ import type { TrnEmojiPick } from '../trn-emoji.model';
  * more specific `.emoji-mart-dark` ones. `trn-emoji-picker.component.scss` then paints it
  * from design tokens, so it re-themes with everything else.
  *
+ * **It claims no ARIA role of its own, and that is deliberate.** An earlier revision made
+ * the host a `role="dialog"` with a label, which is wrong at both call sites. In the
+ * reaction flow it sits inside a CDK dialog container that already carries that role, so it
+ * produced a dialog nested in a dialog; in the composer it is an inline, absolutely
+ * positioned panel with no modality and no focus trap, and `role="dialog"` promises focus
+ * management that does not exist. Naming belongs to whatever actually is the dialog — the
+ * CDK container, via `TrnDialogService`'s `ariaLabel` — or to the trigger relationship,
+ * which is what `pickerId` plus the caller's `aria-controls` expresses.
+ *
  * `ViewEncapsulation.None` because the vendor's inner DOM carries no `_ngcontent`
  * attribute, so an encapsulated stylesheet cannot reach `.emoji-mart-category-label` at
  * all. Scoped by the `.trn-emoji-picker` host class rather than leaking globally, and
@@ -40,15 +49,12 @@ import type { TrnEmojiPick } from '../trn-emoji.model';
   styleUrl: './trn-emoji-picker.component.scss',
   host: {
     class: 'trn-emoji-picker',
-    role: 'dialog',
-    '[attr.aria-label]': 'label()',
+    // No `role` and no `aria-label`, deliberately — see the note above.
     '[attr.id]': 'pickerId()',
     'data-testid': 'emoji-picker',
   },
 })
 export class TrnEmojiPickerComponent {
-  /** Accessible name. The dialog has no visible title of its own. */
-  readonly label = input('Pick an emoji');
   /**
    * Host id, so a trigger can point `aria-controls` at the open panel. The composer's
    * toggle already carries `aria-expanded` with nothing to reference.

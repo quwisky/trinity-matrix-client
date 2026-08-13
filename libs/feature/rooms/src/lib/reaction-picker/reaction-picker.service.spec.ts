@@ -20,7 +20,12 @@ describe('ReactionPickerService', () => {
   it('opens the reaction picker dialog and resolves the chosen emoji', async () => {
     const { svc, openAndWait } = setup('🎯');
     const chosen = await svc.pick();
-    expect(openAndWait).toHaveBeenCalledWith(ReactionPickerComponent, {});
+    // The ariaLabel is the assertion, not incidental: the CDK container is the element
+    // that actually carries `role="dialog"` here, and it had no accessible name at all
+    // until #152 — a screen reader announced this as just "dialog".
+    expect(openAndWait).toHaveBeenCalledWith(ReactionPickerComponent, {
+      ariaLabel: 'Pick a reaction',
+    });
     expect(chosen).toBe('🎯');
   });
 
