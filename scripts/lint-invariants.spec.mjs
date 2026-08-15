@@ -137,14 +137,17 @@ const ALL_UI_VENDORS = [
 ];
 
 const UI_BOUNDARY = [
-  // libs/ui keeps only @angular/cdk. Both wrappers it was once expected to host went to
-  // the kit instead — <trn-icon> in #154, <trn-emoji-picker> in #152 — because a lib
-  // tagged ui:wrapper is precisely the tier that may not name a vendor.
-  {
-    tier: 'ui:wrapper',
-    banned: ['@spartan-ng/brain', '@ng-icons', '@ctrl/ngx-emoji-mart'],
-    allowed: ['@angular/cdk'],
-  },
+  // libs/ui keeps nothing. Both wrappers it was once expected to host went to the kit
+  // instead — <trn-icon> in #154, <trn-emoji-picker> in #152 — because a lib tagged
+  // ui:wrapper is precisely the tier that may not name a vendor.
+  //
+  // @angular/cdk was the last vendor still allowed here, and this table used to assert that
+  // it must STAY allowed "because it is the layer that wraps it". That was never true of
+  // libs/ui: it imports no vendor at all, and the layer that wraps CDK is
+  // @trinity/helm/overlay, tagged ui:vendor-wrapper. The assertion was pinning open a hole
+  // rather than protecting a need — and since libs/ui is type:ui, which every feature lib
+  // may depend on, unmediated CDK reaching it would have propagated straight to features.
+  { tier: 'ui:wrapper', banned: ALL_UI_VENDORS, allowed: [] },
   // #151 and #154 closed the dialog, toast and icon imports; #152 closed the last one.
   // Every tier below the UI layer is now banned from every vendor, and nothing is staged —
   // the `warn` block that made the count visible while it shrank has been deleted, which
@@ -155,6 +158,26 @@ const UI_BOUNDARY = [
   { tier: 'type:platform', banned: ALL_UI_VENDORS, allowed: [] },
   { tier: 'type:app', banned: ALL_UI_VENDORS, allowed: [] },
 ];
+
+/**
+ * The projects deliberately outside the vendor bans, listed so the exemption is a decision
+ * somebody made rather than a gap nobody noticed.
+ *
+ * - `e2e` (`type:e2e`) drives a real browser from node. It renders no Angular UI, and it
+ *   must be free to import whatever a Playwright spec needs.
+ * - `scripts` (`type:tool`) is node tooling — guards, codegen, version checks.
+ *
+ * The vendored kit is not listed here: it is exempted by its `ui:vendor-wrapper` tag in the
+ * filter below, since it is the layer the bans exist to protect rather than an exception to
+ * them.
+ *
+ * Not listed because no glob can reach it: `trinity-desktop` (the Electron shell at
+ * `electron/`) is an Nx project with NO project.json — its config is inferred, and it
+ * carries no tags at all. It is a separate dependency tree with no Angular in it, so no UI
+ * vendor ban would apply, but nothing here can assert that. Give it a project.json with
+ * tags if it ever grows renderer-side UI code.
+ */
+const OUTSIDE_THE_VENDOR_BANS = ['e2e/project.json', 'scripts/project.json'];
 
 describe('UI vendor boundary', () => {
   const tagsOf = (project) =>
@@ -172,7 +195,7 @@ describe('UI vendor boundary', () => {
     expect(tagsOf('libs/ui')).not.toContain('ui:vendor-wrapper');
   });
 
-  it('tags every project, since a rule that matches no tag enforces nothing', () => {
+  it('gives every project a tag the vendor bans actually key on', async () => {
     // The failure mode this exists for is silent and unbounded. `depConstraints` entries
     // are keyed on `sourceTag`, and there is deliberately no `sourceTag: '*'` catch-all —
     // so a project whose tags match NO entry gets no layering rule and, worse, none of the
@@ -180,23 +203,46 @@ describe('UI vendor boundary', () => {
     // `type:featrue`, may import @ctrl/ngx-emoji-mart or reach across any boundary it
     // likes, and `pnpm lint` reports success. Every ban in this file is only as complete
     // as the tagging is.
-    const projects = globSync('{apps,libs}/**/project.json', {
+    //
+    // Checked against the CONFIG's own source tags rather than against the `type:`/`scope:`
+    // prefixes. The prefix form was the bug: `type:featrue` starts with `type:`, so the
+    // exact typo named above sailed through the very guard written to catch it. Only a
+    // comparison with the tags that key a ban can tell "tagged" from "covered".
+    const config = await resolve('libs/ui/src/index.ts');
+    const constraints =
+      config.rules['@nx/enforce-module-boundaries'][1].depConstraints;
+    const tagsCarryingBans = new Set(
+      constraints
+        .filter((entry) => entry.bannedExternalImports?.length)
+        .map((entry) => entry.sourceTag),
+    );
+    expect(tagsCarryingBans.size).toBeGreaterThan(0);
+
+    // Swept beyond {apps,libs}: `e2e` and `scripts` are Nx projects too, and the previous
+    // glob simply could not see them — so "tags every project" was asserted over 41 of the
+    // 43 project.json files in the tree and passed on a sweep that never looked.
+    const projects = globSync('{apps,libs,e2e,scripts}/**/project.json', {
       cwd: workspaceRoot,
     });
     // An empty sweep must not pass as a clean one — the same trap the host-directives
     // guard was written around.
     expect(projects.length).toBeGreaterThan(30);
 
-    const untagged = projects
+    const uncovered = projects
       .map((path) => ({ path, tags: tagsOf(dirname(path)) }))
       .filter(
         ({ tags }) =>
-          !tags.some((tag) => tag.startsWith('type:')) ||
-          !tags.some((tag) => tag.startsWith('scope:')),
+          !tags.some((tag) => tagsCarryingBans.has(tag)) &&
+          // The vendored kit is uncovered on purpose — it IS the wrapper layer, and a ban
+          // there would ban the layer from existing. Exempted by its TAG rather than by
+          // listing 19 paths, so adding a kit library is not a test edit, while a lib that
+          // is uncovered for any OTHER reason still fails below.
+          !tags.includes('ui:vendor-wrapper'),
       )
-      .map(({ path, tags }) => `${path}: ${JSON.stringify(tags)}`);
+      .map(({ path }) => path)
+      .sort();
 
-    expect(untagged).toEqual([]);
+    expect(uncovered).toEqual(OUTSIDE_THE_VENDOR_BANS);
   });
 
   it('bans the vendors from every tier that should not render third-party UI', async () => {

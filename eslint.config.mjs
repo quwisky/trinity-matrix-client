@@ -59,13 +59,21 @@ export default defineConfig([
             // reports success and the ban enforces nothing. `lint-invariants.spec.mjs`
             // pins the `*` for exactly this reason.
             //
-            // `ui:wrapper` (libs/ui) now keeps nothing. It was expected to host both the
-            // icon and emoji wrappers; #154 put the first in the kit (as
+            // `ui:wrapper` (libs/ui) keeps nothing, @angular/cdk included. It was expected
+            // to host both the icon and emoji wrappers; #154 put the first in the kit (as
             // `@trinity/helm/icon`) and #152 the second (`@trinity/helm/emoji-picker`),
             // because a lib tagged `ui:wrapper` is precisely the tier that may not name a
-            // vendor. The vendored kit (`ui:vendor-wrapper`) is deliberately absent from
-            // this list; it IS the wrapper layer, and banning its vendors there would ban
-            // the layer from existing.
+            // vendor. CDK was the last one left off this list, and it was an unused
+            // allowance rather than a carve-out: libs/ui imports no vendor at all, and the
+            // layer that genuinely wraps CDK is `@trinity/helm/overlay`, which is tagged
+            // `ui:vendor-wrapper`. Leaving it open contradicted this comment and also
+            // falsified the rationale written at the top of that lib's barrel — "no file
+            // outside libs/spartan imports @angular/cdk, and #148 turns that into a lint
+            // ban" — since libs/ui is `type:ui`, which every feature lib may depend on.
+            //
+            // The vendored kit (`ui:vendor-wrapper`) is deliberately absent from this list;
+            // it IS the wrapper layer, and banning its vendors there would ban the layer
+            // from existing.
             //
             // `type:feature` carries all four. #151 closed @angular/cdk and
             // @spartan-ng/brain, #154 @ng-icons, #152 @ctrl/ngx-emoji-mart — and with the
@@ -75,6 +83,7 @@ export default defineConfig([
               sourceTag: 'ui:wrapper',
               bannedExternalImports: [
                 '@spartan-ng/brain*',
+                '@angular/cdk*',
                 '@ng-icons*',
                 '@ctrl/ngx-emoji-mart*',
               ],
