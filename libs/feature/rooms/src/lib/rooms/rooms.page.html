@@ -105,7 +105,7 @@
           aria-label="Back to rooms"
           data-testid="back-to-rooms"
         >
-          <trn-icon class="text-xl" name="arrow-left" />
+          <trn-icon size="1.25rem" name="arrow-left" />
         </button>
 
         <!-- Projected into the shell's single <h1>: inline spans + icon only, no
@@ -155,7 +155,7 @@
               aria-label="Search messages in this room"
               data-testid="search-messages"
             >
-              <trn-icon class="text-xl" name="search" />
+              <trn-icon size="1.25rem" name="search" />
             </button>
             <button
               hlmBtn
@@ -167,7 +167,7 @@
               aria-label="Invite people"
               data-testid="invite-people"
             >
-              <trn-icon class="text-xl" name="user-plus" />
+              <trn-icon size="1.25rem" name="user-plus" />
             </button>
             <button
               hlmBtn
@@ -179,7 +179,7 @@
               aria-label="Room settings"
               data-testid="open-room-settings"
             >
-              <trn-icon class="text-xl" name="settings" />
+              <trn-icon size="1.25rem" name="settings" />
             </button>
             <button
               hlmBtn
@@ -190,7 +190,7 @@
               aria-label="Threads"
               data-testid="open-threads"
             >
-              <trn-icon class="text-xl" name="messages-square" />
+              <trn-icon size="1.25rem" name="messages-square" />
             </button>
             <button
               hlmBtn
@@ -202,7 +202,7 @@
               aria-label="Pinned messages"
               data-testid="open-pinned"
             >
-              <trn-icon class="text-xl" name="pin" />
+              <trn-icon size="1.25rem" name="pin" />
               @if (pinned.pinnedMessages().length > 0) {
                 <span class="header-pin__badge" aria-hidden="true">{{
                   pinned.pinnedMessages().length
@@ -220,7 +220,7 @@
               aria-label="Members"
               data-testid="toggle-members"
             >
-              <trn-icon class="text-xl" name="users" />
+              <trn-icon size="1.25rem" name="users" />
             </button>
 
             <!-- Present at EVERY breakpoint. Below md it also absorbs the demoted header
@@ -238,7 +238,7 @@
               aria-label="More actions"
               data-testid="room-actions-overflow"
             >
-              <trn-icon class="text-xl" name="ellipsis-vertical" />
+              <trn-icon size="1.25rem" name="ellipsis-vertical" />
               @if (pinned.pinnedMessages().length > 0) {
                 <span class="header-pin__badge" aria-hidden="true">{{
                   pinned.pinnedMessages().length

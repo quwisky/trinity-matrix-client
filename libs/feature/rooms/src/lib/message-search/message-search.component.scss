@@ -7,7 +7,14 @@
   color: var(--trinity-text-muted);
   border-bottom: 1px solid var(--trinity-divider);
 
-  ng-icon {
+  // `trn-icon`, not `ng-icon`. The banner renders <trn-icon>, and the <ng-icon> inside it
+  // belongs to that component's template — emulated encapsulation stamps this rule as
+  // `ng-icon[_ngcontent-…]`, which a child component's element never carries, so the old
+  // selector matched nothing and the icon silently fell back to the banner's own 0.85rem.
+  // Styling the host works because nothing here competes: this icon sits in a plain flex
+  // row rather than inside a button, so no cva utility writes font-size onto the inner
+  // element, and `1em` resolves against the size set here.
+  trn-icon {
     flex: 0 0 auto;
     font-size: 1rem;
   }

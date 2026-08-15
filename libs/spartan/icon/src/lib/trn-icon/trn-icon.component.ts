@@ -18,6 +18,16 @@ import type { TrnIconName } from '../trn-icon-name';
  * `[attr.aria-label]` written beside one is announced to nobody. Trinity shipped exactly
  * that bug in the quick switcher. Here the static attribute is written once, in one file,
  * and call sites express intent with `label` instead of re-deriving the incantation.
+ *
+ * **Size goes through `size`, never through a `text-*` class on this element.** `HlmButton`'s
+ * cva string carries `[&_ng-icon:not([class*='text-'])]:text-[length:--spacing(4)]`, whose
+ * `:not()` is the opt-out an oversized icon used to rely on: the class sat on the `<ng-icon>`
+ * itself, so the guard excluded it. Wrapping moved that class to THIS host and left the inner
+ * `<ng-icon>` bare, which the guard therefore matches — the utility then writes `font-size`
+ * straight onto the inner element, beating the size inherited from here, and `1em` resolves
+ * against 16px instead of the intended 20px. `size` is immune because it sets
+ * `--ng-icon__size`, which drives the inner element's own width/height rather than its
+ * font-size. Verified in a browser, not in jsdom, which does no layout.
  */
 @Component({
   selector: 'trn-icon',
@@ -59,6 +69,20 @@ export class TrnIconComponent {
    * already says the same thing, where a label is duplicate noise rather than help.
    */
   readonly label = input<string | null>(null);
+  /**
+   * Glyph size as a CSS length (`'1.25rem'`), forwarded to the inner element's
+   * `--ng-icon__size`. Leave unset to keep inheriting from font-size, which is what the
+   * ~100 icons sitting inside a button already do correctly. Set it — rather than reaching
+   * for `class="text-xl"` — whenever an icon must be BIGGER than its context: see the note
+   * above for why the class form silently stops working through this wrapper.
+   *
+   * `''` rather than `null` for "unset": `NgIcon.size` declares a `coerceCssPixelValue`
+   * transform whose parameter is `string`, so a nullable input is an NG-template type error
+   * under `strictTemplates` — caught by `pnpm build` and by nothing else. Empty behaves
+   * identically at runtime; the coercion returns it untouched, Angular then drops the custom
+   * property, and `1em` applies as before.
+   */
+  readonly size = input('');
 
   protected readonly announced = computed(() => this.label() || null);
 }
