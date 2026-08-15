@@ -36,7 +36,7 @@
   @if (pickerOpen()) {
     <trn-emoji-picker
       class="composer__picker"
-      pickerId="composer-emoji-picker"
+      [pickerId]="pickerId"
       (picked)="onPickerSelect($event)"
     />
   }
@@ -177,7 +177,7 @@
       hlmTooltip="Emoji"
       aria-label="Insert emoji"
       [attr.aria-expanded]="pickerOpen()"
-      [attr.aria-controls]="pickerOpen() ? 'composer-emoji-picker' : null"
+      [attr.aria-controls]="pickerOpen() ? pickerId : null"
       (click)="toggleEmojiPicker()"
     >
       <trn-icon name="smile" />

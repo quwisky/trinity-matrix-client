@@ -82,6 +82,9 @@ const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
   'format.link': 'link',
 };
 
+/** Instance counter behind {@link MessageComposerComponent.pickerId}. */
+let nextPickerId = 0;
+
 /**
  * Discord-style composer: Enter sends, Shift+Enter inserts a newline. In edit mode
  * it is prefilled with the message draft and Esc cancels. An emoji button opens a
@@ -122,6 +125,15 @@ const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
   styleUrl: './message-composer.component.scss',
 })
 export class MessageComposerComponent {
+  /**
+   * Unique per instance, because two composers are routinely alive at once: the room's own
+   * and the thread panel's. A shared literal put the same `id` on both open panels and left
+   * the trigger's `aria-controls` resolving to whichever the document reached first — the
+   * failure ARIA is least able to report, since the attribute is present and points at a
+   * real element either way.
+   */
+  protected readonly pickerId = `composer-emoji-picker-${nextPickerId++}`;
+
   readonly roomName = input('');
   /** Idle placeholder override (e.g. the thread composer); defaults to "Message #room". */
   readonly placeholder = input('');
